@@ -1,0 +1,41 @@
+[package]
+name = "pirate-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+pirate-core = { path = ".." }
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzz_address_decode"
+path = "fuzz_targets/fuzz_address_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_memo_parse"
+path = "fuzz_targets/fuzz_memo_parse.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_ivk_decode"
+path = "fuzz_targets/fuzz_ivk_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_mnemonic_parse"
+path = "fuzz_targets/fuzz_mnemonic_parse.rs"
+test = false
+doc = false
+

@@ -1,0 +1,62 @@
+[package]
+name = "pirate-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+test-helpers = []
+
+[dependencies]
+pirate-params = { path = "../pirate-params" }
+
+# Zcash/Librustzcash for Sapling support
+zcash_primitives = { workspace = true }
+zcash_client_backend = { workspace = true }
+zcash_proofs = { workspace = true }
+zcash_address = { workspace = true }
+orchard = { workspace = true }
+wagyu-zcash-parameters = { workspace = true }
+incrementalmerkletree = { workspace = true }
+bellman = { workspace = true }
+bls12_381 = { workspace = true }
+
+# Crypto primitives
+bip32 = { workspace = true }
+bip39 = { workspace = true }
+blake2b_simd = { workspace = true }
+blake2s_simd = { workspace = true }
+sha2 = { workspace = true }
+chacha20poly1305 = { workspace = true }
+argon2 = { workspace = true }
+zeroize = { workspace = true }
+rand = { workspace = true }
+
+# Encoding
+hex = { workspace = true }
+bs58 = { workspace = true }
+base64 = { workspace = true }
+bech32 = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }
+tracing = { workspace = true }
+once_cell = { workspace = true }
+
+[dev-dependencies]
+pirate-core = { path = ".", features = ["test-helpers"] }
+proptest = { workspace = true }
+tempfile = { workspace = true }

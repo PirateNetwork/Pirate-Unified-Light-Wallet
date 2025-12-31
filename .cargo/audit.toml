@@ -1,0 +1,11 @@
+# cargo-audit configuration
+
+[advisories]
+# Fail on any vulnerability
+ignore = []
+
+[database]
+# Update advisory database before each audit
+fetch = true
+url = "https://github.com/RustSec/advisory-db.git"
+

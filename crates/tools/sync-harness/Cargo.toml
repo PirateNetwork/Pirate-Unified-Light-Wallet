@@ -1,0 +1,22 @@
+[package]
+name = "sync-harness"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "sync-harness"
+path = "src/main.rs"
+
+[dependencies]
+pirate-sync-lightd = { path = "../../pirate-sync-lightd" }
+pirate-params = { path = "../../pirate-params" }
+
+tokio = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+anyhow = { workspace = true }
+indicatif = "0.17"
+

@@ -1,0 +1,26 @@
+[package]
+name = "pirate-net"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Tor/Arti for privacy-first networking
+arti-client = { workspace = true }
+tor-rtcompat = { workspace = true }
+
+tokio = { workspace = true }
+hyper = { workspace = true }
+tower = { workspace = true }
+tonic = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { version = "0.12", features = ["socks"] }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

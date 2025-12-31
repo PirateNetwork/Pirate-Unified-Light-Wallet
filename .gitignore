@@ -1,0 +1,383 @@
+# Pirate Unified Wallet - .gitignore
+
+# ===================================
+# Security - NEVER commit these files
+# ===================================
+# Private keys, seeds, and secrets
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ecdsa*
+id_ed25519*
+*.asc
+*.gpg
+secrets.json
+.env.local
+.env.*.local
+
+# Wallet data (development)
+*.wallet
+*.db
+*.sqlite
+*.sqlite3
+wallet.dat
+seed.txt
+mnemonic.txt
+
+# ===================================
+# Rust
+# ===================================
+# Build output
+target/
+**/target/
+# Note: Cargo.lock should be tracked for binaries (commit it)
+
+# Cargo
+**/*.rs.bk
+*.pdb
+
+# ===================================
+# Flutter/Dart
+# ===================================
+# Build output
+**/build/
+**/android/**/build/
+**/ios/**/build/
+**/windows/**/build/
+**/linux/**/build/
+**/macos/**/build/
+
+# Flutter/Dart/Pub
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+# Note: pubspec.lock should be tracked (commit it)
+
+# Flutter generated files
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/generated_plugin_registrant.dart
+**/GeneratedPluginRegistrant.*
+
+# Coverage
+coverage/
+.test_coverage.dart
+
+# ===================================
+# Android
+# ===================================
+**/android/.gradle
+**/android/captures/
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/key.properties
+*.jks
+*.keystore
+
+# Android Studio
+*.iml
+**/.idea/workspace.xml
+**/.idea/tasks.xml
+**/.idea/gradle.xml
+**/.idea/assetWizardSettings.xml
+**/.idea/dictionaries
+**/.idea/libraries
+**/.idea/jarRepositories.xml
+**/.idea/caches
+**/.idea/modules.xml
+**/.idea/.name
+**/.idea/compiler.xml
+**/.idea/misc.xml
+
+# NDK
+obj/
+*.so
+*.a
+
+# ===================================
+# iOS/macOS
+# ===================================
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/*sync/
+**/ios/**/.sconsign.dblite
+**/ios/**/.tags*
+**/ios/**/.vagrant/
+**/ios/**/DerivedData/
+**/ios/**/Icon?
+**/ios/**/Pods/
+**/ios/**/.symlinks/
+**/ios/**/profile
+**/ios/**/xcuserdata
+**/ios/.generated/
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+
+# macOS
+**/macos/Flutter/GeneratedPluginRegistrant.swift
+**/macos/Flutter/ephemeral/
+**/macos/Pods/
+
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcworkspace/contents.xcworkspacedata
+**/xcuserdata/
+*.xcscmblueprint
+*.hmap
+*.ipa
+
+# ===================================
+# Windows
+# ===================================
+**/windows/flutter/generated_plugin_registrant.cc
+**/windows/flutter/generated_plugin_registrant.h
+**/windows/flutter/generated_plugins.cmake
+**/windows/flutter/ephemeral/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+bin/
+obj/
+*.log
+
+# ===================================
+# Linux
+# ===================================
+**/linux/flutter/generated_plugin_registrant.cc
+**/linux/flutter/generated_plugin_registrant.h
+**/linux/flutter/generated_plugins.cmake
+**/linux/flutter/ephemeral/
+
+# ===================================
+# IDEs and Editors
+# ===================================
+# Cursor
+.cursor/
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# IntelliJ/Android Studio
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+atlassian-ide-plugin.xml
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw[a-z]
+*.un~
+Session.vim
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+auto-save-list
+tramp
+.\#*
+
+# ===================================
+# Operating Systems
+# ===================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===================================
+# Development Tools
+# ===================================
+# Node (if used for tooling)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (if used for scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+*.egg-info/
+
+# Go (if used for tooling)
+*.exe
+*.exe~
+*.test
+*.out
+vendor/
+
+# ===================================
+# Build & CI
+# ===================================
+# Nix
+result
+result-*
+.direnv/
+
+# Coverage reports
+*.coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+coverage.xml
+*.cover
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~.nib
+tmp/
+temp/
+
+# Documentation builds
+doc/api/
+docs/_build/
+site/
+
+# ===================================
+# Project Specific
+# ===================================
+
+# Komodo MM2
+mm2
+MM2.json
+MM2.log
+DB/
+
+# Tor data
+tor_data/
+*.torrc
+
+# Test data
+test_wallet.db
+test_keys/
+crates/check_*.txt
+crates/test_frontier*.txt
+
+# Local configuration
+local.config
+dev.config
+
+# Profiling
+*.prof
+*.trace
+
+# Benchmarks
+criterion/
+flamegraph.svg
+
+# Generated protobuf files
+*.pb.rs
+*.pb.dart
+
+# Fuzz testing
+fuzz/corpus/
+fuzz/artifacts/
+
+# ===================================
+# License & Legal
+# ===================================
+# But include LICENSE files (they should be tracked)
+!LICENSE*
+!COPYING*
+
+# ===================================
+# Keep these files
+# ===================================
+!.gitignore
+!.gitattributes
+!.editorconfig
+!.github/
+

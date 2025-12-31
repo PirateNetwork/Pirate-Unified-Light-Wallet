@@ -1,0 +1,20 @@
+[package]
+name = "pirate-sync-oblivious"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+pirate-core = { path = "../pirate-core" }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+default = []
+oblivious_sync = []
+
+[dev-dependencies]
+tokio = { workspace = true }
+

@@ -1,0 +1,15 @@
+# Flutter Rust Bridge v2.11 Configuration
+# https://cjycode.com/flutter_rust_bridge/
+
+# Rust crate configuration (v2 syntax)
+rust_input: crate::api
+rust_root: crates/pirate-ffi-frb/
+
+# Dart output directory
+dart_output: app/lib/core/ffi/generated
+
+# Dart entry point class name
+dart_entrypoint_class_name: RustLib
+
+# Full dependency mode
+full_dep: true

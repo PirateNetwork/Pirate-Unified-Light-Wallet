@@ -1,0 +1,39 @@
+[package]
+name = "pirate-storage-sqlite"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+pirate-core = { path = "../pirate-core" }
+pirate-params = { path = "../pirate-params" }
+
+# Zcash primitives for note deserialization
+zcash_primitives = { workspace = true }
+orchard = { workspace = true }
+incrementalmerkletree = { workspace = true }
+jubjub = "0.10"
+
+rusqlite = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+hex = { workspace = true }
+
+# Crypto deps for encryption
+chacha20poly1305 = { workspace = true }
+aes-gcm = { workspace = true }
+argon2 = { workspace = true }
+zeroize = { workspace = true, features = ["std"] }
+rand = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+proptest = { workspace = true }

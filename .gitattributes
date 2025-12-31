@@ -1,0 +1,185 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Source code
+*.rs text eol=lf
+*.dart text eol=lf
+*.go text eol=lf
+*.java text eol=lf
+*.kt text eol=lf
+*.cpp text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.swift text eol=lf
+*.m text eol=lf
+
+# Scripts
+*.sh text eol=lf
+*.bash text eol=lf
+*.zsh text eol=lf
+*.fish text eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=lf
+
+# Configuration files
+*.json text eol=lf
+*.xml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.conf text eol=lf
+*.properties text eol=lf
+*.nix text eol=lf
+
+# Build files
+Makefile text eol=lf
+*.mk text eol=lf
+*.gradle text eol=lf
+*.pro text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+Cargo.toml text eol=lf
+Cargo.lock text eol=lf linguist-generated=true
+pubspec.yaml text eol=lf
+pubspec.lock text eol=lf linguist-generated=true
+go.mod text eol=lf
+go.sum text eol=lf linguist-generated=true
+package.json text eol=lf
+package-lock.json text eol=lf linguist-generated=true
+
+# Documentation
+*.md text eol=lf
+*.txt text eol=lf
+*.adoc text eol=lf
+*.tex text eol=lf
+LICENSE* text eol=lf
+COPYING* text eol=lf
+*.license text eol=lf
+
+# Web files
+*.html text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.sass text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.jsx text eol=lf
+*.tsx text eol=lf
+
+# Graphics
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text eol=lf
+*.eps binary
+*.pdf binary
+*.webp binary
+
+# Archives
+*.zip binary
+*.tar binary
+*.gz binary
+*.bz2 binary
+*.7z binary
+*.rar binary
+
+# Fonts
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+
+# Audio/Video
+*.mp3 binary
+*.mp4 binary
+*.avi binary
+*.mov binary
+*.webm binary
+*.wav binary
+*.flac binary
+
+# Binaries
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.a binary
+*.lib binary
+*.o binary
+*.obj binary
+*.elf binary
+*.apk binary
+*.aab binary
+*.ipa binary
+*.app binary
+*.dmg binary
+*.jar binary
+*.class binary
+*.pyc binary
+
+# Protocol Buffers
+*.proto text eol=lf
+
+# Crypto/Keys (should never be committed, but just in case)
+*.pem binary
+*.key binary
+*.p12 binary
+*.pfx binary
+*.jks binary
+*.keystore binary
+
+# Database
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+
+# Git
+.gitattributes text eol=lf
+.gitignore text eol=lf
+.gitmodules text eol=lf
+
+# CI/CD
+.travis.yml text eol=lf
+.gitlab-ci.yml text eol=lf
+appveyor.yml text eol=lf
+azure-pipelines.yml text eol=lf
+
+# IDE
+*.iml text eol=lf
+*.pro text eol=lf
+*.sln text eol=crlf
+*.csproj text eol=lf
+*.vbproj text eol=lf
+*.vcxproj text eol=lf
+*.vcproj text eol=lf
+
+# Merge strategies
+*.lock merge=binary
+Cargo.lock merge=union
+pubspec.lock merge=union
+package-lock.json merge=union
+go.sum merge=union
+
+# Diff settings
+*.rs diff=rust
+*.dart diff
+*.go diff=golang
+
+# Export-ignore (files not needed in distribution)
+.gitattributes export-ignore
+.gitignore export-ignore
+.github/ export-ignore
+.vscode/ export-ignore
+.idea/ export-ignore
+test/ export-ignore
+tests/ export-ignore
+*.test.* export-ignore
+*.spec.* export-ignore
+

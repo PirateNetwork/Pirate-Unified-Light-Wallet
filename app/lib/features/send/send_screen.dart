@@ -1,0 +1,1566 @@
+/// Send screen - Send-to-Many ARRR with per-output memos
+library;
+
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:zxing2/qrcode.dart';
+
+import '../../design/deep_space_theme.dart';
+import '../../design/tokens/colors.dart';
+import '../../design/tokens/spacing.dart';
+import '../../design/tokens/typography.dart';
+import '../../ui/atoms/p_button.dart';
+import '../../ui/atoms/p_icon_button.dart';
+import '../../ui/atoms/p_input.dart';
+import '../../ui/atoms/p_text_button.dart';
+import '../../ui/molecules/p_card.dart';
+import '../../ui/molecules/p_dialog.dart';
+import '../../ui/molecules/inline_explain.dart';
+import '../../ui/molecules/wallet_switcher.dart';
+import '../../ui/molecules/watch_only_banner.dart';
+import '../../ui/organisms/p_app_bar.dart';
+import '../../ui/organisms/primary_action_dock.dart';
+import '../../ui/organisms/p_scaffold.dart';
+import '../../core/ffi/ffi_bridge.dart';
+import '../../core/ffi/generated/models.dart';
+import '../../core/providers/wallet_providers.dart';
+import '../../core/errors/transaction_errors.dart';
+
+/// Maximum memo length in bytes
+const int kMaxMemoBytes = 512;
+
+/// Maximum recipients per transaction
+const int kMaxRecipients = 50;
+
+class PiratePaymentRequest {
+  final String address;
+  final String? amount;
+  final String? memo;
+
+  const PiratePaymentRequest({
+    required this.address,
+    this.amount,
+    this.memo,
+  });
+}
+
+PiratePaymentRequest? _parsePiratePaymentRequest(String input) {
+  final raw = input.trim();
+  if (raw.isEmpty) return null;
+  final lower = raw.toLowerCase();
+  if (!lower.startsWith('pirate:')) return null;
+
+  var normalized = raw;
+  if (lower.startsWith('pirate://')) {
+    normalized = 'pirate:${raw.substring('pirate://'.length)}';
+  }
+
+  final schemeIndex = normalized.indexOf(':');
+  final payload = normalized.substring(schemeIndex + 1);
+  if (payload.isEmpty) return null;
+
+  final parts = payload.split('?');
+  var address = parts.first;
+  if (address.endsWith('/')) {
+    address = address.substring(0, address.length - 1);
+  }
+  if (address.isEmpty) return null;
+
+  String? amount;
+  String? memo;
+  if (parts.length > 1) {
+    final query = parts.sublist(1).join('?');
+    if (query.isNotEmpty) {
+      try {
+        final params = Uri.splitQueryString(query);
+        amount = _sanitizeRequestAmount(params['amount']);
+        memo = params['memo'];
+        if ((memo == null || memo.isEmpty) && params['message'] != null) {
+          memo = params['message'];
+        }
+      } catch (_) {
+        // Ignore malformed query strings.
+      }
+    }
+  }
+
+  return PiratePaymentRequest(address: address, amount: amount, memo: memo);
+}
+
+String? _sanitizeRequestAmount(String? value) {
+  if (value == null) return null;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  final normalized = trimmed.replaceAll(',', '');
+  if (!RegExp(r'^\d+(\.\d{0,8})?$').hasMatch(normalized)) return null;
+  return normalized;
+}
+
+/// Output entry for send-to-many
+class OutputEntry {
+  String address;
+  String amount;
+  String memo;
+  bool isValid;
+  String? error;
+  final TextEditingController addressController;
+  final TextEditingController amountController;
+  final TextEditingController memoController;
+
+  OutputEntry()
+      : address = '',
+        amount = '',
+        memo = '',
+        isValid = false,
+        error = null,
+        addressController = TextEditingController(),
+        amountController = TextEditingController(),
+        memoController = TextEditingController();
+
+  /// Get amount in zatoshis
+  int get zatoshis {
+    final value = double.tryParse(amount) ?? 0;
+    return (value * 100000000).round();
+  }
+
+  /// Get memo byte length
+  int get memoByteLength => memo.codeUnits.length;
+
+  /// Check if memo is near limit
+  bool get isMemoNearLimit => memoByteLength > 400;
+
+  /// Sync from controllers
+  void syncFromControllers() {
+    address = addressController.text;
+    amount = amountController.text;
+    memo = memoController.text;
+  }
+
+  /// Dispose controllers
+  void dispose() {
+    addressController.dispose();
+    amountController.dispose();
+    memoController.dispose();
+  }
+}
+
+/// Send flow steps
+enum SendStep {
+  recipients, // Multi-output recipient list
+  review,
+  sending,
+  complete,
+  error,
+}
+
+/// Send screen with multi-output support
+class SendScreen extends ConsumerStatefulWidget {
+  const SendScreen({super.key});
+
+  @override
+  ConsumerState<SendScreen> createState() => _SendScreenState();
+}
+
+class _SendScreenState extends ConsumerState<SendScreen> {
+  SendStep _currentStep = SendStep.recipients;
+
+  // Multiple outputs for send-to-many
+  final List<OutputEntry> _outputs = [OutputEntry()];
+  bool _isApplyingPaymentRequest = false;
+
+  // Fee information
+  double _calculatedFee = 0.0001; // Will be recalculated on init
+  double _totalAmount = 0;
+  double _change = 0;
+  bool _isValidating = false;
+  bool _isSending = false;
+  String? _errorMessage;
+  String? _txId;
+  PendingTx? _pendingTx;
+  
+  // Sending progress stages
+  String _sendingStage = 'Building transaction...';
+  
+  // Watch-only check
+  bool _isWatchOnly = false;
+  double? _cachedBalance;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkWatchOnlyStatus();
+    // Initialize fee calculation
+    _updateFeePreview();
+  }
+  
+  @override
+  void dispose() {
+    for (final output in _outputs) {
+      output.dispose();
+    }
+    super.dispose();
+  }
+  
+  /// Check if current wallet is watch-only
+  Future<void> _checkWatchOnlyStatus() async {
+    final walletId = ref.read(activeWalletProvider);
+    if (walletId == null) return;
+    
+    try {
+      final capabilities = await FfiBridge.getWatchOnlyCapabilities(walletId);
+      setState(() {
+        _isWatchOnly = capabilities.isWatchOnly;
+      });
+    } catch (_) {
+      // Ignore errors
+    }
+  }
+  
+  /// Get available balance from provider
+  double get _availableBalance {
+    final balanceAsync = ref.watch(balanceStreamProvider);
+    return balanceAsync.when(
+      data: (Balance? balance) {
+        if (balance?.spendable == null) return 0.0;
+        final spendable = balance!.spendable;
+        final value = spendable.toDouble() / 100000000.0;
+        _cachedBalance = value;
+        return value;
+      },
+      loading: () => _cachedBalance ?? 0.0,
+      error: (_, __) => _cachedBalance ?? 0.0,
+    );
+  }
+
+  /// Add new output entry
+  void _addOutput() {
+    if (_outputs.length >= kMaxRecipients) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Maximum $kMaxRecipients recipients allowed')),
+      );
+      return;
+    }
+    setState(() {
+      _outputs.add(OutputEntry());
+      _updateFeePreview(); // Update fee when adding recipient
+    });
+  }
+
+  bool get _supportsCameraScan {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
+
+  bool get _supportsImageImport {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux;
+  }
+
+  void _handleOutputChanged(int index) {
+    if (index < 0 || index >= _outputs.length) return;
+    _applyPiratePaymentRequest(index);
+    _outputs[index].syncFromControllers();
+    _updateFeePreview();
+    setState(() {});
+  }
+
+  void _applyPiratePaymentRequest(int index) {
+    if (_isApplyingPaymentRequest) return;
+    final output = _outputs[index];
+    final request = _parsePiratePaymentRequest(output.addressController.text);
+    if (request == null) return;
+
+    _isApplyingPaymentRequest = true;
+    output.addressController.text = request.address;
+    if (request.amount != null && request.amount!.isNotEmpty) {
+      output.amountController.text = request.amount!;
+    }
+    if (request.memo != null && request.memo!.isNotEmpty) {
+      output.memoController.text = request.memo!;
+    }
+    _isApplyingPaymentRequest = false;
+  }
+
+  Future<void> _openQrScanner(int index) async {
+    if (!_supportsCameraScan) return;
+    final result = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => const _SendQrScannerScreen(),
+        fullscreenDialog: true,
+      ),
+    );
+
+    if (!mounted || result == null || result.isEmpty) return;
+    _outputs[index].addressController.text = result;
+    _handleOutputChanged(index);
+  }
+
+  Future<void> _importQrImage(int index) async {
+    if (!_supportsImageImport) return;
+    final file = await openFile(
+      acceptedTypeGroups: [
+        const XTypeGroup(
+          label: 'Images',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'],
+        ),
+      ],
+    );
+    if (file == null) return;
+
+    final bytes = await file.readAsBytes();
+    final result = await _decodeQrFromImageBytes(bytes);
+    bytes.fillRange(0, bytes.length, 0);
+
+    if (!mounted) return;
+    if (result == null || result.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No QR code found in that image'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    _outputs[index].addressController.text = result;
+    _handleOutputChanged(index);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('QR code imported'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<String?> _decodeQrFromImageBytes(Uint8List bytes) async {
+    try {
+      final uiImage = await _decodeUiImage(bytes);
+      final byteData =
+          await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (byteData == null) {
+        uiImage.dispose();
+        return null;
+      }
+
+      final rgba = byteData.buffer.asUint8List(
+        byteData.offsetInBytes,
+        byteData.lengthInBytes,
+      );
+      final pixels = _rgbaToArgbPixels(rgba, uiImage.width, uiImage.height);
+      uiImage.dispose();
+
+      final source = RGBLuminanceSource(uiImage.width, uiImage.height, pixels);
+      final bitmap = BinaryBitmap(HybridBinarizer(source));
+      final reader = QRCodeReader();
+      final result = reader.decode(bitmap);
+      return result.text;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<ui.Image> _decodeUiImage(Uint8List bytes) {
+    final completer = Completer<ui.Image>();
+    ui.decodeImageFromList(bytes, completer.complete);
+    return completer.future;
+  }
+
+  Int32List _rgbaToArgbPixels(
+    Uint8List rgbaBytes,
+    int width,
+    int height,
+  ) {
+    final pixels = Int32List(width * height);
+    for (int i = 0; i < pixels.length; i++) {
+      final offset = i * 4;
+      final r = rgbaBytes[offset];
+      final g = rgbaBytes[offset + 1];
+      final b = rgbaBytes[offset + 2];
+      final a = rgbaBytes[offset + 3];
+      pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+    }
+    return pixels;
+  }
+
+  /// Remove output entry
+  void _removeOutput(int index) {
+    if (_outputs.length <= 1) return;
+    setState(() {
+      _outputs[index].dispose();
+      _outputs.removeAt(index);
+      _updateFeePreview();
+    });
+  }
+
+  /// Update fee preview using ZIP-317 fee calculation
+  /// 
+  /// ZIP-317 formula: fee = MARGINAL_FEE * max(GRACE_ACTIONS, logical_actions)
+  /// Where logical_actions = num_spends + num_outputs
+  /// - MARGINAL_FEE = 5,000 zatoshis = 0.00005 ARRR
+  /// - GRACE_ACTIONS = 2 (minimum)
+  /// - Memos do NOT affect fee in ZIP-317
+  /// 
+  /// For estimation, we assume 1 spend per transaction (typical case).
+  /// The actual fee will be calculated precisely when building the transaction.
+  void _updateFeePreview() {
+    final numOutputs = _outputs.length;
+
+    // ZIP-317 constants
+    const double marginalFeeArrr = 0.00005; // 5,000 zatoshis
+    const int graceActions = 2;
+    
+    // Estimate number of spends (inputs) needed
+    // For simplicity, estimate 1 spend per transaction (typical case)
+    // The actual fee will be calculated precisely when building the transaction
+    const int estimatedSpends = 1;
+    
+    // ZIP-317: logical_actions = spends + outputs
+    final logicalActions = estimatedSpends + numOutputs;
+    
+    // ZIP-317: fee = MARGINAL_FEE * max(GRACE_ACTIONS, logical_actions)
+    final actions = logicalActions > graceActions ? logicalActions : graceActions;
+    final fee = marginalFeeArrr * actions;
+
+    _totalAmount = _outputs.fold(0.0, (sum, o) {
+      return sum + (double.tryParse(o.amount) ?? 0);
+    });
+
+    setState(() {
+      _calculatedFee = fee;
+    });
+  }
+
+  /// Validate all outputs with detailed error mapping
+  bool _validateOutputs() {
+    bool allValid = true;
+    _errorMessage = null;
+
+    for (int i = 0; i < _outputs.length; i++) {
+      final output = _outputs[i];
+      output.syncFromControllers();
+      output.error = null;
+      output.isValid = true;
+
+      // Validate address using error mapper
+      final addressError = TransactionErrorMapper.validateAddress(output.address);
+      if (addressError != null) {
+        output.error = addressError.message;
+        output.isValid = false;
+        allValid = false;
+        continue; // Skip further validation for this output
+      }
+
+      // Validate amount
+      if (output.amount.isEmpty) {
+        output.error = 'Amount is required';
+        output.isValid = false;
+        allValid = false;
+      } else {
+        final value = double.tryParse(output.amount);
+        if (value == null || value <= 0) {
+          output.error = 'Amount must be greater than zero';
+          output.isValid = false;
+          allValid = false;
+        } else if (value < 0.00000001) {
+          output.error = 'Amount too small (minimum 0.00000001 ARRR)';
+          output.isValid = false;
+          allValid = false;
+        }
+      }
+
+      // Validate memo using error mapper
+      final memoError = TransactionErrorMapper.validateMemo(output.memo);
+      if (memoError != null) {
+        output.error = memoError.message;
+        output.isValid = false;
+        allValid = false;
+      }
+    }
+
+    // Check total doesn't exceed balance
+    _updateFeePreview();
+    final total = _totalAmount + _calculatedFee;
+    if (_cachedBalance != null && total > _availableBalance) {
+      _errorMessage = 'Insufficient funds: need ${total.toStringAsFixed(8)} ARRR, '
+          'have ${_availableBalance.toStringAsFixed(8)} ARRR';
+      allValid = false;
+    }
+
+    setState(() {});
+    return allValid;
+  }
+
+  /// Proceed to review - builds transaction via FFI
+  Future<void> _proceedToReview() async {
+    // Check watch-only first
+    if (_isWatchOnly) {
+      await WatchOnlyWarningDialog.show(context);
+      return;
+    }
+    
+    setState(() => _isValidating = true);
+
+    // Validate all outputs locally first
+    final isValid = _validateOutputs();
+    
+    if (!isValid) {
+      setState(() => _isValidating = false);
+      return;
+    }
+
+    try {
+      // Get active wallet
+      final walletId = ref.read(activeWalletProvider);
+      if (walletId == null) {
+        throw StateError('No active wallet');
+      }
+      
+      // Convert outputs to FFI format
+      final ffiOutputs = _outputs
+          .map(
+            (o) => Output(
+              addr: o.address,
+              amount: BigInt.from(o.zatoshis),
+              memo: o.memo.isNotEmpty ? o.memo : null,
+            ),
+          )
+          .toList();
+      
+      // Build transaction via FFI
+      final pendingTx = await FfiBridge.buildTx(
+        walletId: walletId,
+        outputs: ffiOutputs,
+      );
+      
+      // Store pending tx and update UI
+      setState(() {
+        _pendingTx = pendingTx;
+        _calculatedFee = pendingTx.fee.toDouble() / 100000000.0;
+        _totalAmount = pendingTx.totalAmount.toDouble() / 100000000.0;
+        _change = pendingTx.change.toDouble() / 100000000.0;
+        _isValidating = false;
+        _currentStep = SendStep.review;
+      });
+    } catch (e) {
+      // Map error to human-readable message
+      final txError = TransactionErrorMapper.mapError(e);
+      setState(() {
+        _errorMessage = txError.displayMessage;
+        _isValidating = false;
+      });
+    }
+  }
+
+  /// Send transaction - sign and broadcast via FFI
+  Future<void> _sendTransaction() async {
+    if (_pendingTx == null) {
+      setState(() {
+        _errorMessage = 'Transaction not built. Please try again.';
+        _currentStep = SendStep.error;
+      });
+      return;
+    }
+    
+    setState(() {
+      _currentStep = SendStep.sending;
+      _isSending = true;
+      _sendingStage = 'Signing transaction...';
+    });
+
+    try {
+      // Get active wallet
+      final walletId = ref.read(activeWalletProvider);
+      if (walletId == null) {
+        throw StateError('No active wallet');
+      }
+      
+      // Sign transaction via FFI
+      setState(() => _sendingStage = 'Generating Sapling proofs...');
+      final signedTx = await FfiBridge.signTx(walletId, _pendingTx!);
+      
+      // Broadcast transaction via FFI
+      setState(() => _sendingStage = 'Broadcasting to network...');
+      final txId = await FfiBridge.broadcastTx(signedTx);
+      
+      // Success!
+      _txId = txId;
+
+      setState(() {
+        _currentStep = SendStep.complete;
+        _isSending = false;
+      });
+      
+      // Refresh balance and transaction history
+      ref.invalidate(balanceProvider);
+      ref.invalidate(transactionsProvider);
+
+      // Show success dialog
+      if (mounted) {
+        await _showSuccessDialog();
+      }
+    } catch (e) {
+      // Map error to human-readable message
+      final txError = TransactionErrorMapper.mapError(e);
+      setState(() {
+        _currentStep = SendStep.error;
+        _errorMessage = txError.displayMessage;
+        _isSending = false;
+      });
+    }
+  }
+
+  /// Show success dialog
+  Future<void> _showSuccessDialog() async {
+    await PDialog.show(
+      context: context,
+      barrierDismissible: false,
+      title: 'Sent',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Your transaction is on its way.',
+            style: AppTypography.body,
+          ),
+          if (_totalAmount > 0) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Amount: ${_totalAmount.toStringAsFixed(8)} ARRR',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            'Transaction ID',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          SelectableText(
+            _txId ?? '',
+            style: AppTypography.mono.copyWith(
+              fontSize: 12,
+              color: AppColors.accentPrimary,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        PDialogAction(
+          label: 'Copy transaction ID',
+          variant: PButtonVariant.secondary,
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: _txId ?? ''));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Transaction ID copied')),
+            );
+          },
+        ),
+        PDialogAction(
+          label: 'Done',
+          variant: PButtonVariant.primary,
+          onPressed: () {
+            context.pop(); // Close dialog
+            context.pop(); // Return to home
+          },
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _currentStep == SendStep.review
+        ? 'Review'
+        : _currentStep == SendStep.sending
+            ? 'Sending'
+            : 'Send';
+
+    return PScaffold(
+      title: 'Send',
+      appBar: PAppBar(
+        title: title,
+        subtitle: _isWatchOnly
+            ? 'This is watch-only. Sending is off.'
+            : 'Paste an address.',
+        onBack: _isSending ? null : () => context.pop(),
+        showBackButton: true,
+        actions: [
+          if (_currentStep == SendStep.recipients &&
+              _outputs.length < kMaxRecipients)
+            PIconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              tooltip: 'Add recipient',
+              onPressed: _addOutput,
+            ),
+          const WalletSwitcherButton(compact: true),
+        ],
+      ),
+      body: _buildStepContent(),
+    );
+  }
+
+  Widget _buildStepContent() {
+    switch (_currentStep) {
+      case SendStep.recipients:
+        return _RecipientsStep(
+          outputs: _outputs,
+          availableBalance: _availableBalance,
+          calculatedFee: _calculatedFee,
+          totalAmount: _totalAmount,
+          errorMessage: _errorMessage,
+          isValidating: _isValidating,
+          onRemoveOutput: _removeOutput,
+          onAddOutput: _addOutput,
+          onOutputChanged: _handleOutputChanged,
+          onScan: _supportsCameraScan ? _openQrScanner : null,
+          onImport: _supportsImageImport ? _importQrImage : null,
+          onContinue: _proceedToReview,
+        );
+
+      case SendStep.review:
+        return _ReviewStep(
+          outputs: _outputs,
+          fee: _calculatedFee,
+          totalAmount: _totalAmount,
+          change: _change,
+          pendingTx: _pendingTx,
+          onConfirm: _sendTransaction,
+          onEdit: () => setState(() => _currentStep = SendStep.recipients),
+        );
+
+      case SendStep.sending:
+        return _SendingStep(stage: _sendingStage);
+
+      case SendStep.complete:
+        return const SizedBox(); // Handled by dialog
+
+      case SendStep.error:
+        return _ErrorStep(
+          error: _errorMessage ?? 'Unknown error',
+          onRetry: () => setState(() => _currentStep = SendStep.recipients),
+        );
+    }
+  }
+}
+
+/// Recipients input step with add/remove
+class _RecipientsStep extends StatelessWidget {
+  final List<OutputEntry> outputs;
+  final double availableBalance;
+  final double calculatedFee;
+  final double totalAmount;
+  final String? errorMessage;
+  final bool isValidating;
+  final void Function(int) onRemoveOutput;
+  final VoidCallback onAddOutput;
+  final void Function(int) onOutputChanged;
+  final void Function(int)? onScan;
+  final void Function(int)? onImport;
+  final VoidCallback onContinue;
+
+  const _RecipientsStep({
+    required this.outputs,
+    required this.availableBalance,
+    required this.calculatedFee,
+    required this.totalAmount,
+    required this.errorMessage,
+    required this.isValidating,
+    required this.onRemoveOutput,
+    required this.onAddOutput,
+    required this.onOutputChanged,
+    this.onScan,
+    this.onImport,
+    required this.onContinue,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = totalAmount + calculatedFee;
+    final hasEnough = total <= availableBalance;
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            itemCount: outputs.length + 1, // +1 for add button
+            itemBuilder: (context, index) {
+              if (index == outputs.length) {
+                // Add recipient button
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                  child: PButton(
+                    onPressed: outputs.length < kMaxRecipients ? onAddOutput : null,
+                    variant: PButtonVariant.outline,
+                    fullWidth: true,
+                    icon: const Icon(Icons.add),
+                    child: const Text('Add recipient'),
+                  ),
+                );
+              }
+
+              final scanHandler =
+                  onScan == null ? null : () => onScan!(index);
+              final importHandler =
+                  onImport == null ? null : () => onImport!(index);
+
+              return _OutputCard(
+                index: index,
+                output: outputs[index],
+                canRemove: outputs.length > 1,
+                onRemove: () => onRemoveOutput(index),
+                onChanged: () => onOutputChanged(index),
+                onScan: scanHandler,
+                onImport: importHandler,
+              );
+            },
+          ),
+        ),
+
+        // Footer with fee preview and continue button
+        PrimaryActionDock(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Fee preview
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Available:', style: AppTypography.caption),
+                  Text(
+                    '${availableBalance.toStringAsFixed(8)} ARRR',
+                    style: AppTypography.mono.copyWith(fontSize: 12),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Network Fee:', style: AppTypography.caption),
+                  Text(
+                    '${calculatedFee.toStringAsFixed(8)} ARRR',
+                    style: AppTypography.mono.copyWith(fontSize: 12),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Total:',
+                    style: AppTypography.caption.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    '${total.toStringAsFixed(8)} ARRR',
+                    style: AppTypography.mono.copyWith(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: hasEnough ? AppColors.success : AppColors.error,
+                    ),
+                  ),
+                ],
+              ),
+
+              if (errorMessage != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  errorMessage!,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.error,
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: AppSpacing.md),
+
+              PButton(
+                text: isValidating ? 'Validating...' : 'Review',
+                onPressed: isValidating ? null : onContinue,
+                variant: PButtonVariant.primary,
+                size: PButtonSize.large,
+                loading: isValidating,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Individual output card
+class _OutputCard extends StatelessWidget {
+  final int index;
+  final OutputEntry output;
+  final bool canRemove;
+  final VoidCallback onRemove;
+  final VoidCallback onChanged;
+  final VoidCallback? onScan;
+  final VoidCallback? onImport;
+
+  const _OutputCard({
+    required this.index,
+    required this.output,
+    required this.canRemove,
+    required this.onRemove,
+    required this.onChanged,
+    this.onScan,
+    this.onImport,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PCard(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: AppColors.accentPrimary.withValues(alpha: 0.2),
+                  child: Text(
+                    '${index + 1}',
+                    style: AppTypography.labelMedium.copyWith(
+                      color: AppColors.accentPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  'Recipient ${index + 1}',
+                  style: AppTypography.labelMedium,
+                ),
+                const Spacer(),
+                if (canRemove)
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: onRemove,
+                    color: AppColors.error,
+                    iconSize: 20,
+                    tooltip: 'Remove',
+                  ),
+              ],
+            ),
+
+            if (output.error != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, size: 16, color: AppColors.error),
+                    const SizedBox(width: AppSpacing.xs),
+                    Expanded(
+                      child: Text(
+                        output.error!,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            const SizedBox(height: AppSpacing.md),
+
+            // Address input
+            PInput(
+              controller: output.addressController,
+              label: 'Recipient address',
+              hint: 'Paste address',
+              helperText: 'Paste an address.',
+              maxLines: 2,
+              onChanged: (_) => onChanged(),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.content_paste, size: 20),
+                    onPressed: () async {
+                      final data = await Clipboard.getData('text/plain');
+                      if (data?.text != null) {
+                        output.addressController.text = data!.text!;
+                        onChanged();
+                      }
+                    },
+                    tooltip: 'Paste',
+                  ),
+                  if (onImport != null)
+                    IconButton(
+                      icon: const Icon(Icons.image_search, size: 20),
+                      onPressed: onImport,
+                      tooltip: 'Import QR image',
+                    ),
+                  if (onScan != null)
+                    IconButton(
+                      icon: const Icon(Icons.qr_code_scanner, size: 20),
+                      onPressed: onScan,
+                      tooltip: 'Scan QR',
+                    ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.md),
+
+            // Amount input
+            PInput(
+              controller: output.amountController,
+              label: 'Amount (ARRR)',
+              hint: '0.00000000',
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => onChanged(),
+            ),
+
+            const SizedBox(height: AppSpacing.md),
+
+            // Memo input
+            PInput(
+              controller: output.memoController,
+              label: 'Memo (optional)',
+              hint: 'Add a private note',
+              helperText: 'A private note only the receiver can read.',
+              maxLines: 2,
+              maxLength: kMaxMemoBytes,
+              onChanged: (_) => onChanged(),
+            ),
+
+            if (output.isMemoNearLimit)
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.xs),
+                child: Text(
+                  '${output.memoByteLength}/$kMaxMemoBytes bytes',
+                  style: AppTypography.caption.copyWith(
+                    color: output.memoByteLength > kMaxMemoBytes
+                        ? AppColors.error
+                        : AppColors.warning,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SendQrScannerScreen extends StatefulWidget {
+  const _SendQrScannerScreen();
+
+  @override
+  State<_SendQrScannerScreen> createState() => _SendQrScannerScreenState();
+}
+
+class _SendQrScannerScreenState extends State<_SendQrScannerScreen> {
+  final MobileScannerController _controller = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    facing: CameraFacing.back,
+  );
+  bool _hasResult = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleDetection(BarcodeCapture capture) {
+    if (_hasResult) return;
+    for (final barcode in capture.barcodes) {
+      final value = barcode.rawValue;
+      if (value != null && value.isNotEmpty) {
+        _hasResult = true;
+        Navigator.of(context).pop(value);
+        return;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundBase,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: MobileScanner(
+                controller: _controller,
+                onDetect: _handleDetection,
+              ),
+            ),
+            Positioned.fill(
+              child: Container(color: Colors.black.withValues(alpha: 0.35)),
+            ),
+            Center(
+              child: Container(
+                width: 240,
+                height: 240,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: AppColors.accentPrimary,
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: AppSpacing.lg,
+              left: AppSpacing.lg,
+              right: AppSpacing.lg,
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                    color: AppColors.textPrimary,
+                    tooltip: 'Close',
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => _controller.toggleTorch(),
+                    icon: const Icon(Icons.flashlight_on),
+                    color: AppColors.textPrimary,
+                    tooltip: 'Flash',
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              bottom: AppSpacing.xl,
+              left: AppSpacing.lg,
+              right: AppSpacing.lg,
+              child: Column(
+                children: [
+                  Text(
+                    'Scan QR code',
+                    style: AppTypography.h3.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'Align the QR code inside the frame.',
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Review transaction step
+class _ReviewStep extends StatelessWidget {
+  final List<OutputEntry> outputs;
+  final double fee;
+  final double totalAmount;
+  final double change;
+  final PendingTx? pendingTx;
+  final VoidCallback onConfirm;
+  final VoidCallback onEdit;
+
+  const _ReviewStep({
+    required this.outputs,
+    required this.fee,
+    required this.totalAmount,
+    this.change = 0,
+    this.pendingTx,
+    required this.onConfirm,
+    required this.onEdit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final grandTotal = totalAmount + fee;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Review',
+            style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+          ),
+
+          const SizedBox(height: AppSpacing.lg),
+
+          // Output summaries
+          ...outputs.asMap().entries.map((entry) {
+            final i = entry.key;
+            final output = entry.value;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+              child: PCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Recipient ${i + 1}',
+                            style: AppTypography.labelMedium,
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${(double.tryParse(output.amount) ?? 0).toStringAsFixed(8)} ARRR',
+                            style: AppTypography.mono.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        '${output.address.substring(0, 16)}...${output.address.substring(output.address.length - 16)}',
+                        style: AppTypography.mono.copyWith(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      if (output.memo.isNotEmpty) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.sm),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.note_outlined,
+                                size: 16,
+                                color: AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: AppSpacing.xs),
+                              Expanded(
+                                child: Text(
+                                  output.memo,
+                                  style: AppTypography.caption,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+
+          // Totals
+          const Divider(height: AppSpacing.xl),
+
+          _DetailRow(
+            label: 'Amount',
+            value: '${totalAmount.toStringAsFixed(8)} ARRR',
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _DetailRow(
+            label: 'Network Fee',
+            value: '${fee.toStringAsFixed(8)} ARRR',
+            valueColor: AppColors.textSecondary,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _DetailRow(
+            label: 'Total',
+            value: '${grandTotal.toStringAsFixed(8)} ARRR',
+            valueColor: AppColors.accentPrimary,
+            bold: true,
+          ),
+          
+          if (change > 0) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _DetailRow(
+              label: 'Change (returned)',
+              value: '${change.toStringAsFixed(8)} ARRR',
+              valueColor: AppColors.success,
+            ),
+          ],
+          
+          // Transaction details
+          if (pendingTx != null) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceElevated,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Inputs', style: AppTypography.caption),
+                      Text('${pendingTx!.numInputs}', style: AppTypography.caption),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Outputs', style: AppTypography.caption),
+                      Text('${outputs.length + (change > 0 ? 1 : 0)}', style: AppTypography.caption),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Expiry', style: AppTypography.caption),
+                      Text('~30 min', style: AppTypography.caption),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: AppSpacing.xl),
+
+          // Warning
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: AppColors.error.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.error.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: AppColors.error,
+                  size: 20,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Transactions can\'t be undone.',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppSpacing.xl),
+
+          // Buttons
+          Row(
+            children: [
+              Expanded(
+                child: PButton(
+                  text: 'Edit',
+                  onPressed: onEdit,
+                  variant: PButtonVariant.secondary,
+                  size: PButtonSize.large,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                flex: 2,
+                child: PButton(
+                  text: 'Unlock to send',
+                  onPressed: onConfirm,
+                  variant: PButtonVariant.primary,
+                  size: PButtonSize.large,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Detail row widget
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool bold;
+
+  const _DetailRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.bold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: AppTypography.body.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        Text(
+          value,
+          style: AppTypography.mono.copyWith(
+            color: valueColor ?? AppColors.textPrimary,
+            fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Sending step with progress stages
+class _SendingStep extends StatelessWidget {
+  final String stage;
+  
+  const _SendingStep({this.stage = 'Sending...'});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Animated progress indicator
+            SizedBox(
+              width: 80,
+              height: 80,
+              child: CircularProgressIndicator(
+                strokeWidth: 4,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppColors.accentPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xxl),
+            Text(
+              stage,
+              style: AppTypography.h4.copyWith(
+                color: AppColors.textPrimary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Please keep the app open.',
+              style: AppTypography.body.copyWith(
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.xl),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Error step
+class _ErrorStep extends StatelessWidget {
+  final String error;
+  final VoidCallback onRetry;
+
+  const _ErrorStep({
+    required this.error,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: AppColors.error,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              'Send failed',
+              style: AppTypography.h3.copyWith(
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              error,
+              style: AppTypography.body.copyWith(
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.xxl),
+            PButton(
+              text: 'Try Again',
+              onPressed: onRetry,
+              variant: PButtonVariant.primary,
+              size: PButtonSize.large,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,85 @@
+# cargo-deny configuration for Pirate Unified Wallet
+# Enforces dependency policies and security standards
+
+[advisories]
+# Security vulnerability database checking
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+
+# Severity threshold - fail on any security vulnerability
+vulnerability = "deny"
+
+# Fail on unmaintained crates
+unmaintained = "warn"
+
+# Fail on crates with security notices
+notice = "warn"
+
+# Ignore specific advisories (only with explicit justification)
+ignore = [
+    # Add specific RUSTSEC IDs here if needed with justification
+]
+
+[licenses]
+# Allowed licenses (permissive only)
+unlicensed = "deny"
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "CC0-1.0",
+    "0BSD",
+    "Zlib",
+    "Unicode-DFS-2016",
+]
+
+# Copyleft licenses are denied
+deny = [
+    "GPL-1.0",
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-1.0",
+    "AGPL-3.0",
+    "LGPL-2.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+]
+
+# Confidence threshold for license detection
+confidence-threshold = 0.8
+
+# Allow specific exceptions
+exceptions = []
+
+[bans]
+# Ban specific crates
+multiple-versions = "warn"  # Warn on multiple versions of same crate
+wildcards = "deny"          # Deny wildcard dependencies
+highlight = "all"
+
+# Denied crates (known issues or unwanted dependencies)
+deny = [
+    # Add specific crates to ban here
+]
+
+# Skip specific crates from version checks
+skip = []
+
+# Skip trees (deny checking these dependency trees)
+skip-tree = []
+
+[sources]
+# Allowed sources for dependencies
+unknown-registry = "deny"
+unknown-git = "deny"
+
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+# Allow specific GitHub orgs (for git dependencies)
+github = []
+

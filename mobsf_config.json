@@ -1,0 +1,48 @@
+{
+  "name": "Pirate Unified Wallet",
+  "package": "black.pirate.wallet",
+  "version": "1.0.0",
+  "scan_type": "apk",
+  "permissions_required": [
+    "INTERNET",
+    "USE_BIOMETRIC",
+    "CAMERA",
+    "VIBRATE",
+    "WAKE_LOCK",
+    "RECEIVE_BOOT_COMPLETED"
+  ],
+  "permissions_denied": [
+    "ACCESS_FINE_LOCATION",
+    "ACCESS_COARSE_LOCATION",
+    "READ_CONTACTS",
+    "READ_SMS",
+    "READ_CALL_LOG",
+    "RECORD_AUDIO"
+  ],
+  "security_requirements": {
+    "min_sdk": 28,
+    "target_sdk": 34,
+    "network_security_config": true,
+    "debuggable": false,
+    "allow_backup": false,
+    "use_cleartext_traffic": false,
+    "exported_components": 0,
+    "webview_safe_browsing": true,
+    "certificate_pinning": true
+  },
+  "code_analysis": {
+    "check_insecure_crypto": true,
+    "check_hardcoded_secrets": true,
+    "check_insecure_communication": true,
+    "check_insecure_storage": true,
+    "check_weak_algorithms": true,
+    "check_dangerous_permissions": true
+  },
+  "severity_threshold": "medium",
+  "fail_on": [
+    "high",
+    "critical"
+  ],
+  "ignore_findings": []
+}
+

@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package pirate.wallet.sdk.rpc;
+
+// Compact block format for efficient sync
+// Matches lightwalletd/walletrpc/compact_formats.proto
+message CompactBlock {
+    uint32 protoVersion = 1;    // the version of this wire format, for storage
+    uint64 height = 2;          // the height of this block
+    bytes hash = 3;             // the ID (hash) of this block, same as in block explorers
+    bytes prevHash = 4;          // the ID (hash) of this block's predecessor
+    uint32 time = 5;            // Unix epoch time when the block was mined
+    bytes header = 6;           // (hash, prevHash, and time) OR (full header)
+    repeated CompactTx vtx = 7; // zero or more compact transactions from this block
+}
+
+message CompactTx {
+    uint64 index = 1;   // the index within the full block
+    bytes hash = 2;     // the ID (hash) of this transaction, same as in block explorers
+    uint32 fee = 3;     // The transaction fee: present if server can provide
+    repeated CompactSaplingSpend spends = 4;   // inputs
+    repeated CompactSaplingOutput outputs = 5; // outputs
+    repeated CompactOrchardAction actions = 6;
+}
+
+message CompactSaplingSpend {
+    bytes nf = 1;   // nullifier (see the Zcash protocol specification)
+}
+
+message CompactSaplingOutput {
+    bytes cmu = 1;          // note commitment u-coordinate
+    bytes epk = 2;          // ephemeral public key
+    bytes ciphertext = 3;   // first 52 bytes of ciphertext
+}
+
+message CompactOrchardAction {
+    bytes nullifier = 1;        // [32] The nullifier of the input note
+    bytes cmx = 2;              // [32] The x-coordinate of the note commitment for the output note
+    bytes ephemeralKey = 3;     // [32] An encoding of an ephemeral Pallas public key
+    bytes ciphertext = 4;       // [52] The note plaintext component of the encCiphertext field
+}
+
+message BlockID {
+    uint64 height = 1;
+    bytes hash = 2;
+}
+
+message BlockRange {
+    BlockID start = 1;
+    BlockID end = 2;
+}
+
+message TxFilter {
+    BlockID block = 1;     // block identifier, height or hash
+    uint64 index = 2;      // index within the block
+    bytes hash = 3;        // transaction ID (hash, txid)
+}
+
+message Empty {}
+
+// Raw transaction for broadcast
+message RawTransaction {
+    bytes data = 1;
+    uint64 height = 2;  // Optionally set by client for context
+}
+
+// Response from SendTransaction
+message SendResponse {
+    int32 errorCode = 1;
+    string errorMessage = 2;
+}
+
+// Chain tip info
+message ChainSpec {
+    string network = 1;
+}
+
+message LightdInfo {
+    string version = 1;
+    string vendor = 2;
+    bool taddr_support = 3;
+    string chain_name = 4;
+    uint64 sapling_activation_height = 5;
+    string consensus_branch_id = 6;
+    uint64 block_height = 7;
+    string git_commit = 8;
+    string branch = 9;
+    string build_date = 10;
+    string build_user = 11;
+    uint64 estimated_height = 12;
+    string zcashd_build = 13;
+    string zcashd_subversion = 14;
+}
+
+// Tree state for Sapling and Orchard note commitment trees
+message TreeState {
+    string network = 1;     // "main" or "test"
+    uint64 height = 2;      // block height
+    string hash = 3;        // block id
+    uint32 time = 4;        // Unix epoch time when the block was mined
+    string saplingTree = 5; // sapling commitment tree state
+    string saplingFrontier = 6; // sapling commitment tree state
+    string orchardTree = 7; // orchard commitment tree state
+}
+
+service CompactTxStreamer {
+    // Get latest block ID (height + hash)
+    rpc GetLatestBlock(ChainSpec) returns (BlockID);
+
+    // Get a single block by height or hash
+    rpc GetBlock(BlockID) returns (CompactBlock);
+
+    // Stream compact blocks in a range
+    rpc GetBlockRange(BlockRange) returns (stream CompactBlock);
+
+    // Get full transaction by hash (for memo decryption)
+    // Uses TxFilter where hash field is the transaction hash
+    rpc GetTransaction(TxFilter) returns (RawTransaction);
+
+    // Broadcast a raw transaction
+    rpc SendTransaction(RawTransaction) returns (SendResponse);
+
+    // Get lightwalletd server info
+    rpc GetLightdInfo(Empty) returns (LightdInfo);
+
+    // Get tree state (Sapling and Orchard anchors) at a specific block height
+    // If BlockID.height is 0, returns latest tree state
+    // Uses legacy z_gettreestatelegacy RPC for backward compatibility
+    rpc GetTreeState(BlockID) returns (TreeState);
+
+    // Get tree state with bridge tree support
+    // Uses updated z_gettreestate RPC with bridge trees format
+    // The block can be specified by either height or hash
+    rpc GetBridgeTreeState(BlockID) returns (TreeState);
+
+    // Get optimal block group end height for sync batching
+    // Groups blocks into ~4MB chunks for efficient sync
+    // Returns the last block in a group starting from the given height
+    rpc GetLiteWalletBlockGroup(BlockID) returns (BlockID);
+}

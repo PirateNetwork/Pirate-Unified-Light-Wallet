@@ -1,0 +1,63 @@
+[package]
+name = "pirate-sync-lightd"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# Enable live integration tests against real lightwalletd server
+live_lightd = []
+
+[dependencies]
+pirate-core = { path = "../pirate-core" }
+pirate-params = { path = "../pirate-params" }
+# pirate-net is optional - not needed for direct wifi connections
+# pirate-net = { path = "../pirate-net", optional = true }
+pirate-storage-sqlite = { path = "../pirate-storage-sqlite" }
+
+# Merkle tree for Sapling commitment tree (compatible with zcash_primitives 0.22)
+# Align with node version
+bridgetree = "0.4"
+incrementalmerkletree = "0.5"
+
+# Sapling primitives for proper Pedersen hash using Jubjub curve
+sapling-crypto = { workspace = true }
+group = "0.13"
+jubjub = "0.10"
+zcash_primitives = { workspace = true }
+zcash_note_encryption = { workspace = true }
+orchard = { workspace = true }
+subtle = "2.5"
+
+tonic = { workspace = true }
+blake2b_simd = { workspace = true }
+chacha20 = { version = "0.9", default-features = false }
+chacha20poly1305 = "0.10"
+prost = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["json"] }
+parking_lot = { workspace = true }
+rand = { workspace = true }
+hex = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["socks", "rustls-tls"] }
+num_cpus = "1.16"
+sha2 = { workspace = true }
+rusqlite = { workspace = true }
+once_cell = "1.19"
+directories = "5.0"
+
+# Note: No build-dependencies needed - we use manual proto types in src/proto_types.rs
+# If you need to regenerate from proto/service.proto, install protoc and use tonic-build manually
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

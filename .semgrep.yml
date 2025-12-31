@@ -1,0 +1,190 @@
+# Semgrep rules for Pirate Unified Wallet
+# Security-focused static analysis
+
+rules:
+  # ========================================================================
+  # Rust Security Rules
+  # ========================================================================
+
+  - id: rust-unsafe-usage
+    patterns:
+      - pattern: unsafe { ... }
+    message: |
+      Unsafe code detected. All crates should use #![forbid(unsafe_code)].
+      Only exception: FFI boundary with careful review.
+    severity: ERROR
+    languages: [rust]
+    paths:
+      include:
+        - "crates/**/*.rs"
+      exclude:
+        - "crates/pirate-ffi-frb/**/*.rs"  # Allow in FFI layer only
+
+  - id: rust-unwrap-usage
+    patterns:
+      - pattern: $X.unwrap()
+      - pattern: $X.expect(...)
+    message: |
+      Avoid unwrap()/expect() in production code. Use proper error handling with Result.
+      Exception: test code and initialization where panic is acceptable.
+    severity: WARNING
+    languages: [rust]
+    paths:
+      include:
+        - "crates/**/src/**/*.rs"
+      exclude:
+        - "crates/**/tests/**/*.rs"
+
+  - id: rust-hardcoded-secret
+    patterns:
+      - pattern: |
+          let $VAR = "$SECRET";
+      - metavariable-regex:
+          metavariable: $SECRET
+          regex: (password|secret|api_key|private_key|mnemonic)
+    message: |
+      Potential hardcoded secret detected. Never commit secrets to source control.
+    severity: ERROR
+    languages: [rust]
+
+  - id: rust-sql-injection
+    patterns:
+      - pattern: |
+          conn.execute(format!(...), ...)
+      - pattern: |
+          conn.query_row(format!(...), ...)
+    message: |
+      Potential SQL injection. Use parameterized queries with ? placeholders.
+    severity: ERROR
+    languages: [rust]
+
+  - id: rust-panicking-in-production
+    patterns:
+      - pattern: panic!(...)
+      - pattern: unimplemented!()
+      - pattern: todo!()
+    message: |
+      Avoid panic!/unimplemented!/todo! in production code. Use proper error handling.
+    severity: WARNING
+    languages: [rust]
+    paths:
+      include:
+        - "crates/**/src/**/*.rs"
+      exclude:
+        - "crates/**/tests/**/*.rs"
+
+  - id: rust-println-in-production
+    patterns:
+      - pattern: println!(...)
+      - pattern: dbg!(...)
+    message: |
+      Avoid println!/dbg! in production. Use tracing crate for structured logging.
+    severity: WARNING
+    languages: [rust]
+    paths:
+      include:
+        - "crates/**/src/**/*.rs"
+
+  - id: rust-weak-random
+    patterns:
+      - pattern: rand::thread_rng().gen()
+    message: |
+      Use cryptographically secure RNG for security-sensitive operations.
+      Consider using OsRng or rand::rngs::StdRng with proper seeding.
+    severity: WARNING
+    languages: [rust]
+
+  # ========================================================================
+  # Dart/Flutter Security Rules
+  # ========================================================================
+
+  - id: dart-print-usage
+    patterns:
+      - pattern: print(...)
+    message: |
+      Avoid print() in production. Use proper logging with log levels.
+    severity: WARNING
+    languages: [dart]
+    paths:
+      include:
+        - "app/lib/**/*.dart"
+      exclude:
+        - "app/test/**/*.dart"
+
+  - id: dart-http-not-https
+    patterns:
+      - pattern: "http://"
+    message: |
+      HTTP detected. All network requests must use HTTPS.
+    severity: ERROR
+    languages: [dart]
+
+  - id: dart-hardcoded-credentials
+    patterns:
+      - pattern-either:
+          - pattern: |
+              final $VAR = "$PASSWORD";
+          - pattern: |
+              const $VAR = "$PASSWORD";
+    message: |
+      Potential hardcoded credential. Use secure storage.
+    severity: ERROR
+    languages: [dart]
+    paths:
+      include:
+        - "app/lib/**/*.dart"
+
+  - id: dart-insecure-storage
+    patterns:
+      - pattern: SharedPreferences.getInstance()
+    message: |
+      SharedPreferences is not encrypted. Use flutter_secure_storage for sensitive data.
+    severity: WARNING
+    languages: [dart]
+
+  - id: dart-network-without-privacy
+    patterns:
+      - pattern: http.get(...)
+      - pattern: http.post(...)
+    message: |
+      Direct HTTP requests detected. All network calls must route through pirate-net (Tor).
+    severity: ERROR
+    languages: [dart]
+    paths:
+      include:
+        - "app/lib/**/*.dart"
+      exclude:
+        - "app/lib/core/ffi/**/*.dart"  # FFI calls Rust which handles privacy
+
+  # ========================================================================
+  # General Security Rules
+  # ========================================================================
+
+  - id: generic-todo-fixme
+    patterns:
+      - pattern-regex: (TODO|FIXME|HACK|XXX)
+    message: |
+      TODO/FIXME comment found. Ensure all TODOs are tracked in TODO.md before release.
+    severity: INFO
+    languages: [rust, dart]
+
+  - id: generic-sensitive-data-log
+    patterns:
+      - pattern-regex: (password|secret|mnemonic|private.?key|seed)
+    message: |
+      Potential sensitive data in logging/output. Never log secrets.
+    severity: ERROR
+    languages: [rust, dart]
+    paths:
+      include:
+        - "**/src/**"
+        - "**/lib/**"
+
+  - id: generic-weak-crypto
+    patterns:
+      - pattern-regex: (MD5|SHA1|DES|RC4)
+    message: |
+      Weak cryptographic algorithm detected. Use modern algorithms (SHA256, AES-GCM, ChaCha20).
+    severity: ERROR
+    languages: [rust, dart]
+

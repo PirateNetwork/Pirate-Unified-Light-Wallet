@@ -1,0 +1,453 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../design/tokens/colors.dart';
+import '../../design/tokens/spacing.dart';
+import '../../design/tokens/typography.dart';
+import '../../ui/molecules/wallet_switcher.dart';
+import '../../ui/organisms/p_app_bar.dart';
+import '../../ui/organisms/p_scaffold.dart';
+
+void _showComingSoon(BuildContext context) {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        'Coming Soon',
+        style: PTypography.bodyMedium(color: AppColors.textPrimary),
+      ),
+      duration: const Duration(seconds: 1),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: AppColors.backgroundElevated,
+    ),
+  );
+}
+
+/// Pay entry screen for desktop and deep links.
+class PayScreen extends StatelessWidget {
+  const PayScreen({super.key, this.useScaffold = true});
+
+  final bool useScaffold;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = _PayContent(
+      onSend: () => context.push('/send'),
+      onReceive: () => context.push('/receive'),
+      onBuy: () => _showComingSoon(context),
+      onSpend: () => _showComingSoon(context),
+    );
+
+    if (!useScaffold) {
+      return Column(
+        children: [
+          const PAppBar(
+            title: 'Pay',
+            subtitle: 'Send, receive, buy, or spend in a few taps.',
+            actions: [WalletSwitcherButton(compact: true)],
+          ),
+          Expanded(child: content),
+        ],
+      );
+    }
+
+    return PScaffold(
+      title: 'Pay',
+      appBar: const PAppBar(
+        title: 'Pay',
+        subtitle: 'Send, receive, buy, or spend in a few taps.',
+        actions: [WalletSwitcherButton(compact: true)],
+      ),
+      body: content,
+    );
+  }
+}
+
+/// Mobile pay sheet with primary actions.
+class PaySheet extends StatelessWidget {
+  const PaySheet({
+    required this.onSend,
+    required this.onReceive,
+    required this.onBuy,
+    required this.onSpend,
+    super.key,
+  });
+
+  final VoidCallback onSend;
+  final VoidCallback onReceive;
+  final VoidCallback onBuy;
+  final VoidCallback onSpend;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(PSpacing.radiusXL),
+        ),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        PSpacing.lg,
+        PSpacing.sm,
+        PSpacing.lg,
+        PSpacing.xl,
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 48,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: PSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.borderStrong,
+                  borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+                ),
+              ),
+            ),
+            Text(
+              'Pay',
+              style: PTypography.heading4(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: PSpacing.xs),
+            Text(
+              'Send, receive, buy, or spend ARRR.',
+              style: PTypography.bodySmall(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: PSpacing.lg),
+            _PayActionTile(
+              title: 'Send',
+              subtitle: 'Send ARRR',
+              icon: Icons.north_east,
+              gradient: LinearGradient(
+                colors: [AppColors.gradientAStart, AppColors.gradientAEnd],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              onTap: onSend,
+              compact: true,
+            ),
+            const SizedBox(height: PSpacing.md),
+            _PayActionTile(
+              title: 'Receive',
+              subtitle: 'Receive ARRR',
+              icon: Icons.south_west,
+              gradient: LinearGradient(
+                colors: [AppColors.gradientBStart, AppColors.gradientBEnd],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              onTap: onReceive,
+              compact: true,
+            ),
+            const SizedBox(height: PSpacing.md),
+            _PayActionTile(
+              title: 'Buy',
+              subtitle: 'Buy ARRR',
+              icon: Icons.shopping_bag,
+              gradient: LinearGradient(
+                colors: [AppColors.highlight, AppColors.warning],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              onTap: onBuy,
+              compact: true,
+            ),
+            const SizedBox(height: PSpacing.md),
+            _PayActionTile(
+              title: 'Spend',
+              subtitle: 'Spend ARRR',
+              icon: Icons.credit_card,
+              gradient: LinearGradient(
+                colors: [AppColors.info, AppColors.gradientAEnd],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              onTap: onSpend,
+              compact: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PayContent extends StatelessWidget {
+  const _PayContent({
+    required this.onSend,
+    required this.onReceive,
+    required this.onBuy,
+    required this.onSpend,
+  });
+
+  final VoidCallback onSend;
+  final VoidCallback onReceive;
+  final VoidCallback onBuy;
+  final VoidCallback onSpend;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(PSpacing.lg),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth >= 720;
+          if (isWide) {
+            // Desktop: Center the buttons with a max width and height constraints
+            final tiles = [
+              _PayActionTile(
+                title: 'Send',
+                subtitle: 'Send ARRR',
+                icon: Icons.north_east,
+                gradient: LinearGradient(
+                  colors: [AppColors.gradientAStart, AppColors.gradientAEnd],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                onTap: onSend,
+                isDesktop: true,
+              ),
+              _PayActionTile(
+                title: 'Receive',
+                subtitle: 'Receive ARRR',
+                icon: Icons.south_west,
+                gradient: LinearGradient(
+                  colors: [AppColors.gradientBStart, AppColors.gradientBEnd],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                onTap: onReceive,
+                isDesktop: true,
+              ),
+              _PayActionTile(
+                title: 'Buy',
+                subtitle: 'Buy ARRR',
+                icon: Icons.shopping_bag,
+                gradient: LinearGradient(
+                  colors: [AppColors.highlight, AppColors.warning],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                onTap: onBuy,
+                isDesktop: true,
+              ),
+              _PayActionTile(
+                title: 'Spend',
+                subtitle: 'Spend ARRR',
+                icon: Icons.credit_card,
+                gradient: LinearGradient(
+                  colors: [AppColors.info, AppColors.gradientAEnd],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                onTap: onSpend,
+                isDesktop: true,
+              ),
+            ];
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 600,
+                ),
+                child: Wrap(
+                  spacing: PSpacing.lg,
+                  runSpacing: PSpacing.lg,
+                  children: tiles
+                      .map(
+                        (tile) => SizedBox(
+                          width: 280,
+                          height: 240,
+                          child: tile,
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            );
+          }
+
+          final spacing = PSpacing.md;
+          final rawTileWidth = (constraints.maxWidth - spacing) / 2;
+          final tileWidth = rawTileWidth.clamp(150.0, 220.0);
+          final tileHeight = (tileWidth * 0.85).clamp(150.0, 210.0);
+          final tiles = [
+            _PayActionTile(
+              title: 'Send',
+              subtitle: 'Send ARRR',
+              icon: Icons.north_east,
+              gradient: LinearGradient(
+                colors: [AppColors.gradientAStart, AppColors.gradientAEnd],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              onTap: onSend,
+            ),
+            _PayActionTile(
+              title: 'Receive',
+              subtitle: 'Receive ARRR',
+              icon: Icons.south_west,
+              gradient: LinearGradient(
+                colors: [AppColors.gradientBStart, AppColors.gradientBEnd],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              onTap: onReceive,
+            ),
+            _PayActionTile(
+              title: 'Buy',
+              subtitle: 'Buy ARRR',
+              icon: Icons.shopping_bag,
+              gradient: LinearGradient(
+                colors: [AppColors.highlight, AppColors.warning],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              onTap: onBuy,
+            ),
+            _PayActionTile(
+              title: 'Spend',
+              subtitle: 'Spend ARRR',
+              icon: Icons.credit_card,
+              gradient: LinearGradient(
+                colors: [AppColors.info, AppColors.gradientAEnd],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              onTap: onSpend,
+            ),
+          ];
+          return SingleChildScrollView(
+            child: Center(
+              child: Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: tiles
+                    .map(
+                      (tile) => SizedBox(
+                        width: tileWidth,
+                        height: tileHeight,
+                        child: tile,
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _PayActionTile extends StatelessWidget {
+  const _PayActionTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.gradient,
+    required this.onTap,
+    this.compact = false,
+    this.isDesktop = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Gradient gradient;
+  final VoidCallback onTap;
+  final bool compact;
+  final bool isDesktop;
+
+  @override
+  Widget build(BuildContext context) {
+    final padding = isDesktop
+        ? PSpacing.xl
+        : compact
+            ? PSpacing.md
+            : PSpacing.lg;
+    final iconSize = isDesktop
+        ? 32.0
+        : compact
+            ? 24.0
+            : 28.0;
+    final iconContainerSize = isDesktop ? 56.0 : (compact ? 40.0 : 48.0);
+    final titleStyle = isDesktop
+        ? PTypography.heading3(color: AppColors.textOnAccent)
+        : compact
+            ? PTypography.titleLarge(color: AppColors.textOnAccent)
+            : PTypography.heading4(color: AppColors.textOnAccent);
+    final subtitleStyle = isDesktop
+        ? PTypography.bodyLarge(
+            color: AppColors.textOnAccent.withValues(alpha: 0.9),
+          )
+        : compact
+            ? PTypography.bodySmall(
+                color: AppColors.textOnAccent.withValues(alpha: 0.8),
+              )
+            : PTypography.bodyMedium(
+                color: AppColors.textOnAccent.withValues(alpha: 0.85),
+              );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(PSpacing.radiusLG),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(PSpacing.radiusLG),
+            border: Border.all(
+              color: AppColors.borderStrong,
+              width: isDesktop ? 1.5 : 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.shadowStrong,
+                blurRadius: isDesktop ? 20 : 16,
+                offset: Offset(0, isDesktop ? 10 : 8),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(padding),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: iconContainerSize,
+                  height: iconContainerSize,
+                  decoration: BoxDecoration(
+                    color: AppColors.textOnAccent.withValues(
+                      alpha: isDesktop ? 0.16 : 0.14,
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    color: AppColors.textOnAccent,
+                    size: iconSize,
+                    semanticLabel: title,
+                  ),
+                ),
+                SizedBox(height: isDesktop ? PSpacing.lg : (compact ? PSpacing.sm : PSpacing.md)),
+                Text(title, style: titleStyle),
+                SizedBox(height: isDesktop ? PSpacing.sm : PSpacing.xs),
+                Text(subtitle, style: subtitleStyle),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
