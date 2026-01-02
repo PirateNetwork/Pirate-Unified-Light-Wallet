@@ -118,12 +118,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
     
     // Get balance
-    final balance = balanceAsync.when(
-      data: (b) => b?.total ?? BigInt.zero,
-      loading: () => BigInt.zero,
-      error: (_, __) => BigInt.zero,
+    final balanceData = balanceAsync.when(
+      data: (b) => b,
+      loading: () => null,
+      error: (_, __) => null,
     );
-    final balanceArrr = balance.toDouble() / 100000000.0;
+    final totalBalance = balanceData?.total ?? BigInt.zero;
+    final spendableBalance = balanceData?.spendable ?? BigInt.zero;
+    final pendingBalance = balanceData?.pending ?? BigInt.zero;
+    final displayBalance =
+        (isSyncing || !isComplete) ? spendableBalance : totalBalance;
+    final balanceArrr = displayBalance.toDouble() / 100000000.0;
+    final pendingArrr = pendingBalance.toDouble() / 100000000.0;
+    String? balanceHelper;
+    if (balanceArrr <= 0) {
+      balanceHelper = 'Share your address to get paid.';
+    } else if (pendingBalance > BigInt.zero) {
+      balanceHelper = 'Pending: ${pendingArrr.toStringAsFixed(8)} ARRR';
+    }
     
     // Get transactions
     final transactions = transactionsAsync.when(
@@ -175,9 +187,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               BalanceHero(
                                 balanceText:
                                     '${balanceArrr.toStringAsFixed(8)} ARRR',
-                                helperText: balanceArrr <= 0
-                                    ? 'Share your address to get paid.'
-                                    : null,
+                                helperText: balanceHelper,
                                 isHidden: _hideBalance,
                                 onToggleVisibility: () {
                                   setState(() {
