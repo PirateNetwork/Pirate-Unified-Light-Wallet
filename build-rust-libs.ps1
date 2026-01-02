@@ -55,6 +55,7 @@ if (Test-Path $OPENSSL_DIR) {
     $OPENSSL_LIB_SUBDIR = "lib\VC\x64\MD"
     $env:OPENSSL_LIB_DIR = Join-Path $OPENSSL_DIR $OPENSSL_LIB_SUBDIR
     $env:OPENSSL_INCLUDE_DIR = Join-Path $OPENSSL_DIR "include"
+    $env:OPENSSL_NO_VENDOR = "1"
     # Add OpenSSL lib directory to PATH for linker
     $env:PATH = "$env:PATH;$OPENSSL_DIR\bin"
     Write-ColorOutput "Green" "✅ Found OpenSSL at $OPENSSL_DIR"
