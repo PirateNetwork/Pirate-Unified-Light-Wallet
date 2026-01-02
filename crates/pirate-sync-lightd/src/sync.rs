@@ -126,6 +126,8 @@ pub struct SyncEngine {
     wallet_id: Option<String>,
     storage: Option<StorageSink>,
     keys: Option<WalletKeys>,
+    nullifier_cache: HashMap<[u8; 32], i64>,
+    nullifier_cache_loaded: bool,
     /// Sapling frontier for witness tree management
     frontier: Arc<RwLock<SaplingFrontier>>,
     /// Orchard frontier for witness tree management
@@ -147,10 +149,67 @@ impl SyncEngine {
             wallet_id: None,
             storage: None,
             keys: None,
+            nullifier_cache: HashMap::new(),
+            nullifier_cache_loaded: false,
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
             cancelled: Arc::new(RwLock::new(false)),
+        }
+    }
+
+    fn ensure_nullifier_cache(&mut self) -> Result<()> {
+        if self.nullifier_cache_loaded {
+            return Ok(());
+        }
+        let sink = match self.storage.as_ref() {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let repo = Repository::new(&db);
+        let notes = repo.get_unspent_notes(sink.account_id)?;
+        let mut loaded = 0u64;
+        for note in notes {
+            let id = match note.id {
+                Some(v) => v,
+                None => continue,
+            };
+            if note.nullifier.len() != 32 {
+                continue;
+            }
+            let mut nf = [0u8; 32];
+            nf.copy_from_slice(&note.nullifier[..32]);
+            self.nullifier_cache.insert(nf, id);
+            loaded += 1;
+        }
+        self.nullifier_cache_loaded = true;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:185","message":"nullifier_cache loaded","data":{{"count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+                id,
+                ts,
+                loaded
+            );
+        }
+        tracing::debug!("Loaded {} unspent nullifiers into cache", loaded);
+        Ok(())
+    }
+
+    fn update_nullifier_cache(&mut self, entries: &[( [u8; 32], i64 )]) {
+        for (nf, id) in entries {
+            self.nullifier_cache.insert(*nf, *id);
         }
     }
 
@@ -164,6 +223,8 @@ impl SyncEngine {
             wallet_id: None,
             storage: None,
             keys: None,
+            nullifier_cache: HashMap::new(),
+            nullifier_cache_loaded: false,
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
@@ -181,6 +242,8 @@ impl SyncEngine {
             wallet_id: None,
             storage: None,
             keys: None,
+            nullifier_cache: HashMap::new(),
+            nullifier_cache_loaded: false,
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
@@ -503,10 +566,22 @@ impl SyncEngine {
 
         // Validate end height
         if end < start_height {
-            let err = anyhow!("Invalid sync range: end ({}) < start ({})", end, start_height);
-            tracing::error!("{}", err);
-            return Err(Error::Sync(err.to_string()));
+            tracing::warn!(
+                "Skipping sync: local height {} is ahead of server tip {}",
+                start_height,
+                end
+            );
+            {
+                let progress = self.progress.write().await;
+                progress.set_target(end);
+                progress.set_current(end);
+                progress.set_stage(SyncStage::Complete);
+                progress.start();
+            }
+            return Ok(());
         }
+
+        self.ensure_nullifier_cache()?;
 
         // Initialize progress
         {
@@ -1146,7 +1221,10 @@ impl SyncEngine {
                     }
                 }
 
-                sink.persist_notes(&notes, &tx_times, &tx_fees, &position_mappings)?;
+                let inserted = sink.persist_notes(&notes, &tx_times, &tx_fees, &position_mappings)?;
+                if !inserted.is_empty() {
+                    self.update_nullifier_cache(&inserted);
+                }
                 // #region agent log
                 if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
                     use std::io::Write;
@@ -2315,13 +2393,12 @@ impl SyncEngine {
         Ok(())
     }
 
-    async fn apply_spends(&self, blocks: &[CompactBlockData]) -> Result<()> {
+    async fn apply_spends(&mut self, blocks: &[CompactBlockData]) -> Result<()> {
         let sink = match self.storage.as_ref() {
             Some(s) => s,
             None => return Ok(()),
         };
-
-        let mut spend_entries: HashSet<([u8; 32], [u8; 32])> = HashSet::new();
+        let mut spend_updates: Vec<(i64, [u8; 32])> = Vec::new();
 
         for block in blocks {
             let block_time = if block.time > 0 {
@@ -2337,7 +2414,6 @@ impl SyncEngine {
                 }
                 let mut txid = [0u8; 32];
                 txid.copy_from_slice(&tx.hash[..32]);
-
                 let mut has_spend = false;
 
                 for spend in &tx.spends {
@@ -2345,8 +2421,10 @@ impl SyncEngine {
                         let mut nf = [0u8; 32];
                         nf.copy_from_slice(&spend.nf[..32]);
                         if !nf.iter().all(|b| *b == 0) {
-                            spend_entries.insert((nf, txid));
-                            has_spend = true;
+                            if let Some(id) = self.nullifier_cache.remove(&nf) {
+                                spend_updates.push((id, txid));
+                                has_spend = true;
+                            }
                         }
                     }
                 }
@@ -2356,8 +2434,10 @@ impl SyncEngine {
                         let mut nf = [0u8; 32];
                         nf.copy_from_slice(&action.nullifier[..32]);
                         if !nf.iter().all(|b| *b == 0) {
-                            spend_entries.insert((nf, txid));
-                            has_spend = true;
+                            if let Some(id) = self.nullifier_cache.remove(&nf) {
+                                spend_updates.push((id, txid));
+                                has_spend = true;
+                            }
                         }
                     }
                 }
@@ -2370,15 +2450,14 @@ impl SyncEngine {
             }
         }
 
-        if !spend_entries.is_empty() {
-            let entries: Vec<([u8; 32], [u8; 32])> = spend_entries.into_iter().collect();
+        if !spend_updates.is_empty() {
             let start = Instant::now();
-            match sink.mark_notes_spent_by_nullifiers_with_txid(&entries) {
+            match sink.mark_notes_spent_by_ids_with_txid(&spend_updates) {
                 Ok(updated) => {
                     tracing::debug!(
                         "Marked {} notes spent ({} nullifiers) in {}ms",
                         updated,
-                        entries.len(),
+                        spend_updates.len(),
                         start.elapsed().as_millis()
                     );
                 }
@@ -2823,10 +2902,11 @@ impl StorageSink {
         tx_times: &HashMap<String, i64>,
         tx_fees: &HashMap<String, i64>,
         position_mappings: &PositionMaps,
-    ) -> Result<()> {
+    ) -> Result<Vec<([u8; 32], i64)>> {
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
         let sync_state = SyncStateStorage::new(&db);
+        let mut inserted: Vec<([u8; 32], i64)> = Vec::new();
 
             for n in notes {
                 // Skip if we don't have essential fields
@@ -2935,7 +3015,15 @@ impl StorageSink {
                 },
                 memo: n.memo_bytes().map(|b| b.to_vec()),
             };
-            if let Err(e) = repo.insert_note(&record) {
+            match repo.insert_note(&record) {
+                Ok(id) => {
+                    if record.nullifier.len() == 32 {
+                        let mut nf = [0u8; 32];
+                        nf.copy_from_slice(&record.nullifier[..32]);
+                        inserted.push((nf, id));
+                    }
+                }
+                Err(e) => {
                 // #region agent log
                 if let Ok(mut file) = std::fs::OpenOptions::new()
                     .create(true)
@@ -2958,13 +3046,14 @@ impl StorageSink {
                     );
                 }
                 // #endregion
+                }
             }
         }
         // Optionally update sync state height
         if let Some(max_h) = notes.iter().map(|n| n.height).max() {
             let _ = sync_state.save_sync_state(max_h, max_h, max_h);
         }
-        Ok(())
+        Ok(inserted)
     }
 
     fn get_note_by_txid_and_index(&self, txid: &[u8], output_index: i64) -> Result<Option<NoteRecord>> {
@@ -3026,6 +3115,18 @@ impl StorageSink {
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
         Ok(repo.mark_notes_spent_by_nullifiers_with_txid(self.account_id, entries)?)
+    }
+
+    fn mark_notes_spent_by_ids_with_txid(
+        &self,
+        entries: &Vec<(i64, [u8; 32])>,
+    ) -> Result<u64> {
+        if entries.is_empty() {
+            return Ok(0);
+        }
+        let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
+        let repo = Repository::new(&db);
+        Ok(repo.mark_notes_spent_by_ids_with_txid(entries)?)
     }
 
     fn upsert_transaction(&self, txid_hex: &str, height: i64, timestamp: i64, fee: i64) -> Result<()> {

@@ -1732,6 +1732,34 @@ impl<'a> Repository<'a> {
         Ok(updated)
     }
 
+    /// Mark notes as spent by row id and record the spending txid.
+    pub fn mark_notes_spent_by_ids_with_txid(
+        &self,
+        entries: &[(i64, [u8; 32])],
+    ) -> Result<u64> {
+        if entries.is_empty() {
+            return Ok(0);
+        }
+
+        let encrypted_spent = self.encrypt_bool(true)?;
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+        let mut updated = 0u64;
+        for (id, spent_txid) in entries {
+            let encrypted_spent_txid = self.encrypt_blob(spent_txid)?;
+            if let Err(e) = conn.execute(
+                "UPDATE notes SET spent = ?1, spent_txid = ?2 WHERE id = ?3",
+                params![encrypted_spent, encrypted_spent_txid, id],
+            ) {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(e.into());
+            }
+            updated += 1;
+        }
+        conn.execute_batch("COMMIT;")?;
+        Ok(updated)
+    }
+
     /// Get all notes for a transaction (by txid) with decrypted fields
     /// Note: Since all fields are encrypted, we decrypt all notes and filter in memory for privacy
     pub fn get_notes_by_txid(
