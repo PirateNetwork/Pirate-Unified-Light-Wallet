@@ -2364,15 +2364,27 @@ impl SyncEngine {
 
                 if has_spend {
                     let txid_hex = hex::encode(txid);
-                    let _ = sink.upsert_transaction(&txid_hex, block_height, block_time, 0);
+                    let tx_fee = tx.fee.unwrap_or(0) as i64;
+                    let _ = sink.upsert_transaction(&txid_hex, block_height, block_time, tx_fee);
                 }
             }
         }
 
         if !spend_entries.is_empty() {
             let entries: Vec<([u8; 32], [u8; 32])> = spend_entries.into_iter().collect();
-            if let Err(e) = sink.mark_notes_spent_by_nullifiers_with_txid(&entries) {
-                tracing::warn!("Failed to mark notes spent for batch: {}", e);
+            let start = Instant::now();
+            match sink.mark_notes_spent_by_nullifiers_with_txid(&entries) {
+                Ok(updated) => {
+                    tracing::debug!(
+                        "Marked {} notes spent ({} nullifiers) in {}ms",
+                        updated,
+                        entries.len(),
+                        start.elapsed().as_millis()
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to mark notes spent for batch: {}", e);
+                }
             }
         }
 
@@ -3013,13 +3025,7 @@ impl StorageSink {
         }
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
-        let mut updated = 0u64;
-        for (nullifier, txid) in entries {
-            if repo.mark_note_spent_by_nullifier_with_txid(self.account_id, nullifier, txid)? {
-                updated += 1;
-            }
-        }
-        Ok(updated)
+        Ok(repo.mark_notes_spent_by_nullifiers_with_txid(self.account_id, entries)?)
     }
 
     fn upsert_transaction(&self, txid_hex: &str, height: i64, timestamp: i64, fee: i64) -> Result<()> {

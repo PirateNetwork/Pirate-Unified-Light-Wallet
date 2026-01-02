@@ -1205,10 +1205,13 @@ impl<'a> Repository<'a> {
                     .as_ref()
                     .map(|bytes| hex::encode(bytes))
                     .unwrap_or_else(|| hex::encode(&txid_bytes));
-                let entry = tx_map.entry(spend_txid_hex.clone()).or_insert((height, 0, 0, None, height > 0));
+                let entry_height = if spent_txid.is_some() { 0 } else { height };
+                let entry = tx_map
+                    .entry(spend_txid_hex.clone())
+                    .or_insert((entry_height, 0, 0, None, entry_height > 0));
 
-                if height > entry.0 {
-                    entry.0 = height;
+                if entry.0 == 0 && entry_height > 0 {
+                    entry.0 = entry_height;
                 }
 
                 entry.2 = entry.2.saturating_add(value); // total_sent
@@ -1648,6 +1651,85 @@ impl<'a> Repository<'a> {
         }
 
         Ok(updated_count)
+    }
+
+    /// Mark notes as spent for any nullifier in the provided set and record the spending txid.
+    /// Note: Since all fields are encrypted, we decrypt all notes and filter in memory.
+    pub fn mark_notes_spent_by_nullifiers_with_txid(
+        &self,
+        account_id: i64,
+        entries: &[([u8; 32], [u8; 32])],
+    ) -> Result<u64> {
+        if entries.is_empty() {
+            return Ok(0);
+        }
+
+        let mut spend_map: std::collections::HashMap<[u8; 32], [u8; 32]> =
+            std::collections::HashMap::with_capacity(entries.len());
+        for (nullifier, txid) in entries {
+            spend_map.insert(*nullifier, *txid);
+        }
+
+        let encrypted_spent = self.encrypt_bool(true)?;
+
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, nullifier, spent FROM notes",
+        )?;
+
+        let notes = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?, // id
+                row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
+                row.get::<_, Vec<u8>>(3)?, // encrypted spent
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+        let mut updated = 0u64;
+        for (id, enc_account_id, enc_nullifier, enc_spent) in notes {
+            let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
+            if decrypted_account_id != account_id {
+                continue;
+            }
+
+            let decrypted_nullifier = self.decrypt_blob(&enc_nullifier)?;
+            if decrypted_nullifier.len() != 32 {
+                continue;
+            }
+            let mut nf = [0u8; 32];
+            nf.copy_from_slice(&decrypted_nullifier[..32]);
+            let spent_txid = match spend_map.get(&nf) {
+                Some(txid) => txid,
+                None => continue,
+            };
+
+            let spent = self.decrypt_bool(&enc_spent)?;
+            let encrypted_spent_txid = self.encrypt_blob(spent_txid)?;
+            if spent {
+                if let Err(e) = conn.execute(
+                    "UPDATE notes SET spent_txid = ?1 WHERE id = ?2",
+                    params![encrypted_spent_txid, id],
+                ) {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    return Err(e.into());
+                }
+            } else {
+                if let Err(e) = conn.execute(
+                    "UPDATE notes SET spent = ?1, spent_txid = ?2 WHERE id = ?3",
+                    params![encrypted_spent, encrypted_spent_txid, id],
+                ) {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    return Err(e.into());
+                }
+            }
+            updated += 1;
+        }
+        conn.execute_batch("COMMIT;")?;
+
+        Ok(updated)
     }
 
     /// Get all notes for a transaction (by txid) with decrypted fields
