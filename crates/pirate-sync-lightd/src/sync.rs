@@ -52,12 +52,17 @@ use zcash_primitives::sapling::keys::OutgoingViewingKey as SaplingOutgoingViewin
 use zcash_primitives::transaction::Transaction;
 
 fn debug_log_path() -> PathBuf {
-    if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
-        return PathBuf::from(path);
+    let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
+        PathBuf::from(path)
+    } else {
+        env::current_dir()
+            .map(|dir| dir.join(".cursor").join("debug.log"))
+            .unwrap_or_else(|_| PathBuf::from(".cursor").join("debug.log"))
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
     }
-    env::current_dir()
-        .map(|dir| dir.join(".cursor").join("debug.log"))
-        .unwrap_or_else(|_| PathBuf::from(".cursor").join("debug.log"))
+    path
 }
 
 /// Sync configuration
