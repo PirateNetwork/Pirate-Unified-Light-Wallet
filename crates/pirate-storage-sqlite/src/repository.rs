@@ -2,6 +2,7 @@
 
 use crate::{models::*, Database, Result};
 use crate::address_book::ColorTag;
+use pirate_params::consensus::ConsensusParams;
 use rusqlite::{params, OptionalExtension};
 use rusqlite::params_from_iter;
 use std::collections::{HashMap, HashSet};
@@ -38,6 +39,13 @@ fn debug_log_path() -> PathBuf {
         let _ = std::fs::create_dir_all(parent);
     }
     path
+}
+
+fn note_value_is_valid(value: i64) -> bool {
+    if value <= 0 {
+        return false;
+    }
+    value as u64 <= ConsensusParams::mainnet().max_money
 }
 
 impl<'a> Repository<'a> {
@@ -452,6 +460,7 @@ impl<'a> Repository<'a> {
         let total_rows = notes.len();
         let mut decrypted_notes = Vec::with_capacity(total_rows);
         let mut matched = 0usize;
+        let mut invalid_values = 0usize;
         let mut seen: HashSet<(Vec<u8>, i64, crate::models::NoteType)> = HashSet::new();
         for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo) in notes {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
@@ -467,12 +476,17 @@ impl<'a> Repository<'a> {
                 continue;
             }
             matched += 1;
-            
+            let value = self.decrypt_int64(&enc_value)?;
+            if !note_value_is_valid(value) {
+                invalid_values += 1;
+                continue;
+            }
+
             decrypted_notes.push(NoteRecord {
                 id,
                 account_id: decrypted_account_id,
                 note_type,
-                value: self.decrypt_int64(&enc_value)?,
+                value,
                 nullifier: self.decrypt_blob(&enc_nullifier)?,
                 commitment: self.decrypt_blob(&enc_commitment)?,
                 spent: decrypted_spent,
@@ -502,11 +516,12 @@ impl<'a> Repository<'a> {
                 .as_millis();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_unspent_notes","timestamp":{},"location":"repository.rs:344","message":"get_unspent_notes","data":{{"account_id":{},"rows":{},"matched":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                r#"{{"id":"log_unspent_notes","timestamp":{},"location":"repository.rs:344","message":"get_unspent_notes","data":{{"account_id":{},"rows":{},"matched":{},"invalid_values":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 ts,
                 account_id,
                 total_rows,
-                matched
+                matched,
+                invalid_values
             );
         }
         // #endregion
@@ -1160,6 +1175,9 @@ impl<'a> Repository<'a> {
             let output_index = self.decrypt_int64(&enc_output_index)?;
             let height = self.decrypt_int64(&enc_height)?;
             let value = self.decrypt_int64(&enc_value)?;
+            if !note_value_is_valid(value) {
+                continue;
+            }
             let spent = self.decrypt_bool(&enc_spent)?;
             let memo = self.decrypt_optional_blob(encrypted_memo)?;
             let spent_txid = self.decrypt_optional_blob(enc_spent_txid)?;

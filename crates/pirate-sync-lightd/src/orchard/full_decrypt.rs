@@ -110,8 +110,8 @@ pub fn decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
     cmx: Option<&[u8; 32]>,
 ) -> Result<Option<DecryptedOrchardFullNote>, Error> {
     // Parse transaction
-    let tx = Transaction::read(raw_tx_bytes, BranchId::Canopy)
-        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Nu5))
+    let tx = Transaction::read(raw_tx_bytes, BranchId::Nu5)
+        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
         .map_err(|e| Error::Sync(format!("Failed to parse transaction: {}", e)))?;
 
     // Get Orchard bundle
@@ -122,6 +122,11 @@ pub fn decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
     // The bundle's actions() method returns a slice of actions
     let actions = orchard_bundle.actions();
     if action_index >= actions.len() {
+        tracing::debug!(
+            "Orchard action index {} out of range ({} actions)",
+            action_index,
+            actions.len()
+        );
         return Ok(None);
     }
 

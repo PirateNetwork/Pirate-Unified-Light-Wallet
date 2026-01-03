@@ -1213,22 +1213,24 @@ impl SyncEngine {
                     .as_ref()
                     .and_then(|keys| keys.orchard_fvk.as_ref())
                     .is_some();
-                let mut filtered = 0usize;
+                let mut filtered_value = 0usize;
+                let mut filtered_nullifier = 0usize;
                 notes.retain(|note| {
                     if note.value == 0 || note.value > max_money {
-                        filtered += 1;
+                        filtered_value += 1;
                         return false;
                     }
                     if require_orchard_nullifier
                         && note.note_type == NoteType::Orchard
                         && note.nullifier.iter().all(|b| *b == 0)
                     {
-                        filtered += 1;
+                        filtered_nullifier += 1;
                         return false;
                     }
                     true
                 });
 
+                let filtered = filtered_value + filtered_nullifier;
                 if filtered > 0 {
                     if let Ok(mut file) = std::fs::OpenOptions::new()
                         .create(true)
@@ -1243,11 +1245,14 @@ impl SyncEngine {
                         let id = format!("{:08x}", ts);
                         let _ = writeln!(
                             file,
-                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:878","message":"filtered invalid notes","data":{{"filtered":{},"remaining":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:878","message":"filtered invalid notes","data":{{"filtered":{},"filtered_value":{},"filtered_nullifier":{},"remaining":{},"require_orchard_nullifier":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                             id,
                             ts,
                             filtered,
-                            notes.len()
+                            filtered_value,
+                            filtered_nullifier,
+                            notes.len(),
+                            require_orchard_nullifier
                         );
                     }
                 }
@@ -1826,6 +1831,49 @@ impl SyncEngine {
             }
         }
 
+        let total_notes = notes.len();
+        let sapling_notes_total = notes
+            .iter()
+            .filter(|note| note.note_type == NoteType::Sapling)
+            .count();
+        let orchard_notes_total = notes
+            .iter()
+            .filter(|note| note.note_type == NoteType::Orchard)
+            .count();
+        let has_sapling_ivk = sapling_ivk_bytes.is_some();
+        let has_orchard_ivk = orchard_ivk_bytes.is_some();
+        let has_sapling_ovk = sapling_ovk.is_some();
+        let has_orchard_ovk = orchard_ovk.is_some();
+        let has_orchard_fvk = orchard_fvk.is_some();
+
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"fetch_and_enrich input","data":{{"total_notes":{},"sapling_notes":{},"orchard_notes":{},"require_memos":{},"has_sapling_ivk":{},"has_orchard_ivk":{},"has_sapling_ovk":{},"has_orchard_ovk":{},"has_orchard_fvk":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                id,
+                ts,
+                total_notes,
+                sapling_notes_total,
+                orchard_notes_total,
+                require_memos,
+                has_sapling_ivk,
+                has_orchard_ivk,
+                has_sapling_ovk,
+                has_orchard_ovk,
+                has_orchard_fvk
+            );
+        }
+
         if sapling_ivk_bytes.is_none() && orchard_ivk_bytes.is_none() {
             return Ok(());
         }
@@ -1840,9 +1888,25 @@ impl SyncEngine {
         let mut tx_work: HashMap<[u8; 32], TxWork> = HashMap::new();
         let mut failed_txids: HashSet<[u8; 32]> = HashSet::new();
         let mut invalid_orchard_indices: HashSet<usize> = HashSet::new();
+        let mut sapling_needs_tx = 0usize;
+        let mut orchard_needs_tx = 0usize;
+        let mut memo_needed = 0usize;
+        let mut orchard_nullifier_zero = 0usize;
+        let mut orchard_nullifier_missing_fvk = 0usize;
+        let mut skipped_txid_len = 0usize;
 
         for (note_idx, note) in notes.iter_mut().enumerate() {
+            let orchard_nullifier_zero_local = note.note_type == NoteType::Orchard
+                && note.nullifier.iter().all(|b| *b == 0);
+            if orchard_nullifier_zero_local {
+                orchard_nullifier_zero += 1;
+                if orchard_fvk.is_none() {
+                    orchard_nullifier_missing_fvk += 1;
+                }
+            }
+
             if note.tx_hash.len() != 32 {
+                skipped_txid_len += 1;
                 continue;
             }
 
@@ -1850,6 +1914,7 @@ impl SyncEngine {
             txid.copy_from_slice(&note.tx_hash[..32]);
 
             let mut needs_tx = false;
+            let mut needs_memo_tx = false;
 
             if require_memos && note.memo_bytes().is_none() {
                 match sink.get_note_by_txid_and_index(&note.tx_hash, note.output_index as i64) {
@@ -1858,9 +1923,13 @@ impl SyncEngine {
                             note.set_memo_bytes(memo);
                         } else {
                             needs_tx = true;
+                            needs_memo_tx = true;
                         }
                     }
-                    Ok(None) => needs_tx = true,
+                    Ok(None) => {
+                        needs_tx = true;
+                        needs_memo_tx = true;
+                    }
                     Err(e) => {
                         tracing::warn!(
                             "Failed to load memo from database for tx {} output {}: {}",
@@ -1869,23 +1938,63 @@ impl SyncEngine {
                             e
                         );
                         needs_tx = true;
+                        needs_memo_tx = true;
                     }
                 }
             }
 
-            let needs_orchard_nullifier = note.note_type == NoteType::Orchard
-                && note.nullifier.iter().all(|b| *b == 0)
-                && orchard_fvk.is_some();
+            let needs_orchard_nullifier = orchard_nullifier_zero_local && orchard_fvk.is_some();
             if needs_orchard_nullifier {
                 needs_tx = true;
             }
 
             if needs_tx {
+                if needs_memo_tx {
+                    memo_needed += 1;
+                }
+                match note.note_type {
+                    NoteType::Sapling => sapling_needs_tx += 1,
+                    NoteType::Orchard => orchard_needs_tx += 1,
+                    _ => {}
+                }
                 let entry = tx_work.entry(txid).or_default();
                 entry.indices.push(note_idx);
                 entry.block.get_or_insert(note.height);
                 entry.index.get_or_insert(note.tx_index as u64);
             }
+        }
+
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"fetch_and_enrich work summary","data":{{"total_notes":{},"sapling_notes":{},"orchard_notes":{},"skipped_txid_len":{},"memo_needed":{},"orchard_nullifier_zero":{},"orchard_nullifier_missing_fvk":{},"sapling_needs_tx":{},"orchard_needs_tx":{},"txids":{},"require_memos":{},"has_sapling_ivk":{},"has_orchard_ivk":{},"has_orchard_fvk":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                id,
+                ts,
+                total_notes,
+                sapling_notes_total,
+                orchard_notes_total,
+                skipped_txid_len,
+                memo_needed,
+                orchard_nullifier_zero,
+                orchard_nullifier_missing_fvk,
+                sapling_needs_tx,
+                orchard_needs_tx,
+                tx_work.len(),
+                require_memos,
+                has_sapling_ivk,
+                has_orchard_ivk,
+                has_orchard_fvk
+            );
         }
 
         let max_parallel = self.config.max_parallel_decrypt.max(1);
@@ -1946,10 +2055,56 @@ impl SyncEngine {
                         hex::encode(txid),
                         e
                     );
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let txid_prefix = hex::encode(&txid[..4]);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"full tx fetch failed","data":{{"txid_prefix":"{}","block":{},"index":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                            id,
+                            ts,
+                            txid_prefix,
+                            work.block.unwrap_or(0),
+                            work.index.unwrap_or(0),
+                            e
+                        );
+                    }
                     failed_txids.insert(txid);
                     continue;
                 }
             };
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let id = format!("{:08x}", ts);
+                let txid_prefix = hex::encode(&txid[..4]);
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"full tx fetch ok","data":{{"txid_prefix":"{}","block":{},"index":{},"bytes":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    id,
+                    ts,
+                    txid_prefix,
+                    work.block.unwrap_or(0),
+                    work.index.unwrap_or(0),
+                    raw_tx_bytes.len()
+                );
+            }
 
             for note_idx in work.indices {
                 let note = &mut notes[note_idx];

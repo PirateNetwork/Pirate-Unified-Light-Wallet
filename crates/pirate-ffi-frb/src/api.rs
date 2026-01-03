@@ -140,6 +140,65 @@ fn resolve_wallet_birthday_height(birthday_opt: Option<u32>) -> u32 {
     latest_height.unwrap_or_else(|| Network::mainnet().default_birthday_height)
 }
 
+fn log_orchard_address_samples(wallet_id: &WalletId) {
+    let (_db, repo) = match open_wallet_db_for(wallet_id) {
+        Ok(result) => result,
+        Err(_) => return,
+    };
+    let secret = match repo.get_wallet_secret(wallet_id) {
+        Ok(Some(secret)) => secret,
+        _ => return,
+    };
+    let orchard_extsk_bytes = match secret.orchard_extsk.as_ref() {
+        Some(bytes) => bytes,
+        None => return,
+    };
+    let orchard_extsk = match OrchardExtendedSpendingKey::from_bytes(orchard_extsk_bytes) {
+        Ok(key) => key,
+        Err(_) => return,
+    };
+    let orchard_fvk = orchard_extsk.to_extended_fvk();
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
+        let ts = chrono::Utc::now().timestamp_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_orchard_address_samples","timestamp":{},"location":"api.rs:log_orchard_address_samples","message":"orchard address sample header","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+            ts,
+            wallet_id
+        );
+    }
+
+    for index in 0u32..10u32 {
+        let address = orchard_fvk.address_at(index);
+        let addr_mainnet = address.encode_for_network(NetworkType::Mainnet).unwrap_or_default();
+        let addr_testnet = address.encode_for_network(NetworkType::Testnet).unwrap_or_default();
+        let addr_regtest = address.encode_for_network(NetworkType::Regtest).unwrap_or_default();
+
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = chrono::Utc::now().timestamp_millis();
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_orchard_address_sample","timestamp":{},"location":"api.rs:log_orchard_address_samples","message":"orchard address sample","data":{{"wallet_id":"{}","index":{},"mainnet":"{}","testnet":"{}","regtest":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+                ts,
+                wallet_id,
+                index,
+                addr_mainnet,
+                addr_testnet,
+                addr_regtest
+            );
+        }
+    }
+}
+
 /// Create new wallet
 /// 
 /// Always generates a 24-word mnemonic seed phrase for new wallets.
@@ -1203,19 +1262,28 @@ fn orchard_activation_override(wallet_id: &WalletId) -> Result<Option<u32>> {
 
 fn wallet_network_type(wallet_id: &WalletId) -> Result<NetworkType> {
     let wallet = get_wallet_meta(wallet_id)?;
-    let network_type = address_prefix_network_type(&wallet_id)?;
+    let network_type = match wallet.network_type.as_deref().unwrap_or("mainnet") {
+        "testnet" => NetworkType::Testnet,
+        "regtest" => NetworkType::Regtest,
+        _ => NetworkType::Mainnet,
+    };
     Ok(network_type)
+}
+
+fn address_prefix_network_type_for_endpoint(
+    endpoint: &LightdEndpoint,
+    default_network: NetworkType,
+) -> NetworkType {
+    if endpoint.host == "64.23.167.130" && endpoint.port == 8067 {
+        return NetworkType::Mainnet;
+    }
+    default_network
 }
 
 fn address_prefix_network_type(wallet_id: &WalletId) -> Result<NetworkType> {
     let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
-
-    // This specific testnet endpoint uses mainnet address prefixes.
-    if endpoint.host == "64.23.167.130" && endpoint.port == 8067 {
-        return Ok(NetworkType::Mainnet);
-    }
-
-    wallet_network_type(wallet_id)
+    let default_network = wallet_network_type(wallet_id)?;
+    Ok(address_prefix_network_type_for_endpoint(&endpoint, default_network))
 }
 
 fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
@@ -2886,6 +2954,7 @@ impl Default for SyncSession {
 /// Start sync for a wallet
 pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     tracing::info!("Starting sync for wallet {} in mode {:?}", wallet_id, mode);
+    log_orchard_address_samples(&wallet_id);
     // #region agent log
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
@@ -4570,7 +4639,6 @@ pub fn set_lightd_endpoint(
     ensure_wallet_registry_loaded()?;
     // Parse URL to extract host/port
     let (host, port, use_tls) = parse_endpoint_url(&url)?;
-    
     // Detect network type from endpoint
     let network_type = detect_network_from_endpoint(&host, port);
     
@@ -4586,7 +4654,7 @@ pub fn set_lightd_endpoint(
     
     tracing::info!("Set lightd endpoint for wallet {}: {} (network: {:?})", wallet_id, endpoint.url(), network_type);
     
-    LIGHTD_ENDPOINTS.write().insert(wallet_id.clone(), endpoint);
+    LIGHTD_ENDPOINTS.write().insert(wallet_id.clone(), endpoint.clone());
     
     // Update wallet network type
     let mut wallets = WALLETS.write();
@@ -4597,7 +4665,6 @@ pub fn set_lightd_endpoint(
             _ => NetworkType::Mainnet,
         };
         let new_network_type = network_type;
-
         wallet.network_type = Some(format!("{:?}", new_network_type).to_lowercase());
         let registry_db = open_wallet_registry()?;
         persist_wallet_meta(&registry_db, wallet)?;
@@ -4619,7 +4686,23 @@ pub fn set_lightd_endpoint(
         }
 
         if old_network_type != new_network_type {
-            if let Err(err) = rederive_wallet_keys_for_network(&wallet_id, old_network_type, new_network_type) {
+            if let Ok((_db, repo)) = open_wallet_db_for(&wallet_id) {
+                if let Err(err) = repo.clear_chain_state() {
+                    tracing::warn!(
+                        "Failed to clear chain state for wallet {} after network change: {:?}",
+                        wallet_id,
+                        err
+                    );
+                }
+            }
+        }
+
+        if old_network_type != new_network_type {
+            if let Err(err) = rederive_wallet_keys_for_network(
+                &wallet_id,
+                old_network_type,
+                new_network_type,
+            ) {
                 tracing::warn!("Failed to re-derive keys for wallet {}: {:?}", wallet_id, err);
             }
         } else {
@@ -4694,6 +4777,121 @@ fn detect_network_from_endpoint(host: &str, port: u16) -> NetworkType {
     NetworkType::Mainnet
 }
 
+fn infer_key_network_type_from_addresses(
+    mnemonic: &str,
+    account_id: i64,
+    repo: &Repository,
+    endpoint: &LightdEndpoint,
+) -> Result<Option<(NetworkType, usize, usize)>> {
+    let addresses = repo.get_all_addresses(account_id)?;
+    let address_count = addresses.len();
+    if addresses.is_empty() {
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = chrono::Utc::now().timestamp_millis();
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_rederive_address_count","timestamp":{},"location":"api.rs:infer_key_network_type_from_addresses","message":"no stored addresses","data":{{"account_id":{},"count":0}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+                ts,
+                account_id
+            );
+        }
+        return Ok(None);
+    }
+
+    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic, "")?;
+    let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
+    let candidates = [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Regtest];
+
+    let mut best_network = None;
+    let mut best_matches = 0usize;
+    let mut match_counts = Vec::new();
+
+    for candidate in candidates {
+        let candidate_network = Network::from_type(candidate);
+        let sapling_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
+            mnemonic,
+            "",
+            candidate_network.network_type,
+            0,
+        )?;
+        let sapling_fvk = sapling_extsk.to_extended_fvk();
+        let orchard_extsk = orchard_master.derive_account(candidate_network.coin_type, 0)?;
+        let orchard_fvk = orchard_extsk.to_extended_fvk();
+        let prefix_network = address_prefix_network_type_for_endpoint(endpoint, candidate);
+
+        let mut matches = 0usize;
+        for addr in &addresses {
+            let derived = match addr.address_type {
+                AddressType::Orchard => {
+                    let orchard_addr = orchard_fvk.address_at(addr.diversifier_index);
+                    orchard_addr.encode_for_network(prefix_network)?
+                }
+                AddressType::Sapling => {
+                    let payment_addr = sapling_fvk.derive_address(addr.diversifier_index);
+                    payment_addr.encode_for_network(prefix_network)
+                }
+            };
+            if derived == addr.address {
+                matches += 1;
+            }
+        }
+
+        match_counts.push((candidate, matches));
+        if matches > best_matches {
+            best_matches = matches;
+            best_network = Some(candidate);
+        }
+    }
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
+        let ts = chrono::Utc::now().timestamp_millis();
+        let mut summary = String::new();
+        for (idx, (candidate, matches)) in match_counts.iter().enumerate() {
+            if idx > 0 {
+                summary.push(',');
+            }
+            summary.push_str(&format!(
+                r#"{{"network":"{:?}","matches":{}}}"#,
+                candidate,
+                matches
+            ));
+        }
+        let sample = addresses
+            .first()
+            .map(|addr| {
+                let prefix_len = addr.address.chars().take(8).count();
+                let sample = addr.address.chars().take(prefix_len).collect::<String>();
+                (sample, addr.address_type)
+            });
+        if let Some((sample_prefix, sample_type)) = sample {
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_rederive_address_match","timestamp":{},"location":"api.rs:infer_key_network_type_from_addresses","message":"address match summary","data":{{"account_id":{},"count":{},"sample_prefix":"{}","sample_type":"{:?}","matches":[{}]}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+                ts,
+                account_id,
+                address_count,
+                sample_prefix,
+                sample_type,
+                summary
+            );
+        }
+    }
+
+    if best_matches == 0 {
+        return Ok(None);
+    }
+
+    Ok(best_network.map(|network| (network, best_matches, addresses.len())))
+}
+
 fn rederive_wallet_keys_for_network(
     wallet_id: &WalletId,
     old_network_type: NetworkType,
@@ -4750,7 +4948,28 @@ fn rederive_wallet_keys_for_network(
         0,
     )?;
 
-    if current_extsk.to_bytes() != secret.extsk {
+    let mut matches_any = current_extsk.to_bytes() == secret.extsk;
+    if !matches_any {
+        let candidates = [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Regtest];
+        for candidate in candidates {
+            if candidate == old_network_type {
+                continue;
+            }
+            let candidate_net = Network::from_type(candidate);
+            let candidate_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
+                &mnemonic,
+                "",
+                candidate_net.network_type,
+                0,
+            )?;
+            if candidate_extsk.to_bytes() == secret.extsk {
+                matches_any = true;
+                break;
+            }
+        }
+    }
+
+    if !matches_any {
         tracing::warn!(
             "Wallet {} appears to use a non-empty BIP-39 passphrase; skipping key re-derive",
             wallet_id
@@ -4770,7 +4989,55 @@ fn rederive_wallet_keys_for_network(
         return Ok(());
     }
 
-    let new_network = Network::from_type(new_network_type);
+    let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
+    let inferred_network = infer_key_network_type_from_addresses(
+        &mnemonic,
+        secret.account_id,
+        &repo,
+        &endpoint,
+    )?;
+    let key_network_type = if let Some((network_type, matched, total)) = inferred_network {
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = chrono::Utc::now().timestamp_millis();
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_rederive_infer","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive inferred key network","data":{{"wallet_id":"{}","inferred_network":"{:?}","matched":{},"total":{},"endpoint_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+                ts,
+                wallet_id,
+                network_type,
+                matched,
+                total,
+                new_network_type
+            );
+        }
+        network_type
+    } else {
+        let prefix_network = address_prefix_network_type_for_endpoint(&endpoint, new_network_type);
+        if prefix_network != new_network_type {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                let ts = chrono::Utc::now().timestamp_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_rederive_prefix_fallback","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive using prefix network fallback","data":{{"wallet_id":"{}","endpoint_network":"{:?}","prefix_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+                    ts,
+                    wallet_id,
+                    new_network_type,
+                    prefix_network
+                );
+            }
+        }
+        prefix_network
+    };
+
+    let new_network = Network::from_type(key_network_type);
     let new_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
         &mnemonic,
         "",
@@ -4794,7 +5061,7 @@ fn rederive_wallet_keys_for_network(
     tracing::info!(
         "Re-derived wallet {} keys for network {:?} and cleared chain state",
         wallet_id,
-        new_network_type
+        key_network_type
     );
     {
         let ts = chrono::Utc::now().timestamp_millis();
@@ -4806,7 +5073,7 @@ fn rederive_wallet_keys_for_network(
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rederive_ok","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive ok","data":{{"wallet_id":"{}","network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts, wallet_id, new_network_type
+                ts, wallet_id, key_network_type
             );
         }
     }
@@ -6007,3 +6274,4 @@ pub async fn test_node(url: String, tls_pin: Option<String>) -> Result<crate::mo
         },
     }
 }
+

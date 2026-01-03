@@ -1082,10 +1082,10 @@ impl LightClient {
 
 impl Clone for LightClient {
     fn clone(&self) -> Self {
-        // Clone creates a new client that needs to reconnect
+        // Clone shares the existing channel to avoid reconnect races.
         Self {
             config: self.config.clone(),
-            channel: Arc::new(RwLock::new(None)),
+            channel: Arc::clone(&self.channel),
         }
     }
 }
