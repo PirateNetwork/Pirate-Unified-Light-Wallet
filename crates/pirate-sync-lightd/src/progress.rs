@@ -151,7 +151,13 @@ impl SyncProgress {
     /// Get progress percentage
     pub fn percentage(&self) -> f64 {
         let inner = self.inner.read();
-        if inner.target_height == 0 || inner.target_height <= inner.start_height {
+        if inner.target_height == 0 {
+            return 0.0;
+        }
+        if inner.current_height >= inner.target_height {
+            return 100.0;
+        }
+        if inner.target_height <= inner.start_height {
             return 0.0;
         }
         

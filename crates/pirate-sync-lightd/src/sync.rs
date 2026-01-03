@@ -33,6 +33,7 @@ use pirate_storage_sqlite::repository::OrchardNoteRef;
 use pirate_storage_sqlite::security::MasterKey;
 use pirate_core::keys::{ExtendedSpendingKey, ExtendedFullViewingKey, OrchardExtendedSpendingKey, OrchardExtendedFullViewingKey};
 use pirate_core::transaction::PirateNetwork;
+use pirate_params::consensus::ConsensusParams;
 use anyhow::anyhow;
 use hex;
 use subtle::CtOption;
@@ -102,6 +103,13 @@ const FRONTIER_SNAPSHOT_RETAIN: usize = 10;
 
 impl Default for SyncConfig {
     fn default() -> Self {
+        let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
+        let (max_parallel_decrypt, max_batch_memory_bytes) = if is_mobile {
+            (8, Some(100_000_000))
+        } else {
+            (32, Some(500_000_000))
+        };
+
         Self {
             checkpoint_interval: 10_000,
             batch_size: 2_000, // Match SimpleSync default (used when server recommendations disabled)
@@ -109,10 +117,10 @@ impl Default for SyncConfig {
             max_batch_size: 2_000, // Maximum batch size (caps server batches to prevent OOM)
             use_server_batch_recommendations: true, // Use server's ~4MB chunk recommendations (typically ~199 blocks)
             mini_checkpoint_every: 5, // Mini-checkpoint every 5 batches
-            max_parallel_decrypt: num_cpus::get(),
+            max_parallel_decrypt,
             lazy_memo_decode: true,
             heavy_block_threshold_bytes: 500_000, // 500KB per block = heavy/spam (lowered for earlier detection)
-            max_batch_memory_bytes: Some(100_000_000), // 100MB max per batch (prevents OOM on mobile)
+            max_batch_memory_bytes,
         }
     }
 }
@@ -1198,6 +1206,53 @@ impl SyncEngine {
                     .await?;
             }
 
+            if !notes.is_empty() {
+                let max_money = ConsensusParams::mainnet().max_money;
+                let require_orchard_nullifier = self
+                    .keys
+                    .as_ref()
+                    .and_then(|keys| keys.orchard_fvk.as_ref())
+                    .is_some();
+                let mut filtered = 0usize;
+                notes.retain(|note| {
+                    if note.value == 0 || note.value > max_money {
+                        filtered += 1;
+                        return false;
+                    }
+                    if require_orchard_nullifier
+                        && note.note_type == NoteType::Orchard
+                        && note.nullifier.iter().all(|b| *b == 0)
+                    {
+                        filtered += 1;
+                        return false;
+                    }
+                    true
+                });
+
+                if filtered > 0 {
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:878","message":"filtered invalid notes","data":{{"filtered":{},"remaining":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                            id,
+                            ts,
+                            filtered,
+                            notes.len()
+                        );
+                    }
+                }
+            }
+
             // Persist decrypted notes if storage is configured (after frontier update to get positions)
             if let Some(ref sink) = self.storage {
                 // #region agent log
@@ -1583,9 +1638,46 @@ impl SyncEngine {
             }
         }
 
-        if sapling_ivk_bytes.is_none() && orchard_ivk_bytes.is_none() {
+        let has_sapling_ivk = sapling_ivk_bytes.is_some();
+        let has_orchard_ivk = orchard_ivk_bytes.is_some();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:trial_decrypt_batch","message":"trial_decrypt ivk availability","data":{{"sapling":{},"orchard":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                id,
+                ts,
+                has_sapling_ivk,
+                has_orchard_ivk
+            );
+        }
+
+        if !has_sapling_ivk && !has_orchard_ivk {
             tracing::warn!("No Sapling or Orchard IVK available for trial decryption");
             return Ok(Vec::new());
+        }
+
+        let mut orchard_actions_total = 0usize;
+        let mut sapling_outputs_total = 0usize;
+        let mut min_height: Option<u64> = None;
+        let mut max_height: u64 = 0;
+        for block in blocks {
+            let height = block.height;
+            min_height = Some(min_height.map_or(height, |current| current.min(height)));
+            max_height = max_height.max(height);
+            for tx in &block.transactions {
+                orchard_actions_total += tx.actions.len();
+                sapling_outputs_total += tx.outputs.len();
+            }
         }
 
         // Batch trial decryption with bounded parallelism
@@ -1617,6 +1709,40 @@ impl SyncEngine {
         for task in tasks {
             let notes = task.await.map_err(|e| Error::Sync(e.to_string()))??;
             all_notes.extend(notes);
+        }
+
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let orchard_notes = all_notes
+                .iter()
+                .filter(|note| note.note_type == crate::pipeline::NoteType::Orchard)
+                .count();
+            let sapling_notes = all_notes
+                .iter()
+                .filter(|note| note.note_type == crate::pipeline::NoteType::Sapling)
+                .count();
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:trial_decrypt_batch","message":"trial_decrypt batch summary","data":{{"start":{},"end":{},"blocks":{},"sapling_outputs":{},"orchard_actions":{},"sapling_notes":{},"orchard_notes":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                id,
+                ts,
+                min_height.unwrap_or(0),
+                max_height,
+                blocks.len(),
+                sapling_outputs_total,
+                orchard_actions_total,
+                sapling_notes,
+                orchard_notes
+            );
         }
 
         Ok(all_notes)
@@ -1704,7 +1830,7 @@ impl SyncEngine {
             return Ok(());
         }
 
-        #[derive(Default)]
+        #[derive(Default, Clone)]
         struct TxWork {
             indices: Vec<usize>,
             block: Option<u64>,
@@ -1762,12 +1888,57 @@ impl SyncEngine {
             }
         }
 
+        let max_parallel = self.config.max_parallel_decrypt.max(1);
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_parallel));
+        let client = self.client.clone();
+        let fetch_start = Instant::now();
+
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:1693","message":"fetch_and_enrich start","data":{{"txids":{},"max_parallel":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                id,
+                ts,
+                tx_work.len(),
+                max_parallel
+            );
+        }
+
+        let txid_count = tx_work.len();
+        let mut tasks = Vec::with_capacity(txid_count);
         for (txid, work) in tx_work {
-            let raw_tx_bytes = match self
-                .client
-                .get_transaction_with_fallback(&txid, work.block, work.index)
-                .await
-            {
+            let client = client.clone();
+            let sem = Arc::clone(&semaphore);
+            let work_clone = work.clone();
+            tasks.push(tokio::spawn(async move {
+                let _permit = sem.acquire().await;
+                let raw = client
+                    .get_transaction_with_fallback(&txid, work_clone.block, work_clone.index)
+                    .await;
+                (txid, work_clone, raw)
+            }));
+        }
+
+        for task in tasks {
+            let (txid, work, raw_result) = match task.await {
+                Ok(result) => result,
+                Err(e) => {
+                    tracing::warn!("Full tx fetch task failed: {}", e);
+                    continue;
+                }
+            };
+
+            let raw_tx_bytes = match raw_result {
                 Ok(raw) => raw,
                 Err(e) => {
                     tracing::warn!(
@@ -1814,46 +1985,55 @@ impl SyncEngine {
                             }
                         }
                     }
-                        NoteType::Orchard => {
-                            let orchard_ivk = match orchard_ivk_bytes.as_ref() {
-                                Some(ivk) => ivk,
-                                None => continue,
-                            };
+                    NoteType::Orchard => {
+                        let orchard_ivk = match orchard_ivk_bytes.as_ref() {
+                            Some(ivk) => ivk,
+                            None => continue,
+                        };
+                        let txid_prefix = if note.tx_hash.len() >= 4 {
+                            hex::encode(&note.tx_hash[..4])
+                        } else {
+                            hex::encode(&note.tx_hash)
+                        };
+                        let cmx_prefix = hex::encode(&note.commitment[..4]);
 
-                            match decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
-                                &raw_tx_bytes,
-                                note.output_index as usize,
-                                orchard_ivk,
-                                Some(&note.commitment),
-                            ) {
-                                Ok(Some(decrypted)) => {
-                                    note.orchard_rho = Some(decrypted.rho);
-                                    note.orchard_rseed = Some(decrypted.rseed);
-                                    if note.note_bytes.is_empty() {
-                                        match orchard_address_from_ivk_diversifier(orchard_ivk, &note.diversifier) {
-                                            Ok(Some(address)) => {
-                                                note.note_bytes = encode_orchard_note_bytes(
-                                                    &address,
-                                                    decrypted.rho,
-                                                    decrypted.rseed,
-                                                );
-                                            }
-                                            Ok(None) => {}
-                                            Err(e) => {
-                                                tracing::warn!(
-                                                    "Failed to derive Orchard address for tx {} output {}: {}",
-                                                    hex::encode(&note.tx_hash),
-                                                    note.output_index,
-                                                    e
-                                                );
-                                            }
+                        match decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
+                            &raw_tx_bytes,
+                            note.output_index as usize,
+                            orchard_ivk,
+                            Some(&note.commitment),
+                        ) {
+                            Ok(Some(decrypted)) => {
+                                note.orchard_rho = Some(decrypted.rho);
+                                note.orchard_rseed = Some(decrypted.rseed);
+                                if note.note_bytes.is_empty() {
+                                    match orchard_address_from_ivk_diversifier(
+                                        orchard_ivk,
+                                        &note.diversifier,
+                                    ) {
+                                        Ok(Some(address)) => {
+                                            note.note_bytes = encode_orchard_note_bytes(
+                                                &address,
+                                                decrypted.rho,
+                                                decrypted.rseed,
+                                            );
+                                        }
+                                        Ok(None) => {}
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                "Failed to derive Orchard address for tx {} output {}: {}",
+                                                hex::encode(&note.tx_hash),
+                                                note.output_index,
+                                                e
+                                            );
                                         }
                                     }
+                                }
 
-                                    if require_memos && note.memo_bytes().is_none() {
-                                        let memo = decrypted.memo.to_vec();
-                                        note.set_memo_bytes(memo.clone());
-                                        if let Err(e) = sink.update_note_memo(
+                                if require_memos && note.memo_bytes().is_none() {
+                                    let memo = decrypted.memo.to_vec();
+                                    note.set_memo_bytes(memo.clone());
+                                    if let Err(e) = sink.update_note_memo(
                                         &note.tx_hash,
                                         note.output_index as i64,
                                         Some(&memo),
@@ -1872,16 +2052,86 @@ impl SyncEngine {
                                             decrypted.rseed,
                                         ) {
                                             Ok(nf) => note.nullifier = nf,
-                                            Err(e) => tracing::warn!(
-                                                "Failed to compute Orchard nullifier: {}",
-                                                e
-                                            ),
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    "Failed to compute Orchard nullifier: {}",
+                                                    e
+                                                );
+                                                if let Ok(mut file) = std::fs::OpenOptions::new()
+                                                    .create(true)
+                                                    .append(true)
+                                                    .open(debug_log_path())
+                                                {
+                                                    use std::io::Write;
+                                                    let ts = std::time::SystemTime::now()
+                                                        .duration_since(std::time::UNIX_EPOCH)
+                                                        .unwrap_or_default()
+                                                        .as_millis();
+                                                    let id = format!("{:08x}", ts);
+                                                    let _ = writeln!(
+                                                        file,
+                                                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"orchard nullifier compute failed","data":{{"txid_prefix":"{}","cmx_prefix":"{}","output_index":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                                                        id,
+                                                        ts,
+                                                        txid_prefix,
+                                                        cmx_prefix,
+                                                        note.output_index,
+                                                        e
+                                                    );
+                                                }
+                                            }
                                         }
                                     }
+                                }
+
+                                let nullifier_zero = note.nullifier.iter().all(|b| *b == 0);
+                                if let Ok(mut file) = std::fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(debug_log_path())
+                                {
+                                    use std::io::Write;
+                                    let ts = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis();
+                                    let id = format!("{:08x}", ts);
+                                    let _ = writeln!(
+                                        file,
+                                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"orchard full decrypt ok","data":{{"txid_prefix":"{}","cmx_prefix":"{}","output_index":{},"nullifier_zero":{},"memo_present":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                                        id,
+                                        ts,
+                                        txid_prefix,
+                                        cmx_prefix,
+                                        note.output_index,
+                                        nullifier_zero,
+                                        note.memo_bytes().is_some()
+                                    );
                                 }
                             }
                             Ok(None) => {
                                 invalid_orchard_indices.insert(note_idx);
+                                if let Ok(mut file) = std::fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(debug_log_path())
+                                {
+                                    use std::io::Write;
+                                    let ts = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis();
+                                    let id = format!("{:08x}", ts);
+                                    let _ = writeln!(
+                                        file,
+                                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"orchard full decrypt none","data":{{"txid_prefix":"{}","cmx_prefix":"{}","output_index":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                                        id,
+                                        ts,
+                                        txid_prefix,
+                                        cmx_prefix,
+                                        note.output_index
+                                    );
+                                }
                                 if note.tx_hash.len() == 32 {
                                     if let Err(e) = sink.delete_note_by_txid_and_index(
                                         &note.tx_hash,
@@ -1898,6 +2148,28 @@ impl SyncEngine {
                             }
                             Err(e) => {
                                 tracing::warn!("Error decrypting Orchard memo: {}", e);
+                                if let Ok(mut file) = std::fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(debug_log_path())
+                                {
+                                    use std::io::Write;
+                                    let ts = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_millis();
+                                    let id = format!("{:08x}", ts);
+                                    let _ = writeln!(
+                                        file,
+                                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"orchard full decrypt error","data":{{"txid_prefix":"{}","cmx_prefix":"{}","output_index":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                                        id,
+                                        ts,
+                                        txid_prefix,
+                                        cmx_prefix,
+                                        note.output_index,
+                                        e
+                                    );
+                                }
                             }
                         }
                     }
@@ -1918,6 +2190,27 @@ impl SyncEngine {
                     tracing::warn!("Outgoing memo recovery failed: {}", e);
                 }
             }
+        }
+
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:1816","message":"fetch_and_enrich done","data":{{"txids":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                id,
+                ts,
+                txid_count,
+                fetch_start.elapsed().as_millis()
+            );
         }
 
         if !invalid_orchard_indices.is_empty() {
@@ -3254,6 +3547,12 @@ fn trial_decrypt_block(
         // Process Orchard actions (if Orchard IVK is available)
         if let Some(orchard_ivk_bytes) = orchard_ivk_bytes_opt {
             for (action_idx, action) in tx.actions.iter().enumerate() {
+                if action.cmx.len() != 32
+                    || action.ephemeral_key.len() != 32
+                    || action.enc_ciphertext.len() < 52
+                {
+                    continue;
+                }
                 // Perform Orchard trial decryption
                 match try_decrypt_compact_orchard_action(action, orchard_ivk_bytes) {
                     Ok(Some(decrypted)) => {
