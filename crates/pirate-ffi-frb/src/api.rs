@@ -2990,10 +2990,35 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                     .ok()
                     .map(|state| state.local_height as u32)
             });
+        // #region agent log
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = uuid::Uuid::new_v4()
+                .to_string()
+                .chars()
+                .take(8)
+                .collect::<String>();
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:2319","message":"start_sync resume_height","data":{{"wallet_id":"{}","resume_height":"{:?}","birthday_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+                id,
+                ts,
+                wallet_id,
+                resume_height_opt,
+                birthday_height
+            );
+        }
+        // #endregion
         match resume_height_opt {
-            Some(resume_height) if resume_height > 0 && resume_height >= birthday_height => {
-                resume_height
-            }
+            Some(resume_height) if resume_height > 0 => resume_height,
             _ => birthday_height,
         }
     };
@@ -3070,6 +3095,13 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         request_timeout: std::time::Duration::from_secs(60),
     };
     
+    let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
+    let (max_parallel_decrypt, max_batch_memory_bytes, target_batch_bytes, min_batch_bytes, max_batch_bytes) = if is_mobile {
+        (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
+    } else {
+        (32, Some(500_000_000), 32_000_000, 4_000_000, 64_000_000)
+    };
+
     // Create sync config
     // Adaptive batch sizing will handle spam blocks automatically
     let config = SyncConfig {
@@ -3082,10 +3114,14 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         max_batch_size: 2_000, // Maximum batch size to prevent OOM (also caps server recommendations)
         use_server_batch_recommendations: true, // Use server's ~4MB chunk recommendations (typically ~199 blocks)
         mini_checkpoint_every: 5, // Mini-checkpoint every 5 batches
-        max_parallel_decrypt: num_cpus::get(),
+        max_parallel_decrypt,
         lazy_memo_decode: true, // Default to lazy memo decoding
+        defer_full_tx_fetch: true,
+        target_batch_bytes,
+        min_batch_bytes,
+        max_batch_bytes,
         heavy_block_threshold_bytes: 500_000, // 500KB per block = heavy/spam
-        max_batch_memory_bytes: Some(100_000_000), // 100MB max per batch
+        max_batch_memory_bytes,
     };
     
     // Create sync engine with wallet context and proper client config
@@ -4150,6 +4186,13 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     
     tracing::info!("rescan: Using endpoint {} (TLS: {}, transport: {:?})", endpoint_url, tls_enabled, transport);
     
+    let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
+    let (max_parallel_decrypt, max_batch_memory_bytes, target_batch_bytes, min_batch_bytes, max_batch_bytes) = if is_mobile {
+        (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
+    } else {
+        (32, Some(500_000_000), 32_000_000, 4_000_000, 64_000_000)
+    };
+
     // Create sync config for rescan
     let config = SyncConfig {
         checkpoint_interval: 10_000,
@@ -4158,10 +4201,14 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         max_batch_size: 2_000,
         use_server_batch_recommendations: true,
         mini_checkpoint_every: 5,
-        max_parallel_decrypt: num_cpus::get(),
+        max_parallel_decrypt,
         lazy_memo_decode: true,
+        defer_full_tx_fetch: true,
+        target_batch_bytes,
+        min_batch_bytes,
+        max_batch_bytes,
         heavy_block_threshold_bytes: 500_000,
-        max_batch_memory_bytes: Some(100_000_000),
+        max_batch_memory_bytes,
     };
     
     // Create sync engine with wallet context and proper client config

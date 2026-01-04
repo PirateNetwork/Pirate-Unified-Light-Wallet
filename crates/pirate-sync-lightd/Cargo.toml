@@ -51,6 +51,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["socks", "rustls-tls"] }
 num_cpus = "1.16"
+rayon = "1.10"
 sha2 = { workspace = true }
 rusqlite = { workspace = true }
 once_cell = "1.19"

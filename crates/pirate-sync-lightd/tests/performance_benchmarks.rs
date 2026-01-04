@@ -22,9 +22,9 @@ async fn run_sync_benchmark(
     let temp_dir = TempDir::new()?;
     
     let config = SyncConfig {
-        lightd_endpoint: "mock://localhost:9067".to_string(),
         batch_size: 1000,
         checkpoint_interval: 10000,
+        ..Default::default()
     };
     
     // Note: This would use a mock lightd server in production

@@ -12,7 +12,7 @@ use std::env;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::io::Write;
 use tokio::sync::RwLock;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
@@ -374,6 +374,24 @@ impl From<CompactOrchardAction> for proto::CompactOrchardAction {
     }
 }
 
+fn estimate_compact_block_bytes(block: &CompactBlock) -> u64 {
+    let mut total = 0u64;
+    for tx in &block.transactions {
+        // Rough tx overhead (hash/index/etc.)
+        total += 100;
+        for output in &tx.outputs {
+            let ct_len = output.ciphertext.len().max(52) as u64;
+            total += 32 + 32 + ct_len;
+        }
+        for action in &tx.actions {
+            let enc_len = action.enc_ciphertext.len().max(52) as u64;
+            let out_len = action.out_ciphertext.len().max(52) as u64;
+            total += 32 + 32 + 32 + enc_len + out_len;
+        }
+    }
+    total
+}
+
 /// Transaction broadcast result
 #[derive(Debug, Clone)]
 pub struct BroadcastResult {
@@ -731,6 +749,7 @@ impl LightClient {
 
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
+            let start_instant = Instant::now();
 
             let request = tonic::Request::new(BlockRange {
                 start: Some(BlockId {
@@ -747,9 +766,52 @@ impl LightClient {
 
             let mut stream = client.get_block_range(request).await?.into_inner();
             let mut blocks = Vec::with_capacity((range.end - range.start) as usize);
+            let mut first_block_ms: Option<u128> = None;
+            let mut estimated_bytes = 0u64;
 
             while let Some(block) = stream.message().await? {
-                blocks.push(CompactBlock::from(block));
+                if first_block_ms.is_none() {
+                    first_block_ms = Some(start_instant.elapsed().as_millis());
+                }
+                let compact = CompactBlock::from(block);
+                estimated_bytes = estimated_bytes.saturating_add(estimate_compact_block_bytes(&compact));
+                blocks.push(compact);
+            }
+
+            let total_ms = start_instant.elapsed().as_millis();
+            let ttfb_ms = first_block_ms.unwrap_or(total_ms);
+            let kbps = if total_ms > 0 {
+                (estimated_bytes as f64 / 1024.0) / (total_ms as f64 / 1000.0)
+            } else {
+                0.0
+            };
+
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let id = format!("{:08x}", ts);
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:block_range_stats","message":"block range stats","data":{{"start":{},"end":{},"blocks":{},"ttfb_ms":{},"total_ms":{},"est_bytes":{},"est_kbps":{:.2},"endpoint":"{}","transport":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                    id,
+                    ts,
+                    range.start,
+                    range.end.saturating_sub(1),
+                    blocks.len(),
+                    ttfb_ms,
+                    total_ms,
+                    estimated_bytes,
+                    kbps,
+                    self.config.endpoint,
+                    self.config.transport
+                );
             }
 
             debug!("Received {} blocks", blocks.len());

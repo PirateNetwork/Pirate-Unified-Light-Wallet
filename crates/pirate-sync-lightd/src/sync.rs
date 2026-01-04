@@ -19,9 +19,18 @@ use crate::orchard_frontier::OrchardFrontier;
 use crate::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes;
 use crate::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes;
 use crate::pipeline::NoteType;
-use orchard::keys::{Diversifier as OrchardDiversifier, IncomingViewingKey as OrchardIncomingViewingKey};
-use orchard::note::{Note as OrchardNote, Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed};
-use orchard::note_encryption::OrchardDomain;
+use orchard::keys::{
+    Diversifier as OrchardDiversifier,
+    IncomingViewingKey as OrchardIncomingViewingKey,
+    PreparedIncomingViewingKey as OrchardPreparedIncomingViewingKey,
+};
+use orchard::note::{
+    ExtractedNoteCommitment as OrchardExtractedNoteCommitment,
+    Note as OrchardNote,
+    Nullifier as OrchardNullifier,
+    RandomSeed as OrchardRandomSeed,
+};
+use orchard::note_encryption::{CompactAction, OrchardDomain};
 use orchard::tree::MerkleHashOrchard;
 use orchard::value::NoteValue as OrchardNoteValue;
 use orchard::Address as OrchardAddress;
@@ -35,6 +44,7 @@ use pirate_core::keys::{ExtendedSpendingKey, ExtendedFullViewingKey, OrchardExte
 use pirate_core::transaction::PirateNetwork;
 use pirate_params::consensus::ConsensusParams;
 use anyhow::anyhow;
+use group::ff::PrimeField;
 use hex;
 use subtle::CtOption;
 use std::collections::{HashMap, HashSet};
@@ -45,11 +55,14 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use std::sync::Arc;
 use std::io::Write;
+use rayon::prelude::*;
 use zcash_note_encryption::try_output_recovery_with_ovk;
+use zcash_note_encryption::{batch as note_batch, EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE};
 use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::merkle_tree::{read_frontier_v0, read_frontier_v1, write_merkle_path};
-use zcash_primitives::sapling::note_encryption::try_sapling_output_recovery;
-use zcash_primitives::sapling::keys::OutgoingViewingKey as SaplingOutgoingViewingKey;
+use zcash_primitives::sapling::note_encryption::{try_sapling_output_recovery, SaplingDomain};
+use zcash_primitives::sapling::keys::{OutgoingViewingKey as SaplingOutgoingViewingKey, PreparedIncomingViewingKey};
+use zcash_primitives::sapling::{Rseed, SaplingIvk};
 use zcash_primitives::transaction::Transaction;
 
 fn debug_log_path() -> PathBuf {
@@ -89,6 +102,14 @@ pub struct SyncConfig {
     pub max_parallel_decrypt: usize,
     /// Lazy memo decoding (only decode if needed)
     pub lazy_memo_decode: bool,
+    /// Defer full transaction fetch/memo recovery to background
+    pub defer_full_tx_fetch: bool,
+    /// Target batch size in bytes (used to derive block count)
+    pub target_batch_bytes: u64,
+    /// Minimum batch size in bytes (during heavy/spam periods)
+    pub min_batch_bytes: u64,
+    /// Maximum batch size in bytes (cap for large batches)
+    pub max_batch_bytes: u64,
     /// Threshold for detecting heavy/spam blocks (bytes per block)
     pub heavy_block_threshold_bytes: u64,
     /// Maximum memory per batch in bytes (None = no limit)
@@ -100,14 +121,15 @@ pub struct SyncConfig {
 const MAX_RETRY_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF_MS: u64 = 100;
 const FRONTIER_SNAPSHOT_RETAIN: usize = 10;
+const MIN_PARALLEL_OUTPUTS: usize = 256;
 
 impl Default for SyncConfig {
     fn default() -> Self {
         let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
-        let (max_parallel_decrypt, max_batch_memory_bytes) = if is_mobile {
-            (8, Some(100_000_000))
+        let (max_parallel_decrypt, max_batch_memory_bytes, target_batch_bytes, min_batch_bytes, max_batch_bytes) = if is_mobile {
+            (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
         } else {
-            (32, Some(500_000_000))
+            (32, Some(500_000_000), 32_000_000, 4_000_000, 64_000_000)
         };
 
         Self {
@@ -119,6 +141,10 @@ impl Default for SyncConfig {
             mini_checkpoint_every: 5, // Mini-checkpoint every 5 batches
             max_parallel_decrypt,
             lazy_memo_decode: true,
+            defer_full_tx_fetch: true,
+            target_batch_bytes,
+            min_batch_bytes,
+            max_batch_bytes,
             heavy_block_threshold_bytes: 500_000, // 500KB per block = heavy/spam (lowered for earlier detection)
             max_batch_memory_bytes,
         }
@@ -142,17 +168,36 @@ pub struct SyncEngine {
     orchard_frontier: Arc<RwLock<OrchardFrontier>>,
     /// Performance counters
     perf: Arc<PerfCounters>,
+    /// Parallel trial-decryption worker pool
+    decrypt_pool: Arc<rayon::ThreadPool>,
     /// Cancellation flag
     cancelled: Arc<RwLock<bool>>,
+    /// Background full-tx enrichment limiter
+    enrich_semaphore: Arc<tokio::sync::Semaphore>,
+}
+
+struct PrefetchTask {
+    start: u64,
+    end: u64,
+    handle: tokio::task::JoinHandle<Result<Vec<CompactBlockData>>>,
 }
 
 impl SyncEngine {
     /// Create new sync engine
     pub fn new(endpoint: String, birthday_height: u32) -> Self {
+        let config = SyncConfig::default();
+        let cpu_limit = num_cpus::get().max(1);
+        let decrypt_threads = std::cmp::min(config.max_parallel_decrypt.max(1), cpu_limit);
+        let decrypt_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(decrypt_threads)
+            .thread_name(|i| format!("trial-decrypt-{}", i))
+            .build()
+            .expect("failed to build trial-decrypt thread pool");
+        let enrich_limit = std::cmp::max(1, std::cmp::min(4, config.max_parallel_decrypt));
         Self {
             client: LightClient::new(endpoint),
             progress: Arc::new(RwLock::new(SyncProgress::new())),
-            config: SyncConfig::default(),
+            config,
             birthday_height,
             wallet_id: None,
             storage: None,
@@ -162,7 +207,9 @@ impl SyncEngine {
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
+            decrypt_pool: Arc::new(decrypt_pool),
             cancelled: Arc::new(RwLock::new(false)),
+            enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
         }
     }
 
@@ -223,6 +270,14 @@ impl SyncEngine {
 
     /// Create with custom configuration
     pub fn with_config(endpoint: String, birthday_height: u32, config: SyncConfig) -> Self {
+        let cpu_limit = num_cpus::get().max(1);
+        let decrypt_threads = std::cmp::min(config.max_parallel_decrypt.max(1), cpu_limit);
+        let decrypt_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(decrypt_threads)
+            .thread_name(|i| format!("trial-decrypt-{}", i))
+            .build()
+            .expect("failed to build trial-decrypt thread pool");
+        let enrich_limit = std::cmp::max(1, std::cmp::min(4, config.max_parallel_decrypt));
         Self {
             client: LightClient::new(endpoint),
             progress: Arc::new(RwLock::new(SyncProgress::new())),
@@ -236,12 +291,22 @@ impl SyncEngine {
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
+            decrypt_pool: Arc::new(decrypt_pool),
             cancelled: Arc::new(RwLock::new(false)),
+            enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
         }
     }
 
     /// Create with pre-configured client and custom sync config
     pub fn with_client_and_config(client: LightClient, birthday_height: u32, config: SyncConfig) -> Self {
+        let cpu_limit = num_cpus::get().max(1);
+        let decrypt_threads = std::cmp::min(config.max_parallel_decrypt.max(1), cpu_limit);
+        let decrypt_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(decrypt_threads)
+            .thread_name(|i| format!("trial-decrypt-{}", i))
+            .build()
+            .expect("failed to build trial-decrypt thread pool");
+        let enrich_limit = std::cmp::max(1, std::cmp::min(4, config.max_parallel_decrypt));
         Self {
             client,
             progress: Arc::new(RwLock::new(SyncProgress::new())),
@@ -255,7 +320,9 @@ impl SyncEngine {
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
+            decrypt_pool: Arc::new(decrypt_pool),
             cancelled: Arc::new(RwLock::new(false)),
+            enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
         }
     }
 
@@ -793,83 +860,143 @@ impl SyncEngine {
 
         loop {
             attempt += 1;
-            let bridge_result = tokio::time::timeout(
+            let mut bridge_err: Option<String> = None;
+            let mut legacy_err: Option<String> = None;
+
+            let mut bridge_future = tokio::time::timeout(
                 timeout,
                 self.client.get_bridge_tree_state(tree_height),
-            )
-            .await;
+            );
+            let mut legacy_future = tokio::time::timeout(
+                timeout,
+                self.client.get_tree_state(tree_height),
+            );
+            tokio::pin!(bridge_future);
+            tokio::pin!(legacy_future);
 
-            match bridge_result {
-                Ok(Ok(state)) => return Ok(state),
-                Ok(Err(e)) => {
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        let ts = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis();
-                        let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
-                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:535","message":"bridge tree state failed","data":{{"tree_height":{},"attempt":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                            id,
-                            ts,
-                            tree_height,
-                            attempt,
-                            e
-                        );
+            tokio::select! {
+                result = &mut bridge_future => {
+                    match result {
+                        Ok(Ok(state)) => return Ok(state),
+                        Ok(Err(e)) => {
+                            bridge_err = Some(format!("{:?}", e));
+                            if let Ok(mut file) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(debug_log_path())
+                            {
+                                let ts = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis();
+                                let id = format!("{:08x}", ts);
+                                let _ = writeln!(
+                                    file,
+                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:535","message":"bridge tree state failed","data":{{"tree_height":{},"attempt":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                                    id,
+                                    ts,
+                                    tree_height,
+                                    attempt,
+                                    e
+                                );
+                            }
+                        }
+                        Err(_) => {
+                            bridge_err = Some("timeout".to_string());
+                            if let Ok(mut file) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(debug_log_path())
+                            {
+                                let ts = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis();
+                                let id = format!("{:08x}", ts);
+                                let _ = writeln!(
+                                    file,
+                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:552","message":"bridge tree state timeout","data":{{"tree_height":{},"attempt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                                    id,
+                                    ts,
+                                    tree_height,
+                                    attempt
+                                );
+                            }
+                        }
+                    }
+
+                    match legacy_future.await {
+                        Ok(Ok(state)) => return Ok(state),
+                        Ok(Err(e)) => legacy_err = Some(format!("{:?}", e)),
+                        Err(_) => legacy_err = Some("timeout".to_string()),
                     }
                 }
-                Err(_) => {
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        let ts = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis();
-                        let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
-                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:552","message":"bridge tree state timeout","data":{{"tree_height":{},"attempt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                            id,
-                            ts,
-                            tree_height,
-                            attempt
-                        );
+                result = &mut legacy_future => {
+                    match result {
+                        Ok(Ok(state)) => return Ok(state),
+                        Ok(Err(e)) => legacy_err = Some(format!("{:?}", e)),
+                        Err(_) => legacy_err = Some("timeout".to_string()),
+                    }
+
+                    match bridge_future.await {
+                        Ok(Ok(state)) => return Ok(state),
+                        Ok(Err(e)) => {
+                            bridge_err = Some(format!("{:?}", e));
+                            if let Ok(mut file) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(debug_log_path())
+                            {
+                                let ts = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis();
+                                let id = format!("{:08x}", ts);
+                                let _ = writeln!(
+                                    file,
+                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:535","message":"bridge tree state failed","data":{{"tree_height":{},"attempt":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                                    id,
+                                    ts,
+                                    tree_height,
+                                    attempt,
+                                    e
+                                );
+                            }
+                        }
+                        Err(_) => {
+                            bridge_err = Some("timeout".to_string());
+                            if let Ok(mut file) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(debug_log_path())
+                            {
+                                let ts = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis();
+                                let id = format!("{:08x}", ts);
+                                let _ = writeln!(
+                                    file,
+                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:552","message":"bridge tree state timeout","data":{{"tree_height":{},"attempt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                                    id,
+                                    ts,
+                                    tree_height,
+                                    attempt
+                                );
+                            }
+                        }
                     }
                 }
             }
 
-            let legacy_result = tokio::time::timeout(
-                timeout,
-                self.client.get_tree_state(tree_height),
-            )
-            .await;
-
-            match legacy_result {
-                Ok(Ok(state)) => return Ok(state),
-                Ok(Err(e)) => {
-                    if attempt >= max_attempts {
-                        return Err(Error::Sync(format!(
-                            "Tree state fetch failed at {} after {} attempts: {}",
-                            tree_height, attempt, e
-                        )));
-                    }
-                }
-                Err(_) => {
-                    if attempt >= max_attempts {
-                        return Err(Error::Sync(format!(
-                            "Tree state fetch timed out at {} after {} attempts",
-                            tree_height, attempt
-                        )));
-                    }
-                }
+            if attempt >= max_attempts {
+                return Err(Error::Sync(format!(
+                    "Tree state fetch failed at {} after {} attempts (bridge: {}, legacy: {})",
+                    tree_height,
+                    attempt,
+                    bridge_err.unwrap_or_else(|| "unknown".to_string()),
+                    legacy_err.unwrap_or_else(|| "unknown".to_string())
+                )));
             }
 
             tokio::time::sleep(Duration::from_secs(5)).await;
@@ -882,9 +1009,12 @@ impl SyncEngine {
         let mut last_major_checkpoint_height = start.saturating_sub(1);
         let mut batches_since_mini_checkpoint = 0u32;
         
-        // Adaptive batch sizing for spam blocks
+        // Adaptive batch sizing for spam blocks (byte-based targets)
+        let mut current_target_bytes = self.config.target_batch_bytes;
         let mut current_batch_size = self.config.batch_size;
         let mut consecutive_heavy_batches = 0u32;
+        let mut avg_block_size_estimate = (self.config.target_batch_bytes / self.config.batch_size.max(1)).max(1);
+        let mut pending_fetch: Option<PrefetchTask> = None;
 
         // Reset perf counters
         self.perf.reset();
@@ -944,115 +1074,85 @@ impl SyncEngine {
             }
 
             let batch_start_time = Instant::now();
+            let mut fetch_wait_ms: u128 = 0;
+            let mut decrypt_ms: u128 = 0;
+            let mut frontier_ms: u128 = 0;
+            let mut persist_ms: u128 = 0;
+            let mut apply_spends_ms: u128 = 0;
 
-            // Determine batch end: use server recommendations or client-side calculation
-            let mut batch_end = if self.config.use_server_batch_recommendations {
-                // Try to get optimal batch end from server (GetLiteWalletBlockGroup)
-                // Server groups by ~4MB data chunks (typically ~199 blocks for normal blocks)
-                // Falls back to client-side calculation if server method fails
-                match self.client.get_lite_wallet_block_group(current_height).await {
-                    Ok(server_end) => {
-                        // Use server-provided optimal batch end, but don't exceed our target end
-                        let optimal_end = std::cmp::min(server_end, end);
-                        let server_batch_size = optimal_end.saturating_sub(current_height).saturating_add(1);
-                        // Cap at max_batch_size to prevent OOM during spam
-                        // Server might return very large batches (e.g., 5000+ blocks) during spam
-                        let max_capped_end = std::cmp::min(
-                            optimal_end,
-                            current_height + self.config.max_batch_size - 1
-                        );
-                        if max_capped_end > current_height {
-                            // #region agent log
-                            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                                use std::io::Write;
-                                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                                let id = format!("{:08x}", ts);
-                                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:445","message":"server batch recommendation","data":{{"server_batch_size":{},"max_batch_size":{},"capped_batch_size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"G"}}"#, 
-                                    id, ts, server_batch_size, self.config.max_batch_size, max_capped_end - current_height + 1);
-                            }
-                            // #endregion
-                            tracing::debug!(
-                                "Using server-provided batch group: {} -> {} (optimal: {}, capped at max: {})",
-                                current_height,
-                                max_capped_end,
-                                optimal_end - current_height + 1,
-                                self.config.max_batch_size
-                            );
-                            max_capped_end
-                        } else {
-                            // Server returned invalid or same height, fall back to client calculation
-                            std::cmp::min(current_height + current_batch_size - 1, end)
-                        }
-                    }
-                    Err(e) => {
-                        // Server method not available or failed, use client-side adaptive batch size
-                        tracing::debug!(
-                            "Server batch grouping unavailable ({}), using client-side batch size: {}",
-                            e,
-                            current_batch_size
-                        );
-                        std::cmp::min(current_height + current_batch_size - 1, end)
-                    }
-                }
-            } else {
-                // Client-side batching: use our configured batch_size
-                // This allows full control over batch size regardless of server recommendations
-                std::cmp::min(
-                    current_height + current_batch_size - 1,
-                    end
-                )
-            };
-            
-            // Additional safety: Check memory limits before fetching
-            if let Some(max_memory) = self.config.max_batch_memory_bytes {
-                let batch_block_count = batch_end - current_height + 1;
-                // Estimate memory: assume worst case (all blocks at threshold size)
-                // Add 1KB overhead per block for processing
-                let estimated_memory = batch_block_count * (self.config.heavy_block_threshold_bytes + 1000);
-                if estimated_memory > max_memory {
-                    // Reduce batch size to fit in memory
-                    let safe_block_count = max_memory / (self.config.heavy_block_threshold_bytes + 1000);
-                    let safe_batch_end = std::cmp::min(
-                        current_height + safe_block_count.saturating_sub(1),
-                        end
-                    );
-                    if safe_batch_end > current_height {
-                        tracing::warn!(
-                            "Reducing batch size from {} to {} blocks due to memory limit (estimated {} bytes > limit {} bytes)",
-                            batch_end - current_height + 1,
-                            safe_batch_end - current_height + 1,
-                            estimated_memory,
-                            max_memory
-                        );
-                        batch_end = safe_batch_end;
-                    }
-                }
+            if pending_fetch.is_none() {
+                let (batch_end, desired_blocks) = self
+                    .compute_batch_end(current_height, end, current_target_bytes, avg_block_size_estimate)
+                    .await?;
+                current_batch_size = desired_blocks;
+                pending_fetch = Some(self.spawn_prefetch(current_height, batch_end));
             }
+
+            let PrefetchTask {
+                start: batch_start,
+                end: batch_end,
+                handle,
+            } = pending_fetch.take().unwrap();
 
             // Stage 1: Fetch blocks (with retry logic)
             self.progress.write().await.set_stage(SyncStage::Headers);
             // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
                 use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
                 let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:505","message":"fetch_blocks_with_retry start","data":{{"current_height":{},"batch_end":{},"batch_size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#, 
-                    id, ts, current_height, batch_end, batch_end - current_height + 1);
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:505","message":"fetch_blocks_with_retry start","data":{{"current_height":{},"batch_end":{},"batch_size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
+                    id,
+                    ts,
+                    batch_start,
+                    batch_end,
+                    batch_end - batch_start + 1
+                );
             }
             // #endregion
-            let blocks = self.fetch_blocks_with_retry(current_height, batch_end).await?;
+
+            let fetch_wait_start = Instant::now();
+            let blocks = handle
+                .await
+                .map_err(|e| Error::Sync(e.to_string()))??;
+            fetch_wait_ms = fetch_wait_start.elapsed().as_millis();
+
             // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
                 use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
                 let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:506","message":"fetch_blocks_with_retry result","data":{{"current_height":{},"batch_end":{},"blocks_count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#, 
-                    id, ts, current_height, batch_end, blocks.len());
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:506","message":"fetch_blocks_with_retry result","data":{{"current_height":{},"batch_end":{},"blocks_count":{},"wait_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
+                    id,
+                    ts,
+                    batch_start,
+                    batch_end,
+                    blocks.len(),
+                    fetch_wait_ms
+                );
             }
             // #endregion
 
             if blocks.is_empty() {
-                tracing::warn!("Empty block batch at {}-{}", current_height, batch_end);
+                tracing::warn!("Empty block batch at {}-{}", batch_start, batch_end);
                 current_height = batch_end + 1;
                 continue;
             }
@@ -1095,21 +1195,21 @@ impl SyncEngine {
                 })
                 .sum();
             let avg_block_size = total_block_size / blocks.len().max(1) as u64;
+            avg_block_size_estimate = avg_block_size.max(1);
             let is_heavy_batch = avg_block_size > self.config.heavy_block_threshold_bytes;
 
             if is_heavy_batch {
                 consecutive_heavy_batches += 1;
-                // Reduce batch size significantly for spam blocks
-                // This allows faster checkpointing and prevents crashes
-                current_batch_size = std::cmp::max(
-                    self.config.min_batch_size,
-                    current_batch_size / 4, // Reduce by 75%
+                // Reduce target bytes significantly for spam blocks.
+                current_target_bytes = std::cmp::max(
+                    self.config.min_batch_bytes,
+                    current_target_bytes / 4,
                 );
                 tracing::warn!(
-                    "Heavy block detected at height {} (avg {} bytes/block), reducing batch size to {} (consecutive: {})",
+                    "Heavy block detected at height {} (avg {} bytes/block), reducing target bytes to {} (consecutive: {})",
                     current_height,
                     avg_block_size,
-                    current_batch_size,
+                    current_target_bytes,
                     consecutive_heavy_batches
                 );
                 
@@ -1126,25 +1226,35 @@ impl SyncEngine {
                     }
                     
                     tracing::info!(
-                        "Emergency checkpoint at {} due to spam blocks (batch size: {})",
+                        "Emergency checkpoint at {} due to spam blocks (target bytes: {})",
                         batch_end,
-                        current_batch_size
+                        current_target_bytes
                     );
                 }
             } else {
                 // Reset counter and gradually increase batch size back to normal
                 consecutive_heavy_batches = 0;
-                if current_batch_size < self.config.batch_size {
-                    // Gradually increase back (by 25% each normal batch)
-                    current_batch_size = std::cmp::min(
-                        self.config.batch_size,
-                        current_batch_size + (self.config.batch_size / 4),
+                if current_target_bytes < self.config.target_batch_bytes {
+                    let bump = std::cmp::max(1, self.config.target_batch_bytes / 4);
+                    current_target_bytes = std::cmp::min(
+                        self.config.target_batch_bytes,
+                        current_target_bytes + bump,
                     );
                     tracing::debug!(
-                        "Normal blocks detected, increasing batch size to {}",
-                        current_batch_size
+                        "Normal blocks detected, increasing target bytes to {}",
+                        current_target_bytes
                     );
                 }
+            }
+
+            // Prefetch next batch while we process this one.
+            let next_start = batch_end + 1;
+            if next_start <= end {
+                let (next_end, desired_blocks) = self
+                    .compute_batch_end(next_start, end, current_target_bytes, avg_block_size_estimate)
+                    .await?;
+                current_batch_size = desired_blocks;
+                pending_fetch = Some(self.spawn_prefetch(next_start, next_end));
             }
 
             // Stage 2: Trial decryption (batched with parallelism)
@@ -1158,14 +1268,16 @@ impl SyncEngine {
                     id, ts, current_height, batch_end, blocks.len());
             }
             // #endregion
+            let decrypt_start = Instant::now();
             let mut notes = self.trial_decrypt_batch(&blocks).await?;
+            decrypt_ms = decrypt_start.elapsed().as_millis();
             // #region agent log
             if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
                 use std::io::Write;
                 let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
                 let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:852","message":"trial_decrypt done","data":{{"start":{},"end":{},"notes":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                    id, ts, current_height, batch_end, notes.len());
+                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:852","message":"trial_decrypt done","data":{{"start":{},"end":{},"notes":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
+                    id, ts, current_height, batch_end, notes.len(), decrypt_ms);
             }
             // #endregion
 
@@ -1188,22 +1300,24 @@ impl SyncEngine {
                     id, ts, current_height, batch_end);
             }
             // #endregion
+            let frontier_start = Instant::now();
             let (commitments_applied, position_mappings) = self.update_frontier(&blocks, &notes).await?;
+            frontier_ms = frontier_start.elapsed().as_millis();
             // #region agent log
             if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
                 use std::io::Write;
                 let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
                 let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:866","message":"update_frontier done","data":{{"start":{},"end":{},"commitments":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                    id, ts, current_height, batch_end, commitments_applied);
+                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:866","message":"update_frontier done","data":{{"start":{},"end":{},"commitments":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
+                    id, ts, current_height, batch_end, commitments_applied, frontier_ms);
             }
             // #endregion
             self.apply_positions(&mut notes, &position_mappings).await;
             self.apply_sapling_nullifiers(&mut notes, &position_mappings).await?;
 
-            if !notes.is_empty() {
-                self.fetch_and_enrich_notes(&mut notes, !self.config.lazy_memo_decode)
-                    .await?;
+            let require_memos = !self.config.lazy_memo_decode;
+            if !notes.is_empty() && !self.config.defer_full_tx_fetch {
+                self.fetch_and_enrich_notes(&mut notes, require_memos).await?;
             }
 
             if !notes.is_empty() {
@@ -1260,6 +1374,7 @@ impl SyncEngine {
 
             // Persist decrypted notes if storage is configured (after frontier update to get positions)
             if let Some(ref sink) = self.storage {
+                let persist_start = Instant::now();
                 // #region agent log
                 if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
                     use std::io::Write;
@@ -1285,13 +1400,14 @@ impl SyncEngine {
                 if !inserted.is_empty() {
                     self.update_nullifier_cache(&inserted);
                 }
+                persist_ms = persist_start.elapsed().as_millis();
                 // #region agent log
                 if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
                     use std::io::Write;
                     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:900","message":"persist_notes done","data":{{"start":{},"end":{},"notes":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                        id, ts, current_height, batch_end, notes.len());
+                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:900","message":"persist_notes done","data":{{"start":{},"end":{},"notes":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
+                        id, ts, current_height, batch_end, notes.len(), persist_ms);
                 }
                 // #endregion
             }
@@ -1302,20 +1418,26 @@ impl SyncEngine {
                     use std::io::Write;
                     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:906","message":"apply_spends start","data":{{"start":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                        id, ts, current_height, batch_end);
-                }
-                // #endregion
+                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:906","message":"apply_spends start","data":{{"start":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
+                    id, ts, current_height, batch_end);
+            }
+            // #endregion
+                let apply_start = Instant::now();
                 self.apply_spends(&blocks).await?;
+                apply_spends_ms = apply_start.elapsed().as_millis();
                 // #region agent log
                 if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
                     use std::io::Write;
                     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:909","message":"apply_spends done","data":{{"start":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                        id, ts, current_height, batch_end);
+                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:909","message":"apply_spends done","data":{{"start":{},"end":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
+                        id, ts, current_height, batch_end, apply_spends_ms);
                 }
                 // #endregion
+            }
+
+            if self.config.defer_full_tx_fetch && !notes.is_empty() {
+                self.spawn_background_enrich(notes.clone(), require_memos);
             }
 
             // Record batch performance
@@ -1326,6 +1448,33 @@ impl SyncEngine {
                 commitments_applied,
                 batch_duration.as_millis() as u64,
             );
+
+            // #region agent log
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+                let id = format!("{:08x}", ts);
+                let avg_block_size = total_block_size / blocks.len().max(1) as u64;
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:915","message":"batch_stage_timing","data":{{"start":{},"end":{},"blocks":{},"notes":{},"total_bytes":{},"avg_block_bytes":{},"fetch_wait_ms":{},"decrypt_ms":{},"frontier_ms":{},"persist_ms":{},"apply_spends_ms":{},"batch_total_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    id,
+                    ts,
+                    current_height,
+                    batch_end,
+                    blocks.len(),
+                    notes.len(),
+                    total_block_size,
+                    avg_block_size,
+                    fetch_wait_ms,
+                    decrypt_ms,
+                    frontier_ms,
+                    persist_ms,
+                    apply_spends_ms,
+                    batch_duration.as_millis()
+                );
+            }
+            // #endregion
 
             // Update progress with perf metrics
             {
@@ -1484,13 +1633,21 @@ impl SyncEngine {
         start: u64,
         end: u64,
     ) -> Result<Vec<CompactBlockData>> {
+        Self::fetch_blocks_with_retry_inner(self.client.clone(), start, end).await
+    }
+
+    async fn fetch_blocks_with_retry_inner(
+        client: LightClient,
+        start: u64,
+        end: u64,
+    ) -> Result<Vec<CompactBlockData>> {
         if start > end {
             return Ok(Vec::new());
         }
 
         let expected_blocks = end.saturating_sub(start).saturating_add(1) as usize;
 
-        if let Ok(cache) = BlockCache::for_endpoint(self.client.endpoint()) {
+        if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
             match cache.load_range(start, end) {
                 Ok(blocks) if blocks.len() == expected_blocks => {
                     tracing::debug!(
@@ -1499,6 +1656,27 @@ impl SyncEngine {
                         end,
                         expected_blocks
                     );
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache hit","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                            id,
+                            ts,
+                            start,
+                            end,
+                            blocks.len()
+                        );
+                    }
                     return Ok(blocks);
                 }
                 Ok(blocks) if !blocks.is_empty() => {
@@ -1509,6 +1687,28 @@ impl SyncEngine {
                         blocks.len(),
                         expected_blocks
                     );
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache partial","data":{{"start":{},"end":{},"blocks":{},"expected":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                            id,
+                            ts,
+                            start,
+                            end,
+                            blocks.len(),
+                            expected_blocks
+                        );
+                    }
                 }
                 Ok(_) => {}
                 Err(e) => {
@@ -1518,17 +1718,38 @@ impl SyncEngine {
                         end,
                         e
                     );
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache read error","data":{{"start":{},"end":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                            id,
+                            ts,
+                            start,
+                            end,
+                            e
+                        );
+                    }
                 }
             }
         }
 
         loop {
-            let inflight = acquire_inflight(self.client.endpoint(), start, end).await;
+            let inflight = acquire_inflight(client.endpoint(), start, end).await;
 
             match inflight {
                 InflightLease::Follower(notify) => {
                     notify.notified().await;
-                    if let Ok(cache) = BlockCache::for_endpoint(self.client.endpoint()) {
+                    if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
                         if let Ok(blocks) = cache.load_range(start, end) {
                             if blocks.len() == expected_blocks {
                                 return Ok(blocks);
@@ -1539,22 +1760,41 @@ impl SyncEngine {
                 }
                 InflightLease::Leader(token) => {
                     let mut attempts = 0;
-                    let result = loop {
-                        // Use get_compact_block_range with retry logic
-                        match self
-                            .client
-                            .get_compact_block_range(start as u32..(end + 1) as u32)
-                            .await
-                        {
-                            Ok(blocks) => {
-                                if let Ok(cache) = BlockCache::for_endpoint(self.client.endpoint())
-                                {
-                                    if let Err(e) = cache.store_blocks(&blocks) {
-                                        tracing::debug!(
+                        let result = loop {
+                            // Use get_compact_block_range with retry logic
+                            match client
+                                .get_compact_block_range(start as u32..(end + 1) as u32)
+                                .await
+                            {
+                                Ok(blocks) => {
+                                    if let Ok(cache) = BlockCache::for_endpoint(client.endpoint())
+                                    {
+                                        if let Err(e) = cache.store_blocks(&blocks) {
+                                            tracing::debug!(
                                             "Block cache store failed for {}-{}: {}",
                                             start,
                                             end,
                                             e
+                                        );
+                                    } else if let Ok(mut file) = std::fs::OpenOptions::new()
+                                        .create(true)
+                                        .append(true)
+                                        .open(debug_log_path())
+                                    {
+                                        use std::io::Write;
+                                        let ts = std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap_or_default()
+                                            .as_millis();
+                                        let id = format!("{:08x}", ts);
+                                        let _ = writeln!(
+                                            file,
+                                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache store","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                                            id,
+                                            ts,
+                                            start,
+                                            end,
+                                            blocks.len()
                                         );
                                     }
                                 }
@@ -1587,6 +1827,7 @@ impl SyncEngine {
         // Get IVKs from wallet keys for trial decryption (both Sapling and Orchard)
         let mut sapling_ivk_bytes = None;
         let mut orchard_ivk_bytes = None;
+        let mut orchard_fvk_inner = None;
 
         if let Some(ref keys) = self.keys {
             if let Some(ref dfvk) = keys.sapling_dfvk {
@@ -1596,11 +1837,12 @@ impl SyncEngine {
 
             if let Some(ref fvk) = keys.orchard_fvk {
                 orchard_ivk_bytes = Some(fvk.to_ivk_bytes());
+                orchard_fvk_inner = Some(fvk.inner.clone());
             }
         }
 
         if let Some(ref sink) = self.storage {
-            if sapling_ivk_bytes.is_none() || orchard_ivk_bytes.is_none() {
+            if sapling_ivk_bytes.is_none() || orchard_ivk_bytes.is_none() || orchard_fvk_inner.is_none() {
                 let secret = {
                     let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
                     let repo = Repository::new(&db);
@@ -1639,6 +1881,21 @@ impl SyncEngine {
                                 None
                             }
                         });
+                }
+
+                if orchard_fvk_inner.is_none() {
+                    if let Some(bytes) = secret.orchard_extsk.as_ref() {
+                        if let Ok(extsk) = OrchardExtendedSpendingKey::from_bytes(bytes) {
+                            orchard_fvk_inner = Some(extsk.to_extended_fvk().inner.clone());
+                        }
+                    }
+                    if orchard_fvk_inner.is_none() {
+                        if let Some(bytes) = secret.orchard_ivk.as_ref().filter(|b| b.len() == 137) {
+                            if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(bytes) {
+                                orchard_fvk_inner = Some(fvk.inner.clone());
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1685,36 +1942,14 @@ impl SyncEngine {
             }
         }
 
-        // Batch trial decryption with bounded parallelism
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_parallel_decrypt));
-        let mut tasks = Vec::new();
-
-        for block in blocks {
-            let sem = Arc::clone(&semaphore);
-            let block = block.clone();
-            let lazy_memo = self.config.lazy_memo_decode;
-            let sapling_ivk_bytes = sapling_ivk_bytes; // Copy for closure
-            let orchard_ivk_bytes_opt = orchard_ivk_bytes; // Copy for closure (may be None)
-
-            let task = tokio::spawn(async move {
-                let _permit = sem.acquire().await.unwrap();
-                trial_decrypt_block(
-                    &block,
-                    lazy_memo,
-                    sapling_ivk_bytes.as_ref(),
-                    orchard_ivk_bytes_opt.as_ref(),
-                )
-            });
-
-            tasks.push(task);
-        }
-
-        // Collect results
-        let mut all_notes = Vec::new();
-        for task in tasks {
-            let notes = task.await.map_err(|e| Error::Sync(e.to_string()))??;
-            all_notes.extend(notes);
-        }
+        let all_notes = trial_decrypt_batch_impl(
+            blocks,
+            sapling_ivk_bytes.as_ref(),
+            orchard_ivk_bytes.as_ref(),
+            orchard_fvk_inner.as_ref(),
+            self.decrypt_pool.as_ref(),
+            self.config.max_parallel_decrypt,
+        )?;
 
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -1753,16 +1988,185 @@ impl SyncEngine {
         Ok(all_notes)
     }
 
-    /// Fetch full transactions to enrich notes (memos, Orchard nullifiers, outgoing memo recovery).
+    fn spawn_prefetch(&self, start: u64, end: u64) -> PrefetchTask {
+        let client = self.client.clone();
+        let handle = tokio::spawn(async move {
+            SyncEngine::fetch_blocks_with_retry_inner(client, start, end).await
+        });
+        PrefetchTask { start, end, handle }
+    }
+
+    async fn compute_batch_end(
+        &self,
+        current_height: u64,
+        end: u64,
+        current_target_bytes: u64,
+        avg_block_size_estimate: u64,
+    ) -> Result<(u64, u64)> {
+        let mut target_bytes = current_target_bytes
+            .clamp(self.config.min_batch_bytes, self.config.max_batch_bytes);
+        if let Some(max_memory) = self.config.max_batch_memory_bytes {
+            target_bytes = target_bytes.min(max_memory);
+        }
+
+        let estimated_block_bytes = avg_block_size_estimate.max(1);
+        let mut desired_blocks = target_bytes / estimated_block_bytes;
+        if desired_blocks == 0 {
+            desired_blocks = 1;
+        }
+        desired_blocks = desired_blocks
+            .clamp(self.config.min_batch_size, self.config.max_batch_size);
+
+        let desired_end = std::cmp::min(current_height + desired_blocks - 1, end);
+
+        if !self.config.use_server_batch_recommendations {
+            return Ok((desired_end, desired_blocks));
+        }
+
+        match self.client.get_lite_wallet_block_group(current_height).await {
+            Ok(server_end) => {
+                let optimal_end = std::cmp::min(server_end, end);
+                let server_batch_size = optimal_end.saturating_sub(current_height).saturating_add(1);
+                let max_capped_end = std::cmp::min(
+                    optimal_end,
+                    current_height + self.config.max_batch_size - 1,
+                );
+                let batch_end = std::cmp::max(desired_end, max_capped_end);
+
+                if max_capped_end > current_height {
+                    // #region agent log
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:compute_batch_end","message":"server batch recommendation","data":{{"server_batch_size":{},"desired_blocks":{},"max_batch_size":{},"chosen_blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"G"}}"#,
+                            id,
+                            ts,
+                            server_batch_size,
+                            desired_blocks,
+                            self.config.max_batch_size,
+                            batch_end - current_height + 1
+                        );
+                    }
+                    // #endregion
+                    tracing::debug!(
+                        "Batch sizing: server {} blocks, desired {} blocks, chosen {} blocks",
+                        server_batch_size,
+                        desired_blocks,
+                        batch_end - current_height + 1
+                    );
+                }
+
+                Ok((batch_end, desired_blocks))
+            }
+            Err(e) => {
+                tracing::debug!(
+                    "Server batch grouping unavailable ({}), using byte-based batch size: {} blocks",
+                    e,
+                    desired_blocks
+                );
+                Ok((desired_end, desired_blocks))
+            }
+        }
+    }
+
+    fn spawn_background_enrich(&self, notes: Vec<DecryptedNote>, require_memos: bool) {
+        let sink = match self.storage.clone() {
+            Some(s) => s,
+            None => return,
+        };
+        let client = self.client.clone();
+        let keys = self.keys.clone();
+        let wallet_id = self.wallet_id.clone();
+        let max_parallel = self.config.max_parallel_decrypt.max(1);
+        let semaphore = Arc::clone(&self.enrich_semaphore);
+
+        tokio::spawn(async move {
+            let _permit = match semaphore.acquire_owned().await {
+                Ok(permit) => permit,
+                Err(_) => return,
+            };
+            let mut notes = notes;
+            if let Err(e) = SyncEngine::fetch_and_enrich_notes_with_context(
+                client,
+                sink,
+                wallet_id,
+                keys,
+                max_parallel,
+                &mut notes,
+                require_memos,
+            )
+            .await
+            {
+                tracing::warn!("Background full-tx enrich failed: {}", e);
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:spawn_background_enrich","message":"background enrich failed","data":{{"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        id,
+                        ts,
+                        e
+                    );
+                }
+            }
+        });
+    }
+
     async fn fetch_and_enrich_notes(
         &self,
         notes: &mut [DecryptedNote],
         require_memos: bool,
     ) -> Result<()> {
-        let sink = match self.storage.as_ref() {
+        let sink = match self.storage.clone() {
             Some(s) => s,
             None => return Ok(()),
         };
+        let client = self.client.clone();
+        let keys = self.keys.clone();
+        let wallet_id = self.wallet_id.clone();
+        let max_parallel = self.config.max_parallel_decrypt.max(1);
+
+        Self::fetch_and_enrich_notes_with_context(
+            client,
+            sink,
+            wallet_id,
+            keys,
+            max_parallel,
+            notes,
+            require_memos,
+        )
+        .await
+    }
+
+    /// Fetch full transactions to enrich notes (memos, Orchard nullifiers, outgoing memo recovery).
+    async fn fetch_and_enrich_notes_with_context(
+        client: LightClient,
+        sink: StorageSink,
+        wallet_id: Option<String>,
+        keys: Option<WalletKeys>,
+        max_parallel: usize,
+        notes: &mut [DecryptedNote],
+        require_memos: bool,
+    ) -> Result<()> {
 
         let mut sapling_ivk_bytes = None;
         let mut orchard_ivk_bytes = None;
@@ -1770,61 +2174,58 @@ impl SyncEngine {
         let mut orchard_ovk = None;
         let mut orchard_fvk = None;
 
-        if let Some(ref keys) = self.keys {
-            if let Some(ref dfvk) = keys.sapling_dfvk {
+        if let Some(ref wallet_keys) = keys {
+            if let Some(ref dfvk) = wallet_keys.sapling_dfvk {
                 let sapling_ivk = dfvk.to_ivk();
                 sapling_ivk_bytes = Some(sapling_ivk.to_sapling_ivk_bytes());
                 sapling_ovk = Some(dfvk.outgoing_viewing_key());
             }
 
-            if let Some(ref fvk) = keys.orchard_fvk {
+            if let Some(ref fvk) = wallet_keys.orchard_fvk {
                 orchard_ivk_bytes = Some(fvk.to_ivk_bytes());
                 orchard_ovk = Some(fvk.to_ovk());
                 orchard_fvk = Some(fvk.inner.clone());
             }
         }
 
-        if let Some(ref sink) = self.storage {
-            if sapling_ivk_bytes.is_none() || orchard_ivk_bytes.is_none() || orchard_fvk.is_none() {
-                let secret = {
-                    let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
-                    let repo = Repository::new(&db);
-                    let wallet_id = self
-                        .wallet_id
-                        .as_ref()
-                        .ok_or_else(|| Error::Sync("Wallet ID not set".to_string()))?;
-                    repo.get_wallet_secret(wallet_id)?
-                        .ok_or_else(|| Error::Sync("Wallet secret not found".to_string()))?
-                };
+        if sapling_ivk_bytes.is_none() || orchard_ivk_bytes.is_none() || orchard_fvk.is_none() {
+            let secret = {
+                let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+                let repo = Repository::new(&db);
+                let wallet_id = wallet_id
+                    .as_ref()
+                    .ok_or_else(|| Error::Sync("Wallet ID not set".to_string()))?;
+                repo.get_wallet_secret(wallet_id)?
+                    .ok_or_else(|| Error::Sync("Wallet secret not found".to_string()))?
+            };
 
-                if sapling_ivk_bytes.is_none() {
-                    if let Some(ivk) = secret.sapling_ivk {
-                        if ivk.len() == 32 {
-                            let mut bytes = [0u8; 32];
-                            bytes.copy_from_slice(&ivk[..32]);
-                            sapling_ivk_bytes = Some(bytes);
-                        }
+            if sapling_ivk_bytes.is_none() {
+                if let Some(ivk) = secret.sapling_ivk {
+                    if ivk.len() == 32 {
+                        let mut bytes = [0u8; 32];
+                        bytes.copy_from_slice(&ivk[..32]);
+                        sapling_ivk_bytes = Some(bytes);
                     }
                 }
+            }
 
-                if let Some(ivk) = secret.orchard_ivk {
-                    if ivk.len() == 64 {
+            if let Some(ivk) = secret.orchard_ivk {
+                if ivk.len() == 64 {
+                    if orchard_ivk_bytes.is_none() {
+                        let mut bytes = [0u8; 64];
+                        bytes.copy_from_slice(&ivk[..64]);
+                        orchard_ivk_bytes = Some(bytes);
+                    }
+                } else if ivk.len() == 137 {
+                    if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(&ivk) {
                         if orchard_ivk_bytes.is_none() {
-                            let mut bytes = [0u8; 64];
-                            bytes.copy_from_slice(&ivk[..64]);
-                            orchard_ivk_bytes = Some(bytes);
+                            orchard_ivk_bytes = Some(fvk.to_ivk_bytes());
                         }
-                    } else if ivk.len() == 137 {
-                        if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(&ivk) {
-                            if orchard_ivk_bytes.is_none() {
-                                orchard_ivk_bytes = Some(fvk.to_ivk_bytes());
-                            }
-                            if orchard_ovk.is_none() {
-                                orchard_ovk = Some(fvk.to_ovk());
-                            }
-                            if orchard_fvk.is_none() {
-                                orchard_fvk = Some(fvk.inner.clone());
-                            }
+                        if orchard_ovk.is_none() {
+                            orchard_ovk = Some(fvk.to_ovk());
+                        }
+                        if orchard_fvk.is_none() {
+                            orchard_fvk = Some(fvk.inner.clone());
                         }
                     }
                 }
@@ -1997,9 +2398,8 @@ impl SyncEngine {
             );
         }
 
-        let max_parallel = self.config.max_parallel_decrypt.max(1);
+        let max_parallel = max_parallel.max(1);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_parallel));
-        let client = self.client.clone();
         let fetch_start = Instant::now();
 
         if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -2334,11 +2734,11 @@ impl SyncEngine {
             let txid_hex = hex::encode(txid);
             let has_memo = sink.get_tx_memo(&txid_hex).ok().flatten().is_some();
             if !has_memo {
-                if let Err(e) = self.recover_outgoing_memos(
+                if let Err(e) = Self::recover_outgoing_memos(
                     &raw_tx_bytes,
                     work.block.unwrap_or(0),
                     &txid_hex,
-                    sink,
+                    &sink,
                     sapling_ovk.as_ref(),
                     orchard_ovk.as_ref(),
                 ) {
@@ -2503,7 +2903,6 @@ impl SyncEngine {
     }
 
     fn recover_outgoing_memos(
-        &self,
         raw_tx_bytes: &[u8],
         height: u64,
         txid_hex: &str,
@@ -2847,8 +3246,16 @@ impl SyncEngine {
             None => return Ok(()),
         };
         let mut spend_updates: Vec<(i64, [u8; 32])> = Vec::new();
+        let mut spend_nullifiers: Vec<([u8; 32], [u8; 32])> = Vec::new();
+        let mut sapling_spends = 0u64;
+        let mut orchard_spends = 0u64;
+        let mut matched_spends = 0u64;
+        let mut min_height: Option<u64> = None;
+        let mut max_height: Option<u64> = None;
 
         for block in blocks {
+            min_height = Some(min_height.map_or(block.height, |h| h.min(block.height)));
+            max_height = Some(max_height.map_or(block.height, |h| h.max(block.height)));
             let block_time = if block.time > 0 {
                 block.time as i64
             } else {
@@ -2866,12 +3273,15 @@ impl SyncEngine {
 
                 for spend in &tx.spends {
                     if spend.nf.len() == 32 {
+                        sapling_spends += 1;
                         let mut nf = [0u8; 32];
                         nf.copy_from_slice(&spend.nf[..32]);
                         if !nf.iter().all(|b| *b == 0) {
+                            spend_nullifiers.push((nf, txid));
                             if let Some(id) = self.nullifier_cache.remove(&nf) {
                                 spend_updates.push((id, txid));
                                 has_spend = true;
+                                matched_spends += 1;
                             }
                         }
                     }
@@ -2879,12 +3289,15 @@ impl SyncEngine {
 
                 for action in &tx.actions {
                     if action.nullifier.len() == 32 {
+                        orchard_spends += 1;
                         let mut nf = [0u8; 32];
                         nf.copy_from_slice(&action.nullifier[..32]);
                         if !nf.iter().all(|b| *b == 0) {
+                            spend_nullifiers.push((nf, txid));
                             if let Some(id) = self.nullifier_cache.remove(&nf) {
                                 spend_updates.push((id, txid));
                                 has_spend = true;
+                                matched_spends += 1;
                             }
                         }
                     }
@@ -2898,10 +3311,13 @@ impl SyncEngine {
             }
         }
 
+        let mut updated_count = 0u64;
+        let mut fallback_updates = 0u64;
         if !spend_updates.is_empty() {
             let start = Instant::now();
             match sink.mark_notes_spent_by_ids_with_txid(&spend_updates) {
                 Ok(updated) => {
+                    updated_count = updated;
                     tracing::debug!(
                         "Marked {} notes spent ({} nullifiers) in {}ms",
                         updated,
@@ -2913,6 +3329,50 @@ impl SyncEngine {
                     tracing::warn!("Failed to mark notes spent for batch: {}", e);
                 }
             }
+        }
+        if matched_spends == 0
+            && !spend_nullifiers.is_empty()
+            && !self.nullifier_cache.is_empty()
+        {
+            match sink.mark_notes_spent_by_nullifiers_with_txid(&spend_nullifiers) {
+                Ok(updated) => {
+                    if updated > 0 {
+                        fallback_updates = updated;
+                        self.nullifier_cache.clear();
+                        self.nullifier_cache_loaded = false;
+                        let _ = self.ensure_nullifier_cache();
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Fallback spend match failed: {}", e);
+                }
+            }
+        }
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:apply_spends","message":"apply_spends summary","data":{{"start":{},"end":{},"sapling_spends":{},"orchard_spends":{},"matched_spends":{},"updates":{},"fallback_updates":{},"cache_size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                id,
+                ts,
+                min_height.unwrap_or(0),
+                max_height.unwrap_or(0),
+                sapling_spends,
+                orchard_spends,
+                matched_spends,
+                updated_count,
+                fallback_updates,
+                self.nullifier_cache.len()
+            );
         }
 
         Ok(())
@@ -3343,6 +3803,18 @@ struct StorageSink {
     account_id: i64,
 }
 
+impl Clone for StorageSink {
+    fn clone(&self) -> Self {
+        let key_bytes = *self.key.as_bytes();
+        Self {
+            db_path: self.db_path.clone(),
+            key: EncryptionKey::from_bytes(key_bytes),
+            master_key: self.master_key.clone(),
+            account_id: self.account_id,
+        }
+    }
+}
+
 impl StorageSink {
     fn persist_notes(
         &self,
@@ -3635,117 +4107,319 @@ struct PositionMaps {
 }
 
 /// Wallet keys cached for trial decryption
+#[derive(Clone)]
 struct WalletKeys {
     sapling_dfvk: Option<ExtendedFullViewingKey>,
     orchard_fvk: Option<OrchardExtendedFullViewingKey>,
 }
 
-/// Trial decrypt a single block (both Sapling and Orchard)
-fn trial_decrypt_block(
-    block: &CompactBlockData,
-    _lazy_memo: bool,
+#[derive(Clone, Debug)]
+struct SaplingOutputMeta {
+    height: u64,
+    tx_index: usize,
+    output_index: usize,
+    tx_hash: Vec<u8>,
+}
+
+#[derive(Clone, Debug)]
+struct OrchardOutputMeta {
+    height: u64,
+    tx_index: usize,
+    output_index: usize,
+    tx_hash: Vec<u8>,
+    commitment: [u8; 32],
+}
+
+#[derive(Clone, Debug)]
+struct SaplingBatchOutput {
+    epk: [u8; 32],
+    cmu: [u8; 32],
+    ciphertext: [u8; 52],
+}
+
+impl ShieldedOutput<SaplingDomain<PirateNetwork>, COMPACT_NOTE_SIZE> for SaplingBatchOutput {
+    fn ephemeral_key(&self) -> EphemeralKeyBytes {
+        EphemeralKeyBytes(self.epk)
+    }
+
+    fn cmstar_bytes(&self) -> <SaplingDomain<PirateNetwork> as zcash_note_encryption::Domain>::ExtractedCommitmentBytes {
+        self.cmu
+    }
+
+    fn enc_ciphertext(&self) -> &[u8; COMPACT_NOTE_SIZE] {
+        &self.ciphertext
+    }
+}
+
+fn sapling_rseed_to_bytes(note: &zcash_primitives::sapling::Note) -> (u8, [u8; 32]) {
+    match note.rseed() {
+        Rseed::BeforeZip212(rcm) => {
+            let mut bytes = [0u8; 32];
+            bytes.copy_from_slice(&rcm.to_repr());
+            (0x01, bytes)
+        }
+        Rseed::AfterZip212(rseed) => (0x02, *rseed),
+    }
+}
+
+fn try_compact_note_decryption_parallel<D, Output>(
+    pool: &rayon::ThreadPool,
+    ivks: &[D::IncomingViewingKey],
+    outputs: &[(D, Output)],
+    max_parallel: usize,
+) -> Vec<Option<((D::Note, D::Recipient), usize)>>
+where
+    D: zcash_note_encryption::BatchDomain + Sync,
+    Output: ShieldedOutput<D, COMPACT_NOTE_SIZE> + Sync,
+    D::IncomingViewingKey: Sync,
+    D::Note: Send,
+    D::Recipient: Send,
+{
+    if ivks.is_empty() {
+        return (0..outputs.len()).map(|_| None).collect();
+    }
+
+    let outputs_len = outputs.len();
+    if outputs_len == 0 {
+        return Vec::new();
+    }
+
+    let max_parallel = max_parallel.max(1);
+    if max_parallel == 1 || outputs_len < MIN_PARALLEL_OUTPUTS {
+        return note_batch::try_compact_note_decryption(ivks, outputs);
+    }
+
+    let mut chunk_size = (outputs_len + max_parallel - 1) / max_parallel;
+    if chunk_size < MIN_PARALLEL_OUTPUTS {
+        chunk_size = MIN_PARALLEL_OUTPUTS;
+    }
+    let chunk_count = (outputs_len + chunk_size - 1) / chunk_size;
+    if chunk_count <= 1 {
+        return note_batch::try_compact_note_decryption(ivks, outputs);
+    }
+
+    pool.install(|| {
+        outputs
+            .par_chunks(chunk_size)
+            .map(|chunk| note_batch::try_compact_note_decryption(ivks, chunk))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .flatten()
+            .collect()
+    })
+}
+
+fn trial_decrypt_batch_impl(
+    blocks: &[CompactBlockData],
     sapling_ivk_bytes: Option<&[u8; 32]>,
     orchard_ivk_bytes_opt: Option<&[u8; 64]>,
+    orchard_fvk: Option<&orchard::keys::FullViewingKey>,
+    decrypt_pool: &rayon::ThreadPool,
+    max_parallel: usize,
 ) -> Result<Vec<DecryptedNote>> {
-    use crate::sapling::trial_decrypt::try_decrypt_compact_output;
-    use crate::orchard::trial_decrypt::try_decrypt_compact_orchard_action;
-    
-    let mut notes = Vec::new();
+    let mut sapling_outputs: Vec<(SaplingDomain<PirateNetwork>, SaplingBatchOutput)> = Vec::new();
+    let mut sapling_meta: Vec<SaplingOutputMeta> = Vec::new();
+    let mut orchard_outputs: Vec<(OrchardDomain, CompactAction)> = Vec::new();
+    let mut orchard_meta: Vec<OrchardOutputMeta> = Vec::new();
 
-    for (tx_idx, tx) in block.transactions.iter().enumerate() {
-        // Process Sapling outputs
-        if let Some(sapling_ivk_bytes) = sapling_ivk_bytes {
-            for (output_idx, output) in tx.outputs.iter().enumerate() {
-                // Validate output has required fields
-                if output.cmu.len() != 32 || output.ephemeral_key.len() != 32 || output.ciphertext.len() < 52 {
-                    continue;
-                }
+    for block in blocks {
+        let height = block.height;
+        for (tx_idx, tx) in block.transactions.iter().enumerate() {
+            let tx_index = tx.index.unwrap_or(tx_idx as u64) as usize;
+            let tx_hash = tx.hash.clone();
 
-                // Perform real trial decryption
-                if let Some(decrypted) = try_decrypt_compact_output(sapling_ivk_bytes, output) {
-                    // Extract note value
-                    let value = decrypted.value;
-                    
-                    // Extract diversifier
-                    let mut diversifier_bytes = [0u8; 11];
-                    diversifier_bytes.copy_from_slice(&decrypted.diversifier[..11]);
-                    
-                    // Extract commitment
-                    let mut commitment = [0u8; 32];
-                    commitment.copy_from_slice(&output.cmu[..32]);
-                    
-                    // Create DecryptedNote using pipeline structure
-                    // Note: encrypted_memo is empty for compact decryption (memo requires full 580-byte ciphertext)
-                    let mut note = DecryptedNote::new(
-                        block.height,
-                        tx.index.unwrap_or(tx_idx as u64) as usize, // tx_index
-                        output_idx, // output_index
-                        value,
-                        commitment,
-                        [0u8; 32], // nullifier - will be computed when spending
-                        Vec::new(), // encrypted_memo - empty for compact decryption, will be populated later
-                    );
-                    note.set_tx_hash(tx.hash.clone());
-                    note.diversifier = diversifier_bytes.to_vec();
-                    note.sapling_rseed_leadbyte = Some(decrypted.leadbyte);
-                    note.sapling_rseed = Some(decrypted.rseed);
-                    note.note_bytes = encode_sapling_note_bytes_from_address_bytes(
-                        decrypted.address,
-                        decrypted.leadbyte,
-                        decrypted.rseed,
-                    );
-                    notes.push(note);
+            if sapling_ivk_bytes.is_some() {
+                for (output_idx, output) in tx.outputs.iter().enumerate() {
+                    if output.cmu.len() != 32
+                        || output.ephemeral_key.len() != 32
+                        || output.ciphertext.len() < 52
+                    {
+                        continue;
+                    }
+
+                    let mut cmu = [0u8; 32];
+                    cmu.copy_from_slice(&output.cmu[..32]);
+                    let mut epk = [0u8; 32];
+                    epk.copy_from_slice(&output.ephemeral_key[..32]);
+                    let mut ciphertext = [0u8; 52];
+                    ciphertext.copy_from_slice(&output.ciphertext[..52]);
+
+                    let domain = SaplingDomain::for_height(PirateNetwork::default(), BlockHeight::from_u32(height as u32));
+                    sapling_outputs.push((domain, SaplingBatchOutput { epk, cmu, ciphertext }));
+                    sapling_meta.push(SaplingOutputMeta {
+                        height,
+                        tx_index,
+                        output_index: output_idx,
+                        tx_hash: tx_hash.clone(),
+                    });
                 }
             }
-        }
 
-        // Process Orchard actions (if Orchard IVK is available)
-        if let Some(orchard_ivk_bytes) = orchard_ivk_bytes_opt {
-            for (action_idx, action) in tx.actions.iter().enumerate() {
-                if action.cmx.len() != 32
-                    || action.ephemeral_key.len() != 32
-                    || action.enc_ciphertext.len() < 52
-                {
-                    continue;
-                }
-                // Perform Orchard trial decryption
-                match try_decrypt_compact_orchard_action(action, orchard_ivk_bytes) {
-                    Ok(Some(decrypted)) => {
-                        // Extract commitment
-                        let mut commitment = [0u8; 32];
-                        commitment.copy_from_slice(&action.cmx[..32]);
-                        
-                        // Create DecryptedNote for Orchard
-                        // Note: encrypted_memo is empty for compact decryption (memo requires full transaction)
-                        let mut note = DecryptedNote::new_orchard(
-                            block.height,
-                            tx.index.unwrap_or(tx_idx as u64) as usize, // tx_index
-                            action_idx, // output_index (action index in transaction)
-                            decrypted.value,
-                            commitment,
-                            [0u8; 32], // nullifier - computed from full note data
-                            Vec::new(), // encrypted_memo - empty for compact decryption, will be populated later
-                            None,
-                            Some(0), // position - will be updated from full transaction
-                        );
-                        note.set_tx_hash(tx.hash.clone());
-                        // Store diversifier for Orchard (extracted from 52-byte prefix, just like Sapling)
-                        note.diversifier = decrypted.diversifier.to_vec();
-                        notes.push(note);
+            if orchard_ivk_bytes_opt.is_some() {
+                for (action_idx, action) in tx.actions.iter().enumerate() {
+                    if action.cmx.len() != 32
+                        || action.nullifier.len() != 32
+                        || action.ephemeral_key.len() != 32
+                        || action.enc_ciphertext.len() < 52
+                    {
+                        continue;
                     }
-                    Ok(None) => {
-                        // Decryption failed - note doesn't belong to us, continue
+
+                    let mut cmx_bytes = [0u8; 32];
+                    cmx_bytes.copy_from_slice(&action.cmx[..32]);
+                    let cmx_ct = OrchardExtractedNoteCommitment::from_bytes(&cmx_bytes);
+                    if !bool::from(cmx_ct.is_some()) {
+                        continue;
                     }
-                    Err(e) => {
-                        tracing::debug!("Orchard trial decryption error: {}", e);
-                        // Continue to next action
+                    let cmx = cmx_ct.unwrap();
+
+                    let mut nf_bytes = [0u8; 32];
+                    nf_bytes.copy_from_slice(&action.nullifier[..32]);
+                    let nf_ct = OrchardNullifier::from_bytes(&nf_bytes);
+                    if !bool::from(nf_ct.is_some()) {
+                        continue;
                     }
+                    let nullifier = nf_ct.unwrap();
+
+                    let mut epk = [0u8; 32];
+                    epk.copy_from_slice(&action.ephemeral_key[..32]);
+                    let mut enc_ciphertext = [0u8; 52];
+                    enc_ciphertext.copy_from_slice(&action.enc_ciphertext[..52]);
+
+                    let compact_action = CompactAction::from_parts(
+                        nullifier,
+                        cmx,
+                        EphemeralKeyBytes(epk),
+                        enc_ciphertext,
+                    );
+                    let domain = OrchardDomain::for_nullifier(nullifier);
+                    orchard_outputs.push((domain, compact_action));
+                    orchard_meta.push(OrchardOutputMeta {
+                        height,
+                        tx_index,
+                        output_index: action_idx,
+                        tx_hash: tx_hash.clone(),
+                        commitment: cmx.to_bytes(),
+                    });
                 }
             }
         }
     }
 
+    let mut notes = Vec::new();
+
+    if let Some(ivk_bytes) = sapling_ivk_bytes {
+        if !sapling_outputs.is_empty() {
+            if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(ivk_bytes)) {
+                let sapling_ivk = SaplingIvk(ivk_fr);
+                let prepared_ivk = PreparedIncomingViewingKey::new(&sapling_ivk);
+                let sapling_results = try_compact_note_decryption_parallel(
+                    decrypt_pool,
+                    std::slice::from_ref(&prepared_ivk),
+                    &sapling_outputs,
+                    max_parallel,
+                );
+
+                for (idx, result) in sapling_results.into_iter().enumerate() {
+                    if let Some(((note, address), _)) = result {
+                        let meta = &sapling_meta[idx];
+                        let (leadbyte, rseed_bytes) = sapling_rseed_to_bytes(&note);
+                        let value = note.value().inner();
+                        let commitment = sapling_outputs[idx].1.cmu;
+
+                        let mut note_rec = DecryptedNote::new(
+                            meta.height,
+                            meta.tx_index,
+                            meta.output_index,
+                            value,
+                            commitment,
+                            [0u8; 32],
+                            Vec::new(),
+                        );
+                        note_rec.set_tx_hash(meta.tx_hash.clone());
+                        note_rec.diversifier = address.diversifier().0.to_vec();
+                        note_rec.sapling_rseed_leadbyte = Some(leadbyte);
+                        note_rec.sapling_rseed = Some(rseed_bytes);
+                        note_rec.note_bytes = encode_sapling_note_bytes(address, leadbyte, rseed_bytes);
+                        notes.push(note_rec);
+                    }
+                }
+            } else {
+                tracing::warn!("Invalid Sapling IVK bytes; skipping Sapling trial decryption");
+            }
+        }
+    }
+
+    if let Some(orchard_ivk_bytes) = orchard_ivk_bytes_opt {
+        if !orchard_outputs.is_empty() {
+            let ivk_ct = OrchardIncomingViewingKey::from_bytes(orchard_ivk_bytes);
+            if bool::from(ivk_ct.is_some()) {
+                let ivk = ivk_ct.unwrap();
+                let prepared_ivk = OrchardPreparedIncomingViewingKey::new(&ivk);
+                let orchard_results = try_compact_note_decryption_parallel(
+                    decrypt_pool,
+                    std::slice::from_ref(&prepared_ivk),
+                    &orchard_outputs,
+                    max_parallel,
+                );
+
+                for (idx, result) in orchard_results.into_iter().enumerate() {
+                    if let Some(((note, address), _)) = result {
+                        let meta = &orchard_meta[idx];
+                        let value = note.value().inner();
+                        let rho = note.rho().to_bytes();
+                        let rseed = *note.rseed().as_bytes();
+                        let commitment = meta.commitment;
+
+                        let mut note_rec = DecryptedNote::new_orchard(
+                            meta.height,
+                            meta.tx_index,
+                            meta.output_index,
+                            value,
+                            commitment,
+                            [0u8; 32],
+                            Vec::new(),
+                            None,
+                            Some(0),
+                        );
+                        note_rec.set_tx_hash(meta.tx_hash.clone());
+                        note_rec.diversifier = address.diversifier().as_array().to_vec();
+                        note_rec.orchard_rho = Some(rho);
+                        note_rec.orchard_rseed = Some(rseed);
+                        note_rec.note_bytes = encode_orchard_note_bytes(&address, rho, rseed);
+                        if let Some(fvk) = orchard_fvk {
+                            note_rec.nullifier = note.nullifier(fvk).to_bytes();
+                        }
+                        notes.push(note_rec);
+                    }
+                }
+            } else {
+                tracing::warn!("Invalid Orchard IVK bytes; skipping Orchard trial decryption");
+            }
+        }
+    }
+
     Ok(notes)
+}
+
+/// Trial decrypt a single block (Sapling/Orchard) for tests.
+fn trial_decrypt_block(
+    block: &CompactBlockData,
+    sapling_ivk_bytes: Option<&[u8; 32]>,
+    orchard_ivk_bytes_opt: Option<&[u8; 64]>,
+) -> Result<Vec<DecryptedNote>> {
+    let decrypt_pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .expect("failed to build trial-decrypt thread pool");
+    trial_decrypt_batch_impl(
+        std::slice::from_ref(block),
+        sapling_ivk_bytes,
+        orchard_ivk_bytes_opt,
+        None,
+        &decrypt_pool,
+        1,
+    )
 }
 
 // DecryptedNote is imported from pipeline module - no need to redefine here
@@ -3789,7 +4463,7 @@ mod tests {
 
         // Dummy IVK bytes for test
         let dummy_ivk = [0u8; 32];
-        let notes = trial_decrypt_block(&block, true, Some(&dummy_ivk), None).unwrap();
+        let notes = trial_decrypt_block(&block, Some(&dummy_ivk), None).unwrap();
         assert_eq!(notes.len(), 0);
     }
 }
