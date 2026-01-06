@@ -587,7 +587,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       }
       
       // Sign transaction via FFI
-      setState(() => _sendingStage = 'Generating Sapling proofs...');
+      setState(() => _sendingStage = 'Generating Cryptographic Proofs...');
       final signedTx = await FfiBridge.signTx(walletId, _pendingTx!);
       
       // Broadcast transaction via FFI
@@ -623,7 +623,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
   /// Show success dialog
   Future<void> _showSuccessDialog() async {
-    await PDialog.show(
+    final goHome = await PDialog.show<bool>(
       context: context,
       barrierDismissible: false,
       title: 'Sent',
@@ -675,13 +675,13 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         PDialogAction(
           label: 'Done',
           variant: PButtonVariant.primary,
-          onPressed: () {
-            context.pop(); // Close dialog
-            context.pop(); // Return to home
-          },
+          result: true,
         ),
       ],
     );
+    if (goHome == true && mounted) {
+      context.go('/home');
+    }
   }
 
   @override
