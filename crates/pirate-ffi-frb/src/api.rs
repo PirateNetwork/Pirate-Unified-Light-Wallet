@@ -869,6 +869,334 @@ pub fn unlock_app(passphrase: String) -> Result<()> {
     Ok(())
 }
 
+fn reencrypt_blob(old_key: &MasterKey, new_key: &MasterKey, blob: &[u8]) -> Result<Vec<u8>> {
+    let plaintext = old_key
+        .decrypt(blob)
+        .map_err(|e| anyhow!("Failed to decrypt existing data: {}", e))?;
+    new_key
+        .encrypt(&plaintext)
+        .map_err(|e| anyhow!("Failed to encrypt with new key: {}", e))
+}
+
+fn reencrypt_optional_blob(
+    old_key: &MasterKey,
+    new_key: &MasterKey,
+    blob: Option<Vec<u8>>,
+) -> Result<Option<Vec<u8>>> {
+    match blob {
+        Some(value) => Ok(Some(reencrypt_blob(old_key, new_key, &value)?)),
+        None => Ok(None),
+    }
+}
+
+fn reencrypt_wallet_tables(
+    conn: &rusqlite::Connection,
+    old_key: &MasterKey,
+    new_key: &MasterKey,
+) -> Result<()> {
+    {
+        let mut stmt = conn.prepare(
+            "SELECT id, account_id, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo FROM notes",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Vec<u8>>(1)?,
+                row.get::<_, Vec<u8>>(2)?,
+                row.get::<_, Vec<u8>>(3)?,
+                row.get::<_, Vec<u8>>(4)?,
+                row.get::<_, Vec<u8>>(5)?,
+                row.get::<_, Vec<u8>>(6)?,
+                row.get::<_, Vec<u8>>(7)?,
+                row.get::<_, Vec<u8>>(8)?,
+                row.get::<_, Option<Vec<u8>>>(9)?,
+                row.get::<_, Vec<u8>>(10)?,
+                row.get::<_, Vec<u8>>(11)?,
+                row.get::<_, Vec<u8>>(12)?,
+                row.get::<_, Option<Vec<u8>>>(13)?,
+                row.get::<_, Option<Vec<u8>>>(14)?,
+                row.get::<_, Option<Vec<u8>>>(15)?,
+            ))
+        })?;
+        let mut rows_cache = Vec::new();
+        for row in rows {
+            rows_cache.push(row?);
+        }
+        drop(stmt);
+
+        for (
+            id,
+            account_id,
+            value,
+            nullifier,
+            commitment,
+            spent,
+            height,
+            txid,
+            output_index,
+            spent_txid,
+            diversifier,
+            merkle_path,
+            note,
+            anchor,
+            position,
+            memo,
+        ) in rows_cache
+        {
+            conn.execute(
+                "UPDATE notes SET account_id = ?1, value = ?2, nullifier = ?3, commitment = ?4, spent = ?5, height = ?6, txid = ?7, output_index = ?8, spent_txid = ?9, diversifier = ?10, merkle_path = ?11, note = ?12, anchor = ?13, position = ?14, memo = ?15 WHERE id = ?16",
+                params![
+                    reencrypt_blob(old_key, new_key, &account_id)?,
+                    reencrypt_blob(old_key, new_key, &value)?,
+                    reencrypt_blob(old_key, new_key, &nullifier)?,
+                    reencrypt_blob(old_key, new_key, &commitment)?,
+                    reencrypt_blob(old_key, new_key, &spent)?,
+                    reencrypt_blob(old_key, new_key, &height)?,
+                    reencrypt_blob(old_key, new_key, &txid)?,
+                    reencrypt_blob(old_key, new_key, &output_index)?,
+                    reencrypt_optional_blob(old_key, new_key, spent_txid)?,
+                    reencrypt_blob(old_key, new_key, &diversifier)?,
+                    reencrypt_blob(old_key, new_key, &merkle_path)?,
+                    reencrypt_blob(old_key, new_key, &note)?,
+                    reencrypt_optional_blob(old_key, new_key, anchor)?,
+                    reencrypt_optional_blob(old_key, new_key, position)?,
+                    reencrypt_optional_blob(old_key, new_key, memo)?,
+                    id,
+                ],
+            )?;
+        }
+    }
+
+    {
+        let mut stmt = conn.prepare(
+            "SELECT rowid, wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at FROM wallet_secrets",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Vec<u8>>(1)?,
+                row.get::<_, Vec<u8>>(2)?,
+                row.get::<_, Vec<u8>>(3)?,
+                row.get::<_, Option<Vec<u8>>>(4)?,
+                row.get::<_, Option<Vec<u8>>>(5)?,
+                row.get::<_, Option<Vec<u8>>>(6)?,
+                row.get::<_, Option<Vec<u8>>>(7)?,
+                row.get::<_, Option<Vec<u8>>>(8)?,
+                row.get::<_, Vec<u8>>(9)?,
+            ))
+        })?;
+        let mut rows_cache = Vec::new();
+        for row in rows {
+            rows_cache.push(row?);
+        }
+        drop(stmt);
+
+        for (
+            row_id,
+            wallet_id,
+            account_id,
+            extsk,
+            dfvk,
+            orchard_extsk,
+            sapling_ivk,
+            orchard_ivk,
+            encrypted_mnemonic,
+            created_at,
+        ) in rows_cache
+        {
+            conn.execute(
+                "UPDATE wallet_secrets SET wallet_id = ?1, account_id = ?2, extsk = ?3, dfvk = ?4, orchard_extsk = ?5, sapling_ivk = ?6, orchard_ivk = ?7, encrypted_mnemonic = ?8, created_at = ?9 WHERE rowid = ?10",
+                params![
+                    reencrypt_blob(old_key, new_key, &wallet_id)?,
+                    reencrypt_blob(old_key, new_key, &account_id)?,
+                    reencrypt_blob(old_key, new_key, &extsk)?,
+                    reencrypt_optional_blob(old_key, new_key, dfvk)?,
+                    reencrypt_optional_blob(old_key, new_key, orchard_extsk)?,
+                    reencrypt_optional_blob(old_key, new_key, sapling_ivk)?,
+                    reencrypt_optional_blob(old_key, new_key, orchard_ivk)?,
+                    reencrypt_optional_blob(old_key, new_key, encrypted_mnemonic)?,
+                    reencrypt_blob(old_key, new_key, &created_at)?,
+                    row_id,
+                ],
+            )?;
+        }
+    }
+
+    {
+        let mut stmt = conn.prepare("SELECT id, memo FROM memos")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?))
+        })?;
+        let mut rows_cache = Vec::new();
+        for row in rows {
+            rows_cache.push(row?);
+        }
+        drop(stmt);
+
+        for (id, memo) in rows_cache {
+            conn.execute(
+                "UPDATE memos SET memo = ?1 WHERE id = ?2",
+                params![reencrypt_blob(old_key, new_key, &memo)?, id],
+            )?;
+        }
+    }
+
+    {
+        let mut stmt = conn.prepare("SELECT height, frontier FROM frontier_snapshots")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?))
+        })?;
+        let mut rows_cache = Vec::new();
+        for row in rows {
+            rows_cache.push(row?);
+        }
+        drop(stmt);
+
+        for (height, frontier) in rows_cache {
+            conn.execute(
+                "UPDATE frontier_snapshots SET frontier = ?1 WHERE height = ?2",
+                params![reencrypt_blob(old_key, new_key, &frontier)?, height],
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Change app passphrase and re-encrypt all wallet data with the new keys.
+pub fn change_app_passphrase(current_passphrase: String, new_passphrase: String) -> Result<()> {
+    // Validate new passphrase strength and current passphrase validity.
+    AppPassphrase::validate(&new_passphrase)
+        .map_err(|e| anyhow!("New passphrase does not meet requirements: {}", e))?;
+    if !verify_app_passphrase(current_passphrase.clone())? {
+        return Err(anyhow!("Invalid current passphrase"));
+    }
+
+    passphrase_store::set_passphrase(current_passphrase.clone());
+    REGISTRY_LOADED.store(false, Ordering::SeqCst);
+
+    struct WalletRekey {
+        wallet_id: String,
+        old_db_key: [u8; 32],
+        old_master_key: MasterKey,
+        new_master_key: MasterKey,
+    }
+
+    let rollback_wallets = |updated: &[WalletRekey]| -> Result<()> {
+        for info in updated.iter().rev() {
+            let (mut db, _key, _master_key) =
+                open_wallet_db_with_passphrase(&info.wallet_id, &new_passphrase)?;
+            let old_db_key = EncryptionKey::from_bytes(info.old_db_key);
+            db.rekey(&old_db_key)?;
+            let tx = db.transaction()?;
+            reencrypt_wallet_tables(&*tx, &info.new_master_key, &info.old_master_key)?;
+            tx.commit()?;
+            let key_path = wallet_db_key_path(&info.wallet_id)?;
+            let key_id = format!("pirate_wallet_{}_db", info.wallet_id);
+            let _ = force_store_sealed_db_key(&old_db_key, &key_id, &key_path);
+        }
+        Ok(())
+    };
+
+    let wallet_ids: Vec<String> = {
+        ensure_wallet_registry_loaded()?;
+        WALLETS.read().iter().map(|w| w.id.clone()).collect()
+    };
+
+    let mut registry_db = open_wallet_registry_with_passphrase(&current_passphrase)?;
+    let registry_salt = load_salt(&wallet_registry_salt_path()?)?;
+    let old_registry_key = derive_db_key(&current_passphrase, &registry_salt)?;
+    let new_registry_key = derive_db_key(&new_passphrase, &registry_salt)?;
+    let _ = registry_master_key(&new_passphrase)?;
+
+    let mut updated_wallets = Vec::new();
+    for wallet_id in &wallet_ids {
+        let (mut db, old_db_key, old_master_key) =
+            open_wallet_db_with_passphrase(wallet_id, &current_passphrase)?;
+        let wallet_salt = load_salt(&wallet_db_salt_path(wallet_id)?)?;
+        let new_db_key = derive_db_key(&new_passphrase, &wallet_salt)?;
+        let new_master_key = wallet_master_key(wallet_id, &new_passphrase)?;
+
+        if let Err(e) = db.rekey(&new_db_key) {
+            let _ = rollback_wallets(&updated_wallets);
+            return Err(anyhow!(
+                "Failed to rekey wallet database {}: {}",
+                wallet_id,
+                e
+            ));
+        }
+
+        let reencrypt_result: Result<()> = {
+            let tx = db.transaction()?;
+            if let Err(e) = reencrypt_wallet_tables(&*tx, &old_master_key, &new_master_key) {
+                let _ = tx.rollback();
+                return Err(e);
+            }
+            tx.commit()
+                .map_err(|e| anyhow!("Failed to commit re-encrypted wallet data: {}", e))?;
+            Ok(())
+        };
+
+        if let Err(e) = reencrypt_result {
+            let _ = db.rekey(&old_db_key);
+            let _ = rollback_wallets(&updated_wallets);
+            return Err(anyhow!(
+                "Failed to re-encrypt wallet data {}: {}",
+                wallet_id,
+                e
+            ));
+        }
+
+        let key_path = wallet_db_key_path(wallet_id)?;
+        let key_id = format!("pirate_wallet_{}_db", wallet_id);
+        let _ = force_store_sealed_db_key(&new_db_key, &key_id, &key_path);
+        updated_wallets.push(WalletRekey {
+            wallet_id: wallet_id.clone(),
+            old_db_key: *old_db_key.as_bytes(),
+            old_master_key,
+            new_master_key,
+        });
+    }
+
+    registry_db
+        .rekey(&new_registry_key)
+        .map_err(|e| {
+            let _ = rollback_wallets(&updated_wallets);
+            anyhow!("Failed to rekey registry database: {}", e)
+        })?;
+
+    // Update registry passphrase hash after successful wallet updates.
+    let new_hash = AppPassphrase::hash(&new_passphrase)
+        .map_err(|e| anyhow!("Failed to hash new passphrase: {}", e))?;
+    if let Err(e) = set_registry_setting(
+        &registry_db,
+        REGISTRY_APP_PASSPHRASE_KEY,
+        Some(new_hash.hash_string()),
+    ) {
+        let _ = registry_db.rekey(&old_registry_key);
+        let _ = rollback_wallets(&updated_wallets);
+        return Err(anyhow!("Failed to update passphrase hash: {}", e));
+    }
+
+    let registry_key_path = wallet_registry_key_path()?;
+    let _ = force_store_sealed_db_key(&new_registry_key, "pirate_wallet_registry_db", &registry_key_path);
+
+    passphrase_store::set_passphrase(new_passphrase);
+    REGISTRY_LOADED.store(false, Ordering::SeqCst);
+    ensure_wallet_registry_loaded()?;
+
+    // Clear sync sessions to force re-open with new keys.
+    SYNC_SESSIONS.write().clear();
+    tracing::info!("App passphrase updated successfully");
+    Ok(())
+}
+
+/// Change passphrase using the cached passphrase from the current session.
+pub fn change_app_passphrase_with_cached(new_passphrase: String) -> Result<()> {
+    let current = app_passphrase()?;
+    change_app_passphrase(current, new_passphrase)
+}
+
 /// Reseal registry + wallet DB keys using current platform keystore mode.
 /// 
 /// This is used when biometrics are enabled/disabled to rewrap the DB keys
@@ -5859,6 +6187,12 @@ pub fn export_seed_with_passphrase(wallet_id: WalletId, passphrase: String) -> R
     tracing::info!("Seed exported for wallet {} (gated flow completed)", wallet_id);
 
     Ok(result.words().to_vec())
+}
+
+/// Export seed using cached app passphrase (after biometric approval).
+pub fn export_seed_with_cached_passphrase(wallet_id: WalletId) -> Result<Vec<String>> {
+    let passphrase = app_passphrase()?;
+    export_seed_with_passphrase(wallet_id, passphrase)
 }
 
 /// Cancel seed export flow

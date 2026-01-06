@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1697485769;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1963115127;
 
 // Section: executor
 
@@ -242,6 +242,58 @@ fn wire__crate__api__cancel_sync_impl(
                         Ok(output_ok)
                     })()
                     .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__change_app_passphrase_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    current_passphrase: impl CstDecode<String>,
+    new_passphrase: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "change_app_passphrase",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_current_passphrase = current_passphrase.cst_decode();
+            let api_new_passphrase = new_passphrase.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::change_app_passphrase(
+                            api_current_passphrase,
+                            api_new_passphrase,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__change_app_passphrase_with_cached_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    new_passphrase: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "change_app_passphrase_with_cached",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_new_passphrase = new_passphrase.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::change_app_passphrase_with_cached(api_new_passphrase)?;
+                        Ok(output_ok)
+                    })(),
                 )
             }
         },
@@ -550,6 +602,30 @@ fn wire__crate__api__export_seed_impl(
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok = crate::api::export_seed(api_wallet_id)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__export_seed_with_cached_passphrase_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "export_seed_with_cached_passphrase",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::export_seed_with_cached_passphrase(api_wallet_id)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -5293,6 +5369,23 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__change_app_passphrase(
+        port_: i64,
+        current_passphrase: *mut wire_cst_list_prim_u_8_strict,
+        new_passphrase: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__change_app_passphrase_impl(port_, current_passphrase, new_passphrase)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__change_app_passphrase_with_cached(
+        port_: i64,
+        new_passphrase: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__change_app_passphrase_with_cached_impl(port_, new_passphrase)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__clear_panic_pin(port_: i64) {
         wire__crate__api__clear_panic_pin_impl(port_)
     }
@@ -5393,6 +5486,14 @@ mod io {
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
     ) {
         wire__crate__api__export_seed_impl(port_, wallet_id)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_seed_with_cached_passphrase(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__export_seed_with_cached_passphrase_impl(port_, wallet_id)
     }
 
     #[unsafe(no_mangle)]
@@ -7281,6 +7382,23 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__change_app_passphrase(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        current_passphrase: String,
+        new_passphrase: String,
+    ) {
+        wire__crate__api__change_app_passphrase_impl(port_, current_passphrase, new_passphrase)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__change_app_passphrase_with_cached(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        new_passphrase: String,
+    ) {
+        wire__crate__api__change_app_passphrase_with_cached_impl(port_, new_passphrase)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__clear_panic_pin(
         port_: flutter_rust_bridge::for_generated::MessagePort,
     ) {
@@ -7385,6 +7503,14 @@ mod web {
         wallet_id: String,
     ) {
         wire__crate__api__export_seed_impl(port_, wallet_id)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__export_seed_with_cached_passphrase(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+    ) {
+        wire__crate__api__export_seed_with_cached_passphrase_impl(port_, wallet_id)
     }
 
     #[wasm_bindgen]

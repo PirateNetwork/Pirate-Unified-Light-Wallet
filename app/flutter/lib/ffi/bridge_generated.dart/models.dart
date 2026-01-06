@@ -10,825 +10,594 @@ import 'frb_generated.dart';
 
 part 'models.freezed.dart';
 
-/// Color tag for address book entries
+            
+
+            
+
+            /// Color tag for address book entries
 enum AddressBookColorTag {
-  none,
-  red,
-  orange,
-  yellow,
-  green,
-  blue,
-  purple,
-  pink,
-  gray,
-  ;
-}
+                    none,
+red,
+orange,
+yellow,
+green,
+blue,
+purple,
+pink,
+gray,
+                    ;
+                    
+                }
 
 /// Address book entry for FFI
-class AddressBookEntryFfi {
-  final PlatformInt64 id;
-  final String walletId;
-  final String address;
-  final String label;
-  final String? notes;
-  final AddressBookColorTag colorTag;
-  final bool isFavorite;
+class AddressBookEntryFfi  {
+                final PlatformInt64 id;
+final String walletId;
+final String address;
+final String label;
+final String? notes;
+final AddressBookColorTag colorTag;
+final bool isFavorite;
+/// Unix timestamp (seconds)
+final PlatformInt64 createdAt;
+/// Unix timestamp (seconds)
+final PlatformInt64 updatedAt;
+/// Unix timestamp (seconds)
+final PlatformInt64? lastUsedAt;
+final int useCount;
 
-  /// Unix timestamp (seconds)
-  final PlatformInt64 createdAt;
+                const AddressBookEntryFfi({required this.id ,required this.walletId ,required this.address ,required this.labelrequired this.colorTag, required this.isFavorite, required this.createdAt, required this.updatedAt, required this.useCount,  ,required this.useCount, tAt ,});
 
-  /// Unix timestamp (seconds)
-  final PlatformInt64 updatedAt;
+                
+                
 
-  /// Unix timestamp (seconds)
-  final PlatformInt64? lastUsedAt;
-  final int useCount;
+                
+        @override
+        int get hashCode => id.hashCode^walletId.hashCode^address.hashCode^label.hashCode^notes.hashCode^colorTag.hashCode^isFavorite.hashCode^createdAt.hashCode^updatedAt.hashCode^lastUsedAt.hashCode^useCount.hashCode;
+        
 
-  const AddressBookEntryFfi({
-    required this.id,
-    required this.walletId,
-    required this.address,
-    required this.label,
-    required this.colorTag,
-    required this.isFavorite,
-    required this.createdAt,
-    required this.updatedAt,
-    required this.useCount,
-    this.notes,
-    this.lastUsedAt,
-  });
-
-  @override
-  int get hashCode =>
-      id.hashCode ^
-      walletId.hashCode ^
-      address.hashCode ^
-      label.hashCode ^
-      notes.hashCode ^
-      colorTag.hashCode ^
-      isFavorite.hashCode ^
-      createdAt.hashCode ^
-      updatedAt.hashCode ^
-      lastUsedAt.hashCode ^
-      useCount.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is AddressBookEntryFfi &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          walletId == other.walletId &&
-          address == other.address &&
-          label == other.label &&
-          notes == other.notes &&
-          colorTag == other.colorTag &&
-          isFavorite == other.isFavorite &&
-          createdAt == other.createdAt &&
-          updatedAt == other.updatedAt &&
-          lastUsedAt == other.lastUsedAt &&
-          useCount == other.useCount;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is AddressBookEntryFfi &&
+                runtimeType == other.runtimeType
+                && id == other.id&& walletId == other.walletId&& address == other.address&& label == other.label&& notes == other.notes&& colorTag == other.colorTag&& isFavorite == other.isFavorite&& createdAt == other.createdAt&& updatedAt == other.updatedAt&& lastUsedAt == other.lastUsedAt&& useCount == other.useCount;
+        
+            }
 
 /// Address with label
-class AddressInfo {
-  /// Address string
-  final String address;
+class AddressInfo  {
+                /// Address string
+final String address;
+/// Diversifier index
+final int diversifierIndex;
+/// Label
+final String? label;
+/// Created timestamp (unix seconds)
+final PlatformInt64 createdAt;
+/// Color tag
+final AddressBookColorTag colorTag;
 
-  /// Diversifier index
-  final int diversifierIndex;
+                const AddressInfo({required this.address ,required this.diversifierIndexrequired this.createdAt, required this.colorTag,  ,requiredel ,});
 
-  /// Label
-  final String? label;
+                
+                
 
-  const AddressInfo({
-    required this.address,
-    required this.diversifierIndex,
-    this.label,
-  });
+                
+        @override
+        int get hashCode => address.hashCode^diversifierIndex.hashCode^label.hashCode^createdAt.hashCode^colorTag.hashCode;
+        
 
-  @override
-  int get hashCode =>
-      address.hashCode ^ diversifierIndex.hashCode ^ label.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is AddressInfo &&
-          runtimeType == other.runtimeType &&
-          address == other.address &&
-          diversifierIndex == other.diversifierIndex &&
-          label == other.label;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is AddressInfo &&
+                runtimeType == other.runtimeType
+                && address == other.address&& diversifierIndex == other.diversifierIndex&& label == other.label&& createdAt == other.createdAt&& colorTag == other.colorTag;
+        
+            }
 
 /// Background sync result
-class BackgroundSyncResult {
-  /// Sync mode that was executed
-  final String mode;
+class BackgroundSyncResult  {
+                /// Sync mode that was executed
+final String mode;
+/// Number of blocks synced
+final BigInt blocksSynced;
+/// Starting height
+final BigInt startHeight;
+/// Ending height
+final BigInt endHeight;
+/// Duration in seconds
+final BigInt durationSecs;
+/// Any errors encountered (non-fatal)
+final List<String> errors;
+/// New balance after sync (if changed)
+final BigInt? newBalance;
+/// Number of new transactions
+final int newTransactions;
 
-  /// Number of blocks synced
-  final BigInt blocksSynced;
+                const BackgroundSyncResult({required this.mode ,required this.blocksSynced ,required this.startHeight ,required this.endHeight ,required this.durationSecs ,required this.errorsrequired this.newTransactions,  ,required thisce ,});
 
-  /// Starting height
-  final BigInt startHeight;
+                
+                
 
-  /// Ending height
-  final BigInt endHeight;
+                
+        @override
+        int get hashCode => mode.hashCode^blocksSynced.hashCode^startHeight.hashCode^endHeight.hashCode^durationSecs.hashCode^errors.hashCode^newBalance.hashCode^newTransactions.hashCode;
+        
 
-  /// Duration in seconds
-  final BigInt durationSecs;
-
-  /// Any errors encountered (non-fatal)
-  final List<String> errors;
-
-  /// New balance after sync (if changed)
-  final BigInt? newBalance;
-
-  /// Number of new transactions
-  final int newTransactions;
-
-  const BackgroundSyncResult({
-    required this.mode,
-    required this.blocksSynced,
-    required this.startHeight,
-    required this.endHeight,
-    required this.durationSecs,
-    required this.errors,
-    required this.newTransactions,
-    this.newBalance,
-  });
-
-  @override
-  int get hashCode =>
-      mode.hashCode ^
-      blocksSynced.hashCode ^
-      startHeight.hashCode ^
-      endHeight.hashCode ^
-      durationSecs.hashCode ^
-      errors.hashCode ^
-      newBalance.hashCode ^
-      newTransactions.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is BackgroundSyncResult &&
-          runtimeType == other.runtimeType &&
-          mode == other.mode &&
-          blocksSynced == other.blocksSynced &&
-          startHeight == other.startHeight &&
-          endHeight == other.endHeight &&
-          durationSecs == other.durationSecs &&
-          errors == other.errors &&
-          newBalance == other.newBalance &&
-          newTransactions == other.newTransactions;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is BackgroundSyncResult &&
+                runtimeType == other.runtimeType
+                && mode == other.mode&& blocksSynced == other.blocksSynced&& startHeight == other.startHeight&& endHeight == other.endHeight&& durationSecs == other.durationSecs&& errors == other.errors&& newBalance == other.newBalance&& newTransactions == other.newTransactions;
+        
+            }
 
 /// Balance info
-class Balance {
-  /// Total balance
-  final BigInt total;
+class Balance  {
+                /// Total balance
+final BigInt total;
+/// Spendable balance
+final BigInt spendable;
+/// Pending balance (unconfirmed)
+final BigInt pending;
 
-  /// Spendable balance
-  final BigInt spendable;
+                const Balance({required this.total ,required this.spendable ,required this.pending ,});
 
-  /// Pending balance (unconfirmed)
-  final BigInt pending;
+                
+                
 
-  const Balance({
-    required this.total,
-    required this.spendable,
-    required this.pending,
-  });
+                
+        @override
+        int get hashCode => total.hashCode^spendable.hashCode^pending.hashCode;
+        
 
-  @override
-  int get hashCode => total.hashCode ^ spendable.hashCode ^ pending.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Balance &&
-          runtimeType == other.runtimeType &&
-          total == other.total &&
-          spendable == other.spendable &&
-          pending == other.pending;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is Balance &&
+                runtimeType == other.runtimeType
+                && total == other.total&& spendable == other.spendable&& pending == other.pending;
+        
+            }
 
 /// Build information for reproducible verification
-class BuildInfo {
-  /// Version string
-  final String version;
+class BuildInfo  {
+                /// Version string
+final String version;
+/// Git commit hash
+final String gitCommit;
+/// Build date
+final String buildDate;
+/// Rust compiler version
+final String rustVersion;
+/// Target triple
+final String targetTriple;
 
-  /// Git commit hash
-  final String gitCommit;
+                const BuildInfo({required this.version ,required this.gitCommit ,required this.buildDate ,required this.rustVersion ,required this.targetTriple ,});
 
-  /// Build date
-  final String buildDate;
+                
+                
 
-  /// Rust compiler version
-  final String rustVersion;
+                
+        @override
+        int get hashCode => version.hashCode^gitCommit.hashCode^buildDate.hashCode^rustVersion.hashCode^targetTriple.hashCode;
+        
 
-  /// Target triple
-  final String targetTriple;
-
-  const BuildInfo({
-    required this.version,
-    required this.gitCommit,
-    required this.buildDate,
-    required this.rustVersion,
-    required this.targetTriple,
-  });
-
-  @override
-  int get hashCode =>
-      version.hashCode ^
-      gitCommit.hashCode ^
-      buildDate.hashCode ^
-      rustVersion.hashCode ^
-      targetTriple.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is BuildInfo &&
-          runtimeType == other.runtimeType &&
-          version == other.version &&
-          gitCommit == other.gitCommit &&
-          buildDate == other.buildDate &&
-          rustVersion == other.rustVersion &&
-          targetTriple == other.targetTriple;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is BuildInfo &&
+                runtimeType == other.runtimeType
+                && version == other.version&& gitCommit == other.gitCommit&& buildDate == other.buildDate&& rustVersion == other.rustVersion&& targetTriple == other.targetTriple;
+        
+            }
 
 /// Network information
-class NetworkInfo {
-  /// Network name
-  final String name;
+class NetworkInfo  {
+                /// Network name
+final String name;
+/// Coin type
+final int coinType;
+/// RPC port
+final int rpcPort;
+/// Default birthday height
+final int defaultBirthday;
 
-  /// Coin type
-  final int coinType;
+                const NetworkInfo({required this.name ,required this.coinType ,required this.rpcPort ,required this.defaultBirthday ,});
 
-  /// RPC port
-  final int rpcPort;
+                
+                
 
-  /// Default birthday height
-  final int defaultBirthday;
+                
+        @override
+        int get hashCode => name.hashCode^coinType.hashCode^rpcPort.hashCode^defaultBirthday.hashCode;
+        
 
-  const NetworkInfo({
-    required this.name,
-    required this.coinType,
-    required this.rpcPort,
-    required this.defaultBirthday,
-  });
-
-  @override
-  int get hashCode =>
-      name.hashCode ^
-      coinType.hashCode ^
-      rpcPort.hashCode ^
-      defaultBirthday.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is NetworkInfo &&
-          runtimeType == other.runtimeType &&
-          name == other.name &&
-          coinType == other.coinType &&
-          rpcPort == other.rpcPort &&
-          defaultBirthday == other.defaultBirthday;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is NetworkInfo &&
+                runtimeType == other.runtimeType
+                && name == other.name&& coinType == other.coinType&& rpcPort == other.rpcPort&& defaultBirthday == other.defaultBirthday;
+        
+            }
 
 /// Node test result
-class NodeTestResult {
-  /// Whether the connection was successful
-  final bool success;
+class NodeTestResult  {
+                /// Whether the connection was successful
+final bool success;
+/// Latest block height from the node
+final BigInt? latestBlockHeight;
+/// Transport mode used (Tor/SOCKS5/Direct)
+final String transportMode;
+/// Whether TLS was used
+final bool tlsEnabled;
+/// Whether the TLS pin matched (None if no pin was set)
+final bool? tlsPinMatched;
+/// The SPKI pin that was expected (if set)
+final String? expectedPin;
+/// The actual SPKI pin from the server (if TLS was used)
+final String? actualPin;
+/// Error message if connection failed
+final String? errorMessage;
+/// Response time in milliseconds
+final BigInt responseTimeMs;
+/// Server version info (if available)
+final String? serverVersion;
+/// Chain name from server
+final String? chainName;
 
-  /// Latest block height from the node
-  final BigInt? latestBlockHeight;
+                const NodeTestResult({required this.successrequired this.transportMode, required this.tlsEnabled, required this.responseTimeMs,  ,required this.transpseTimeMs, this.latestBlockHeight ,this.tlsPinMatched ,this.expectedPin ,tge ,this.serverVersion ,this.chainName ,});
 
-  /// Transport mode used (Tor/SOCKS5/Direct)
-  final String transportMode;
+                
+                
 
-  /// Whether TLS was used
-  final bool tlsEnabled;
+                
+        @override
+        int get hashCode => success.hashCode^latestBlockHeight.hashCode^transportMode.hashCode^tlsEnabled.hashCode^tlsPinMatched.hashCode^expectedPin.hashCode^actualPin.hashCode^errorMessage.hashCode^responseTimeMs.hashCode^serverVersion.hashCode^chainName.hashCode;
+        
 
-  /// Whether the TLS pin matched (None if no pin was set)
-  final bool? tlsPinMatched;
-
-  /// The SPKI pin that was expected (if set)
-  final String? expectedPin;
-
-  /// The actual SPKI pin from the server (if TLS was used)
-  final String? actualPin;
-
-  /// Error message if connection failed
-  final String? errorMessage;
-
-  /// Response time in milliseconds
-  final BigInt responseTimeMs;
-
-  /// Server version info (if available)
-  final String? serverVersion;
-
-  /// Chain name from server
-  final String? chainName;
-
-  const NodeTestResult({
-    required this.success,
-    required this.transportMode,
-    required this.tlsEnabled,
-    required this.responseTimeMs,
-    this.latestBlockHeight,
-    this.tlsPinMatched,
-    this.expectedPin,
-    this.actualPin,
-    this.errorMessage,
-    this.serverVersion,
-    this.chainName,
-  });
-
-  @override
-  int get hashCode =>
-      success.hashCode ^
-      latestBlockHeight.hashCode ^
-      transportMode.hashCode ^
-      tlsEnabled.hashCode ^
-      tlsPinMatched.hashCode ^
-      expectedPin.hashCode ^
-      actualPin.hashCode ^
-      errorMessage.hashCode ^
-      responseTimeMs.hashCode ^
-      serverVersion.hashCode ^
-      chainName.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is NodeTestResult &&
-          runtimeType == other.runtimeType &&
-          success == other.success &&
-          latestBlockHeight == other.latestBlockHeight &&
-          transportMode == other.transportMode &&
-          tlsEnabled == other.tlsEnabled &&
-          tlsPinMatched == other.tlsPinMatched &&
-          expectedPin == other.expectedPin &&
-          actualPin == other.actualPin &&
-          errorMessage == other.errorMessage &&
-          responseTimeMs == other.responseTimeMs &&
-          serverVersion == other.serverVersion &&
-          chainName == other.chainName;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is NodeTestResult &&
+                runtimeType == other.runtimeType
+                && success == other.success&& latestBlockHeight == other.latestBlockHeight&& transportMode == other.transportMode&& tlsEnabled == other.tlsEnabled&& tlsPinMatched == other.tlsPinMatched&& expectedPin == other.expectedPin&& actualPin == other.actualPin&& errorMessage == other.errorMessage&& responseTimeMs == other.responseTimeMs&& serverVersion == other.serverVersion&& chainName == other.chainName;
+        
+            }
 
 /// Transaction output for send-to-many
-class Output {
-  /// Recipient address (Sapling zs1... or Orchard pirate1...)
-  final String addr;
+class Output  {
+                /// Recipient address (Sapling zs1... or Orchard pirate1...)
+final String addr;
+/// Amount in arrrtoshis
+final BigInt amount;
+/// Optional memo (max 512 bytes UTF-8)
+final String? memo;
 
-  /// Amount in zatoshis
-  final BigInt amount;
+                const Output({required this.addr ,required this.amount ,this.memo ,});
 
-  /// Optional memo (max 512 bytes UTF-8)
-  final String? memo;
+                
+                
 
-  const Output({
-    required this.addr,
-    required this.amount,
-    this.memo,
-  });
+                
+        @override
+        int get hashCode => addr.hashCode^amount.hashCode^memo.hashCode;
+        
 
-  @override
-  int get hashCode => addr.hashCode ^ amount.hashCode ^ memo.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Output &&
-          runtimeType == other.runtimeType &&
-          addr == other.addr &&
-          amount == other.amount &&
-          memo == other.memo;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is Output &&
+                runtimeType == other.runtimeType
+                && addr == other.addr&& amount == other.amount&& memo == other.memo;
+        
+            }
 
 /// Pending transaction (built but not signed)
-class PendingTx {
-  /// Temporary ID
-  final String id;
+class PendingTx  {
+                /// Temporary ID
+final String id;
+/// Outputs
+final List<Output> outputs;
+/// Total output amount (excluding fee)
+final BigInt totalAmount;
+/// Transaction fee
+final BigInt fee;
+/// Change amount returned to sender
+final BigInt change;
+/// Total input amount (total_amount + fee + change)
+final BigInt inputTotal;
+/// Number of inputs (notes) used
+final int numInputs;
+/// Expiry height (tx invalid after this)
+final int expiryHeight;
+/// Created timestamp
+final PlatformInt64 createdAt;
 
-  /// Outputs
-  final List<Output> outputs;
+                const PendingTx({required this.id ,required this.outputs ,required this.totalAmount ,required this.fee ,required this.change ,required this.inputTotal ,required this.numInputs ,required this.expiryHeight ,required this.createdAt ,});
 
-  /// Total output amount (excluding fee)
-  final BigInt totalAmount;
+                
+                
 
-  /// Transaction fee
-  final BigInt fee;
+                
+        @override
+        int get hashCode => id.hashCode^outputs.hashCode^totalAmount.hashCode^fee.hashCode^change.hashCode^inputTotal.hashCode^numInputs.hashCode^expiryHeight.hashCode^createdAt.hashCode;
+        
 
-  /// Change amount returned to sender
-  final BigInt change;
-
-  /// Total input amount (total_amount + fee + change)
-  final BigInt inputTotal;
-
-  /// Number of inputs (notes) used
-  final int numInputs;
-
-  /// Expiry height (tx invalid after this)
-  final int expiryHeight;
-
-  /// Created timestamp
-  final PlatformInt64 createdAt;
-
-  const PendingTx({
-    required this.id,
-    required this.outputs,
-    required this.totalAmount,
-    required this.fee,
-    required this.change,
-    required this.inputTotal,
-    required this.numInputs,
-    required this.expiryHeight,
-    required this.createdAt,
-  });
-
-  @override
-  int get hashCode =>
-      id.hashCode ^
-      outputs.hashCode ^
-      totalAmount.hashCode ^
-      fee.hashCode ^
-      change.hashCode ^
-      inputTotal.hashCode ^
-      numInputs.hashCode ^
-      expiryHeight.hashCode ^
-      createdAt.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is PendingTx &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          outputs == other.outputs &&
-          totalAmount == other.totalAmount &&
-          fee == other.fee &&
-          change == other.change &&
-          inputTotal == other.inputTotal &&
-          numInputs == other.numInputs &&
-          expiryHeight == other.expiryHeight &&
-          createdAt == other.createdAt;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is PendingTx &&
+                runtimeType == other.runtimeType
+                && id == other.id&& outputs == other.outputs&& totalAmount == other.totalAmount&& fee == other.fee&& change == other.change&& inputTotal == other.inputTotal&& numInputs == other.numInputs&& expiryHeight == other.expiryHeight&& createdAt == other.createdAt;
+        
+            }
 
 /// Signed transaction ready for broadcast
-class SignedTx {
-  /// Transaction ID (double SHA-256 of raw tx)
-  final String txid;
+class SignedTx  {
+                /// Transaction ID (double SHA-256 of raw tx)
+final String txid;
+/// Raw transaction bytes
+final Uint8List raw;
+/// Transaction size in bytes
+final BigInt size;
 
-  /// Raw transaction bytes
-  final Uint8List raw;
+                const SignedTx({required this.txid ,required this.raw ,required this.size ,});
 
-  /// Transaction size in bytes
-  final BigInt size;
+                
+                
 
-  const SignedTx({
-    required this.txid,
-    required this.raw,
-    required this.size,
-  });
+                
+        @override
+        int get hashCode => txid.hashCode^raw.hashCode^size.hashCode;
+        
 
-  @override
-  int get hashCode => txid.hashCode ^ raw.hashCode ^ size.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SignedTx &&
-          runtimeType == other.runtimeType &&
-          txid == other.txid &&
-          raw == other.raw &&
-          size == other.size;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is SignedTx &&
+                runtimeType == other.runtimeType
+                && txid == other.txid&& raw == other.raw&& size == other.size;
+        
+            }
 
 /// Sync log entry for diagnostics
-class SyncLogEntryFfi {
-  /// Unix timestamp
-  final PlatformInt64 timestamp;
+class SyncLogEntryFfi  {
+                /// Unix timestamp
+final PlatformInt64 timestamp;
+/// Log level (DEBUG, INFO, WARN, ERROR)
+final String level;
+/// Module name
+final String module;
+/// Log message
+final String message;
 
-  /// Log level (DEBUG, INFO, WARN, ERROR)
-  final String level;
+                const SyncLogEntryFfi({required this.timestamp ,required this.level ,required this.module ,required this.message ,});
 
-  /// Module name
-  final String module;
+                
+                
 
-  /// Log message
-  final String message;
+                
+        @override
+        int get hashCode => timestamp.hashCode^level.hashCode^module.hashCode^message.hashCode;
+        
 
-  const SyncLogEntryFfi({
-    required this.timestamp,
-    required this.level,
-    required this.module,
-    required this.message,
-  });
-
-  @override
-  int get hashCode =>
-      timestamp.hashCode ^ level.hashCode ^ module.hashCode ^ message.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SyncLogEntryFfi &&
-          runtimeType == other.runtimeType &&
-          timestamp == other.timestamp &&
-          level == other.level &&
-          module == other.module &&
-          message == other.message;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is SyncLogEntryFfi &&
+                runtimeType == other.runtimeType
+                && timestamp == other.timestamp&& level == other.level&& module == other.module&& message == other.message;
+        
+            }
 
 /// Sync mode
 enum SyncMode {
-  /// Compact block sync
-  compact,
-
-  /// Deep scan (trial decrypt all notes)
-  deep,
-  ;
-}
+                    /// Compact block sync
+compact,
+/// Deep scan (trial decrypt all notes)
+deep,
+                    ;
+                    
+                }
 
 /// Sync stage
 enum SyncStage {
-  /// Fetching headers
-  headers,
-
-  /// Scanning notes
-  notes,
-
-  /// Building witness tree
-  witness,
-
-  /// Verifying chain
-  verify,
-  ;
-}
+                    /// Fetching headers
+headers,
+/// Scanning notes
+notes,
+/// Building witness tree
+witness,
+/// Verifying chain
+verify,
+                    ;
+                    
+                }
 
 /// Sync status with full performance metrics
-class SyncStatus {
-  /// Local block height
-  final BigInt localHeight;
+class SyncStatus  {
+                /// Local block height
+final BigInt localHeight;
+/// Target block height
+final BigInt targetHeight;
+/// Progress percentage (0.0 - 100.0)
+final double percent;
+/// Estimated time remaining (seconds)
+final BigInt? eta;
+/// Current stage
+final SyncStage stage;
+/// Last checkpoint height
+final BigInt? lastCheckpoint;
+/// Blocks processed per second (performance metric)
+final double blocksPerSecond;
+/// Number of notes decrypted in current session
+final BigInt notesDecrypted;
+/// Duration of last batch processing in milliseconds
+final BigInt lastBatchMs;
 
-  /// Target block height
-  final BigInt targetHeight;
+                const SyncStatus({required this.localHeight ,required this.targetHeight ,required this.percentrequired this.stage, required this.blocksPerSecond, required this.notesDecrypted, required this.lastBatchMs,  ,required this.blocksPerSecont ,});
 
-  /// Progress percentage (0.0 - 100.0)
-  final double percent;
+                
+                
 
-  /// Estimated time remaining (seconds)
-  final BigInt? eta;
+                
+        @override
+        int get hashCode => localHeight.hashCode^targetHeight.hashCode^percent.hashCode^eta.hashCode^stage.hashCode^lastCheckpoint.hashCode^blocksPerSecond.hashCode^notesDecrypted.hashCode^lastBatchMs.hashCode;
+        
 
-  /// Current stage
-  final SyncStage stage;
-
-  /// Last checkpoint height
-  final BigInt? lastCheckpoint;
-
-  /// Blocks processed per second (performance metric)
-  final double blocksPerSecond;
-
-  /// Number of notes decrypted in current session
-  final BigInt notesDecrypted;
-
-  /// Duration of last batch processing in milliseconds
-  final BigInt lastBatchMs;
-
-  const SyncStatus({
-    required this.localHeight,
-    required this.targetHeight,
-    required this.percent,
-    required this.stage,
-    required this.blocksPerSecond,
-    required this.notesDecrypted,
-    required this.lastBatchMs,
-    this.eta,
-    this.lastCheckpoint,
-  });
-
-  @override
-  int get hashCode =>
-      localHeight.hashCode ^
-      targetHeight.hashCode ^
-      percent.hashCode ^
-      eta.hashCode ^
-      stage.hashCode ^
-      lastCheckpoint.hashCode ^
-      blocksPerSecond.hashCode ^
-      notesDecrypted.hashCode ^
-      lastBatchMs.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SyncStatus &&
-          runtimeType == other.runtimeType &&
-          localHeight == other.localHeight &&
-          targetHeight == other.targetHeight &&
-          percent == other.percent &&
-          eta == other.eta &&
-          stage == other.stage &&
-          lastCheckpoint == other.lastCheckpoint &&
-          blocksPerSecond == other.blocksPerSecond &&
-          notesDecrypted == other.notesDecrypted &&
-          lastBatchMs == other.lastBatchMs;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is SyncStatus &&
+                runtimeType == other.runtimeType
+                && localHeight == other.localHeight&& targetHeight == other.targetHeight&& percent == other.percent&& eta == other.eta&& stage == other.stage&& lastCheckpoint == other.lastCheckpoint&& blocksPerSecond == other.blocksPerSecond&& notesDecrypted == other.notesDecrypted&& lastBatchMs == other.lastBatchMs;
+        
+            }
 
 @freezed
-sealed class TunnelMode with _$TunnelMode {
-  const TunnelMode._();
+                sealed class TunnelMode with _$TunnelMode  {
+                    const TunnelMode._();
 
-  /// Tor (default)
-  const factory TunnelMode.tor() = TunnelMode_Tor;
+                     /// Tor (default)
+const factory TunnelMode.tor() = TunnelMode_Tor;
+ /// SOCKS5 proxy
+const factory TunnelMode.socks5({ /// Proxy URL
+  required String url , }) = TunnelMode_Socks5;
+ /// Direct connection (no privacy)
+const factory TunnelMode.direct() = TunnelMode_Direct;
 
-  /// SOCKS5 proxy
-  const factory TunnelMode.socks5({
-    /// Proxy URL
-    required String url,
-  }) = TunnelMode_Socks5;
+                    
 
-  /// Direct connection (no privacy)
-  const factory TunnelMode.direct() = TunnelMode_Direct;
-}
+                    
+                }
 
 /// Transaction info
-class TxInfo {
-  /// Transaction ID
-  final String txid;
+class TxInfo  {
+                /// Transaction ID
+final String txid;
+/// Block height (None if unconfirmed)
+final int? height;
+/// Timestamp
+final PlatformInt64 timestamp;
+/// Amount (positive for receive, negative for send)
+final PlatformInt64 amount;
+/// Fee
+final BigInt fee;
+/// Memo
+final String? memo;
+/// Confirmed
+final bool confirmed;
 
-  /// Block height (None if unconfirmed)
-  final int? height;
+                const TxInfo({required this.txidrequired this.timestamp, required this.amount, required this.fee, required this.confirmed,  ,required this.confirmo ,});
 
-  /// Timestamp
-  final PlatformInt64 timestamp;
+                
+                
 
-  /// Amount (positive for receive, negative for send)
-  final PlatformInt64 amount;
+                
+        @override
+        int get hashCode => txid.hashCode^height.hashCode^timestamp.hashCode^amount.hashCode^fee.hashCode^memo.hashCode^confirmed.hashCode;
+        
 
-  /// Fee
-  final BigInt fee;
-
-  /// Memo
-  final String? memo;
-
-  /// Confirmed
-  final bool confirmed;
-
-  const TxInfo({
-    required this.txid,
-    required this.timestamp,
-    required this.amount,
-    required this.fee,
-    required this.confirmed,
-    this.height,
-    this.memo,
-  });
-
-  @override
-  int get hashCode =>
-      txid.hashCode ^
-      height.hashCode ^
-      timestamp.hashCode ^
-      amount.hashCode ^
-      fee.hashCode ^
-      memo.hashCode ^
-      confirmed.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is TxInfo &&
-          runtimeType == other.runtimeType &&
-          txid == other.txid &&
-          height == other.height &&
-          timestamp == other.timestamp &&
-          amount == other.amount &&
-          fee == other.fee &&
-          memo == other.memo &&
-          confirmed == other.confirmed;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is TxInfo &&
+                runtimeType == other.runtimeType
+                && txid == other.txid&& height == other.height&& timestamp == other.timestamp&& amount == other.amount&& fee == other.fee&& memo == other.memo&& confirmed == other.confirmed;
+        
+            }
 
 /// Background sync result for a specific wallet
-class WalletBackgroundSyncResult {
-  /// Wallet ID
-  final String walletId;
+class WalletBackgroundSyncResult  {
+                /// Wallet ID
+final String walletId;
+/// Sync mode that was executed
+final String mode;
+/// Number of blocks synced
+final BigInt blocksSynced;
+/// Starting height
+final BigInt startHeight;
+/// Ending height
+final BigInt endHeight;
+/// Duration in seconds
+final BigInt durationSecs;
+/// Any errors encountered (non-fatal)
+final List<String> errors;
+/// New balance after sync (if changed)
+final BigInt? newBalance;
+/// Number of new transactions
+final int newTransactions;
 
-  /// Sync mode that was executed
-  final String mode;
+                const WalletBackgroundSyncResult({required this.walletId ,required this.mode ,required this.blocksSynced ,required this.startHeight ,required this.endHeight ,required this.durationSecs ,required this.errorsrequired this.newTransactions,  ,required thisce ,});
 
-  /// Number of blocks synced
-  final BigInt blocksSynced;
+                
+                
 
-  /// Starting height
-  final BigInt startHeight;
+                
+        @override
+        int get hashCode => walletId.hashCode^mode.hashCode^blocksSynced.hashCode^startHeight.hashCode^endHeight.hashCode^durationSecs.hashCode^errors.hashCode^newBalance.hashCode^newTransactions.hashCode;
+        
 
-  /// Ending height
-  final BigInt endHeight;
-
-  /// Duration in seconds
-  final BigInt durationSecs;
-
-  /// Any errors encountered (non-fatal)
-  final List<String> errors;
-
-  /// New balance after sync (if changed)
-  final BigInt? newBalance;
-
-  /// Number of new transactions
-  final int newTransactions;
-
-  const WalletBackgroundSyncResult({
-    required this.walletId,
-    required this.mode,
-    required this.blocksSynced,
-    required this.startHeight,
-    required this.endHeight,
-    required this.durationSecs,
-    required this.errors,
-    required this.newTransactions,
-    this.newBalance,
-  });
-
-  @override
-  int get hashCode =>
-      walletId.hashCode ^
-      mode.hashCode ^
-      blocksSynced.hashCode ^
-      startHeight.hashCode ^
-      endHeight.hashCode ^
-      durationSecs.hashCode ^
-      errors.hashCode ^
-      newBalance.hashCode ^
-      newTransactions.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is WalletBackgroundSyncResult &&
-          runtimeType == other.runtimeType &&
-          walletId == other.walletId &&
-          mode == other.mode &&
-          blocksSynced == other.blocksSynced &&
-          startHeight == other.startHeight &&
-          endHeight == other.endHeight &&
-          durationSecs == other.durationSecs &&
-          errors == other.errors &&
-          newBalance == other.newBalance &&
-          newTransactions == other.newTransactions;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is WalletBackgroundSyncResult &&
+                runtimeType == other.runtimeType
+                && walletId == other.walletId&& mode == other.mode&& blocksSynced == other.blocksSynced&& startHeight == other.startHeight&& endHeight == other.endHeight&& durationSecs == other.durationSecs&& errors == other.errors&& newBalance == other.newBalance&& newTransactions == other.newTransactions;
+        
+            }
 
 /// Wallet metadata
-class WalletMeta {
-  /// Wallet ID
-  final String id;
+class WalletMeta  {
+                /// Wallet ID
+final String id;
+/// Wallet name
+final String name;
+/// Created timestamp
+final PlatformInt64 createdAt;
+/// Is watch-only
+final bool watchOnly;
+/// Birthday height
+final int birthdayHeight;
+/// Network type (mainnet, testnet, regtest)
+final String? networkType;
 
-  /// Wallet name
-  final String name;
+                const WalletMeta({required this.id ,required this.name ,required this.createdAt ,required this.watchOnly ,required this.birthdayHeight ,this.networkType ,});
 
-  /// Created timestamp
-  final PlatformInt64 createdAt;
+                
+                
 
-  /// Is watch-only
-  final bool watchOnly;
+                
+        @override
+        int get hashCode => id.hashCode^name.hashCode^createdAt.hashCode^watchOnly.hashCode^birthdayHeight.hashCode^networkType.hashCode;
+        
 
-  /// Birthday height
-  final int birthdayHeight;
-
-  /// Network type (mainnet, testnet, regtest)
-  final String? networkType;
-
-  const WalletMeta({
-    required this.id,
-    required this.name,
-    required this.createdAt,
-    required this.watchOnly,
-    required this.birthdayHeight,
-    this.networkType,
-  });
-
-  @override
-  int get hashCode =>
-      id.hashCode ^
-      name.hashCode ^
-      createdAt.hashCode ^
-      watchOnly.hashCode ^
-      birthdayHeight.hashCode ^
-      networkType.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is WalletMeta &&
-          runtimeType == other.runtimeType &&
-          id == other.id &&
-          name == other.name &&
-          createdAt == other.createdAt &&
-          watchOnly == other.watchOnly &&
-          birthdayHeight == other.birthdayHeight &&
-          networkType == other.networkType;
-}
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is WalletMeta &&
+                runtimeType == other.runtimeType
+                && id == other.id&& name == other.name&& createdAt == other.createdAt&& watchOnly == other.watchOnly&& birthdayHeight == other.birthdayHeight&& networkType == other.networkType;
+        
+            }
+            

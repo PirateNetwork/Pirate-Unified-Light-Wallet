@@ -1,19 +1,22 @@
 /// Unlock Screen - Enter passphrase to unlock wallet
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design/deep_space_theme.dart';
 import '../../design/tokens/colors.dart';
-import '../../design/tokens/spacing.dart';
-import '../../design/tokens/typography.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../features/settings/providers/preferences_providers.dart';
+import '../../core/security/biometric_auth.dart';
+import '../../core/security/passphrase_cache.dart';
 
 /// Unlock screen for entering passphrase
 class UnlockScreen extends ConsumerStatefulWidget {
@@ -28,7 +31,22 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassphrase = true;
   bool _isUnlocking = false;
+  bool _isBiometricUnlocking = false;
   String? _error;
+  bool _biometricAttempted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listen<bool>(biometricsEnabledProvider, (previous, next) {
+      if (next && !_biometricAttempted) {
+        _tryAutoBiometricUnlock();
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tryAutoBiometricUnlock();
+    });
+  }
 
   @override
   void dispose() {
@@ -49,6 +67,17 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
     try {
       final unlockApp = ref.read(unlockAppProvider);
       await unlockApp(_passphraseController.text);
+      final biometricsEnabled = await _resolveBiometricsEnabled();
+      if (biometricsEnabled) {
+        final hasWrapped = await PassphraseCache.exists();
+        if (!hasWrapped) {
+          try {
+            await PassphraseCache.store(_passphraseController.text);
+          } catch (_) {
+            // Ignore; biometric wrap can be retried later.
+          }
+        }
+      }
       
       if (mounted) {
         // Navigate to home after successful unlock
@@ -60,6 +89,87 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
           _error = 'Invalid passphrase. Please try again.';
           _isUnlocking = false;
         });
+      }
+    }
+  }
+
+  Future<void> _tryAutoBiometricUnlock() async {
+    if (_biometricAttempted) return;
+
+    if (!await _resolveBiometricsEnabled()) {
+      return;
+    }
+
+    final hasWrapped = await PassphraseCache.exists();
+    if (!hasWrapped) {
+      return;
+    }
+
+    _biometricAttempted = true;
+    await _unlockWithBiometrics(silentFailure: true);
+  }
+
+  Future<bool> _resolveBiometricsEnabled() async {
+    if (ref.read(biometricsEnabledProvider)) {
+      return true;
+    }
+    try {
+      return await ref
+          .read(biometricsEnabledProvider.notifier)
+          .readPersistedValue();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _unlockWithBiometrics({
+    bool silentFailure = false,
+  }) async {
+    if (_isBiometricUnlocking) return;
+    setState(() {
+      _isBiometricUnlocking = true;
+      if (!silentFailure) {
+        _error = null;
+      }
+    });
+
+    try {
+      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+        final authenticated = await BiometricAuth.authenticate(
+          reason: 'Unlock your wallet',
+          biometricOnly: true,
+        );
+        if (!authenticated) {
+          return;
+        }
+      }
+
+      String? cached;
+      try {
+        cached = await PassphraseCache.read();
+      } catch (_) {
+        return;
+      }
+
+      if (cached == null || cached.isEmpty) {
+        return;
+      }
+
+      final unlockApp = ref.read(unlockAppProvider);
+      await unlockApp(cached);
+
+      if (mounted) {
+        context.go('/home');
+      }
+    } catch (e) {
+      if (mounted && !silentFailure) {
+        setState(() {
+          _error = 'Biometric unlock failed. Use your passphrase instead.';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isBiometricUnlocking = false);
       }
     }
   }
@@ -113,7 +223,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
               ),
               
               const SizedBox(height: AppSpacing.xl),
-              
+
               // Passphrase input
               PInput(
                 controller: _passphraseController,

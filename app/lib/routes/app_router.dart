@@ -33,6 +33,7 @@ import '../features/home/home_screen.dart';
 import '../features/send/send_screen.dart';
 import '../features/pay/pay_screen.dart';
 import '../features/settings/screens/biometrics_screen.dart';
+import '../features/settings/screens/passphrase_change_screen.dart';
 import '../features/settings/screens/theme_screen.dart';
 import '../features/settings/screens/currency_screen.dart';
 import '../features/settings/screens/birthday_height_screen.dart';
@@ -364,6 +365,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           context: context,
           state: state,
           child: const BiometricsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/passphrase',
+        name: 'settings-passphrase',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const PassphraseChangeScreen(),
         ),
       ),
       GoRoute(

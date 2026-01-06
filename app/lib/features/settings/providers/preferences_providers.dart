@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/security/biometric_auth.dart';
 import '../../../core/security/keystore_channel.dart';
+import '../../../core/security/passphrase_cache.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 
 enum AppThemeMode {
@@ -151,6 +152,9 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
     final previous = state;
     state = enabled;
     await _storage.write(key: _storageKey, value: enabled.toString());
+    if (!enabled) {
+      await PassphraseCache.clear();
+    }
     if (Platform.isAndroid || Platform.isIOS) {
       try {
         await KeystoreChannel.setBiometricsEnabled(enabled);
@@ -173,6 +177,14 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
       return;
     }
     state = raw.toLowerCase() == 'true';
+  }
+
+  Future<bool> readPersistedValue() async {
+    final raw = await _storage.read(key: _storageKey);
+    if (raw == null || raw.isEmpty) {
+      return false;
+    }
+    return raw.toLowerCase() == 'true';
   }
 }
 

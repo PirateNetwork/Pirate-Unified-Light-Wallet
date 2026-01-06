@@ -7,7 +7,7 @@ import 'frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_book_entry_to_ffi`, `app_passphrase`, `delete_wallet_meta`, `derive_db_key`, `detect_network_from_endpoint`, `ensure_wallet_registry_loaded`, `ensure_wallet_registry_schema`, `force_store_sealed_db_key`, `get_registry_setting`, `get_wallet_meta`, `load_salt`, `load_sealed_key`, `load_wallet_registry_activity`, `load_wallet_registry`, `map_stage`, `maybe_store_sealed_db_key`, `open_encrypted_db_with_migration`, `open_wallet_db_for_active`, `open_wallet_db_for`, `open_wallet_db_with_passphrase`, `open_wallet_registry_with_passphrase`, `open_wallet_registry`, `parse_endpoint_url`, `parse_rfc3339_timestamp`, `persist_wallet_meta`, `registry_master_key`, `reseal_registry_db_key`, `reseal_wallet_db_key`, `resolve_wallet_birthday_height`, `set_active_wallet_registry`, `set_registry_setting`, `should_generate_orchard`, `store_sealed_key`, `touch_wallet_last_synced`, `touch_wallet_last_used`, `try_unseal_db_key`, `wallet_base_dir`, `wallet_db_key_path`, `wallet_db_keys`, `wallet_db_path_for`, `wallet_db_salt_path`, `wallet_master_key`, `wallet_registry_key_path`, `wallet_registry_path`, `wallet_registry_salt_path`, `write_salt`
+// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_book_entry_to_ffi`, `address_prefix_network_type_for_endpoint`, `address_prefix_network_type`, `app_passphrase`, `debug_log_path`, `decode_frontier_snapshot`, `delete_wallet_meta`, `derive_db_key`, `detect_network_from_endpoint`, `ensure_wallet_registry_loaded`, `ensure_wallet_registry_schema`, `force_store_sealed_db_key`, `get_registry_setting`, `get_wallet_meta`, `infer_key_network_type_from_addresses`, `load_salt`, `load_sealed_key`, `load_wallet_registry_activity`, `load_wallet_registry`, `log_orchard_address_samples`, `map_stage`, `maybe_store_sealed_db_key`, `open_encrypted_db_with_migration`, `open_wallet_db_for_active`, `open_wallet_db_for`, `open_wallet_db_with_passphrase`, `open_wallet_registry_with_passphrase`, `open_wallet_registry`, `orchard_activation_override`, `orchard_anchor_from_frontier_hex`, `parse_endpoint_url`, `parse_rfc3339_timestamp`, `persist_wallet_meta`, `rederive_wallet_keys_for_network`, `reencrypt_blob`, `reencrypt_optional_blob`, `reencrypt_wallet_tables`, `registry_master_key`, `reseal_registry_db_key`, `reseal_wallet_db_key`, `resolve_wallet_birthday_height`, `set_active_wallet_registry`, `set_registry_setting`, `should_generate_orchard`, `store_sealed_key`, `sync_status_inner`, `touch_wallet_last_synced`, `touch_wallet_last_used`, `try_unseal_db_key`, `wallet_base_dir`, `wallet_db_key_path`, `wallet_db_keys`, `wallet_db_path_for`, `wallet_db_salt_path`, `wallet_master_key`, `wallet_network_type`, `wallet_registry_key_path`, `wallet_registry_path`, `wallet_registry_salt_path`, `write_salt`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `DECOY_VAULT`, `LIGHTD_ENDPOINTS`, `SEED_EXPORT`, `SYNC_SESSIONS`, `SyncSession`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`, `WalletRegistryActivity`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
 // These functions are ignored (category: IgnoreBecauseOwnerTyShouldIgnore): `default`
@@ -73,6 +73,17 @@ Future<bool> verifyAppPassphrase({required String passphrase}) =>
 /// This allows wallets to be decrypted using the passphrase
 Future<void> unlockApp({required String passphrase}) =>
     RustLib.instance.api.crateApiUnlockApp(passphrase: passphrase);
+
+/// Change app passphrase and re-encrypt all wallet data with the new keys.
+Future<void> changeAppPassphrase(
+        {required String currentPassphrase, required String newPassphrase}) =>
+    RustLib.instance.api.crateApiChangeAppPassphrase(
+        currentPassphrase: currentPassphrase, newPassphrase: newPassphrase);
+
+/// Change passphrase using the cached passphrase from the current session.
+Future<void> changeAppPassphraseWithCached({required String newPassphrase}) =>
+    RustLib.instance.api
+        .crateApiChangeAppPassphraseWithCached(newPassphrase: newPassphrase);
 
 /// Reseal registry + wallet DB keys using current platform keystore mode.
 ///
@@ -236,14 +247,14 @@ Future<List<AddressBookEntryFfi>> getRecentlyUsedAddresses(
 
 /// Export Sapling extended full viewing key (xFVK) from full wallet.
 ///
-/// This matches the full node's zxviews... format and can be used to create watch-only wallets.
+/// Uses the zxviews... Bech32 format for watch-only wallets.
 Future<String> exportIvk({required String walletId}) =>
     RustLib.instance.api.crateApiExportIvk(walletId: walletId);
 
 /// Export Orchard Extended Full Viewing Key as Bech32 (for watch-only wallets)
 ///
 /// Returns Bech32-encoded string with the network-specific HRP.
-/// This matches the full node's format for exporting Orchard viewing keys.
+/// Uses the standard Orchard viewing key export format.
 /// Use export_ivk() for Sapling xFVK (zxviews... format).
 Future<String> exportOrchardViewingKey({required String walletId}) =>
     RustLib.instance.api.crateApiExportOrchardViewingKey(walletId: walletId);
@@ -463,11 +474,11 @@ Future<bool> validateMnemonic({required String mnemonic}) =>
 Future<NetworkInfo> getNetworkInfo() =>
     RustLib.instance.api.crateApiGetNetworkInfo();
 
-/// Format amount (zatoshis to ARRR)
-Future<String> formatAmount({required BigInt zatoshis}) =>
-    RustLib.instance.api.crateApiFormatAmount(zatoshis: zatoshis);
+/// Format amount (arrrtoshis to ARRR)
+Future<String> formatAmount({required BigInt arrrtoshis}) =>
+    RustLib.instance.api.crateApiFormatAmount(arrrtoshis: arrrtoshis);
 
-/// Parse amount (ARRR to zatoshis)
+/// Parse amount (ARRR to arrrtoshis)
 Future<BigInt> parseAmount({required String arrr}) =>
     RustLib.instance.api.crateApiParseAmount(arrr: arrr);
 
@@ -525,6 +536,12 @@ Future<List<String>> exportSeedWithPassphrase(
         {required String walletId, required String passphrase}) =>
     RustLib.instance.api.crateApiExportSeedWithPassphrase(
         walletId: walletId, passphrase: passphrase);
+
+/// Export seed using cached app passphrase (after biometric approval).
+Future<List<String>> exportSeedWithCachedPassphrase(
+        {required String walletId}) =>
+    RustLib.instance.api
+        .crateApiExportSeedWithCachedPassphrase(walletId: walletId);
 
 /// Cancel seed export flow
 Future<void> cancelSeedExport() =>

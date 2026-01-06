@@ -1465,6 +1465,55 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__cancel_syncPtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
 
+  void wire__crate__api__change_app_passphrase(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> current_passphrase,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> new_passphrase,
+  ) {
+    return _wire__crate__api__change_app_passphrase(
+      port_,
+      current_passphrase,
+      new_passphrase,
+    );
+  }
+
+  late final _wire__crate__api__change_app_passphrasePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__change_app_passphrase');
+  late final _wire__crate__api__change_app_passphrase =
+      _wire__crate__api__change_app_passphrasePtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>();
+
+  void wire__crate__api__change_app_passphrase_with_cached(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> new_passphrase,
+  ) {
+    return _wire__crate__api__change_app_passphrase_with_cached(
+      port_,
+      new_passphrase,
+    );
+  }
+
+  late final _wire__crate__api__change_app_passphrase_with_cachedPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>>(
+    'frbgen_pirate_wallet_wire__crate__api__change_app_passphrase_with_cached',
+  );
+  late final _wire__crate__api__change_app_passphrase_with_cached =
+      _wire__crate__api__change_app_passphrase_with_cachedPtr.asFunction<
+          void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
+
   void wire__crate__api__clear_panic_pin(int port_) {
     return _wire__crate__api__clear_panic_pin(port_);
   }
@@ -1702,6 +1751,28 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__export_seedPtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
 
+  void wire__crate__api__export_seed_with_cached_passphrase(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+  ) {
+    return _wire__crate__api__export_seed_with_cached_passphrase(
+      port_,
+      wallet_id,
+    );
+  }
+
+  late final _wire__crate__api__export_seed_with_cached_passphrasePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>>(
+    'frbgen_pirate_wallet_wire__crate__api__export_seed_with_cached_passphrase',
+  );
+  late final _wire__crate__api__export_seed_with_cached_passphrase =
+      _wire__crate__api__export_seed_with_cached_passphrasePtr.asFunction<
+          void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
+
   void wire__crate__api__export_seed_with_passphrase(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -1761,8 +1832,8 @@ class RustLibWire implements BaseWire {
             ffi.Pointer<ffi.Uint32>,
           )>();
 
-  void wire__crate__api__format_amount(int port_, int zatoshis) {
-    return _wire__crate__api__format_amount(port_, zatoshis);
+  void wire__crate__api__format_amount(int port_, int arrrtoshis) {
+    return _wire__crate__api__format_amount(port_, arrrtoshis);
   }
 
   late final _wire__crate__api__format_amountPtr =

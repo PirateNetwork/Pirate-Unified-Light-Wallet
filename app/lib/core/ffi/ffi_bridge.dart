@@ -472,6 +472,34 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  /// Change app passphrase (requires current passphrase)
+  static Future<void> changeAppPassphrase({
+    required String currentPassphrase,
+    required String newPassphrase,
+  }) async {
+    if (kUseFrbBindings) {
+      await api.changeAppPassphrase(
+        currentPassphrase: currentPassphrase,
+        newPassphrase: newPassphrase,
+      );
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Change app passphrase using cached session passphrase
+  static Future<void> changeAppPassphraseWithCached({
+    required String newPassphrase,
+  }) async {
+    if (kUseFrbBindings) {
+      await api.changeAppPassphraseWithCached(
+        newPassphrase: newPassphrase,
+      );
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   /// Reseal DB keys with the current keystore mode (biometric on/off).
   static Future<void> resealDbKeysForBiometrics() async {
     if (kUseFrbBindings) {
@@ -1038,12 +1066,12 @@ class FfiBridge {
     return pin;
   }
 
-  static Future<String> formatAmount(int zatoshis) async {
+  static Future<String> formatAmount(int arrrtoshis) async {
     if (kUseFrbBindings) {
-      return await api.formatAmount(zatoshis: BigInt.from(zatoshis));
+      return await api.formatAmount(arrrtoshis: BigInt.from(arrrtoshis));
     }
     // Fallback implementation
-    return (zatoshis / 100000000).toStringAsFixed(8);
+    return (arrrtoshis / 100000000).toStringAsFixed(8);
   }
 
   static Future<int> parseAmount(String arrr) async {
@@ -1445,6 +1473,19 @@ class FfiBridge {
       return await api.exportSeedWithPassphrase(
         walletId: walletId,
         passphrase: passphrase,
+      );
+    }
+    // Fallback stub (should not be reached if kUseFrbBindings is true)
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Export seed using cached app passphrase (after biometric approval).
+  static Future<List<String>> exportSeedWithCachedPassphrase(
+    WalletId walletId,
+  ) async {
+    if (kUseFrbBindings) {
+      return await api.exportSeedWithCachedPassphrase(
+        walletId: walletId,
       );
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)

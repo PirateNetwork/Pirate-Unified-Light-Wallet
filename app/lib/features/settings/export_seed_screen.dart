@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:local_auth/local_auth.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
@@ -10,6 +9,7 @@ import '../../design/compat.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/security/biometric_auth.dart';
 import 'dart:async';
 
 /// Provider for clipboard countdown timer
@@ -37,7 +37,6 @@ class ExportSeedScreen extends ConsumerStatefulWidget {
 
 class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   final _passphraseController = TextEditingController();
-  final _localAuth = LocalAuthentication();
   
   bool _step1Complete = false; // Warning acknowledged
   bool _step2Complete = false; // Biometric passed
@@ -48,6 +47,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   bool _isLoading = false;
   String? _error;
   Timer? _clipboardTimer;
+  bool _biometricPrompted = false;
 
   @override
   void dispose() {
@@ -239,6 +239,15 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
   /// Step 2: Biometric authentication
   Widget _buildBiometricStep() {
+    if (!_biometricPrompted && !_isLoading) {
+      _biometricPrompted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_seedRevealed && !_step2Complete) {
+          _authenticateBiometric();
+        }
+      });
+    }
+
     return _centeredStep(
       Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -480,23 +489,34 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     });
 
     try {
-      final canCheck = await _localAuth.canCheckBiometrics;
-      if (!canCheck) {
-        await FfiBridge.skipSeedBiometric();
-        setState(() => _step2Complete = true);
+      final available = await BiometricAuth.isAvailable();
+      if (!available) {
+        setState(() => _error = 'Biometrics are not available on this device.');
         return;
       }
 
-      final authenticated = await _localAuth.authenticate(
-        localizedReason: 'Verify to reveal your recovery phrase',
+      final authenticated = await BiometricAuth.authenticate(
+        reason: 'Verify to reveal your recovery phrase',
+        biometricOnly: true,
       );
 
       if (authenticated) {
         await FfiBridge.completeSeedBiometric(true);
-        setState(() => _step2Complete = true);
+        final words =
+            await FfiBridge.exportSeedWithCachedPassphrase(widget.walletId);
+        final mnemonic = words.join(' ');
+
+        setState(() {
+          _mnemonic = mnemonic;
+          _step2Complete = true;
+          _step3Complete = true;
+          _seedRevealed = true;
+        });
       } else {
         setState(() => _error = 'Biometric authentication failed');
       }
+    } on BiometricException catch (e) {
+      setState(() => _error = e.message);
     } catch (e) {
       setState(() {
         _error = 'Biometric authentication error: ${e.toString()}';

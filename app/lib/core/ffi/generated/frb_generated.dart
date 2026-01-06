@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1697485769;
+  int get rustContentHash => -1963115127;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -105,6 +105,12 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiCancelSync({required String walletId});
 
+  Future<void> crateApiChangeAppPassphrase(
+      {required String currentPassphrase, required String newPassphrase});
+
+  Future<void> crateApiChangeAppPassphraseWithCached(
+      {required String newPassphrase});
+
   Future<void> crateApiClearPanicPin();
 
   Future<String> crateApiCompleteSeedBiometric({required bool success});
@@ -134,13 +140,16 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiExportSeed({required String walletId});
 
+  Future<List<String>> crateApiExportSeedWithCachedPassphrase(
+      {required String walletId});
+
   Future<List<String>> crateApiExportSeedWithPassphrase(
       {required String walletId, required String passphrase});
 
   Future<String?> crateApiFetchTransactionMemo(
       {required String walletId, required String txid, int? outputIndex});
 
-  Future<String> crateApiFormatAmount({required BigInt zatoshis});
+  Future<String> crateApiFormatAmount({required BigInt arrrtoshis});
 
   Future<String> crateApiGenerateMnemonic({int? wordCount});
 
@@ -535,6 +544,56 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiChangeAppPassphrase(
+      {required String currentPassphrase, required String newPassphrase}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(currentPassphrase);
+        var arg1 = cst_encode_String(newPassphrase);
+        return wire.wire__crate__api__change_app_passphrase(port_, arg0, arg1);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_unit,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiChangeAppPassphraseConstMeta,
+      argValues: [currentPassphrase, newPassphrase],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiChangeAppPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "change_app_passphrase",
+        argNames: ["currentPassphrase", "newPassphrase"],
+      );
+
+  @override
+  Future<void> crateApiChangeAppPassphraseWithCached(
+      {required String newPassphrase}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(newPassphrase);
+        return wire.wire__crate__api__change_app_passphrase_with_cached(
+            port_, arg0);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_unit,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiChangeAppPassphraseWithCachedConstMeta,
+      argValues: [newPassphrase],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiChangeAppPassphraseWithCachedConstMeta =>
+      const TaskConstMeta(
+        debugName: "change_app_passphrase_with_cached",
+        argNames: ["newPassphrase"],
+      );
+
+  @override
   Future<void> crateApiClearPanicPin() {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -832,6 +891,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<String>> crateApiExportSeedWithCachedPassphrase(
+      {required String walletId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        return wire.wire__crate__api__export_seed_with_cached_passphrase(
+            port_, arg0);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_list_String,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiExportSeedWithCachedPassphraseConstMeta,
+      argValues: [walletId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiExportSeedWithCachedPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_seed_with_cached_passphrase",
+        argNames: ["walletId"],
+      );
+
+  @override
   Future<List<String>> crateApiExportSeedWithPassphrase(
       {required String walletId, required String passphrase}) {
     return handler.executeNormal(NormalTask(
@@ -885,10 +969,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiFormatAmount({required BigInt zatoshis}) {
+  Future<String> crateApiFormatAmount({required BigInt arrrtoshis}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
-        var arg0 = cst_encode_u_64(zatoshis);
+        var arg0 = cst_encode_u_64(arrrtoshis);
         return wire.wire__crate__api__format_amount(port_, arg0);
       },
       codec: DcoCodec(
@@ -896,14 +980,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         decodeErrorData: dco_decode_AnyhowException,
       ),
       constMeta: kCrateApiFormatAmountConstMeta,
-      argValues: [zatoshis],
+      argValues: [arrrtoshis],
       apiImpl: this,
     ));
   }
 
   TaskConstMeta get kCrateApiFormatAmountConstMeta => const TaskConstMeta(
         debugName: "format_amount",
-        argNames: ["zatoshis"],
+        argNames: ["arrrtoshis"],
       );
 
   @override

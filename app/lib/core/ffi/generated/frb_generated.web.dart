@@ -1240,6 +1240,16 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__cancel_sync(NativePortType port_, String wallet_id) =>
       wasmModule.wire__crate__api__cancel_sync(port_, wallet_id);
 
+  void wire__crate__api__change_app_passphrase(NativePortType port_,
+          String current_passphrase, String new_passphrase) =>
+      wasmModule.wire__crate__api__change_app_passphrase(
+          port_, current_passphrase, new_passphrase);
+
+  void wire__crate__api__change_app_passphrase_with_cached(
+          NativePortType port_, String new_passphrase) =>
+      wasmModule.wire__crate__api__change_app_passphrase_with_cached(
+          port_, new_passphrase);
+
   void wire__crate__api__clear_panic_pin(NativePortType port_) =>
       wasmModule.wire__crate__api__clear_panic_pin(port_);
 
@@ -1291,6 +1301,11 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__export_seed(NativePortType port_, String wallet_id) =>
       wasmModule.wire__crate__api__export_seed(port_, wallet_id);
 
+  void wire__crate__api__export_seed_with_cached_passphrase(
+          NativePortType port_, String wallet_id) =>
+      wasmModule.wire__crate__api__export_seed_with_cached_passphrase(
+          port_, wallet_id);
+
   void wire__crate__api__export_seed_with_passphrase(
           NativePortType port_, String wallet_id, String passphrase) =>
       wasmModule.wire__crate__api__export_seed_with_passphrase(
@@ -1301,8 +1316,9 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__fetch_transaction_memo(
           port_, wallet_id, txid, output_index);
 
-  void wire__crate__api__format_amount(NativePortType port_, JSAny zatoshis) =>
-      wasmModule.wire__crate__api__format_amount(port_, zatoshis);
+  void wire__crate__api__format_amount(
+          NativePortType port_, JSAny arrrtoshis) =>
+      wasmModule.wire__crate__api__format_amount(port_, arrrtoshis);
 
   void wire__crate__api__generate_mnemonic(
           NativePortType port_, int? word_count) =>
@@ -1624,6 +1640,12 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__cancel_sync(
       NativePortType port_, String wallet_id);
 
+  external void wire__crate__api__change_app_passphrase(
+      NativePortType port_, String current_passphrase, String new_passphrase);
+
+  external void wire__crate__api__change_app_passphrase_with_cached(
+      NativePortType port_, String new_passphrase);
+
   external void wire__crate__api__clear_panic_pin(NativePortType port_);
 
   external void wire__crate__api__complete_seed_biometric(
@@ -1661,6 +1683,9 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__export_seed(
       NativePortType port_, String wallet_id);
 
+  external void wire__crate__api__export_seed_with_cached_passphrase(
+      NativePortType port_, String wallet_id);
+
   external void wire__crate__api__export_seed_with_passphrase(
       NativePortType port_, String wallet_id, String passphrase);
 
@@ -1668,7 +1693,7 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
       NativePortType port_, String wallet_id, String txid, int? output_index);
 
   external void wire__crate__api__format_amount(
-      NativePortType port_, JSAny zatoshis);
+      NativePortType port_, JSAny arrrtoshis);
 
   external void wire__crate__api__generate_mnemonic(
       NativePortType port_, int? word_count);

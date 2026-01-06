@@ -396,7 +396,7 @@ class Output {
   /// Recipient address (Sapling zs1... or Orchard pirate1...)
   final String addr;
 
-  /// Amount in zatoshis
+  /// Amount in arrrtoshis
   final BigInt amount;
 
   /// Optional memo (max 512 bytes UTF-8)

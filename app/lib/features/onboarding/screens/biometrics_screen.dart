@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/security/biometric_auth.dart';
+import '../../../core/security/passphrase_cache.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../design/tokens/colors.dart';
 import '../../../features/settings/providers/preferences_providers.dart';
@@ -60,6 +61,11 @@ class _OnboardingBiometricsScreenState
       }
       await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: true);
       ref.read(onboardingControllerProvider.notifier).setBiometrics(true);
+      final state = ref.read(onboardingControllerProvider);
+      final passphrase = state.passphrase;
+      if (passphrase != null && passphrase.isNotEmpty) {
+        await PassphraseCache.store(passphrase);
+      }
       _proceed();
     } catch (_) {
       setState(() => _error = 'Unable to enable biometrics.');
@@ -70,9 +76,10 @@ class _OnboardingBiometricsScreenState
     }
   }
 
-  void _skip() {
-    ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: false);
+  Future<void> _skip() async {
+    await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: false);
     ref.read(onboardingControllerProvider.notifier).setBiometrics(false);
+    await PassphraseCache.clear();
     _proceed();
   }
 

@@ -13,677 +13,434 @@ import 'api.dart';
 import 'frb_generated.dart';
 import 'models.dart';
 
-abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
-  RustLibApiImplPlatform({
-    required super.handler,
-    required super.wire,
-    required super.generalizedFrbRustBinding,
-    required super.portManager,
-  });
 
-  @protected
-  AnyhowException dco_decode_AnyhowException(dynamic raw);
 
-  @protected
-  String dco_decode_String(dynamic raw);
 
-  @protected
-  AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw);
+                abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
+                  RustLibApiImplPlatform({
+                    required super.handler,
+                    required super.wire,
+                    required super.generalizedFrbRustBinding,
+                    required super.portManager,
+                  });
 
-  @protected
-  AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw);
+                  
 
-  @protected
-  AddressInfo dco_decode_address_info(dynamic raw);
+                  @protected AnyhowException dco_decode_AnyhowException(dynamic raw);
 
-  @protected
-  BackgroundSyncResult dco_decode_background_sync_result(dynamic raw);
+@protected String dco_decode_String(dynamic raw);
 
-  @protected
-  Balance dco_decode_balance(dynamic raw);
+@protected AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw);
 
-  @protected
-  bool dco_decode_bool(dynamic raw);
+@protected AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw);
 
-  @protected
-  AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(
-      dynamic raw);
+@protected AddressInfo dco_decode_address_info(dynamic raw);
 
-  @protected
-  AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(
-      dynamic raw);
+@protected BackgroundSyncResult dco_decode_background_sync_result(dynamic raw);
 
-  @protected
-  bool dco_decode_box_autoadd_bool(dynamic raw);
+@protected Balance dco_decode_balance(dynamic raw);
 
-  @protected
-  CheckpointInfo dco_decode_box_autoadd_checkpoint_info(dynamic raw);
+@protected bool dco_decode_bool(dynamic raw);
 
-  @protected
-  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
+@protected AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(dynamic raw);
 
-  @protected
-  LightdEndpoint dco_decode_box_autoadd_lightd_endpoint(dynamic raw);
+@protected AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(dynamic raw);
 
-  @protected
-  PendingTx dco_decode_box_autoadd_pending_tx(dynamic raw);
+@protected bool dco_decode_box_autoadd_bool(dynamic raw);
 
-  @protected
-  SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw);
+@protected CheckpointInfo dco_decode_box_autoadd_checkpoint_info(dynamic raw);
 
-  @protected
-  TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw);
+@protected PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
 
-  @protected
-  int dco_decode_box_autoadd_u_32(dynamic raw);
+@protected LightdEndpoint dco_decode_box_autoadd_lightd_endpoint(dynamic raw);
 
-  @protected
-  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+@protected PendingTx dco_decode_box_autoadd_pending_tx(dynamic raw);
 
-  @protected
-  WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(
-      dynamic raw);
+@protected SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw);
 
-  @protected
-  BuildInfo dco_decode_build_info(dynamic raw);
+@protected TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw);
 
-  @protected
-  CheckpointInfo dco_decode_checkpoint_info(dynamic raw);
+@protected int dco_decode_box_autoadd_u_32(dynamic raw);
 
-  @protected
-  double dco_decode_f_64(dynamic raw);
+@protected BigInt dco_decode_box_autoadd_u_64(dynamic raw);
 
-  @protected
-  FeeInfo dco_decode_fee_info(dynamic raw);
+@protected WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(dynamic raw);
 
-  @protected
-  int dco_decode_i_32(dynamic raw);
+@protected BuildInfo dco_decode_build_info(dynamic raw);
 
-  @protected
-  PlatformInt64 dco_decode_i_64(dynamic raw);
+@protected CheckpointInfo dco_decode_checkpoint_info(dynamic raw);
 
-  @protected
-  LightdEndpoint dco_decode_lightd_endpoint(dynamic raw);
+@protected double dco_decode_f_64(dynamic raw);
 
-  @protected
-  List<String> dco_decode_list_String(dynamic raw);
+@protected FeeInfo dco_decode_fee_info(dynamic raw);
 
-  @protected
-  List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw);
+@protected int dco_decode_i_32(dynamic raw);
 
-  @protected
-  List<AddressInfo> dco_decode_list_address_info(dynamic raw);
+@protected PlatformInt64 dco_decode_i_64(dynamic raw);
 
-  @protected
-  List<Output> dco_decode_list_output(dynamic raw);
+@protected LightdEndpoint dco_decode_lightd_endpoint(dynamic raw);
 
-  @protected
-  Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+@protected List<String> dco_decode_list_String(dynamic raw);
 
-  @protected
-  List<SyncLogEntryFfi> dco_decode_list_sync_log_entry_ffi(dynamic raw);
+@protected List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw);
 
-  @protected
-  List<TxInfo> dco_decode_list_tx_info(dynamic raw);
+@protected List<AddressInfo> dco_decode_list_address_info(dynamic raw);
 
-  @protected
-  List<WalletMeta> dco_decode_list_wallet_meta(dynamic raw);
+@protected List<Output> dco_decode_list_output(dynamic raw);
 
-  @protected
-  NetworkInfo dco_decode_network_info(dynamic raw);
+@protected Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
-  @protected
-  NodeTestResult dco_decode_node_test_result(dynamic raw);
+@protected List<SyncLogEntryFfi> dco_decode_list_sync_log_entry_ffi(dynamic raw);
 
-  @protected
-  String? dco_decode_opt_String(dynamic raw);
+@protected List<TxInfo> dco_decode_list_tx_info(dynamic raw);
 
-  @protected
-  AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(
-      dynamic raw);
+@protected List<WalletMeta> dco_decode_list_wallet_meta(dynamic raw);
 
-  @protected
-  AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(
-      dynamic raw);
+@protected NetworkInfo dco_decode_network_info(dynamic raw);
 
-  @protected
-  bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
+@protected NodeTestResult dco_decode_node_test_result(dynamic raw);
 
-  @protected
-  CheckpointInfo? dco_decode_opt_box_autoadd_checkpoint_info(dynamic raw);
+@protected String? dco_decode_opt_String(dynamic raw);
 
-  @protected
-  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+@protected AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(dynamic raw);
 
-  @protected
-  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+@protected AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(dynamic raw);
 
-  @protected
-  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+@protected bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
 
-  @protected
-  WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(
-      dynamic raw);
+@protected CheckpointInfo? dco_decode_opt_box_autoadd_checkpoint_info(dynamic raw);
 
-  @protected
-  Output dco_decode_output(dynamic raw);
+@protected PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
 
-  @protected
-  PendingTx dco_decode_pending_tx(dynamic raw);
+@protected int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
-  @protected
-  SeedExportWarnings dco_decode_seed_export_warnings(dynamic raw);
+@protected BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
-  @protected
-  SignedTx dco_decode_signed_tx(dynamic raw);
+@protected WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(dynamic raw);
 
-  @protected
-  SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw);
+@protected Output dco_decode_output(dynamic raw);
 
-  @protected
-  SyncMode dco_decode_sync_mode(dynamic raw);
+@protected PendingTx dco_decode_pending_tx(dynamic raw);
 
-  @protected
-  SyncStage dco_decode_sync_stage(dynamic raw);
+@protected SeedExportWarnings dco_decode_seed_export_warnings(dynamic raw);
 
-  @protected
-  SyncStatus dco_decode_sync_status(dynamic raw);
+@protected SignedTx dco_decode_signed_tx(dynamic raw);
 
-  @protected
-  TunnelMode dco_decode_tunnel_mode(dynamic raw);
+@protected SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw);
 
-  @protected
-  TxInfo dco_decode_tx_info(dynamic raw);
+@protected SyncMode dco_decode_sync_mode(dynamic raw);
 
-  @protected
-  int dco_decode_u_16(dynamic raw);
+@protected SyncStage dco_decode_sync_stage(dynamic raw);
 
-  @protected
-  int dco_decode_u_32(dynamic raw);
+@protected SyncStatus dco_decode_sync_status(dynamic raw);
 
-  @protected
-  BigInt dco_decode_u_64(dynamic raw);
+@protected TunnelMode dco_decode_tunnel_mode(dynamic raw);
 
-  @protected
-  int dco_decode_u_8(dynamic raw);
+@protected TxInfo dco_decode_tx_info(dynamic raw);
 
-  @protected
-  void dco_decode_unit(dynamic raw);
+@protected int dco_decode_u_16(dynamic raw);
 
-  @protected
-  BigInt dco_decode_usize(dynamic raw);
+@protected int dco_decode_u_32(dynamic raw);
 
-  @protected
-  WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(
-      dynamic raw);
+@protected BigInt dco_decode_u_64(dynamic raw);
 
-  @protected
-  WalletMeta dco_decode_wallet_meta(dynamic raw);
+@protected int dco_decode_u_8(dynamic raw);
 
-  @protected
-  WatchOnlyBannerInfo dco_decode_watch_only_banner_info(dynamic raw);
+@protected void dco_decode_unit(dynamic raw);
 
-  @protected
-  WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(
-      dynamic raw);
+@protected BigInt dco_decode_usize(dynamic raw);
 
-  @protected
-  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+@protected WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(dynamic raw);
 
-  @protected
-  String sse_decode_String(SseDeserializer deserializer);
+@protected WalletMeta dco_decode_wallet_meta(dynamic raw);
 
-  @protected
-  AddressBookColorTag sse_decode_address_book_color_tag(
-      SseDeserializer deserializer);
+@protected WatchOnlyBannerInfo dco_decode_watch_only_banner_info(dynamic raw);
 
-  @protected
-  AddressBookEntryFfi sse_decode_address_book_entry_ffi(
-      SseDeserializer deserializer);
+@protected WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(dynamic raw);
 
-  @protected
-  AddressInfo sse_decode_address_info(SseDeserializer deserializer);
+@protected AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
-  @protected
-  BackgroundSyncResult sse_decode_background_sync_result(
-      SseDeserializer deserializer);
+@protected String sse_decode_String(SseDeserializer deserializer);
 
-  @protected
-  Balance sse_decode_balance(SseDeserializer deserializer);
+@protected AddressBookColorTag sse_decode_address_book_color_tag(SseDeserializer deserializer);
 
-  @protected
-  bool sse_decode_bool(SseDeserializer deserializer);
+@protected AddressBookEntryFfi sse_decode_address_book_entry_ffi(SseDeserializer deserializer);
 
-  @protected
-  AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(
-      SseDeserializer deserializer);
+@protected AddressInfo sse_decode_address_info(SseDeserializer deserializer);
 
-  @protected
-  AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(
-      SseDeserializer deserializer);
+@protected BackgroundSyncResult sse_decode_background_sync_result(SseDeserializer deserializer);
 
-  @protected
-  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
+@protected Balance sse_decode_balance(SseDeserializer deserializer);
 
-  @protected
-  CheckpointInfo sse_decode_box_autoadd_checkpoint_info(
-      SseDeserializer deserializer);
+@protected bool sse_decode_bool(SseDeserializer deserializer);
 
-  @protected
-  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
+@protected AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(SseDeserializer deserializer);
 
-  @protected
-  LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(
-      SseDeserializer deserializer);
+@protected AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(SseDeserializer deserializer);
 
-  @protected
-  PendingTx sse_decode_box_autoadd_pending_tx(SseDeserializer deserializer);
+@protected bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
-  @protected
-  SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer);
+@protected CheckpointInfo sse_decode_box_autoadd_checkpoint_info(SseDeserializer deserializer);
 
-  @protected
-  TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer);
+@protected PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
 
-  @protected
-  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+@protected LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(SseDeserializer deserializer);
 
-  @protected
-  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+@protected PendingTx sse_decode_box_autoadd_pending_tx(SseDeserializer deserializer);
 
-  @protected
-  WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(
-      SseDeserializer deserializer);
+@protected SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer);
 
-  @protected
-  BuildInfo sse_decode_build_info(SseDeserializer deserializer);
+@protected TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer);
 
-  @protected
-  CheckpointInfo sse_decode_checkpoint_info(SseDeserializer deserializer);
+@protected int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
-  @protected
-  double sse_decode_f_64(SseDeserializer deserializer);
+@protected BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
-  @protected
-  FeeInfo sse_decode_fee_info(SseDeserializer deserializer);
+@protected WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(SseDeserializer deserializer);
 
-  @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
+@protected BuildInfo sse_decode_build_info(SseDeserializer deserializer);
 
-  @protected
-  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+@protected CheckpointInfo sse_decode_checkpoint_info(SseDeserializer deserializer);
 
-  @protected
-  LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer);
+@protected double sse_decode_f_64(SseDeserializer deserializer);
 
-  @protected
-  List<String> sse_decode_list_String(SseDeserializer deserializer);
+@protected FeeInfo sse_decode_fee_info(SseDeserializer deserializer);
 
-  @protected
-  List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(
-      SseDeserializer deserializer);
+@protected int sse_decode_i_32(SseDeserializer deserializer);
 
-  @protected
-  List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
+@protected PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
-  @protected
-  List<Output> sse_decode_list_output(SseDeserializer deserializer);
+@protected LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer);
 
-  @protected
-  Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+@protected List<String> sse_decode_list_String(SseDeserializer deserializer);
 
-  @protected
-  List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(
-      SseDeserializer deserializer);
+@protected List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(SseDeserializer deserializer);
 
-  @protected
-  List<TxInfo> sse_decode_list_tx_info(SseDeserializer deserializer);
+@protected List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
 
-  @protected
-  List<WalletMeta> sse_decode_list_wallet_meta(SseDeserializer deserializer);
+@protected List<Output> sse_decode_list_output(SseDeserializer deserializer);
 
-  @protected
-  NetworkInfo sse_decode_network_info(SseDeserializer deserializer);
+@protected Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
-  @protected
-  NodeTestResult sse_decode_node_test_result(SseDeserializer deserializer);
+@protected List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(SseDeserializer deserializer);
 
-  @protected
-  String? sse_decode_opt_String(SseDeserializer deserializer);
+@protected List<TxInfo> sse_decode_list_tx_info(SseDeserializer deserializer);
 
-  @protected
-  AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(
-      SseDeserializer deserializer);
+@protected List<WalletMeta> sse_decode_list_wallet_meta(SseDeserializer deserializer);
 
-  @protected
-  AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(
-      SseDeserializer deserializer);
+@protected NetworkInfo sse_decode_network_info(SseDeserializer deserializer);
 
-  @protected
-  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
+@protected NodeTestResult sse_decode_node_test_result(SseDeserializer deserializer);
 
-  @protected
-  CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(
-      SseDeserializer deserializer);
+@protected String? sse_decode_opt_String(SseDeserializer deserializer);
 
-  @protected
-  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+@protected AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(SseDeserializer deserializer);
 
-  @protected
-  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+@protected AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(SseDeserializer deserializer);
 
-  @protected
-  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+@protected bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
 
-  @protected
-  WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(
-      SseDeserializer deserializer);
+@protected CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(SseDeserializer deserializer);
 
-  @protected
-  Output sse_decode_output(SseDeserializer deserializer);
+@protected PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
 
-  @protected
-  PendingTx sse_decode_pending_tx(SseDeserializer deserializer);
+@protected int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
-  @protected
-  SeedExportWarnings sse_decode_seed_export_warnings(
-      SseDeserializer deserializer);
+@protected BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
-  @protected
-  SignedTx sse_decode_signed_tx(SseDeserializer deserializer);
+@protected WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(SseDeserializer deserializer);
 
-  @protected
-  SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer);
+@protected Output sse_decode_output(SseDeserializer deserializer);
 
-  @protected
-  SyncMode sse_decode_sync_mode(SseDeserializer deserializer);
+@protected PendingTx sse_decode_pending_tx(SseDeserializer deserializer);
 
-  @protected
-  SyncStage sse_decode_sync_stage(SseDeserializer deserializer);
+@protected SeedExportWarnings sse_decode_seed_export_warnings(SseDeserializer deserializer);
 
-  @protected
-  SyncStatus sse_decode_sync_status(SseDeserializer deserializer);
+@protected SignedTx sse_decode_signed_tx(SseDeserializer deserializer);
 
-  @protected
-  TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer);
+@protected SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer);
 
-  @protected
-  TxInfo sse_decode_tx_info(SseDeserializer deserializer);
+@protected SyncMode sse_decode_sync_mode(SseDeserializer deserializer);
 
-  @protected
-  int sse_decode_u_16(SseDeserializer deserializer);
+@protected SyncStage sse_decode_sync_stage(SseDeserializer deserializer);
 
-  @protected
-  int sse_decode_u_32(SseDeserializer deserializer);
+@protected SyncStatus sse_decode_sync_status(SseDeserializer deserializer);
 
-  @protected
-  BigInt sse_decode_u_64(SseDeserializer deserializer);
+@protected TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer);
 
-  @protected
-  int sse_decode_u_8(SseDeserializer deserializer);
+@protected TxInfo sse_decode_tx_info(SseDeserializer deserializer);
 
-  @protected
-  void sse_decode_unit(SseDeserializer deserializer);
+@protected int sse_decode_u_16(SseDeserializer deserializer);
 
-  @protected
-  BigInt sse_decode_usize(SseDeserializer deserializer);
+@protected int sse_decode_u_32(SseDeserializer deserializer);
 
-  @protected
-  WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(
-      SseDeserializer deserializer);
+@protected BigInt sse_decode_u_64(SseDeserializer deserializer);
 
-  @protected
-  WalletMeta sse_decode_wallet_meta(SseDeserializer deserializer);
+@protected int sse_decode_u_8(SseDeserializer deserializer);
 
-  @protected
-  WatchOnlyBannerInfo sse_decode_watch_only_banner_info(
-      SseDeserializer deserializer);
+@protected void sse_decode_unit(SseDeserializer deserializer);
 
-  @protected
-  WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(
-      SseDeserializer deserializer);
+@protected BigInt sse_decode_usize(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_AnyhowException(
-      AnyhowException self, SseSerializer serializer);
+@protected WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_String(String self, SseSerializer serializer);
+@protected WalletMeta sse_decode_wallet_meta(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_address_book_color_tag(
-      AddressBookColorTag self, SseSerializer serializer);
+@protected WatchOnlyBannerInfo sse_decode_watch_only_banner_info(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_address_book_entry_ffi(
-      AddressBookEntryFfi self, SseSerializer serializer);
+@protected WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(SseDeserializer deserializer);
 
-  @protected
-  void sse_encode_address_info(AddressInfo self, SseSerializer serializer);
+@protected void sse_encode_AnyhowException(AnyhowException self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_background_sync_result(
-      BackgroundSyncResult self, SseSerializer serializer);
+@protected void sse_encode_String(String self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_balance(Balance self, SseSerializer serializer);
+@protected void sse_encode_address_book_color_tag(AddressBookColorTag self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer);
+@protected void sse_encode_address_book_entry_ffi(AddressBookEntryFfi self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_address_book_color_tag(
-      AddressBookColorTag self, SseSerializer serializer);
+@protected void sse_encode_address_info(AddressInfo self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_address_book_entry_ffi(
-      AddressBookEntryFfi self, SseSerializer serializer);
+@protected void sse_encode_background_sync_result(BackgroundSyncResult self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+@protected void sse_encode_balance(Balance self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_checkpoint_info(
-      CheckpointInfo self, SseSerializer serializer);
+@protected void sse_encode_bool(bool self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_i_64(
-      PlatformInt64 self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_address_book_color_tag(AddressBookColorTag self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_lightd_endpoint(
-      LightdEndpoint self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_pending_tx(
-      PendingTx self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_signed_tx(
-      SignedTx self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_checkpoint_info(CheckpointInfo self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_tunnel_mode(
-      TunnelMode self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_i_64(PlatformInt64 self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_lightd_endpoint(LightdEndpoint self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_pending_tx(PendingTx self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_box_autoadd_watch_only_banner_info(
-      WatchOnlyBannerInfo self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_signed_tx(SignedTx self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_build_info(BuildInfo self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_tunnel_mode(TunnelMode self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_checkpoint_info(
-      CheckpointInfo self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_f_64(double self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_fee_info(FeeInfo self, SseSerializer serializer);
+@protected void sse_encode_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
+@protected void sse_encode_build_info(BuildInfo self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+@protected void sse_encode_checkpoint_info(CheckpointInfo self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_lightd_endpoint(
-      LightdEndpoint self, SseSerializer serializer);
+@protected void sse_encode_f_64(double self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_list_String(List<String> self, SseSerializer serializer);
+@protected void sse_encode_fee_info(FeeInfo self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_list_address_book_entry_ffi(
-      List<AddressBookEntryFfi> self, SseSerializer serializer);
+@protected void sse_encode_i_32(int self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_list_address_info(
-      List<AddressInfo> self, SseSerializer serializer);
+@protected void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_list_output(List<Output> self, SseSerializer serializer);
+@protected void sse_encode_lightd_endpoint(LightdEndpoint self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_list_prim_u_8_strict(
-      Uint8List self, SseSerializer serializer);
+@protected void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_list_sync_log_entry_ffi(
-      List<SyncLogEntryFfi> self, SseSerializer serializer);
+@protected void sse_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_list_tx_info(List<TxInfo> self, SseSerializer serializer);
+@protected void sse_encode_list_address_info(List<AddressInfo> self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_list_wallet_meta(
-      List<WalletMeta> self, SseSerializer serializer);
+@protected void sse_encode_list_output(List<Output> self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_network_info(NetworkInfo self, SseSerializer serializer);
+@protected void sse_encode_list_prim_u_8_strict(Uint8List self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_node_test_result(
-      NodeTestResult self, SseSerializer serializer);
+@protected void sse_encode_list_sync_log_entry_ffi(List<SyncLogEntryFfi> self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_opt_String(String? self, SseSerializer serializer);
+@protected void sse_encode_list_tx_info(List<TxInfo> self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_opt_box_autoadd_address_book_color_tag(
-      AddressBookColorTag? self, SseSerializer serializer);
+@protected void sse_encode_list_wallet_meta(List<WalletMeta> self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_opt_box_autoadd_address_book_entry_ffi(
-      AddressBookEntryFfi? self, SseSerializer serializer);
+@protected void sse_encode_network_info(NetworkInfo self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
+@protected void sse_encode_node_test_result(NodeTestResult self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_opt_box_autoadd_checkpoint_info(
-      CheckpointInfo? self, SseSerializer serializer);
+@protected void sse_encode_opt_String(String? self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_opt_box_autoadd_i_64(
-      PlatformInt64? self, SseSerializer serializer);
+@protected void sse_encode_opt_box_autoadd_address_book_color_tag(AddressBookColorTag? self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+@protected void sse_encode_opt_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi? self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+@protected void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_opt_box_autoadd_watch_only_banner_info(
-      WatchOnlyBannerInfo? self, SseSerializer serializer);
+@protected void sse_encode_opt_box_autoadd_checkpoint_info(CheckpointInfo? self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_output(Output self, SseSerializer serializer);
+@protected void sse_encode_opt_box_autoadd_i_64(PlatformInt64? self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_pending_tx(PendingTx self, SseSerializer serializer);
+@protected void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_seed_export_warnings(
-      SeedExportWarnings self, SseSerializer serializer);
+@protected void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_signed_tx(SignedTx self, SseSerializer serializer);
+@protected void sse_encode_opt_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo? self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_sync_log_entry_ffi(
-      SyncLogEntryFfi self, SseSerializer serializer);
+@protected void sse_encode_output(Output self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_sync_mode(SyncMode self, SseSerializer serializer);
+@protected void sse_encode_pending_tx(PendingTx self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_sync_stage(SyncStage self, SseSerializer serializer);
+@protected void sse_encode_seed_export_warnings(SeedExportWarnings self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_sync_status(SyncStatus self, SseSerializer serializer);
+@protected void sse_encode_signed_tx(SignedTx self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer);
+@protected void sse_encode_sync_log_entry_ffi(SyncLogEntryFfi self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_tx_info(TxInfo self, SseSerializer serializer);
+@protected void sse_encode_sync_mode(SyncMode self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_u_16(int self, SseSerializer serializer);
+@protected void sse_encode_sync_stage(SyncStage self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_u_32(int self, SseSerializer serializer);
+@protected void sse_encode_sync_status(SyncStatus self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_u_64(BigInt self, SseSerializer serializer);
+@protected void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_u_8(int self, SseSerializer serializer);
+@protected void sse_encode_tx_info(TxInfo self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_unit(void self, SseSerializer serializer);
+@protected void sse_encode_u_16(int self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_usize(BigInt self, SseSerializer serializer);
+@protected void sse_encode_u_32(int self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_wallet_background_sync_result(
-      WalletBackgroundSyncResult self, SseSerializer serializer);
+@protected void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_wallet_meta(WalletMeta self, SseSerializer serializer);
+@protected void sse_encode_u_8(int self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_watch_only_banner_info(
-      WatchOnlyBannerInfo self, SseSerializer serializer);
+@protected void sse_encode_unit(void self, SseSerializer serializer);
 
-  @protected
-  void sse_encode_watch_only_capabilities_info(
-      WatchOnlyCapabilitiesInfo self, SseSerializer serializer);
-}
+@protected void sse_encode_usize(BigInt self, SseSerializer serializer);
+
+@protected void sse_encode_wallet_background_sync_result(WalletBackgroundSyncResult self, SseSerializer serializer);
+
+@protected void sse_encode_wallet_meta(WalletMeta self, SseSerializer serializer);
+
+@protected void sse_encode_watch_only_banner_info(WatchOnlyBannerInfo self, SseSerializer serializer);
+
+@protected void sse_encode_watch_only_capabilities_info(WatchOnlyCapabilitiesInfo self, SseSerializer serializer);
+                }
+                
+
 
 // Section: wire_class
 
-class RustLibWire implements BaseWire {
-  /// The symbols are looked up in [dynamicLibrary].
-  RustLibWire(ffi.DynamicLibrary dynamicLibrary)
-      : _lookup = dynamicLibrary.lookup;
 
-  factory RustLibWire.fromExternalLibrary(ExternalLibrary lib) =>
-      RustLibWire(lib.ffiDynamicLibrary);
+        class RustLibWire implements BaseWire
+  
+            /// The symbols are looked up in [dynamicLibrary].
+            void void RustLibWire(ffi.DynamicLibrary dynamicLibrary)
+                : _lookup = dynamicLibrary.lookup; {
+  
+            /// The symbols are looked up in [dynamicLibrary].
+            RustLibWire(ffi.DynamicLibrary dynamicLibrary)
+                : _lookup = dynamicLibrary.lookup;
 
-  /// Holds the symbol lookup function.
-  final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-      _lookup;
-}
+            factory RustLibWire.fromExternalLibrary(ExternalLibrary lib) =>
+              RustLibWire(lib.ffiDynamicLip;
+
+            
+        }
+        

@@ -67,6 +67,13 @@ class SettingsScreen extends ConsumerWidget {
               },
             ),
             PListTile(
+              leading: const Icon(Icons.lock_reset_outlined),
+              title: 'Change passphrase',
+              subtitle: 'Update your app unlock passphrase',
+              onTap: () => context.push('/settings/passphrase'),
+              trailing: const Icon(Icons.chevron_right),
+            ),
+            PListTile(
               leading: Icon(Icons.emergency, color: AppColors.warning),
               title: 'Panic PIN',
               subtitle: 'Decoy wallet access',

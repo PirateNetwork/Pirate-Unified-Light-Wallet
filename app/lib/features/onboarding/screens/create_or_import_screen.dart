@@ -12,6 +12,7 @@ import '../../../ui/atoms/p_button.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/ffi/ffi_bridge.dart';
 import '../onboarding_flow.dart';
 
 /// Create or Import screen
@@ -54,10 +55,16 @@ class CreateOrImportScreen extends ConsumerWidget {
               const SizedBox(height: AppSpacing.xxl),
             PCard(
               child: InkWell(
-                onTap: () {
+                onTap: () async {
                   ref.read(onboardingControllerProvider.notifier)
                       .setMode(OnboardingMode.create);
+                  final hasPassphrase = await FfiBridge.hasAppPassphrase();
                   ref.read(onboardingControllerProvider.notifier).nextStep();
+                  if (!context.mounted) return;
+                  if (hasPassphrase) {
+                    context.push('/onboarding/backup-warning');
+                    return;
+                  }
                   context.push('/onboarding/passphrase');
                 },
                 borderRadius: BorderRadius.circular(16),
