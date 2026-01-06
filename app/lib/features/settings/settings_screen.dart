@@ -265,38 +265,26 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _showRescanDialog(BuildContext context, WidgetRef ref) async {
     try {
       debugPrint('_showRescanDialog called');
-      
-      // Load checkpoint in background with timeout
       int? suggestedHeight;
-      try {
-        final checkpoint = await ref
-            .read(lastCheckpointProvider.future)
-            .timeout(
-              const Duration(seconds: 2),
-              onTimeout: () {
-                debugPrint('Checkpoint loading timed out');
-                return null;
-              },
-            )
-            .catchError((e) {
-          debugPrint('Error loading checkpoint: $e');
-          return null;
-        });
-        suggestedHeight = checkpoint?.height;
-        debugPrint('Suggested height: $suggestedHeight');
-      } catch (e) {
-        debugPrint('Exception loading checkpoint: $e');
-        // Ignore errors, use default
-      }
-
+      bool appliedSuggested = false;
       if (!context.mounted) {
         debugPrint('Context not mounted before showing dialog');
         return;
       }
-
-      final controller = TextEditingController(
-        text: (suggestedHeight ?? 1).toString(),
-      );
+      final controller = TextEditingController(text: '1');
+      final suggestedFuture = ref
+          .read(lastCheckpointProvider.future)
+          .timeout(
+            const Duration(seconds: 2),
+            onTimeout: () {
+              debugPrint('Checkpoint loading timed out');
+              return null;
+            },
+          )
+          .catchError((e) {
+        debugPrint('Error loading checkpoint: $e');
+        return null;
+      });
 
       debugPrint('Showing rescan dialog');
       final confirmed = await showDialog<bool>(
@@ -305,26 +293,49 @@ class SettingsScreen extends ConsumerWidget {
         builder: (dialogContext) => AlertDialog(
           backgroundColor: AppColors.surface,
           title: const Text('Rescan Blockchain'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'This will rebuild wallet state and may take a while.',
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Start height',
-                  hintText: 'e.g., 1',
-                  helperText: suggestedHeight == null
+          content: FutureBuilder(
+            future: suggestedFuture,
+            builder: (context, snapshot) {
+              final isLoading = snapshot.connectionState == ConnectionState.waiting;
+              if (!isLoading && snapshot.hasData) {
+                suggestedHeight = snapshot.data?.height;
+                if (!appliedSuggested &&
+                    suggestedHeight != null &&
+                    (controller.text.trim().isEmpty || controller.text.trim() == '1')) {
+                  appliedSuggested = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!dialogContext.mounted) {
+                      return;
+                    }
+                    controller.text = suggestedHeight.toString();
+                  });
+                }
+              }
+              final helperText = isLoading
+                  ? 'Loading suggested height...'
+                  : (suggestedHeight == null
                       ? 'Enter a block height to rescan from.'
-                      : 'Suggested: $suggestedHeight',
-                ),
-              ),
-            ],
+                      : 'Suggested: $suggestedHeight');
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'This will rebuild wallet state and may take a while.',
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Start height',
+                      hintText: 'e.g., 1',
+                      helperText: helperText,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           actions: [
             TextButton(
