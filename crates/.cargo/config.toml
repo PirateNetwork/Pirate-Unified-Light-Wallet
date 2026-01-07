@@ -1,17 +1,28 @@
+[env]
+# Set these env vars in your shell before building:
+# - OPENSSL_LIB_DIR (e.g. C:/OpenSSL-Win64/lib/VC/x64/MD)
+# - ANDROID_NDK_HOME (e.g. C:/Users/<you>/AppData/Local/Android/Sdk/ndk/28.2.13676358)
+# - ANDROID_NDK_HOST_TAG (default: windows-x86_64; override for other OSes)
+# - ANDROID_NDK_CLANG_SUFFIX (default: .cmd on Windows; empty on macOS/Linux)
+# - ANDROID_NDK_EXE_SUFFIX (default: .exe on Windows; empty on macOS/Linux)
+ANDROID_NDK_HOST_TAG = { value = "windows-x86_64", force = false }
+ANDROID_NDK_CLANG_SUFFIX = { value = ".cmd", force = false }
+ANDROID_NDK_EXE_SUFFIX = { value = ".exe", force = false }
+
 [target.x86_64-pc-windows-msvc]
 rustflags = [
-    "-L", "native=C:/Users/oussa/OpenSSL-Win64/lib/VC/x64/MD",
+    "-L", "native=${OPENSSL_LIB_DIR}",
 ]
 
 [target.aarch64-linux-android]
-linker = "C:/Users/oussa/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android21-clang.cmd"
-ar = "C:/Users/oussa/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-ar.exe"
+linker = "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${ANDROID_NDK_HOST_TAG}/bin/aarch64-linux-android21-clang${ANDROID_NDK_CLANG_SUFFIX}"
+ar = "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${ANDROID_NDK_HOST_TAG}/bin/llvm-ar${ANDROID_NDK_EXE_SUFFIX}"
 
 [target.armv7-linux-androideabi]
-linker = "C:/Users/oussa/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/armv7a-linux-androideabi21-clang.cmd"
-ar = "C:/Users/oussa/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-ar.exe"
+linker = "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${ANDROID_NDK_HOST_TAG}/bin/armv7a-linux-androideabi21-clang${ANDROID_NDK_CLANG_SUFFIX}"
+ar = "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${ANDROID_NDK_HOST_TAG}/bin/llvm-ar${ANDROID_NDK_EXE_SUFFIX}"
 
 [target.x86_64-linux-android]
-linker = "C:/Users/oussa/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/x86_64-linux-android21-clang.cmd"
-ar = "C:/Users/oussa/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-ar.exe"
+linker = "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${ANDROID_NDK_HOST_TAG}/bin/x86_64-linux-android21-clang${ANDROID_NDK_CLANG_SUFFIX}"
+ar = "${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/${ANDROID_NDK_HOST_TAG}/bin/llvm-ar${ANDROID_NDK_EXE_SUFFIX}"
 

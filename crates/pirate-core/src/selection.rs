@@ -11,7 +11,9 @@ use incrementalmerkletree::MerklePath;
 /// Note type discriminator
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteType {
+    /// Sapling note.
     Sapling,
+    /// Orchard note.
     Orchard,
 }
 

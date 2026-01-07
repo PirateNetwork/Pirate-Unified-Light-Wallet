@@ -5,34 +5,59 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CRATES_DIR="$PROJECT_ROOT/crates"
 JNI_DIR="$PROJECT_ROOT/app/android/app/src/main/jniLibs"
 
-export PATH="/c/Users/${USER}/.cargo/bin:/c/msys64/usr/bin:$PATH"
+if [[ -n "${CARGO_HOME:-}" ]]; then
+  CARGO_BIN="$(cygpath -u "$CARGO_HOME")/bin"
+else
+  CARGO_BIN="/c/Users/${USER}/.cargo/bin"
+fi
+export PATH="$CARGO_BIN:/c/msys64/usr/bin:$PATH"
 export MSYS2_ARG_CONV_EXCL="*"
 
-NDK_BASE="/c/Users/${USER}/AppData/Local/Android/Sdk/ndk"
+SDK_BASE=""
+if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
+  SDK_BASE="$(cygpath -u "$ANDROID_SDK_ROOT")"
+elif [[ -n "${ANDROID_HOME:-}" ]]; then
+  SDK_BASE="$(cygpath -u "$ANDROID_HOME")"
+else
+  SDK_BASE="/c/Users/${USER}/AppData/Local/Android/Sdk"
+fi
+
 if [[ -n "${ANDROID_NDK_HOME:-}" ]]; then
   NDK_HOME="$(cygpath -u "$ANDROID_NDK_HOME")"
-elif [[ -d "$NDK_BASE" ]]; then
-  NDK_HOME="$(ls -d "$NDK_BASE"/* | sort -r | head -n 1)"
+elif [[ -n "${ANDROID_NDK_ROOT:-}" ]]; then
+  NDK_HOME="$(cygpath -u "$ANDROID_NDK_ROOT")"
+elif [[ -d "$SDK_BASE/ndk" ]]; then
+  NDK_HOME="$(ls -d "$SDK_BASE/ndk"/* | sort -r | head -n 1)"
+elif [[ -d "$SDK_BASE/ndk-bundle" ]]; then
+  NDK_HOME="$SDK_BASE/ndk-bundle"
 else
-  echo "Android NDK not found. Set ANDROID_NDK_HOME." >&2
+  echo "Android NDK not found. Set ANDROID_NDK_HOME or ANDROID_SDK_ROOT." >&2
   exit 1
 fi
 
-NDK_BIN="$NDK_HOME/toolchains/llvm/prebuilt/windows-x86_64/bin"
+NDK_HOST_TAG="${ANDROID_NDK_HOST_TAG:-windows-x86_64}"
+CLANG_SUFFIX="${ANDROID_NDK_CLANG_SUFFIX:-.cmd}"
+EXE_SUFFIX="${ANDROID_NDK_EXE_SUFFIX:-.exe}"
+
+NDK_BIN="$NDK_HOME/toolchains/llvm/prebuilt/$NDK_HOST_TAG/bin"
 if [[ ! -d "$NDK_BIN" ]]; then
   echo "NDK toolchain not found at: $NDK_BIN" >&2
   exit 1
 fi
 
-export ANDROID_NDK_HOME="$(cygpath -w "$NDK_HOME")"
+if [[ "$NDK_HOME" == /* ]]; then
+  export ANDROID_NDK_HOME="$(cygpath -w "$NDK_HOME")"
+else
+  export ANDROID_NDK_HOME="$NDK_HOME"
+fi
 export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
 
-CLANG_CMD_WIN="$(cygpath -m "$NDK_BIN/aarch64-linux-android21-clang.cmd")"
-CLANGXX_CMD_WIN="$(cygpath -m "$NDK_BIN/aarch64-linux-android21-clang++.cmd")"
-CLANG_EXE_WIN="$(cygpath -m "$NDK_BIN/clang.exe")"
-CLANGXX_EXE_WIN="$(cygpath -m "$NDK_BIN/clang++.exe")"
-AR_EXE_WIN="$(cygpath -m "$NDK_BIN/llvm-ar.exe")"
-RANLIB_EXE_WIN="$(cygpath -m "$NDK_BIN/llvm-ranlib.exe")"
+CLANG_CMD_WIN="$(cygpath -m "$NDK_BIN/aarch64-linux-android21-clang${CLANG_SUFFIX}")"
+CLANGXX_CMD_WIN="$(cygpath -m "$NDK_BIN/aarch64-linux-android21-clang++${CLANG_SUFFIX}")"
+CLANG_EXE_WIN="$(cygpath -m "$NDK_BIN/clang${EXE_SUFFIX}")"
+CLANGXX_EXE_WIN="$(cygpath -m "$NDK_BIN/clang++${EXE_SUFFIX}")"
+AR_EXE_WIN="$(cygpath -m "$NDK_BIN/llvm-ar${EXE_SUFFIX}")"
+RANLIB_EXE_WIN="$(cygpath -m "$NDK_BIN/llvm-ranlib${EXE_SUFFIX}")"
 
 # Windows executables for OpenSSL/cc-rs
 export CC_aarch64_linux_android="$CLANG_EXE_WIN"
@@ -58,8 +83,8 @@ export CXXFLAGS_x86_64_linux_android="--target=x86_64-linux-android21"
 
 # Rust linker: use Windows .cmd wrappers so clang picks Android GNU linker mode.
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CLANG_CMD_WIN"
-export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$(cygpath -m "$NDK_BIN/armv7a-linux-androideabi21-clang.cmd")"
-export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$(cygpath -m "$NDK_BIN/x86_64-linux-android21-clang.cmd")"
+export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$(cygpath -m "$NDK_BIN/armv7a-linux-androideabi21-clang${CLANG_SUFFIX}")"
+export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$(cygpath -m "$NDK_BIN/x86_64-linux-android21-clang${CLANG_SUFFIX}")"
 
 mkdir -p "$JNI_DIR"
 

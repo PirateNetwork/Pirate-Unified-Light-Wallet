@@ -12,6 +12,7 @@ pub const DEFAULT_FEE: u64 = 10_000;
 #[deprecated(note = "Pirate uses a fixed fee; use DEFAULT_FEE instead.")]
 pub const ZIP317_MARGINAL_FEE: u64 = DEFAULT_FEE;
 
+/// Legacy ZIP-317 grace action count (kept for compatibility).
 #[deprecated(note = "ZIP-317 is not used on Pirate; use DEFAULT_FEE instead.")]
 pub const ZIP317_GRACE_ACTIONS: u64 = 2;
 
@@ -113,7 +114,7 @@ impl FeeCalculator {
     
     /// Legacy accessor for grace actions (ZIP-317).
     pub fn grace_actions(&self) -> u64 {
-        ZIP317_GRACE_ACTIONS
+        2
     }
 }
 

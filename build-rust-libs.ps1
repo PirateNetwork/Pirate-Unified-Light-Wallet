@@ -46,15 +46,22 @@ if (-not (Test-Path $CARGO)) {
 }
 
 # Set up OpenSSL for Windows builds
-$OPENSSL_DIR = "$env:USERPROFILE\OpenSSL-Win64"
+$OPENSSL_DIR = $env:OPENSSL_DIR
+if (-not $OPENSSL_DIR) {
+    $OPENSSL_DIR = "$env:USERPROFILE\OpenSSL-Win64"
+}
 if (Test-Path $OPENSSL_DIR) {
     $env:OPENSSL_DIR = $OPENSSL_DIR
     $env:OPENSSL_ROOT_DIR = $OPENSSL_DIR
     # OpenSSL libraries are in VC\x64\MD for release builds (Multi-threaded DLL)
     # Use MD for release, MT for static linking
     $OPENSSL_LIB_SUBDIR = "lib\VC\x64\MD"
-    $env:OPENSSL_LIB_DIR = Join-Path $OPENSSL_DIR $OPENSSL_LIB_SUBDIR
-    $env:OPENSSL_INCLUDE_DIR = Join-Path $OPENSSL_DIR "include"
+    if (-not $env:OPENSSL_LIB_DIR) {
+        $env:OPENSSL_LIB_DIR = Join-Path $OPENSSL_DIR $OPENSSL_LIB_SUBDIR
+    }
+    if (-not $env:OPENSSL_INCLUDE_DIR) {
+        $env:OPENSSL_INCLUDE_DIR = Join-Path $OPENSSL_DIR "include"
+    }
     $env:OPENSSL_NO_VENDOR = "1"
     # Add OpenSSL lib directory to PATH for linker
     $env:PATH = "$env:PATH;$OPENSSL_DIR\bin"

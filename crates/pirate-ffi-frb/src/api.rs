@@ -1103,7 +1103,7 @@ pub fn change_app_passphrase(current_passphrase: String, new_passphrase: String)
         WALLETS.read().iter().map(|w| w.id.clone()).collect()
     };
 
-    let mut registry_db = open_wallet_registry_with_passphrase(&current_passphrase)?;
+    let registry_db = open_wallet_registry_with_passphrase(&current_passphrase)?;
     let registry_salt = load_salt(&wallet_registry_salt_path()?)?;
     let old_registry_key = derive_db_key(&current_passphrase, &registry_salt)?;
     let new_registry_key = derive_db_key(&new_passphrase, &registry_salt)?;
@@ -1460,14 +1460,6 @@ fn open_wallet_db_for(wallet_id: &str) -> Result<(&'static Database, Repository<
     let (db, _key, _master_key) = open_wallet_db_with_passphrase(wallet_id, &passphrase)?;
     let db_ref: &'static Database = Box::leak(Box::new(db));
     Ok((db_ref, Repository::new(db_ref)))
-}
-
-fn open_wallet_db_for_active() -> Result<(&'static Database, Repository<'static>)> {
-    let wallet_id = ACTIVE_WALLET.read()
-        .as_ref()
-        .ok_or_else(|| anyhow!("No active wallet"))?
-        .clone();
-    open_wallet_db_for(&wallet_id)
 }
 
 /// Get active wallet ID
@@ -3366,7 +3358,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     };
     
     // Parse endpoint URL to determine TLS settings (same logic as test_node)
-    let mut normalized_url = endpoint_url.trim().to_string();
+    let normalized_url = endpoint_url.trim().to_string();
     let tls_enabled = if normalized_url.starts_with("http://") {
         false // Explicitly disable TLS for http:// URLs
     } else if normalized_url.starts_with("https://") {
@@ -3545,7 +3537,6 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                 if let Some(status) = status_opt {
                     session.last_status = status;
                 }
-                let sync_success = result.is_ok();
                 match &result {
                     Ok(()) => {
                         // Sync caught up - but it's still running in the background monitoring for new blocks
@@ -3863,7 +3854,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         let sync_clone = Arc::clone(sync);
                         let session_arc_clone = Arc::clone(&session_arc);
                         handle.spawn(async move {
-                            let mut engine = sync_clone.lock().await;
+                        let engine = sync_clone.lock().await;
                             if engine.update_target_height().await.is_ok() {
                                 let mut session = session_arc_clone.write().await;
                                 session.last_target_height_update = Some(std::time::Instant::now());
@@ -3926,7 +3917,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         let sync_clone = Arc::clone(&sync);
                         let session_arc_clone = Arc::clone(&session_arc);
                         handle.spawn(async move {
-                            let mut engine = sync_clone.lock().await;
+                        let engine = sync_clone.lock().await;
                             if engine.update_target_height().await.is_ok() {
                                 let mut session = session_arc_clone.write().await;
                                 session.last_target_height_update = Some(std::time::Instant::now());
@@ -4467,7 +4458,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     };
     
     // Parse endpoint URL to determine TLS settings (same logic as test_node)
-    let mut normalized_url = endpoint_url.trim().to_string();
+    let normalized_url = endpoint_url.trim().to_string();
     let tls_enabled = if normalized_url.starts_with("http://") {
         false // Explicitly disable TLS for http:// URLs
     } else if normalized_url.starts_with("https://") {
@@ -6447,7 +6438,7 @@ pub async fn test_node(url: String, tls_pin: Option<String>) -> Result<crate::mo
                 tracing::warn!("test_node: Tor mode requested but not fully implemented, falling back to Direct");
                 (TransportMode::Direct, None) // Force Direct for now since Tor isn't ready
             },
-            TunnelMode::Socks5 { url: u } => {
+            TunnelMode::Socks5 { url: _ } => {
                 tracing::warn!("test_node: SOCKS5 mode requested but not fully implemented, falling back to Direct");
                 (TransportMode::Direct, None) // Force Direct for now since SOCKS5 isn't ready
             },
@@ -6458,7 +6449,7 @@ pub async fn test_node(url: String, tls_pin: Option<String>) -> Result<crate::mo
     
     // Normalize endpoint URL - ensure it has the correct format for tonic
     // Tonic requires format: https://host:port or http://host:port
-    let mut normalized_url = url.trim().to_string();
+    let normalized_url = url.trim().to_string();
     
     // Determine if TLS is enabled
     // Explicitly check for http:// (no TLS) vs https:// (TLS) vs no protocol (default to TLS)

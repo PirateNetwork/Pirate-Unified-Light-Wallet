@@ -1,5 +1,4 @@
 use bridgetree::{BridgeTree, Checkpoint, MerkleBridge};
-use incrementalmerkletree::{Address, Position};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io::{Cursor, Read, Write};
 use zcash_primitives::merkle_tree::{

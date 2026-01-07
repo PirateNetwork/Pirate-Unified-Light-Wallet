@@ -2,7 +2,6 @@
 
 use crate::{Error, Result};
 use crate::client::CompactBlockData;
-use crate::proto_types as proto;
 use once_cell::sync::Lazy;
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};

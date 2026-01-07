@@ -128,14 +128,20 @@ impl Parameters for PirateNetwork {
 pub enum ShieldedOutput {
     /// Sapling output
     Sapling {
+        /// Destination Sapling address.
         address: PaymentAddress,
+        /// Amount in arrrtoshis.
         amount: u64,
+        /// Optional memo payload.
         memo: Option<Memo>,
     },
     /// Orchard output
     Orchard {
+        /// Destination Orchard address.
         address: orchard::Address,
+        /// Amount in arrrtoshis.
         amount: u64,
+        /// Optional memo payload.
         memo: Option<Memo>,
     },
 }
@@ -292,7 +298,7 @@ impl ShieldedBuilder {
 
         // Select notes
         let selector = NoteSelector::new(SelectionStrategy::SmallestFirst);
-        let mut selection = selector.select_notes(available_notes, output_sum, estimated_fee)?;
+        let selection = selector.select_notes(available_notes, output_sum, estimated_fee)?;
 
         // Get note count and check for Orchard spends before moving selection.notes
         let note_count = selection.notes.len();
@@ -332,7 +338,7 @@ impl ShieldedBuilder {
 
         // Add Sapling and Orchard spends with witness data
         // Note: We iterate by value because Orchard MerklePath doesn't implement Clone
-        for mut note in selection.notes {
+        for note in selection.notes {
             match note.note_type {
                 crate::selection::NoteType::Sapling => {
                     if note.diversifier.is_some() {

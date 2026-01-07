@@ -25,7 +25,7 @@ pub use diversifier::{
     RotationPolicy, DEFAULT_GAP_LIMIT, MAX_DIVERSIFIER_INDEX,
 };
 pub use error::{Error, ErrorCategory, Result};
-pub use fees::{FeeCalculator, FeePolicy, DEFAULT_FEE, ZIP317_MARGINAL_FEE, MIN_FEE, MAX_FEE};
+pub use fees::{FeeCalculator, FeePolicy, DEFAULT_FEE, MIN_FEE, MAX_FEE};
 pub use memo::{Memo, MAX_MEMO_LENGTH, MEMO_WARNING_LENGTH};
 pub use selection::{NoteSelector, NoteType, SelectableNote, SelectionResult, SelectionStrategy};
 pub use shielded_builder::{ShieldedBuilder, ShieldedOutput, PendingShieldedTransaction, SignedShieldedTransaction};

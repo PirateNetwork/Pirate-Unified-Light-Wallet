@@ -43,7 +43,6 @@ use pirate_storage_sqlite::security::MasterKey;
 use pirate_core::keys::{ExtendedSpendingKey, ExtendedFullViewingKey, OrchardExtendedSpendingKey, OrchardExtendedFullViewingKey};
 use pirate_core::transaction::PirateNetwork;
 use pirate_params::consensus::ConsensusParams;
-use anyhow::anyhow;
 use group::ff::PrimeField;
 use hex;
 use subtle::CtOption;
@@ -660,7 +659,7 @@ impl SyncEngine {
 
         // Initialize progress
         {
-            let mut progress = self.progress.write().await;
+            let progress = self.progress.write().await;
             progress.set_target(end);
             progress.set_current(start_height);
             progress.set_stage(SyncStage::Headers);
@@ -860,26 +859,23 @@ impl SyncEngine {
 
         loop {
             attempt += 1;
-            let mut bridge_err: Option<String> = None;
-            let mut legacy_err: Option<String> = None;
 
-            let mut bridge_future = tokio::time::timeout(
+            let bridge_future = tokio::time::timeout(
                 timeout,
                 self.client.get_bridge_tree_state(tree_height),
             );
-            let mut legacy_future = tokio::time::timeout(
+            let legacy_future = tokio::time::timeout(
                 timeout,
                 self.client.get_tree_state(tree_height),
             );
             tokio::pin!(bridge_future);
             tokio::pin!(legacy_future);
 
-            tokio::select! {
+            let (bridge_err, legacy_err) = tokio::select! {
                 result = &mut bridge_future => {
-                    match result {
+                    let bridge_err = match result {
                         Ok(Ok(state)) => return Ok(state),
                         Ok(Err(e)) => {
-                            bridge_err = Some(format!("{:?}", e));
                             if let Ok(mut file) = std::fs::OpenOptions::new()
                                 .create(true)
                                 .append(true)
@@ -900,9 +896,9 @@ impl SyncEngine {
                                     e
                                 );
                             }
+                            Some(format!("{:?}", e))
                         }
                         Err(_) => {
-                            bridge_err = Some("timeout".to_string());
                             if let Ok(mut file) = std::fs::OpenOptions::new()
                                 .create(true)
                                 .append(true)
@@ -922,26 +918,27 @@ impl SyncEngine {
                                     attempt
                                 );
                             }
+                            Some("timeout".to_string())
                         }
-                    }
+                    };
 
-                    match legacy_future.await {
+                    let legacy_err = match legacy_future.await {
                         Ok(Ok(state)) => return Ok(state),
-                        Ok(Err(e)) => legacy_err = Some(format!("{:?}", e)),
-                        Err(_) => legacy_err = Some("timeout".to_string()),
-                    }
+                        Ok(Err(e)) => Some(format!("{:?}", e)),
+                        Err(_) => Some("timeout".to_string()),
+                    };
+                    (bridge_err, legacy_err)
                 }
                 result = &mut legacy_future => {
-                    match result {
+                    let legacy_err = match result {
                         Ok(Ok(state)) => return Ok(state),
-                        Ok(Err(e)) => legacy_err = Some(format!("{:?}", e)),
-                        Err(_) => legacy_err = Some("timeout".to_string()),
-                    }
+                        Ok(Err(e)) => Some(format!("{:?}", e)),
+                        Err(_) => Some("timeout".to_string()),
+                    };
 
-                    match bridge_future.await {
+                    let bridge_err = match bridge_future.await {
                         Ok(Ok(state)) => return Ok(state),
                         Ok(Err(e)) => {
-                            bridge_err = Some(format!("{:?}", e));
                             if let Ok(mut file) = std::fs::OpenOptions::new()
                                 .create(true)
                                 .append(true)
@@ -962,9 +959,9 @@ impl SyncEngine {
                                     e
                                 );
                             }
+                            Some(format!("{:?}", e))
                         }
                         Err(_) => {
-                            bridge_err = Some("timeout".to_string());
                             if let Ok(mut file) = std::fs::OpenOptions::new()
                                 .create(true)
                                 .append(true)
@@ -984,10 +981,12 @@ impl SyncEngine {
                                     attempt
                                 );
                             }
+                            Some("timeout".to_string())
                         }
-                    }
+                    };
+                    (bridge_err, legacy_err)
                 }
-            }
+            };
 
             if attempt >= max_attempts {
                 return Err(Error::Sync(format!(
@@ -1011,7 +1010,6 @@ impl SyncEngine {
         
         // Adaptive batch sizing for spam blocks (byte-based targets)
         let mut current_target_bytes = self.config.target_batch_bytes;
-        let mut current_batch_size = self.config.batch_size;
         let mut consecutive_heavy_batches = 0u32;
         let mut avg_block_size_estimate = (self.config.target_batch_bytes / self.config.batch_size.max(1)).max(1);
         let mut pending_fetch: Option<PrefetchTask> = None;
@@ -1074,17 +1072,13 @@ impl SyncEngine {
             }
 
             let batch_start_time = Instant::now();
-            let mut fetch_wait_ms: u128 = 0;
-            let mut decrypt_ms: u128 = 0;
-            let mut frontier_ms: u128 = 0;
             let mut persist_ms: u128 = 0;
             let mut apply_spends_ms: u128 = 0;
 
             if pending_fetch.is_none() {
-                let (batch_end, desired_blocks) = self
+                let (batch_end, _desired_blocks) = self
                     .compute_batch_end(current_height, end, current_target_bytes, avg_block_size_estimate)
                     .await?;
-                current_batch_size = desired_blocks;
                 pending_fetch = Some(self.spawn_prefetch(current_height, batch_end));
             }
 
@@ -1124,7 +1118,7 @@ impl SyncEngine {
             let blocks = handle
                 .await
                 .map_err(|e| Error::Sync(e.to_string()))??;
-            fetch_wait_ms = fetch_wait_start.elapsed().as_millis();
+            let fetch_wait_ms = fetch_wait_start.elapsed().as_millis();
 
             // #region agent log
             if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -1250,10 +1244,9 @@ impl SyncEngine {
             // Prefetch next batch while we process this one.
             let next_start = batch_end + 1;
             if next_start <= end {
-                let (next_end, desired_blocks) = self
+                let (next_end, _desired_blocks) = self
                     .compute_batch_end(next_start, end, current_target_bytes, avg_block_size_estimate)
                     .await?;
-                current_batch_size = desired_blocks;
                 pending_fetch = Some(self.spawn_prefetch(next_start, next_end));
             }
 
@@ -1270,7 +1263,7 @@ impl SyncEngine {
             // #endregion
             let decrypt_start = Instant::now();
             let mut notes = self.trial_decrypt_batch(&blocks).await?;
-            decrypt_ms = decrypt_start.elapsed().as_millis();
+            let decrypt_ms = decrypt_start.elapsed().as_millis();
             // #region agent log
             if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
                 use std::io::Write;
@@ -1302,7 +1295,7 @@ impl SyncEngine {
             // #endregion
             let frontier_start = Instant::now();
             let (commitments_applied, position_mappings) = self.update_frontier(&blocks, &notes).await?;
-            frontier_ms = frontier_start.elapsed().as_millis();
+            let frontier_ms = frontier_start.elapsed().as_millis();
             // #region agent log
             if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
                 use std::io::Write;
@@ -1576,7 +1569,7 @@ impl SyncEngine {
                     );
                     // Update progress target and stage
                     {
-                        let mut progress = self.progress.write().await;
+                        let progress = self.progress.write().await;
                         progress.set_target(latest_height);
                         progress.set_stage(SyncStage::Headers);
                     }
@@ -1615,25 +1608,6 @@ impl SyncEngine {
             }
         }
     }
-    
-    // This point should never be reached due to the infinite outer loop above
-    // But if it is, log and return
-    let perf = self.perf.snapshot();
-    tracing::warn!(
-        "Sync loop exited unexpectedly: {} blocks at {:.1} blk/s",
-        perf.blocks_processed,
-        perf.blocks_per_second
-    );
-    Ok(())
-    }
-
-    /// Fetch blocks with retry logic and exponential backoff
-    async fn fetch_blocks_with_retry(
-        &self,
-        start: u64,
-        end: u64,
-    ) -> Result<Vec<CompactBlockData>> {
-        Self::fetch_blocks_with_retry_inner(self.client.clone(), start, end).await
     }
 
     async fn fetch_blocks_with_retry_inner(
@@ -2356,7 +2330,6 @@ impl SyncEngine {
                 match note.note_type {
                     NoteType::Sapling => sapling_needs_tx += 1,
                     NoteType::Orchard => orchard_needs_tx += 1,
-                    _ => {}
                 }
                 let entry = tx_work.entry(txid).or_default();
                 entry.indices.push(note_idx);
@@ -3391,28 +3364,6 @@ impl SyncEngine {
         orchard_frontier.root()
     }
 
-    async fn verify_chain(&self, start: u64, end: u64) -> Result<()> {
-        // Verify sync completed correctly:
-        // - Chain continuity (no gaps)
-        // - No reorgs during sync
-        // - Frontier root matches expected (if we have target)
-        
-        // Basic verification: check that we have blocks in range
-        if let Some(ref sink) = self.storage {
-            let sync_state = sink.load_sync_state()?;
-            if sync_state.local_height < end {
-                tracing::warn!(
-                    "Sync verification: local_height {} < target {}",
-                    sync_state.local_height,
-                    end
-                );
-            }
-        }
-        
-        tracing::debug!("Chain verification complete for range {}-{}", start, end);
-        Ok(())
-    }
-
     async fn create_checkpoint(&self, height: u64) -> Result<()> {
         let sapling_bytes = { self.frontier.read().await.serialize() };
         let orchard_bytes = { self.orchard_frontier.read().await.serialize() };
@@ -3464,51 +3415,6 @@ impl SyncEngine {
         *self.orchard_frontier.write().await = OrchardFrontier::new();
 
         Ok(checkpoint_height)
-    }
-
-    /// Handle sync interruption - rollback to last checkpoint
-    async fn handle_interruption(&mut self, current_height: u64) -> Result<()> {
-        tracing::warn!("Handling sync interruption at height {}", current_height);
-
-        // Try to load last checkpoint from storage
-        let checkpoint_height = if let Some(ref sink) = self.storage {
-            let sync_state = sink.load_sync_state()?;
-            let last_checkpoint = sync_state.last_checkpoint_height;
-            
-            if last_checkpoint > 0 && last_checkpoint <= current_height {
-                tracing::info!(
-                    "Rolling back to checkpoint at {} (current: {})",
-                    last_checkpoint,
-                    current_height
-                );
-                
-                last_checkpoint
-            } else {
-                tracing::warn!("No valid checkpoint found, starting from birthday");
-                self.birthday_height as u64
-            }
-        } else {
-            tracing::warn!("No storage available, starting from birthday");
-            self.birthday_height as u64
-        };
-
-        let rollback_height = self.rollback_to_checkpoint(checkpoint_height).await?;
-        let resume_height = std::cmp::max(
-            rollback_height.saturating_add(1),
-            self.birthday_height as u64,
-        );
-
-        tracing::warn!(
-            "Sync interrupted at height {}, rolled back to {}, resume at {}",
-            current_height,
-            rollback_height,
-            resume_height
-        );
-
-        Err(Error::Sync(format!(
-            "Sync interrupted at height {}, rolled back to {}",
-            current_height, rollback_height
-        )))
     }
 
     /// Rollback to last checkpoint and resume
@@ -3589,7 +3495,7 @@ impl SyncEngine {
                 drop(progress); // Release lock before updating
                 
                 if latest_height > current_target {
-                    let mut progress = self.progress.write().await;
+                    let progress = self.progress.write().await;
                     progress.set_target(latest_height);
                     tracing::debug!(
                         "Updated target height from {} to {}",
@@ -4000,31 +3906,6 @@ impl StorageSink {
         Ok(repo.update_note_memo(self.account_id, txid, output_index, memo)?)
     }
 
-    fn mark_note_spent_by_nullifier(&self, nullifier: &[u8]) -> Result<bool> {
-        let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
-        let repo = Repository::new(&db);
-        Ok(repo.mark_note_spent_by_nullifier(self.account_id, nullifier)?)
-    }
-
-    fn mark_note_spent_by_nullifier_with_txid(
-        &self,
-        nullifier: &[u8],
-        spent_txid: &[u8],
-    ) -> Result<bool> {
-        let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
-        let repo = Repository::new(&db);
-        Ok(repo.mark_note_spent_by_nullifier_with_txid(self.account_id, nullifier, spent_txid)?)
-    }
-
-    fn mark_notes_spent_by_nullifiers(
-        &self,
-        nullifiers: &HashSet<[u8; 32]>,
-    ) -> Result<u64> {
-        let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
-        let repo = Repository::new(&db);
-        Ok(repo.mark_notes_spent_by_nullifiers(self.account_id, nullifiers)?)
-    }
-
     fn mark_notes_spent_by_nullifiers_with_txid(
         &self,
         entries: &Vec<([u8; 32], [u8; 32])>,
@@ -4403,6 +4284,7 @@ fn trial_decrypt_batch_impl(
 }
 
 /// Trial decrypt a single block (Sapling/Orchard) for tests.
+#[cfg(test)]
 fn trial_decrypt_block(
     block: &CompactBlockData,
     sapling_ivk_bytes: Option<&[u8; 32]>,

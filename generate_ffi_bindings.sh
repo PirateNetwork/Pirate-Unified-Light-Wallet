@@ -42,11 +42,12 @@ if ! command -v flutter &> /dev/null; then
 fi
 
 # Verify flutter_rust_bridge_codegen is available
-FRB_CODEGEN="/root/.cargo/bin/flutter_rust_bridge_codegen"
+CARGO_BIN="${CARGO_HOME:-$HOME/.cargo}/bin"
+FRB_CODEGEN="$CARGO_BIN/flutter_rust_bridge_codegen"
 if [ ! -f "$FRB_CODEGEN" ]; then
     echo -e "${YELLOW}⚠️  flutter_rust_bridge_codegen not found, installing...${NC}"
     cargo install flutter_rust_bridge_codegen --locked
-    FRB_CODEGEN="$HOME/.cargo/bin/flutter_rust_bridge_codegen"
+    FRB_CODEGEN="$CARGO_BIN/flutter_rust_bridge_codegen"
 fi
 
 # Verify Flutter works

@@ -21,6 +21,7 @@
 // Note: We allow unsafe code only for the FRB-generated module.
 // All hand-written code in this crate avoids unsafe.
 
+#[allow(deprecated)]
 mod frb_generated; /* AUTO INJECTED BY flutter_rust_bridge. This line may not be accurate, and you can change it according to your needs. */
 
 pub mod api;

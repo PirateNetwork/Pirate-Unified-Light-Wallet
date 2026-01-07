@@ -60,8 +60,6 @@ fn orchard_extfvk_hrp_for_network(network: NetworkType) -> &'static str {
 }
 
 fn orchard_fvk_tag(fvk: &OrchardFullViewingKey) -> Result<[u8; 4]> {
-    use std::io::Write;
-
     const ORCHARD_FVK_TAG_PERSONALIZATION: &[u8; 16] = b"ZcashOrchardFVFP";
 
     let mut fvk_bytes = Vec::new();
@@ -141,7 +139,7 @@ impl ExtendedSpendingKey {
         // 12 words = 128 bits = 16 bytes
         // 18 words = 192 bits = 24 bytes
         // 24 words = 256 bits = 32 bytes
-        let (entropy_size, expected_words) = match word_count {
+        let (entropy_size, _expected_words) = match word_count {
             12 => (16, 12),
             18 => (24, 18),
             24 => (32, 24),
@@ -167,6 +165,7 @@ impl ExtendedSpendingKey {
     }
 
     /// Encode the Sapling extended full viewing key (xFVK) for the given network.
+    #[allow(deprecated)]
     pub fn to_xfvk_bech32_for_network(&self, network: NetworkType) -> String {
         let xfvk = self.inner.to_extended_full_viewing_key();
         encode_extended_full_viewing_key(sapling_extfvk_hrp_for_network(network), &xfvk)
@@ -528,7 +527,7 @@ impl OrchardExtendedSpendingKey {
         const ZIP32_ORCHARD_PERSONALIZATION: &[u8; 16] = b"ZcashIP32Orchard";
         
         // I := BLAKE2b-512("ZcashIP32Orchard", seed)
-        let I: [u8; 64] = {
+        let i: [u8; 64] = {
             let mut hasher = Blake2bParams::new()
                 .hash_length(64)
                 .personal(ZIP32_ORCHARD_PERSONALIZATION)
@@ -539,7 +538,7 @@ impl OrchardExtendedSpendingKey {
         };
 
         // I_L is used as the master spending key sk_m
-        let sk_m = SpendingKey::from_bytes(I[..32].try_into().unwrap());
+        let sk_m = SpendingKey::from_bytes(i[..32].try_into().unwrap());
         if sk_m.is_none().into() {
             return Err(Error::InvalidKey("Invalid Orchard spending key from seed".to_string()));
         }
@@ -547,7 +546,7 @@ impl OrchardExtendedSpendingKey {
 
         // I_R is used as the master chain code c_m
         let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&I[32..64]);
+        chain_code.copy_from_slice(&i[32..64]);
 
         Ok(Self {
             inner: sk_m,
@@ -577,8 +576,7 @@ impl OrchardExtendedSpendingKey {
 
         // I := PRF^Expand(c_par, [0x81] || sk_par || I2LEOSP(i))
         // PRF^Expand(sk, dst, t) := BLAKE2b-512("Zcash_ExpandSeed", sk || dst || t)
-        #[allow(non_snake_case)]
-        let I: [u8; 64] = {
+        let i: [u8; 64] = {
             let mut hasher = Blake2bParams::new()
                 .hash_length(64)
                 .personal(PRF_EXPAND_PERSONALIZATION)
@@ -592,7 +590,7 @@ impl OrchardExtendedSpendingKey {
         };
 
         // I_L is used as the child spending key sk_i
-        let sk_i = SpendingKey::from_bytes(I[..32].try_into().unwrap());
+        let sk_i = SpendingKey::from_bytes(i[..32].try_into().unwrap());
         if sk_i.is_none().into() {
             return Err(Error::InvalidKey("Invalid Orchard child spending key".to_string()));
         }
@@ -600,7 +598,7 @@ impl OrchardExtendedSpendingKey {
 
         // I_R is used as the child chain code c_i
         let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&I[32..64]);
+        chain_code.copy_from_slice(&i[32..64]);
 
         let fvk: OrchardFullViewingKey = (&sk_i).into();
         let parent_fvk_tag = orchard_fvk_tag(&fvk)?;
@@ -848,7 +846,6 @@ impl OrchardExtendedFullViewingKey {
 
         // Deserialize Orchard Full Viewing Key (96 bytes: ak || nk || rivk)
         // Orchard FullViewingKey implements Read trait (like Sapling FullViewingKey)
-        use std::io::Read;
         let fvk_bytes = &bytes[41..137];
         let fvk = OrchardFullViewingKey::read(&mut fvk_bytes.as_ref())
             .map_err(|e| Error::InvalidKey(format!("Failed to deserialize Orchard FullViewingKey: {}", e)))?;
@@ -864,7 +861,6 @@ impl OrchardExtendedFullViewingKey {
 
     /// Serialize to bytes (for storage)
     pub fn to_bytes(&self) -> Vec<u8> {
-        use std::io::Write;
         let mut data = Vec::new();
         data.push(self.depth);
         data.extend_from_slice(&self.parent_fvk_tag);
@@ -890,7 +886,6 @@ impl OrchardExtendedFullViewingKey {
         chain_code.copy_from_slice(&bytes[9..41]);
 
         // Deserialize Orchard FullViewingKey using read() method
-        use std::io::Read;
         let fvk_bytes = &bytes[41..137];
         let fvk = OrchardFullViewingKey::read(&mut fvk_bytes.as_ref())
             .map_err(|e| Error::InvalidKey(format!("Failed to deserialize Orchard FullViewingKey: {}", e)))?;
@@ -911,8 +906,7 @@ impl PaymentAddress {
     /// Create a test address (for testing only)
     pub fn test_address() -> Self {
         let extsk = SaplingExtendedSpendingKey::master(&[0u8; 32]);
-        let extfvk = extsk.to_extended_full_viewing_key();
-        let dfvk = DiversifiableFullViewingKey::from(&extfvk);
+        let dfvk = extsk.to_diversifiable_full_viewing_key();
         let (_, addr) = dfvk.default_address();
         Self { inner: addr }
     }

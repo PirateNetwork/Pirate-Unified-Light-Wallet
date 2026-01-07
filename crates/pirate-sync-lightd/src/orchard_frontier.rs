@@ -13,7 +13,6 @@ use incrementalmerkletree::{MerklePath, Position};
 use orchard::tree::MerkleHashOrchard;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use subtle::CtOption;
 use zcash_primitives::{
     consensus::BlockHeight,
     sapling::NOTE_COMMITMENT_TREE_DEPTH,
