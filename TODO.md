@@ -3,17 +3,10 @@ TODO
 
 High priority
 -------------
-- Investigate app crash after Orchard send (suspect state rebuild after endpoint switch; check logs).
-- Investigate slow sync on first start and restart.
-- Investigate sync pausing when trial decrypt hits and `GetTransaction` runs; parallelize so block fetch never pauses.
-- Investigate 200-block batches on mainnet and decide if we can safely increase or make adaptive by block size.
 - Fix overlapping/overflowing text in mobile UI.
-- Fix Rust crate warnings.
 
 Medium
 ------
-- During send, decide UI copy: "Generating Sapling Proof" vs "Generating Orchard Proof" vs "Generating Cryptographic Proof".
-- Make passphrase setup happen once on first wallet creation; remove from subsequent seeds.
 - Add ability to import private keys into existing wallets.
 - Add configurable fee selection (slider or similar).
 - Work on Tor (Arti) integration.
