@@ -7,16 +7,25 @@ library ffi_bridge;
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
+    show Int64List;
 
 import 'generated/api.dart' as api;
-import 'generated/models.dart' hide AddressBookColorTag, AddressBookEntryFfi, SyncLogEntryFfi;
-import 'generated/models.dart' as models show AddressBookColorTag, AddressBookEntryFfi, SyncLogEntryFfi;
+import 'generated/models.dart'
+    hide AddressBookColorTag, AddressBookEntryFfi, SyncLogEntryFfi;
+import 'generated/models.dart' as models
+    show AddressBookColorTag, AddressBookEntryFfi, SyncLogEntryFfi;
 
 // Type aliases to avoid conflicts with local types
 typedef GeneratedAddressBookColorTag = models.AddressBookColorTag;
 typedef GeneratedAddressBookEntryFfi = models.AddressBookEntryFfi;
 
 const bool kUseFrbBindings = true;
+
+Int64List? _toInt64List(List<int>? values) {
+  if (values == null) return null;
+  return Int64List.fromList(values);
+}
 
 GeneratedAddressBookColorTag _convertColorTag(AddressBookColorTag localTag) {
   switch (localTag) {
@@ -43,28 +52,29 @@ GeneratedAddressBookColorTag _convertColorTag(AddressBookColorTag localTag) {
 
 // Simple aliases so existing app code can keep using the familiar types from FRB.
 typedef WalletId = String;
+typedef FeeInfo = api.FeeInfo;
 // Types are imported directly from models.dart, no need for aliases
 /// FFI Bridge - Flutter ↔ Rust Interface
 ///
 /// This file provides the Dart API that mirrors the Rust FFI in pirate-ffi-api.
-/// 
+///
 /// ## FRB Integration Status
-/// 
+///
 
-/// 
+///
 /// ## To Complete FRB Wiring
-/// 
+///
 /// ```bash
 /// # 1. Install flutter_rust_bridge_codegen
 /// cargo install flutter_rust_bridge_codegen
-/// 
+///
 /// # 2. Generate bindings (from project root)
 /// flutter_rust_bridge_codegen generate
-/// 
+///
 /// # 3. Rebuild native libraries
 /// cd app && flutter pub get && flutter run
 /// ```
-/// 
+///
 /// After codegen, the generated code in `app/flutter/lib/ffi/bridge_generated.dart`
 /// (see `crates/pirate-ffi-frb/api.toml`) should replace the stub implementations
 /// in this file.
@@ -76,16 +86,16 @@ typedef WalletId = String;
 class FfiBridgeStatus {
   /// Rust API is implemented
   static const bool rustApiComplete = true;
-  
+
   /// Dart stubs are implemented
   static const bool dartStubsComplete = true;
-  
+
   /// FRB codegen has been run
   static const bool frbGenerated = true;
-  
+
   /// Native library is loaded
   static bool nativeLibraryLoaded = false;
-  
+
   /// Get overall status
   static String get status {
     if (!rustApiComplete) return 'Rust API incomplete';
@@ -100,7 +110,7 @@ class FfiBridgeStatus {
 const String kWatchOnlyLabel = 'Incoming only';
 
 /// Watch-only wallet banner message
-const String kWatchOnlyBannerMessage = 
+const String kWatchOnlyBannerMessage =
     'This wallet can only view incoming transactions. Spending is not available.';
 
 // ============================================================================
@@ -111,7 +121,7 @@ const String kWatchOnlyBannerMessage =
 class NetworkTunnelException implements Exception {
   final String message;
   const NetworkTunnelException(this.message);
-  
+
   @override
   String toString() => 'NetworkTunnelException: $message';
 }
@@ -119,7 +129,7 @@ class NetworkTunnelException implements Exception {
 /// Exception thrown when Tor connection fails
 class TorConnectionException extends NetworkTunnelException {
   const TorConnectionException(super.message);
-  
+
   @override
   String toString() => 'TorConnectionException: $message';
 }
@@ -127,7 +137,7 @@ class TorConnectionException extends NetworkTunnelException {
 /// Exception thrown when SOCKS5 proxy connection fails
 class Socks5ConnectionException extends NetworkTunnelException {
   const Socks5ConnectionException(super.message);
-  
+
   @override
   String toString() => 'Socks5ConnectionException: $message';
 }
@@ -136,50 +146,49 @@ class Socks5ConnectionException extends NetworkTunnelException {
 class TlsPinMismatchException implements Exception {
   final String expectedPin;
   final String actualPin;
-  
+
   const TlsPinMismatchException({
     required this.expectedPin,
     required this.actualPin,
   });
-  
+
   @override
-  String toString() => 'TlsPinMismatchException: Expected $expectedPin, got $actualPin';
+  String toString() =>
+      'TlsPinMismatchException: Expected $expectedPin, got $actualPin';
 }
-
-
 
 /// Result of testing node connection
 class NodeTestResult {
   /// Whether the connection was successful
   final bool success;
-  
+
   /// Latest block height from the node
   final int? latestBlockHeight;
-  
+
   /// Transport mode used (Tor/SOCKS5/Direct)
   final String transportMode;
-  
+
   /// Whether TLS was used
   final bool tlsEnabled;
-  
+
   /// Whether the TLS pin matched (null if no pin was set)
   final bool? tlsPinMatched;
-  
+
   /// The SPKI pin that was expected (if set)
   final String? expectedPin;
-  
+
   /// The actual SPKI pin from the server (if TLS was used)
   final String? actualPin;
-  
+
   /// Error message if connection failed
   final String? errorMessage;
-  
+
   /// Response time in milliseconds
   final int responseTimeMs;
-  
+
   /// Server version info (if available)
   final String? serverVersion;
-  
+
   /// Chain name from server
   final String? chainName;
 
@@ -202,7 +211,7 @@ class NodeTestResult {
     if (!success) {
       return errorMessage ?? 'Connection failed';
     }
-    
+
     final parts = <String>[];
     parts.add('Connected via $transportMode');
     if (tlsEnabled) {
@@ -245,7 +254,7 @@ class LightdEndpointConfig {
     this.tlsPin,
     this.label,
   });
-  
+
   /// Parse host from URL
   String get host {
     String normalized = url;
@@ -260,7 +269,7 @@ class LightdEndpointConfig {
     }
     return normalized;
   }
-  
+
   /// Parse port from URL
   int get port {
     String normalized = url;
@@ -276,18 +285,18 @@ class LightdEndpointConfig {
     }
     return 9067;
   }
-  
+
   /// Whether TLS is enabled
   bool get useTls => url.startsWith('https://');
-  
+
   /// Display string (host:port)
   String get displayString => '$host:$port';
 
   Map<String, dynamic> toJson() => {
-    'url': url,
-    if (tlsPin != null) 'tlsPin': tlsPin,
-    if (label != null) 'label': label,
-  };
+        'url': url,
+        if (tlsPin != null) 'tlsPin': tlsPin,
+        if (label != null) 'label': label,
+      };
 
   factory LightdEndpointConfig.fromJson(Map<String, dynamic> json) {
     return LightdEndpointConfig(
@@ -303,20 +312,20 @@ class LightdEndpointConfig {
 class FfiBridge {
   /// Cached active wallet ID (updated when switching wallets)
   static WalletId? _activeWalletId;
-  
+
   /// Default mainnet birthday height (from pirate_params)
   static const int defaultBirthdayHeight = 3800000;
-  
+
   // ============================================================================
   // WALLET LIFECYCLE - FFI Implementation
   // ============================================================================
-  
+
   /// Create new wallet with entropy, birthday, and auto-start sync
-  /// 
+  ///
   /// @param name - Wallet display name
   /// @param entropyLen - 128 or 256 bits (default 256 for 24 words)
   /// @param birthday - Block height for scanning (default: mainnet default)
-  /// 
+  ///
   /// After creation, automatically starts compact sync.
   static Future<WalletId> createWallet({
     required String name,
@@ -334,18 +343,18 @@ class FfiBridge {
       _startCompactSyncAfterCreate(walletId);
       return walletId;
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
 
   /// Restore wallet from mnemonic with birthday and auto-start sync
-  /// 
+  ///
   /// @param name - Wallet display name
   /// @param mnemonic - 24-word BIP-39 seed phrase
   /// @param passphrase - Optional BIP-39 passphrase (not the app passphrase)
   /// @param birthday - Block height to scan from (critical for restore)
-  /// 
+  ///
   /// After restore, automatically starts compact sync from birthday.
   static Future<WalletId> restoreWallet({
     required String name,
@@ -365,14 +374,14 @@ class FfiBridge {
       _startCompactSyncAfterCreate(walletId);
       return walletId;
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
 
   /// List all wallets with metadata
   /// Check if wallet registry database file exists (without opening it)
-  /// 
+  ///
   /// This allows checking if wallets exist before the database is created.
   static Future<bool> walletRegistryExists() async {
     if (kUseFrbBindings) {
@@ -381,7 +390,7 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
-  /// 
+  ///
   /// Watch-only wallets include `watchOnly: true` flag.
   static Future<List<WalletMeta>> listWallets() async {
     if (kUseFrbBindings) {
@@ -392,7 +401,7 @@ class FfiBridge {
   }
 
   /// Switch to a different wallet
-  /// 
+  ///
   /// @param id - Wallet ID to switch to (must exist)
   static Future<void> switchWallet(WalletId id) async {
     if (kUseFrbBindings) {
@@ -400,7 +409,7 @@ class FfiBridge {
       _activeWalletId = id;
       return;
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
@@ -433,7 +442,7 @@ class FfiBridge {
       _activeWalletId = walletId;
       return walletId;
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
@@ -523,7 +532,7 @@ class FfiBridge {
     }
     throw UnimplementedError('FRB bindings not available');
   }
-  
+
   /// Helper to auto-start sync after wallet creation
   static Future<void> _startCompactSyncAfterCreate(WalletId walletId) async {
     try {
@@ -553,7 +562,8 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
-  static Future<void> labelAddress(WalletId id, String addr, String label) async {
+  static Future<void> labelAddress(
+      WalletId id, String addr, String label) async {
     if (kUseFrbBindings) {
       await api.labelAddress(walletId: id, addr: addr, label: label);
       return;
@@ -587,11 +597,86 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  static Future<List<AddressBalanceInfo>> listAddressBalances(
+    WalletId id, {
+    int? keyId,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.listAddressBalances(walletId: id, keyId: keyId);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   // ============================================================================
-  // WATCH-ONLY WALLETS - IVK Export/Import
+  // KEY MANAGEMENT
   // ============================================================================
 
-  /// Export IVK from full wallet for creating watch-only on another device
+  static Future<List<KeyGroupInfo>> listKeyGroups(WalletId id) async {
+    if (kUseFrbBindings) {
+      return await api.listKeyGroups(walletId: id);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<List<KeyAddressInfo>> listAddressesForKey(
+    WalletId id,
+    int keyId,
+  ) async {
+    if (kUseFrbBindings) {
+      return await api.listAddressesForKey(walletId: id, keyId: keyId);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<String> generateAddressForKey({
+    required WalletId walletId,
+    required int keyId,
+    required bool useOrchard,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.generateAddressForKey(
+        walletId: walletId,
+        keyId: keyId,
+        useOrchard: useOrchard,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<int> importSpendingKey({
+    required WalletId walletId,
+    String? saplingKey,
+    String? orchardKey,
+    String? label,
+    required int birthdayHeight,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.importSpendingKey(
+        walletId: walletId,
+        saplingKey: saplingKey,
+        orchardKey: orchardKey,
+        label: label,
+        birthdayHeight: birthdayHeight,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<KeyExportInfo> exportKeyGroupKeys({
+    required WalletId walletId,
+    required int keyId,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.exportKeyGroupKeys(walletId: walletId, keyId: keyId);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  // ============================================================================
+  // WATCH-ONLY WALLETS - Viewing Key Export/Import
+  // ============================================================================
+
+  /// Export viewing key from full wallet for creating watch-only on another device
   static Future<String> exportIvk(WalletId id) async {
     if (kUseFrbBindings) {
       return await api.exportIvk(walletId: id);
@@ -600,29 +685,41 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
-  /// Import IVK to create watch-only wallet
-  /// 
+  /// Export Orchard viewing key from full wallet
+  static Future<String> exportOrchardViewingKey(WalletId id) async {
+    if (kUseFrbBindings) {
+      return await api.exportOrchardViewingKey(walletId: id);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Import viewing key to create watch-only wallet
+  ///
   /// Watch-only wallets can only view incoming transactions.
   /// They CANNOT:
   /// - Spend funds
   /// - See outgoing transaction details
   /// - Export seed phrase
-  /// 
+  ///
   /// @param name - Wallet display name (will append " (Incoming only)")
-  /// @param ivk - Incoming Viewing Key (zivks1...)
-  /// @param birthday - Block height to scan from (required for IVK import)
-  /// 
+  /// @param ivk - Viewing key string
+  /// @param birthday - Block height to scan from (required for viewing key import)
+  ///
   /// After import, automatically starts compact sync from birthday.
   static Future<WalletId> importIvk({
     required String name,
-    required String ivk,
+    String? saplingIvk,
+    String? orchardIvk,
     required int birthday,
   }) async {
+    if (saplingIvk == null && orchardIvk == null) {
+      throw ArgumentError('Provide a Sapling or Orchard viewing key.');
+    }
     if (kUseFrbBindings) {
       final walletId = await api.importIvk(
         name: name,
-        saplingIvk: ivk, // Use saplingIvk parameter
-        orchardIvk: null,
+        saplingIvk: saplingIvk,
+        orchardIvk: orchardIvk,
         birthday: birthday,
       );
       _activeWalletId = walletId;
@@ -630,7 +727,7 @@ class FfiBridge {
       _startCompactSyncAfterCreate(walletId);
       return walletId;
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
@@ -638,83 +735,196 @@ class FfiBridge {
   // Send
   /// Maximum memo length in bytes
   static const int maxMemoBytes = 512;
-  
+
   /// Maximum outputs per transaction
   static const int maxOutputs = 50;
-  
-  /// Minimum fee in zatoshis
-  static const int minFee = 1000;
-  
+
+  /// Minimum fee in arrrtoshis
+  static const int minFee = 10000;
+
   /// Default fee per output
   static const int feePerOutput = 10000;
-  
+
+  /// Get fee information (min/max/default) for UI.
+  static Future<FeeInfo> getFeeInfo() async {
+    if (kUseFrbBindings) {
+      return await api.getFeeInfo();
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   /// Build transaction with validation
-  /// 
+  ///
   /// Validates:
   /// - All addresses are valid Sapling (zs1...)
   /// - All amounts are positive and non-zero
   /// - All memos are valid UTF-8 and <= 512 bytes
   /// - Sufficient funds available
-  /// 
+  ///
   /// Returns PendingTx with fee, change, and input information
   static Future<PendingTx> buildTx({
     required WalletId walletId,
     required List<Output> outputs,
     int? fee,
+    List<int>? keyIds,
+    List<int>? addressIds,
   }) async {
     if (kUseFrbBindings) {
+      final keyIdsFilter = _toInt64List(keyIds);
+      final addressIdsFilter = _toInt64List(addressIds);
+      if (keyIds != null || addressIds != null) {
+        return await api.buildTxFiltered(
+          walletId: walletId,
+          outputs: outputs,
+          feeOpt: fee != null ? BigInt.from(fee) : null,
+          keyIdsFilter: keyIdsFilter,
+          addressIdsFilter: addressIdsFilter,
+        );
+      }
       return await api.buildTx(
         walletId: walletId,
         outputs: outputs,
         feeOpt: fee != null ? BigInt.from(fee) : null,
       );
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
-  
+
+  /// Build transaction using notes from a specific key group
+  static Future<PendingTx> buildTxForKey({
+    required WalletId walletId,
+    required int keyId,
+    required List<Output> outputs,
+    int? fee,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.buildTxForKey(
+        walletId: walletId,
+        keyId: keyId,
+        outputs: outputs,
+        feeOpt: fee != null ? BigInt.from(fee) : null,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Build a consolidation transaction for a key group
+  static Future<PendingTx> buildConsolidationTx({
+    required WalletId walletId,
+    required int keyId,
+    required String targetAddress,
+    int? fee,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.buildConsolidationTx(
+        walletId: walletId,
+        keyId: keyId,
+        targetAddress: targetAddress,
+        feeOpt: fee != null ? BigInt.from(fee) : null,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Build a sweep transaction for selected keys or addresses.
+  static Future<PendingTx> buildSweepTx({
+    required WalletId walletId,
+    required String targetAddress,
+    int? fee,
+    List<int>? keyIds,
+    List<int>? addressIds,
+  }) async {
+    if (kUseFrbBindings) {
+      final keyIdsFilter = _toInt64List(keyIds);
+      final addressIdsFilter = _toInt64List(addressIds);
+      return await api.buildSweepTx(
+        walletId: walletId,
+        targetAddress: targetAddress,
+        feeOpt: fee != null ? BigInt.from(fee) : null,
+        keyIdsFilter: keyIdsFilter,
+        addressIdsFilter: addressIdsFilter,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   /// Sign pending transaction
-  /// 
+  ///
   /// Requires wallet spending key access.
   /// Generates Sapling proofs and signs inputs.
   static Future<SignedTx> signTx(WalletId walletId, PendingTx pending) async {
     if (kUseFrbBindings) {
       return await api.signTx(walletId: walletId, pending: pending);
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
 
+  /// Sign pending transaction using selected keys or addresses.
+  static Future<SignedTx> signTxFiltered({
+    required WalletId walletId,
+    required PendingTx pending,
+    List<int>? keyIds,
+    List<int>? addressIds,
+  }) async {
+    if (kUseFrbBindings) {
+      final keyIdsFilter = _toInt64List(keyIds);
+      final addressIdsFilter = _toInt64List(addressIds);
+      return await api.signTxFiltered(
+        walletId: walletId,
+        pending: pending,
+        keyIdsFilter: keyIdsFilter,
+        addressIdsFilter: addressIdsFilter,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Sign pending transaction using notes from a specific key group
+  static Future<SignedTx> signTxForKey({
+    required WalletId walletId,
+    required PendingTx pending,
+    required int keyId,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.signTxForKey(
+        walletId: walletId,
+        pending: pending,
+        keyId: keyId,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   /// Broadcast signed transaction to the network
-  /// 
+  ///
   /// Sends via lightwalletd gRPC SendTransaction.
   /// Returns TxId on success.
   static Future<String> broadcastTx(SignedTx signed) async {
     if (kUseFrbBindings) {
       return await api.broadcastTx(signed: signed);
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
-  
 
   // ============================================================================
   // SYNC ENGINE
   // ============================================================================
-  // 
+  //
   // Mirrors Rust: crates/pirate-ffi-frb/src/api.rs
   // - start_sync(), cancel_sync(), rescan(), sync_status(), is_sync_running()
   //
   // State is tracked locally until FRB wiring connects to Rust SimpleSync.
   // Progress calculation matches Rust engine behavior (checkpoints, stages, ETA).
   // ============================================================================
-  
-  
+
   /// Start blockchain sync for wallet
-  /// 
+  ///
   /// Connects to lightwalletd and syncs from last checkpoint.
   /// @see Rust: pirate-ffi-frb/src/api.rs::start_sync
   static Future<void> startSync(WalletId id, SyncMode mode) async {
@@ -722,26 +932,26 @@ class FfiBridge {
       await api.startSync(walletId: id, mode: mode);
       return;
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
 
   /// Get current sync status with performance metrics
-  /// 
+  ///
   /// Returns progress, heights, ETA, stage, and perf counters.
   /// @see Rust: pirate-ffi-frb/src/api.rs::sync_status
   static Future<SyncStatus> syncStatus(WalletId id) async {
     if (kUseFrbBindings) {
       return await api.syncStatus(walletId: id);
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
 
   /// Rescan blockchain from specified height
-  /// 
+  ///
   /// Clears state above fromHeight and re-syncs. Uses deep mode.
   /// @see Rust: pirate-ffi-frb/src/api.rs::rescan
   static Future<void> rescan(WalletId id, int fromHeight) async {
@@ -749,11 +959,11 @@ class FfiBridge {
       await api.rescan(walletId: id, fromHeight: fromHeight);
       return;
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
-  
+
   /// Cancel ongoing sync
   /// @see Rust: pirate-ffi-frb/src/api.rs::cancel_sync
   static Future<void> cancelSync(WalletId id) async {
@@ -761,46 +971,47 @@ class FfiBridge {
       await api.cancelSync(walletId: id);
       return;
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
-  
+
   /// Check if sync is currently running
   /// @see Rust: pirate-ffi-frb/src/api.rs::is_sync_running
   static Future<bool> isSyncRunning(WalletId id) async {
     if (kUseFrbBindings) {
       return await api.isSyncRunning(walletId: id);
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
-  
+
   /// Get last checkpoint info for diagnostics
   /// @see Rust: pirate-ffi-frb/src/api.rs::get_last_checkpoint
   static Future<api.CheckpointInfo?> getLastCheckpoint(WalletId id) async {
     if (kUseFrbBindings) {
       return await api.getLastCheckpoint(walletId: id);
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
 
   /// Get last N sync log entries (local only, never transmitted)
-  /// 
+  ///
   /// Logs are stored in a circular buffer in memory and persisted to SQLite.
   /// Default limit is 200 entries. Logs are automatically redacted when
   /// copied via the UI (addresses, hashes, IPs, emails).
-  /// 
+  ///
   /// @param id - Wallet ID
   /// @param limit - Maximum number of log entries to return (default: 200)
   /// @returns List of log entries, newest first
-  /// 
+  ///
   /// Note: This function needs to be implemented in Rust FFI layer to query
   /// the sync_logs table in pirate-storage-sqlite. Currently returns empty list.
-  static Future<List<SyncLogEntryFfi>> getSyncLogs(WalletId id, {int limit = 200}) async {
+  static Future<List<SyncLogEntryFfi>> getSyncLogs(WalletId id,
+      {int limit = 200}) async {
     if (kUseFrbBindings) {
       // Call Rust FFI function
       final logs = await api.getSyncLogs(walletId: id, limit: limit);
@@ -811,25 +1022,28 @@ class FfiBridge {
   }
 
   /// Get checkpoint details for rescan confirmation
-  /// 
+  ///
   /// Returns detailed information about a specific checkpoint including:
   /// - Height and timestamp
   /// - Frontier root hash (for verification)
   /// - Number of notes at checkpoint
-  /// 
+  ///
   /// @param id - Wallet ID
   /// @param height - Checkpoint height to query
-  /// 
+  ///
   /// Note: This function needs to be implemented in Rust FFI layer to query
   /// the frontier_snapshots table in pirate-storage-sqlite.
-  static Future<CheckpointInfo?> getCheckpointDetails(WalletId id, int height) async {
+  static Future<CheckpointInfo?> getCheckpointDetails(
+      WalletId id, int height) async {
     if (kUseFrbBindings) {
       // Call Rust FFI function (requires FRB codegen to be run)
-      final checkpoint = await api.getCheckpointDetails(walletId: id, height: height);
+      final checkpoint =
+          await api.getCheckpointDetails(walletId: id, height: height);
       if (checkpoint == null) return null;
       return CheckpointInfo(
         height: checkpoint.height,
-        timestamp: DateTime.fromMillisecondsSinceEpoch(checkpoint.timestamp * 1000),
+        timestamp:
+            DateTime.fromMillisecondsSinceEpoch(checkpoint.timestamp * 1000),
       );
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
@@ -843,12 +1057,13 @@ class FfiBridge {
   // Mirrors Rust: crates/pirate-ffi-frb/src/api.rs
   // - set_lightd_endpoint(), get_lightd_endpoint(), get_lightd_endpoint_config()
   // ============================================================================
-  
+
   /// Default lightwalletd endpoint (Orchard-ready mainnet)
   /// Changed from lightd1.piratechain.com to 64.23.167.130:9067 as the working endpoint
   static const String defaultLightdHost = '64.23.167.130';
   static const int defaultLightdPort = 9067;
-  static const bool defaultUseTls = false; // Disabled by default since servers don't have certificates
+  static const bool defaultUseTls =
+      false; // Disabled by default since servers don't have certificates
   static const String defaultLightdUrl = 'http://64.23.167.130:9067';
 
   static Future<void> setLightdEndpoint({
@@ -857,7 +1072,8 @@ class FfiBridge {
     String? tlsPin,
   }) async {
     if (kUseFrbBindings) {
-      await api.setLightdEndpoint(walletId: walletId, url: url, tlsPinOpt: tlsPin);
+      await api.setLightdEndpoint(
+          walletId: walletId, url: url, tlsPinOpt: tlsPin);
       return;
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
@@ -871,8 +1087,9 @@ class FfiBridge {
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
-  
-  static Future<LightdEndpointConfig> getLightdEndpointConfig(WalletId id) async {
+
+  static Future<LightdEndpointConfig> getLightdEndpointConfig(
+      WalletId id) async {
     if (kUseFrbBindings) {
       final config = await api.getLightdEndpointConfig(walletId: id);
       final url = await config.url();
@@ -917,6 +1134,37 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  // Auto Consolidation
+  static Future<bool> getAutoConsolidationEnabled(WalletId id) async {
+    if (kUseFrbBindings) {
+      return await api.getAutoConsolidationEnabled(walletId: id);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<void> setAutoConsolidationEnabled(
+      WalletId id, bool enabled) async {
+    if (kUseFrbBindings) {
+      await api.setAutoConsolidationEnabled(walletId: id, enabled: enabled);
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<int> getAutoConsolidationThreshold() async {
+    if (kUseFrbBindings) {
+      return await api.getAutoConsolidationThreshold();
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<int> getAutoConsolidationCandidateCount(WalletId id) async {
+    if (kUseFrbBindings) {
+      return await api.getAutoConsolidationCandidateCount(walletId: id);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   // Balance & Transactions
   static Future<Balance> getBalance(WalletId id) async {
     if (kUseFrbBindings) {
@@ -926,11 +1174,27 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
-  static Future<List<TxInfo>> listTransactions(WalletId id, {int limit = 50}) async {
+  static Future<List<TxInfo>> listTransactions(WalletId id,
+      {int limit = 50}) async {
     if (kUseFrbBindings) {
       return await api.listTransactions(walletId: id, limit: limit);
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<String?> fetchTransactionMemo({
+    required WalletId walletId,
+    required String txid,
+    int? outputIndex,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.fetchTransactionMemo(
+        walletId: walletId,
+        txid: txid,
+        outputIndex: outputIndex,
+      );
+    }
     throw UnimplementedError('FRB bindings not available');
   }
 
@@ -960,13 +1224,13 @@ class FfiBridge {
   }
 
   /// Test connection to a lightwalletd node
-  /// 
+  ///
   /// Calls get_latest_block() and reports:
   /// - Transport mode (Tor/SOCKS5/Direct)
   /// - TLS status and pin verification
   /// - Latest block height
   /// - Response time
-  /// 
+  ///
   /// @param url - The lightwalletd endpoint URL
   /// @param tlsPin - Optional SPKI pin (base64 SHA-256 of public key)
   /// @returns NodeTestResult with connection details
@@ -977,11 +1241,11 @@ class FfiBridge {
     final startTime = DateTime.now();
     final tunnelMode = await getTunnel();
     final transportName = tunnelMode.name;
-    
+
     // Determine if TLS is enabled
-    final useTls = url.startsWith('https://') || 
-                   (!url.startsWith('http://') && !url.contains('://'));
-    
+    final useTls = url.startsWith('https://') ||
+        (!url.startsWith('http://') && !url.contains('://'));
+
     try {
       // Note: This function needs to be implemented in Rust FFI layer
       // The actual connection should be established via the configured tunnel (Tor/SOCKS5/Direct)
@@ -990,7 +1254,7 @@ class FfiBridge {
       // 2. Perform TLS handshake and extract server certificate SPKI
       // 3. Compare SPKI with provided pin (if any)
       // 4. Call get_latest_block() gRPC method
-      
+
       if (kUseFrbBindings) {
         // Call Rust FFI function
         final result = await api.testNode(url: url, tlsPin: tlsPin);
@@ -1008,7 +1272,7 @@ class FfiBridge {
           chainName: result.chainName,
         );
       }
-      
+
       // Fallback stub (should not be reached if kUseFrbBindings is true)
       throw UnimplementedError('FRB bindings not available');
     } on TorConnectionException catch (e) {
@@ -1047,12 +1311,12 @@ class FfiBridge {
     if (pin.startsWith('sha256/')) {
       base64Part = pin.substring(7);
     }
-    
+
     // Check if it's valid base64 and correct length (32 bytes = 44 chars base64)
     if (base64Part.length != 44 && base64Part.length != 43) {
       return false;
     }
-    
+
     // Basic base64 character validation
     final base64Regex = RegExp(r'^[A-Za-z0-9+/]+=*$');
     return base64Regex.hasMatch(base64Part);
@@ -1090,12 +1354,12 @@ class FfiBridge {
     int lastTargetHeight = 0;
     DateTime? lastRestartAttempt;
     DateTime? lastStartAttempt;
-    
+
     while (true) {
       try {
         // Check if sync is running (even when caught up, sync monitors for new blocks)
         final isRunning = await isSyncRunning(id);
-        
+
         // Get real sync status
         final status = await syncStatus(id);
 
@@ -1120,8 +1384,7 @@ class FfiBridge {
             status.localHeight == BigInt.zero) {
           final now = DateTime.now();
           final shouldStart = lastStartAttempt == null ||
-              now.difference(lastStartAttempt!) >
-                  const Duration(seconds: 30);
+              now.difference(lastStartAttempt!) > const Duration(seconds: 30);
           if (shouldStart) {
             lastStartAttempt = now;
             try {
@@ -1132,7 +1395,7 @@ class FfiBridge {
           }
         }
         yield status;
-        
+
         // Track if progress is happening
         final currentHeight = status.localHeight.toInt();
         final targetHeight = status.targetHeight.toInt();
@@ -1143,22 +1406,24 @@ class FfiBridge {
         } else {
           idleCount++;
         }
-        
+
         // Adjust polling interval based on sync activity
         // Keep polling frequent when sync is running (even if caught up) to show new blocks quickly
         Duration interval;
         if (status.isSyncing) {
-          interval = const Duration(milliseconds: 500); // Fast updates during active sync
+          interval = const Duration(
+              milliseconds: 500); // Fast updates during active sync
         } else if (isRunning) {
           // Sync is running but caught up - monitoring for new blocks
           // Poll every 1 second to catch new blocks quickly
           interval = const Duration(seconds: 1);
         } else if (idleCount < 10) {
-          interval = const Duration(seconds: 1); // Normal updates after sync stops
+          interval =
+              const Duration(seconds: 1); // Normal updates after sync stops
         } else {
           interval = const Duration(seconds: 5); // Slow updates when truly idle
         }
-        
+
         await Future<void>.delayed(interval);
       } catch (e) {
         // If sync status fails, yield a default status instead of crashing the stream
@@ -1181,7 +1446,7 @@ class FfiBridge {
 
   /// Transaction discovery stream
   /// Emits when sync engine finds new transactions
-  /// 
+  ///
   /// Polls the database periodically and emits new transactions as they are discovered.
   /// During active sync, polls every 2 seconds. When idle, polls every 5 seconds.
   static Stream<TxInfo> transactionStream(WalletId id) async* {
@@ -1189,24 +1454,24 @@ class FfiBridge {
       // Fallback: return empty stream
       return;
     }
-    
+
     // Track the last transaction IDs we've seen to detect new ones
     final Set<String> lastSeenTxids = <String>{};
     DateTime lastCheckTime = DateTime.now();
-    
+
     while (true) {
       try {
         // Check if sync is running to adjust poll interval
         final isSyncing = await isSyncRunning(id);
-        final pollInterval = isSyncing 
-            ? const Duration(seconds: 2)  // Fast updates during sync
-            : const Duration(seconds: 5);  // Slower updates when idle
-        
+        final pollInterval = isSyncing
+            ? const Duration(seconds: 2) // Fast updates during sync
+            : const Duration(seconds: 5); // Slower updates when idle
+
         await Future<void>.delayed(pollInterval);
-        
+
         // Get list of recent transactions from database
         final transactions = await listTransactions(id, limit: 100);
-        
+
         // Find new transactions (ones we haven't seen before)
         for (final txInfo in transactions) {
           if (!lastSeenTxids.contains(txInfo.txid)) {
@@ -1215,14 +1480,12 @@ class FfiBridge {
             yield txInfo;
           }
         }
-        
+
         // Limit the size of lastSeenTxids to prevent memory growth
         // Keep only the most recent 1000 transaction IDs
         if (lastSeenTxids.length > 1000) {
-          final recentTxids = transactions
-              .take(1000)
-              .map((tx) => tx.txid)
-              .toSet();
+          final recentTxids =
+              transactions.take(1000).map((tx) => tx.txid).toSet();
           lastSeenTxids.clear();
           lastSeenTxids.addAll(recentTxids);
         }
@@ -1233,7 +1496,7 @@ class FfiBridge {
           debugPrint('Failed to get transactions for wallet $id: $e');
           lastCheckTime = DateTime.now();
         }
-        
+
         // Wait before retrying on error
         await Future<void>.delayed(const Duration(seconds: 5));
       }
@@ -1252,7 +1515,7 @@ class FfiBridge {
   }
 
   // Background Sync (called from platform-specific code)
-  
+
   /// Execute background sync via FFI
   /// All RPC calls are routed through the configured NetTunnel (Tor/SOCKS5/Direct)
   static Future<Map<String, dynamic>> executeBackgroundSync({
@@ -1267,19 +1530,18 @@ class FfiBridge {
         mode: mode,
       );
       final tunnelMode = await getTunnel();
-      
+
       return {
         'mode': result.mode,
         'blocks_synced': result.blocksSynced,
-        'duration_secs':
-            DateTime.now().difference(startTime).inSeconds,
+        'duration_secs': DateTime.now().difference(startTime).inSeconds,
         'new_transactions': result.newTransactions,
         'new_balance': result.newBalance,
         'tunnel_used': tunnelMode.name,
         'errors': result.errors,
       };
     }
-    
+
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
@@ -1300,7 +1562,7 @@ class FfiBridge {
         'durationSecs': result.durationSecs.toString(),
       };
     }
-    throw UnimplementedError('FRB bindings not available'); 
+    throw UnimplementedError('FRB bindings not available');
   }
 
   /// Set network tunnel mode for all RPC connections
@@ -1310,7 +1572,8 @@ class FfiBridge {
   }) async {
     final tunnelMode = switch (mode.toLowerCase()) {
       'tor' => const TunnelMode.tor(),
-      'socks5' => TunnelMode.socks5(url: socks5Url ?? 'socks5://localhost:1080'),
+      'socks5' =>
+        TunnelMode.socks5(url: socks5Url ?? 'socks5://localhost:1080'),
       'direct' => const TunnelMode.direct(),
       _ => const TunnelMode.tor(),
     };
@@ -1521,14 +1784,14 @@ class FfiBridge {
   }
 
   // ============================================================================
-  // WATCH-ONLY / IVK EXPORT/IMPORT
+  // WATCH-ONLY / VIEWING KEY EXPORT/IMPORT
   // ============================================================================
   //
   // Mirrors Rust: crates/pirate-ffi-frb/src/api.rs
   // - export_ivk(), import_ivk()
   // ============================================================================
 
-  /// Export IVK from full wallet (secure)
+  /// Export viewing key from full wallet (secure)
   /// @see Rust: pirate-ffi-frb/src/api.rs::export_ivk
   static Future<String> exportIvkSecure(WalletId walletId) async {
     if (kUseFrbBindings) {
@@ -1538,23 +1801,26 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
-  /// Import IVK to create watch-only wallet (alternate API)
+  /// Import viewing key to create watch-only wallet (alternate API)
   /// @see Rust: pirate-ffi-frb/src/api.rs::import_ivk
   static Future<WalletId> importIvkAsWatchOnly({
     required String name,
     required String ivk,
+    String? orchardIvk,
     required int birthdayHeight,
   }) async {
     // Delegate to main importIvk method
     return importIvk(
       name: name,
-      ivk: ivk,
+      saplingIvk: ivk,
+      orchardIvk: orchardIvk,
       birthday: birthdayHeight,
     );
   }
 
   /// Get watch-only capabilities for a wallet
-  static Future<api.WatchOnlyCapabilitiesInfo> getWatchOnlyCapabilities(WalletId walletId) async {
+  static Future<api.WatchOnlyCapabilitiesInfo> getWatchOnlyCapabilities(
+      WalletId walletId) async {
     if (kUseFrbBindings) {
       return await api.getWatchOnlyCapabilities(walletId: walletId);
     }
@@ -1563,9 +1829,10 @@ class FfiBridge {
   }
 
   /// Get watch-only banner for wallet
-  /// 
+  ///
   /// Returns banner info with "Incoming only" label for watch-only wallets.
-  static Future<api.WatchOnlyBannerInfo?> getWatchOnlyBanner(WalletId walletId) async {
+  static Future<api.WatchOnlyBannerInfo?> getWatchOnlyBanner(
+      WalletId walletId) async {
     if (kUseFrbBindings) {
       return await api.getWatchOnlyBanner(walletId: walletId);
     }
@@ -1639,7 +1906,7 @@ class WatchOnlyBannerInfo {
 class CheckpointInfo {
   final int height;
   final DateTime timestamp;
-  
+
   CheckpointInfo({
     required this.height,
     required this.timestamp,
@@ -1697,7 +1964,7 @@ class SyncLogEntryFfi {
     } else {
       timestampValue = (ts as dynamic).toInt() as int;
     }
-    
+
     return SyncLogEntryFfi(
       timestamp: DateTime.fromMillisecondsSinceEpoch(timestampValue * 1000),
       level: SyncLogLevel.fromString(generated.level),
@@ -1709,10 +1976,13 @@ class SyncLogEntryFfi {
   /// Redacted version for sharing (removes sensitive data)
   String toRedactedString() {
     final redactedMessage = message
-        .replaceAll(RegExp(r'zs[a-z0-9]{70,}', caseSensitive: false), '[REDACTED_ADDRESS]')
+        .replaceAll(RegExp(r'zs[a-z0-9]{70,}', caseSensitive: false),
+            '[REDACTED_ADDRESS]')
         .replaceAll(RegExp(r'0x[a-fA-F0-9]{64}'), '[REDACTED_HASH]')
-        .replaceAll(RegExp(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'), '[REDACTED_IP]')
-        .replaceAll(RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'), '[REDACTED_EMAIL]');
+        .replaceAll(
+            RegExp(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'), '[REDACTED_IP]')
+        .replaceAll(RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'),
+            '[REDACTED_EMAIL]');
 
     final t = timestamp;
     final timeFormatted = '${t.hour.toString().padLeft(2, '0')}:'
@@ -1767,7 +2037,7 @@ enum AddressBookColorTag {
 /// Maximum label length
 const int kMaxLabelLength = 100;
 
-/// Maximum notes length  
+/// Maximum notes length
 const int kMaxNotesLength = 500;
 
 /// Address book entry model (mirrors Rust AddressBookEntry)
@@ -1838,18 +2108,18 @@ class AddressBookEntryFfi {
   String get avatarLetter => label.isEmpty ? '?' : label[0].toUpperCase();
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'wallet_id': walletId,
-    'address': address,
-    'label': label,
-    'notes': notes,
-    'color_tag': colorTag.value,
-    'is_favorite': isFavorite,
-    'created_at': createdAt.toIso8601String(),
-    'updated_at': updatedAt.toIso8601String(),
-    'last_used_at': lastUsedAt?.toIso8601String(),
-    'use_count': useCount,
-  };
+        'id': id,
+        'wallet_id': walletId,
+        'address': address,
+        'label': label,
+        'notes': notes,
+        'color_tag': colorTag.value,
+        'is_favorite': isFavorite,
+        'created_at': createdAt.toIso8601String(),
+        'updated_at': updatedAt.toIso8601String(),
+        'last_used_at': lastUsedAt?.toIso8601String(),
+        'use_count': useCount,
+      };
 
   factory AddressBookEntryFfi.fromJson(Map<String, dynamic> json) {
     return AddressBookEntryFfi(
@@ -1870,7 +2140,8 @@ class AddressBookEntryFfi {
   }
 
   /// Convert from generated AddressBookEntryFfi
-  factory AddressBookEntryFfi.fromGenerated(models.AddressBookEntryFfi generated) {
+  factory AddressBookEntryFfi.fromGenerated(
+      models.AddressBookEntryFfi generated) {
     // PlatformInt64 conversion - handle both int and PlatformInt64 types
     int idValue;
     final id = generated.id;
@@ -1879,7 +2150,7 @@ class AddressBookEntryFfi {
     } else {
       idValue = (id as dynamic).toInt() as int;
     }
-    
+
     int createdAtValue;
     final createdAt = generated.createdAt;
     if (createdAt is int) {
@@ -1887,7 +2158,7 @@ class AddressBookEntryFfi {
     } else {
       createdAtValue = (createdAt as dynamic).toInt() as int;
     }
-    
+
     int updatedAtValue;
     final updatedAt = generated.updatedAt;
     if (updatedAt is int) {
@@ -1895,7 +2166,7 @@ class AddressBookEntryFfi {
     } else {
       updatedAtValue = (updatedAt as dynamic).toInt() as int;
     }
-    
+
     int? lastUsedAtValue;
     final lastUsedAt = generated.lastUsedAt;
     if (lastUsedAt != null) {
@@ -1907,16 +2178,18 @@ class AddressBookEntryFfi {
     } else {
       lastUsedAtValue = null;
     }
-    
+
     return AddressBookEntryFfi(
       id: idValue,
       walletId: generated.walletId,
       address: generated.address,
       label: generated.label,
       notes: generated.notes,
-      colorTag: AddressBookColorTag.fromValue(_generatedColorTagToInt(generated.colorTag)),
+      colorTag: AddressBookColorTag.fromValue(
+          _generatedColorTagToInt(generated.colorTag)),
       isFavorite: generated.isFavorite,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtValue * 1000), // Convert seconds to milliseconds
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+          createdAtValue * 1000), // Convert seconds to milliseconds
       updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAtValue * 1000),
       lastUsedAt: lastUsedAtValue != null
           ? DateTime.fromMillisecondsSinceEpoch(lastUsedAtValue * 1000)
@@ -1947,8 +2220,10 @@ class AddressBookEntryFfi {
         return 8;
     }
   }
+
   /// List all address book entries for a wallet
-  static Future<List<AddressBookEntryFfi>> listAddressBook(String walletId) async {
+  static Future<List<AddressBookEntryFfi>> listAddressBook(
+      String walletId) async {
     if (kUseFrbBindings) {
       final result = await api.listAddressBook(walletId: walletId);
       return result.map((e) => AddressBookEntryFfi.fromGenerated(e)).toList();
@@ -1957,7 +2232,8 @@ class AddressBookEntryFfi {
   }
 
   /// Get entry by ID
-  static Future<AddressBookEntryFfi?> getAddressBookEntry(String walletId, int id) async {
+  static Future<AddressBookEntryFfi?> getAddressBookEntry(
+      String walletId, int id) async {
     if (kUseFrbBindings) {
       final result = await api.getAddressBookEntry(walletId: walletId, id: id);
       return result != null ? AddressBookEntryFfi.fromGenerated(result) : null;
@@ -1971,14 +2247,16 @@ class AddressBookEntryFfi {
     String address,
   ) async {
     if (kUseFrbBindings) {
-      final result = await api.getAddressBookEntryByAddress(walletId: walletId, address: address);
+      final result = await api.getAddressBookEntryByAddress(
+          walletId: walletId, address: address);
       return result != null ? AddressBookEntryFfi.fromGenerated(result) : null;
     }
     throw UnimplementedError('FRB bindings not available');
   }
 
   /// Get label for an address (for transaction history display)
-  static Future<String?> getLabelForAddress(String walletId, String address) async {
+  static Future<String?> getLabelForAddress(
+      String walletId, String address) async {
     if (kUseFrbBindings) {
       return await api.getLabelForAddress(walletId: walletId, address: address);
     }
@@ -2019,7 +2297,8 @@ class AddressBookEntryFfi {
   }) async {
     if (kUseFrbBindings) {
       // Convert local AddressBookColorTag to generated one
-      final generatedColorTag = colorTag != null ? _convertColorTag(colorTag) : null;
+      final generatedColorTag =
+          colorTag != null ? _convertColorTag(colorTag) : null;
       final result = await api.updateAddressBookEntry(
         walletId: walletId,
         id: id,
@@ -2065,14 +2344,16 @@ class AddressBookEntryFfi {
     String query,
   ) async {
     if (kUseFrbBindings) {
-      final result = await api.searchAddressBook(walletId: walletId, query: query);
+      final result =
+          await api.searchAddressBook(walletId: walletId, query: query);
       return result.map((e) => AddressBookEntryFfi.fromGenerated(e)).toList();
     }
     throw UnimplementedError('FRB bindings not available');
   }
 
   /// Get favorites
-  static Future<List<AddressBookEntryFfi>> getAddressBookFavorites(String walletId) async {
+  static Future<List<AddressBookEntryFfi>> getAddressBookFavorites(
+      String walletId) async {
     if (kUseFrbBindings) {
       final result = await api.getAddressBookFavorites(walletId: walletId);
       return result.map((e) => AddressBookEntryFfi.fromGenerated(e)).toList();
@@ -2086,16 +2367,19 @@ class AddressBookEntryFfi {
     int limit,
   ) async {
     if (kUseFrbBindings) {
-      final result = await api.getRecentlyUsedAddresses(walletId: walletId, limit: limit);
+      final result =
+          await api.getRecentlyUsedAddresses(walletId: walletId, limit: limit);
       return result.map((e) => AddressBookEntryFfi.fromGenerated(e)).toList();
     }
     throw UnimplementedError('FRB bindings not available');
   }
 
   /// Check if address exists in book
-  static Future<bool> addressExistsInBook(String walletId, String address) async {
+  static Future<bool> addressExistsInBook(
+      String walletId, String address) async {
     if (kUseFrbBindings) {
-      return await api.addressExistsInBook(walletId: walletId, address: address);
+      return await api.addressExistsInBook(
+          walletId: walletId, address: address);
     }
     throw UnimplementedError('FRB bindings not available');
   }
@@ -2107,7 +2391,6 @@ class AddressBookEntryFfi {
     }
     throw UnimplementedError('FRB bindings not available');
   }
-
 }
 
 /// Alias for compatibility with background_sync_manager.dart
@@ -2132,7 +2415,7 @@ extension TunnelModeExtension on TunnelMode {
     } catch (_) {
       // Not socks5
     }
-    
+
     // Check runtimeType name to distinguish tor vs direct
     final typeName = runtimeType.toString();
     if (typeName.contains('Tor')) {
@@ -2140,7 +2423,7 @@ extension TunnelModeExtension on TunnelMode {
     } else if (typeName.contains('Direct')) {
       return 'direct';
     }
-    
+
     // Fallback
     return 'tor';
   }
@@ -2153,13 +2436,13 @@ extension SyncStatusExtension on SyncStatus {
   bool get isSyncing {
     return localHeight < targetHeight && targetHeight > BigInt.zero;
   }
-  
+
   /// Check if sync is complete (caught up to target)
   /// Note: Sync may still be monitoring for new blocks even when "complete"
   bool get isComplete {
     return localHeight >= targetHeight && targetHeight > BigInt.zero;
   }
-  
+
   /// Get stage name as string with user-friendly labels
   String get stageName {
     // When caught up, show "Monitoring" instead of "Verify"
@@ -2178,7 +2461,7 @@ extension SyncStatusExtension on SyncStatus {
         return 'Synching Chain';
     }
   }
-  
+
   /// Get formatted ETA string
   /// Returns null when caught up (no ETA needed) or when ETA is not available
   String? get etaFormatted {
@@ -2199,7 +2482,6 @@ extension SyncStatusExtension on SyncStatus {
       return '${(seconds / 3600).round()}h';
     }
   }
-  
 }
 
 /// Extension to add helper methods to NetworkInfo

@@ -262,7 +262,7 @@ class CreateOrImportScreen extends ConsumerWidget {
                                 ),
                                 const SizedBox(height: AppSpacing.xs),
                                 Text(
-                                  'Import viewing key (IVK)',
+                                  'Import viewing key',
                                   style: AppTypography.caption.copyWith(
                                     color: AppColors.textSecondary,
                                   ),

@@ -1,6 +1,6 @@
 // Watch-only wallet management screen
 // 
-// Handles IVK export/import for creating view-only wallets
+// Handles viewing key export/import for creating view-only wallets
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -111,7 +111,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('IVK copied. Auto-clearing in 30 seconds.'),
+          content: const Text('Viewing key copied. Auto-clearing in 30 seconds.'),
           backgroundColor: AppColors.warning,
         ),
       );
@@ -143,7 +143,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
         throw Exception('Please enter a wallet name');
       }
       if (_ivkController.text.isEmpty) {
-        throw Exception('Please enter the IVK');
+        throw Exception('Please enter the viewing key');
       }
 
       final birthday = int.tryParse(_birthdayController.text);
@@ -183,7 +183,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
       title: 'Watch-Only Wallets',
       appBar: const PAppBar(
         title: 'Watch-Only Wallets',
-        subtitle: 'Export or import incoming viewing keys',
+        subtitle: 'Export or import viewing keys',
       ),
       body: Column(
         children: [
@@ -194,8 +194,8 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
               indicatorColor: AppColors.accentPrimary,
               labelColor: AppColors.textPrimary,
               tabs: const [
-                Tab(text: 'Export IVK'),
-                Tab(text: 'Import IVK'),
+                Tab(text: 'Export Viewing Key'),
+                Tab(text: 'Import Viewing Key'),
               ],
             ),
           ),
@@ -241,7 +241,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
-                      'Export your Incoming Viewing Key (IVK) to create a watch-only '
+                      'Export your viewing key to create a watch-only '
                       'wallet on another device. Watch-only wallets can see incoming '
                       'transactions but cannot spend funds.',
                       style: AppTypography.body.copyWith(
@@ -267,7 +267,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
-                      'Anyone with this IVK can see your incoming transactions '
+                      'Anyone with this viewing key can see your incoming transactions '
                       'and balance. Only share it with services or devices you trust.',
                       style: AppTypography.body.copyWith(
                         color: AppColors.warning,
@@ -299,7 +299,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'This is a watch-only wallet. IVK can only be exported '
+                    'This is a watch-only wallet. Viewing keys can only be exported '
                     'from a full wallet.',
                     style: AppTypography.body.copyWith(
                       color: AppColors.textSecondary,
@@ -312,7 +312,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
           else if (_exportedIvk == null)
             // Export button
             PButton(
-                  text: 'Export IVK',
+                  text: 'Export Viewing Key',
                   onPressed: _isExporting ? null : _exportIvk,
                   isLoading: _isExporting,
                   variant: PButtonVariant.primary,
@@ -320,12 +320,12 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                   icon: const Icon(Icons.key),
                 )
           else
-            // Exported IVK display
+            // Exported viewing key display
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Your Incoming Viewing Key',
+                  'Your viewing key',
                   style: AppTypography.h4.copyWith(
                     color: AppColors.textPrimary,
                   ),
@@ -381,7 +381,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
-                      'Import an Incoming Viewing Key to create a watch-only wallet. '
+                      'Import a viewing key to create a watch-only wallet. '
                       'You will be able to see your balance and incoming transactions, '
                       'but you cannot spend funds.',
                       style: AppTypography.body.copyWith(
@@ -405,11 +405,11 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
           
           const SizedBox(height: AppSpacing.md),
           
-          // IVK input
+          // Viewing key input
           PInput(
             controller: _ivkController,
-            label: 'Incoming Viewing Key (IVK)',
-            hint: 'Paste the IVK here',
+            label: 'Viewing key',
+            hint: 'Paste your viewing key here',
             maxLines: 4,
           ),
           

@@ -57,12 +57,9 @@ impl Wallet {
         })
     }
 
-    /// Create from IVK (watch-only wallet)
-    /// Note: IVK is one-way, so we cannot reconstruct the full viewing key.
-    /// This creates a watch-only wallet that can only view incoming transactions.
-    /// 
-    /// Supports both Sapling IVK (zxviews1...) and Orchard IVK (64 bytes hex).
-    /// Can accept either format or both.
+    /// Create from viewing key (watch-only wallet).
+    ///
+    /// Accepts Sapling xFVK (zxviews...) or Orchard extended viewing key.
     pub fn from_ivk(ivk: &str) -> Result<Self> {
         let mut sapling_viewing_key = None;
         let mut sapling_ivk = None;
@@ -79,7 +76,7 @@ impl Wallet {
 
         if sapling_ivk.is_none() && orchard_ivk.is_none() {
             return Err(Error::InvalidKey(
-                "Invalid IVK format - must be Sapling (zxviews1... or zxviews1 bech32) or Orchard (bech32 or 64 bytes hex)".to_string(),
+                "Invalid viewing key format - must be Sapling xFVK or Orchard extended viewing key".to_string(),
             ));
         }
 
@@ -94,7 +91,7 @@ impl Wallet {
         })
     }
     
-    /// Create from both Sapling and Orchard IVKs (watch-only wallet)
+    /// Create from both Sapling and Orchard viewing keys (watch-only wallet).
     pub fn from_ivks(sapling_ivk: Option<&str>, orchard_ivk: Option<&str>) -> Result<Self> {
         let mut sapling_viewing_key = None;
         let mut sapling = None;
@@ -113,7 +110,7 @@ impl Wallet {
         }
         
         if sapling.is_none() && orchard.is_none() {
-            return Err(Error::InvalidKey("At least one IVK (Sapling or Orchard) must be provided".to_string()));
+            return Err(Error::InvalidKey("At least one viewing key (Sapling or Orchard) must be provided".to_string()));
         }
 
         Ok(Self {
@@ -237,16 +234,8 @@ fn parse_sapling_watch_key(
         return Ok((Some(dfvk), ivk));
     }
 
-    if let Ok(ivk) = IncomingViewingKey::from_bech32_any(value) {
-        return Ok((None, ivk));
-    }
-
-    if let Ok(ivk) = IncomingViewingKey::from_string(value) {
-        return Ok((None, ivk));
-    }
-
     Err(Error::InvalidKey(
-        "Invalid Sapling viewing key format".to_string(),
+        "Invalid Sapling viewing key format (expected xFVK)".to_string(),
     ))
 }
 
@@ -261,15 +250,8 @@ fn parse_orchard_watch_key(
         return Ok((Some(fvk), ivk));
     }
 
-    let bytes = hex::decode(value).map_err(|_| Error::InvalidKey("Invalid Orchard IVK hex".to_string()))?;
-    if bytes.len() != 64 {
-        return Err(Error::InvalidKey("Orchard IVK must be 64 bytes".to_string()));
-    }
-    let ivk_bytes: [u8; 64] = bytes.try_into()
-        .map_err(|_| Error::InvalidKey("Invalid Orchard IVK length".to_string()))?;
-    let ivk_ct = OrchardIncomingViewingKey::from_bytes(&ivk_bytes);
-    let ivk: Option<OrchardIncomingViewingKey> = ivk_ct.into();
-    let ivk = ivk.ok_or_else(|| Error::InvalidKey("Invalid Orchard IVK bytes".to_string()))?;
-    Ok((None, ivk))
+    Err(Error::InvalidKey(
+        "Invalid Orchard viewing key format (expected extended viewing key)".to_string(),
+    ))
 }
 

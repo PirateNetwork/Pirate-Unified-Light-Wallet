@@ -180,6 +180,7 @@ pub struct ShieldedBuilder {
     outputs: Vec<ShieldedOutput>,
     fee_override: Option<u64>,
     network: PirateNetwork,
+    auto_consolidation_extra_limit: usize,
 }
 
 impl ShieldedBuilder {
@@ -189,6 +190,7 @@ impl ShieldedBuilder {
             outputs: Vec::new(),
             fee_override: None,
             network: PirateNetwork::default(),
+            auto_consolidation_extra_limit: 0,
         }
     }
 
@@ -198,7 +200,14 @@ impl ShieldedBuilder {
             outputs: Vec::new(),
             fee_override: None,
             network: PirateNetwork::new(network_type),
+            auto_consolidation_extra_limit: 0,
         }
+    }
+
+    /// Set extra notes to include for auto-consolidation.
+    pub fn with_auto_consolidation_extra_limit(&mut self, extra_limit: usize) -> &mut Self {
+        self.auto_consolidation_extra_limit = extra_limit;
+        self
     }
 
     /// Add Sapling output
@@ -298,7 +307,16 @@ impl ShieldedBuilder {
 
         // Select notes
         let selector = NoteSelector::new(SelectionStrategy::SmallestFirst);
-        let selection = selector.select_notes(available_notes, output_sum, estimated_fee)?;
+        let selection = if self.auto_consolidation_extra_limit > 0 {
+            selector.select_notes_with_consolidation(
+                available_notes,
+                output_sum,
+                estimated_fee,
+                self.auto_consolidation_extra_limit,
+            )?
+        } else {
+            selector.select_notes(available_notes, output_sum, estimated_fee)?
+        };
 
         // Get note count and check for Orchard spends before moving selection.notes
         let note_count = selection.notes.len();
@@ -451,7 +469,7 @@ impl ShieldedBuilder {
                 let orchard_fvk = orchard_spending_key
                     .ok_or_else(|| Error::TransactionBuild("Orchard spending key required for Orchard change".to_string()))?
                     .to_extended_fvk();
-                let change_addr = orchard_fvk.address_at(change_diversifier_index as u32);
+                let change_addr = orchard_fvk.address_at_internal(change_diversifier_index as u32);
 
                 tx_builder
                     .add_orchard_output::<()>(
@@ -464,7 +482,7 @@ impl ShieldedBuilder {
             } else {
                 // Use Sapling change address
                 let change_addr = sapling_spending_key
-                    .to_extended_fvk()
+                    .to_internal_fvk()
                     .derive_address(change_diversifier_index)
                     .inner;
 

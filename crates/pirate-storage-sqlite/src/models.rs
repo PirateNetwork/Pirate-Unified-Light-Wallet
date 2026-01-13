@@ -24,11 +24,22 @@ pub enum AddressType {
     Orchard,
 }
 
+/// Address scope (external receive or internal change)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AddressScope {
+    /// External address shown to users
+    External,
+    /// Internal address used for change/consolidation
+    Internal,
+}
+
 /// Address record
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Address {
     /// Address ID
     pub id: Option<i64>,
+    /// Key group ID (seed/import key)
+    pub key_id: Option<i64>,
     /// Account ID
     pub account_id: i64,
     /// Diversifier index
@@ -43,6 +54,8 @@ pub struct Address {
     pub created_at: i64,
     /// Optional color tag
     pub color_tag: ColorTag,
+    /// Address scope (external/internal)
+    pub address_scope: AddressScope,
 }
 
 /// Note type (Sapling or Orchard)
@@ -61,6 +74,8 @@ pub struct NoteRecord {
     pub id: Option<i64>,
     /// Account ID
     pub account_id: i64,
+    /// Key group ID (seed/import)
+    pub key_id: Option<i64>,
     /// Note type (Sapling or Orchard)
     pub note_type: NoteType,
     /// Value in arrrtoshis
@@ -77,6 +92,8 @@ pub struct NoteRecord {
     pub txid: Vec<u8>,
     /// Output index within transaction
     pub output_index: i64,
+    /// Linked address row id (encrypted in storage)
+    pub address_id: Option<i64>,
     /// Spending transaction ID (raw bytes) for spent notes
     pub spent_txid: Option<Vec<u8>>,
     /// Diversifier used to derive address (11 bytes, Sapling only)
@@ -91,6 +108,57 @@ pub struct NoteRecord {
     pub position: Option<i64>,
     /// Optional memo bytes
     pub memo: Option<Vec<u8>>,
+}
+
+/// Key source type for an account
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeyType {
+    /// Seed-based account
+    Seed,
+    /// Imported spending key
+    ImportSpend,
+    /// Imported viewing key (xFVK)
+    ImportView,
+}
+
+/// Key scope (account-wide or single-address)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum KeyScope {
+    /// Account-level key (derives many addresses)
+    Account,
+    /// Single-address key (diversified import)
+    SingleAddress,
+}
+
+/// Account key material and metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountKey {
+    /// Key group id
+    pub id: Option<i64>,
+    /// Account id for this key group
+    pub account_id: i64,
+    /// Key type (seed/import)
+    pub key_type: KeyType,
+    /// Key scope (account or single address)
+    pub key_scope: KeyScope,
+    /// Optional label for UI
+    pub label: Option<String>,
+    /// Wallet birthday height for this key
+    pub birthday_height: i64,
+    /// Created timestamp
+    pub created_at: i64,
+    /// Whether the key can spend
+    pub spendable: bool,
+    /// Encrypted Sapling extended spending key (optional)
+    pub sapling_extsk: Option<Vec<u8>>,
+    /// Encrypted Sapling DFVK bytes (optional)
+    pub sapling_dfvk: Option<Vec<u8>>,
+    /// Encrypted Orchard extended spending key (optional)
+    pub orchard_extsk: Option<Vec<u8>>,
+    /// Encrypted Orchard extended FVK bytes (optional)
+    pub orchard_fvk: Option<Vec<u8>>,
+    /// Encrypted mnemonic (seed accounts only)
+    pub encrypted_mnemonic: Option<Vec<u8>>,
 }
 
 /// Wallet secret (encrypted spending key or IVK for watch-only)

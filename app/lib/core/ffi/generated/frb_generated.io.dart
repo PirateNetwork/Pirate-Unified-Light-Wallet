@@ -26,6 +26,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   String dco_decode_String(dynamic raw);
 
   @protected
+  AddressBalanceInfo dco_decode_address_balance_info(dynamic raw);
+
+  @protected
   AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw);
 
   @protected
@@ -101,10 +104,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
+  KeyAddressInfo dco_decode_key_address_info(dynamic raw);
+
+  @protected
+  KeyExportInfo dco_decode_key_export_info(dynamic raw);
+
+  @protected
+  KeyGroupInfo dco_decode_key_group_info(dynamic raw);
+
+  @protected
+  KeyTypeInfo dco_decode_key_type_info(dynamic raw);
+
+  @protected
   LightdEndpoint dco_decode_lightd_endpoint(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<AddressBalanceInfo> dco_decode_list_address_balance_info(dynamic raw);
 
   @protected
   List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw);
@@ -113,7 +131,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<AddressInfo> dco_decode_list_address_info(dynamic raw);
 
   @protected
+  List<KeyAddressInfo> dco_decode_list_key_address_info(dynamic raw);
+
+  @protected
+  List<KeyGroupInfo> dco_decode_list_key_group_info(dynamic raw);
+
+  @protected
   List<Output> dco_decode_list_output(dynamic raw);
+
+  @protected
+  Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -162,6 +189,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(
       dynamic raw);
+
+  @protected
+  Int64List? dco_decode_opt_list_prim_i_64_strict(dynamic raw);
 
   @protected
   Output dco_decode_output(dynamic raw);
@@ -230,6 +260,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   String sse_decode_String(SseDeserializer deserializer);
+
+  @protected
+  AddressBalanceInfo sse_decode_address_balance_info(
+      SseDeserializer deserializer);
 
   @protected
   AddressBookColorTag sse_decode_address_book_color_tag(
@@ -312,10 +346,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
+  KeyAddressInfo sse_decode_key_address_info(SseDeserializer deserializer);
+
+  @protected
+  KeyExportInfo sse_decode_key_export_info(SseDeserializer deserializer);
+
+  @protected
+  KeyGroupInfo sse_decode_key_group_info(SseDeserializer deserializer);
+
+  @protected
+  KeyTypeInfo sse_decode_key_type_info(SseDeserializer deserializer);
+
+  @protected
   LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<AddressBalanceInfo> sse_decode_list_address_balance_info(
+      SseDeserializer deserializer);
 
   @protected
   List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(
@@ -325,7 +375,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
 
   @protected
+  List<KeyAddressInfo> sse_decode_list_key_address_info(
+      SseDeserializer deserializer);
+
+  @protected
+  List<KeyGroupInfo> sse_decode_list_key_group_info(
+      SseDeserializer deserializer);
+
+  @protected
   List<Output> sse_decode_list_output(SseDeserializer deserializer);
+
+  @protected
+  Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -376,6 +437,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(
       SseDeserializer deserializer);
+
+  @protected
+  Int64List? sse_decode_opt_list_prim_i_64_strict(SseDeserializer deserializer);
 
   @protected
   Output sse_decode_output(SseDeserializer deserializer);
@@ -566,6 +630,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  ffi.Pointer<wire_cst_list_address_balance_info>
+      cst_encode_list_address_balance_info(List<AddressBalanceInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_address_balance_info(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_address_balance_info(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
   ffi.Pointer<wire_cst_list_address_book_entry_ffi>
       cst_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
@@ -588,12 +663,43 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  ffi.Pointer<wire_cst_list_key_address_info> cst_encode_list_key_address_info(
+      List<KeyAddressInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_key_address_info(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_key_address_info(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_key_group_info> cst_encode_list_key_group_info(
+      List<KeyGroupInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_key_group_info(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_key_group_info(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
   ffi.Pointer<wire_cst_list_output> cst_encode_list_output(List<Output> raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     final ans = wire.cst_new_list_output(raw.length);
     for (var i = 0; i < raw.length; ++i) {
       cst_api_fill_to_wire_output(raw[i], ans.ref.ptr[i]);
     }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_prim_i_64_strict> cst_encode_list_prim_i_64_strict(
+      Int64List raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_prim_i_64_strict(raw.length);
+    ans.ref.ptr.asTypedList(raw.length).setAll(0, raw.inner);
     return ans;
   }
 
@@ -708,6 +814,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  ffi.Pointer<wire_cst_list_prim_i_64_strict>
+      cst_encode_opt_list_prim_i_64_strict(Int64List? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? ffi.nullptr : cst_encode_list_prim_i_64_strict(raw);
+  }
+
+  @protected
   int cst_encode_u_64(BigInt raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw.toSigned(64).toInt();
@@ -717,6 +830,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int cst_encode_usize(BigInt raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw.toSigned(64).toInt();
+  }
+
+  @protected
+  void cst_api_fill_to_wire_address_balance_info(
+      AddressBalanceInfo apiObj, wire_cst_address_balance_info wireObj) {
+    wireObj.address = cst_encode_String(apiObj.address);
+    wireObj.balance = cst_encode_u_64(apiObj.balance);
+    wireObj.spendable = cst_encode_u_64(apiObj.spendable);
+    wireObj.pending = cst_encode_u_64(apiObj.pending);
+    wireObj.key_id = cst_encode_opt_box_autoadd_i_64(apiObj.keyId);
+    wireObj.address_id = cst_encode_i_64(apiObj.addressId);
+    wireObj.label = cst_encode_opt_String(apiObj.label);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
+    wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag);
+    wireObj.diversifier_index = cst_encode_u_32(apiObj.diversifierIndex);
   }
 
   @protected
@@ -834,6 +962,44 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     wireObj.max_fee = cst_encode_u_64(apiObj.maxFee);
     wireObj.fee_per_output = cst_encode_u_64(apiObj.feePerOutput);
     wireObj.memo_fee_multiplier = cst_encode_f_64(apiObj.memoFeeMultiplier);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_key_address_info(
+      KeyAddressInfo apiObj, wire_cst_key_address_info wireObj) {
+    wireObj.key_id = cst_encode_i_64(apiObj.keyId);
+    wireObj.address = cst_encode_String(apiObj.address);
+    wireObj.diversifier_index = cst_encode_u_32(apiObj.diversifierIndex);
+    wireObj.label = cst_encode_opt_String(apiObj.label);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
+    wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_key_export_info(
+      KeyExportInfo apiObj, wire_cst_key_export_info wireObj) {
+    wireObj.key_id = cst_encode_i_64(apiObj.keyId);
+    wireObj.sapling_viewing_key =
+        cst_encode_opt_String(apiObj.saplingViewingKey);
+    wireObj.orchard_viewing_key =
+        cst_encode_opt_String(apiObj.orchardViewingKey);
+    wireObj.sapling_spending_key =
+        cst_encode_opt_String(apiObj.saplingSpendingKey);
+    wireObj.orchard_spending_key =
+        cst_encode_opt_String(apiObj.orchardSpendingKey);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_key_group_info(
+      KeyGroupInfo apiObj, wire_cst_key_group_info wireObj) {
+    wireObj.id = cst_encode_i_64(apiObj.id);
+    wireObj.label = cst_encode_opt_String(apiObj.label);
+    wireObj.key_type = cst_encode_key_type_info(apiObj.keyType);
+    wireObj.spendable = cst_encode_bool(apiObj.spendable);
+    wireObj.has_sapling = cst_encode_bool(apiObj.hasSapling);
+    wireObj.has_orchard = cst_encode_bool(apiObj.hasOrchard);
+    wireObj.birthday_height = cst_encode_i_64(apiObj.birthdayHeight);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
   }
 
   @protected
@@ -1026,6 +1192,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int cst_encode_i_32(int raw);
 
   @protected
+  int cst_encode_key_type_info(KeyTypeInfo raw);
+
+  @protected
   int cst_encode_sync_mode(SyncMode raw);
 
   @protected
@@ -1049,6 +1218,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_address_balance_info(
+      AddressBalanceInfo self, SseSerializer serializer);
 
   @protected
   void sse_encode_address_book_color_tag(
@@ -1136,11 +1309,28 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
+  void sse_encode_key_address_info(
+      KeyAddressInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_key_export_info(KeyExportInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_key_group_info(KeyGroupInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_key_type_info(KeyTypeInfo self, SseSerializer serializer);
+
+  @protected
   void sse_encode_lightd_endpoint(
       LightdEndpoint self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_address_balance_info(
+      List<AddressBalanceInfo> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_address_book_entry_ffi(
@@ -1151,7 +1341,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       List<AddressInfo> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_key_address_info(
+      List<KeyAddressInfo> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_key_group_info(
+      List<KeyGroupInfo> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_output(List<Output> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_prim_i_64_strict(
+      Int64List self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -1206,6 +1408,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_watch_only_banner_info(
       WatchOnlyBannerInfo? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_list_prim_i_64_strict(
+      Int64List? self, SseSerializer serializer);
 
   @protected
   void sse_encode_output(Output self, SseSerializer serializer);
@@ -1411,6 +1617,80 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__broadcast_txPtr
           .asFunction<void Function(int, ffi.Pointer<wire_cst_signed_tx>)>();
 
+  void wire__crate__api__build_consolidation_tx(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    int key_id,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> target_address,
+    ffi.Pointer<ffi.Uint64> fee_opt,
+  ) {
+    return _wire__crate__api__build_consolidation_tx(
+      port_,
+      wallet_id,
+      key_id,
+      target_address,
+      fee_opt,
+    );
+  }
+
+  late final _wire__crate__api__build_consolidation_txPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<ffi.Uint64>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__build_consolidation_tx');
+  late final _wire__crate__api__build_consolidation_tx =
+      _wire__crate__api__build_consolidation_txPtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<ffi.Uint64>,
+          )>();
+
+  void wire__crate__api__build_sweep_tx(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> target_address,
+    ffi.Pointer<ffi.Uint64> fee_opt,
+    ffi.Pointer<wire_cst_list_prim_i_64_strict> key_ids_filter,
+    ffi.Pointer<wire_cst_list_prim_i_64_strict> address_ids_filter,
+  ) {
+    return _wire__crate__api__build_sweep_tx(
+      port_,
+      wallet_id,
+      target_address,
+      fee_opt,
+      key_ids_filter,
+      address_ids_filter,
+    );
+  }
+
+  late final _wire__crate__api__build_sweep_txPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<ffi.Uint64>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__build_sweep_tx');
+  late final _wire__crate__api__build_sweep_tx =
+      _wire__crate__api__build_sweep_txPtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<ffi.Uint64>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+          )>();
+
   void wire__crate__api__build_tx(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -1433,6 +1713,80 @@ class RustLibWire implements BaseWire {
           void Function(
             int,
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_output>,
+            ffi.Pointer<ffi.Uint64>,
+          )>();
+
+  void wire__crate__api__build_tx_filtered(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_list_output> outputs,
+    ffi.Pointer<ffi.Uint64> fee_opt,
+    ffi.Pointer<wire_cst_list_prim_i_64_strict> key_ids_filter,
+    ffi.Pointer<wire_cst_list_prim_i_64_strict> address_ids_filter,
+  ) {
+    return _wire__crate__api__build_tx_filtered(
+      port_,
+      wallet_id,
+      outputs,
+      fee_opt,
+      key_ids_filter,
+      address_ids_filter,
+    );
+  }
+
+  late final _wire__crate__api__build_tx_filteredPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_output>,
+            ffi.Pointer<ffi.Uint64>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__build_tx_filtered');
+  late final _wire__crate__api__build_tx_filtered =
+      _wire__crate__api__build_tx_filteredPtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_output>,
+            ffi.Pointer<ffi.Uint64>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+          )>();
+
+  void wire__crate__api__build_tx_for_key(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    int key_id,
+    ffi.Pointer<wire_cst_list_output> outputs,
+    ffi.Pointer<ffi.Uint64> fee_opt,
+  ) {
+    return _wire__crate__api__build_tx_for_key(
+      port_,
+      wallet_id,
+      key_id,
+      outputs,
+      fee_opt,
+    );
+  }
+
+  late final _wire__crate__api__build_tx_for_keyPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_output>,
+            ffi.Pointer<ffi.Uint64>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__build_tx_for_key');
+  late final _wire__crate__api__build_tx_for_key =
+      _wire__crate__api__build_tx_for_keyPtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            int,
             ffi.Pointer<wire_cst_list_output>,
             ffi.Pointer<ffi.Uint64>,
           )>();
@@ -1699,6 +2053,26 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__export_ivk_securePtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
 
+  void wire__crate__api__export_key_group_keys(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    int key_id,
+  ) {
+    return _wire__crate__api__export_key_group_keys(port_, wallet_id, key_id);
+  }
+
+  late final _wire__crate__api__export_key_group_keysPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Int64,
+          )>>('frbgen_pirate_wallet_wire__crate__api__export_key_group_keys');
+  late final _wire__crate__api__export_key_group_keys =
+      _wire__crate__api__export_key_group_keysPtr.asFunction<
+          void Function(
+              int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, int)>();
+
   void wire__crate__api__export_orchard_ivk(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -1843,6 +2217,38 @@ class RustLibWire implements BaseWire {
   late final _wire__crate__api__format_amount =
       _wire__crate__api__format_amountPtr.asFunction<void Function(int, int)>();
 
+  void wire__crate__api__generate_address_for_key(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    int key_id,
+    bool use_orchard,
+  ) {
+    return _wire__crate__api__generate_address_for_key(
+      port_,
+      wallet_id,
+      key_id,
+      use_orchard,
+    );
+  }
+
+  late final _wire__crate__api__generate_address_for_keyPtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Void Function(
+                ffi.Int64,
+                ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+                ffi.Int64,
+                ffi.Bool,
+              )>>(
+      'frbgen_pirate_wallet_wire__crate__api__generate_address_for_key');
+  late final _wire__crate__api__generate_address_for_key =
+      _wire__crate__api__generate_address_for_keyPtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            int,
+            bool,
+          )>();
+
   void wire__crate__api__generate_mnemonic(
     int port_,
     ffi.Pointer<ffi.Uint32> word_count,
@@ -1952,6 +2358,60 @@ class RustLibWire implements BaseWire {
   late final _wire__crate__api__get_address_book_favorites =
       _wire__crate__api__get_address_book_favoritesPtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
+
+  void wire__crate__api__get_auto_consolidation_candidate_count(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+  ) {
+    return _wire__crate__api__get_auto_consolidation_candidate_count(
+      port_,
+      wallet_id,
+    );
+  }
+
+  late final _wire__crate__api__get_auto_consolidation_candidate_countPtr =
+      _lookup<
+          ffi.NativeFunction<
+              ffi.Void Function(
+                ffi.Int64,
+                ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              )>>(
+    'frbgen_pirate_wallet_wire__crate__api__get_auto_consolidation_candidate_count',
+  );
+  late final _wire__crate__api__get_auto_consolidation_candidate_count =
+      _wire__crate__api__get_auto_consolidation_candidate_countPtr.asFunction<
+          void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
+
+  void wire__crate__api__get_auto_consolidation_enabled(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+  ) {
+    return _wire__crate__api__get_auto_consolidation_enabled(port_, wallet_id);
+  }
+
+  late final _wire__crate__api__get_auto_consolidation_enabledPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>>(
+    'frbgen_pirate_wallet_wire__crate__api__get_auto_consolidation_enabled',
+  );
+  late final _wire__crate__api__get_auto_consolidation_enabled =
+      _wire__crate__api__get_auto_consolidation_enabledPtr.asFunction<
+          void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
+
+  void wire__crate__api__get_auto_consolidation_threshold(int port_) {
+    return _wire__crate__api__get_auto_consolidation_threshold(port_);
+  }
+
+  late final _wire__crate__api__get_auto_consolidation_thresholdPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+    'frbgen_pirate_wallet_wire__crate__api__get_auto_consolidation_threshold',
+  );
+  late final _wire__crate__api__get_auto_consolidation_threshold =
+      _wire__crate__api__get_auto_consolidation_thresholdPtr
+          .asFunction<void Function(int)>();
 
   void wire__crate__api__get_balance(
     int port_,
@@ -2367,6 +2827,45 @@ class RustLibWire implements BaseWire {
             int,
           )>();
 
+  void wire__crate__api__import_spending_key(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> sapling_key,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> orchard_key,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> label,
+    int birthday_height,
+  ) {
+    return _wire__crate__api__import_spending_key(
+      port_,
+      wallet_id,
+      sapling_key,
+      orchard_key,
+      label,
+      birthday_height,
+    );
+  }
+
+  late final _wire__crate__api__import_spending_keyPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Uint32,
+          )>>('frbgen_pirate_wallet_wire__crate__api__import_spending_key');
+  late final _wire__crate__api__import_spending_key =
+      _wire__crate__api__import_spending_keyPtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            int,
+          )>();
+
   void wire__crate__api__is_background_sync_needed(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -2483,6 +2982,29 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__lightd_endpoint_urlPtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_lightd_endpoint>)>();
 
+  void wire__crate__api__list_address_balances(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<ffi.Int64> key_id,
+  ) {
+    return _wire__crate__api__list_address_balances(port_, wallet_id, key_id);
+  }
+
+  late final _wire__crate__api__list_address_balancesPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<ffi.Int64>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__list_address_balances');
+  late final _wire__crate__api__list_address_balances =
+      _wire__crate__api__list_address_balancesPtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<ffi.Int64>,
+          )>();
+
   void wire__crate__api__list_address_book(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -2515,6 +3037,43 @@ class RustLibWire implements BaseWire {
           )>>('frbgen_pirate_wallet_wire__crate__api__list_addresses');
   late final _wire__crate__api__list_addresses =
       _wire__crate__api__list_addressesPtr.asFunction<
+          void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
+
+  void wire__crate__api__list_addresses_for_key(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    int key_id,
+  ) {
+    return _wire__crate__api__list_addresses_for_key(port_, wallet_id, key_id);
+  }
+
+  late final _wire__crate__api__list_addresses_for_keyPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Int64,
+          )>>('frbgen_pirate_wallet_wire__crate__api__list_addresses_for_key');
+  late final _wire__crate__api__list_addresses_for_key =
+      _wire__crate__api__list_addresses_for_keyPtr.asFunction<
+          void Function(
+              int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, int)>();
+
+  void wire__crate__api__list_key_groups(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+  ) {
+    return _wire__crate__api__list_key_groups(port_, wallet_id);
+  }
+
+  late final _wire__crate__api__list_key_groupsPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__list_key_groups');
+  late final _wire__crate__api__list_key_groups =
+      _wire__crate__api__list_key_groupsPtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
 
   void wire__crate__api__list_transactions(
@@ -2769,6 +3328,32 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__set_app_passphrasePtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
 
+  void wire__crate__api__set_auto_consolidation_enabled(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    bool enabled,
+  ) {
+    return _wire__crate__api__set_auto_consolidation_enabled(
+      port_,
+      wallet_id,
+      enabled,
+    );
+  }
+
+  late final _wire__crate__api__set_auto_consolidation_enabledPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Bool,
+          )>>(
+    'frbgen_pirate_wallet_wire__crate__api__set_auto_consolidation_enabled',
+  );
+  late final _wire__crate__api__set_auto_consolidation_enabled =
+      _wire__crate__api__set_auto_consolidation_enabledPtr.asFunction<
+          void Function(
+              int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, bool)>();
+
   void wire__crate__api__set_decoy_wallet_name(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> name,
@@ -2894,6 +3479,72 @@ class RustLibWire implements BaseWire {
             int,
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             ffi.Pointer<wire_cst_pending_tx>,
+          )>();
+
+  void wire__crate__api__sign_tx_filtered(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_pending_tx> pending,
+    ffi.Pointer<wire_cst_list_prim_i_64_strict> key_ids_filter,
+    ffi.Pointer<wire_cst_list_prim_i_64_strict> address_ids_filter,
+  ) {
+    return _wire__crate__api__sign_tx_filtered(
+      port_,
+      wallet_id,
+      pending,
+      key_ids_filter,
+      address_ids_filter,
+    );
+  }
+
+  late final _wire__crate__api__sign_tx_filteredPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_pending_tx>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__sign_tx_filtered');
+  late final _wire__crate__api__sign_tx_filtered =
+      _wire__crate__api__sign_tx_filteredPtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_pending_tx>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+            ffi.Pointer<wire_cst_list_prim_i_64_strict>,
+          )>();
+
+  void wire__crate__api__sign_tx_for_key(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_pending_tx> pending,
+    int key_id,
+  ) {
+    return _wire__crate__api__sign_tx_for_key(
+      port_,
+      wallet_id,
+      pending,
+      key_id,
+    );
+  }
+
+  late final _wire__crate__api__sign_tx_for_keyPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_pending_tx>,
+            ffi.Int64,
+          )>>('frbgen_pirate_wallet_wire__crate__api__sign_tx_for_key');
+  late final _wire__crate__api__sign_tx_for_key =
+      _wire__crate__api__sign_tx_for_keyPtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_pending_tx>,
+            int,
           )>();
 
   void wire__crate__api__skip_seed_biometric(int port_) {
@@ -3343,6 +3994,20 @@ class RustLibWire implements BaseWire {
   late final _cst_new_list_String = _cst_new_list_StringPtr
       .asFunction<ffi.Pointer<wire_cst_list_String> Function(int)>();
 
+  ffi.Pointer<wire_cst_list_address_balance_info>
+      cst_new_list_address_balance_info(int len) {
+    return _cst_new_list_address_balance_info(len);
+  }
+
+  late final _cst_new_list_address_balance_infoPtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Pointer<wire_cst_list_address_balance_info> Function(
+                  ffi.Int32)>>(
+      'frbgen_pirate_wallet_cst_new_list_address_balance_info');
+  late final _cst_new_list_address_balance_info =
+      _cst_new_list_address_balance_infoPtr.asFunction<
+          ffi.Pointer<wire_cst_list_address_balance_info> Function(int)>();
+
   ffi.Pointer<wire_cst_list_address_book_entry_ffi>
       cst_new_list_address_book_entry_ffi(int len) {
     return _cst_new_list_address_book_entry_ffi(len);
@@ -3368,6 +4033,32 @@ class RustLibWire implements BaseWire {
   late final _cst_new_list_address_info = _cst_new_list_address_infoPtr
       .asFunction<ffi.Pointer<wire_cst_list_address_info> Function(int)>();
 
+  ffi.Pointer<wire_cst_list_key_address_info> cst_new_list_key_address_info(
+    int len,
+  ) {
+    return _cst_new_list_key_address_info(len);
+  }
+
+  late final _cst_new_list_key_address_infoPtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Pointer<wire_cst_list_key_address_info> Function(ffi.Int32)>>(
+      'frbgen_pirate_wallet_cst_new_list_key_address_info');
+  late final _cst_new_list_key_address_info = _cst_new_list_key_address_infoPtr
+      .asFunction<ffi.Pointer<wire_cst_list_key_address_info> Function(int)>();
+
+  ffi.Pointer<wire_cst_list_key_group_info> cst_new_list_key_group_info(
+    int len,
+  ) {
+    return _cst_new_list_key_group_info(len);
+  }
+
+  late final _cst_new_list_key_group_infoPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<wire_cst_list_key_group_info> Function(
+              ffi.Int32)>>('frbgen_pirate_wallet_cst_new_list_key_group_info');
+  late final _cst_new_list_key_group_info = _cst_new_list_key_group_infoPtr
+      .asFunction<ffi.Pointer<wire_cst_list_key_group_info> Function(int)>();
+
   ffi.Pointer<wire_cst_list_output> cst_new_list_output(int len) {
     return _cst_new_list_output(len);
   }
@@ -3378,6 +4069,19 @@ class RustLibWire implements BaseWire {
               ffi.Int32)>>('frbgen_pirate_wallet_cst_new_list_output');
   late final _cst_new_list_output = _cst_new_list_outputPtr
       .asFunction<ffi.Pointer<wire_cst_list_output> Function(int)>();
+
+  ffi.Pointer<wire_cst_list_prim_i_64_strict> cst_new_list_prim_i_64_strict(
+    int len,
+  ) {
+    return _cst_new_list_prim_i_64_strict(len);
+  }
+
+  late final _cst_new_list_prim_i_64_strictPtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Pointer<wire_cst_list_prim_i_64_strict> Function(ffi.Int32)>>(
+      'frbgen_pirate_wallet_cst_new_list_prim_i_64_strict');
+  late final _cst_new_list_prim_i_64_strict = _cst_new_list_prim_i_64_strictPtr
+      .asFunction<ffi.Pointer<wire_cst_list_prim_i_64_strict> Function(int)>();
 
   ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_new_list_prim_u_8_strict(
     int len,
@@ -3464,6 +4168,13 @@ final class wire_cst_signed_tx extends ffi.Struct {
 
   @ffi.UintPtr()
   external int size;
+}
+
+final class wire_cst_list_prim_i_64_strict extends ffi.Struct {
+  external ffi.Pointer<ffi.Int64> ptr;
+
+  @ffi.Int32()
+  external int len;
 }
 
 final class wire_cst_output extends ffi.Struct {
@@ -3593,6 +4304,42 @@ final class wire_cst_list_String extends ffi.Struct {
   external int len;
 }
 
+final class wire_cst_address_balance_info extends ffi.Struct {
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> address;
+
+  @ffi.Uint64()
+  external int balance;
+
+  @ffi.Uint64()
+  external int spendable;
+
+  @ffi.Uint64()
+  external int pending;
+
+  external ffi.Pointer<ffi.Int64> key_id;
+
+  @ffi.Int64()
+  external int address_id;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> label;
+
+  @ffi.Int64()
+  external int created_at;
+
+  @ffi.Int32()
+  external int color_tag;
+
+  @ffi.Uint32()
+  external int diversifier_index;
+}
+
+final class wire_cst_list_address_balance_info extends ffi.Struct {
+  external ffi.Pointer<wire_cst_address_balance_info> ptr;
+
+  @ffi.Int32()
+  external int len;
+}
+
 final class wire_cst_list_address_book_entry_ffi extends ffi.Struct {
   external ffi.Pointer<wire_cst_address_book_entry_ffi> ptr;
 
@@ -3617,6 +4364,63 @@ final class wire_cst_address_info extends ffi.Struct {
 
 final class wire_cst_list_address_info extends ffi.Struct {
   external ffi.Pointer<wire_cst_address_info> ptr;
+
+  @ffi.Int32()
+  external int len;
+}
+
+final class wire_cst_key_address_info extends ffi.Struct {
+  @ffi.Int64()
+  external int key_id;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> address;
+
+  @ffi.Uint32()
+  external int diversifier_index;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> label;
+
+  @ffi.Int64()
+  external int created_at;
+
+  @ffi.Int32()
+  external int color_tag;
+}
+
+final class wire_cst_list_key_address_info extends ffi.Struct {
+  external ffi.Pointer<wire_cst_key_address_info> ptr;
+
+  @ffi.Int32()
+  external int len;
+}
+
+final class wire_cst_key_group_info extends ffi.Struct {
+  @ffi.Int64()
+  external int id;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> label;
+
+  @ffi.Int32()
+  external int key_type;
+
+  @ffi.Bool()
+  external bool spendable;
+
+  @ffi.Bool()
+  external bool has_sapling;
+
+  @ffi.Bool()
+  external bool has_orchard;
+
+  @ffi.Int64()
+  external int birthday_height;
+
+  @ffi.Int64()
+  external int created_at;
+}
+
+final class wire_cst_list_key_group_info extends ffi.Struct {
+  external ffi.Pointer<wire_cst_key_group_info> ptr;
 
   @ffi.Int32()
   external int len;
@@ -3752,6 +4556,19 @@ final class wire_cst_fee_info extends ffi.Struct {
 
   @ffi.Double()
   external double memo_fee_multiplier;
+}
+
+final class wire_cst_key_export_info extends ffi.Struct {
+  @ffi.Int64()
+  external int key_id;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> sapling_viewing_key;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> orchard_viewing_key;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> sapling_spending_key;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> orchard_spending_key;
 }
 
 final class wire_cst_network_info extends ffi.Struct {

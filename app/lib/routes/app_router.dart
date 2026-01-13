@@ -13,6 +13,11 @@ import '../features/activity/activity_screen.dart';
 import '../features/activity/transaction_detail_screen.dart';
 import '../features/wallet_shell/wallet_shell_screen.dart';
 import '../features/receive/receive_screen.dart';
+import '../features/keys/keys_screen.dart';
+import '../features/keys/key_detail_screen.dart';
+import '../features/keys/import_spending_key_screen.dart';
+import '../features/keys/consolidate_key_screen.dart';
+import '../features/keys/sweep_key_screen.dart';
 import '../features/settings/export_seed_screen.dart';
 import '../features/settings/panic_pin_screen.dart';
 import '../features/settings/watch_only_screen.dart';
@@ -204,7 +209,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       
-      // IVK import (watch-only flow)
+      // Viewing key import (watch-only flow)
       GoRoute(
         path: '/onboarding/import-ivk',
         name: 'onboarding-import-ivk',
@@ -357,6 +362,60 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           state: state,
           child: const WatchOnlyScreen(),
         ),
+      ),
+      GoRoute(
+        path: '/settings/keys',
+        name: 'settings-keys',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const KeyManagementScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/keys/detail',
+        name: 'settings-keys-detail',
+        pageBuilder: (context, state) {
+          final keyId = int.tryParse(state.uri.queryParameters['keyId'] ?? '');
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: KeyDetailScreen(keyId: keyId ?? 0),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/settings/keys/import',
+        name: 'settings-keys-import',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const ImportSpendingKeyScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/keys/consolidate',
+        name: 'settings-keys-consolidate',
+        pageBuilder: (context, state) {
+          final keyId = int.tryParse(state.uri.queryParameters['keyId'] ?? '');
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: ConsolidateKeyScreen(keyId: keyId ?? 0),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/settings/keys/sweep',
+        name: 'settings-keys-sweep',
+        pageBuilder: (context, state) {
+          final keyId = int.tryParse(state.uri.queryParameters['keyId'] ?? '');
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: SweepKeyScreen(keyId: keyId ?? 0),
+          );
+        },
       ),
       GoRoute(
         path: '/settings/biometrics',

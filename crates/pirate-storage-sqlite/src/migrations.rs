@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 15;
+const SCHEMA_VERSION: i32 = 18;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -69,6 +69,16 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
 
     if current_version < 15 {
         migrate_v15(conn)?;
+    }
+
+    if current_version < 16 {
+        migrate_v16(conn)?;
+    }
+    if current_version < 17 {
+        migrate_v17(conn)?;
+    }
+    if current_version < 18 {
+        migrate_v18(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -562,6 +572,118 @@ fn migrate_v15(conn: &Connection) -> Result<()> {
         r#"
         -- Track spending transaction for notes (encrypted bytes)
         ALTER TABLE notes ADD COLUMN spent_txid BLOB;
+        "#,
+    )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v16(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        -- Store additional key sources per wallet account
+        CREATE TABLE IF NOT EXISTS account_keys (
+            account_id INTEGER PRIMARY KEY,
+            key_type TEXT NOT NULL CHECK (key_type IN ('seed', 'import_spend', 'import_view')),
+            key_scope TEXT NOT NULL CHECK (key_scope IN ('account', 'single_address')),
+            label TEXT,
+            birthday_height INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            spendable BOOLEAN NOT NULL DEFAULT 0,
+            sapling_extsk BLOB,
+            sapling_dfvk BLOB,
+            orchard_extsk BLOB,
+            orchard_fvk BLOB,
+            encrypted_mnemonic BLOB
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_account_keys_spendable ON account_keys(spendable);
+        CREATE INDEX IF NOT EXISTS idx_account_keys_type ON account_keys(key_type);
+
+        -- Track if addresses are external (receive) or internal (change/consolidation)
+        ALTER TABLE addresses ADD COLUMN address_scope TEXT NOT NULL DEFAULT 'external'
+            CHECK (address_scope IN ('external', 'internal'));
+
+        -- Link notes to address rows (encrypted identifier)
+        ALTER TABLE notes ADD COLUMN address_id BLOB;
+        "#,
+    )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v17(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        -- Allow multiple key sources per account (add surrogate key)
+        CREATE TABLE IF NOT EXISTS account_keys_v2 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            key_type TEXT NOT NULL CHECK (key_type IN ('seed', 'import_spend', 'import_view')),
+            key_scope TEXT NOT NULL CHECK (key_scope IN ('account', 'single_address')),
+            label TEXT,
+            birthday_height INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            spendable BOOLEAN NOT NULL DEFAULT 0,
+            sapling_extsk BLOB,
+            sapling_dfvk BLOB,
+            orchard_extsk BLOB,
+            orchard_fvk BLOB,
+            encrypted_mnemonic BLOB
+        );
+
+        INSERT INTO account_keys_v2 (
+            account_id,
+            key_type,
+            key_scope,
+            label,
+            birthday_height,
+            created_at,
+            spendable,
+            sapling_extsk,
+            sapling_dfvk,
+            orchard_extsk,
+            orchard_fvk,
+            encrypted_mnemonic
+        )
+        SELECT
+            account_id,
+            key_type,
+            key_scope,
+            label,
+            birthday_height,
+            created_at,
+            spendable,
+            sapling_extsk,
+            sapling_dfvk,
+            orchard_extsk,
+            orchard_fvk,
+            encrypted_mnemonic
+        FROM account_keys;
+
+        DROP TABLE IF EXISTS account_keys;
+        ALTER TABLE account_keys_v2 RENAME TO account_keys;
+
+        CREATE INDEX IF NOT EXISTS idx_account_keys_account ON account_keys(account_id);
+        CREATE INDEX IF NOT EXISTS idx_account_keys_spendable ON account_keys(spendable);
+        CREATE INDEX IF NOT EXISTS idx_account_keys_type ON account_keys(key_type);
+
+        -- Track which key group an address belongs to
+        ALTER TABLE addresses ADD COLUMN key_id INTEGER;
+        "#,
+    )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v18(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        -- Track which key group a note belongs to (encrypted)
+        ALTER TABLE notes ADD COLUMN key_id BLOB;
         "#,
     )
     .map_err(|e| Error::Migration(e.to_string()))?;

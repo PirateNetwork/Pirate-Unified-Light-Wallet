@@ -15,6 +15,7 @@ import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../ui/organisms/p_skeleton.dart';
 
 /// Transaction detail screen.
 class TransactionDetailScreen extends ConsumerWidget {
@@ -49,10 +50,49 @@ class TransactionDetailScreen extends ConsumerWidget {
   }
 }
 
-class _TransactionDetails extends StatelessWidget {
+class _TransactionDetails extends ConsumerStatefulWidget {
   const _TransactionDetails({required this.tx});
 
   final TxInfo tx;
+
+  @override
+  ConsumerState<_TransactionDetails> createState() =>
+      _TransactionDetailsState();
+}
+
+class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
+  Future<String?>? _memoFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshMemoFuture();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TransactionDetails oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tx.txid != widget.tx.txid ||
+        (oldWidget.tx.memo ?? '') != (widget.tx.memo ?? '')) {
+      _refreshMemoFuture();
+    }
+  }
+
+  void _refreshMemoFuture() {
+    final walletId = ref.read(activeWalletProvider);
+    if (walletId == null) {
+      _memoFuture = null;
+      return;
+    }
+    if (widget.tx.memo != null && widget.tx.memo!.isNotEmpty) {
+      _memoFuture = null;
+      return;
+    }
+    _memoFuture = FfiBridge.fetchTransactionMemo(
+      walletId: walletId,
+      txid: widget.tx.txid,
+    );
+  }
 
   /// Convert PlatformInt64 timestamp to DateTime
   DateTime _convertTimestamp(PlatformInt64 timestamp) {
@@ -67,6 +107,7 @@ class _TransactionDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tx = widget.tx;
     final isReceived = tx.amount >= 0;
     final amountArrr = _formatArrr(tx.amount.abs());
     final feeArrr = _formatArrr(tx.fee.toInt());
@@ -149,6 +190,33 @@ class _TransactionDetails extends StatelessWidget {
             ),
           ),
         ),
+        if (tx.fee > BigInt.zero && BigInt.from(tx.amount.abs()) == tx.fee) ...[
+          const SizedBox(height: PSpacing.lg),
+          PCard(
+            child: Padding(
+              padding: const EdgeInsets.all(PSpacing.md),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.swap_horiz,
+                    color: AppColors.textSecondary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: PSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      'Internal transfer between your addresses. Net change equals the network fee.',
+                      style: PTypography.bodySmall(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         // Note: TxInfo doesn't have toAddress field - address info would need to come from transaction details
         // if (tx.toAddress != null) ...[
         //   const SizedBox(height: PSpacing.lg),
@@ -174,24 +242,21 @@ class _TransactionDetails extends StatelessWidget {
         // ],
         if (tx.memo != null && tx.memo!.isNotEmpty) ...[
           const SizedBox(height: PSpacing.lg),
-          PCard(
-            child: Padding(
-              padding: const EdgeInsets.all(PSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Memo',
-                    style: PTypography.titleMedium(color: AppColors.textPrimary),
-                  ),
-                  const SizedBox(height: PSpacing.sm),
-                  Text(
-                    tx.memo!,
-                    style: PTypography.bodyMedium(color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
+          _MemoCard(memo: tx.memo!),
+        ] else if (_memoFuture != null) ...[
+          const SizedBox(height: PSpacing.lg),
+          FutureBuilder<String?>(
+            future: _memoFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return _MemoLoadingCard();
+              }
+              final memo = snapshot.data;
+              if (memo == null || memo.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return _MemoCard(memo: memo);
+            },
           ),
         ],
         const SizedBox(height: PSpacing.lg),
@@ -230,8 +295,8 @@ class _TransactionDetails extends StatelessWidget {
     );
   }
 
-  String _formatArrr(int zatoshis) {
-    return '${(zatoshis / 100000000).toStringAsFixed(8)} ARRR';
+  String _formatArrr(int arrrtoshis) {
+    return '${(arrrtoshis / 100000000).toStringAsFixed(8)} ARRR';
   }
 }
 
@@ -255,6 +320,74 @@ class _DetailRow extends StatelessWidget {
           style: PTypography.bodySmall(color: AppColors.textPrimary),
         ),
       ],
+    );
+  }
+}
+
+class _MemoCard extends StatelessWidget {
+  const _MemoCard({required this.memo});
+
+  final String memo;
+
+  @override
+  Widget build(BuildContext context) {
+    return PCard(
+      child: Padding(
+        padding: const EdgeInsets.all(PSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Memo',
+                  style: PTypography.titleMedium(color: AppColors.textPrimary),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: memo));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Memo copied')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy, size: 18),
+                  tooltip: 'Copy memo',
+                  color: AppColors.textSecondary,
+                ),
+              ],
+            ),
+            const SizedBox(height: PSpacing.sm),
+            SelectableText(
+              memo,
+              style: PTypography.bodySmall(color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MemoLoadingCard extends StatelessWidget {
+  const _MemoLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return PCard(
+      child: Padding(
+        padding: const EdgeInsets.all(PSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            PSkeleton(width: 64, height: 18),
+            SizedBox(height: PSpacing.sm),
+            PSkeleton(width: double.infinity, height: 14),
+            SizedBox(height: PSpacing.xs),
+            PSkeleton(width: 220, height: 14),
+          ],
+        ),
+      ),
     );
   }
 }

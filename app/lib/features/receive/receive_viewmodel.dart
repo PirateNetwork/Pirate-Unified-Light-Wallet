@@ -53,8 +53,11 @@ class AddressInfo {
   final bool wasShared;
   final bool wasUsedForReceive;
   final AddressBookColorTag colorTag;
+  final BigInt balance;
+  final BigInt spendable;
+  final BigInt pending;
 
-  const AddressInfo({
+  AddressInfo({
     required this.address,
     this.label,
     required this.createdAt,
@@ -63,7 +66,12 @@ class AddressInfo {
     this.wasShared = false,
     this.wasUsedForReceive = false,
     this.colorTag = AddressBookColorTag.none,
-  });
+    BigInt? balance,
+    BigInt? spendable,
+    BigInt? pending,
+  })  : balance = balance ?? BigInt.zero,
+        spendable = spendable ?? BigInt.zero,
+        pending = pending ?? BigInt.zero;
 
   AddressInfo copyWith({
     String? address,
@@ -74,6 +82,9 @@ class AddressInfo {
     bool? wasShared,
     bool? wasUsedForReceive,
     AddressBookColorTag? colorTag,
+    BigInt? balance,
+    BigInt? spendable,
+    BigInt? pending,
   }) {
     return AddressInfo(
       address: address ?? this.address,
@@ -84,6 +95,9 @@ class AddressInfo {
       wasShared: wasShared ?? this.wasShared,
       wasUsedForReceive: wasUsedForReceive ?? this.wasUsedForReceive,
       colorTag: colorTag ?? this.colorTag,
+      balance: balance ?? this.balance,
+      spendable: spendable ?? this.spendable,
+      pending: pending ?? this.pending,
     );
   }
   
@@ -187,7 +201,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       _lastState = loadingState;
       state = loadingState;
       await loadCurrentAddress();
-      await _loadAddressHistory();
+      await _loadAddressHistory(currentAddressOverride: state.currentAddress);
       _lastState = state;
     } catch (e, stackTrace) {
       debugPrint('Error in _init(): $e');
@@ -265,7 +279,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       _lastState = state;
 
       // Reload address history to include old address
-      await _loadAddressHistory();
+      await _loadAddressHistory(currentAddressOverride: newAddress);
       _lastState = state;
     } catch (e) {
       state = state.copyWith(
@@ -411,7 +425,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       await FfiBridge.labelAddress(walletId, address, label);
 
       // Reload address history
-      await _loadAddressHistory();
+      await _loadAddressHistory(currentAddressOverride: state.currentAddress);
     } catch (e) {
       // Error handling
       state = state.copyWith(error: e.toString());
@@ -424,7 +438,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
     try {
       final walletId = _requireWallet();
       await FfiBridge.setAddressColorTag(walletId, address, tag);
-      await _loadAddressHistory();
+      await _loadAddressHistory(currentAddressOverride: state.currentAddress);
     } catch (e) {
       state = state.copyWith(error: e.toString());
       _lastState = state;
@@ -432,15 +446,17 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   }
 
   /// Load address history with diversifier indices
-  Future<void> _loadAddressHistory() async {
+  Future<void> _loadAddressHistory({String? currentAddressOverride}) async {
     try {
       final walletId = _walletId;
       if (walletId == null) return;
 
-      // Get address list from FFI
-      final addresses = await FfiBridge.listAddresses(walletId);
+      // Get address balances from FFI
+      final addresses = await FfiBridge.listAddressBalances(walletId);
+      final currentAddress = currentAddressOverride ??
+          await FfiBridge.currentReceiveAddress(walletId);
 
-      // Convert FFI AddressInfo to local AddressInfo with diversifier tracking
+      // Convert FFI AddressBalanceInfo to local AddressInfo with balance tracking
       final history = addresses
           .map((ffiAddr) {
             final createdAt = ffiAddr.createdAt > 0
@@ -453,16 +469,22 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
               address: ffiAddr.address,
               label: ffiAddr.label,
               createdAt: createdAt,
-              isActive: ffiAddr.address == state.currentAddress,
+              isActive: ffiAddr.address == currentAddress,
               diversifierIndex: ffiAddr.diversifierIndex,
               wasShared: true, // Assume all historical addresses were shared
               colorTag: AddressBookColorTag.fromValue(ffiAddr.colorTag.index),
+              balance: ffiAddr.balance,
+              spendable: ffiAddr.spendable,
+              pending: ffiAddr.pending,
             );
           })
           .toList()
-        ..sort((a, b) => b.diversifierIndex.compareTo(a.diversifierIndex));
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-      state = state.copyWith(addressHistory: history);
+      state = state.copyWith(
+        addressHistory: history,
+        currentAddress: currentAddress,
+      );
       _lastState = state;
     } catch (e) {
       // Silently fail for address history (non-critical)

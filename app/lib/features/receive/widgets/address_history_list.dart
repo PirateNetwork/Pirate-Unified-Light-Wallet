@@ -10,6 +10,7 @@ import '../receive_viewmodel.dart';
 /// Widget displaying list of previous addresses
 class AddressHistoryList extends StatelessWidget {
   final List<AddressInfo> addresses;
+  final bool isFiltered;
   final Function(AddressInfo) onCopy;
   final Function(AddressInfo) onLabel;
   final Function(AddressInfo) onColorTag;
@@ -18,6 +19,7 @@ class AddressHistoryList extends StatelessWidget {
   const AddressHistoryList({
     super.key,
     required this.addresses,
+    this.isFiltered = false,
     required this.onCopy,
     required this.onLabel,
     required this.onColorTag,
@@ -27,6 +29,11 @@ class AddressHistoryList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (addresses.isEmpty) {
+      final emptyTitle =
+          isFiltered ? 'No matches found.' : 'No previous addresses.';
+      final emptySubtitle = isFiltered
+          ? 'Try a different label or address.'
+          : 'Generate a new address to see it here.';
       return PCard(
         child: Padding(
           padding: EdgeInsets.all(PSpacing.lg),
@@ -39,14 +46,14 @@ class AddressHistoryList extends StatelessWidget {
               ),
               SizedBox(height: PSpacing.sm),
               Text(
-                'No previous addresses.',
+                emptyTitle,
                 style: PTypography.bodyMedium(
                   color: AppColors.textPrimary,
                 ),
               ),
               SizedBox(height: PSpacing.xs),
               Text(
-                'Generate a new address to see it here.',
+                emptySubtitle,
                 style: PTypography.bodySmall(
                   color: AppColors.textSecondary,
                 ),
@@ -73,6 +80,87 @@ class AddressHistoryList extends StatelessWidget {
           onColorTag: () => onColorTag(address),
         );
       },
+    );
+  }
+}
+
+/// Sliver version of address history list for lazy rendering
+class AddressHistorySliver extends StatelessWidget {
+  final List<AddressInfo> addresses;
+  final bool isFiltered;
+  final Function(AddressInfo) onCopy;
+  final Function(AddressInfo) onLabel;
+  final Function(AddressInfo) onColorTag;
+  final Function(AddressInfo) onOpen;
+
+  const AddressHistorySliver({
+    super.key,
+    required this.addresses,
+    this.isFiltered = false,
+    required this.onCopy,
+    required this.onLabel,
+    required this.onColorTag,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (addresses.isEmpty) {
+      final emptyTitle =
+          isFiltered ? 'No matches found.' : 'No previous addresses.';
+      final emptySubtitle = isFiltered
+          ? 'Try a different label or address.'
+          : 'Generate a new address to see it here.';
+      return SliverToBoxAdapter(
+        child: PCard(
+          child: Padding(
+            padding: EdgeInsets.all(PSpacing.lg),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.history,
+                  size: 48,
+                  color: AppColors.textTertiary,
+                ),
+                SizedBox(height: PSpacing.sm),
+                Text(
+                  emptyTitle,
+                  style: PTypography.bodyMedium(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: PSpacing.xs),
+                Text(
+                  emptySubtitle,
+                  style: PTypography.bodySmall(
+                    color: AppColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final address = addresses[index];
+          return Padding(
+            padding: EdgeInsets.only(bottom: PSpacing.sm),
+            child: _AddressHistoryItem(
+              address: address,
+              onOpen: () => onOpen(address),
+              onCopy: () => onCopy(address),
+              onLabel: () => onLabel(address),
+              onColorTag: () => onColorTag(address),
+            ),
+          );
+        },
+        childCount: addresses.length,
+      ),
     );
   }
 }
@@ -197,6 +285,33 @@ class _AddressHistoryItem extends StatelessWidget {
                       ],
                     ],
                   ),
+
+                  SizedBox(height: PSpacing.xs),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.account_balance_wallet_outlined,
+                        size: 12,
+                        color: AppColors.textTertiary,
+                      ),
+                      SizedBox(width: PSpacing.xs),
+                      Text(
+                        'Balance ${_formatArrr(address.balance)}',
+                        style: PTypography.bodySmall().copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      if (address.pending > BigInt.zero) ...[
+                        SizedBox(width: PSpacing.sm),
+                        Text(
+                          'Pending ${_formatArrr(address.pending)}',
+                          style: PTypography.bodySmall().copyWith(
+                            color: AppColors.warning,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                   
                   // Show label if present (below truncated address)
                   if (address.label != null && address.label!.isNotEmpty)
@@ -269,5 +384,10 @@ class _AddressHistoryItem extends StatelessWidget {
       return AppColors.backgroundPanel;
     }
     return Color(address.colorTag.colorValue);
+  }
+
+  String _formatArrr(BigInt value) {
+    final amount = value.toDouble() / 100000000.0;
+    return '${amount.toStringAsFixed(8)} ARRR';
   }
 }

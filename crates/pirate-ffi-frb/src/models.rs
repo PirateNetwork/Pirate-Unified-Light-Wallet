@@ -310,6 +310,95 @@ pub struct AddressInfo {
     pub color_tag: AddressBookColorTag,
 }
 
+/// Address balance info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddressBalanceInfo {
+    /// Address string
+    pub address: String,
+    /// Total balance for this address
+    pub balance: u64,
+    /// Spendable balance for this address
+    pub spendable: u64,
+    /// Pending balance for this address
+    pub pending: u64,
+    /// Key group id that derived this address
+    pub key_id: Option<i64>,
+    /// Address row id
+    pub address_id: i64,
+    /// Optional label
+    pub label: Option<String>,
+    /// Created timestamp (unix seconds)
+    pub created_at: i64,
+    /// Color tag
+    pub color_tag: AddressBookColorTag,
+    /// Diversifier index
+    pub diversifier_index: u32,
+}
+
+/// Key group type for UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum KeyTypeInfo {
+    /// Seed-derived key group
+    Seed,
+    /// Imported spending key
+    ImportedSpending,
+    /// Imported viewing key
+    ImportedViewing,
+}
+
+/// Key group info for key management UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyGroupInfo {
+    /// Key group id
+    pub id: i64,
+    /// Optional label
+    pub label: Option<String>,
+    /// Key type
+    pub key_type: KeyTypeInfo,
+    /// Whether this key can spend
+    pub spendable: bool,
+    /// Sapling capability
+    pub has_sapling: bool,
+    /// Orchard capability
+    pub has_orchard: bool,
+    /// Birthday height for this key
+    pub birthday_height: i64,
+    /// Created timestamp
+    pub created_at: i64,
+}
+
+/// Address info scoped to a key group
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyAddressInfo {
+    /// Key group id
+    pub key_id: i64,
+    /// Address string
+    pub address: String,
+    /// Diversifier index
+    pub diversifier_index: u32,
+    /// Label
+    pub label: Option<String>,
+    /// Created timestamp (unix seconds)
+    pub created_at: i64,
+    /// Color tag
+    pub color_tag: AddressBookColorTag,
+}
+
+/// Exported key material for a key group
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyExportInfo {
+    /// Key group id
+    pub key_id: i64,
+    /// Sapling viewing key (xFVK) if available
+    pub sapling_viewing_key: Option<String>,
+    /// Orchard viewing key if available
+    pub orchard_viewing_key: Option<String>,
+    /// Sapling spending key if available
+    pub sapling_spending_key: Option<String>,
+    /// Orchard spending key if available
+    pub orchard_spending_key: Option<String>,
+}
+
 /// Network information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkInfo {

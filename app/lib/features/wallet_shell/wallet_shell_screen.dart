@@ -6,13 +6,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ffi/ffi_bridge.dart';
-import '../../core/ffi/generated/models.dart' show TunnelMode, TunnelMode_Tor, TunnelMode_Socks5, TunnelMode_Direct, SyncMode;
+import '../../core/ffi/generated/models.dart'
+    show
+        TunnelMode,
+        TunnelMode_Tor,
+        TunnelMode_Socks5,
+        TunnelMode_Direct,
+        SyncMode;
 import '../../core/providers/wallet_providers.dart';
 import '../../design/tokens/spacing.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/organisms/p_scaffold.dart';
-
 
 class WalletShellScreen extends ConsumerStatefulWidget {
   const WalletShellScreen({super.key});
@@ -73,7 +78,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                       'Balance',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
-                  const SizedBox(height: PSpacing.sm),
+                    const SizedBox(height: PSpacing.sm),
                     balanceAsync.when(
                       data: (balance) {
                         if (balance == null) {
@@ -158,8 +163,8 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
 
           // Actions
           PCard(
-              child: Padding(
-                padding: const EdgeInsets.all(PSpacing.md),
+            child: Padding(
+              padding: const EdgeInsets.all(PSpacing.md),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -231,7 +236,8 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                         data: (info) => Column(
                           children: [
                             _buildInfoRow('Network', info.name),
-                            _buildInfoRow('Coin Type', info.coinType.toString()),
+                            _buildInfoRow(
+                                'Coin Type', info.coinType.toString()),
                             _buildInfoRow('RPC Port', info.rpcPort.toString()),
                             _buildInfoRow(
                               'Default Birthday',
@@ -270,7 +276,10 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
           Text(
             label,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.7),
                 ),
           ),
           Text(
@@ -284,8 +293,8 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     );
   }
 
-  String _formatArrr(BigInt zatoshis) {
-    return '${(zatoshis.toDouble() / 100000000).toStringAsFixed(8)} ARRR';
+  String _formatArrr(BigInt arrrtoshis) {
+    return '${(arrrtoshis.toDouble() / 100000000).toStringAsFixed(8)} ARRR';
   }
 
   Future<void> _createWallet() async {
@@ -397,13 +406,16 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     final current = ref.read(tunnelModeProvider);
     final next = switch (current) {
       TunnelMode_Tor() => const TunnelMode.direct(),
-      TunnelMode_Direct() => const TunnelMode.socks5(url: 'socks5://127.0.0.1:1080'),
+      TunnelMode_Direct() =>
+        const TunnelMode.socks5(url: 'socks5://127.0.0.1:1080'),
       TunnelMode_Socks5() => const TunnelMode.tor(),
     };
 
     ref.read(tunnelModeProvider.notifier).setTunnelMode(
           next,
-          socksUrl: next is TunnelMode_Socks5 ? (next as TunnelMode_Socks5).url : null,
+          socksUrl: next is TunnelMode_Socks5
+              ? (next as TunnelMode_Socks5).url
+              : null,
         );
 
     ScaffoldMessenger.of(context).showSnackBar(

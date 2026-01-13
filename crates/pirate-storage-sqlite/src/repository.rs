@@ -226,9 +226,11 @@ impl<'a> Repository<'a> {
         let encrypted_position = self.encrypt_optional_int64(note.position)?;
         let encrypted_memo = self.encrypt_optional_blob(note.memo.as_deref())?;
         let encrypted_spent_txid = self.encrypt_optional_blob(note.spent_txid.as_deref())?;
+        let encrypted_address_id = self.encrypt_optional_int64(note.address_id)?;
+        let encrypted_key_id = self.encrypt_optional_int64(note.key_id)?;
         
         self.db.conn().execute(
-            "INSERT INTO notes (account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            "INSERT INTO notes (account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
                 encrypted_account_id,
                 note_type_str,
@@ -245,10 +247,66 @@ impl<'a> Repository<'a> {
                 encrypted_note,
                 encrypted_anchor,
                 encrypted_position,
-                encrypted_memo
+                encrypted_memo,
+                encrypted_address_id,
+                encrypted_key_id,
             ],
         )?;
         Ok(self.db.conn().last_insert_rowid())
+    }
+
+    /// Update an existing note by row id (encrypts before storage)
+    pub fn update_note_by_id(&self, note: &NoteRecord) -> Result<()> {
+        let id = note.id.ok_or_else(|| {
+            crate::error::Error::Storage("Missing note id for update".to_string())
+        })?;
+        let note_type_str = match note.note_type {
+            crate::models::NoteType::Sapling => "Sapling",
+            crate::models::NoteType::Orchard => "Orchard",
+        };
+        let encrypted_account_id = self.encrypt_int64(note.account_id)?;
+        let encrypted_value = self.encrypt_int64(note.value)?;
+        let encrypted_nullifier = self.encrypt_blob(&note.nullifier)?;
+        let encrypted_commitment = self.encrypt_blob(&note.commitment)?;
+        let encrypted_spent = self.encrypt_bool(note.spent)?;
+        let encrypted_height = self.encrypt_int64(note.height)?;
+        let encrypted_txid = self.encrypt_blob(&note.txid)?;
+        let encrypted_output_index = self.encrypt_int64(note.output_index)?;
+        let encrypted_diversifier = self.encrypt_blob(note.diversifier.as_deref().unwrap_or(&[]))?;
+        let encrypted_merkle_path = self.encrypt_blob(note.merkle_path.as_deref().unwrap_or(&[]))?;
+        let encrypted_note = self.encrypt_blob(note.note.as_deref().unwrap_or(&[]))?;
+        let encrypted_anchor = self.encrypt_optional_blob(note.anchor.as_deref())?;
+        let encrypted_position = self.encrypt_optional_int64(note.position)?;
+        let encrypted_memo = self.encrypt_optional_blob(note.memo.as_deref())?;
+        let encrypted_spent_txid = self.encrypt_optional_blob(note.spent_txid.as_deref())?;
+        let encrypted_address_id = self.encrypt_optional_int64(note.address_id)?;
+        let encrypted_key_id = self.encrypt_optional_int64(note.key_id)?;
+
+        self.db.conn().execute(
+            "UPDATE notes SET account_id = ?1, note_type = ?2, value = ?3, nullifier = ?4, commitment = ?5, spent = ?6, height = ?7, txid = ?8, output_index = ?9, spent_txid = ?10, diversifier = ?11, merkle_path = ?12, note = ?13, anchor = ?14, position = ?15, memo = ?16, address_id = ?17, key_id = ?18 WHERE id = ?19",
+            params![
+                encrypted_account_id,
+                note_type_str,
+                encrypted_value,
+                encrypted_nullifier,
+                encrypted_commitment,
+                encrypted_spent,
+                encrypted_height,
+                encrypted_txid,
+                encrypted_output_index,
+                encrypted_spent_txid,
+                encrypted_diversifier,
+                encrypted_merkle_path,
+                encrypted_note,
+                encrypted_anchor,
+                encrypted_position,
+                encrypted_memo,
+                encrypted_address_id,
+                encrypted_key_id,
+                id,
+            ],
+        )?;
+        Ok(())
     }
 
     /// Insert or update a transaction record.
@@ -371,6 +429,32 @@ impl<'a> Repository<'a> {
         Ok(map)
     }
 
+    fn get_transaction_fees(&self, txids: &[String]) -> Result<HashMap<String, u64>> {
+        if txids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let placeholders = std::iter::repeat("?")
+            .take(txids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!("SELECT txid, fee FROM transactions WHERE txid IN ({})", placeholders);
+
+        let mut stmt = self.db.conn().prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(txids.iter()), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+
+        let mut map = HashMap::new();
+        for r in rows {
+            let (txid, fee) = r?;
+            let fee = if fee < 0 { 0 } else { fee as u64 };
+            map.insert(txid, fee);
+        }
+
+        Ok(map)
+    }
+
     fn get_transaction_memos(&self, txids: &[String]) -> Result<HashMap<String, Vec<u8>>> {
         if txids.is_empty() {
             return Ok(HashMap::new());
@@ -406,7 +490,7 @@ impl<'a> Repository<'a> {
         // Since account_id is encrypted, we need to decrypt all notes and filter
         // This is less efficient but necessary for maximum privacy
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo FROM notes",
+            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
         )?;
 
         let notes = stmt.query_map([], |row| {
@@ -432,6 +516,8 @@ impl<'a> Repository<'a> {
             let encrypted_anchor: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(14)?;
             let encrypted_position: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(15)?;
             let encrypted_memo: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(16)?;
+            let encrypted_address_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(17)?;
+            let encrypted_key_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(18)?;
 
             // Note: Decryption happens after collecting to handle errors properly
             Ok((
@@ -452,6 +538,8 @@ impl<'a> Repository<'a> {
                 encrypted_anchor,
                 encrypted_position,
                 encrypted_memo,
+                encrypted_address_id,
+                encrypted_key_id,
             ))
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -462,7 +550,7 @@ impl<'a> Repository<'a> {
         let mut matched = 0usize;
         let mut invalid_values = 0usize;
         let mut seen: HashSet<(Vec<u8>, i64, crate::models::NoteType)> = HashSet::new();
-        for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo) in notes {
+        for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo, enc_address_id, enc_key_id) in notes {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
             let decrypted_spent = self.decrypt_bool(&enc_spent)?;
             
@@ -485,6 +573,7 @@ impl<'a> Repository<'a> {
             decrypted_notes.push(NoteRecord {
                 id,
                 account_id: decrypted_account_id,
+                key_id: self.decrypt_optional_int64(enc_key_id)?,
                 note_type,
                 value,
                 nullifier: self.decrypt_blob(&enc_nullifier)?,
@@ -500,6 +589,7 @@ impl<'a> Repository<'a> {
                 anchor: self.decrypt_optional_blob(enc_anchor)?,
                 position: self.decrypt_optional_int64(enc_position)?,
                 memo: self.decrypt_optional_blob(enc_memo)?,
+                address_id: self.decrypt_optional_int64(enc_address_id)?,
             });
         }
 
@@ -615,10 +705,236 @@ impl<'a> Repository<'a> {
         Ok(None)
     }
 
-    /// Get unspent notes as `SelectableNote` (for transaction building)
+    /// Insert or update an account key (expects encrypted key material fields).
+    pub fn upsert_account_key(&self, key: &AccountKey) -> Result<i64> {
+        let key_type_str = match key.key_type {
+            KeyType::Seed => "seed",
+            KeyType::ImportSpend => "import_spend",
+            KeyType::ImportView => "import_view",
+        };
+        let key_scope_str = match key.key_scope {
+            KeyScope::Account => "account",
+            KeyScope::SingleAddress => "single_address",
+        };
+        let spendable = if key.spendable { 1 } else { 0 };
+
+        if let Some(id) = key.id {
+            self.db.conn().execute(
+                "UPDATE account_keys SET account_id = ?1, key_type = ?2, key_scope = ?3, label = ?4, birthday_height = ?5, created_at = ?6, spendable = ?7, sapling_extsk = ?8, sapling_dfvk = ?9, orchard_extsk = ?10, orchard_fvk = ?11, encrypted_mnemonic = ?12 WHERE id = ?13",
+                params![
+                    key.account_id,
+                    key_type_str,
+                    key_scope_str,
+                    key.label,
+                    key.birthday_height,
+                    key.created_at,
+                    spendable,
+                    key.sapling_extsk,
+                    key.sapling_dfvk,
+                    key.orchard_extsk,
+                    key.orchard_fvk,
+                    key.encrypted_mnemonic,
+                    id,
+                ],
+            )?;
+            Ok(id)
+        } else {
+            self.db.conn().execute(
+                "INSERT INTO account_keys (account_id, key_type, key_scope, label, birthday_height, created_at, spendable, sapling_extsk, sapling_dfvk, orchard_extsk, orchard_fvk, encrypted_mnemonic)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![
+                    key.account_id,
+                    key_type_str,
+                    key_scope_str,
+                    key.label,
+                    key.birthday_height,
+                    key.created_at,
+                    spendable,
+                    key.sapling_extsk,
+                    key.sapling_dfvk,
+                    key.orchard_extsk,
+                    key.orchard_fvk,
+                    key.encrypted_mnemonic,
+                ],
+            )?;
+            Ok(self.db.conn().last_insert_rowid())
+        }
+    }
+
+    /// Encrypt account key material before storage.
+    pub fn encrypt_account_key_fields(&self, key: &AccountKey) -> Result<AccountKey> {
+        Ok(AccountKey {
+            id: key.id,
+            account_id: key.account_id,
+            key_type: key.key_type,
+            key_scope: key.key_scope,
+            label: key.label.clone(),
+            birthday_height: key.birthday_height,
+            created_at: key.created_at,
+            spendable: key.spendable,
+            sapling_extsk: self.encrypt_optional_blob(key.sapling_extsk.as_deref())?,
+            sapling_dfvk: self.encrypt_optional_blob(key.sapling_dfvk.as_deref())?,
+            orchard_extsk: self.encrypt_optional_blob(key.orchard_extsk.as_deref())?,
+            orchard_fvk: self.encrypt_optional_blob(key.orchard_fvk.as_deref())?,
+            encrypted_mnemonic: self.encrypt_optional_blob(key.encrypted_mnemonic.as_deref())?,
+        })
+    }
+
+    /// Load all account keys for a wallet account (decrypts key material).
+    pub fn get_account_keys(&self, account_id: i64) -> Result<Vec<AccountKey>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, key_type, key_scope, label, birthday_height, created_at, spendable, sapling_extsk, sapling_dfvk, orchard_extsk, orchard_fvk, encrypted_mnemonic FROM account_keys WHERE account_id = ?1",
+        )?;
+
+        let keys = stmt.query_map([account_id], |row| {
+            let key_type_str: String = row.get(2)?;
+            let key_scope_str: String = row.get(3)?;
+            let key_type = match key_type_str.as_str() {
+                "import_spend" => KeyType::ImportSpend,
+                "import_view" => KeyType::ImportView,
+                _ => KeyType::Seed,
+            };
+            let key_scope = match key_scope_str.as_str() {
+                "single_address" => KeyScope::SingleAddress,
+                _ => KeyScope::Account,
+            };
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                key_type,
+                key_scope,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, Option<Vec<u8>>>(8)?,
+                row.get::<_, Option<Vec<u8>>>(9)?,
+                row.get::<_, Option<Vec<u8>>>(10)?,
+                row.get::<_, Option<Vec<u8>>>(11)?,
+                row.get::<_, Option<Vec<u8>>>(12)?,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut decrypted = Vec::with_capacity(keys.len());
+        for (id, acc_id, key_type, key_scope, label, birthday_height, created_at, spendable_raw, sapling_extsk, sapling_dfvk, orchard_extsk, orchard_fvk, encrypted_mnemonic) in keys {
+            decrypted.push(AccountKey {
+                id: Some(id),
+                account_id: acc_id,
+                key_type,
+                key_scope,
+                label,
+                birthday_height,
+                created_at,
+                spendable: spendable_raw != 0,
+                sapling_extsk: self.decrypt_optional_blob(sapling_extsk)?,
+                sapling_dfvk: self.decrypt_optional_blob(sapling_dfvk)?,
+                orchard_extsk: self.decrypt_optional_blob(orchard_extsk)?,
+                orchard_fvk: self.decrypt_optional_blob(orchard_fvk)?,
+                encrypted_mnemonic: self.decrypt_optional_blob(encrypted_mnemonic)?,
+            });
+        }
+
+        Ok(decrypted)
+    }
+
+    /// Load a single account key by id (decrypts key material).
+    pub fn get_account_key_by_id(&self, key_id: i64) -> Result<Option<AccountKey>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, key_type, key_scope, label, birthday_height, created_at, spendable, sapling_extsk, sapling_dfvk, orchard_extsk, orchard_fvk, encrypted_mnemonic FROM account_keys WHERE id = ?1",
+        )?;
+
+        let row = stmt
+            .query_row([key_id], |row| {
+                let key_type_str: String = row.get(2)?;
+                let key_scope_str: String = row.get(3)?;
+                let key_type = match key_type_str.as_str() {
+                    "import_spend" => KeyType::ImportSpend,
+                    "import_view" => KeyType::ImportView,
+                    _ => KeyType::Seed,
+                };
+                let key_scope = match key_scope_str.as_str() {
+                    "single_address" => KeyScope::SingleAddress,
+                    _ => KeyScope::Account,
+                };
+                Ok((
+                    row.get::<_, i64>(0)?,              // id
+                    row.get::<_, i64>(1)?,              // account_id
+                    key_type,
+                    key_scope,
+                    row.get::<_, Option<String>>(4)?,   // label
+                    row.get::<_, i64>(5)?,              // birthday_height
+                    row.get::<_, i64>(6)?,              // created_at
+                    row.get::<_, i64>(7)?,              // spendable
+                    row.get::<_, Option<Vec<u8>>>(8)?,  // sapling_extsk
+                    row.get::<_, Option<Vec<u8>>>(9)?,  // sapling_dfvk
+                    row.get::<_, Option<Vec<u8>>>(10)?, // orchard_extsk
+                    row.get::<_, Option<Vec<u8>>>(11)?, // orchard_fvk
+                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted_mnemonic
+                ))
+            })
+            .optional()?;
+
+        let Some((
+            id,
+            account_id,
+            key_type,
+            key_scope,
+            label,
+            birthday_height,
+            created_at,
+            spendable_raw,
+            sapling_extsk,
+            sapling_dfvk,
+            orchard_extsk,
+            orchard_fvk,
+            encrypted_mnemonic,
+        )) = row else {
+            return Ok(None);
+        };
+
+        Ok(Some(AccountKey {
+            id: Some(id),
+            account_id,
+            key_type,
+            key_scope,
+            label,
+            birthday_height,
+            created_at,
+            spendable: spendable_raw != 0,
+            sapling_extsk: self.decrypt_optional_blob(sapling_extsk)?,
+            sapling_dfvk: self.decrypt_optional_blob(sapling_dfvk)?,
+            orchard_extsk: self.decrypt_optional_blob(orchard_extsk)?,
+            orchard_fvk: self.decrypt_optional_blob(orchard_fvk)?,
+            encrypted_mnemonic: self.decrypt_optional_blob(encrypted_mnemonic)?,
+        }))
+    }
+
+    /// Delete an account key by id.
+    pub fn delete_account_key(&self, key_id: i64) -> Result<()> {
+        self.db.conn()
+            .execute("DELETE FROM account_keys WHERE id = ?1", [key_id])?;
+        Ok(())
+    }
+
+    /// Get unspent notes as `SelectableNote` (for transaction building).
+    /// Compatibility wrapper for `get_unspent_selectable_notes_filtered`.
     pub fn get_unspent_selectable_notes(
         &self,
         account_id: i64,
+        key_id_filter: Option<i64>,
+    ) -> Result<Vec<pirate_core::selection::SelectableNote>> {
+        let key_ids = key_id_filter.map(|id| vec![id]);
+        self.get_unspent_selectable_notes_filtered(account_id, key_ids, None)
+    }
+
+    /// Get unspent notes as `SelectableNote` (for transaction building) with optional filters.
+    /// When filters are provided, notes matching either filter are included.
+    pub fn get_unspent_selectable_notes_filtered(
+        &self,
+        account_id: i64,
+        key_ids_filter: Option<Vec<i64>>,
+        address_ids_filter: Option<Vec<i64>>,
     ) -> Result<Vec<pirate_core::selection::SelectableNote>> {
         use pirate_core::selection::SelectableNote;
         use orchard::note::{Note as OrchardNote, Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed};
@@ -702,7 +1018,76 @@ impl<'a> Repository<'a> {
             Some(OrchardMerklePath::from_parts(position, auth_path))
         }
 
+        let key_filter = key_ids_filter.map(|ids| ids.into_iter().collect::<HashSet<_>>());
+        let address_filter = address_ids_filter.map(|ids| ids.into_iter().collect::<HashSet<_>>());
+        let key_ids_count = key_filter.as_ref().map_or(0, |set| set.len());
+        let address_ids_count = address_filter.as_ref().map_or(0, |set| set.len());
+        let key_id_log = if key_ids_count == 1 {
+            *key_filter.as_ref().unwrap().iter().next().unwrap()
+        } else {
+            -1
+        };
+        let address_id_log = if address_ids_count == 1 {
+            *address_filter.as_ref().unwrap().iter().next().unwrap()
+        } else {
+            -1
+        };
+
         let notes = self.get_unspent_notes(account_id)?;
+        let eligible_address_ids: HashSet<i64> = self
+            .get_all_addresses(account_id)?
+            .into_iter()
+            .filter_map(|address| {
+                let id = address.id?;
+                let unlabeled = address
+                    .label
+                    .as_ref()
+                    .map_or(true, |label| label.trim().is_empty());
+                let untagged = address.color_tag == ColorTag::None;
+                if unlabeled && untagged {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let mut skipped_key_mismatch = 0usize;
+        let mut skipped_key_missing = 0usize;
+        let mut skipped_address_mismatch = 0usize;
+        let mut skipped_address_missing = 0usize;
+        let notes = if key_filter.is_some() || address_filter.is_some() {
+            let mut filtered = Vec::new();
+            for note in notes {
+                let key_match = key_filter.as_ref().map_or(false, |set| {
+                    note.key_id.map_or(false, |id| set.contains(&id))
+                });
+                let address_match = address_filter.as_ref().map_or(false, |set| {
+                    note.address_id.map_or(false, |id| set.contains(&id))
+                });
+
+                if key_match || address_match {
+                    filtered.push(note);
+                    continue;
+                }
+
+                if key_filter.is_some() {
+                    match note.key_id {
+                        Some(_) => skipped_key_mismatch += 1,
+                        None => skipped_key_missing += 1,
+                    }
+                }
+
+                if address_filter.is_some() {
+                    match note.address_id {
+                        Some(_) => skipped_address_mismatch += 1,
+                        None => skipped_address_missing += 1,
+                    }
+                }
+            }
+            filtered
+        } else {
+            notes
+        };
         let total_notes = notes.len();
         let mut result = Vec::with_capacity(total_notes);
         let mut skipped_missing_merkle = 0usize;
@@ -768,6 +1153,9 @@ impl<'a> Repository<'a> {
                         n.txid.clone(),
                         n.output_index as u32,
                     );
+                    sn.auto_consolidation_eligible = n
+                        .address_id
+                        .map_or(false, |id| eligible_address_ids.contains(&id));
 
                     if let Some(nullifier) = (!n.nullifier.is_empty()).then(|| n.nullifier.clone()) {
                         sn = sn.with_nullifier(nullifier);
@@ -837,6 +1225,9 @@ impl<'a> Repository<'a> {
                         n.txid.clone(),
                         n.output_index as u32,
                     );
+                    sn.auto_consolidation_eligible = n
+                        .address_id
+                        .map_or(false, |id| eligible_address_ids.contains(&id));
 
                     if let Some(nullifier) = (!n.nullifier.is_empty()).then(|| n.nullifier.clone()) {
                         sn = sn.with_nullifier(nullifier);
@@ -907,16 +1298,24 @@ impl<'a> Repository<'a> {
                 .as_millis();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_selectable_notes","timestamp":{},"location":"repository.rs:621","message":"get_unspent_selectable_notes","data":{{"account_id":{},"notes":{},"selectable":{},"missing_merkle":{},"missing_note":{},"invalid_address":{},"invalid_rseed":{},"invalid_note":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                r#"{{"id":"log_selectable_notes","timestamp":{},"location":"repository.rs:621","message":"get_unspent_selectable_notes","data":{{"account_id":{},"key_id":{},"address_id":{},"key_ids_count":{},"address_ids_count":{},"notes":{},"selectable":{},"missing_merkle":{},"missing_note":{},"invalid_address":{},"invalid_rseed":{},"invalid_note":{},"skipped_key_mismatch":{},"skipped_key_missing":{},"skipped_address_mismatch":{},"skipped_address_missing":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 ts,
                 account_id,
+                key_id_log,
+                address_id_log,
+                key_ids_count,
+                address_ids_count,
                 total_notes,
                 result.len(),
                 skipped_missing_merkle,
                 skipped_missing_note,
                 skipped_invalid_address,
                 skipped_invalid_rseed,
-                skipped_invalid_note
+                skipped_invalid_note,
+                skipped_key_mismatch,
+                skipped_key_missing,
+                skipped_address_mismatch,
+                skipped_address_missing
             );
         }
         // #endregion
@@ -977,13 +1376,22 @@ impl<'a> Repository<'a> {
         Ok((spendable, pending, total))
     }
 
-    /// Get the current diversifier index for an account
-    /// 
+    /// Get the current diversifier index for a key group and scope.
+    ///
     /// Returns the maximum diversifier index used, or 0 if no addresses exist.
-    pub fn get_current_diversifier_index(&self, account_id: i64) -> Result<u32> {
+    pub fn get_current_diversifier_index_for_scope(
+        &self,
+        account_id: i64,
+        key_id: i64,
+        scope: crate::models::AddressScope,
+    ) -> Result<u32> {
+        let scope_str = match scope {
+            crate::models::AddressScope::External => "external",
+            crate::models::AddressScope::Internal => "internal",
+        };
         let max_index: Option<i64> = self.db.conn().query_row(
-            "SELECT MAX(diversifier_index) FROM addresses WHERE account_id = ?1",
-            [account_id],
+            "SELECT MAX(diversifier_index) FROM addresses WHERE account_id = ?1 AND key_id = ?2 AND address_scope = ?3",
+            params![account_id, key_id, scope_str],
             |row| row.get(0),
         )?;
 
@@ -993,12 +1401,55 @@ impl<'a> Repository<'a> {
         })
     }
 
-    /// Get the next diversifier index for an account
-    /// 
+    /// Get the current diversifier index for external (receive) addresses.
+    pub fn get_current_diversifier_index(&self, account_id: i64, key_id: i64) -> Result<u32> {
+        self.get_current_diversifier_index_for_scope(
+            account_id,
+            key_id,
+            crate::models::AddressScope::External,
+        )
+    }
+
+    /// Get the next diversifier index for a key group and scope.
+    ///
     /// Returns the maximum diversifier index used + 1, or 0 if no addresses exist.
-    pub fn get_next_diversifier_index(&self, account_id: i64) -> Result<u32> {
-        let current = self.get_current_diversifier_index(account_id)?;
+    pub fn get_next_diversifier_index_for_scope(
+        &self,
+        account_id: i64,
+        key_id: i64,
+        scope: crate::models::AddressScope,
+    ) -> Result<u32> {
+        let current = self.get_current_diversifier_index_for_scope(account_id, key_id, scope)?;
         Ok(current.saturating_add(1))
+    }
+
+    /// Get the next diversifier index for external (receive) addresses.
+    pub fn get_next_diversifier_index(&self, account_id: i64, key_id: i64) -> Result<u32> {
+        self.get_next_diversifier_index_for_scope(
+            account_id,
+            key_id,
+            crate::models::AddressScope::External,
+        )
+    }
+
+
+    /// Backfill missing key_id on legacy addresses (created before key management).
+    pub fn backfill_address_key_id(&self, account_id: i64, key_id: i64) -> Result<usize> {
+        let rows = self.db.conn().execute(
+            "UPDATE addresses SET key_id = ?1 WHERE account_id = ?2 AND key_id IS NULL",
+            params![key_id, account_id],
+        )?;
+        Ok(rows)
+    }
+
+    /// Backfill missing key_id on legacy notes (created before key management).
+    pub fn backfill_note_key_id(&self, key_id: i64) -> Result<usize> {
+        let encrypted_key_id = self.encrypt_optional_int64(Some(key_id))?;
+        let rows = self.db.conn().execute(
+            "UPDATE notes SET key_id = ?1 WHERE key_id IS NULL",
+            params![encrypted_key_id],
+        )?;
+        Ok(rows)
     }
 
     /// Insert or update address with diversifier index
@@ -1008,52 +1459,110 @@ impl<'a> Repository<'a> {
             crate::models::AddressType::Orchard => "Orchard",
         };
         self.db.conn().execute(
-            "INSERT INTO addresses (account_id, diversifier_index, address, address_type, label, created_at, color_tag)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO addresses (account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(address) DO UPDATE SET
                  account_id = excluded.account_id,
-                 diversifier_index = excluded.diversifier_index,
+                 key_id = COALESCE(excluded.key_id, addresses.key_id),
+                 diversifier_index = CASE
+                     WHEN excluded.diversifier_index = 0 THEN addresses.diversifier_index
+                     ELSE excluded.diversifier_index
+                 END,
                  address_type = excluded.address_type,
-                 label = excluded.label,
+                 label = COALESCE(excluded.label, addresses.label),
                  created_at = addresses.created_at,
-                 color_tag = addresses.color_tag",
+                 color_tag = addresses.color_tag,
+                 address_scope = CASE
+                     WHEN addresses.address_scope = 'internal' THEN addresses.address_scope
+                     ELSE excluded.address_scope
+                 END",
             params![
                 address.account_id,
+                address.key_id,
                 address.diversifier_index as i64,
                 address.address,
                 address_type_str,
                 address.label,
                 address.created_at,
                 address.color_tag.as_u8() as i64,
+                match address.address_scope {
+                    crate::models::AddressScope::External => "external",
+                    crate::models::AddressScope::Internal => "internal",
+                },
             ],
         )?;
         Ok(())
     }
 
-    /// Get address by diversifier index
-    pub fn get_address_by_index(&self, account_id: i64, diversifier_index: u32) -> Result<Option<Address>> {
+
+    /// Get address by address string.
+    pub fn get_address_by_string(&self, account_id: i64, address: &str) -> Result<Option<Address>> {
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, diversifier_index, address, address_type, label, created_at, color_tag FROM addresses 
-             WHERE account_id = ?1 AND diversifier_index = ?2",
+            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses              WHERE account_id = ?1 AND address = ?2",
         )?;
 
         let result = stmt.query_row(
-            [account_id, diversifier_index as i64],
+            params![account_id, address],
             |row| {
-                let address_type_str: String = row.get(4).unwrap_or_else(|_| "Sapling".to_string());
+                let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
                 let address_type = match address_type_str.as_str() {
                     "Orchard" => crate::models::AddressType::Orchard,
-                    _ => crate::models::AddressType::Sapling, // Default to Sapling
+                    _ => crate::models::AddressType::Sapling,
+                };
+                let address_scope_str: String = row.get(9).unwrap_or_else(|_| "external".to_string());
+                let address_scope = match address_scope_str.as_str() {
+                    "internal" => crate::models::AddressScope::Internal,
+                    _ => crate::models::AddressScope::External,
                 };
                 Ok(Address {
                     id: Some(row.get(0)?),
                     account_id: row.get(1)?,
-                    diversifier_index: row.get::<_, i64>(2)? as u32,
-                    address: row.get(3)?,
+                    key_id: row.get(2)?,
+                    diversifier_index: row.get::<_, i64>(3)? as u32,
+                    address: row.get(4)?,
                     address_type,
-                    label: row.get(5)?,
-                    created_at: row.get(6)?,
-                    color_tag: ColorTag::from_u8(row.get::<_, i64>(7)? as u8),
+                    label: row.get(6)?,
+                    created_at: row.get(7)?,
+                    color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
+                    address_scope,
+                })
+            },
+        ).optional()?;
+
+        Ok(result)
+    }
+
+    /// Get address by diversifier index for a key group
+    pub fn get_address_by_index(&self, account_id: i64, key_id: i64, diversifier_index: u32) -> Result<Option<Address>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses 
+             WHERE account_id = ?1 AND key_id = ?2 AND diversifier_index = ?3",
+        )?;
+
+        let result = stmt.query_row(
+            [account_id, key_id, diversifier_index as i64],
+            |row| {
+                let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
+                let address_type = match address_type_str.as_str() {
+                    "Orchard" => crate::models::AddressType::Orchard,
+                    _ => crate::models::AddressType::Sapling, // Default to Sapling
+                };
+                let address_scope_str: String = row.get(9).unwrap_or_else(|_| "external".to_string());
+                let address_scope = match address_scope_str.as_str() {
+                    "internal" => crate::models::AddressScope::Internal,
+                    _ => crate::models::AddressScope::External,
+                };
+                Ok(Address {
+                    id: Some(row.get(0)?),
+                    account_id: row.get(1)?,
+                    key_id: row.get(2)?,
+                    diversifier_index: row.get::<_, i64>(3)? as u32,
+                    address: row.get(4)?,
+                    address_type,
+                    label: row.get(6)?,
+                    created_at: row.get(7)?,
+                    color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
+                    address_scope,
                 })
             },
         ).optional()?;
@@ -1064,7 +1573,7 @@ impl<'a> Repository<'a> {
     /// Get all addresses for an account
     pub fn get_all_addresses(&self, account_id: i64) -> Result<Vec<Address>> {
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, diversifier_index, address, address_type, label, created_at, color_tag FROM addresses 
+            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses 
              WHERE account_id = ?1 
              ORDER BY diversifier_index ASC",
         )?;
@@ -1072,24 +1581,69 @@ impl<'a> Repository<'a> {
         let addresses = stmt.query_map(
             [account_id],
             |row| {
-                let address_type_str: String = row.get(4).unwrap_or_else(|_| "Sapling".to_string());
+                let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
                 let address_type = match address_type_str.as_str() {
                     "Orchard" => crate::models::AddressType::Orchard,
                     _ => crate::models::AddressType::Sapling, // Default to Sapling
                 };
+                let address_scope_str: String = row.get(9).unwrap_or_else(|_| "external".to_string());
+                let address_scope = match address_scope_str.as_str() {
+                    "internal" => crate::models::AddressScope::Internal,
+                    _ => crate::models::AddressScope::External,
+                };
                 Ok(Address {
                     id: Some(row.get(0)?),
                     account_id: row.get(1)?,
-                    diversifier_index: row.get::<_, i64>(2)? as u32,
-                    address: row.get(3)?,
+                    key_id: row.get(2)?,
+                    diversifier_index: row.get::<_, i64>(3)? as u32,
+                    address: row.get(4)?,
                     address_type,
-                    label: row.get(5)?,
-                    created_at: row.get(6)?,
-                    color_tag: ColorTag::from_u8(row.get::<_, i64>(7)? as u8),
+                    label: row.get(6)?,
+                    created_at: row.get(7)?,
+                    color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
+                    address_scope,
                 })
             },
         )?
         .collect::<std::result::Result<Vec<Address>, rusqlite::Error>>()?;
+
+        Ok(addresses)
+    }
+
+    /// Get all addresses for a key group
+    pub fn get_addresses_by_key(&self, account_id: i64, key_id: i64) -> Result<Vec<Address>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses 
+             WHERE account_id = ?1 AND key_id = ?2
+             ORDER BY diversifier_index ASC",
+        )?;
+
+        let addresses = stmt
+            .query_map([account_id, key_id], |row| {
+                let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
+                let address_type = match address_type_str.as_str() {
+                    "Orchard" => crate::models::AddressType::Orchard,
+                    _ => crate::models::AddressType::Sapling,
+                };
+                let address_scope_str: String = row.get(9).unwrap_or_else(|_| "external".to_string());
+                let address_scope = match address_scope_str.as_str() {
+                    "internal" => crate::models::AddressScope::Internal,
+                    _ => crate::models::AddressScope::External,
+                };
+                Ok(Address {
+                    id: Some(row.get(0)?),
+                    account_id: row.get(1)?,
+                    key_id: row.get(2)?,
+                    diversifier_index: row.get::<_, i64>(3)? as u32,
+                    address: row.get(4)?,
+                    address_type,
+                    label: row.get(6)?,
+                    created_at: row.get(7)?,
+                    color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
+                    address_scope,
+                })
+            })?
+            .collect::<std::result::Result<Vec<Address>, rusqlite::Error>>()?;
 
         Ok(addresses)
     }
@@ -1134,10 +1688,10 @@ impl<'a> Repository<'a> {
         // Since account_id is encrypted, we need to decrypt all notes and filter
         // This is less efficient but necessary for maximum privacy
         let mut all_notes = self.db.conn().prepare(
-            "SELECT account_id, note_type, txid, height, value, spent, spent_txid, output_index, memo FROM notes ORDER BY height DESC, id DESC"
+            "SELECT account_id, note_type, txid, height, value, spent, spent_txid, output_index, memo, address_id, key_id FROM notes ORDER BY height DESC, id DESC"
         )?;
 
-        let notes: Vec<(Vec<u8>, String, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Option<Vec<u8>>, Vec<u8>, Option<Vec<u8>>)> = all_notes
+        let notes: Vec<(Vec<u8>, String, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Option<Vec<u8>>, Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>)> = all_notes
             .query_map([], |row| {
                 Ok((
                     row.get::<_, Vec<u8>>(0)?,  // encrypted account_id
@@ -1149,16 +1703,43 @@ impl<'a> Repository<'a> {
                     row.get::<_, Option<Vec<u8>>>(6)?,  // encrypted spent_txid
                     row.get::<_, Vec<u8>>(7)?,  // encrypted output_index
                     row.get::<_, Option<Vec<u8>>>(8)?,  // encrypted memo
+                    row.get::<_, Option<Vec<u8>>>(9)?,  // encrypted address_id
+                    row.get::<_, Option<Vec<u8>>>(10)?,  // encrypted key_id
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
+        let address_scopes: HashMap<i64, crate::models::AddressScope> = self
+            .get_all_addresses(account_id)?
+            .into_iter()
+            .filter_map(|addr| addr.id.map(|id| (id, addr.address_scope)))
+            .collect();
+
         // Group notes by transaction ID (after decrypting and filtering by account_id)
-        let mut tx_map: HashMap<String, (i64, i64, i64, Option<Vec<u8>>, bool)> = HashMap::new();
-        // Key: txid hex, Value: (height, total_received, total_sent, memo, has_confirmed_note)
+        struct TxAggregate {
+            height: i64,
+            received_external: i64,
+            received_internal: i64,
+            sent: i64,
+            memo: Option<Vec<u8>>,
+        }
+
+        impl TxAggregate {
+            fn new(height: i64) -> Self {
+                Self {
+                    height,
+                    received_external: 0,
+                    received_internal: 0,
+                    sent: 0,
+                    memo: None,
+                }
+            }
+        }
+
+        let mut tx_map: HashMap<String, TxAggregate> = HashMap::new();
 
         let mut seen: HashMap<(Vec<u8>, i64, crate::models::NoteType), bool> = HashMap::new();
-        for (enc_account_id, note_type_str, enc_txid, enc_height, enc_value, enc_spent, enc_spent_txid, enc_output_index, encrypted_memo) in notes {
+        for (enc_account_id, note_type_str, enc_txid, enc_height, enc_value, enc_spent, enc_spent_txid, enc_output_index, encrypted_memo, enc_address_id, _enc_key_id) in notes {
             // Decrypt all fields
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
             
@@ -1181,6 +1762,10 @@ impl<'a> Repository<'a> {
             let spent = self.decrypt_bool(&enc_spent)?;
             let memo = self.decrypt_optional_blob(encrypted_memo)?;
             let spent_txid = self.decrypt_optional_blob(enc_spent_txid)?;
+            let address_id = self.decrypt_optional_int64(enc_address_id)?;
+            let address_scope = address_id
+                .and_then(|id| address_scopes.get(&id).copied())
+                .unwrap_or(crate::models::AddressScope::External);
 
             let key = (txid_bytes.clone(), output_index, note_type);
             let mut process_incoming = false;
@@ -1205,16 +1790,23 @@ impl<'a> Repository<'a> {
 
             if process_incoming {
                 let txid_hex = hex::encode(&txid_bytes);
-                let entry = tx_map.entry(txid_hex.clone()).or_insert((height, 0, 0, None, height > 0));
+                let entry = tx_map.entry(txid_hex.clone()).or_insert_with(|| TxAggregate::new(height));
 
-                if height > entry.0 {
-                    entry.0 = height;
+                if height > entry.height {
+                    entry.height = height;
                 }
 
-                entry.1 = entry.1.saturating_add(value); // total_received
+                match address_scope {
+                    crate::models::AddressScope::Internal => {
+                        entry.received_internal = entry.received_internal.saturating_add(value);
+                    }
+                    crate::models::AddressScope::External => {
+                        entry.received_external = entry.received_external.saturating_add(value);
+                    }
+                }
 
-                if entry.3.is_none() && memo.is_some() {
-                    entry.3 = memo;
+                if entry.memo.is_none() && memo.is_some() {
+                    entry.memo = memo;
                 }
             }
 
@@ -1226,13 +1818,13 @@ impl<'a> Repository<'a> {
                 let entry_height = if spent_txid.is_some() { 0 } else { height };
                 let entry = tx_map
                     .entry(spend_txid_hex.clone())
-                    .or_insert((entry_height, 0, 0, None, entry_height > 0));
+                    .or_insert_with(|| TxAggregate::new(entry_height));
 
-                if entry.0 == 0 && entry_height > 0 {
-                    entry.0 = entry_height;
+                if entry.height == 0 && entry_height > 0 {
+                    entry.height = entry_height;
                 }
 
-                entry.2 = entry.2.saturating_add(value); // total_sent
+                entry.sent = entry.sent.saturating_add(value); // total_sent
             }
         }
 
@@ -1240,45 +1832,74 @@ impl<'a> Repository<'a> {
         let heights_map = self.get_transaction_heights(&txid_keys)?;
         let ts_map = self.get_transaction_timestamps(&txid_keys)?;
         let memo_map = self.get_transaction_memos(&txid_keys)?;
+        let fee_map = self.get_transaction_fees(&txid_keys)?;
 
         for (txid, entry) in tx_map.iter_mut() {
             if let Some(height) = heights_map.get(txid) {
                 if *height > 0 {
-                    entry.0 = *height;
+                    entry.height = *height;
                 }
             }
         }
 
         // Convert to TransactionRecord and calculate net amount
-        let mut transactions: Vec<TransactionRecord> = tx_map
-            .into_iter()
-            .map(|(txid, (height, received, sent, memo, _has_confirmed))| {
-                // Net amount: positive for receive, negative for send
-                let net_amount = received.saturating_sub(sent);
-                let memo = memo.or_else(|| memo_map.get(&txid).cloned());
-                
-                // Use stored transaction timestamp if available (first confirmation time).
-                // Fallback: current time (unconfirmed or not yet populated).
-                let timestamp = ts_map
-                    .get(&txid)
-                    .copied()
-                    .unwrap_or_else(|| chrono::Utc::now().timestamp());
+        let mut transactions: Vec<TransactionRecord> = Vec::new();
+        for (txid, entry) in tx_map.into_iter() {
+            // Net amount: positive for receive, negative for send
+            let total_received = entry
+                .received_external
+                .saturating_add(entry.received_internal);
+            let net_amount = total_received.saturating_sub(entry.sent);
+            let memo = entry.memo.or_else(|| memo_map.get(&txid).cloned());
 
-                TransactionRecord {
+            // Use stored transaction timestamp if available (first confirmation time).
+            // Fallback: current time (unconfirmed or not yet populated).
+            let timestamp = ts_map
+                .get(&txid)
+                .copied()
+                .unwrap_or_else(|| chrono::Utc::now().timestamp());
+
+            let fee = fee_map.get(&txid).copied().unwrap_or(0);
+            let fee_i64 = i64::try_from(fee).unwrap_or(i64::MAX);
+            let outgoing_amount = entry
+                .sent
+                .saturating_sub(entry.received_internal)
+                .saturating_sub(fee_i64);
+
+            if entry.received_external > 0 && outgoing_amount > 0 {
+                transactions.push(TransactionRecord {
+                    txid: txid.clone(),
+                    height: entry.height,
+                    timestamp,
+                    amount: -outgoing_amount,
+                    fee,
+                    memo: None,
+                });
+                transactions.push(TransactionRecord {
                     txid,
-                    height,
+                    height: entry.height,
+                    timestamp,
+                    amount: entry.received_external,
+                    fee: 0,
+                    memo,
+                });
+            } else {
+                transactions.push(TransactionRecord {
+                    txid,
+                    height: entry.height,
                     timestamp,
                     amount: net_amount,
-                    fee: 0, // Fee calculation requires transaction data; keep zero when unavailable
+                    fee,
                     memo,
-                }
-            })
-            .collect();
+                });
+            }
+        }
 
-        // Sort by height descending (newest first), then by txid for same height
+        // Sort by height descending (newest first), then by txid and amount
         transactions.sort_by(|a, b| {
             b.height.cmp(&a.height)
                 .then_with(|| b.txid.cmp(&a.txid))
+                .then_with(|| b.amount.cmp(&a.amount))
         });
 
         // Apply limit
@@ -1349,7 +1970,7 @@ impl<'a> Repository<'a> {
         // Since fields are encrypted, we need to decrypt all and filter
         // For efficiency with large datasets, this could be optimized with an index table
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo FROM notes",
+            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
         )?;
         
         let notes = stmt.query_map([], |row| {
@@ -1377,12 +1998,14 @@ impl<'a> Repository<'a> {
                 row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
                 row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
                 row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
+                row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
+                row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
             ))
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
         
         // Decrypt and filter in memory
-        for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo) in notes {
+        for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo, enc_address_id, enc_key_id) in notes {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
             let decrypted_txid = self.decrypt_blob(&enc_txid)?;
             let decrypted_output_index = self.decrypt_int64(&enc_output_index)?;
@@ -1392,6 +2015,7 @@ impl<'a> Repository<'a> {
                 return Ok(Some(NoteRecord {
                     id: Some(id),
                     account_id: decrypted_account_id,
+                    key_id: self.decrypt_optional_int64(enc_key_id)?,
                     note_type,
                     value: self.decrypt_int64(&enc_value)?,
                     nullifier: self.decrypt_blob(&enc_nullifier)?,
@@ -1400,6 +2024,7 @@ impl<'a> Repository<'a> {
                     height: self.decrypt_int64(&enc_height)?,
                     txid: decrypted_txid,
                     output_index: decrypted_output_index,
+                    address_id: self.decrypt_optional_int64(enc_address_id)?,
                     spent_txid: self.decrypt_optional_blob(enc_spent_txid)?,
                     diversifier: self.decrypt_optional_blob(enc_diversifier)?,
                     merkle_path: self.decrypt_optional_blob(enc_merkle_path)?,
@@ -1787,7 +2412,7 @@ impl<'a> Repository<'a> {
     ) -> Result<Vec<NoteRecord>> {
         // Since fields are encrypted, we need to decrypt all and filter
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo FROM notes",
+            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
         )?;
 
         let notes_data = stmt.query_map([], |row| {
@@ -1815,13 +2440,15 @@ impl<'a> Repository<'a> {
                 row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
                 row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
                 row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
+                row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
+                row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
             ))
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
         // Decrypt all notes and filter by account_id and txid
         let mut decrypted_notes = Vec::new();
-        for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo) in notes_data {
+        for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo, enc_address_id, enc_key_id) in notes_data {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
             let decrypted_txid = self.decrypt_blob(&enc_txid)?;
             
@@ -1830,6 +2457,7 @@ impl<'a> Repository<'a> {
                 decrypted_notes.push(NoteRecord {
                     id: Some(id),
                     account_id: decrypted_account_id,
+                    key_id: self.decrypt_optional_int64(enc_key_id)?,
                     note_type,
                     value: self.decrypt_int64(&enc_value)?,
                     nullifier: self.decrypt_blob(&enc_nullifier)?,
@@ -1838,6 +2466,7 @@ impl<'a> Repository<'a> {
                     height: self.decrypt_int64(&enc_height)?,
                     txid: decrypted_txid,
                     output_index: self.decrypt_int64(&enc_output_index)?,
+                    address_id: self.decrypt_optional_int64(enc_address_id)?,
                     spent_txid: self.decrypt_optional_blob(enc_spent_txid)?,
                     diversifier: self.decrypt_optional_blob(enc_diversifier)?,
                     merkle_path: self.decrypt_optional_blob(enc_merkle_path)?,
@@ -2011,6 +2640,7 @@ mod tests {
         let note = NoteRecord {
             id: None,
             account_id,
+            key_id: None,
             note_type: NoteType::Sapling,
             value: 1000,
             nullifier: vec![1, 2, 3],
@@ -2019,6 +2649,7 @@ mod tests {
             height: 100,
             txid: vec![7, 8, 9],
             output_index: 0,
+            address_id: None,
             spent_txid: None,
             diversifier: Some(b"diversifier11".to_vec()),
             merkle_path: Some(b"merkle_path_data".to_vec()),
@@ -2063,6 +2694,7 @@ mod tests {
         let note = NoteRecord {
             id: None,
             account_id,
+            key_id: None,
             note_type: NoteType::Sapling,
             value: 1000,
             nullifier: plaintext_nullifier.clone(),
@@ -2071,6 +2703,7 @@ mod tests {
             height: 100,
             txid: vec![7, 8, 9],
             output_index: 0,
+            address_id: None,
             spent_txid: None,
             diversifier: None,
             merkle_path: None,

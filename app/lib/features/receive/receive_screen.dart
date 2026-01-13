@@ -28,14 +28,18 @@ class ReceiveScreen extends ConsumerStatefulWidget {
 class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   late final TextEditingController _amountController;
   late final TextEditingController _memoController;
+  late final TextEditingController _searchController;
   late final TextInputFormatter _amountFormatter;
   final ScrollController _scrollController = ScrollController();
+  _AddressSort _addressSort = _AddressSort.newest;
+  String _addressQuery = '';
 
   @override
   void initState() {
     super.initState();
     _amountController = TextEditingController();
     _memoController = TextEditingController();
+    _searchController = TextEditingController();
     _amountFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
       final text = newValue.text;
       if (text.isEmpty) return newValue;
@@ -46,12 +50,14 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     });
     _amountController.addListener(_handleRequestInputChanged);
     _memoController.addListener(_handleRequestInputChanged);
+    _searchController.addListener(_handleSearchChanged);
   }
 
   @override
   void dispose() {
     _amountController.dispose();
     _memoController.dispose();
+    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -59,6 +65,14 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   void _handleRequestInputChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  void _handleSearchChanged() {
+    final next = _searchController.text;
+    if (next == _addressQuery) return;
+    if (mounted) {
+      setState(() => _addressQuery = next);
     }
   }
 
@@ -100,6 +114,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
               amount: amountText,
               memo: memoText,
             );
+      final addressHistory = _sortedAddresses(state.addressHistory);
 
       return PScaffold(
         appBar: const PAppBar(
@@ -364,11 +379,88 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                   ),
 
                   SizedBox(height: PSpacing.xl),
+                  PTextButton(
+                    label: 'Manage keys & addresses',
+                    leadingIcon: Icons.vpn_key_outlined,
+                    onPressed: () => context.push('/settings/keys'),
+                    variant: PTextButtonVariant.subtle,
+                  ),
+                  SizedBox(height: PSpacing.md),
 
                   // Address History Section
-                  Text(
-                    'Previous addresses',
-                    style: PTypography.heading3(),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Previous addresses',
+                          style: PTypography.heading3(),
+                        ),
+                      ),
+                      PopupMenuButton<_AddressSort>(
+                        onSelected: (value) =>
+                            setState(() => _addressSort = value),
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: _AddressSort.newest,
+                            child: Text('Newest to oldest'),
+                          ),
+                          PopupMenuItem(
+                            value: _AddressSort.oldest,
+                            child: Text('Oldest to newest'),
+                          ),
+                          PopupMenuItem(
+                            value: _AddressSort.balanceHigh,
+                            child: Text('Highest balance'),
+                          ),
+                          PopupMenuItem(
+                            value: _AddressSort.balanceLow,
+                            child: Text('Lowest balance'),
+                          ),
+                        ],
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: PSpacing.sm,
+                            vertical: PSpacing.xs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundSurface,
+                            borderRadius:
+                                BorderRadius.circular(PSpacing.radiusSM),
+                            border: Border.all(color: AppColors.borderSubtle),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.swap_vert,
+                                size: 16,
+                                color: AppColors.textSecondary,
+                              ),
+                              SizedBox(width: PSpacing.xs),
+                              Text(
+                                _sortLabel(_addressSort),
+                                style: PTypography.labelSmall(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: PSpacing.sm),
+                  PInput(
+                    controller: _searchController,
+                    hint: 'Search labels or addresses',
+                    prefixIcon: const Icon(Icons.search),
+                    textInputAction: TextInputAction.search,
+                    suffixIcon: _addressQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
                   ),
                   SizedBox(height: PSpacing.sm),
                   Text(
@@ -379,37 +471,55 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                   ),
                   SizedBox(height: PSpacing.md),
 
-                  // Address History List
-                  AddressHistoryList(
-                    addresses: state.addressHistory,
-                    onCopy: (address) => viewModel.copySpecificAddress(context, address),
-                    onLabel: (address) => _showLabelDialog(context, viewModel, address),
-                    onColorTag: (address) =>
-                        _showColorTagPicker(context, viewModel, address),
-                    onOpen: (address) => context.go('/activity'),
-                  ),
-                  if (state.addressHistory.length >= 6) ...[
-                    SizedBox(height: PSpacing.md),
-                    Center(
-                      child: PTextButton(
-                        label: 'Back to top',
-                        onPressed: () {
-                          if (_scrollController.hasClients) {
-                            _scrollController.animateTo(
-                              0,
-                              duration: const Duration(milliseconds: 250),
-                              curve: Curves.easeOut,
-                            );
-                          }
-                        },
-                        variant: PTextButtonVariant.subtle,
-                      ),
-                    ),
-                  ],
                 ]
               ]),
             ),
           ),
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                PSpacing.lg,
+                0,
+                PSpacing.lg,
+                PSpacing.lg,
+              ),
+              sliver: AddressHistorySliver(
+                addresses: addressHistory,
+                isFiltered: _addressQuery.trim().isNotEmpty,
+                onCopy: (address) =>
+                    viewModel.copySpecificAddress(context, address),
+                onLabel: (address) =>
+                    _showLabelDialog(context, viewModel, address),
+                onColorTag: (address) =>
+                    _showColorTagPicker(context, viewModel, address),
+                onOpen: (address) => context.go('/activity'),
+              ),
+            ),
+            if (addressHistory.length >= 6)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    PSpacing.lg,
+                    0,
+                    PSpacing.lg,
+                    PSpacing.lg,
+                  ),
+                  child: Center(
+                    child: PTextButton(
+                      label: 'Back to top',
+                      onPressed: () {
+                        if (_scrollController.hasClients) {
+                          _scrollController.animateTo(
+                            0,
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOut,
+                          );
+                        }
+                      },
+                      variant: PTextButtonVariant.subtle,
+                    ),
+                  ),
+                ),
+              ),
           ],
                 );
             } catch (e, stackTrace) {
@@ -636,4 +746,52 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       await viewModel.setAddressColorTag(address.address, selection);
     }
   }
+
+  List<AddressInfo> _sortedAddresses(List<AddressInfo> addresses) {
+    final query = _addressQuery.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? addresses
+        : addresses.where((address) {
+            final label = address.label?.toLowerCase() ?? '';
+            final addr = address.address.toLowerCase();
+            return label.contains(query) || addr.contains(query);
+          });
+    final sorted = List<AddressInfo>.from(filtered);
+    switch (_addressSort) {
+      case _AddressSort.newest:
+        sorted.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        break;
+      case _AddressSort.oldest:
+        sorted.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        break;
+      case _AddressSort.balanceHigh:
+        sorted.sort((a, b) => b.balance.compareTo(a.balance));
+        break;
+      case _AddressSort.balanceLow:
+        sorted.sort((a, b) => a.balance.compareTo(b.balance));
+        break;
+    }
+    return sorted;
+  }
+
+  String _sortLabel(_AddressSort sort) {
+    switch (sort) {
+      case _AddressSort.newest:
+        return 'Newest';
+      case _AddressSort.oldest:
+        return 'Oldest';
+      case _AddressSort.balanceHigh:
+        return 'Balance high';
+      case _AddressSort.balanceLow:
+        return 'Balance low';
+    }
+  }
 }
+
+enum _AddressSort {
+  newest,
+  oldest,
+  balanceHigh,
+  balanceLow,
+}
+

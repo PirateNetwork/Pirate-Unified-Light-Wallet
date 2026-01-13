@@ -38,6 +38,8 @@ futures = "0.3"
 sha2 = "0.10"
 orchard = { workspace = true }
 zcash_primitives = { workspace = true }
+zcash_client_backend = { workspace = true }
+bech32 = { workspace = true }
 rusqlite = { workspace = true }
 directories = "5.0"
 

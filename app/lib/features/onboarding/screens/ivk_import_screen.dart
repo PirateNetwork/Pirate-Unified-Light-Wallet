@@ -1,4 +1,4 @@
-/// IVK Import Screen - Create watch-only wallet from Incoming Viewing Key
+/// Viewing key import screen - create watch-only wallet from a viewing key
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,7 +16,7 @@ import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/providers/wallet_providers.dart';
 
-/// IVK import screen for creating watch-only wallets
+/// Viewing key import screen for creating watch-only wallets
 class IvkImportScreen extends ConsumerStatefulWidget {
   const IvkImportScreen({super.key});
 
@@ -26,7 +26,8 @@ class IvkImportScreen extends ConsumerStatefulWidget {
 
 class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
   final _nameController = TextEditingController(text: 'Watch-only wallet');
-  final _ivkController = TextEditingController();
+  final _saplingIvkController = TextEditingController();
+  final _orchardIvkController = TextEditingController();
   final _birthdayController = TextEditingController();
 
   bool _isImporting = false;
@@ -42,21 +43,24 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _ivkController.dispose();
+    _saplingIvkController.dispose();
+    _orchardIvkController.dispose();
     _birthdayController.dispose();
     super.dispose();
   }
 
   bool get _isValid {
+    final hasKey = _saplingIvkController.text.trim().isNotEmpty ||
+        _orchardIvkController.text.trim().isNotEmpty;
     return _nameController.text.trim().isNotEmpty &&
-           _ivkController.text.trim().isNotEmpty &&
+           hasKey &&
            _birthdayController.text.trim().isNotEmpty;
   }
 
-  Future<void> _pasteIvk() async {
+  Future<void> _pasteIvk(TextEditingController controller) async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     if (data?.text != null) {
-      _ivkController.text = data!.text!.trim();
+      controller.text = data!.text!.trim();
       setState(() {});
     }
   }
@@ -75,10 +79,17 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
         throw ArgumentError('Invalid birthday height');
       }
 
-      // Import IVK via FFI
+      final saplingKey = _saplingIvkController.text.trim();
+      final orchardKey = _orchardIvkController.text.trim();
+      if (saplingKey.isEmpty && orchardKey.isEmpty) {
+        throw ArgumentError('Enter a Sapling or Orchard viewing key');
+      }
+
+      // Import viewing key via FFI
       final walletId = await FfiBridge.importIvk(
         name: _nameController.text.trim(),
-        ivk: _ivkController.text.trim(),
+        saplingIvk: saplingKey.isEmpty ? null : saplingKey,
+        orchardIvk: orchardKey.isEmpty ? null : orchardKey,
         birthday: birthday,
       );
 
@@ -121,7 +132,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Import IVK',
+      title: 'Import Viewing Key',
       appBar: PAppBar(
         title: 'Import Viewing Key',
         subtitle: 'Create a watch-only wallet',
@@ -223,15 +234,29 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
 
             const SizedBox(height: AppSpacing.lg),
 
-            // IVK input
+            // Viewing key input
             PInput(
-              controller: _ivkController,
-              label: 'Incoming viewing key (IVK)',
-              hint: 'zxviews1...',
-              maxLines: 4,
+              controller: _saplingIvkController,
+              label: 'Sapling viewing key (optional)',
+              hint: 'Paste your Sapling viewing key',
+              maxLines: 3,
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste),
-                onPressed: _pasteIvk,
+                onPressed: () => _pasteIvk(_saplingIvkController),
+                tooltip: 'Paste from clipboard',
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.md),
+
+            PInput(
+              controller: _orchardIvkController,
+              label: 'Orchard viewing key (optional)',
+              hint: 'Paste your Orchard viewing key',
+              maxLines: 3,
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.content_paste),
+                onPressed: () => _pasteIvk(_orchardIvkController),
                 tooltip: 'Paste from clipboard',
               ),
             ),
@@ -302,7 +327,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'An IVK can view incoming activity but cannot spend. '
+                      'A viewing key can view incoming activity but cannot spend. '
                       'Keep your full seed backed up separately.',
                       style: AppTypography.caption.copyWith(
                         color: AppColors.textPrimary,
@@ -364,4 +389,3 @@ class _InfoRow extends StatelessWidget {
     );
   }
 }
-

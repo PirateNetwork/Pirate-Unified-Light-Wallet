@@ -8,7 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'frb_generated.dart';
 import 'models.dart';
 
-// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_book_entry_to_ffi`, `address_prefix_network_type_for_endpoint`, `address_prefix_network_type`, `app_passphrase`, `debug_log_path`, `decode_frontier_snapshot`, `delete_wallet_meta`, `derive_db_key`, `detect_network_from_endpoint`, `ensure_wallet_registry_loaded`, `ensure_wallet_registry_schema`, `force_store_sealed_db_key`, `get_registry_setting`, `get_wallet_meta`, `infer_key_network_type_from_addresses`, `load_salt`, `load_sealed_key`, `load_wallet_registry_activity`, `load_wallet_registry`, `log_orchard_address_samples`, `map_stage`, `maybe_store_sealed_db_key`, `open_encrypted_db_with_migration`, `open_wallet_db_for_active`, `open_wallet_db_for`, `open_wallet_db_with_passphrase`, `open_wallet_registry_with_passphrase`, `open_wallet_registry`, `orchard_activation_override`, `orchard_anchor_from_frontier_hex`, `parse_endpoint_url`, `parse_rfc3339_timestamp`, `persist_wallet_meta`, `rederive_wallet_keys_for_network`, `reencrypt_blob`, `reencrypt_optional_blob`, `reencrypt_wallet_tables`, `registry_master_key`, `reseal_registry_db_key`, `reseal_wallet_db_key`, `resolve_wallet_birthday_height`, `set_active_wallet_registry`, `set_registry_setting`, `should_generate_orchard`, `store_sealed_key`, `sync_status_inner`, `touch_wallet_last_synced`, `touch_wallet_last_used`, `try_unseal_db_key`, `wallet_base_dir`, `wallet_db_key_path`, `wallet_db_keys`, `wallet_db_path_for`, `wallet_db_salt_path`, `wallet_master_key`, `wallet_network_type`, `wallet_registry_key_path`, `wallet_registry_path`, `wallet_registry_salt_path`, `write_salt`
+// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_book_entry_to_ffi`, `address_prefix_network_type_for_endpoint`, `address_prefix_network_type`, `app_passphrase`, `build_tx_internal`, `debug_log_path`, `decode_frontier_snapshot`, `delete_wallet_meta`, `derive_db_key`, `detect_network_from_endpoint`, `encode_orchard_extsk`, `encode_sapling_xfvk_from_bytes`, `ensure_primary_account_key`, `ensure_wallet_registry_loaded`, `ensure_wallet_registry_schema`, `force_store_sealed_db_key`, `get_registry_setting`, `get_wallet_meta`, `infer_key_network_type_from_addresses`, `key_type_to_info`, `load_salt`, `load_sealed_key`, `load_wallet_registry_activity`, `load_wallet_registry`, `log_orchard_address_samples`, `map_stage`, `maybe_store_sealed_db_key`, `normalize_filter_ids`, `open_encrypted_db_with_migration`, `open_wallet_db_for`, `open_wallet_db_with_passphrase`, `open_wallet_registry_with_passphrase`, `open_wallet_registry`, `orchard_activation_override`, `orchard_anchor_from_frontier_hex`, `orchard_extsk_hrp_for_network`, `parse_endpoint_url`, `parse_rfc3339_timestamp`, `persist_wallet_meta`, `rederive_wallet_keys_for_network`, `reencrypt_blob`, `reencrypt_optional_blob`, `reencrypt_wallet_tables`, `registry_master_key`, `reseal_registry_db_key`, `reseal_wallet_db_key`, `resolve_spend_key_id`, `resolve_wallet_birthday_height`, `sapling_extfvk_hrp_for_network`, `sapling_extsk_hrp_for_network`, `set_active_wallet_registry`, `set_registry_setting`, `should_generate_orchard`, `sign_tx_internal`, `store_sealed_key`, `sync_status_inner`, `touch_wallet_last_synced`, `touch_wallet_last_used`, `try_unseal_db_key`, `validate_spendable_key`, `wallet_base_dir`, `wallet_db_key_path`, `wallet_db_keys`, `wallet_db_path_for`, `wallet_db_salt_path`, `wallet_master_key`, `wallet_network_type`, `wallet_registry_key_path`, `wallet_registry_path`, `wallet_registry_salt_path`, `write_salt`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `DECOY_VAULT`, `LIGHTD_ENDPOINTS`, `SEED_EXPORT`, `SYNC_SESSIONS`, `SyncSession`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`, `WalletRegistryActivity`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
 // These functions are ignored (category: IgnoreBecauseOwnerTyShouldIgnore): `default`
@@ -149,6 +149,12 @@ Future<void> setAddressColorTag(
 Future<List<AddressInfo>> listAddresses({required String walletId}) =>
     RustLib.instance.api.crateApiListAddresses(walletId: walletId);
 
+/// Get per-address balances for a wallet (optionally filtered by key group).
+Future<List<AddressBalanceInfo>> listAddressBalances(
+        {required String walletId, PlatformInt64? keyId}) =>
+    RustLib.instance.api
+        .crateApiListAddressBalances(walletId: walletId, keyId: keyId);
+
 /// List address book entries for a wallet
 Future<List<AddressBookEntryFfi>> listAddressBook({required String walletId}) =>
     RustLib.instance.api.crateApiListAddressBook(walletId: walletId);
@@ -159,7 +165,7 @@ Future<AddressBookEntryFfi> addAddressBookEntry(
         required String address,
         required String label,
         required AddressBookColorTag colorTag,
-        required Add}) =>
+        String? notes}) =>
     RustLib.instance.api.crateApiAddAddressBookEntry(
         walletId: walletId,
         address: address,
@@ -246,7 +252,7 @@ Future<List<AddressBookEntryFfi>> getRecentlyUsedAddresses(
     RustLib.instance.api
         .crateApiGetRecentlyUsedAddresses(walletId: walletId, limit: limit);
 
-/// Export Sapling extended full viewing key (xFVK) from full wallet.
+/// Export Sapling viewing key from full wallet.
 ///
 /// Uses the zxviews... Bech32 format for watch-only wallets.
 Future<String> exportIvk({required String walletId}) =>
@@ -256,32 +262,69 @@ Future<String> exportIvk({required String walletId}) =>
 ///
 /// Returns Bech32-encoded string with the network-specific HRP.
 /// Uses the standard Orchard viewing key export format.
-/// Use export_ivk() for Sapling xFVK (zxviews... format).
+/// Use export_ivk() for Sapling viewing keys (zxviews... format).
 Future<String> exportOrchardViewingKey({required String walletId}) =>
     RustLib.instance.api.crateApiExportOrchardViewingKey(walletId: walletId);
 
-/// Export Orchard IVK (returns hex-encoded 64 bytes) - DEPRECATED
+/// Export legacy Orchard viewing key (returns hex-encoded 64 bytes) - DEPRECATED
 ///
 /// Use export_orchard_viewing_key() instead for watch-only wallets.
 /// This method is kept for backward compatibility.
 Future<String> exportOrchardIvk({required String walletId}) =>
     RustLib.instance.api.crateApiExportOrchardIvk(walletId: walletId);
 
-/// Import incoming viewing key (watch-only wallet)
+/// Import viewing keys (watch-only wallet).
 ///
-/// Supports Sapling xFVK (zxviews...), Sapling IVK (zivks... or legacy zxviews1 hex),
-/// and Orchard extended viewing key (pirate-extended-viewing-key...) or Orchard IVK (64 bytes hex).
+/// Supports Sapling viewing keys (zxviews...) and Orchard extended viewing keys (bech32).
 /// If both are provided, creates a watch-only wallet that can view both Sapling and Orchard transactions.
 Future<String> importIvk(
         {required String name,
         required int birthday,
-        required int birthday,
-        String? saplingI}) =>
+        String? saplingIvk,
+        String? orchardIvk}) =>
     RustLib.instance.api.crateApiImportIvk(
         name: name,
         saplingIvk: saplingIvk,
         orchardIvk: orchardIvk,
         birthday: birthday);
+
+/// List key groups for the active wallet account.
+Future<List<KeyGroupInfo>> listKeyGroups({required String walletId}) =>
+    RustLib.instance.api.crateApiListKeyGroups(walletId: walletId);
+
+/// Export viewing/spending keys for a specific key group.
+Future<KeyExportInfo> exportKeyGroupKeys(
+        {required String walletId, required PlatformInt64 keyId}) =>
+    RustLib.instance.api
+        .crateApiExportKeyGroupKeys(walletId: walletId, keyId: keyId);
+
+/// List addresses for a specific key group.
+Future<List<KeyAddressInfo>> listAddressesForKey(
+        {required String walletId, required PlatformInt64 keyId}) =>
+    RustLib.instance.api
+        .crateApiListAddressesForKey(walletId: walletId, keyId: keyId);
+
+/// Generate a new address for a specific key group.
+Future<String> generateAddressForKey(
+        {required String walletId,
+        required PlatformInt64 keyId,
+        required bool useOrchard}) =>
+    RustLib.instance.api.crateApiGenerateAddressForKey(
+        walletId: walletId, keyId: keyId, useOrchard: useOrchard);
+
+/// Import a spending key into an existing wallet.
+Future<PlatformInt64> importSpendingKey(
+        {required String walletId,
+        required int birthdayHeight,
+        String? saplingKey,
+        String? orchardKey,
+        String? label}) =>
+    RustLib.instance.api.crateApiImportSpendingKey(
+        walletId: walletId,
+        saplingKey: saplingKey,
+        orchardKey: orchardKey,
+        label: label,
+        birthdayHeight: birthdayHeight);
 
 /// Export mnemonic seed (DANGEROUS - requires authentication)
 ///
@@ -297,15 +340,7 @@ Future<String> importIvk(
 Future<String> exportSeed({required String walletId}) =>
     RustLib.instance.api.crateApiExportSeed(walletId: walletId);
 
-/// Build transaction with note selection, fee calculation, and change
-///
-/// Validates:
-/// - All addresses are valid Sapling (zs1...)
-/// - All amounts are non-zero
-/// - All memos are valid UTF-8 and <= 512 bytes
-/// - Sufficient funds available
-///
-/// Returns PendingTx with fee, change, and input information
+/// Build transaction with note selection, fee calculation, and change.
 Future<PendingTx> buildTx(
         {required String walletId,
         required List<Output> outputs,
@@ -313,13 +348,80 @@ Future<PendingTx> buildTx(
     RustLib.instance.api
         .crateApiBuildTx(walletId: walletId, outputs: outputs, feeOpt: feeOpt);
 
-/// Sign pending transaction
-///
-/// Loads wallet from secure storage, performs note selection,
-/// generates Sapling proofs, and signs the transaction.
+/// Build transaction using notes from a specific key group.
+Future<PendingTx> buildTxForKey(
+        {required String walletId,
+        required PlatformInt64 keyId,
+        required List<Output> outputs,
+        BigInt? feeOpt}) =>
+    RustLib.instance.api.crateApiBuildTxForKey(
+        walletId: walletId, keyId: keyId, outputs: outputs, feeOpt: feeOpt);
+
+/// Build transaction using selected key groups or addresses.
+Future<PendingTx> buildTxFiltered(
+        {required String walletId,
+        required List<Output> outputs,
+        BigInt? feeOpt,
+        Int64List? keyIdsFilter,
+        Int64List? addressIdsFilter}) =>
+    RustLib.instance.api.crateApiBuildTxFiltered(
+        walletId: walletId,
+        outputs: outputs,
+        feeOpt: feeOpt,
+        keyIdsFilter: keyIdsFilter,
+        addressIdsFilter: addressIdsFilter);
+
+/// Build a consolidation transaction for a key group.
+Future<PendingTx> buildConsolidationTx(
+        {required String walletId,
+        required PlatformInt64 keyId,
+        required String targetAddress,
+        BigInt? feeOpt}) =>
+    RustLib.instance.api.crateApiBuildConsolidationTx(
+        walletId: walletId,
+        keyId: keyId,
+        targetAddress: targetAddress,
+        feeOpt: feeOpt);
+
+/// Build a sweep transaction from selected key groups or addresses.
+/// Sends the full available balance minus fee to the target address.
+Future<PendingTx> buildSweepTx(
+        {required String walletId,
+        required String targetAddress,
+        BigInt? feeOpt,
+        Int64List? keyIdsFilter,
+        Int64List? addressIdsFilter}) =>
+    RustLib.instance.api.crateApiBuildSweepTx(
+        walletId: walletId,
+        targetAddress: targetAddress,
+        feeOpt: feeOpt,
+        keyIdsFilter: keyIdsFilter,
+        addressIdsFilter: addressIdsFilter);
+
+/// Sign pending transaction (all spendable notes in the wallet)
 Future<SignedTx> signTx(
         {required String walletId, required PendingTx pending}) =>
     RustLib.instance.api.crateApiSignTx(walletId: walletId, pending: pending);
+
+/// Sign pending transaction using notes from a specific key group
+Future<SignedTx> signTxForKey(
+        {required String walletId,
+        required PendingTx pending,
+        required PlatformInt64 keyId}) =>
+    RustLib.instance.api.crateApiSignTxForKey(
+        walletId: walletId, pending: pending, keyId: keyId);
+
+/// Sign pending transaction using selected key groups or addresses.
+Future<SignedTx> signTxFiltered(
+        {required String walletId,
+        required PendingTx pending,
+        Int64List? keyIdsFilter,
+        Int64List? addressIdsFilter}) =>
+    RustLib.instance.api.crateApiSignTxFiltered(
+        walletId: walletId,
+        pending: pending,
+        keyIdsFilter: keyIdsFilter,
+        addressIdsFilter: addressIdsFilter);
 
 /// Broadcast signed transaction to the network
 ///
@@ -564,11 +666,11 @@ Future<BigInt?> getSeedClipboardRemaining() =>
 Future<SeedExportWarnings> getSeedExportWarnings() =>
     RustLib.instance.api.crateApiGetSeedExportWarnings();
 
-/// Export Sapling xFVK from full wallet (for creating watch-only on another device)
+/// Export Sapling viewing key from full wallet (for creating watch-only on another device)
 Future<String> exportIvkSecure({required String walletId}) =>
     RustLib.instance.api.crateApiExportIvkSecure(walletId: walletId);
 
-/// Import IVK to create watch-only wallet
+/// Import viewing key to create watch-only wallet
 Future<String> importIvkAsWatchOnly(
         {required String name,
         required String ivk,
@@ -585,7 +687,7 @@ Future<WatchOnlyCapabilitiesInfo> getWatchOnlyCapabilities(
 Future<WatchOnlyBannerInfo?> getWatchOnlyBanner({required String walletId}) =>
     RustLib.instance.api.crateApiGetWatchOnlyBanner(walletId: walletId);
 
-/// Check if IVK clipboard should be cleared
+/// Check if viewing key clipboard should be cleared
 Future<BigInt?> getIvkClipboardRemaining() =>
     RustLib.instance.api.crateApiGetIvkClipboardRemaining();
 

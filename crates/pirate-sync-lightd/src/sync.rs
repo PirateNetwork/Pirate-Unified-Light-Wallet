@@ -39,10 +39,12 @@ use pirate_storage_sqlite::{
     SyncStateStorage, truncate_above_height,
 };
 use pirate_storage_sqlite::repository::OrchardNoteRef;
+use pirate_storage_sqlite::models::{AccountKey, AddressScope, KeyScope, KeyType};
 use pirate_storage_sqlite::security::MasterKey;
-use pirate_core::keys::{ExtendedSpendingKey, ExtendedFullViewingKey, OrchardExtendedSpendingKey, OrchardExtendedFullViewingKey};
+use pirate_core::keys::{ExtendedSpendingKey, ExtendedFullViewingKey, OrchardExtendedSpendingKey, OrchardExtendedFullViewingKey, PaymentAddress as PiratePaymentAddress, OrchardPaymentAddress as PirateOrchardPaymentAddress};
 use pirate_core::transaction::PirateNetwork;
 use pirate_params::consensus::ConsensusParams;
+use pirate_params::NetworkType;
 use group::ff::PrimeField;
 use hex;
 use subtle::CtOption;
@@ -61,7 +63,7 @@ use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::merkle_tree::{read_frontier_v0, read_frontier_v1, write_merkle_path};
 use zcash_primitives::sapling::note_encryption::{try_sapling_output_recovery, SaplingDomain};
 use zcash_primitives::sapling::keys::{OutgoingViewingKey as SaplingOutgoingViewingKey, PreparedIncomingViewingKey};
-use zcash_primitives::sapling::{Rseed, SaplingIvk};
+use zcash_primitives::sapling::{PaymentAddress as SaplingPaymentAddress, Rseed, SaplingIvk};
 use zcash_primitives::transaction::Transaction;
 
 fn debug_log_path() -> PathBuf {
@@ -76,6 +78,53 @@ fn debug_log_path() -> PathBuf {
         let _ = std::fs::create_dir_all(parent);
     }
     path
+}
+
+fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKeyGroup>> {
+    let key_id = key.id.unwrap_or(0);
+
+    let sapling_dfvk = if let Some(ref bytes) = key.sapling_dfvk {
+        ExtendedFullViewingKey::from_bytes(bytes)
+    } else if let Some(ref extsk_bytes) = key.sapling_extsk {
+        let extsk = ExtendedSpendingKey::from_bytes(extsk_bytes)
+            .map_err(|e| Error::Sync(format!("Invalid Sapling spending key bytes: {}", e)))?;
+        Some(extsk.to_extended_fvk())
+    } else {
+        None
+    };
+
+    let orchard_fvk = if let Some(ref bytes) = key.orchard_fvk {
+        OrchardExtendedFullViewingKey::from_bytes(bytes).ok()
+    } else if let Some(ref extsk_bytes) = key.orchard_extsk {
+        let extsk = OrchardExtendedSpendingKey::from_bytes(extsk_bytes)
+            .map_err(|e| Error::Sync(format!("Invalid Orchard spending key bytes: {}", e)))?;
+        Some(extsk.to_extended_fvk())
+    } else {
+        None
+    };
+
+    if sapling_dfvk.is_none() && orchard_fvk.is_none() {
+        return Ok(None);
+    }
+
+    let sapling_ivk = sapling_dfvk
+        .as_ref()
+        .map(|dfvk| dfvk.to_ivk().to_sapling_ivk_bytes());
+    let orchard_ivk = orchard_fvk
+        .as_ref()
+        .map(|fvk| fvk.to_ivk_bytes());
+    let sapling_ovk = sapling_dfvk.as_ref().map(|dfvk| dfvk.outgoing_viewing_key());
+    let orchard_ovk = orchard_fvk.as_ref().map(|fvk| fvk.to_ovk());
+
+    Ok(Some(WalletKeyGroup {
+        key_id,
+        sapling_dfvk,
+        orchard_fvk,
+        sapling_ivk,
+        orchard_ivk,
+        sapling_ovk,
+        orchard_ovk,
+    }))
 }
 
 /// Sync configuration
@@ -156,9 +205,10 @@ pub struct SyncEngine {
     progress: Arc<RwLock<SyncProgress>>,
     config: SyncConfig,
     birthday_height: u32,
+    network_type: NetworkType,
     wallet_id: Option<String>,
     storage: Option<StorageSink>,
-    keys: Option<WalletKeys>,
+    keys: Vec<WalletKeyGroup>,
     nullifier_cache: HashMap<[u8; 32], i64>,
     nullifier_cache_loaded: bool,
     /// Sapling frontier for witness tree management
@@ -198,9 +248,10 @@ impl SyncEngine {
             progress: Arc::new(RwLock::new(SyncProgress::new())),
             config,
             birthday_height,
+            network_type: NetworkType::Mainnet,
             wallet_id: None,
             storage: None,
-            keys: None,
+            keys: Vec::new(),
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
@@ -282,9 +333,10 @@ impl SyncEngine {
             progress: Arc::new(RwLock::new(SyncProgress::new())),
             config,
             birthday_height,
+            network_type: NetworkType::Mainnet,
             wallet_id: None,
             storage: None,
-            keys: None,
+            keys: Vec::new(),
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
@@ -311,9 +363,10 @@ impl SyncEngine {
             progress: Arc::new(RwLock::new(SyncProgress::new())),
             config,
             birthday_height,
+            network_type: NetworkType::Mainnet,
             wallet_id: None,
             storage: None,
-            keys: None,
+            keys: Vec::new(),
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
@@ -352,8 +405,10 @@ impl SyncEngine {
         wallet_id: String,
         key: EncryptionKey,
         master_key: MasterKey,
+        network_type: NetworkType,
     ) -> Result<Self> {
         self.wallet_id = Some(wallet_id.clone());
+        self.network_type = network_type;
 
         let db_path = wallet_db_path(&wallet_id)?;
         let db = Database::open(&db_path, &key, master_key.clone())?;
@@ -364,66 +419,66 @@ impl SyncEngine {
             .get_wallet_secret(&wallet_id)?
             .ok_or_else(|| Error::Sync(format!("Wallet secret not found for {}", wallet_id)))?;
 
-        // Derive keys (extsk + dfvk + orchard_fvk) or handle watch-only
-        let keys = if !secret.extsk.is_empty() {
-            // Full wallet - derive from spending keys
-            let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
-                .map_err(|e| Error::Sync(format!("Invalid spending key bytes: {}", e)))?;
-            let dfvk = if let Some(dfvk_bytes) = secret.dfvk.as_ref() {
-                ExtendedFullViewingKey::from_bytes(dfvk_bytes)
-                    .ok_or_else(|| Error::Sync("Invalid DFVK bytes".to_string()))?
+        let mut account_keys = repo.get_account_keys(secret.account_id)?;
+        if account_keys.is_empty() {
+            let sapling_dfvk_bytes = if let Some(ref bytes) = secret.dfvk {
+                Some(bytes.clone())
+            } else if !secret.extsk.is_empty() {
+                let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
+                    .map_err(|e| Error::Sync(format!("Invalid spending key bytes: {}", e)))?;
+                Some(extsk.to_extended_fvk().to_bytes())
             } else {
-                extsk.to_extended_fvk()
+                None
             };
 
-            // Derive Orchard FVK if Orchard key is available
-            let orchard_fvk = if let Some(orchard_extsk_bytes) = secret.orchard_extsk.as_ref() {
-                let orchard_extsk = OrchardExtendedSpendingKey::from_bytes(orchard_extsk_bytes)
+            let orchard_fvk_bytes = if let Some(ref extsk_bytes) = secret.orchard_extsk {
+                let extsk = OrchardExtendedSpendingKey::from_bytes(extsk_bytes)
                     .map_err(|e| Error::Sync(format!("Invalid Orchard spending key bytes: {}", e)))?;
-                Some(orchard_extsk.to_extended_fvk())
-            } else if let Some(fvk_bytes) = secret.orchard_ivk.as_ref().filter(|b| b.len() == 137) {
-                OrchardExtendedFullViewingKey::from_bytes(fvk_bytes).ok()
+                Some(extsk.to_extended_fvk().to_bytes())
             } else {
-                None
+                secret
+                    .orchard_ivk
+                    .as_ref()
+                    .filter(|b| b.len() == 137)
+                    .cloned()
             };
-            
-            Some(WalletKeys { 
-                sapling_dfvk: Some(dfvk),
-                orchard_fvk,
-            })
-        } else {
-            // Watch-only wallet - prefer stored DFVK/FVK if available
-            let sapling_dfvk = secret
-                .dfvk
-                .as_ref()
-                .and_then(|dfvk_bytes| ExtendedFullViewingKey::from_bytes(dfvk_bytes));
-            let orchard_fvk = secret
-                .orchard_ivk
-                .as_ref()
-                .and_then(|bytes| if bytes.len() == 137 {
-                    OrchardExtendedFullViewingKey::from_bytes(bytes).ok()
-                } else {
-                    None
-                });
 
-            if sapling_dfvk.is_some() || orchard_fvk.is_some() {
-                Some(WalletKeys {
-                    sapling_dfvk,
-                    orchard_fvk,
-                })
-            } else {
-                None
+            let fallback_key = AccountKey {
+                id: None,
+                account_id: secret.account_id,
+                key_type: if secret.extsk.is_empty() { KeyType::ImportView } else { KeyType::Seed },
+                key_scope: KeyScope::Account,
+                label: None,
+                birthday_height: 0,
+                created_at: chrono::Utc::now().timestamp(),
+                spendable: !secret.extsk.is_empty(),
+                sapling_extsk: if secret.extsk.is_empty() { None } else { Some(secret.extsk.clone()) },
+                sapling_dfvk: sapling_dfvk_bytes,
+                orchard_extsk: secret.orchard_extsk.clone(),
+                orchard_fvk: orchard_fvk_bytes,
+                encrypted_mnemonic: secret.encrypted_mnemonic.clone(),
+            };
+            let encrypted_key = repo.encrypt_account_key_fields(&fallback_key)?;
+            let _ = repo.upsert_account_key(&encrypted_key)?;
+            account_keys = repo.get_account_keys(secret.account_id)?;
+        }
+
+        let mut key_groups = Vec::new();
+        for key in &account_keys {
+            if let Some(group) = build_key_group_from_account_key(key)? {
+                key_groups.push(group);
             }
-        };
+        }
 
         let sink = StorageSink {
             db_path,
             key,
             master_key,
             account_id: secret.account_id,
+            network_type: self.network_type,
         };
         self.storage = Some(sink);
-        self.keys = keys;
+        self.keys = key_groups;
         Ok(self)
     }
 
@@ -1317,9 +1372,8 @@ impl SyncEngine {
                 let max_money = ConsensusParams::mainnet().max_money;
                 let require_orchard_nullifier = self
                     .keys
-                    .as_ref()
-                    .and_then(|keys| keys.orchard_fvk.as_ref())
-                    .is_some();
+                    .iter()
+                    .any(|keys| keys.orchard_fvk.is_some());
                 let mut filtered_value = 0usize;
                 let mut filtered_nullifier = 0usize;
                 notes.retain(|note| {
@@ -1798,84 +1852,61 @@ impl SyncEngine {
     }
 
     async fn trial_decrypt_batch(&self, blocks: &[CompactBlockData]) -> Result<Vec<DecryptedNote>> {
-        // Get IVKs from wallet keys for trial decryption (both Sapling and Orchard)
-        let mut sapling_ivk_bytes = None;
-        let mut orchard_ivk_bytes = None;
-        let mut orchard_fvk_inner = None;
+        // Build IVK bundles from all key groups.
+        let mut sapling_ivks = Vec::new();
+        let mut sapling_key_ids = Vec::new();
+        let mut sapling_scopes = Vec::new();
+        let mut orchard_ivks = Vec::new();
+        let mut orchard_key_ids = Vec::new();
+        let mut orchard_scopes = Vec::new();
+        let mut orchard_fvks = Vec::new();
 
-        if let Some(ref keys) = self.keys {
-            if let Some(ref dfvk) = keys.sapling_dfvk {
-                let sapling_ivk = dfvk.to_ivk();
-                sapling_ivk_bytes = Some(sapling_ivk.to_sapling_ivk_bytes());
+        for key in &self.keys {
+            if let Some(ivk_bytes) = key.sapling_ivk {
+                if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(&ivk_bytes)) {
+                    let sapling_ivk = SaplingIvk(ivk_fr);
+                    sapling_ivks.push(PreparedIncomingViewingKey::new(&sapling_ivk));
+                    sapling_key_ids.push(key.key_id);
+                    sapling_scopes.push(AddressScope::External);
+                }
             }
 
-            if let Some(ref fvk) = keys.orchard_fvk {
-                orchard_ivk_bytes = Some(fvk.to_ivk_bytes());
-                orchard_fvk_inner = Some(fvk.inner.clone());
+            if let Some(dfvk) = key.sapling_dfvk.as_ref() {
+                let internal_ivk_bytes = dfvk.to_internal_ivk_bytes();
+                if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(&internal_ivk_bytes)) {
+                    let sapling_ivk = SaplingIvk(ivk_fr);
+                    sapling_ivks.push(PreparedIncomingViewingKey::new(&sapling_ivk));
+                    sapling_key_ids.push(key.key_id);
+                    sapling_scopes.push(AddressScope::Internal);
+                }
             }
-        }
 
-        if let Some(ref sink) = self.storage {
-            if sapling_ivk_bytes.is_none() || orchard_ivk_bytes.is_none() || orchard_fvk_inner.is_none() {
-                let secret = {
-                    let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
-                    let repo = Repository::new(&db);
-                    let wallet_id = self
-                        .wallet_id
-                        .as_ref()
-                        .ok_or_else(|| Error::Sync("Wallet ID not set".to_string()))?;
-                    repo.get_wallet_secret(wallet_id)?
-                        .ok_or_else(|| Error::Sync("Wallet secret not found".to_string()))?
-                };
-
-                if sapling_ivk_bytes.is_none() {
-                    sapling_ivk_bytes = secret.sapling_ivk.as_ref()
-                        .and_then(|ivk| {
-                            if ivk.len() == 32 {
-                                let mut bytes = [0u8; 32];
-                                bytes.copy_from_slice(&ivk[..32]);
-                                Some(bytes)
-                            } else {
-                                None
-                            }
-                        });
+            if let (Some(ivk_bytes), Some(fvk)) = (key.orchard_ivk, key.orchard_fvk.as_ref()) {
+                let ivk_ct = OrchardIncomingViewingKey::from_bytes(&ivk_bytes);
+                if bool::from(ivk_ct.is_some()) {
+                    let ivk = ivk_ct.unwrap();
+                    orchard_ivks.push(OrchardPreparedIncomingViewingKey::new(&ivk));
+                    orchard_key_ids.push(key.key_id);
+                    orchard_scopes.push(AddressScope::External);
+                    orchard_fvks.push(fvk.inner.clone());
                 }
+            }
 
-                if orchard_ivk_bytes.is_none() {
-                    orchard_ivk_bytes = secret.orchard_ivk.as_ref()
-                        .and_then(|ivk| {
-                            if ivk.len() == 64 {
-                                let mut bytes = [0u8; 64];
-                                bytes.copy_from_slice(&ivk[..64]);
-                                Some(bytes)
-                            } else if ivk.len() == 137 {
-                                OrchardExtendedFullViewingKey::from_bytes(ivk).ok()
-                                    .map(|fvk| fvk.to_ivk_bytes())
-                            } else {
-                                None
-                            }
-                        });
-                }
-
-                if orchard_fvk_inner.is_none() {
-                    if let Some(bytes) = secret.orchard_extsk.as_ref() {
-                        if let Ok(extsk) = OrchardExtendedSpendingKey::from_bytes(bytes) {
-                            orchard_fvk_inner = Some(extsk.to_extended_fvk().inner.clone());
-                        }
-                    }
-                    if orchard_fvk_inner.is_none() {
-                        if let Some(bytes) = secret.orchard_ivk.as_ref().filter(|b| b.len() == 137) {
-                            if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(bytes) {
-                                orchard_fvk_inner = Some(fvk.inner.clone());
-                            }
-                        }
-                    }
+            if let Some(fvk) = key.orchard_fvk.as_ref() {
+                let internal_ivk_bytes = fvk.to_internal_ivk_bytes();
+                let ivk_ct = OrchardIncomingViewingKey::from_bytes(&internal_ivk_bytes);
+                if bool::from(ivk_ct.is_some()) {
+                    let ivk = ivk_ct.unwrap();
+                    orchard_ivks.push(OrchardPreparedIncomingViewingKey::new(&ivk));
+                    orchard_key_ids.push(key.key_id);
+                    orchard_scopes.push(AddressScope::Internal);
+                    orchard_fvks.push(fvk.inner.clone());
                 }
             }
         }
 
-        let has_sapling_ivk = sapling_ivk_bytes.is_some();
-        let has_orchard_ivk = orchard_ivk_bytes.is_some();
+        let has_sapling_ivk = !sapling_ivks.is_empty();
+        let has_orchard_ivk = !orchard_ivks.is_empty();
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -1918,9 +1949,13 @@ impl SyncEngine {
 
         let all_notes = trial_decrypt_batch_impl(
             blocks,
-            sapling_ivk_bytes.as_ref(),
-            orchard_ivk_bytes.as_ref(),
-            orchard_fvk_inner.as_ref(),
+            &sapling_ivks,
+            &sapling_key_ids,
+            &sapling_scopes,
+            &orchard_ivks,
+            &orchard_key_ids,
+            &orchard_scopes,
+            &orchard_fvks,
             self.decrypt_pool.as_ref(),
             self.config.max_parallel_decrypt,
         )?;
@@ -2136,33 +2171,18 @@ impl SyncEngine {
         client: LightClient,
         sink: StorageSink,
         wallet_id: Option<String>,
-        keys: Option<WalletKeys>,
+        keys: Vec<WalletKeyGroup>,
         max_parallel: usize,
         notes: &mut [DecryptedNote],
         require_memos: bool,
     ) -> Result<()> {
-
-        let mut sapling_ivk_bytes = None;
-        let mut orchard_ivk_bytes = None;
-        let mut sapling_ovk = None;
-        let mut orchard_ovk = None;
-        let mut orchard_fvk = None;
-
-        if let Some(ref wallet_keys) = keys {
-            if let Some(ref dfvk) = wallet_keys.sapling_dfvk {
-                let sapling_ivk = dfvk.to_ivk();
-                sapling_ivk_bytes = Some(sapling_ivk.to_sapling_ivk_bytes());
-                sapling_ovk = Some(dfvk.outgoing_viewing_key());
-            }
-
-            if let Some(ref fvk) = wallet_keys.orchard_fvk {
-                orchard_ivk_bytes = Some(fvk.to_ivk_bytes());
-                orchard_ovk = Some(fvk.to_ovk());
-                orchard_fvk = Some(fvk.inner.clone());
-            }
+        let mut key_index_by_id: HashMap<i64, usize> = HashMap::new();
+        for (idx, key) in keys.iter().enumerate() {
+            key_index_by_id.insert(key.key_id, idx);
         }
 
-        if sapling_ivk_bytes.is_none() || orchard_ivk_bytes.is_none() || orchard_fvk.is_none() {
+        let mut fallback_group = keys.first().cloned();
+        if fallback_group.is_none() {
             let secret = {
                 let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
                 let repo = Repository::new(&db);
@@ -2173,36 +2193,43 @@ impl SyncEngine {
                     .ok_or_else(|| Error::Sync("Wallet secret not found".to_string()))?
             };
 
-            if sapling_ivk_bytes.is_none() {
-                if let Some(ivk) = secret.sapling_ivk {
-                    if ivk.len() == 32 {
-                        let mut bytes = [0u8; 32];
-                        bytes.copy_from_slice(&ivk[..32]);
-                        sapling_ivk_bytes = Some(bytes);
-                    }
+            let mut fallback = WalletKeyGroup {
+                key_id: 0,
+                sapling_dfvk: None,
+                orchard_fvk: None,
+                sapling_ivk: None,
+                orchard_ivk: None,
+                sapling_ovk: None,
+                orchard_ovk: None,
+            };
+
+            if let Some(ivk) = secret.sapling_ivk {
+                if ivk.len() == 32 {
+                    let mut bytes = [0u8; 32];
+                    bytes.copy_from_slice(&ivk[..32]);
+                    fallback.sapling_ivk = Some(bytes);
                 }
             }
 
             if let Some(ivk) = secret.orchard_ivk {
                 if ivk.len() == 64 {
-                    if orchard_ivk_bytes.is_none() {
-                        let mut bytes = [0u8; 64];
-                        bytes.copy_from_slice(&ivk[..64]);
-                        orchard_ivk_bytes = Some(bytes);
-                    }
+                    let mut bytes = [0u8; 64];
+                    bytes.copy_from_slice(&ivk[..64]);
+                    fallback.orchard_ivk = Some(bytes);
                 } else if ivk.len() == 137 {
                     if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(&ivk) {
-                        if orchard_ivk_bytes.is_none() {
-                            orchard_ivk_bytes = Some(fvk.to_ivk_bytes());
-                        }
-                        if orchard_ovk.is_none() {
-                            orchard_ovk = Some(fvk.to_ovk());
-                        }
-                        if orchard_fvk.is_none() {
-                            orchard_fvk = Some(fvk.inner.clone());
-                        }
+                        fallback.orchard_ivk = Some(fvk.to_ivk_bytes());
+                        fallback.orchard_ovk = Some(fvk.to_ovk());
+                        fallback.orchard_fvk = Some(fvk);
                     }
                 }
+            }
+
+            if fallback.sapling_ivk.is_some()
+                || fallback.orchard_ivk.is_some()
+                || fallback.orchard_fvk.is_some()
+            {
+                fallback_group = Some(fallback);
             }
         }
 
@@ -2215,11 +2242,31 @@ impl SyncEngine {
             .iter()
             .filter(|note| note.note_type == NoteType::Orchard)
             .count();
-        let has_sapling_ivk = sapling_ivk_bytes.is_some();
-        let has_orchard_ivk = orchard_ivk_bytes.is_some();
-        let has_sapling_ovk = sapling_ovk.is_some();
-        let has_orchard_ovk = orchard_ovk.is_some();
-        let has_orchard_fvk = orchard_fvk.is_some();
+        let has_sapling_ivk = keys.iter().any(|key| key.sapling_ivk.is_some())
+            || fallback_group
+                .as_ref()
+                .map(|key| key.sapling_ivk.is_some())
+                .unwrap_or(false);
+        let has_orchard_ivk = keys.iter().any(|key| key.orchard_ivk.is_some())
+            || fallback_group
+                .as_ref()
+                .map(|key| key.orchard_ivk.is_some())
+                .unwrap_or(false);
+        let has_sapling_ovk = keys.iter().any(|key| key.sapling_ovk.is_some())
+            || fallback_group
+                .as_ref()
+                .map(|key| key.sapling_ovk.is_some())
+                .unwrap_or(false);
+        let has_orchard_ovk = keys.iter().any(|key| key.orchard_ovk.is_some())
+            || fallback_group
+                .as_ref()
+                .map(|key| key.orchard_ovk.is_some())
+                .unwrap_or(false);
+        let has_orchard_fvk = keys.iter().any(|key| key.orchard_fvk.is_some())
+            || fallback_group
+                .as_ref()
+                .map(|key| key.orchard_fvk.is_some())
+                .unwrap_or(false);
 
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -2249,7 +2296,7 @@ impl SyncEngine {
             );
         }
 
-        if sapling_ivk_bytes.is_none() && orchard_ivk_bytes.is_none() {
+        if !has_sapling_ivk && !has_orchard_ivk {
             return Ok(());
         }
 
@@ -2271,11 +2318,18 @@ impl SyncEngine {
         let mut skipped_txid_len = 0usize;
 
         for (note_idx, note) in notes.iter_mut().enumerate() {
+            let key_group = note
+                .key_id
+                .and_then(|key_id| key_index_by_id.get(&key_id).and_then(|idx| keys.get(*idx)))
+                .or(fallback_group.as_ref());
             let orchard_nullifier_zero_local = note.note_type == NoteType::Orchard
                 && note.nullifier.iter().all(|b| *b == 0);
             if orchard_nullifier_zero_local {
                 orchard_nullifier_zero += 1;
-                if orchard_fvk.is_none() {
+                if key_group
+                    .and_then(|group| group.orchard_fvk.as_ref())
+                    .is_none()
+                {
                     orchard_nullifier_missing_fvk += 1;
                 }
             }
@@ -2318,7 +2372,10 @@ impl SyncEngine {
                 }
             }
 
-            let needs_orchard_nullifier = orchard_nullifier_zero_local && orchard_fvk.is_some();
+            let needs_orchard_nullifier = orchard_nullifier_zero_local
+                && key_group
+                    .and_then(|group| group.orchard_fvk.as_ref())
+                    .is_some();
             if needs_orchard_nullifier {
                 needs_tx = true;
             }
@@ -2374,6 +2431,14 @@ impl SyncEngine {
         let max_parallel = max_parallel.max(1);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_parallel));
         let fetch_start = Instant::now();
+        let sapling_ovk = keys
+            .iter()
+            .find_map(|key| key.sapling_ovk.as_ref())
+            .or_else(|| fallback_group.as_ref().and_then(|key| key.sapling_ovk.as_ref()));
+        let orchard_ovk = keys
+            .iter()
+            .find_map(|key| key.orchard_ovk.as_ref())
+            .or_else(|| fallback_group.as_ref().and_then(|key| key.orchard_ovk.as_ref()));
 
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -2481,6 +2546,10 @@ impl SyncEngine {
 
             for note_idx in work.indices {
                 let note = &mut notes[note_idx];
+                let key_group = note
+                    .key_id
+                    .and_then(|key_id| key_index_by_id.get(&key_id).and_then(|idx| keys.get(*idx)))
+                    .or(fallback_group.as_ref());
 
                 match note.note_type {
                     NoteType::Sapling => {
@@ -2488,7 +2557,9 @@ impl SyncEngine {
                             continue;
                         }
 
-                        if let Some(ref sapling_ivk) = sapling_ivk_bytes {
+                        if let Some(sapling_ivk) =
+                            key_group.and_then(|group| group.sapling_ivk.as_ref())
+                        {
                             match decrypt_memo_from_raw_tx_with_ivk_bytes(
                                 &raw_tx_bytes,
                                 note.output_index as usize,
@@ -2514,10 +2585,11 @@ impl SyncEngine {
                         }
                     }
                     NoteType::Orchard => {
-                        let orchard_ivk = match orchard_ivk_bytes.as_ref() {
-                            Some(ivk) => ivk,
-                            None => continue,
-                        };
+                        let orchard_ivk =
+                            match key_group.and_then(|group| group.orchard_ivk.as_ref()) {
+                                Some(ivk) => ivk,
+                                None => continue,
+                            };
                         let txid_prefix = if note.tx_hash.len() >= 4 {
                             hex::encode(&note.tx_hash[..4])
                         } else {
@@ -2571,9 +2643,11 @@ impl SyncEngine {
                                 }
 
                                 if note.nullifier.iter().all(|b| *b == 0) {
-                                    if let Some(ref fvk) = orchard_fvk {
+                                    if let Some(fvk) =
+                                        key_group.and_then(|group| group.orchard_fvk.as_ref())
+                                    {
                                         match orchard_nullifier_from_parts(
-                                            fvk,
+                                            &fvk.inner,
                                             decrypted.address,
                                             decrypted.value,
                                             decrypted.rho,
@@ -2712,8 +2786,8 @@ impl SyncEngine {
                     work.block.unwrap_or(0),
                     &txid_hex,
                     &sink,
-                    sapling_ovk.as_ref(),
-                    orchard_ovk.as_ref(),
+                    sapling_ovk,
+                    orchard_ovk,
                 ) {
                     tracing::warn!("Outgoing memo recovery failed: {}", e);
                 }
@@ -2769,7 +2843,7 @@ impl SyncEngine {
         };
 
         let mut orchard_ivk_bytes = None;
-        if let Some(ref keys) = self.keys {
+        if let Some(keys) = self.keys.first() {
             if let Some(ref fvk) = keys.orchard_fvk {
                 orchard_ivk_bytes = Some(fvk.to_ivk_bytes());
             }
@@ -3110,17 +3184,21 @@ impl SyncEngine {
         notes: &mut [DecryptedNote],
         position_mappings: &PositionMaps,
     ) -> Result<()> {
-        let keys = match self.keys.as_ref() {
-            Some(keys) => keys,
-            None => return Ok(()),
-        };
-        let dfvk = match keys.sapling_dfvk.as_ref() {
-            Some(dfvk) => dfvk,
-            None => return Ok(()),
-        };
+        if self.keys.is_empty() {
+            return Ok(());
+        }
 
-        let nk = dfvk.nullifier_deriving_key();
-        let sapling_ivk = dfvk.sapling_ivk();
+        let mut dfvk_by_id: HashMap<i64, ExtendedFullViewingKey> = HashMap::new();
+        for key in &self.keys {
+            if let Some(ref dfvk) = key.sapling_dfvk {
+                dfvk_by_id.insert(key.key_id, dfvk.clone());
+            }
+        }
+        if dfvk_by_id.is_empty() {
+            return Ok(());
+        }
+
+        let default_key_id = *dfvk_by_id.keys().next().unwrap_or(&0);
 
         for note in notes.iter_mut() {
             if note.note_type != NoteType::Sapling {
@@ -3129,6 +3207,18 @@ impl SyncEngine {
             if !note.nullifier.iter().all(|b| *b == 0) {
                 continue;
             }
+
+            let key_id = note.key_id.unwrap_or(default_key_id);
+            let dfvk = match dfvk_by_id.get(&key_id) {
+                Some(dfvk) => dfvk,
+                None => match dfvk_by_id.get(&default_key_id) {
+                    Some(dfvk) => dfvk,
+                    None => continue,
+                },
+            };
+
+            let nk = dfvk.nullifier_deriving_key();
+            let sapling_ivk = dfvk.sapling_ivk();
 
             let position = TxOutputKey::new(&note.tx_hash, note.output_index)
                 .and_then(|key| position_mappings.sapling_by_tx.get(&key).copied());
@@ -3565,6 +3655,43 @@ fn encode_orchard_note_bytes(
     out
 }
 
+
+fn decode_sapling_address_bytes_from_note_bytes(note_bytes: &[u8]) -> Option<[u8; 43]> {
+    if note_bytes.is_empty() {
+        return None;
+    }
+    let expected = 1 + 43;
+    if note_bytes.len() >= expected && note_bytes[0] == SAPLING_NOTE_BYTES_VERSION {
+        let mut address = [0u8; 43];
+        address.copy_from_slice(&note_bytes[1..44]);
+        return Some(address);
+    }
+    if note_bytes.len() >= 43 {
+        let mut address = [0u8; 43];
+        address.copy_from_slice(&note_bytes[0..43]);
+        return Some(address);
+    }
+    None
+}
+
+fn decode_orchard_address_bytes_from_note_bytes(note_bytes: &[u8]) -> Option<[u8; 43]> {
+    if note_bytes.is_empty() {
+        return None;
+    }
+    let expected = 1 + 43;
+    if note_bytes.len() >= expected && note_bytes[0] == ORCHARD_NOTE_BYTES_VERSION {
+        let mut address = [0u8; 43];
+        address.copy_from_slice(&note_bytes[1..44]);
+        return Some(address);
+    }
+    if note_bytes.len() >= 43 {
+        let mut address = [0u8; 43];
+        address.copy_from_slice(&note_bytes[0..43]);
+        return Some(address);
+    }
+    None
+}
+
 fn orchard_address_from_ivk_diversifier(
     ivk_bytes: &[u8; 64],
     diversifier: &[u8],
@@ -3707,6 +3834,7 @@ struct StorageSink {
     key: EncryptionKey,
     master_key: MasterKey,
     account_id: i64,
+    network_type: NetworkType,
 }
 
 impl Clone for StorageSink {
@@ -3717,6 +3845,7 @@ impl Clone for StorageSink {
             key: EncryptionKey::from_bytes(key_bytes),
             master_key: self.master_key.clone(),
             account_id: self.account_id,
+            network_type: self.network_type,
         }
     }
 }
@@ -3734,7 +3863,60 @@ impl StorageSink {
         let sync_state = SyncStateStorage::new(&db);
         let mut inserted: Vec<([u8; 32], i64)> = Vec::new();
 
-            for n in notes {
+        let derive_address_id = |note: &DecryptedNote, timestamp: i64| -> Result<Option<i64>> {
+            if note.note_bytes.is_empty() {
+                return Ok(None);
+            }
+            let address_string = match note.note_type {
+                crate::pipeline::NoteType::Sapling => {
+                    decode_sapling_address_bytes_from_note_bytes(&note.note_bytes)
+                        .and_then(|bytes| SaplingPaymentAddress::from_bytes(&bytes))
+                        .map(|addr| {
+                            PiratePaymentAddress { inner: addr }
+                                .encode_for_network(self.network_type)
+                        })
+                }
+                crate::pipeline::NoteType::Orchard => {
+                    decode_orchard_address_bytes_from_note_bytes(&note.note_bytes)
+                        .and_then(|bytes| {
+                            Option::from(OrchardAddress::from_raw_address_bytes(&bytes))
+                        })
+                        .and_then(|addr| {
+                            PirateOrchardPaymentAddress { inner: addr }
+                                .encode_for_network(self.network_type)
+                                .ok()
+                        })
+                }
+            };
+
+            let Some(address_string) = address_string else {
+                return Ok(None);
+            };
+
+            let address_type = match note.note_type {
+                crate::pipeline::NoteType::Sapling => pirate_storage_sqlite::models::AddressType::Sapling,
+                crate::pipeline::NoteType::Orchard => pirate_storage_sqlite::models::AddressType::Orchard,
+            };
+
+            let address_record = pirate_storage_sqlite::Address {
+                id: None,
+                key_id: note.key_id,
+                account_id: self.account_id,
+                diversifier_index: 0,
+                address: address_string.clone(),
+                address_type,
+                label: None,
+                created_at: timestamp,
+                color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+                address_scope: note.address_scope,
+            };
+            let _ = repo.upsert_address(&address_record);
+            Ok(repo
+                .get_address_by_string(self.account_id, &address_string)?
+                .and_then(|addr| addr.id))
+        };
+
+        for n in notes {
                 // Skip if we don't have essential fields
                 if n.txid.is_empty() {
                     continue;
@@ -3786,11 +3968,62 @@ impl StorageSink {
             // Upsert tx metadata (timestamp is used for transaction history UI).
             let _ = repo.upsert_transaction(&txid_hex, n.height as i64, timestamp, fee);
 
+            let address_id = derive_address_id(n, timestamp)?;
+
             if let Ok(Some(existing)) = repo.get_note_by_txid_and_index(self.account_id, &n.txid, n.output_index as i64) {
+                let mut updated = existing.clone();
+                let mut changed = false;
+
                 if existing.memo.is_none() {
                     if let Some(memo) = n.memo_bytes() {
-                        let _ = repo.update_note_memo(self.account_id, &n.txid, n.output_index as i64, Some(&memo));
+                        updated.memo = Some(memo.to_vec());
+                        changed = true;
                     }
+                }
+
+                if n.height > 0 && existing.height != n.height as i64 {
+                    updated.height = n.height as i64;
+                    changed = true;
+                }
+
+                if existing.address_id.is_none() {
+                    if let Some(id) = address_id {
+                        updated.address_id = Some(id);
+                        changed = true;
+                    }
+                }
+
+                if existing.note.is_none() && !n.note_bytes.is_empty() {
+                    updated.note = Some(n.note_bytes.clone());
+                    changed = true;
+                }
+
+                if existing.merkle_path.is_none() && !n.merkle_path.is_empty() {
+                    updated.merkle_path = Some(n.merkle_path.clone());
+                    changed = true;
+                }
+
+                if existing.anchor.is_none() {
+                    if let Some(anchor) = n.anchor {
+                        updated.anchor = Some(anchor.to_vec());
+                        changed = true;
+                    }
+                }
+
+                if existing.position.is_none() {
+                    if let Some(position) = n.position {
+                        updated.position = Some(position as i64);
+                        changed = true;
+                    }
+                }
+
+                if existing.key_id.is_none() && n.key_id.is_some() {
+                    updated.key_id = n.key_id;
+                    changed = true;
+                }
+
+                if changed {
+                    repo.update_note_by_id(&updated)?;
                 }
                 continue;
             }
@@ -3803,6 +4036,7 @@ impl StorageSink {
             let record = NoteRecord {
                 id: None,
                 account_id: self.account_id,
+                key_id: n.key_id,
                 note_type,
                 value: n.value as i64,
                 nullifier: n.nullifier.to_vec(),
@@ -3811,6 +4045,7 @@ impl StorageSink {
                 height: n.height as i64,
                 txid: n.txid.clone(),
                 output_index: n.output_index as i64,
+                address_id: address_id,
                 spent_txid: None,
                 diversifier: if !n.diversifier.is_empty() {
                     Some(n.diversifier.clone())
@@ -3989,9 +4224,14 @@ struct PositionMaps {
 
 /// Wallet keys cached for trial decryption
 #[derive(Clone)]
-struct WalletKeys {
+struct WalletKeyGroup {
+    key_id: i64,
     sapling_dfvk: Option<ExtendedFullViewingKey>,
     orchard_fvk: Option<OrchardExtendedFullViewingKey>,
+    sapling_ivk: Option<[u8; 32]>,
+    orchard_ivk: Option<[u8; 64]>,
+    sapling_ovk: Option<SaplingOutgoingViewingKey>,
+    orchard_ovk: Option<orchard::keys::OutgoingViewingKey>,
 }
 
 #[derive(Clone, Debug)]
@@ -4092,9 +4332,13 @@ where
 
 fn trial_decrypt_batch_impl(
     blocks: &[CompactBlockData],
-    sapling_ivk_bytes: Option<&[u8; 32]>,
-    orchard_ivk_bytes_opt: Option<&[u8; 64]>,
-    orchard_fvk: Option<&orchard::keys::FullViewingKey>,
+    sapling_ivks: &[PreparedIncomingViewingKey],
+    sapling_key_ids: &[i64],
+    sapling_scopes: &[AddressScope],
+    orchard_ivks: &[OrchardPreparedIncomingViewingKey],
+    orchard_key_ids: &[i64],
+    orchard_scopes: &[AddressScope],
+    orchard_fvks: &[orchard::keys::FullViewingKey],
     decrypt_pool: &rayon::ThreadPool,
     max_parallel: usize,
 ) -> Result<Vec<DecryptedNote>> {
@@ -4109,7 +4353,7 @@ fn trial_decrypt_batch_impl(
             let tx_index = tx.index.unwrap_or(tx_idx as u64) as usize;
             let tx_hash = tx.hash.clone();
 
-            if sapling_ivk_bytes.is_some() {
+            if !sapling_ivks.is_empty() {
                 for (output_idx, output) in tx.outputs.iter().enumerate() {
                     if output.cmu.len() != 32
                         || output.ephemeral_key.len() != 32
@@ -4136,7 +4380,7 @@ fn trial_decrypt_batch_impl(
                 }
             }
 
-            if orchard_ivk_bytes_opt.is_some() {
+            if !orchard_ivks.is_empty() {
                 for (action_idx, action) in tx.actions.iter().enumerate() {
                     if action.cmx.len() != 32
                         || action.nullifier.len() != 32
@@ -4189,93 +4433,91 @@ fn trial_decrypt_batch_impl(
 
     let mut notes = Vec::new();
 
-    if let Some(ivk_bytes) = sapling_ivk_bytes {
-        if !sapling_outputs.is_empty() {
-            if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(ivk_bytes)) {
-                let sapling_ivk = SaplingIvk(ivk_fr);
-                let prepared_ivk = PreparedIncomingViewingKey::new(&sapling_ivk);
-                let sapling_results = try_compact_note_decryption_parallel(
-                    decrypt_pool,
-                    std::slice::from_ref(&prepared_ivk),
-                    &sapling_outputs,
-                    max_parallel,
+    if !sapling_ivks.is_empty() && !sapling_outputs.is_empty() {
+        let sapling_results = try_compact_note_decryption_parallel(
+            decrypt_pool,
+            sapling_ivks,
+            &sapling_outputs,
+            max_parallel,
+        );
+
+        for (idx, result) in sapling_results.into_iter().enumerate() {
+            if let Some(((note, address), ivk_index)) = result {
+                let meta = &sapling_meta[idx];
+                let (leadbyte, rseed_bytes) = sapling_rseed_to_bytes(&note);
+                let value = note.value().inner();
+                let commitment = sapling_outputs[idx].1.cmu;
+                let key_id = sapling_key_ids.get(ivk_index).copied();
+                let scope = sapling_scopes
+                    .get(ivk_index)
+                    .copied()
+                    .unwrap_or(AddressScope::External);
+
+                let mut note_rec = DecryptedNote::new(
+                    meta.height,
+                    meta.tx_index,
+                    meta.output_index,
+                    value,
+                    commitment,
+                    [0u8; 32],
+                    Vec::new(),
                 );
-
-                for (idx, result) in sapling_results.into_iter().enumerate() {
-                    if let Some(((note, address), _)) = result {
-                        let meta = &sapling_meta[idx];
-                        let (leadbyte, rseed_bytes) = sapling_rseed_to_bytes(&note);
-                        let value = note.value().inner();
-                        let commitment = sapling_outputs[idx].1.cmu;
-
-                        let mut note_rec = DecryptedNote::new(
-                            meta.height,
-                            meta.tx_index,
-                            meta.output_index,
-                            value,
-                            commitment,
-                            [0u8; 32],
-                            Vec::new(),
-                        );
-                        note_rec.set_tx_hash(meta.tx_hash.clone());
-                        note_rec.diversifier = address.diversifier().0.to_vec();
-                        note_rec.sapling_rseed_leadbyte = Some(leadbyte);
-                        note_rec.sapling_rseed = Some(rseed_bytes);
-                        note_rec.note_bytes = encode_sapling_note_bytes(address, leadbyte, rseed_bytes);
-                        notes.push(note_rec);
-                    }
-                }
-            } else {
-                tracing::warn!("Invalid Sapling IVK bytes; skipping Sapling trial decryption");
+                note_rec.set_tx_hash(meta.tx_hash.clone());
+                note_rec.key_id = key_id;
+                note_rec.address_scope = scope;
+                note_rec.diversifier = address.diversifier().0.to_vec();
+                note_rec.sapling_rseed_leadbyte = Some(leadbyte);
+                note_rec.sapling_rseed = Some(rseed_bytes);
+                note_rec.note_bytes = encode_sapling_note_bytes(address, leadbyte, rseed_bytes);
+                notes.push(note_rec);
             }
         }
     }
 
-    if let Some(orchard_ivk_bytes) = orchard_ivk_bytes_opt {
-        if !orchard_outputs.is_empty() {
-            let ivk_ct = OrchardIncomingViewingKey::from_bytes(orchard_ivk_bytes);
-            if bool::from(ivk_ct.is_some()) {
-                let ivk = ivk_ct.unwrap();
-                let prepared_ivk = OrchardPreparedIncomingViewingKey::new(&ivk);
-                let orchard_results = try_compact_note_decryption_parallel(
-                    decrypt_pool,
-                    std::slice::from_ref(&prepared_ivk),
-                    &orchard_outputs,
-                    max_parallel,
+    if !orchard_ivks.is_empty() && !orchard_outputs.is_empty() {
+        let orchard_results = try_compact_note_decryption_parallel(
+            decrypt_pool,
+            orchard_ivks,
+            &orchard_outputs,
+            max_parallel,
+        );
+
+        for (idx, result) in orchard_results.into_iter().enumerate() {
+            if let Some(((note, address), ivk_index)) = result {
+                let meta = &orchard_meta[idx];
+                let value = note.value().inner();
+                let rho = note.rho().to_bytes();
+                let rseed = *note.rseed().as_bytes();
+                let commitment = meta.commitment;
+                let key_id = orchard_key_ids.get(ivk_index).copied();
+                let fvk = orchard_fvks.get(ivk_index);
+                let scope = orchard_scopes
+                    .get(ivk_index)
+                    .copied()
+                    .unwrap_or(AddressScope::External);
+
+                let mut note_rec = DecryptedNote::new_orchard(
+                    meta.height,
+                    meta.tx_index,
+                    meta.output_index,
+                    value,
+                    commitment,
+                    [0u8; 32],
+                    Vec::new(),
+                    None,
+                    Some(0),
                 );
-
-                for (idx, result) in orchard_results.into_iter().enumerate() {
-                    if let Some(((note, address), _)) = result {
-                        let meta = &orchard_meta[idx];
-                        let value = note.value().inner();
-                        let rho = note.rho().to_bytes();
-                        let rseed = *note.rseed().as_bytes();
-                        let commitment = meta.commitment;
-
-                        let mut note_rec = DecryptedNote::new_orchard(
-                            meta.height,
-                            meta.tx_index,
-                            meta.output_index,
-                            value,
-                            commitment,
-                            [0u8; 32],
-                            Vec::new(),
-                            None,
-                            Some(0),
-                        );
-                        note_rec.set_tx_hash(meta.tx_hash.clone());
-                        note_rec.diversifier = address.diversifier().as_array().to_vec();
-                        note_rec.orchard_rho = Some(rho);
-                        note_rec.orchard_rseed = Some(rseed);
-                        note_rec.note_bytes = encode_orchard_note_bytes(&address, rho, rseed);
-                        if let Some(fvk) = orchard_fvk {
-                            note_rec.nullifier = note.nullifier(fvk).to_bytes();
-                        }
-                        notes.push(note_rec);
-                    }
+                note_rec.set_tx_hash(meta.tx_hash.clone());
+                note_rec.key_id = key_id;
+                note_rec.address_scope = scope;
+                note_rec.diversifier = address.diversifier().as_array().to_vec();
+                note_rec.orchard_rho = Some(rho);
+                note_rec.orchard_rseed = Some(rseed);
+                note_rec.note_bytes = encode_orchard_note_bytes(&address, rho, rseed);
+                if let Some(fvk) = fvk {
+                    note_rec.nullifier = note.nullifier(fvk).to_bytes();
                 }
-            } else {
-                tracing::warn!("Invalid Orchard IVK bytes; skipping Orchard trial decryption");
+                notes.push(note_rec);
             }
         }
     }
@@ -4294,11 +4536,40 @@ fn trial_decrypt_block(
         .num_threads(1)
         .build()
         .expect("failed to build trial-decrypt thread pool");
+    let mut sapling_ivks = Vec::new();
+    let mut sapling_key_ids = Vec::new();
+    let mut sapling_scopes = Vec::new();
+    let mut orchard_ivks = Vec::new();
+    let mut orchard_key_ids = Vec::new();
+    let mut orchard_scopes = Vec::new();
+    let orchard_fvks = Vec::new();
+
+    if let Some(ivk_bytes) = sapling_ivk_bytes {
+        if let Some(ivk_fr) = Option::from(jubjub::Fr::from_bytes(ivk_bytes)) {
+            let sapling_ivk = SaplingIvk(ivk_fr);
+            sapling_ivks.push(PreparedIncomingViewingKey::new(&sapling_ivk));
+            sapling_key_ids.push(0);
+            sapling_scopes.push(AddressScope::External);
+        }
+    }
+    if let Some(ivk_bytes) = orchard_ivk_bytes_opt {
+        let ivk_ct = OrchardIncomingViewingKey::from_bytes(ivk_bytes);
+        if bool::from(ivk_ct.is_some()) {
+            let ivk = ivk_ct.unwrap();
+            orchard_ivks.push(OrchardPreparedIncomingViewingKey::new(&ivk));
+            orchard_key_ids.push(0);
+            orchard_scopes.push(AddressScope::External);
+        }
+    }
     trial_decrypt_batch_impl(
         std::slice::from_ref(block),
-        sapling_ivk_bytes,
-        orchard_ivk_bytes_opt,
-        None,
+        &sapling_ivks,
+        &sapling_key_ids,
+        &sapling_scopes,
+        &orchard_ivks,
+        &orchard_key_ids,
+        &orchard_scopes,
+        &orchard_fvks,
         &decrypt_pool,
         1,
     )

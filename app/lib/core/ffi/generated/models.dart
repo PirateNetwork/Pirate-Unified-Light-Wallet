@@ -8,6 +8,81 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'models.freezed.dart';
 
+/// Address balance info
+class AddressBalanceInfo {
+  /// Address string
+  final String address;
+
+  /// Total balance for this address
+  final BigInt balance;
+
+  /// Spendable balance for this address
+  final BigInt spendable;
+
+  /// Pending balance for this address
+  final BigInt pending;
+
+  /// Key group id that derived this address
+  final PlatformInt64? keyId;
+
+  /// Address row id
+  final PlatformInt64 addressId;
+
+  /// Optional label
+  final String? label;
+
+  /// Created timestamp (unix seconds)
+  final PlatformInt64 createdAt;
+
+  /// Color tag
+  final AddressBookColorTag colorTag;
+
+  /// Diversifier index
+  final int diversifierIndex;
+
+  const AddressBalanceInfo({
+    required this.address,
+    required this.balance,
+    required this.spendable,
+    required this.pending,
+    this.keyId,
+    required this.addressId,
+    this.label,
+    required this.createdAt,
+    required this.colorTag,
+    required this.diversifierIndex,
+  });
+
+  @override
+  int get hashCode =>
+      address.hashCode ^
+      balance.hashCode ^
+      spendable.hashCode ^
+      pending.hashCode ^
+      keyId.hashCode ^
+      addressId.hashCode ^
+      label.hashCode ^
+      createdAt.hashCode ^
+      colorTag.hashCode ^
+      diversifierIndex.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AddressBalanceInfo &&
+          runtimeType == other.runtimeType &&
+          address == other.address &&
+          balance == other.balance &&
+          spendable == other.spendable &&
+          pending == other.pending &&
+          keyId == other.keyId &&
+          addressId == other.addressId &&
+          label == other.label &&
+          createdAt == other.createdAt &&
+          colorTag == other.colorTag &&
+          diversifierIndex == other.diversifierIndex;
+}
+
 /// Color tag for address book entries
 enum AddressBookColorTag {
   none,
@@ -269,6 +344,178 @@ class BuildInfo {
           buildDate == other.buildDate &&
           rustVersion == other.rustVersion &&
           targetTriple == other.targetTriple;
+}
+
+/// Address info scoped to a key group
+class KeyAddressInfo {
+  /// Key group id
+  final PlatformInt64 keyId;
+
+  /// Address string
+  final String address;
+
+  /// Diversifier index
+  final int diversifierIndex;
+
+  /// Label
+  final String? label;
+
+  /// Created timestamp (unix seconds)
+  final PlatformInt64 createdAt;
+
+  /// Color tag
+  final AddressBookColorTag colorTag;
+
+  const KeyAddressInfo({
+    required this.keyId,
+    required this.address,
+    required this.diversifierIndex,
+    this.label,
+    required this.createdAt,
+    required this.colorTag,
+  });
+
+  @override
+  int get hashCode =>
+      keyId.hashCode ^
+      address.hashCode ^
+      diversifierIndex.hashCode ^
+      label.hashCode ^
+      createdAt.hashCode ^
+      colorTag.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is KeyAddressInfo &&
+          runtimeType == other.runtimeType &&
+          keyId == other.keyId &&
+          address == other.address &&
+          diversifierIndex == other.diversifierIndex &&
+          label == other.label &&
+          createdAt == other.createdAt &&
+          colorTag == other.colorTag;
+}
+
+/// Exported key material for a key group
+class KeyExportInfo {
+  /// Key group id
+  final PlatformInt64 keyId;
+
+  /// Sapling viewing key (xFVK) if available
+  final String? saplingViewingKey;
+
+  /// Orchard viewing key if available
+  final String? orchardViewingKey;
+
+  /// Sapling spending key if available
+  final String? saplingSpendingKey;
+
+  /// Orchard spending key if available
+  final String? orchardSpendingKey;
+
+  const KeyExportInfo({
+    required this.keyId,
+    this.saplingViewingKey,
+    this.orchardViewingKey,
+    this.saplingSpendingKey,
+    this.orchardSpendingKey,
+  });
+
+  @override
+  int get hashCode =>
+      keyId.hashCode ^
+      saplingViewingKey.hashCode ^
+      orchardViewingKey.hashCode ^
+      saplingSpendingKey.hashCode ^
+      orchardSpendingKey.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is KeyExportInfo &&
+          runtimeType == other.runtimeType &&
+          keyId == other.keyId &&
+          saplingViewingKey == other.saplingViewingKey &&
+          orchardViewingKey == other.orchardViewingKey &&
+          saplingSpendingKey == other.saplingSpendingKey &&
+          orchardSpendingKey == other.orchardSpendingKey;
+}
+
+/// Key group info for key management UI
+class KeyGroupInfo {
+  /// Key group id
+  final PlatformInt64 id;
+
+  /// Optional label
+  final String? label;
+
+  /// Key type
+  final KeyTypeInfo keyType;
+
+  /// Whether this key can spend
+  final bool spendable;
+
+  /// Sapling capability
+  final bool hasSapling;
+
+  /// Orchard capability
+  final bool hasOrchard;
+
+  /// Birthday height for this key
+  final PlatformInt64 birthdayHeight;
+
+  /// Created timestamp
+  final PlatformInt64 createdAt;
+
+  const KeyGroupInfo({
+    required this.id,
+    this.label,
+    required this.keyType,
+    required this.spendable,
+    required this.hasSapling,
+    required this.hasOrchard,
+    required this.birthdayHeight,
+    required this.createdAt,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      label.hashCode ^
+      keyType.hashCode ^
+      spendable.hashCode ^
+      hasSapling.hashCode ^
+      hasOrchard.hashCode ^
+      birthdayHeight.hashCode ^
+      createdAt.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is KeyGroupInfo &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          label == other.label &&
+          keyType == other.keyType &&
+          spendable == other.spendable &&
+          hasSapling == other.hasSapling &&
+          hasOrchard == other.hasOrchard &&
+          birthdayHeight == other.birthdayHeight &&
+          createdAt == other.createdAt;
+}
+
+/// Key group type for UI
+enum KeyTypeInfo {
+  /// Seed-derived key group
+  seed,
+
+  /// Imported spending key
+  importedSpending,
+
+  /// Imported viewing key
+  importedViewing,
+  ;
 }
 
 /// Network information

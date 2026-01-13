@@ -23,6 +23,7 @@ import '../../ui/atoms/p_icon_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_card.dart';
+import '../../ui/molecules/p_bottom_sheet.dart';
 import '../../ui/molecules/p_dialog.dart';
 import '../../ui/molecules/inline_explain.dart';
 import '../../ui/molecules/wallet_switcher.dart';
@@ -40,6 +41,9 @@ const int kMaxMemoBytes = 512;
 
 /// Maximum recipients per transaction
 const int kMaxRecipients = 50;
+
+/// Additional fee per extra output in arrrtoshis.
+const int kAdditionalOutputFeeArrrtoshis = 5000;
 
 class PiratePaymentRequest {
   final String address;
@@ -126,8 +130,8 @@ class OutputEntry {
         amountController = TextEditingController(),
         memoController = TextEditingController();
 
-  /// Get amount in zatoshis
-  int get zatoshis {
+  /// Get amount in arrrtoshis
+  int get arrrtoshis {
     final value = double.tryParse(amount) ?? 0;
     return (value * 100000000).round();
   }
@@ -162,6 +166,28 @@ enum SendStep {
   error,
 }
 
+enum FeePreset {
+  low,
+  standard,
+  high,
+  custom,
+}
+
+extension FeePresetLabel on FeePreset {
+  String get label {
+    switch (this) {
+      case FeePreset.low:
+        return 'Low';
+      case FeePreset.standard:
+        return 'Standard';
+      case FeePreset.high:
+        return 'High';
+      case FeePreset.custom:
+        return 'Custom';
+    }
+  }
+}
+
 /// Send screen with multi-output support
 class SendScreen extends ConsumerStatefulWidget {
   const SendScreen({super.key});
@@ -179,6 +205,13 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
   // Fee information
   double _calculatedFee = 0.0001; // Will be recalculated on init
+  int _selectedFeeArrrtoshis = 10000;
+  int _defaultFeeArrrtoshis = 10000;
+  int _baseMinFeeArrrtoshis = 10000;
+  int _minFeeArrrtoshis = 10000;
+  int _maxFeeArrrtoshis = 1000000;
+  FeePreset _feePreset = FeePreset.standard;
+  int? _customFeeArrrtoshis;
   double _totalAmount = 0;
   double _change = 0;
   bool _isValidating = false;
@@ -186,22 +219,44 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   String? _errorMessage;
   String? _txId;
   PendingTx? _pendingTx;
-  
+
   // Sending progress stages
   String _sendingStage = 'Building transaction...';
-  
+
   // Watch-only check
   bool _isWatchOnly = false;
   double? _cachedBalance;
+
+  WalletId? _walletId;
+  bool _isLoadingSpendSources = false;
+  List<KeyGroupInfo> _spendableKeys = [];
+  List<KeyGroupInfo> _selectableKeys = [];
+  List<AddressBalanceInfo> _addressBalances = [];
+  KeyGroupInfo? _selectedKey;
+  List<AddressBalanceInfo> _selectedAddresses = [];
+  List<int>? _pendingKeyIds;
+  List<int>? _pendingAddressIds;
+  bool _autoConsolidationPromptShown = false;
 
   @override
   void initState() {
     super.initState();
     _checkWatchOnlyStatus();
-    // Initialize fee calculation
     _updateFeePreview();
+    _loadFeeInfo();
   }
-  
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final walletId = ref.read(activeWalletProvider);
+    if (_walletId != walletId) {
+      _walletId = walletId;
+      _autoConsolidationPromptShown = false;
+      _loadSpendSources();
+    }
+  }
+
   @override
   void dispose() {
     for (final output in _outputs) {
@@ -209,12 +264,12 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     }
     super.dispose();
   }
-  
+
   /// Check if current wallet is watch-only
   Future<void> _checkWatchOnlyStatus() async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) return;
-    
+
     try {
       final capabilities = await FfiBridge.getWatchOnlyCapabilities(walletId);
       setState(() {
@@ -224,7 +279,140 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       // Ignore errors
     }
   }
-  
+
+  Future<void> _loadFeeInfo() async {
+    try {
+      final info = await FfiBridge.getFeeInfo();
+      if (!mounted) return;
+      final minFee = info.minFee.toInt();
+      final maxFee = info.maxFee.toInt();
+      final baseFee = info.defaultFee.toInt();
+
+      setState(() {
+        _defaultFeeArrrtoshis = baseFee;
+        _baseMinFeeArrrtoshis = minFee;
+        _maxFeeArrrtoshis = maxFee;
+      });
+      _updateFeePreview();
+    } catch (_) {
+      // Ignore fee info errors.
+    }
+  }
+
+  Future<void> _loadSpendSources() async {
+    final walletId = _walletId;
+    if (walletId == null) return;
+    setState(() => _isLoadingSpendSources = true);
+    try {
+      final keys = await FfiBridge.listKeyGroups(walletId);
+      final spendableKeys = keys.where((k) => k.spendable).toList();
+      final addressBalances = await FfiBridge.listAddressBalances(walletId);
+      final spendableKeyIds = spendableKeys.map((k) => k.id).toSet();
+      final filteredAddresses = addressBalances
+          .where((addr) =>
+              addr.keyId != null && spendableKeyIds.contains(addr.keyId))
+          .toList();
+      filteredAddresses.sort((a, b) => b.spendable.compareTo(a.spendable));
+
+      final spendableByKey = <int, BigInt>{};
+      for (final address in filteredAddresses) {
+        final keyId = address.keyId;
+        if (keyId == null) continue;
+        spendableByKey[keyId] =
+            (spendableByKey[keyId] ?? BigInt.zero) + address.spendable;
+      }
+      spendableKeys.sort(
+        (a, b) => (spendableByKey[b.id] ?? BigInt.zero)
+            .compareTo(spendableByKey[a.id] ?? BigInt.zero),
+      );
+      final selectableKeys =
+          spendableKeys.where((k) => k.keyType != KeyTypeInfo.seed).toList();
+
+      setState(() {
+        _spendableKeys = spendableKeys;
+        _selectableKeys = selectableKeys;
+        _addressBalances = filteredAddresses;
+      });
+
+      if (_selectedKey != null &&
+          !_selectableKeys.any((key) => key.id == _selectedKey!.id)) {
+        _selectedKey = null;
+      }
+      if (_selectedAddresses.isNotEmpty) {
+        final selectedIds =
+            _selectedAddresses.map((addr) => addr.addressId).toSet();
+        _selectedAddresses = _addressBalances
+            .where((addr) => selectedIds.contains(addr.addressId))
+            .toList();
+      }
+    } catch (_) {
+      // Ignore spend source load errors
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingSpendSources = false);
+      }
+    }
+    await _maybeShowAutoConsolidationPrompt();
+  }
+
+  Future<void> _maybeShowAutoConsolidationPrompt() async {
+    if (_autoConsolidationPromptShown || _isWatchOnly) return;
+    final walletId = _walletId;
+    if (walletId == null || _spendableKeys.isEmpty) return;
+
+    try {
+      final enabled = await FfiBridge.getAutoConsolidationEnabled(walletId);
+      if (enabled) return;
+      final threshold = await FfiBridge.getAutoConsolidationThreshold();
+      final candidateCount =
+          await FfiBridge.getAutoConsolidationCandidateCount(walletId);
+      if (candidateCount < threshold) return;
+      if (!mounted) return;
+
+      _autoConsolidationPromptShown = true;
+      final enable = await PDialog.show<bool>(
+        context: context,
+        title: 'Enable auto consolidation?',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'You have $candidateCount untagged notes. Auto consolidation can combine them during sends to keep the wallet fast.',
+              style: AppTypography.body,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'Only unlabeled and untagged addresses are included.',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          PDialogAction(
+            label: 'Not now',
+            variant: PButtonVariant.secondary,
+            result: false,
+          ),
+          PDialogAction(
+            label: 'Enable',
+            variant: PButtonVariant.primary,
+            result: true,
+          ),
+        ],
+      );
+
+      if (enable == true && mounted) {
+        await FfiBridge.setAutoConsolidationEnabled(walletId, true);
+        ref.invalidate(autoConsolidationEnabledProvider);
+      }
+    } catch (_) {
+      // Ignore prompt errors.
+    }
+  }
+
   /// Get available balance from provider
   double get _availableBalance {
     final balanceAsync = ref.watch(balanceStreamProvider);
@@ -239,6 +427,595 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       loading: () => _cachedBalance ?? 0.0,
       error: (_, __) => _cachedBalance ?? 0.0,
     );
+  }
+
+  double get _availableBalanceForSelection {
+    final overall = _availableBalance;
+    if (_selectedAddresses.isNotEmpty) {
+      return _toArrr(_selectedAddressSpendable());
+    }
+    if (_selectedKey != null) {
+      final spendable = _spendableForKey(_selectedKey!.id);
+      return _toArrr(spendable);
+    }
+    return overall;
+  }
+
+  BigInt _spendableForKey(int keyId) {
+    var total = BigInt.zero;
+    for (final addr in _addressBalances) {
+      if (addr.keyId == keyId) {
+        total += addr.spendable;
+      }
+    }
+    return total;
+  }
+
+  String get _spendFromLabel {
+    if (_selectedAddresses.isNotEmpty) {
+      final count = _selectedAddresses.length;
+      final balance = _formatArrr(_selectedAddressSpendable());
+      return 'Addresses ($count) - $balance';
+    }
+    if (_selectedKey != null) {
+      final label = _displayKeyLabel(_selectedKey!);
+      final balance = _formatArrr(_spendableForKey(_selectedKey!.id));
+      return '$label - $balance';
+    }
+    return 'Auto (all keys)';
+  }
+
+  Future<void> _openSpendFromSelector() async {
+    final loadFuture = _isLoadingSpendSources ? null : _loadSpendSources();
+    if (!mounted) return;
+
+    KeyGroupInfo? pendingKey = _selectedKey;
+    final pendingAddressIds =
+        _selectedAddresses.map((addr) => addr.addressId).toSet();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.backgroundBase,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            void commitSelection() {
+              final selectedAddresses = _addressBalances
+                  .where((addr) => pendingAddressIds.contains(addr.addressId))
+                  .toList();
+              setState(() {
+                _selectedKey = pendingKey;
+                _selectedAddresses = selectedAddresses;
+                _pendingTx = null;
+                _pendingKeyIds = null;
+                _pendingAddressIds = null;
+              });
+            }
+
+            void toggleAddress(AddressBalanceInfo address) {
+              setModalState(() {
+                pendingKey = null;
+                final id = address.addressId;
+                if (!pendingAddressIds.remove(id)) {
+                  pendingAddressIds.add(id);
+                }
+              });
+            }
+
+            void selectAuto() {
+              setState(() {
+                _selectedKey = null;
+                _selectedAddresses = [];
+                _pendingTx = null;
+                _pendingKeyIds = null;
+                _pendingAddressIds = null;
+              });
+              Navigator.of(context).pop();
+            }
+
+            void selectKey(KeyGroupInfo key) {
+              setState(() {
+                _selectedKey = key;
+                _selectedAddresses = [];
+                _pendingTx = null;
+                _pendingKeyIds = null;
+                _pendingAddressIds = null;
+              });
+              Navigator.of(context).pop();
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: FutureBuilder<void>(
+                  future: loadFuture,
+                  builder: (context, snapshot) {
+                    final isRefreshing =
+                        snapshot.connectionState == ConnectionState.waiting;
+                    final showLoading = isRefreshing &&
+                        _spendableKeys.isEmpty &&
+                        _addressBalances.isEmpty;
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Spend from', style: AppTypography.h4),
+                        const SizedBox(height: AppSpacing.md),
+                        if (isRefreshing)
+                          const LinearProgressIndicator(
+                            minHeight: 2,
+                          ),
+                        if (isRefreshing) const SizedBox(height: AppSpacing.md),
+                        if (showLoading)
+                          const Padding(
+                            padding:
+                                EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        else
+                          Flexible(
+                            child: ListView(
+                              shrinkWrap: true,
+                              children: [
+                                _buildSpendOption(
+                                  context,
+                                  title: 'Auto (all keys)',
+                                  subtitle:
+                                      'Let the wallet choose notes automatically.',
+                                  selected: pendingKey == null &&
+                                      pendingAddressIds.isEmpty,
+                                  onTap: selectAuto,
+                                ),
+                                if (_selectableKeys.isNotEmpty) ...[
+                                  const SizedBox(height: AppSpacing.md),
+                                  Text('Keys',
+                                      style: AppTypography.labelMedium),
+                                  const SizedBox(height: AppSpacing.xs),
+                                  ..._selectableKeys.map((key) {
+                                    final balance =
+                                        _formatArrr(_spendableForKey(key.id));
+                                    return _buildSpendOption(
+                                      context,
+                                      title: _displayKeyLabel(key),
+                                      subtitle: 'Spendable $balance',
+                                      selected: pendingKey?.id == key.id &&
+                                          pendingAddressIds.isEmpty,
+                                      onTap: () => selectKey(key),
+                                    );
+                                  }),
+                                ],
+                                if (_addressBalances.isNotEmpty) ...[
+                                  const SizedBox(height: AppSpacing.md),
+                                  Text('Addresses',
+                                      style: AppTypography.labelMedium),
+                                  const SizedBox(height: AppSpacing.xs),
+                                  ..._addressBalances.map((address) {
+                                    final name = address.label ??
+                                        _truncateAddress(address.address);
+                                    final balance =
+                                        _formatArrr(address.spendable);
+                                    final selected = pendingAddressIds
+                                        .contains(address.addressId);
+                                    return _buildMultiSpendOption(
+                                      context,
+                                      title: name,
+                                      subtitle:
+                                          '$balance - ${_truncateAddress(address.address)}',
+                                      selected: selected,
+                                      onTap: () => toggleAddress(address),
+                                    );
+                                  }),
+                                ],
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: AppSpacing.md),
+                        PButton(
+                          onPressed: () {
+                            commitSelection();
+                            Navigator.of(context).pop();
+                          },
+                          variant: PButtonVariant.primary,
+                          child: const Text('Done'),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openFeeSelector() async {
+    final inputFormatter =
+        TextInputFormatter.withFunction((oldValue, newValue) {
+      final text = newValue.text;
+      if (text.isEmpty) return newValue;
+      if (!RegExp(r'^\d+(\.\d{0,8})?$').hasMatch(text)) {
+        return oldValue;
+      }
+      return newValue;
+    });
+
+    var pendingPreset = _feePreset;
+    var pendingFee = _selectedFeeArrrtoshis;
+    String? feeError;
+    final controller = TextEditingController(
+      text: _feeArrrFromArrrtoshis(pendingFee).toStringAsFixed(8),
+    );
+
+    void syncController() {
+      final text = _feeArrrFromArrrtoshis(pendingFee).toStringAsFixed(8);
+      controller.value = controller.value.copyWith(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    }
+
+    void setPendingFee(int fee) {
+      pendingFee = _clampFee(fee);
+      feeError = null;
+      syncController();
+    }
+
+    void applyPreset(FeePreset preset, StateSetter setModalState) {
+      pendingPreset = preset;
+      if (preset != FeePreset.custom) {
+        setPendingFee(_feeForPreset(preset, _currentBaseFeeArrrtoshis()));
+      } else if (_customFeeArrrtoshis != null) {
+        setPendingFee(_customFeeArrrtoshis!);
+      }
+      setModalState(() {});
+    }
+
+    try {
+      await PBottomSheet.show<void>(
+        context: context,
+        title: 'Network fee',
+        content: StatefulBuilder(
+          builder: (context, setModalState) {
+            void onSliderChanged(double value) {
+              pendingPreset = FeePreset.custom;
+              setPendingFee(value.round());
+              setModalState(() {});
+            }
+
+            void onCustomChanged(String value) {
+              pendingPreset = FeePreset.custom;
+              final parsed = double.tryParse(value);
+              if (parsed == null) {
+                feeError = 'Enter a valid fee amount.';
+                setModalState(() {});
+                return;
+              }
+              final feeArrrtoshis = (parsed * 100000000).round();
+              if (feeArrrtoshis < _minFeeArrrtoshis ||
+                  feeArrrtoshis > _maxFeeArrrtoshis) {
+                feeError =
+                    'Fee must be between ${_formatFeeArrrtoshis(_minFeeArrrtoshis)} and ${_formatFeeArrrtoshis(_maxFeeArrrtoshis)}.';
+                setModalState(() {});
+                return;
+              }
+              pendingFee = feeArrrtoshis;
+              feeError = null;
+              setModalState(() {});
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Choose a fee speed',
+                  style: AppTypography.bodyMedium,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: AppSpacing.xs,
+                  runSpacing: AppSpacing.xs,
+                  children: FeePreset.values.map((preset) {
+                    return _FeePresetChip(
+                      label: preset.label,
+                      isSelected: pendingPreset == preset,
+                      onTap: () => applyPreset(preset, setModalState),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Selected', style: AppTypography.caption),
+                    Text(
+                      _formatFeeArrrtoshis(pendingFee),
+                      style: AppTypography.mono.copyWith(fontSize: 12),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: pendingFee.toDouble(),
+                  min: _minFeeArrrtoshis.toDouble(),
+                  max: _maxFeeArrrtoshis.toDouble(),
+                  divisions: 100,
+                  onChanged: onSliderChanged,
+                  activeColor: AppColors.accentPrimary,
+                  inactiveColor: AppColors.borderSubtle,
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Low', style: AppTypography.caption),
+                    Text('High', style: AppTypography.caption),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                PInput(
+                  label: 'Custom fee (ARRR)',
+                  controller: controller,
+                  hint: _feeArrrFromArrrtoshis(_minFeeArrrtoshis)
+                      .toStringAsFixed(8),
+                  errorText: feeError,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [inputFormatter],
+                  onChanged: onCustomChanged,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'Min ${_formatFeeArrrtoshis(_minFeeArrrtoshis)} - Max ${_formatFeeArrrtoshis(_maxFeeArrrtoshis)}',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Pirate uses a fixed minimum fee. Higher fees may not speed up confirmations.',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Row(
+                  children: [
+                    Expanded(
+                      child: PButton(
+                        text: 'Cancel',
+                        variant: PButtonVariant.secondary,
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: PButton(
+                        text: 'Apply',
+                        onPressed: () {
+                          if (pendingPreset == FeePreset.custom) {
+                            final parsed =
+                                double.tryParse(controller.text.trim());
+                            if (parsed == null) {
+                              setModalState(() {
+                                feeError = 'Enter a valid fee amount.';
+                              });
+                              return;
+                            }
+                            final feeArrrtoshis = (parsed * 100000000).round();
+                            if (feeArrrtoshis < _minFeeArrrtoshis ||
+                                feeArrrtoshis > _maxFeeArrrtoshis) {
+                              setModalState(() {
+                                feeError =
+                                    'Fee must be between ${_formatFeeArrrtoshis(_minFeeArrrtoshis)} and ${_formatFeeArrrtoshis(_maxFeeArrrtoshis)}.';
+                              });
+                              return;
+                            }
+                            pendingFee = feeArrrtoshis;
+                            _customFeeArrrtoshis = feeArrrtoshis;
+                          }
+
+                          setState(() {
+                            _feePreset = pendingPreset;
+                            _selectedFeeArrrtoshis = pendingFee;
+                            _pendingTx = null;
+                            _pendingKeyIds = null;
+                            _pendingAddressIds = null;
+                          });
+                          _updateFeePreview();
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  Widget _buildSpendOption(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return PCard(
+      onTap: onTap,
+      backgroundColor:
+          selected ? AppColors.selectedBackground : AppColors.backgroundSurface,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.check_circle
+                  : Icons.account_balance_wallet_outlined,
+              color:
+                  selected ? AppColors.accentPrimary : AppColors.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTypography.bodyMedium),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMultiSpendOption(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return PCard(
+      onTap: onTap,
+      backgroundColor:
+          selected ? AppColors.selectedBackground : AppColors.backgroundSurface,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            Icon(
+              selected ? Icons.check_box : Icons.check_box_outline_blank,
+              color:
+                  selected ? AppColors.accentPrimary : AppColors.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTypography.bodyMedium),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatArrr(BigInt value) {
+    final amount = value.toDouble() / 100000000.0;
+    return '${amount.toStringAsFixed(8)} ARRR';
+  }
+
+  double _toArrr(BigInt value) {
+    return value.toDouble() / 100000000.0;
+  }
+
+  double _feeArrrFromArrrtoshis(int feeArrrtoshis) {
+    return feeArrrtoshis / 100000000.0;
+  }
+
+  String _formatFeeArrrtoshis(int feeArrrtoshis) {
+    return '${_feeArrrFromArrrtoshis(feeArrrtoshis).toStringAsFixed(8)} ARRR';
+  }
+
+  int _feeForPreset(FeePreset preset, int baseFee) {
+    switch (preset) {
+      case FeePreset.low:
+        return (baseFee * 0.5).round();
+      case FeePreset.standard:
+        return baseFee;
+      case FeePreset.high:
+        return (baseFee * 2).round();
+      case FeePreset.custom:
+        return _customFeeArrrtoshis ?? baseFee;
+    }
+  }
+
+  int _clampFee(int fee, {int? minFee, int? maxFee}) {
+    final minValue = minFee ?? _minFeeArrrtoshis;
+    final maxValue = maxFee ?? _maxFeeArrrtoshis;
+    return fee.clamp(minValue, maxValue) as int;
+  }
+
+  int _extraOutputCount() {
+    if (_outputs.length <= 1) return 0;
+    return _outputs.length - 1;
+  }
+
+  int _currentMinFeeArrrtoshis() {
+    final fee = _baseMinFeeArrrtoshis +
+        (_extraOutputCount() * kAdditionalOutputFeeArrrtoshis);
+    return fee.clamp(_baseMinFeeArrrtoshis, _maxFeeArrrtoshis) as int;
+  }
+
+  int _currentBaseFeeArrrtoshis() {
+    final minFee = _currentMinFeeArrrtoshis();
+    final fee = _defaultFeeArrrtoshis +
+        (_extraOutputCount() * kAdditionalOutputFeeArrrtoshis);
+    return fee.clamp(minFee, _maxFeeArrrtoshis) as int;
+  }
+
+  String _truncateAddress(String address) {
+    if (address.length <= 16) return address;
+    return '${address.substring(0, 8)}...${address.substring(address.length - 6)}';
+  }
+
+  String _displayKeyLabel(KeyGroupInfo key) {
+    if (key.keyType == KeyTypeInfo.seed) {
+      final label = key.label?.trim();
+      if (label == null || label.isEmpty || label == 'Seed') {
+        return 'Default wallet keys';
+      }
+    }
+    return key.label ?? _defaultKeyLabel(key);
+  }
+
+  String _defaultKeyLabel(KeyGroupInfo key) {
+    switch (key.keyType) {
+      case KeyTypeInfo.seed:
+        return 'Default wallet keys';
+      case KeyTypeInfo.importedSpending:
+        return 'Imported spending key';
+      case KeyTypeInfo.importedViewing:
+        return 'Viewing key';
+    }
+  }
+
+  BigInt _selectedAddressSpendable() {
+    var total = BigInt.zero;
+    for (final addr in _selectedAddresses) {
+      total += addr.spendable;
+    }
+    return total;
   }
 
   /// Add new output entry
@@ -404,34 +1181,20 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     });
   }
 
-  /// Update fee preview using ZIP-317 fee calculation
-  /// 
-  /// ZIP-317 formula: fee = MARGINAL_FEE * max(GRACE_ACTIONS, logical_actions)
-  /// Where logical_actions = num_spends + num_outputs
-  /// - MARGINAL_FEE = 5,000 zatoshis = 0.00005 ARRR
-  /// - GRACE_ACTIONS = 2 (minimum)
-  /// - Memos do NOT affect fee in ZIP-317
-  /// 
-  /// For estimation, we assume 1 spend per transaction (typical case).
-  /// The actual fee will be calculated precisely when building the transaction.
+  /// Update fee preview using the selected fee.
   void _updateFeePreview() {
-    final numOutputs = _outputs.length;
-
-    // ZIP-317 constants
-    const double marginalFeeArrr = 0.00005; // 5,000 zatoshis
-    const int graceActions = 2;
-    
-    // Estimate number of spends (inputs) needed
-    // For simplicity, estimate 1 spend per transaction (typical case)
-    // The actual fee will be calculated precisely when building the transaction
-    const int estimatedSpends = 1;
-    
-    // ZIP-317: logical_actions = spends + outputs
-    final logicalActions = estimatedSpends + numOutputs;
-    
-    // ZIP-317: fee = MARGINAL_FEE * max(GRACE_ACTIONS, logical_actions)
-    final actions = logicalActions > graceActions ? logicalActions : graceActions;
-    final fee = marginalFeeArrr * actions;
+    final minFee = _currentMinFeeArrrtoshis();
+    final baseFee = _currentBaseFeeArrrtoshis();
+    int selectedFee = _feePreset == FeePreset.custom
+        ? (_customFeeArrrtoshis ?? _selectedFeeArrrtoshis)
+        : _feeForPreset(_feePreset, baseFee);
+    selectedFee = selectedFee.clamp(minFee, _maxFeeArrrtoshis) as int;
+    if (_feePreset == FeePreset.custom) {
+      _customFeeArrrtoshis = selectedFee;
+    }
+    _minFeeArrrtoshis = minFee;
+    _selectedFeeArrrtoshis = selectedFee;
+    final fee = _feeArrrFromArrrtoshis(selectedFee);
 
     _totalAmount = _outputs.fold(0.0, (sum, o) {
       return sum + (double.tryParse(o.amount) ?? 0);
@@ -454,7 +1217,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       output.isValid = true;
 
       // Validate address using error mapper
-      final addressError = TransactionErrorMapper.validateAddress(output.address);
+      final addressError =
+          TransactionErrorMapper.validateAddress(output.address);
       if (addressError != null) {
         output.error = addressError.message;
         output.isValid = false;
@@ -492,9 +1256,11 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     // Check total doesn't exceed balance
     _updateFeePreview();
     final total = _totalAmount + _calculatedFee;
-    if (_cachedBalance != null && total > _availableBalance) {
-      _errorMessage = 'Insufficient funds: need ${total.toStringAsFixed(8)} ARRR, '
-          'have ${_availableBalance.toStringAsFixed(8)} ARRR';
+    final available = _availableBalanceForSelection;
+    if (total > available) {
+      _errorMessage =
+          'Insufficient funds: need ${total.toStringAsFixed(8)} ARRR, '
+          'have ${available.toStringAsFixed(8)} ARRR';
       allValid = false;
     }
 
@@ -509,12 +1275,12 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       await WatchOnlyWarningDialog.show(context);
       return;
     }
-    
+
     setState(() => _isValidating = true);
 
     // Validate all outputs locally first
     final isValid = _validateOutputs();
-    
+
     if (!isValid) {
       setState(() => _isValidating = false);
       return;
@@ -526,27 +1292,40 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       if (walletId == null) {
         throw StateError('No active wallet');
       }
-      
+
       // Convert outputs to FFI format
       final ffiOutputs = _outputs
           .map(
             (o) => Output(
               addr: o.address,
-              amount: BigInt.from(o.zatoshis),
+              amount: BigInt.from(o.arrrtoshis),
               memo: o.memo.isNotEmpty ? o.memo : null,
             ),
           )
           .toList();
-      
+
+      final addressIds = _selectedAddresses.isNotEmpty
+          ? _selectedAddresses.map((addr) => addr.addressId).toList()
+          : null;
+      final keyIds = addressIds != null
+          ? null
+          : (_selectedKey != null ? [_selectedKey!.id] : null);
+
       // Build transaction via FFI
       final pendingTx = await FfiBridge.buildTx(
         walletId: walletId,
         outputs: ffiOutputs,
+        keyIds: keyIds,
+        addressIds: addressIds,
+        fee: _selectedFeeArrrtoshis,
       );
-      
+
       // Store pending tx and update UI
       setState(() {
         _pendingTx = pendingTx;
+        _pendingKeyIds = keyIds;
+        _pendingAddressIds = addressIds;
+        _selectedFeeArrrtoshis = pendingTx.fee.toInt();
         _calculatedFee = pendingTx.fee.toDouble() / 100000000.0;
         _totalAmount = pendingTx.totalAmount.toDouble() / 100000000.0;
         _change = pendingTx.change.toDouble() / 100000000.0;
@@ -572,7 +1351,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       });
       return;
     }
-    
+
     setState(() {
       _currentStep = SendStep.sending;
       _isSending = true;
@@ -585,15 +1364,22 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       if (walletId == null) {
         throw StateError('No active wallet');
       }
-      
+
       // Sign transaction via FFI
       setState(() => _sendingStage = 'Generating Cryptographic Proofs...');
-      final signedTx = await FfiBridge.signTx(walletId, _pendingTx!);
-      
+      final signedTx = (_pendingKeyIds != null || _pendingAddressIds != null)
+          ? await FfiBridge.signTxFiltered(
+              walletId: walletId,
+              pending: _pendingTx!,
+              keyIds: _pendingKeyIds,
+              addressIds: _pendingAddressIds,
+            )
+          : await FfiBridge.signTx(walletId, _pendingTx!);
+
       // Broadcast transaction via FFI
       setState(() => _sendingStage = 'Broadcasting to network...');
       final txId = await FfiBridge.broadcastTx(signedTx);
-      
+
       // Success!
       _txId = txId;
 
@@ -601,7 +1387,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         _currentStep = SendStep.complete;
         _isSending = false;
       });
-      
+
       // Refresh balance and transaction history
       ref.invalidate(balanceProvider);
       ref.invalidate(transactionsProvider);
@@ -721,11 +1507,16 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       case SendStep.recipients:
         return _RecipientsStep(
           outputs: _outputs,
-          availableBalance: _availableBalance,
+          availableBalance: _availableBalanceForSelection,
           calculatedFee: _calculatedFee,
           totalAmount: _totalAmount,
           errorMessage: _errorMessage,
           isValidating: _isValidating,
+          spendFromLabel: _spendFromLabel,
+          feePreset: _feePreset,
+          spendFromEnabled: !_isSending,
+          onSelectSpendFrom: _openSpendFromSelector,
+          onEditFee: _openFeeSelector,
           onRemoveOutput: _removeOutput,
           onAddOutput: _addOutput,
           onOutputChanged: _handleOutputChanged,
@@ -741,6 +1532,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
           totalAmount: _totalAmount,
           change: _change,
           pendingTx: _pendingTx,
+          spendFromLabel: _spendFromLabel,
           onConfirm: _sendTransaction,
           onEdit: () => setState(() => _currentStep = SendStep.recipients),
         );
@@ -768,6 +1560,11 @@ class _RecipientsStep extends StatelessWidget {
   final double totalAmount;
   final String? errorMessage;
   final bool isValidating;
+  final String spendFromLabel;
+  final FeePreset feePreset;
+  final bool spendFromEnabled;
+  final VoidCallback onSelectSpendFrom;
+  final VoidCallback onEditFee;
   final void Function(int) onRemoveOutput;
   final VoidCallback onAddOutput;
   final void Function(int) onOutputChanged;
@@ -782,6 +1579,11 @@ class _RecipientsStep extends StatelessWidget {
     required this.totalAmount,
     required this.errorMessage,
     required this.isValidating,
+    required this.spendFromLabel,
+    required this.feePreset,
+    required this.spendFromEnabled,
+    required this.onSelectSpendFrom,
+    required this.onEditFee,
     required this.onRemoveOutput,
     required this.onAddOutput,
     required this.onOutputChanged,
@@ -797,6 +1599,48 @@ class _RecipientsStep extends StatelessWidget {
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
+            0,
+          ),
+          child: PCard(
+            onTap: spendFromEnabled ? onSelectSpendFrom : null,
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.account_balance_wallet_outlined,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Spend from', style: AppTypography.bodyMedium),
+                        const SizedBox(height: 2),
+                        Text(
+                          spendFromLabel,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textTertiary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.all(AppSpacing.md),
@@ -807,7 +1651,8 @@ class _RecipientsStep extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                   child: PButton(
-                    onPressed: outputs.length < kMaxRecipients ? onAddOutput : null,
+                    onPressed:
+                        outputs.length < kMaxRecipients ? onAddOutput : null,
                     variant: PButtonVariant.outline,
                     fullWidth: true,
                     icon: const Icon(Icons.add),
@@ -816,8 +1661,7 @@ class _RecipientsStep extends StatelessWidget {
                 );
               }
 
-              final scanHandler =
-                  onScan == null ? null : () => onScan!(index);
+              final scanHandler = onScan == null ? null : () => onScan!(index);
               final importHandler =
                   onImport == null ? null : () => onImport!(index);
 
@@ -854,10 +1698,33 @@ class _RecipientsStep extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Network Fee:', style: AppTypography.caption),
-                  Text(
-                    '${calculatedFee.toStringAsFixed(8)} ARRR',
-                    style: AppTypography.mono.copyWith(fontSize: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Network fee', style: AppTypography.caption),
+                      Text(
+                        feePreset.label,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${calculatedFee.toStringAsFixed(8)} ARRR',
+                        style: AppTypography.mono.copyWith(fontSize: 12),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      PTextButton(
+                        label: 'Edit',
+                        compact: true,
+                        variant: PTextButtonVariant.subtle,
+                        onPressed: onEditFee,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -942,7 +1809,8 @@ class _OutputCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 16,
-                  backgroundColor: AppColors.accentPrimary.withValues(alpha: 0.2),
+                  backgroundColor:
+                      AppColors.accentPrimary.withValues(alpha: 0.2),
                   child: Text(
                     '${index + 1}',
                     style: AppTypography.labelMedium.copyWith(
@@ -1039,7 +1907,8 @@ class _OutputCard extends StatelessWidget {
               controller: output.amountController,
               label: 'Amount (ARRR)',
               hint: '0.00000000',
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => onChanged(),
             ),
 
@@ -1069,6 +1938,49 @@ class _OutputCard extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeePresetChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _FeePresetChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final background =
+        isSelected ? AppColors.selectedBackground : AppColors.backgroundSurface;
+    final border =
+        isSelected ? AppColors.selectedBorder : AppColors.borderSubtle;
+    final textColor =
+        isSelected ? AppColors.textPrimary : AppColors.textSecondary;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 44),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+          border: Border.all(color: border),
+        ),
+        child: Text(
+          label,
+          style: PTypography.labelSmall(color: textColor),
         ),
       ),
     );
@@ -1195,6 +2107,7 @@ class _ReviewStep extends StatelessWidget {
   final double totalAmount;
   final double change;
   final PendingTx? pendingTx;
+  final String spendFromLabel;
   final VoidCallback onConfirm;
   final VoidCallback onEdit;
 
@@ -1204,6 +2117,7 @@ class _ReviewStep extends StatelessWidget {
     required this.totalAmount,
     this.change = 0,
     this.pendingTx,
+    required this.spendFromLabel,
     required this.onConfirm,
     required this.onEdit,
   });
@@ -1314,7 +2228,13 @@ class _ReviewStep extends StatelessWidget {
             valueColor: AppColors.accentPrimary,
             bold: true,
           ),
-          
+          const SizedBox(height: AppSpacing.sm),
+          _DetailRow(
+            label: 'Spend from',
+            value: spendFromLabel,
+            valueColor: AppColors.textSecondary,
+          ),
+
           if (change > 0) ...[
             const SizedBox(height: AppSpacing.sm),
             _DetailRow(
@@ -1323,7 +2243,7 @@ class _ReviewStep extends StatelessWidget {
               valueColor: AppColors.success,
             ),
           ],
-          
+
           // Transaction details
           if (pendingTx != null) ...[
             const SizedBox(height: AppSpacing.lg),
@@ -1339,7 +2259,8 @@ class _ReviewStep extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Inputs', style: AppTypography.caption),
-                      Text('${pendingTx!.numInputs}', style: AppTypography.caption),
+                      Text('${pendingTx!.numInputs}',
+                          style: AppTypography.caption),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -1347,7 +2268,8 @@ class _ReviewStep extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Outputs', style: AppTypography.caption),
-                      Text('${outputs.length + (change > 0 ? 1 : 0)}', style: AppTypography.caption),
+                      Text('${outputs.length + (change > 0 ? 1 : 0)}',
+                          style: AppTypography.caption),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -1467,7 +2389,7 @@ class _DetailRow extends StatelessWidget {
 /// Sending step with progress stages
 class _SendingStep extends StatelessWidget {
   final String stage;
-  
+
   const _SendingStep({this.stage = 'Sending...'});
 
   @override

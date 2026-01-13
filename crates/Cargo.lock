@@ -3437,6 +3437,7 @@ name = "pirate-ffi-frb"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bech32 0.11.1",
  "chrono",
  "directories",
  "flutter_rust_bridge",
@@ -3457,6 +3458,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "zcash_client_backend",
  "zcash_primitives",
 ]
 

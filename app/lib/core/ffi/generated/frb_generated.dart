@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1963115127;
+  int get rustContentHash => -1389405564;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -96,8 +96,34 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiBroadcastTx({required SignedTx signed});
 
+  Future<PendingTx> crateApiBuildConsolidationTx(
+      {required String walletId,
+      required PlatformInt64 keyId,
+      required String targetAddress,
+      BigInt? feeOpt});
+
+  Future<PendingTx> crateApiBuildSweepTx(
+      {required String walletId,
+      required String targetAddress,
+      BigInt? feeOpt,
+      Int64List? keyIdsFilter,
+      Int64List? addressIdsFilter});
+
   Future<PendingTx> crateApiBuildTx(
       {required String walletId,
+      required List<Output> outputs,
+      BigInt? feeOpt});
+
+  Future<PendingTx> crateApiBuildTxFiltered(
+      {required String walletId,
+      required List<Output> outputs,
+      BigInt? feeOpt,
+      Int64List? keyIdsFilter,
+      Int64List? addressIdsFilter});
+
+  Future<PendingTx> crateApiBuildTxForKey(
+      {required String walletId,
+      required PlatformInt64 keyId,
       required List<Output> outputs,
       BigInt? feeOpt});
 
@@ -134,6 +160,9 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiExportIvkSecure({required String walletId});
 
+  Future<KeyExportInfo> crateApiExportKeyGroupKeys(
+      {required String walletId, required PlatformInt64 keyId});
+
   Future<String> crateApiExportOrchardIvk({required String walletId});
 
   Future<String> crateApiExportOrchardViewingKey({required String walletId});
@@ -151,6 +180,11 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiFormatAmount({required BigInt arrrtoshis});
 
+  Future<String> crateApiGenerateAddressForKey(
+      {required String walletId,
+      required PlatformInt64 keyId,
+      required bool useOrchard});
+
   Future<String> crateApiGenerateMnemonic({int? wordCount});
 
   Future<String?> crateApiGetActiveWallet();
@@ -165,6 +199,13 @@ abstract class RustLibApi extends BaseApi {
 
   Future<List<AddressBookEntryFfi>> crateApiGetAddressBookFavorites(
       {required String walletId});
+
+  Future<int> crateApiGetAutoConsolidationCandidateCount(
+      {required String walletId});
+
+  Future<bool> crateApiGetAutoConsolidationEnabled({required String walletId});
+
+  Future<int> crateApiGetAutoConsolidationThreshold();
 
   Future<Balance> crateApiGetBalance({required String walletId});
 
@@ -227,6 +268,13 @@ abstract class RustLibApi extends BaseApi {
   Future<String> crateApiImportIvkAsWatchOnly(
       {required String name, required String ivk, required int birthdayHeight});
 
+  Future<PlatformInt64> crateApiImportSpendingKey(
+      {required String walletId,
+      String? saplingKey,
+      String? orchardKey,
+      String? label,
+      required int birthdayHeight});
+
   Future<bool> crateApiIsBackgroundSyncNeeded({required String walletId});
 
   Future<bool> crateApiIsDecoyMode();
@@ -243,10 +291,18 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiLightdEndpointUrl({required LightdEndpoint that});
 
+  Future<List<AddressBalanceInfo>> crateApiListAddressBalances(
+      {required String walletId, PlatformInt64? keyId});
+
   Future<List<AddressBookEntryFfi>> crateApiListAddressBook(
       {required String walletId});
 
   Future<List<AddressInfo>> crateApiListAddresses({required String walletId});
+
+  Future<List<KeyAddressInfo>> crateApiListAddressesForKey(
+      {required String walletId, required PlatformInt64 keyId});
+
+  Future<List<KeyGroupInfo>> crateApiListKeyGroups({required String walletId});
 
   Future<List<TxInfo>> crateApiListTransactions(
       {required String walletId, int? limit});
@@ -284,6 +340,9 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiSetAppPassphrase({required String passphrase});
 
+  Future<void> crateApiSetAutoConsolidationEnabled(
+      {required String walletId, required bool enabled});
+
   Future<void> crateApiSetDecoyWalletName({required String name});
 
   Future<void> crateApiSetLightdEndpoint(
@@ -298,6 +357,17 @@ abstract class RustLibApi extends BaseApi {
 
   Future<SignedTx> crateApiSignTx(
       {required String walletId, required PendingTx pending});
+
+  Future<SignedTx> crateApiSignTxFiltered(
+      {required String walletId,
+      required PendingTx pending,
+      Int64List? keyIdsFilter,
+      Int64List? addressIdsFilter});
+
+  Future<SignedTx> crateApiSignTxForKey(
+      {required String walletId,
+      required PendingTx pending,
+      required PlatformInt64 keyId});
 
   Future<String> crateApiSkipSeedBiometric();
 
@@ -474,6 +544,81 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<PendingTx> crateApiBuildConsolidationTx(
+      {required String walletId,
+      required PlatformInt64 keyId,
+      required String targetAddress,
+      BigInt? feeOpt}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_i_64(keyId);
+        var arg2 = cst_encode_String(targetAddress);
+        var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+        return wire.wire__crate__api__build_consolidation_tx(
+            port_, arg0, arg1, arg2, arg3);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_pending_tx,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiBuildConsolidationTxConstMeta,
+      argValues: [walletId, keyId, targetAddress, feeOpt],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiBuildConsolidationTxConstMeta =>
+      const TaskConstMeta(
+        debugName: "build_consolidation_tx",
+        argNames: ["walletId", "keyId", "targetAddress", "feeOpt"],
+      );
+
+  @override
+  Future<PendingTx> crateApiBuildSweepTx(
+      {required String walletId,
+      required String targetAddress,
+      BigInt? feeOpt,
+      Int64List? keyIdsFilter,
+      Int64List? addressIdsFilter}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_String(targetAddress);
+        var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+        var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
+        var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
+        return wire.wire__crate__api__build_sweep_tx(
+            port_, arg0, arg1, arg2, arg3, arg4);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_pending_tx,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiBuildSweepTxConstMeta,
+      argValues: [
+        walletId,
+        targetAddress,
+        feeOpt,
+        keyIdsFilter,
+        addressIdsFilter
+      ],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiBuildSweepTxConstMeta => const TaskConstMeta(
+        debugName: "build_sweep_tx",
+        argNames: [
+          "walletId",
+          "targetAddress",
+          "feeOpt",
+          "keyIdsFilter",
+          "addressIdsFilter"
+        ],
+      );
+
+  @override
   Future<PendingTx> crateApiBuildTx(
       {required String walletId,
       required List<Output> outputs,
@@ -498,6 +643,74 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiBuildTxConstMeta => const TaskConstMeta(
         debugName: "build_tx",
         argNames: ["walletId", "outputs", "feeOpt"],
+      );
+
+  @override
+  Future<PendingTx> crateApiBuildTxFiltered(
+      {required String walletId,
+      required List<Output> outputs,
+      BigInt? feeOpt,
+      Int64List? keyIdsFilter,
+      Int64List? addressIdsFilter}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_list_output(outputs);
+        var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+        var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
+        var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
+        return wire.wire__crate__api__build_tx_filtered(
+            port_, arg0, arg1, arg2, arg3, arg4);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_pending_tx,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiBuildTxFilteredConstMeta,
+      argValues: [walletId, outputs, feeOpt, keyIdsFilter, addressIdsFilter],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiBuildTxFilteredConstMeta => const TaskConstMeta(
+        debugName: "build_tx_filtered",
+        argNames: [
+          "walletId",
+          "outputs",
+          "feeOpt",
+          "keyIdsFilter",
+          "addressIdsFilter"
+        ],
+      );
+
+  @override
+  Future<PendingTx> crateApiBuildTxForKey(
+      {required String walletId,
+      required PlatformInt64 keyId,
+      required List<Output> outputs,
+      BigInt? feeOpt}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_i_64(keyId);
+        var arg2 = cst_encode_list_output(outputs);
+        var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+        return wire.wire__crate__api__build_tx_for_key(
+            port_, arg0, arg1, arg2, arg3);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_pending_tx,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiBuildTxForKeyConstMeta,
+      argValues: [walletId, keyId, outputs, feeOpt],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiBuildTxForKeyConstMeta => const TaskConstMeta(
+        debugName: "build_tx_for_key",
+        argNames: ["walletId", "keyId", "outputs", "feeOpt"],
       );
 
   @override
@@ -824,6 +1037,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<KeyExportInfo> crateApiExportKeyGroupKeys(
+      {required String walletId, required PlatformInt64 keyId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_i_64(keyId);
+        return wire.wire__crate__api__export_key_group_keys(port_, arg0, arg1);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_key_export_info,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiExportKeyGroupKeysConstMeta,
+      argValues: [walletId, keyId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiExportKeyGroupKeysConstMeta => const TaskConstMeta(
+        debugName: "export_key_group_keys",
+        argNames: ["walletId", "keyId"],
+      );
+
+  @override
   Future<String> crateApiExportOrchardIvk({required String walletId}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -991,6 +1228,35 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiGenerateAddressForKey(
+      {required String walletId,
+      required PlatformInt64 keyId,
+      required bool useOrchard}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_i_64(keyId);
+        var arg2 = cst_encode_bool(useOrchard);
+        return wire.wire__crate__api__generate_address_for_key(
+            port_, arg0, arg1, arg2);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_String,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiGenerateAddressForKeyConstMeta,
+      argValues: [walletId, keyId, useOrchard],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiGenerateAddressForKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "generate_address_for_key",
+        argNames: ["walletId", "keyId", "useOrchard"],
+      );
+
+  @override
   Future<String> crateApiGenerateMnemonic({int? wordCount}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -1129,6 +1395,77 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "get_address_book_favorites",
         argNames: ["walletId"],
+      );
+
+  @override
+  Future<int> crateApiGetAutoConsolidationCandidateCount(
+      {required String walletId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        return wire.wire__crate__api__get_auto_consolidation_candidate_count(
+            port_, arg0);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_u_32,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiGetAutoConsolidationCandidateCountConstMeta,
+      argValues: [walletId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiGetAutoConsolidationCandidateCountConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_auto_consolidation_candidate_count",
+        argNames: ["walletId"],
+      );
+
+  @override
+  Future<bool> crateApiGetAutoConsolidationEnabled({required String walletId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        return wire.wire__crate__api__get_auto_consolidation_enabled(
+            port_, arg0);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_bool,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiGetAutoConsolidationEnabledConstMeta,
+      argValues: [walletId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiGetAutoConsolidationEnabledConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_auto_consolidation_enabled",
+        argNames: ["walletId"],
+      );
+
+  @override
+  Future<int> crateApiGetAutoConsolidationThreshold() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        return wire.wire__crate__api__get_auto_consolidation_threshold(port_);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_u_32,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiGetAutoConsolidationThresholdConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiGetAutoConsolidationThresholdConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_auto_consolidation_threshold",
+        argNames: [],
       );
 
   @override
@@ -1687,6 +2024,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<PlatformInt64> crateApiImportSpendingKey(
+      {required String walletId,
+      String? saplingKey,
+      String? orchardKey,
+      String? label,
+      required int birthdayHeight}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_opt_String(saplingKey);
+        var arg2 = cst_encode_opt_String(orchardKey);
+        var arg3 = cst_encode_opt_String(label);
+        var arg4 = cst_encode_u_32(birthdayHeight);
+        return wire.wire__crate__api__import_spending_key(
+            port_, arg0, arg1, arg2, arg3, arg4);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_i_64,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiImportSpendingKeyConstMeta,
+      argValues: [walletId, saplingKey, orchardKey, label, birthdayHeight],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiImportSpendingKeyConstMeta => const TaskConstMeta(
+        debugName: "import_spending_key",
+        argNames: [
+          "walletId",
+          "saplingKey",
+          "orchardKey",
+          "label",
+          "birthdayHeight"
+        ],
+      );
+
+  @override
   Future<bool> crateApiIsBackgroundSyncNeeded({required String walletId}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -1847,6 +2222,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<AddressBalanceInfo>> crateApiListAddressBalances(
+      {required String walletId, PlatformInt64? keyId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_opt_box_autoadd_i_64(keyId);
+        return wire.wire__crate__api__list_address_balances(port_, arg0, arg1);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_list_address_balance_info,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiListAddressBalancesConstMeta,
+      argValues: [walletId, keyId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiListAddressBalancesConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_address_balances",
+        argNames: ["walletId", "keyId"],
+      );
+
+  @override
   Future<List<AddressBookEntryFfi>> crateApiListAddressBook(
       {required String walletId}) {
     return handler.executeNormal(NormalTask(
@@ -1888,6 +2288,53 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiListAddressesConstMeta => const TaskConstMeta(
         debugName: "list_addresses",
+        argNames: ["walletId"],
+      );
+
+  @override
+  Future<List<KeyAddressInfo>> crateApiListAddressesForKey(
+      {required String walletId, required PlatformInt64 keyId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_i_64(keyId);
+        return wire.wire__crate__api__list_addresses_for_key(port_, arg0, arg1);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_list_key_address_info,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiListAddressesForKeyConstMeta,
+      argValues: [walletId, keyId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiListAddressesForKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_addresses_for_key",
+        argNames: ["walletId", "keyId"],
+      );
+
+  @override
+  Future<List<KeyGroupInfo>> crateApiListKeyGroups({required String walletId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        return wire.wire__crate__api__list_key_groups(port_, arg0);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_list_key_group_info,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiListKeyGroupsConstMeta,
+      argValues: [walletId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiListKeyGroupsConstMeta => const TaskConstMeta(
+        debugName: "list_key_groups",
         argNames: ["walletId"],
       );
 
@@ -2179,6 +2626,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiSetAutoConsolidationEnabled(
+      {required String walletId, required bool enabled}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_bool(enabled);
+        return wire.wire__crate__api__set_auto_consolidation_enabled(
+            port_, arg0, arg1);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_unit,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiSetAutoConsolidationEnabledConstMeta,
+      argValues: [walletId, enabled],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSetAutoConsolidationEnabledConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_auto_consolidation_enabled",
+        argNames: ["walletId", "enabled"],
+      );
+
+  @override
   Future<void> crateApiSetDecoyWalletName({required String name}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -2318,6 +2791,63 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSignTxConstMeta => const TaskConstMeta(
         debugName: "sign_tx",
         argNames: ["walletId", "pending"],
+      );
+
+  @override
+  Future<SignedTx> crateApiSignTxFiltered(
+      {required String walletId,
+      required PendingTx pending,
+      Int64List? keyIdsFilter,
+      Int64List? addressIdsFilter}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_box_autoadd_pending_tx(pending);
+        var arg2 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
+        var arg3 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
+        return wire.wire__crate__api__sign_tx_filtered(
+            port_, arg0, arg1, arg2, arg3);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_signed_tx,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiSignTxFilteredConstMeta,
+      argValues: [walletId, pending, keyIdsFilter, addressIdsFilter],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSignTxFilteredConstMeta => const TaskConstMeta(
+        debugName: "sign_tx_filtered",
+        argNames: ["walletId", "pending", "keyIdsFilter", "addressIdsFilter"],
+      );
+
+  @override
+  Future<SignedTx> crateApiSignTxForKey(
+      {required String walletId,
+      required PendingTx pending,
+      required PlatformInt64 keyId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(walletId);
+        var arg1 = cst_encode_box_autoadd_pending_tx(pending);
+        var arg2 = cst_encode_i_64(keyId);
+        return wire.wire__crate__api__sign_tx_for_key(port_, arg0, arg1, arg2);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_signed_tx,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiSignTxForKeyConstMeta,
+      argValues: [walletId, pending, keyId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSignTxForKeyConstMeta => const TaskConstMeta(
+        debugName: "sign_tx_for_key",
+        argNames: ["walletId", "pending", "keyId"],
       );
 
   @override
@@ -2697,6 +3227,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  AddressBalanceInfo dco_decode_address_balance_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
+    return AddressBalanceInfo(
+      address: dco_decode_String(arr[0]),
+      balance: dco_decode_u_64(arr[1]),
+      spendable: dco_decode_u_64(arr[2]),
+      pending: dco_decode_u_64(arr[3]),
+      keyId: dco_decode_opt_box_autoadd_i_64(arr[4]),
+      addressId: dco_decode_i_64(arr[5]),
+      label: dco_decode_opt_String(arr[6]),
+      createdAt: dco_decode_i_64(arr[7]),
+      colorTag: dco_decode_address_book_color_tag(arr[8]),
+      diversifierIndex: dco_decode_u_32(arr[9]),
+    );
+  }
+
+  @protected
   AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return AddressBookColorTag.values[raw as int];
@@ -2911,6 +3461,61 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  KeyAddressInfo dco_decode_key_address_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return KeyAddressInfo(
+      keyId: dco_decode_i_64(arr[0]),
+      address: dco_decode_String(arr[1]),
+      diversifierIndex: dco_decode_u_32(arr[2]),
+      label: dco_decode_opt_String(arr[3]),
+      createdAt: dco_decode_i_64(arr[4]),
+      colorTag: dco_decode_address_book_color_tag(arr[5]),
+    );
+  }
+
+  @protected
+  KeyExportInfo dco_decode_key_export_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return KeyExportInfo(
+      keyId: dco_decode_i_64(arr[0]),
+      saplingViewingKey: dco_decode_opt_String(arr[1]),
+      orchardViewingKey: dco_decode_opt_String(arr[2]),
+      saplingSpendingKey: dco_decode_opt_String(arr[3]),
+      orchardSpendingKey: dco_decode_opt_String(arr[4]),
+    );
+  }
+
+  @protected
+  KeyGroupInfo dco_decode_key_group_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return KeyGroupInfo(
+      id: dco_decode_i_64(arr[0]),
+      label: dco_decode_opt_String(arr[1]),
+      keyType: dco_decode_key_type_info(arr[2]),
+      spendable: dco_decode_bool(arr[3]),
+      hasSapling: dco_decode_bool(arr[4]),
+      hasOrchard: dco_decode_bool(arr[5]),
+      birthdayHeight: dco_decode_i_64(arr[6]),
+      createdAt: dco_decode_i_64(arr[7]),
+    );
+  }
+
+  @protected
+  KeyTypeInfo dco_decode_key_type_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KeyTypeInfo.values[raw as int];
+  }
+
+  @protected
   LightdEndpoint dco_decode_lightd_endpoint(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2932,6 +3537,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<AddressBalanceInfo> dco_decode_list_address_balance_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_address_balance_info).toList();
+  }
+
+  @protected
   List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(
       dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
@@ -2947,9 +3558,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<KeyAddressInfo> dco_decode_list_key_address_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_key_address_info).toList();
+  }
+
+  @protected
+  List<KeyGroupInfo> dco_decode_list_key_group_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_key_group_info).toList();
+  }
+
+  @protected
   List<Output> dco_decode_list_output(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_output).toList();
+  }
+
+  @protected
+  Int64List dco_decode_list_prim_i_64_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeInt64List(raw);
   }
 
   @protected
@@ -3072,6 +3701,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return raw == null
         ? null
         : dco_decode_box_autoadd_watch_only_banner_info(raw);
+  }
+
+  @protected
+  Int64List? dco_decode_opt_list_prim_i_64_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_list_prim_i_64_strict(raw);
   }
 
   @protected
@@ -3330,6 +3965,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  AddressBalanceInfo sse_decode_address_balance_info(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_address = sse_decode_String(deserializer);
+    var var_balance = sse_decode_u_64(deserializer);
+    var var_spendable = sse_decode_u_64(deserializer);
+    var var_pending = sse_decode_u_64(deserializer);
+    var var_keyId = sse_decode_opt_box_autoadd_i_64(deserializer);
+    var var_addressId = sse_decode_i_64(deserializer);
+    var var_label = sse_decode_opt_String(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    var var_colorTag = sse_decode_address_book_color_tag(deserializer);
+    var var_diversifierIndex = sse_decode_u_32(deserializer);
+    return AddressBalanceInfo(
+        address: var_address,
+        balance: var_balance,
+        spendable: var_spendable,
+        pending: var_pending,
+        keyId: var_keyId,
+        addressId: var_addressId,
+        label: var_label,
+        createdAt: var_createdAt,
+        colorTag: var_colorTag,
+        diversifierIndex: var_diversifierIndex);
+  }
+
+  @protected
   AddressBookColorTag sse_decode_address_book_color_tag(
       SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -3557,6 +4219,69 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  KeyAddressInfo sse_decode_key_address_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_keyId = sse_decode_i_64(deserializer);
+    var var_address = sse_decode_String(deserializer);
+    var var_diversifierIndex = sse_decode_u_32(deserializer);
+    var var_label = sse_decode_opt_String(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    var var_colorTag = sse_decode_address_book_color_tag(deserializer);
+    return KeyAddressInfo(
+        keyId: var_keyId,
+        address: var_address,
+        diversifierIndex: var_diversifierIndex,
+        label: var_label,
+        createdAt: var_createdAt,
+        colorTag: var_colorTag);
+  }
+
+  @protected
+  KeyExportInfo sse_decode_key_export_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_keyId = sse_decode_i_64(deserializer);
+    var var_saplingViewingKey = sse_decode_opt_String(deserializer);
+    var var_orchardViewingKey = sse_decode_opt_String(deserializer);
+    var var_saplingSpendingKey = sse_decode_opt_String(deserializer);
+    var var_orchardSpendingKey = sse_decode_opt_String(deserializer);
+    return KeyExportInfo(
+        keyId: var_keyId,
+        saplingViewingKey: var_saplingViewingKey,
+        orchardViewingKey: var_orchardViewingKey,
+        saplingSpendingKey: var_saplingSpendingKey,
+        orchardSpendingKey: var_orchardSpendingKey);
+  }
+
+  @protected
+  KeyGroupInfo sse_decode_key_group_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_i_64(deserializer);
+    var var_label = sse_decode_opt_String(deserializer);
+    var var_keyType = sse_decode_key_type_info(deserializer);
+    var var_spendable = sse_decode_bool(deserializer);
+    var var_hasSapling = sse_decode_bool(deserializer);
+    var var_hasOrchard = sse_decode_bool(deserializer);
+    var var_birthdayHeight = sse_decode_i_64(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    return KeyGroupInfo(
+        id: var_id,
+        label: var_label,
+        keyType: var_keyType,
+        spendable: var_spendable,
+        hasSapling: var_hasSapling,
+        hasOrchard: var_hasOrchard,
+        birthdayHeight: var_birthdayHeight,
+        createdAt: var_createdAt);
+  }
+
+  @protected
+  KeyTypeInfo sse_decode_key_type_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return KeyTypeInfo.values[inner];
+  }
+
+  @protected
   LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_host = sse_decode_String(deserializer);
@@ -3580,6 +4305,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <String>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<AddressBalanceInfo> sse_decode_list_address_balance_info(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <AddressBalanceInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_address_balance_info(deserializer));
     }
     return ans_;
   }
@@ -3610,6 +4348,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<KeyAddressInfo> sse_decode_list_key_address_info(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <KeyAddressInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_key_address_info(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<KeyGroupInfo> sse_decode_list_key_group_info(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <KeyGroupInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_key_group_info(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<Output> sse_decode_list_output(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3619,6 +4383,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_output(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getInt64List(len_);
   }
 
   @protected
@@ -3805,6 +4576,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_watch_only_banner_info(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Int64List? sse_decode_opt_list_prim_i_64_strict(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_list_prim_i_64_strict(deserializer));
     } else {
       return null;
     }
@@ -4094,6 +4877,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int cst_encode_key_type_info(KeyTypeInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_i_32(raw.index);
+  }
+
+  @protected
   int cst_encode_sync_mode(SyncMode raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return cst_encode_i_32(raw.index);
@@ -4140,6 +4929,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_address_balance_info(
+      AddressBalanceInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.address, serializer);
+    sse_encode_u_64(self.balance, serializer);
+    sse_encode_u_64(self.spendable, serializer);
+    sse_encode_u_64(self.pending, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.keyId, serializer);
+    sse_encode_i_64(self.addressId, serializer);
+    sse_encode_opt_String(self.label, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+    sse_encode_address_book_color_tag(self.colorTag, serializer);
+    sse_encode_u_32(self.diversifierIndex, serializer);
   }
 
   @protected
@@ -4332,6 +5137,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_key_address_info(
+      KeyAddressInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.keyId, serializer);
+    sse_encode_String(self.address, serializer);
+    sse_encode_u_32(self.diversifierIndex, serializer);
+    sse_encode_opt_String(self.label, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+    sse_encode_address_book_color_tag(self.colorTag, serializer);
+  }
+
+  @protected
+  void sse_encode_key_export_info(
+      KeyExportInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.keyId, serializer);
+    sse_encode_opt_String(self.saplingViewingKey, serializer);
+    sse_encode_opt_String(self.orchardViewingKey, serializer);
+    sse_encode_opt_String(self.saplingSpendingKey, serializer);
+    sse_encode_opt_String(self.orchardSpendingKey, serializer);
+  }
+
+  @protected
+  void sse_encode_key_group_info(KeyGroupInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.id, serializer);
+    sse_encode_opt_String(self.label, serializer);
+    sse_encode_key_type_info(self.keyType, serializer);
+    sse_encode_bool(self.spendable, serializer);
+    sse_encode_bool(self.hasSapling, serializer);
+    sse_encode_bool(self.hasOrchard, serializer);
+    sse_encode_i_64(self.birthdayHeight, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+  }
+
+  @protected
+  void sse_encode_key_type_info(KeyTypeInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_lightd_endpoint(
       LightdEndpoint self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -4348,6 +5195,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_address_balance_info(
+      List<AddressBalanceInfo> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_address_balance_info(item, serializer);
     }
   }
 
@@ -4372,12 +5229,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_key_address_info(
+      List<KeyAddressInfo> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_key_address_info(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_key_group_info(
+      List<KeyGroupInfo> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_key_group_info(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_output(List<Output> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_output(item, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_list_prim_i_64_strict(
+      Int64List self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putInt64List(self);
   }
 
   @protected
@@ -4535,6 +5420,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_watch_only_banner_info(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_list_prim_i_64_strict(
+      Int64List? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_list_prim_i_64_strict(self, serializer);
     }
   }
 

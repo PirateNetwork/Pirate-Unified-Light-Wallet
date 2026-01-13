@@ -1,6 +1,6 @@
+#![allow(unexpected_cfgs)]
 // flutter_rust_bridge uses cfg flags like `frb_expand` during codegen / macro expansion.
 // On stable Rust, `unexpected_cfgs` warns about unknown cfg names; we allow them in this crate.
-#![allow(unexpected_cfgs)]
 
 // Flutter Rust Bridge FFI surface
 //

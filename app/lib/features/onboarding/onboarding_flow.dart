@@ -26,7 +26,7 @@ enum OnboardingStep {
 enum OnboardingMode {
   create,
   import,
-  watchOnly, // IVK import
+  watchOnly, // viewing key import
 }
 
 /// Onboarding state
@@ -237,7 +237,7 @@ class OnboardingController extends Notifier<OnboardingState> {
         );
         break;
       case OnboardingMode.watchOnly:
-        throw StateError('Watch-only onboarding must use IVK import flow');
+        throw StateError('Watch-only onboarding must use viewing key import flow');
     }
     
     // After wallet creation, unlock the app with the passphrase
@@ -259,4 +259,3 @@ class OnboardingController extends Notifier<OnboardingState> {
 /// Provider for onboarding controller
 final onboardingControllerProvider =
     NotifierProvider<OnboardingController, OnboardingState>(OnboardingController.new);
-

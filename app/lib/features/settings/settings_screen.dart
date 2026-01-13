@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design/deep_space_theme.dart';
+import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
@@ -136,12 +137,55 @@ class SettingsScreen extends ConsumerWidget {
                 );
               },
             ),
+          ],
+        ),
+
+        _SettingsSection(
+          title: 'Wallet',
+          children: [
             PListTile(
-              leading: const Icon(Icons.visibility_outlined),
-              title: 'Viewing key',
-              subtitle: 'Export or import a watch-only key',
-              onTap: () => context.push('/settings/watch-only'),
+              leading: const Icon(Icons.vpn_key_outlined),
+              title: 'Keys & addresses',
+              subtitle: 'Manage imported keys and addresses',
+              onTap: () => context.push('/settings/keys'),
               trailing: const Icon(Icons.chevron_right),
+            ),
+            Consumer(
+              builder: (context, ref, _) {
+                final walletId = ref.watch(activeWalletProvider);
+                final enabledAsync = ref.watch(autoConsolidationEnabledProvider);
+                Widget buildTile({required bool enabled, required bool loading}) {
+                  final status = enabled ? 'On' : 'Off';
+                  final subtitle = walletId == null
+                      ? 'No active wallet'
+                      : loading
+                          ? 'Loading...'
+                          : '$status - Combine unlabeled notes during sends';
+                  return PListTile(
+                    leading: const Icon(Icons.merge_type_outlined),
+                    title: 'Auto consolidation',
+                    subtitle: subtitle,
+                    trailing: Switch(
+                      value: enabled,
+                      onChanged: walletId == null || loading
+                          ? null
+                          : (value) async {
+                              await FfiBridge.setAutoConsolidationEnabled(
+                                walletId,
+                                value,
+                              );
+                              ref.invalidate(autoConsolidationEnabledProvider);
+                            },
+                    ),
+                  );
+                }
+
+                return enabledAsync.when(
+                  data: (enabled) => buildTile(enabled: enabled, loading: false),
+                  loading: () => buildTile(enabled: false, loading: true),
+                  error: (_, __) => buildTile(enabled: false, loading: false),
+                );
+              },
             ),
           ],
         ),
@@ -369,8 +413,24 @@ class SettingsScreen extends ConsumerWidget {
         try {
           // Invalidate sync progress stream before rescan so home screen picks it up
           ref.invalidate(syncProgressStreamProvider);
-          await ref.read(rescanProvider)(fromHeight);
-          await _appendRescanLog('rescan call completed from_height=$fromHeight');
+          ref
+              .read(rescanProvider)(fromHeight)
+              .then((_) => _appendRescanLog(
+                    'rescan call completed from_height=$fromHeight',
+                  ))
+              .catchError((e) async {
+            await _appendRescanLog(
+              'rescan call failed from_height=$fromHeight error=$e',
+            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Failed to start rescan: ${e.toString()}'),
+                  backgroundColor: AppColors.error,
+                ),
+              );
+            }
+          });
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(

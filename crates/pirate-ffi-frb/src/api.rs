@@ -9,7 +9,7 @@
 //! - **Addresses**: Generate, label, list Sapling addresses
 //! - **Transactions**: Build, sign, broadcast transactions
 //! - **Sync**: Start/stop sync, rescan, progress tracking
-//! - **Security**: Panic PIN, seed export, IVK export
+//! - **Security**: Panic PIN, seed export, viewing key export
 //! - **Network**: Endpoint management, tunnel configuration
 //!
 //! ## State Management
@@ -19,6 +19,8 @@
 
 use crate::models::*;
 use anyhow::{Result, anyhow};
+use bech32::{Bech32, Hrp};
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -32,7 +34,7 @@ use pirate_core::keys::{
     OrchardExtendedSpendingKey,
     OrchardExtendedFullViewingKey,
     OrchardPaymentAddress,
-    IncomingViewingKey,
+    orchard_extsk_hrp_for_network,
 };
 use pirate_core::wallet::Wallet;
 use pirate_storage_sqlite::{
@@ -41,8 +43,11 @@ use pirate_storage_sqlite::{
     EncryptionKey,
     Repository,
     WalletSecret,
+    AccountKey,
     Account,
     AddressType,
+    KeyType,
+    KeyScope,
     passphrase_store,
     security::{AppPassphrase, EncryptionAlgorithm, MasterKey, SealedKey, generate_salt},
     KeystoreResult,
@@ -53,8 +58,12 @@ use pirate_sync_lightd::client::{LightClient, LightClientConfig, TlsConfig, Retr
 use pirate_sync_lightd::OrchardFrontier;
 use pirate_storage_sqlite::FrontierStorage;
 use zcash_primitives::merkle_tree::{read_frontier_v0, read_frontier_v1};
+use zcash_primitives::sapling::PaymentAddress as SaplingPaymentAddress;
+use zcash_primitives::zip32::ExtendedFullViewingKey as SaplingExtendedFullViewingKey;
+use orchard::Address as OrchardAddress;
 use orchard::note::ExtractedNoteCommitment;
 use orchard::tree::MerkleHashOrchard;
+use zcash_client_backend::encoding::{encode_extended_full_viewing_key, encode_extended_spending_key};
 use std::path::{Path, PathBuf};
 use directories::ProjectDirs;
 use hex;
@@ -277,6 +286,7 @@ pub fn create_wallet(
         };
         let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret)?;
         repo.upsert_wallet_secret(&encrypted_secret)?;
+        let _ = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
 
         tracing::info!("Persisted wallet secret (Sapling + Orchard) for wallet {}", wallet_id);
     }
@@ -366,6 +376,7 @@ pub fn restore_wallet(
         // Encrypt sensitive fields before storage
         let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret)?;
         repo.upsert_wallet_secret(&encrypted_secret)?;
+        let _ = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
 
         tracing::info!("Persisted encrypted wallet secret for wallet {}", wallet_id);
     }
@@ -1390,6 +1401,58 @@ fn get_wallet_meta(wallet_id: &str) -> Result<WalletMeta> {
         .ok_or_else(|| anyhow!("Wallet not found"))
 }
 
+fn auto_consolidation_setting_key(wallet_id: &WalletId) -> String {
+    format!("auto_consolidation_enabled_{}", wallet_id)
+}
+
+fn auto_consolidation_enabled(wallet_id: &WalletId) -> Result<bool> {
+    if !wallet_registry_path()?.exists() {
+        return Ok(false);
+    }
+    let registry_db = open_wallet_registry()?;
+    let key = auto_consolidation_setting_key(wallet_id);
+    let enabled = get_registry_setting(&registry_db, &key)?
+        .map(|value| value == "true")
+        .unwrap_or(false);
+    Ok(enabled)
+}
+
+/// Get auto-consolidation setting for a wallet.
+pub fn get_auto_consolidation_enabled(wallet_id: WalletId) -> Result<bool> {
+    ensure_wallet_registry_loaded()?;
+    auto_consolidation_enabled(&wallet_id)
+}
+
+/// Enable or disable auto-consolidation for a wallet.
+pub fn set_auto_consolidation_enabled(wallet_id: WalletId, enabled: bool) -> Result<()> {
+    ensure_wallet_registry_loaded()?;
+    let registry_db = open_wallet_registry()?;
+    let key = auto_consolidation_setting_key(&wallet_id);
+    let value = if enabled { Some("true") } else { None };
+    set_registry_setting(&registry_db, &key, value)?;
+    Ok(())
+}
+
+/// Get the note count threshold that triggers auto-consolidation prompts.
+pub fn get_auto_consolidation_threshold() -> Result<u32> {
+    Ok(AUTO_CONSOLIDATION_THRESHOLD as u32)
+}
+
+/// Count selectable notes eligible for auto-consolidation.
+pub fn get_auto_consolidation_candidate_count(wallet_id: WalletId) -> Result<u32> {
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
+    let selectable_notes =
+        repo.get_unspent_selectable_notes_filtered(secret.account_id, None, None)?;
+    let count = selectable_notes
+        .iter()
+        .filter(|note| note.auto_consolidation_eligible)
+        .count();
+    Ok(count as u32)
+}
+
 /// Derive master key for field-level encryption from passphrase
 fn wallet_master_key(wallet_id: &str, passphrase: &str) -> Result<MasterKey> {
     let salt = Sha256::digest(wallet_id.as_bytes());
@@ -1460,6 +1523,63 @@ fn open_wallet_db_for(wallet_id: &str) -> Result<(&'static Database, Repository<
     let (db, _key, _master_key) = open_wallet_db_with_passphrase(wallet_id, &passphrase)?;
     let db_ref: &'static Database = Box::leak(Box::new(db));
     Ok((db_ref, Repository::new(db_ref)))
+}
+
+fn ensure_primary_account_key(repo: &Repository, wallet_id: &str, secret: &WalletSecret) -> Result<i64> {
+    let keys = repo.get_account_keys(secret.account_id)?;
+    let meta = get_wallet_meta(wallet_id)?;
+    if let Some(existing) = keys.iter().find(|k| k.key_type == KeyType::Seed && k.key_scope == KeyScope::Account) {
+        if let Some(id) = existing.id {
+            if existing.birthday_height != meta.birthday_height as i64 {
+                let mut updated = existing.clone();
+                updated.birthday_height = meta.birthday_height as i64;
+                let encrypted = repo.encrypt_account_key_fields(&updated)?;
+                let _ = repo.upsert_account_key(&encrypted);
+            }
+            let _ = repo.backfill_address_key_id(secret.account_id, id);
+            let _ = repo.backfill_note_key_id(id);
+            return Ok(id);
+        }
+    }
+
+    let sapling_extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)?;
+    let dfvk_bytes = match secret.dfvk.as_ref() {
+        Some(bytes) => Some(bytes.clone()),
+        None => Some(sapling_extsk.to_extended_fvk().to_bytes()),
+    };
+
+    let orchard_fvk_bytes = match secret.orchard_extsk.as_ref() {
+        Some(bytes) => {
+            let extsk = OrchardExtendedSpendingKey::from_bytes(bytes)
+                .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
+            Some(extsk.to_extended_fvk().to_bytes())
+        }
+        None => None,
+    };
+
+    let key = AccountKey {
+        id: None,
+        account_id: secret.account_id,
+        key_type: KeyType::Seed,
+        key_scope: KeyScope::Account,
+        label: Some("Seed".to_string()),
+        birthday_height: meta.birthday_height as i64,
+        created_at: chrono::Utc::now().timestamp(),
+        spendable: true,
+        sapling_extsk: Some(secret.extsk.clone()),
+        sapling_dfvk: dfvk_bytes,
+        orchard_extsk: secret.orchard_extsk.clone(),
+        orchard_fvk: orchard_fvk_bytes,
+        encrypted_mnemonic: secret.encrypted_mnemonic.clone(),
+    };
+
+    let encrypted_key = repo.encrypt_account_key_fields(&key)?;
+    let key_id = repo
+        .upsert_account_key(&encrypted_key)
+        .map_err(|e| anyhow!(e.to_string()))?;
+    let _ = repo.backfill_address_key_id(secret.account_id, key_id);
+    let _ = repo.backfill_note_key_id(key_id);
+    Ok(key_id)
 }
 
 /// Get active wallet ID
@@ -1649,11 +1769,13 @@ pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
     let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
         .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?;
     
+    let key_id = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
+
     // Get current diversifier index from database
-    let current_index = repo.get_current_diversifier_index(secret.account_id)?;
+    let current_index = repo.get_current_diversifier_index(secret.account_id, key_id)?;
     
     // Check if address already exists in database
-    if let Some(addr_record) = repo.get_address_by_index(secret.account_id, current_index)? {
+    if let Some(addr_record) = repo.get_address_by_index(secret.account_id, key_id, current_index)? {
         tracing::debug!("Found existing address at index {}: {}", current_index, addr_record.address);
         return Ok(addr_record.address);
     }
@@ -1686,6 +1808,7 @@ pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
     // Store address in database
     let address = pirate_storage_sqlite::Address {
         id: None,
+        key_id: Some(key_id),
         account_id: secret.account_id,
         diversifier_index: current_index,
         address: addr_string.clone(),
@@ -1693,6 +1816,7 @@ pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
         label: None, // No label by default
         created_at: chrono::Utc::now().timestamp(),
         color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+        address_scope: pirate_storage_sqlite::AddressScope::External,
     };
     repo.upsert_address(&address)?;
     
@@ -1722,9 +1846,11 @@ pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    
+
+    let key_id = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
+
     // Get next diversifier index (current + 1)
-    let next_index = repo.get_next_diversifier_index(secret.account_id)?;
+    let next_index = repo.get_next_diversifier_index(secret.account_id, key_id)?;
     
     // Generate address based on network/height
     let (addr_string, address_type) = if use_orchard {
@@ -1753,6 +1879,7 @@ pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
     // Store address in database
     let address = pirate_storage_sqlite::Address {
         id: None,
+        key_id: Some(key_id),
         account_id: secret.account_id,
         diversifier_index: next_index,
         address: addr_string.clone(),
@@ -1760,6 +1887,7 @@ pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
         label: None, // No label by default
         created_at: chrono::Utc::now().timestamp(),
         color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+        address_scope: pirate_storage_sqlite::AddressScope::External,
     };
     repo.upsert_address(&address)?;
     
@@ -1824,7 +1952,8 @@ pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
     
     // Load all addresses for this account
-    let addresses = repo.get_all_addresses(secret.account_id)?;
+    let mut addresses = repo.get_all_addresses(secret.account_id)?;
+    addresses.retain(|addr| addr.address_scope != pirate_storage_sqlite::AddressScope::Internal);
     
     // Convert to AddressInfo with labels
     let address_infos: Vec<AddressInfo> = addresses
@@ -1839,6 +1968,210 @@ pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
         .collect();
     
     Ok(address_infos)
+}
+
+/// Get per-address balances for a wallet (optionally filtered by key group).
+pub fn list_address_balances(
+    wallet_id: WalletId,
+    key_id: Option<i64>,
+) -> Result<Vec<AddressBalanceInfo>> {
+    let (db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+    let _ = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
+    let network_type = address_prefix_network_type(&wallet_id)?;
+    let orchard_active = should_generate_orchard(&wallet_id)?;
+
+    let mut notes = repo.get_unspent_notes(secret.account_id)?;
+    for note in notes.iter_mut() {
+        if note.address_id.is_some() {
+            continue;
+        }
+        let Some(note_bytes) = note.note.as_deref() else { continue };
+        let address_string = match note.note_type {
+            pirate_storage_sqlite::models::NoteType::Sapling => {
+                decode_sapling_address_bytes_from_note_bytes(note_bytes)
+                    .and_then(|bytes| SaplingPaymentAddress::from_bytes(&bytes))
+                    .map(|addr| {
+                        PaymentAddress { inner: addr }.encode_for_network(network_type)
+                    })
+            }
+            pirate_storage_sqlite::models::NoteType::Orchard => {
+                if !orchard_active {
+                    None
+                } else {
+                    decode_orchard_address_bytes_from_note_bytes(note_bytes)
+                        .and_then(|bytes| Option::from(OrchardAddress::from_raw_address_bytes(&bytes)))
+                        .and_then(|addr| {
+                            OrchardPaymentAddress { inner: addr }
+                                .encode_for_network(network_type)
+                                .ok()
+                        })
+                }
+            }
+        };
+        let Some(address_string) = address_string else { continue };
+        let address_type = match note.note_type {
+            pirate_storage_sqlite::models::NoteType::Sapling => AddressType::Sapling,
+            pirate_storage_sqlite::models::NoteType::Orchard => AddressType::Orchard,
+        };
+        let address_record = pirate_storage_sqlite::Address {
+            id: None,
+            key_id: note.key_id,
+            account_id: secret.account_id,
+            diversifier_index: 0,
+            address: address_string.clone(),
+            address_type,
+            label: None,
+            created_at: chrono::Utc::now().timestamp(),
+            color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+            address_scope: pirate_storage_sqlite::AddressScope::External,
+        };
+        let _ = repo.upsert_address(&address_record);
+        if let Some(addr) = repo
+            .get_address_by_string(secret.account_id, &address_string)?
+            .and_then(|addr| addr.id)
+        {
+            note.address_id = Some(addr);
+            repo.update_note_by_id(note)?;
+        }
+    }
+
+    let mut addresses = if let Some(id) = key_id {
+        repo.get_addresses_by_key(secret.account_id, id)?
+    } else {
+        repo.get_all_addresses(secret.account_id)?
+    };
+    if !orchard_active {
+        addresses.retain(|addr| addr.address_type != AddressType::Orchard);
+    }
+    addresses.retain(|addr| addr.address_scope != pirate_storage_sqlite::AddressScope::Internal);
+
+    // Load sync height for confirmation depth calculations.
+    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+    let sync_state = sync_storage.load_sync_state()?;
+    let current_height = sync_state.local_height.max(sync_state.target_height);
+    const MIN_DEPTH: u64 = 10;
+    let confirmation_threshold = if current_height >= MIN_DEPTH {
+        current_height - MIN_DEPTH
+    } else {
+        0
+    };
+
+    let mut balances: HashMap<i64, (u64, u64, u64)> = HashMap::new();
+
+    for note in notes {
+        let Some(address_id) = note.address_id else { continue };
+        if note.value <= 0 {
+            continue;
+        }
+        let value = match u64::try_from(note.value) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let entry = balances.entry(address_id).or_insert((0, 0, 0));
+        entry.0 = entry
+            .0
+            .checked_add(value)
+            .ok_or_else(|| anyhow!("Balance overflow"))?;
+
+        let note_height = note.height as u64;
+        if note_height > 0 && note_height <= confirmation_threshold {
+            entry.1 = entry
+                .1
+                .checked_add(value)
+                .ok_or_else(|| anyhow!("Balance overflow"))?;
+        } else {
+            entry.2 = entry
+                .2
+                .checked_add(value)
+                .ok_or_else(|| anyhow!("Balance overflow"))?;
+        }
+    }
+
+    if let Ok(current_addr) = current_receive_address(wallet_id.clone()) {
+        if let Some(current_id) = addresses
+            .iter()
+            .find(|addr| addr.address == current_addr)
+            .and_then(|addr| addr.id)
+        {
+            if let Some((total, _spendable, _pending)) = balances.get(&current_id) {
+                if *total > 0 {
+                    let _ = next_receive_address(wallet_id.clone());
+                    addresses = if let Some(id) = key_id {
+                        repo.get_addresses_by_key(secret.account_id, id)?
+                    } else {
+                        repo.get_all_addresses(secret.account_id)?
+                    };
+                    if !orchard_active {
+                        addresses.retain(|addr| addr.address_type != AddressType::Orchard);
+                    }
+                }
+            }
+        }
+    }
+
+    let infos = addresses
+        .into_iter()
+        .filter_map(|addr| {
+            let id = addr.id?;
+            let (total, spendable, pending) = balances.get(&id).copied().unwrap_or((0, 0, 0));
+            Some(AddressBalanceInfo {
+                address: addr.address,
+                balance: total,
+                spendable,
+                pending,
+                key_id: addr.key_id,
+                address_id: id,
+                label: addr.label,
+                created_at: addr.created_at,
+                color_tag: address_book_color_to_ffi(addr.color_tag),
+                diversifier_index: addr.diversifier_index,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(infos)
+}
+
+const SAPLING_NOTE_BYTES_VERSION: u8 = 1;
+const ORCHARD_NOTE_BYTES_VERSION: u8 = 1;
+
+fn decode_sapling_address_bytes_from_note_bytes(note_bytes: &[u8]) -> Option<[u8; 43]> {
+    if note_bytes.is_empty() {
+        return None;
+    }
+    let expected = 1 + 43;
+    if note_bytes.len() >= expected && note_bytes[0] == SAPLING_NOTE_BYTES_VERSION {
+        let mut address = [0u8; 43];
+        address.copy_from_slice(&note_bytes[1..44]);
+        return Some(address);
+    }
+    if note_bytes.len() >= 43 {
+        let mut address = [0u8; 43];
+        address.copy_from_slice(&note_bytes[0..43]);
+        return Some(address);
+    }
+    None
+}
+
+fn decode_orchard_address_bytes_from_note_bytes(note_bytes: &[u8]) -> Option<[u8; 43]> {
+    if note_bytes.is_empty() {
+        return None;
+    }
+    let expected = 1 + 43;
+    if note_bytes.len() >= expected && note_bytes[0] == ORCHARD_NOTE_BYTES_VERSION {
+        let mut address = [0u8; 43];
+        address.copy_from_slice(&note_bytes[1..44]);
+        return Some(address);
+    }
+    if note_bytes.len() >= 43 {
+        let mut address = [0u8; 43];
+        address.copy_from_slice(&note_bytes[0..43]);
+        return Some(address);
+    }
+    None
 }
 
 // ============================================================================
@@ -1871,6 +2204,48 @@ fn address_book_color_to_ffi(tag: DbColorTag) -> AddressBookColorTag {
         DbColorTag::Pink => AddressBookColorTag::Pink,
         DbColorTag::Gray => AddressBookColorTag::Gray,
     }
+}
+
+fn key_type_to_info(key_type: KeyType) -> KeyTypeInfo {
+    match key_type {
+        KeyType::Seed => KeyTypeInfo::Seed,
+        KeyType::ImportSpend => KeyTypeInfo::ImportedSpending,
+        KeyType::ImportView => KeyTypeInfo::ImportedViewing,
+    }
+}
+
+fn sapling_extfvk_hrp_for_network(network: NetworkType) -> &'static str {
+    match network {
+        NetworkType::Mainnet => "zxviews",
+        NetworkType::Testnet => "zxviewtestsapling",
+        NetworkType::Regtest => "zxviewregtestsapling",
+    }
+}
+
+fn sapling_extsk_hrp_for_network(network: NetworkType) -> &'static str {
+    match network {
+        NetworkType::Mainnet => "secret-extended-key-main",
+        NetworkType::Testnet => "secret-extended-key-test",
+        NetworkType::Regtest => "secret-extended-key-regtest",
+    }
+}
+
+fn encode_sapling_xfvk_from_bytes(bytes: &[u8], network: NetworkType) -> Option<String> {
+    if bytes.len() != 169 {
+        return None;
+    }
+    let extfvk = SaplingExtendedFullViewingKey::read(&mut &bytes[..]).ok()?;
+    Some(encode_extended_full_viewing_key(
+        sapling_extfvk_hrp_for_network(network),
+        &extfvk,
+    ))
+}
+
+fn encode_orchard_extsk(extsk: &OrchardExtendedSpendingKey, network: NetworkType) -> Result<String> {
+    let hrp = Hrp::parse(orchard_extsk_hrp_for_network(network))
+        .map_err(|e| anyhow!("Invalid Orchard HRP: {}", e))?;
+    bech32::encode::<Bech32>(hrp, &extsk.to_bytes())
+        .map_err(|e| anyhow!("Bech32 encoding failed: {}", e))
 }
 
 fn parse_rfc3339_timestamp(value: &str) -> Result<i64> {
@@ -2083,14 +2458,14 @@ pub fn get_recently_used_addresses(
 // Watch-Only
 // ============================================================================
 
-/// Export Sapling extended full viewing key (xFVK) from full wallet.
+/// Export Sapling viewing key from full wallet.
 ///
 /// Uses the zxviews... Bech32 format for watch-only wallets.
 pub fn export_ivk(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
     
     if wallet.watch_only {
-        return Err(anyhow!("Cannot export IVK from watch-only wallet"));
+        return Err(anyhow!("Cannot export viewing key from watch-only wallet"));
     }
     
     // Load wallet secret from encrypted storage
@@ -2111,7 +2486,7 @@ pub fn export_ivk(wallet_id: WalletId) -> Result<String> {
 /// 
 /// Returns Bech32-encoded string with the network-specific HRP.
 /// Uses the standard Orchard viewing key export format.
-/// Use export_ivk() for Sapling xFVK (zxviews... format).
+/// Use export_ivk() for Sapling viewing keys (zxviews... format).
 pub fn export_orchard_viewing_key(wallet_id: WalletId) -> Result<String> {
     // Load wallet secret from encrypted storage
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
@@ -2132,7 +2507,7 @@ pub fn export_orchard_viewing_key(wallet_id: WalletId) -> Result<String> {
     }
 }
 
-/// Export Orchard IVK (returns hex-encoded 64 bytes) - DEPRECATED
+/// Export legacy Orchard viewing key (returns hex-encoded 64 bytes) - DEPRECATED
 /// 
 /// Use export_orchard_viewing_key() instead for watch-only wallets.
 /// This method is kept for backward compatibility.
@@ -2141,7 +2516,7 @@ pub fn export_orchard_ivk(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
     
     if wallet.watch_only {
-        return Err(anyhow!("Cannot export IVK from watch-only wallet"));
+        return Err(anyhow!("Cannot export viewing key from watch-only wallet"));
     }
     
     // Load wallet secret from encrypted storage
@@ -2150,7 +2525,7 @@ pub fn export_orchard_ivk(wallet_id: WalletId) -> Result<String> {
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
     
-    // Derive Orchard IVK from stored Orchard spending key
+    // Derive legacy Orchard viewing key from stored Orchard spending key
     if let Some(orchard_extsk_bytes) = secret.orchard_extsk.as_ref() {
         let orchard_extsk = OrchardExtendedSpendingKey::from_bytes(orchard_extsk_bytes)
             .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
@@ -2162,14 +2537,13 @@ pub fn export_orchard_ivk(wallet_id: WalletId) -> Result<String> {
     }
 }
 
-/// Import incoming viewing key (watch-only wallet)
-/// 
-/// Supports Sapling xFVK (zxviews...), Sapling IVK (zivks... or legacy zxviews1 hex),
-/// and Orchard extended viewing key (pirate-extended-viewing-key...) or Orchard IVK (64 bytes hex).
+/// Import viewing keys (watch-only wallet).
+///
+/// Supports Sapling viewing keys (zxviews...) and Orchard extended viewing keys (bech32).
 /// If both are provided, creates a watch-only wallet that can view both Sapling and Orchard transactions.
 pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option<String>, birthday: u32) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
-    // Validate IVKs by attempting to create wallet
+    // Validate viewing keys by attempting to create wallet
     let _wallet = Wallet::from_ivks(sapling_ivk.as_deref(), orchard_ivk.as_deref())?;
     
     let wallet_id = uuid::Uuid::new_v4().to_string();
@@ -2194,7 +2568,7 @@ pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option
     set_active_wallet_registry(&registry_db, Some(&wallet_id))?;
     touch_wallet_last_used(&registry_db, &wallet_id)?;
 
-    // Store IVKs in encrypted storage
+    // Store viewing keys in encrypted storage
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     
     // Create account for this wallet
@@ -2205,35 +2579,23 @@ pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option
     };
     let account_id = repo.insert_account(&account)?;
     
-    // Store IVKs in wallet_secret (watch-only wallets don't have mnemonic)
+    // Store viewing keys in wallet_secret (watch-only wallets don't have mnemonic)
     let mut dfvk_bytes: Option<Vec<u8>> = None;
-    let mut sapling_ivk_bytes: Option<Vec<u8>> = None;
     if let Some(ref value) = sapling_ivk {
-        if let Ok(dfvk) = ExtendedFullViewingKey::from_xfvk_bech32_any(value) {
-            dfvk_bytes = Some(dfvk.to_bytes());
-            sapling_ivk_bytes = Some(dfvk.to_ivk().to_bytes().to_vec());
-        } else if let Ok(ivk) = IncomingViewingKey::from_bech32_any(value) {
-            sapling_ivk_bytes = Some(ivk.to_bytes().to_vec());
-        } else if let Ok(ivk) = IncomingViewingKey::from_string(value) {
-            sapling_ivk_bytes = Some(ivk.to_bytes().to_vec());
-        } else {
-            return Err(anyhow!("Invalid Sapling viewing key format"));
-        }
+        let dfvk = ExtendedFullViewingKey::from_xfvk_bech32_any(value)
+            .map_err(|_| anyhow!("Invalid Sapling viewing key (xFVK)"))?;
+        dfvk_bytes = Some(dfvk.to_bytes());
     }
 
-    let mut orchard_ivk_bytes: Option<Vec<u8>> = None;
+    let mut orchard_fvk_bytes: Option<Vec<u8>> = None;
     if let Some(ref value) = orchard_ivk {
-        if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bech32_any(value) {
-            orchard_ivk_bytes = Some(fvk.to_bytes());
-        } else {
-            let bytes = hex::decode(value)
-                .map_err(|_| anyhow!("Invalid Orchard IVK hex"))?;
-            if bytes.len() != 64 {
-                return Err(anyhow!("Orchard IVK must be 64 bytes"));
-            }
-            orchard_ivk_bytes = Some(bytes);
-        }
+        let fvk = OrchardExtendedFullViewingKey::from_bech32_any(value)
+            .map_err(|_| anyhow!("Invalid Orchard viewing key"))?;
+        orchard_fvk_bytes = Some(fvk.to_bytes());
     }
+
+    let dfvk_bytes_for_key = dfvk_bytes.clone();
+    let orchard_fvk_bytes_for_key = orchard_fvk_bytes.clone();
 
     let secret = WalletSecret {
         wallet_id: wallet_id.clone(),
@@ -2241,8 +2603,8 @@ pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option
         extsk: Vec::new(), // Empty for watch-only
         dfvk: dfvk_bytes,
         orchard_extsk: None, // Empty for watch-only
-        sapling_ivk: sapling_ivk_bytes,
-        orchard_ivk: orchard_ivk_bytes,
+        sapling_ivk: None,
+        orchard_ivk: orchard_fvk_bytes,
         encrypted_mnemonic: None, // Watch-only wallets don't have mnemonic
         created_at: account_created_at,
     };
@@ -2250,7 +2612,274 @@ pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option
     let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret)?;
     repo.upsert_wallet_secret(&encrypted_secret)?;
 
+    let account_key = AccountKey {
+        id: None,
+        account_id,
+        key_type: KeyType::ImportView,
+        key_scope: KeyScope::Account,
+        label: None,
+        birthday_height: birthday as i64,
+        created_at: account_created_at,
+        spendable: false,
+        sapling_extsk: None,
+        sapling_dfvk: dfvk_bytes_for_key,
+        orchard_extsk: None,
+        orchard_fvk: orchard_fvk_bytes_for_key,
+        encrypted_mnemonic: None,
+    };
+    let encrypted_key = repo.encrypt_account_key_fields(&account_key)?;
+    let _ = repo.upsert_account_key(&encrypted_key)?;
+
     Ok(wallet_id)
+}
+
+// ============================================================================
+// Key Management
+// ============================================================================
+
+/// List key groups for the active wallet account.
+pub fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> {
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+
+    ensure_primary_account_key(&repo, &wallet_id, &secret)?;
+    let keys = repo.get_account_keys(secret.account_id)?;
+
+    let mut items: Vec<KeyGroupInfo> = keys
+        .into_iter()
+        .filter_map(|key| {
+            let id = key.id?;
+            let has_sapling = key.sapling_extsk.is_some() || key.sapling_dfvk.is_some();
+            let has_orchard = key.orchard_extsk.is_some() || key.orchard_fvk.is_some();
+            Some(KeyGroupInfo {
+                id,
+                label: key.label,
+                key_type: key_type_to_info(key.key_type),
+                spendable: key.spendable,
+                has_sapling,
+                has_orchard,
+                birthday_height: key.birthday_height,
+                created_at: key.created_at,
+            })
+        })
+        .collect();
+
+    items.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    Ok(items)
+}
+
+/// Export viewing/spending keys for a specific key group.
+pub fn export_key_group_keys(wallet_id: WalletId, key_id: i64) -> Result<KeyExportInfo> {
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+    let key = repo
+        .get_account_key_by_id(key_id)?
+        .ok_or_else(|| anyhow!("Key group not found"))?;
+    if key.account_id != secret.account_id {
+        return Err(anyhow!("Key group does not belong to this wallet"));
+    }
+
+    let network_type = address_prefix_network_type(&wallet_id)?;
+
+    let sapling_viewing_key = if let Some(ref bytes) = key.sapling_extsk {
+        let extsk = ExtendedSpendingKey::from_bytes(bytes)?;
+        Some(extsk.to_xfvk_bech32_for_network(network_type))
+    } else if let Some(ref bytes) = key.sapling_dfvk {
+        encode_sapling_xfvk_from_bytes(bytes, network_type)
+    } else {
+        None
+    };
+
+    let sapling_spending_key = if let Some(ref bytes) = key.sapling_extsk {
+        let extsk = ExtendedSpendingKey::from_bytes(bytes)?;
+        Some(encode_extended_spending_key(
+            sapling_extsk_hrp_for_network(network_type),
+            extsk.inner(),
+        ))
+    } else {
+        None
+    };
+
+    let orchard_viewing_key = if let Some(ref bytes) = key.orchard_fvk {
+        let fvk = OrchardExtendedFullViewingKey::from_bytes(bytes)
+            .map_err(|e| anyhow!("Invalid Orchard viewing key bytes: {}", e))?;
+        Some(
+            fvk.to_bech32_for_network(network_type)
+                .map_err(|e| anyhow!("Failed to encode Orchard viewing key: {}", e))?,
+        )
+    } else {
+        None
+    };
+
+    let orchard_spending_key = if let Some(ref bytes) = key.orchard_extsk {
+        let extsk = OrchardExtendedSpendingKey::from_bytes(bytes)
+            .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
+        Some(encode_orchard_extsk(&extsk, network_type)?)
+    } else {
+        None
+    };
+
+    Ok(KeyExportInfo {
+        key_id,
+        sapling_viewing_key,
+        orchard_viewing_key,
+        sapling_spending_key,
+        orchard_spending_key,
+    })
+}
+
+/// List addresses for a specific key group.
+pub fn list_addresses_for_key(wallet_id: WalletId, key_id: i64) -> Result<Vec<KeyAddressInfo>> {
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+    let mut addresses = repo.get_addresses_by_key(secret.account_id, key_id)?;
+    addresses.retain(|addr| addr.address_scope != pirate_storage_sqlite::AddressScope::Internal);
+
+    let infos = addresses
+        .into_iter()
+        .map(|addr| KeyAddressInfo {
+            key_id,
+            address: addr.address,
+            diversifier_index: addr.diversifier_index,
+            label: addr.label,
+            created_at: addr.created_at,
+            color_tag: address_book_color_to_ffi(addr.color_tag),
+        })
+        .collect();
+
+    Ok(infos)
+}
+
+/// Generate a new address for a specific key group.
+pub fn generate_address_for_key(
+    wallet_id: WalletId,
+    key_id: i64,
+    use_orchard: bool,
+) -> Result<String> {
+    if use_orchard && !should_generate_orchard(&wallet_id)? {
+        return Err(anyhow!("Orchard is not active for this wallet"));
+    }
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let key = repo
+        .get_account_key_by_id(key_id)?
+        .ok_or_else(|| anyhow!("Key group not found"))?;
+
+    let account_id = key.account_id;
+    let next_index = repo.get_next_diversifier_index(account_id, key_id)?;
+    let network_type = address_prefix_network_type(&wallet_id)?;
+
+    let (addr_string, address_type) = if use_orchard {
+        let fvk_bytes = key
+            .orchard_fvk
+            .as_ref()
+            .ok_or_else(|| anyhow!("Orchard viewing key not available"))?;
+        let fvk = OrchardExtendedFullViewingKey::from_bytes(fvk_bytes)
+            .map_err(|e| anyhow!("Invalid Orchard viewing key bytes: {}", e))?;
+        let addr = fvk.address_at(next_index).encode_for_network(network_type)?;
+        (addr, AddressType::Orchard)
+    } else {
+        let dfvk_bytes = key
+            .sapling_dfvk
+            .as_ref()
+            .ok_or_else(|| anyhow!("Sapling viewing key not available"))?;
+        let dfvk = ExtendedFullViewingKey::from_bytes(dfvk_bytes)
+            .ok_or_else(|| anyhow!("Invalid Sapling viewing key bytes"))?;
+        let addr = dfvk.derive_address(next_index).encode_for_network(network_type);
+        (addr, AddressType::Sapling)
+    };
+
+    let address = pirate_storage_sqlite::Address {
+        id: None,
+        key_id: Some(key_id),
+        account_id,
+        diversifier_index: next_index,
+        address: addr_string.clone(),
+        address_type,
+        label: None,
+        created_at: chrono::Utc::now().timestamp(),
+        color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+        address_scope: pirate_storage_sqlite::AddressScope::External,
+    };
+
+    repo.upsert_address(&address)?;
+    Ok(addr_string)
+}
+
+/// Import a spending key into an existing wallet.
+pub fn import_spending_key(
+    wallet_id: WalletId,
+    sapling_key: Option<String>,
+    orchard_key: Option<String>,
+    label: Option<String>,
+    birthday_height: u32,
+) -> Result<i64> {
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+
+    if sapling_key.is_none() && orchard_key.is_none() {
+        return Err(anyhow!("Provide a Sapling or Orchard spending key"));
+    }
+
+    let wallet_network = wallet_network_type(&wallet_id)?;
+    let mut sapling_extsk = None;
+    let mut sapling_dfvk = None;
+    let mut orchard_extsk = None;
+    let mut orchard_fvk = None;
+    let mut network_from_key: Option<NetworkType> = None;
+
+    if let Some(value) = sapling_key.as_ref() {
+        let (extsk, network) = ExtendedSpendingKey::from_bech32_any(value)
+            .map_err(|e| anyhow!("Invalid Sapling spending key: {}", e))?;
+        if network != wallet_network {
+            return Err(anyhow!("Sapling spending key network does not match wallet"));
+        }
+        network_from_key = Some(network);
+        sapling_dfvk = Some(extsk.to_extended_fvk().to_bytes());
+        sapling_extsk = Some(extsk.to_bytes());
+    }
+
+    if let Some(value) = orchard_key.as_ref() {
+        let (extsk, network) = OrchardExtendedSpendingKey::from_bech32_any(value)
+            .map_err(|e| anyhow!("Invalid Orchard spending key: {}", e))?;
+        if network != wallet_network {
+            return Err(anyhow!("Orchard spending key network does not match wallet"));
+        }
+        if let Some(existing) = network_from_key {
+            if existing != network {
+                return Err(anyhow!("Sapling and Orchard keys are for different networks"));
+            }
+        }
+        orchard_fvk = Some(extsk.to_extended_fvk().to_bytes());
+        orchard_extsk = Some(extsk.to_bytes());
+    }
+
+    let key = AccountKey {
+        id: None,
+        account_id: secret.account_id,
+        key_type: KeyType::ImportSpend,
+        key_scope: KeyScope::Account,
+        label,
+        birthday_height: birthday_height as i64,
+        created_at: chrono::Utc::now().timestamp(),
+        spendable: true,
+        sapling_extsk,
+        sapling_dfvk,
+        orchard_extsk,
+        orchard_fvk,
+        encrypted_mnemonic: None,
+    };
+
+    let encrypted = repo.encrypt_account_key_fields(&key)?;
+    repo.upsert_account_key(&encrypted)
+        .map_err(|e| anyhow!(e.to_string()))
 }
 
 /// Export mnemonic seed (DANGEROUS - requires authentication)
@@ -2300,6 +2929,92 @@ use pirate_core::{
 
 /// Maximum number of outputs per transaction
 pub const MAX_OUTPUTS_PER_TX: usize = 50;
+const AUTO_CONSOLIDATION_THRESHOLD: usize = 30;
+const AUTO_CONSOLIDATION_MAX_EXTRA_NOTES: usize = 20;
+
+fn normalize_filter_ids(ids: Option<Vec<i64>>) -> Option<Vec<i64>> {
+    let Some(values) = ids else { return None };
+    let mut unique = HashSet::new();
+    let mut normalized = Vec::new();
+    for id in values {
+        if unique.insert(id) {
+            normalized.push(id);
+        }
+    }
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn validate_spendable_key(repo: &Repository, account_id: i64, key_id: i64) -> Result<()> {
+    let key = repo
+        .get_account_key_by_id(key_id)?
+        .ok_or_else(|| anyhow!("Key group not found"))?;
+    if key.account_id != account_id {
+        return Err(anyhow!("Key group does not belong to this wallet"));
+    }
+    if !key.spendable {
+        return Err(anyhow!("Key group is not spendable"));
+    }
+    Ok(())
+}
+
+fn resolve_spend_key_id(
+    repo: &Repository,
+    account_id: i64,
+    key_ids_filter: Option<&[i64]>,
+    address_ids_filter: Option<&[i64]>,
+) -> Result<Option<i64>> {
+    let mut selected_key_id: Option<i64> = None;
+
+    if let Some(ids) = key_ids_filter {
+        if !ids.is_empty() {
+            let unique: HashSet<i64> = ids.iter().copied().collect();
+            if unique.len() > 1 {
+                return Err(anyhow!("Multiple key groups are not supported in a single transaction"));
+            }
+            let key_id = *unique.iter().next().unwrap();
+            validate_spendable_key(repo, account_id, key_id)?;
+            selected_key_id = Some(key_id);
+        }
+    }
+
+    if let Some(address_ids) = address_ids_filter {
+        if !address_ids.is_empty() {
+            let addresses = repo.get_all_addresses(account_id)?;
+            let mut address_key_ids = HashSet::new();
+            for address_id in address_ids {
+                let addr = addresses
+                    .iter()
+                    .find(|addr| addr.id == Some(*address_id))
+                    .ok_or_else(|| anyhow!("Address {} not found", address_id))?;
+                let key_id = addr
+                    .key_id
+                    .ok_or_else(|| anyhow!("Address {} is missing key id", address_id))?;
+                address_key_ids.insert(key_id);
+            }
+            if address_key_ids.len() > 1 {
+                return Err(anyhow!("Selected addresses span multiple key groups"));
+            }
+            if let Some(address_key_id) = address_key_ids.iter().next().copied() {
+                validate_spendable_key(repo, account_id, address_key_id)?;
+                if let Some(existing) = selected_key_id {
+                    if existing != address_key_id {
+                        return Err(anyhow!(
+                            "Selected key group does not match selected addresses"
+                        ));
+                    }
+                } else {
+                    selected_key_id = Some(address_key_id);
+                }
+            }
+        }
+    }
+
+    Ok(selected_key_id)
+}
 
 /// Build transaction with note selection, fee calculation, and change
 /// 
@@ -2310,10 +3025,12 @@ pub const MAX_OUTPUTS_PER_TX: usize = 50;
 /// - Sufficient funds available
 /// 
 /// Returns PendingTx with fee, change, and input information
-pub fn build_tx(
+fn build_tx_internal(
     wallet_id: WalletId,
     outputs: Vec<Output>,
     fee_opt: Option<u64>,
+    key_ids_filter: Option<Vec<i64>>,
+    address_ids_filter: Option<Vec<i64>>,
 ) -> Result<PendingTx> {
     tracing::info!(
         "Building transaction for wallet {} with {} outputs",
@@ -2403,13 +3120,52 @@ pub fn build_tx(
         .validate_fee(fee)
         .map_err(|e| anyhow!("Invalid fee: {}", e))?;
 
+    let key_ids_filter = normalize_filter_ids(key_ids_filter);
+    let address_ids_filter = normalize_filter_ids(address_ids_filter);
+
     // Load selectable notes and perform note selection
     let (db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let selectable_notes = repo.get_unspent_selectable_notes(secret.account_id)?;
+    let _resolved_key_id = resolve_spend_key_id(
+        &repo,
+        secret.account_id,
+        key_ids_filter.as_deref(),
+        address_ids_filter.as_deref(),
+    )?;
+
+    let selectable_notes = repo.get_unspent_selectable_notes_filtered(
+        secret.account_id,
+        key_ids_filter.clone(),
+        address_ids_filter.clone(),
+    )?;
     let available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
+    let eligible_note_count = selectable_notes
+        .iter()
+        .filter(|note| note.auto_consolidation_eligible)
+        .count();
+    let auto_consolidate = auto_consolidation_enabled(&wallet_id).unwrap_or(false)
+        && key_ids_filter.is_none()
+        && address_ids_filter.is_none()
+        && eligible_note_count >= AUTO_CONSOLIDATION_THRESHOLD;
+    let auto_consolidation_extra_limit = if auto_consolidate {
+        AUTO_CONSOLIDATION_MAX_EXTRA_NOTES
+    } else {
+        0
+    };
+    let key_ids_count = key_ids_filter.as_ref().map_or(0, |ids| ids.len());
+    let address_ids_count = address_ids_filter.as_ref().map_or(0, |ids| ids.len());
+    let key_id_log = if key_ids_count == 1 {
+        key_ids_filter.as_ref().unwrap()[0]
+    } else {
+        -1
+    };
+    let address_id_log = if address_ids_count == 1 {
+        address_ids_filter.as_ref().unwrap()[0]
+    } else {
+        -1
+    };
     // #region agent log
     {
         use std::io::Write;
@@ -2424,10 +3180,14 @@ pub fn build_tx(
                 .as_millis();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_build_tx","timestamp":{},"location":"api.rs:1920","message":"build_tx notes","data":{{"wallet_id":"{}","account_id":{},"selectable_notes":{},"available_balance":{},"total_amount":{},"fee":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                r#"{{"id":"log_build_tx","timestamp":{},"location":"api.rs:1920","message":"build_tx notes","data":{{"wallet_id":"{}","account_id":{},"key_id":{},"address_id":{},"key_ids_count":{},"address_ids_count":{},"selectable_notes":{},"available_balance":{},"total_amount":{},"fee":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 ts,
                 wallet_id,
                 secret.account_id,
+                key_id_log,
+                address_id_log,
+                key_ids_count,
+                address_ids_count,
                 selectable_notes.len(),
                 available_balance,
                 total_amount,
@@ -2449,9 +3209,20 @@ pub fn build_tx(
     }
 
     let selector = NoteSelector::new(SelectionStrategy::SmallestFirst);
-    let selection = selector
-        .select_notes(selectable_notes, total_amount, fee)
-        .map_err(|e| anyhow!("Note selection failed: {}", e))?;
+    let selection = if auto_consolidation_extra_limit > 0 {
+        selector
+            .select_notes_with_consolidation(
+                selectable_notes,
+                total_amount,
+                fee,
+                auto_consolidation_extra_limit,
+            )
+            .map_err(|e| anyhow!("Note selection failed: {}", e))?
+    } else {
+        selector
+            .select_notes(selectable_notes, total_amount, fee)
+            .map_err(|e| anyhow!("Note selection failed: {}", e))?
+    };
     let change = selection.change;
 
     // Get current height from sync state for expiry
@@ -2480,11 +3251,165 @@ pub fn build_tx(
     Ok(pending)
 }
 
+/// Build transaction with note selection, fee calculation, and change.
+pub fn build_tx(
+    wallet_id: WalletId,
+    outputs: Vec<Output>,
+    fee_opt: Option<u64>,
+) -> Result<PendingTx> {
+    build_tx_internal(wallet_id, outputs, fee_opt, None, None)
+}
+
+/// Build transaction using notes from a specific key group.
+pub fn build_tx_for_key(
+    wallet_id: WalletId,
+    key_id: i64,
+    outputs: Vec<Output>,
+    fee_opt: Option<u64>,
+) -> Result<PendingTx> {
+    build_tx_internal(wallet_id, outputs, fee_opt, Some(vec![key_id]), None)
+}
+
+/// Build transaction using selected key groups or addresses.
+pub fn build_tx_filtered(
+    wallet_id: WalletId,
+    outputs: Vec<Output>,
+    fee_opt: Option<u64>,
+    key_ids_filter: Option<Vec<i64>>,
+    address_ids_filter: Option<Vec<i64>>,
+) -> Result<PendingTx> {
+    build_tx_internal(
+        wallet_id,
+        outputs,
+        fee_opt,
+        key_ids_filter,
+        address_ids_filter,
+    )
+}
+
+/// Build a consolidation transaction for a key group.
+pub fn build_consolidation_tx(
+    wallet_id: WalletId,
+    key_id: i64,
+    target_address: String,
+    fee_opt: Option<u64>,
+) -> Result<PendingTx> {
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
+    let selectable_notes = repo.get_unspent_selectable_notes_filtered(
+        secret.account_id,
+        Some(vec![key_id]),
+        None,
+    )?;
+    let available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
+
+    if available_balance == 0 {
+        return Err(anyhow!("No spendable notes available for consolidation"));
+    }
+
+    let fee_calculator = FeeCalculator::new();
+    let calculated_fee = fee_calculator
+        .calculate_fee(1, 1, false)
+        .map_err(|e| anyhow!("Fee calculation error: {}", e))?;
+    let fee = fee_opt.unwrap_or(calculated_fee);
+    fee_calculator
+        .validate_fee(fee)
+        .map_err(|e| anyhow!("Invalid fee: {}", e))?;
+
+    if available_balance <= fee {
+        return Err(anyhow!(
+            "Insufficient funds: need {} arrrtoshis for fee, have {} arrrtoshis",
+            fee, available_balance
+        ));
+    }
+
+    let outputs = vec![Output {
+        addr: target_address,
+        amount: available_balance - fee,
+        memo: None,
+    }];
+
+    build_tx_internal(wallet_id, outputs, Some(fee), Some(vec![key_id]), None)
+}
+
+/// Build a sweep transaction from selected key groups or addresses.
+/// Sends the full available balance minus fee to the target address.
+pub fn build_sweep_tx(
+    wallet_id: WalletId,
+    target_address: String,
+    fee_opt: Option<u64>,
+    key_ids_filter: Option<Vec<i64>>,
+    address_ids_filter: Option<Vec<i64>>,
+) -> Result<PendingTx> {
+    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
+
+    let key_ids_filter = normalize_filter_ids(key_ids_filter);
+    let address_ids_filter = normalize_filter_ids(address_ids_filter);
+    let _resolved_key_id = resolve_spend_key_id(
+        &repo,
+        secret.account_id,
+        key_ids_filter.as_deref(),
+        address_ids_filter.as_deref(),
+    )?;
+
+    let selectable_notes = repo.get_unspent_selectable_notes_filtered(
+        secret.account_id,
+        key_ids_filter.clone(),
+        address_ids_filter.clone(),
+    )?;
+    let available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
+
+    if available_balance == 0 {
+        return Err(anyhow!("No spendable notes available for sweep"));
+    }
+
+    let fee_calculator = FeeCalculator::new();
+    let calculated_fee = fee_calculator
+        .calculate_fee(1, 1, false)
+        .map_err(|e| anyhow!("Fee calculation error: {}", e))?;
+    let fee = fee_opt.unwrap_or(calculated_fee);
+    fee_calculator
+        .validate_fee(fee)
+        .map_err(|e| anyhow!("Invalid fee: {}", e))?;
+
+    if available_balance <= fee {
+        return Err(anyhow!(
+            "Insufficient funds: need {} arrrtoshis for fee, have {} arrrtoshis",
+            fee,
+            available_balance
+        ));
+    }
+
+    let outputs = vec![Output {
+        addr: target_address,
+        amount: available_balance - fee,
+        memo: None,
+    }];
+
+    build_tx_internal(
+        wallet_id,
+        outputs,
+        Some(fee),
+        key_ids_filter,
+        address_ids_filter,
+    )
+}
+
 /// Sign pending transaction
 /// 
 /// Loads wallet from secure storage, performs note selection,
 /// generates Sapling proofs, and signs the transaction.
-pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
+fn sign_tx_internal(
+    wallet_id: WalletId,
+    pending: PendingTx,
+    key_ids_filter: Option<Vec<i64>>,
+    address_ids_filter: Option<Vec<i64>>,
+) -> Result<SignedTx> {
     tracing::info!("Signing transaction {} for wallet {}", pending.id, wallet_id);
     // #region agent log
     if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -2548,19 +3473,58 @@ pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
         })?;
     log_step("load_wallet_secret_ok", "");
 
-    let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk).map_err(|e| {
+    let key_ids_filter = normalize_filter_ids(key_ids_filter);
+    let address_ids_filter = normalize_filter_ids(address_ids_filter);
+    let signing_key_id = resolve_spend_key_id(
+        &repo,
+        secret.account_id,
+        key_ids_filter.as_deref(),
+        address_ids_filter.as_deref(),
+    )?;
+
+    let (sapling_extsk_bytes, orchard_extsk_bytes, change_key_id) = if let Some(key_id) = signing_key_id {
+        let key = repo
+            .get_account_key_by_id(key_id)?
+            .ok_or_else(|| anyhow!("Key group not found"))?;
+        if key.account_id != secret.account_id {
+            return Err(anyhow!("Key group does not belong to this wallet"));
+        }
+        if !key.spendable {
+            return Err(anyhow!("Key group is not spendable"));
+        }
+        let sapling_bytes = key
+            .sapling_extsk
+            .clone()
+            .ok_or_else(|| anyhow!("Sapling spending key missing for key group"))?;
+        (sapling_bytes, key.orchard_extsk.clone(), key_id)
+    } else {
+        (
+            secret.extsk.clone(),
+            secret.orchard_extsk.clone(),
+            ensure_primary_account_key(&repo, &wallet_id, &secret)?,
+        )
+    };
+
+    let extsk = ExtendedSpendingKey::from_bytes(&sapling_extsk_bytes).map_err(|e| {
         log_step("extsk_parse_error", &format!("{:?}", e));
         anyhow!("Invalid spending key bytes: {}", e)
     })?;
     log_step("extsk_parse_ok", "");
 
     // Load Orchard spending key if available
-    let orchard_extsk_opt = secret.orchard_extsk.as_ref()
+    let orchard_extsk_opt = orchard_extsk_bytes
+        .as_ref()
         .and_then(|bytes| OrchardExtendedSpendingKey::from_bytes(bytes).ok());
 
     // Load selectable notes for this account
     log_step("load_selectable_notes_start", "");
-    let mut selectable_notes = repo.get_unspent_selectable_notes(secret.account_id).map_err(|e| {
+    let mut selectable_notes = repo
+        .get_unspent_selectable_notes_filtered(
+            secret.account_id,
+            key_ids_filter.clone(),
+            address_ids_filter.clone(),
+        )
+        .map_err(|e| {
         log_step("load_selectable_notes_error", &format!("{:?}", e));
         e
     })?;
@@ -2568,6 +3532,17 @@ pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
         "load_selectable_notes_ok",
         &format!("notes={}", selectable_notes.len()),
     );
+    if signing_key_id.is_some()
+        && orchard_extsk_opt.is_none()
+        && selectable_notes
+            .iter()
+            .any(|note| note.note_type == pirate_core::selection::NoteType::Orchard)
+    {
+        log_step("orchard_extsk_missing", "");
+        return Err(anyhow!(
+            "Orchard spending key missing for this key group"
+        ));
+    }
 
     // Compute Orchard witnesses for notes that need them
     // Access sync engine to get frontier for witness computation
@@ -2656,6 +3631,20 @@ pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
         );
     }
 
+    let eligible_note_count = selectable_notes
+        .iter()
+        .filter(|note| note.auto_consolidation_eligible)
+        .count();
+    let auto_consolidation_extra_limit = if auto_consolidation_enabled(&wallet_id).unwrap_or(false)
+        && key_ids_filter.is_none()
+        && address_ids_filter.is_none()
+        && eligible_note_count >= AUTO_CONSOLIDATION_THRESHOLD
+    {
+        AUTO_CONSOLIDATION_MAX_EXTRA_NOTES
+    } else {
+        0
+    };
+
     let wallet_meta = get_wallet_meta(&wallet_id)?;
     let network_type_str = wallet_meta.network_type.as_deref().unwrap_or("mainnet");
     let network_type = match network_type_str {
@@ -2667,6 +3656,9 @@ pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
     // Build outputs from PendingTx (detect address type)
     let mut builder = pirate_core::shielded_builder::ShieldedBuilder::with_network(network_type);
     builder.with_fee_per_action(pending.fee);
+    if auto_consolidation_extra_limit > 0 {
+        builder.with_auto_consolidation_extra_limit(auto_consolidation_extra_limit);
+    }
     let mut has_orchard_output = false;
     
     for out in &pending.outputs {
@@ -2692,6 +3684,45 @@ pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
             builder.add_sapling_output(addr, out.amount, memo)?;
         }
     }
+
+    let mut note_refs: Vec<&pirate_core::selection::SelectableNote> =
+        selectable_notes.iter().collect();
+    note_refs.sort_by(|a, b| a.value.cmp(&b.value));
+    let required_total = pending
+        .total_amount
+        .checked_add(pending.fee)
+        .ok_or_else(|| anyhow!("Amount + fee overflow"))?;
+    let mut total_selected = 0u64;
+    let mut extra_selected = 0usize;
+    let mut has_orchard_spends = false;
+    for note in note_refs {
+        if total_selected < required_total {
+            total_selected = total_selected
+                .checked_add(note.value)
+                .ok_or_else(|| anyhow!("Value overflow"))?;
+            if note.note_type == pirate_core::selection::NoteType::Orchard {
+                has_orchard_spends = true;
+            }
+            continue;
+        }
+
+        if auto_consolidation_extra_limit == 0
+            || extra_selected >= auto_consolidation_extra_limit
+        {
+            break;
+        }
+
+        if note.auto_consolidation_eligible {
+            total_selected = total_selected
+                .checked_add(note.value)
+                .ok_or_else(|| anyhow!("Value overflow"))?;
+            extra_selected += 1;
+            if note.note_type == pirate_core::selection::NoteType::Orchard {
+                has_orchard_spends = true;
+            }
+        }
+    }
+    let use_orchard_change = has_orchard_output || has_orchard_spends;
 
     // Target height from sync_state
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(_db);
@@ -2836,8 +3867,14 @@ pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
         None
     };
 
-    // Get next diversifier index for change output
-    let next_diversifier_index = repo.get_next_diversifier_index(secret.account_id).map_err(|e| {
+    // Get next diversifier index for internal (change) output
+    let next_diversifier_index = repo
+        .get_next_diversifier_index_for_scope(
+            secret.account_id,
+            change_key_id,
+            pirate_storage_sqlite::AddressScope::Internal,
+        )
+        .map_err(|e| {
         log_step("next_diversifier_error", &format!("{:?}", e));
         e
     })?;
@@ -2845,6 +3882,39 @@ pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
         "next_diversifier_ok",
         &format!("{}", next_diversifier_index),
     );
+
+    if pending.change > 10_000 {
+        let (change_addr, address_type) = if use_orchard_change {
+            let orchard_extsk = orchard_extsk_opt.as_ref().ok_or_else(|| {
+                anyhow!("Orchard spending key required for Orchard change")
+            })?;
+            let orchard_fvk = orchard_extsk.to_extended_fvk();
+            let addr = orchard_fvk
+                .address_at_internal(next_diversifier_index as u32)
+                .encode_for_network(network_type)?;
+            (addr, AddressType::Orchard)
+        } else {
+            let addr = extsk
+                .to_internal_fvk()
+                .derive_address(next_diversifier_index)
+                .encode_for_network(network_type);
+            (addr, AddressType::Sapling)
+        };
+
+        let address = pirate_storage_sqlite::Address {
+            id: None,
+            key_id: Some(change_key_id),
+            account_id: secret.account_id,
+            diversifier_index: next_diversifier_index,
+            address: change_addr,
+            address_type,
+            label: None,
+            created_at: chrono::Utc::now().timestamp(),
+            color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+            address_scope: pirate_storage_sqlite::AddressScope::Internal,
+        };
+        let _ = repo.upsert_address(&address);
+    }
 
     log_step("build_and_sign_start", "");
     let (build_tx, build_rx) = std::sync::mpsc::channel();
@@ -2974,6 +4044,30 @@ pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
         raw: signed_core.raw_tx,
         size: signed_core.size,
     })
+}
+
+/// Sign pending transaction (all spendable notes in the wallet)
+pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
+    sign_tx_internal(wallet_id, pending, None, None)
+}
+
+/// Sign pending transaction using notes from a specific key group
+pub fn sign_tx_for_key(
+    wallet_id: WalletId,
+    pending: PendingTx,
+    key_id: i64,
+) -> Result<SignedTx> {
+    sign_tx_internal(wallet_id, pending, Some(vec![key_id]), None)
+}
+
+/// Sign pending transaction using selected key groups or addresses.
+pub fn sign_tx_filtered(
+    wallet_id: WalletId,
+    pending: PendingTx,
+    key_ids_filter: Option<Vec<i64>>,
+    address_ids_filter: Option<Vec<i64>>,
+) -> Result<SignedTx> {
+    sign_tx_internal(wallet_id, pending, key_ids_filter, address_ids_filter)
 }
 
 /// Broadcast signed transaction to the network
@@ -3145,8 +4239,6 @@ pub struct FeeInfo {
 // ============================================================================
 // Sync
 // ============================================================================
-
-use std::collections::HashMap;
 use pirate_sync_lightd::{PerfCounters, SyncConfig, SyncEngine, SyncProgress};
 use tokio::sync::Mutex;
 
@@ -3415,6 +4507,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         request_timeout: std::time::Duration::from_secs(60),
     };
     
+    let network_type = wallet_network_type(&wallet_id)?;
     let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
     let (max_parallel_decrypt, max_batch_memory_bytes, target_batch_bytes, min_batch_bytes, max_batch_bytes) = if is_mobile {
         (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
@@ -3450,7 +4543,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     let client = LightClient::with_config(client_config);
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
     let sync = SyncEngine::with_client_and_config(client, start_height, config)
-        .with_wallet(wallet_id.clone(), db_key, master_key)
+        .with_wallet(wallet_id.clone(), db_key, master_key, network_type)
         .map_err(|e| anyhow!("Failed to initialize sync engine: {}", e))?;
     let sync = Arc::new(Mutex::new(sync));
     let (progress, perf, cancel_flag) = {
@@ -4505,6 +5598,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     
     tracing::info!("rescan: Using endpoint {} (TLS: {}, transport: {:?})", endpoint_url, tls_enabled, transport);
     
+    let network_type = wallet_network_type(&wallet_id)?;
     let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
     let (max_parallel_decrypt, max_batch_memory_bytes, target_batch_bytes, min_batch_bytes, max_batch_bytes) = if is_mobile {
         (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
@@ -4534,7 +5628,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     let client = LightClient::with_config(client_config);
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
     let sync = SyncEngine::with_client_and_config(client, from_height, config)
-        .with_wallet(wallet_id.clone(), db_key, master_key)
+        .with_wallet(wallet_id.clone(), db_key, master_key, network_type)
         .map_err(|e| anyhow!("Failed to initialize sync engine: {}", e))?;
     let sync = Arc::new(Mutex::new(sync));
     let (progress, perf, cancel_flag) = {
@@ -4759,11 +5853,12 @@ pub async fn start_background_sync(wallet_id: WalletId, mode: Option<String>) ->
         (birthday_height, endpoint)
     };
     
+    let network_type = wallet_network_type(&wallet_id)?;
     // Create sync engine for background sync
     let config = SyncConfig::default();
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
     let sync_engine = SyncEngine::with_config(endpoint, birthday_height, config)
-        .with_wallet(wallet_id.clone(), db_key, master_key)
+        .with_wallet(wallet_id.clone(), db_key, master_key, network_type)
         .map_err(|e| anyhow!("Failed to initialize background sync engine: {}", e))?;
     
     // Create orchestrator
@@ -5730,7 +6825,7 @@ pub async fn fetch_transaction_memo(
     tracing::info!("Fetching memo for transaction {} (output_index: {:?})", txid, output_index);
     
     // Extract all data from DB in a block scope to ensure repo is dropped before async
-    let (endpoint, account_id, ivk_bytes_clone, output_indices, notes_with_memos, txid_array, txid_bytes) = {
+    let (endpoint, account_id, ivk_by_output, output_indices, notes_with_memos, txid_array, txid_bytes) = {
         // Open encrypted wallet DB
         let (_db, repo) = open_wallet_db_for(&wallet_id)?;
         
@@ -5750,27 +6845,77 @@ pub async fn fetch_transaction_memo(
         let mut txid_array = [0u8; 32];
         txid_array.copy_from_slice(&txid_bytes[..32]);
         
-        // Get IVK for decryption
-        let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
-            .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?;
-        let dfvk = extsk.to_extended_fvk();
-        let ivk = dfvk.to_ivk();
-        let ivk_bytes = ivk.to_sapling_ivk_bytes();
-        
-        // Determine which output index to check
-        let output_indices = if let Some(idx) = output_index {
-            vec![idx as i64]
+        let default_ivk_bytes = if !secret.extsk.is_empty() {
+            ExtendedSpendingKey::from_bytes(&secret.extsk)
+                .map(|extsk| extsk.to_extended_fvk().to_ivk().to_sapling_ivk_bytes())
+                .ok()
+        } else if let Some(ref dfvk_bytes) = secret.dfvk {
+            ExtendedFullViewingKey::from_bytes(dfvk_bytes)
+                .map(|dfvk| dfvk.to_ivk().to_sapling_ivk_bytes())
+        } else if let Some(ref ivk_bytes) = secret.sapling_ivk {
+            if ivk_bytes.len() == 32 {
+                let mut ivk = [0u8; 32];
+                ivk.copy_from_slice(&ivk_bytes[..32]);
+                Some(ivk)
+            } else {
+                None
+            }
         } else {
-            // Get all notes for this transaction to find which ones belong to us
-            let notes = repo.get_notes_by_txid(secret.account_id, &txid_bytes)?;
-            notes.iter().map(|n| n.output_index).collect()
+            None
         };
+
+        let notes = repo.get_notes_by_txid(secret.account_id, &txid_bytes)?;
+        let mut ivk_by_key: HashMap<i64, [u8; 32]> = HashMap::new();
+        let mut ivk_by_output: HashMap<i64, [u8; 32]> = HashMap::new();
+        let mut output_indices: Vec<i64> = Vec::new();
+
+        for note in &notes {
+            if note.note_type != pirate_storage_sqlite::models::NoteType::Sapling {
+                continue;
+            }
+            output_indices.push(note.output_index);
+            let ivk_bytes = if let Some(key_id) = note.key_id {
+                if let Some(cached) = ivk_by_key.get(&key_id) {
+                    Some(*cached)
+                } else {
+                    let key = repo
+                        .get_account_key_by_id(key_id)?
+                        .ok_or_else(|| anyhow!("Key group not found"))?;
+                    let ivk = if let Some(ref bytes) = key.sapling_extsk {
+                        let extsk = ExtendedSpendingKey::from_bytes(bytes)?;
+                        extsk.to_extended_fvk().to_ivk().to_sapling_ivk_bytes()
+                    } else if let Some(ref bytes) = key.sapling_dfvk {
+                        let dfvk = ExtendedFullViewingKey::from_bytes(bytes)
+                            .ok_or_else(|| anyhow!("Invalid Sapling viewing key bytes"))?;
+                        dfvk.to_ivk().to_sapling_ivk_bytes()
+                    } else {
+                        continue;
+                    };
+                    ivk_by_key.insert(key_id, ivk);
+                    Some(ivk)
+                }
+            } else {
+                default_ivk_bytes
+            };
+
+            if let Some(ivk_bytes) = ivk_bytes {
+                ivk_by_output.insert(note.output_index, ivk_bytes);
+            }
+        }
+
+        if let Some(idx) = output_index {
+            output_indices = vec![idx as i64];
+            let idx_i64 = idx as i64;
+            if !ivk_by_output.contains_key(&idx_i64) {
+                if let Some(default_ivk) = default_ivk_bytes {
+                    ivk_by_output.insert(idx_i64, default_ivk);
+                }
+            }
+        }
         
         // Extract all needed data before async operations
         let endpoint = get_lightd_endpoint(wallet_id.clone())?;
         let account_id = secret.account_id;
-        let ivk_bytes_clone = ivk_bytes.clone();
-        
         // Collect all notes with memos before async operations
         let mut notes_with_memos = Vec::new();
         for idx in &output_indices {
@@ -5783,17 +6928,19 @@ pub async fn fetch_transaction_memo(
                     } else {
                         None
                     };
-                    notes_with_memos.push((*idx, stored_memo.clone(), commitment));
+                    if let Some(ivk_bytes) = ivk_by_output.get(idx).copied() {
+                        notes_with_memos.push((*idx, stored_memo.clone(), commitment, ivk_bytes));
+                    }
                 }
             }
         }
         
         // Return all extracted data (repo and _db are dropped here)
-        (endpoint, account_id, ivk_bytes_clone, output_indices, notes_with_memos, txid_array, txid_bytes)
+        (endpoint, account_id, ivk_by_output, output_indices, notes_with_memos, txid_array, txid_bytes)
     };
     
     // Try validating stored memos
-    for (idx, stored_memo, cmu_opt) in notes_with_memos {
+    for (idx, stored_memo, cmu_opt, ivk_bytes) in notes_with_memos {
         let client = pirate_sync_lightd::LightClient::new(endpoint.clone());
         
         match client.connect().await {
@@ -5804,7 +6951,7 @@ pub async fn fetch_transaction_memo(
                             match pirate_sync_lightd::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes(
                                 &raw_tx_bytes,
                                 idx as usize,
-                                &ivk_bytes_clone,
+                                &ivk_bytes,
                                 Some(&cmu),
                             ) {
                                 Ok(Some(decrypted)) => {
@@ -5849,6 +6996,10 @@ pub async fn fetch_transaction_memo(
     
     // Get commitment from note if available (re-open DB) and decrypt
     for idx in output_indices {
+        let ivk_bytes = match ivk_by_output.get(&idx) {
+            Some(bytes) => bytes,
+            None => continue,
+        };
         let cmu_opt = {
             let (_db2, repo2) = open_wallet_db_for(&wallet_id)?;
             if let Some(note) = repo2.get_note_by_txid_and_index(account_id, &txid_bytes, idx)? {
@@ -5868,7 +7019,7 @@ pub async fn fetch_transaction_memo(
         match pirate_sync_lightd::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes(
             &raw_tx_bytes,
             idx as usize,
-            &ivk_bytes_clone,
+            ivk_bytes,
             cmu_opt.as_ref(),
         ) {
             Ok(Some(decrypted)) => {
@@ -6231,17 +7382,17 @@ pub struct SeedExportWarnings {
 }
 
 // ============================================================================
-// Watch-Only / IVK Export/Import
+// Watch-Only / Viewing Key Export/Import
 // ============================================================================
 
-/// Export Sapling xFVK from full wallet (for creating watch-only on another device)
+/// Export Sapling viewing key from full wallet (for creating watch-only on another device)
 pub fn export_ivk_secure(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
     
     if wallet.watch_only {
-        return Err(anyhow!("Cannot export IVK from watch-only wallet"));
+        return Err(anyhow!("Cannot export viewing key from watch-only wallet"));
     }
-    // Load wallet secret from encrypted storage and extract IVK (same logic as export_ivk)
+    // Load wallet secret from encrypted storage and extract viewing key (same logic as export_ivk)
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
@@ -6260,14 +7411,14 @@ pub fn export_ivk_secure(wallet_id: WalletId) -> Result<String> {
     
     let manager = WATCH_ONLY.read();
     let result = manager.export_ivk(&wallet_id, ivk)
-        .map_err(|e| anyhow!("Failed to export IVK: {}", e))?;
+        .map_err(|e| anyhow!("Failed to export viewing key: {}", e))?;
     
-    tracing::info!("IVK exported for wallet {}", wallet_id);
+    tracing::info!("Viewing key exported for wallet {}", wallet_id);
     
     Ok(result.ivk().to_string())
 }
 
-/// Import IVK to create watch-only wallet
+/// Import viewing key to create watch-only wallet
 pub fn import_ivk_as_watch_only(
     name: String,
     ivk: String,
@@ -6277,7 +7428,7 @@ pub fn import_ivk_as_watch_only(
     let request = IvkImportRequest::new(name.clone(), ivk.clone(), birthday_height);
     let manager = WATCH_ONLY.read();
     manager.validate_import(&request)
-        .map_err(|e| anyhow!("Invalid IVK import: {}", e))?;
+        .map_err(|e| anyhow!("Invalid viewing key import: {}", e))?;
 
     let wallet_id = import_ivk(name, Some(ivk), None, birthday_height)?;
     tracing::info!("Watch-only wallet created: {}", wallet_id);
@@ -6342,7 +7493,7 @@ pub struct WatchOnlyBannerInfo {
     pub icon: String,
 }
 
-/// Check if IVK clipboard should be cleared
+/// Check if viewing key clipboard should be cleared
 pub fn get_ivk_clipboard_remaining() -> Result<Option<u64>> {
     let manager = WATCH_ONLY.read();
     Ok(manager.clipboard_remaining_seconds())

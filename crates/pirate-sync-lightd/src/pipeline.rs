@@ -16,6 +16,7 @@ use crate::client::{CompactBlockData, LightClient};
 use crate::frontier::SaplingFrontier;
 use crate::sapling::trial_decrypt::try_decrypt_compact_output;
 use crate::{Error, Result};
+use pirate_storage_sqlite::models::AddressScope;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -160,6 +161,10 @@ pub struct DecryptedNote {
     pub tx_hash: Vec<u8>,
     /// Transaction ID (same as tx_hash, for storage compatibility)
     pub txid: Vec<u8>,
+    /// Key group id that matched this note (if known)
+    pub key_id: Option<i64>,
+    /// Address scope (external receive or internal change)
+    pub address_scope: AddressScope,
     /// Diversifier bytes (Sapling/Orchard)
     pub diversifier: Vec<u8>,
     /// Sapling note leadbyte (v1/v2) for nullifier derivation
@@ -203,6 +208,8 @@ impl DecryptedNote {
             memo_cache: None,
             tx_hash: Vec::new(),
             txid: Vec::new(),
+            key_id: None,
+            address_scope: AddressScope::External,
             diversifier: Vec::new(),
             sapling_rseed_leadbyte: None,
             sapling_rseed: None,
@@ -239,6 +246,8 @@ impl DecryptedNote {
             memo_cache: None,
             tx_hash: Vec::new(),
             txid: Vec::new(),
+            key_id: None,
+            address_scope: AddressScope::External,
             diversifier: Vec::new(),
             sapling_rseed_leadbyte: None,
             sapling_rseed: None,

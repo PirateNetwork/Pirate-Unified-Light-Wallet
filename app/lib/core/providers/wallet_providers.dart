@@ -67,8 +67,7 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
 
   Future<void> _stopWalletSessions(WalletId walletId) async {
     try {
-      await FfiBridge.cancelSync(walletId)
-          .timeout(const Duration(seconds: 3));
+      await FfiBridge.cancelSync(walletId).timeout(const Duration(seconds: 3));
     } catch (_) {
       // Ignore cancellation errors in stubbed environment
     }
@@ -123,35 +122,37 @@ final refreshWalletsProvider = Provider<void Function()>((ref) {
 // ============================================================================
 
 /// Create new wallet
-final createWalletProvider = Provider<Future<WalletId> Function({
-  required String name,
-  int entropyLen,
-  int? birthday,
-})>((ref) {
+final createWalletProvider = Provider<
+    Future<WalletId> Function({
+      required String name,
+      int entropyLen,
+      int? birthday,
+    })>((ref) {
   return ({required String name, int entropyLen = 256, int? birthday}) async {
     final walletId = await FfiBridge.createWallet(
       name: name,
       entropyLen: entropyLen,
       birthday: birthday,
     );
-    
+
     // Set as active
     ref.read(activeWalletProvider.notifier).setActiveWallet(walletId);
-    
+
     // Refresh wallets list
     ref.read(refreshWalletsProvider)();
-    
+
     return walletId;
   };
 });
 
 /// Restore wallet from mnemonic
-final restoreWalletProvider = Provider<Future<WalletId> Function({
-  required String name,
-  required String mnemonic,
-  String? passphrase,
-  int? birthday,
-})>((ref) {
+final restoreWalletProvider = Provider<
+    Future<WalletId> Function({
+      required String name,
+      required String mnemonic,
+      String? passphrase,
+      int? birthday,
+    })>((ref) {
   return ({
     required String name,
     required String mnemonic,
@@ -164,40 +165,44 @@ final restoreWalletProvider = Provider<Future<WalletId> Function({
       passphrase: passphrase,
       birthday: birthday,
     );
-    
+
     // Set as active
     ref.read(activeWalletProvider.notifier).setActiveWallet(walletId);
-    
+
     // Refresh wallets list
     ref.read(refreshWalletsProvider)();
-    
+
     return walletId;
   };
 });
 
-/// Import IVK for watch-only wallet
-final importIvkProvider = Provider<Future<WalletId> Function({
-  required String name,
-  required String ivk,
-  required int birthday,
-})>((ref) {
+/// Import viewing key for watch-only wallet
+final importIvkProvider = Provider<
+    Future<WalletId> Function({
+      required String name,
+      String? saplingIvk,
+      String? orchardIvk,
+      required int birthday,
+    })>((ref) {
   return ({
     required String name,
-    required String ivk,
+    String? saplingIvk,
+    String? orchardIvk,
     required int birthday,
   }) async {
     final walletId = await FfiBridge.importIvk(
       name: name,
-      ivk: ivk,
+      saplingIvk: saplingIvk,
+      orchardIvk: orchardIvk,
       birthday: birthday,
     );
-    
+
     // Set as active
     ref.read(activeWalletProvider.notifier).setActiveWallet(walletId);
-    
+
     // Refresh wallets list
     ref.read(refreshWalletsProvider)();
-    
+
     return walletId;
   };
 });
@@ -206,16 +211,17 @@ final importIvkProvider = Provider<Future<WalletId> Function({
 final isWatchOnlyProvider = FutureProvider<bool>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return false;
-  
+
   final capabilities = await FfiBridge.getWatchOnlyCapabilities(walletId);
   return capabilities.isWatchOnly;
 });
 
 /// Watch-only banner info for active wallet
-final watchOnlyBannerProvider = FutureProvider<api.WatchOnlyBannerInfo?>((ref) async {
+final watchOnlyBannerProvider =
+    FutureProvider<api.WatchOnlyBannerInfo?>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return null;
-  
+
   return FfiBridge.getWatchOnlyBanner(walletId);
 });
 
@@ -227,7 +233,7 @@ final watchOnlyBannerProvider = FutureProvider<api.WatchOnlyBannerInfo?>((ref) a
 final balanceProvider = FutureProvider<Balance?>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return null;
-  
+
   return FfiBridge.getBalance(walletId);
 });
 
@@ -238,7 +244,7 @@ final balanceStreamProvider = StreamProvider<Balance?>((ref) async* {
     yield null;
     return;
   }
-  
+
   yield* FfiBridge.balanceStream(walletId);
 });
 
@@ -250,7 +256,7 @@ final balanceStreamProvider = StreamProvider<Balance?>((ref) async* {
 final currentAddressProvider = FutureProvider<String?>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return null;
-  
+
   return FfiBridge.currentReceiveAddress(walletId);
 });
 
@@ -258,7 +264,7 @@ final currentAddressProvider = FutureProvider<String?>((ref) async {
 final addressesProvider = FutureProvider<List<AddressInfo>>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return [];
-  
+
   return FfiBridge.listAddresses(walletId);
 });
 
@@ -267,13 +273,13 @@ final generateAddressProvider = Provider<Future<String> Function()>((ref) {
   return () async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) throw Exception('No active wallet');
-    
+
     final address = await FfiBridge.nextReceiveAddress(walletId);
-    
+
     // Refresh addresses list
     ref.invalidate(addressesProvider);
     ref.invalidate(currentAddressProvider);
-    
+
     return address;
   };
 });
@@ -286,7 +292,7 @@ final generateAddressProvider = Provider<Future<String> Function()>((ref) {
 final syncStatusProvider = FutureProvider<SyncStatus?>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return null;
-  
+
   return FfiBridge.syncStatus(walletId);
 });
 
@@ -297,7 +303,7 @@ final syncProgressStreamProvider = StreamProvider<SyncStatus?>((ref) async* {
     yield null;
     return;
   }
-  
+
   yield* FfiBridge.syncProgressStream(walletId);
 });
 
@@ -306,9 +312,9 @@ final startSyncProvider = Provider<Future<void> Function(SyncMode mode)>((ref) {
   return (SyncMode mode) async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) throw Exception('No active wallet');
-    
+
     await FfiBridge.startSync(walletId, mode);
-    
+
     // Refresh sync status
     ref.invalidate(syncStatusProvider);
   };
@@ -319,9 +325,9 @@ final rescanProvider = Provider<Future<void> Function(int fromHeight)>((ref) {
   return (int fromHeight) async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) throw Exception('No active wallet');
-    
+
     await FfiBridge.rescan(walletId, fromHeight);
-    
+
     // Refresh sync status and progress stream so home screen picks up the new sync
     ref.invalidate(syncStatusProvider);
     ref.invalidate(syncProgressStreamProvider);
@@ -333,9 +339,9 @@ final cancelSyncProvider = Provider<Future<void> Function()>((ref) {
   return () async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) throw Exception('No active wallet');
-    
+
     await FfiBridge.cancelSync(walletId);
-    
+
     // Refresh sync status
     ref.invalidate(syncStatusProvider);
   };
@@ -345,7 +351,7 @@ final cancelSyncProvider = Provider<Future<void> Function()>((ref) {
 final isSyncRunningProvider = FutureProvider<bool>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return false;
-  
+
   return FfiBridge.isSyncRunning(walletId);
 });
 
@@ -353,7 +359,7 @@ final isSyncRunningProvider = FutureProvider<bool>((ref) async {
 final lastCheckpointProvider = FutureProvider<api.CheckpointInfo?>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return null;
-  
+
   return FfiBridge.getLastCheckpoint(walletId);
 });
 
@@ -361,7 +367,7 @@ final lastCheckpointProvider = FutureProvider<api.CheckpointInfo?>((ref) async {
 final syncLogsProvider = FutureProvider<List<SyncLogEntryFfi>>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return [];
-  
+
   return FfiBridge.getSyncLogs(walletId, limit: 200);
 });
 
@@ -380,7 +386,7 @@ final refreshSyncLogsProvider = Provider<void Function()>((ref) {
 final transactionsProvider = FutureProvider<List<TxInfo>>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return [];
-  
+
   return FfiBridge.listTransactions(walletId);
 });
 
@@ -391,7 +397,7 @@ final transactionStreamProvider = StreamProvider<TxInfo?>((ref) async* {
     yield null;
     return;
   }
-  
+
   yield* FfiBridge.transactionStream(walletId);
 });
 
@@ -407,14 +413,15 @@ final transactionWatcherProvider = Provider<void>((ref) {
 });
 
 /// Build transaction
-final buildTransactionProvider = Provider<Future<PendingTx> Function({
-  required List<Output> outputs,
-  int? fee,
-})>((ref) {
+final buildTransactionProvider = Provider<
+    Future<PendingTx> Function({
+      required List<Output> outputs,
+      int? fee,
+    })>((ref) {
   return ({required List<Output> outputs, int? fee}) async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) throw Exception('No active wallet');
-    
+
     return FfiBridge.buildTx(
       walletId: walletId,
       outputs: outputs,
@@ -424,18 +431,19 @@ final buildTransactionProvider = Provider<Future<PendingTx> Function({
 });
 
 /// Sign and broadcast transaction
-final sendTransactionProvider = Provider<Future<String> Function(PendingTx)>((ref) {
+final sendTransactionProvider =
+    Provider<Future<String> Function(PendingTx)>((ref) {
   return (PendingTx pending) async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) throw Exception('No active wallet');
-    
+
     final signed = await FfiBridge.signTx(walletId, pending);
     final txid = await FfiBridge.broadcastTx(signed);
-    
+
     // Refresh transactions and balance
     ref.invalidate(transactionsProvider);
     ref.invalidate(balanceProvider);
-    
+
     return txid;
   };
 });
@@ -477,35 +485,37 @@ class TunnelModeNotifier extends Notifier<TunnelMode> {
 final lightdEndpointProvider = FutureProvider<String?>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return FfiBridge.defaultLightdUrl;
-  
+
   return FfiBridge.getLightdEndpoint(walletId);
 });
 
 /// Lightwalletd endpoint configuration (full config with TLS pin)
-final lightdEndpointConfigProvider = FutureProvider<LightdEndpointConfig>((ref) async {
+final lightdEndpointConfigProvider =
+    FutureProvider<LightdEndpointConfig>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) {
     return LightdEndpointConfig(url: FfiBridge.defaultLightdUrl);
   }
-  
+
   return FfiBridge.getLightdEndpointConfig(walletId);
 });
 
 /// Set lightwalletd endpoint
-final setLightdEndpointProvider = Provider<Future<void> Function({
-  required String url,
-  String? tlsPin,
-})>((ref) {
+final setLightdEndpointProvider = Provider<
+    Future<void> Function({
+      required String url,
+      String? tlsPin,
+    })>((ref) {
   return ({required String url, String? tlsPin}) async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) throw Exception('No active wallet');
-    
+
     await FfiBridge.setLightdEndpoint(
       walletId: walletId,
       url: url,
       tlsPin: tlsPin,
     );
-    
+
     ref.invalidate(lightdEndpointProvider);
     ref.invalidate(lightdEndpointConfigProvider);
   };
@@ -517,11 +527,38 @@ final networkInfoProvider = FutureProvider<NetworkInfo>((ref) async {
 });
 
 // ============================================================================
+// Auto Consolidation
+// ============================================================================
+
+/// Auto-consolidation enabled flag for active wallet
+final autoConsolidationEnabledProvider = FutureProvider<bool>((ref) async {
+  final walletId = ref.watch(activeWalletProvider);
+  if (walletId == null) return false;
+
+  return FfiBridge.getAutoConsolidationEnabled(walletId);
+});
+
+/// Number of eligible notes for auto-consolidation
+final autoConsolidationCandidateCountProvider =
+    FutureProvider<int>((ref) async {
+  final walletId = ref.watch(activeWalletProvider);
+  if (walletId == null) return 0;
+
+  return FfiBridge.getAutoConsolidationCandidateCount(walletId);
+});
+
+/// Auto-consolidation threshold
+final autoConsolidationThresholdProvider = FutureProvider<int>((ref) async {
+  return FfiBridge.getAutoConsolidationThreshold();
+});
+
+// ============================================================================
 // Utilities
 // ============================================================================
 
 /// Generate mnemonic
-final generateMnemonicProvider = Provider<Future<String> Function({int wordCount})>((ref) {
+final generateMnemonicProvider =
+    Provider<Future<String> Function({int wordCount})>((ref) {
   return ({int wordCount = 24}) async {
     return FfiBridge.generateMnemonic(wordCount: wordCount);
   };
@@ -534,14 +571,14 @@ final validateMnemonicProvider = Provider<Future<bool> Function(String)>((ref) {
   };
 });
 
-/// Format amount (zatoshis to ARRR string)
+/// Format amount (arrrtoshis to ARRR string)
 final formatAmountProvider = Provider<Future<String> Function(int)>((ref) {
-  return (int zatoshis) async {
-    return FfiBridge.formatAmount(zatoshis);
+  return (int arrrtoshis) async {
+    return FfiBridge.formatAmount(arrrtoshis);
   };
 });
 
-/// Parse amount (ARRR string to zatoshis)
+/// Parse amount (ARRR string to arrrtoshis)
 final parseAmountProvider = Provider<Future<int> Function(String)>((ref) {
   return (String arrr) async {
     return FfiBridge.parseAmount(arrr);
@@ -553,7 +590,7 @@ final parseAmountProvider = Provider<Future<int> Function(String)>((ref) {
 // ============================================================================
 
 /// Check if any wallets exist
-/// 
+///
 /// First checks if the wallet registry database file exists without opening it.
 /// Only tries to list wallets if the file exists (to avoid creating the database).
 /// This allows checking wallet existence before the app is unlocked.
@@ -561,12 +598,12 @@ final walletsExistProvider = FutureProvider<bool>((ref) async {
   try {
     // First, check if the database file exists (doesn't create it)
     final fileExists = await FfiBridge.walletRegistryExists();
-    
+
     if (!fileExists) {
       // File doesn't exist - no wallets created yet
       return false;
     }
-    
+
     // File exists - try to list wallets (will work if app is unlocked)
     try {
       final wallets = await FfiBridge.listWallets();
@@ -592,12 +629,13 @@ final hasAppPassphraseProvider = FutureProvider<bool>((ref) async {
 });
 
 /// App unlock state (true if unlocked, false if locked)
-final appUnlockedProvider = NotifierProvider<AppUnlockedNotifier, bool>(AppUnlockedNotifier.new);
+final appUnlockedProvider =
+    NotifierProvider<AppUnlockedNotifier, bool>(AppUnlockedNotifier.new);
 
 class AppUnlockedNotifier extends Notifier<bool> {
   @override
   bool build() => false;
-  
+
   void setUnlocked(bool unlocked) {
     state = unlocked;
   }

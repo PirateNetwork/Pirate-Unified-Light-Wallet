@@ -57,8 +57,8 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen> with SingleTi
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.grey[500],
                 tabs: const [
-                  Tab(text: 'Export IVK'),
-                  Tab(text: 'Import IVK'),
+                  Tab(text: 'Export Viewing Key'),
+                  Tab(text: 'Import Viewing Key'),
                 ],
               ),
             ),
@@ -78,7 +78,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen> with SingleTi
   }
 }
 
-/// Export IVK Tab
+/// Export viewing key tab
 class ExportIvkTab extends ConsumerStatefulWidget {
   const ExportIvkTab({Key? key}) : super(key: key);
 
@@ -111,7 +111,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
-            'Share this IVK to view incoming activity without spending access.',
+            'Share this viewing key to view incoming activity without spending access.',
             style: PirateTypography.body.copyWith(color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),
@@ -123,7 +123,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
               onPressed: _exportIvk,
               loading: _isLoading,
               icon: const Icon(Icons.key),
-              child: const Text('Export IVK'),
+              child: const Text('Export Viewing Key'),
             ),
           ] else ...[
             _buildIvkDisplay(),
@@ -178,7 +178,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
               Icon(Icons.info, color: Colors.blue, size: 24),
               SizedBox(width: PirateSpacing.sm),
               Text(
-                'About IVK',
+                'About viewing keys',
                 style: PirateTypography.bodyLarge.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
@@ -190,7 +190,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
           _buildInfoItem('View incoming transactions'),
           _buildInfoItem('Cannot spend'),
           _buildInfoItem('Useful for accounting'),
-          _buildInfoItem('Keep IVK private. It reveals incoming history.'),
+          _buildInfoItem('Keep viewing keys private. They reveal incoming history.'),
         ],
       ),
     );
@@ -258,7 +258,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
       final ivk = await FfiBridge.exportIvkSecure(walletId);
       setState(() => _ivk = ivk);
     } catch (e) {
-      setState(() => _error = 'Failed to export IVK: ${e.toString()}');
+      setState(() => _error = 'Failed to export viewing key: ${e.toString()}');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -272,7 +272,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('IVK copied'),
+          content: Text('Viewing key copied'),
           backgroundColor: Colors.green[700],
         ),
       );
@@ -280,7 +280,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
   }
 }
 
-/// Import IVK Tab
+/// Import viewing key tab
 class ImportIvkTab extends ConsumerStatefulWidget {
   const ImportIvkTab({Key? key}) : super(key: key);
 
@@ -339,7 +339,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
           PInput(
             controller: _ivkController,
             label: 'Incoming viewing key',
-            hint: 'zxviews1...',
+            hint: 'Paste your viewing key',
             maxLines: 3,
           ),
           SizedBox(height: PirateSpacing.lg),
@@ -426,12 +426,13 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
     }
 
     if (_ivkController.text.trim().isEmpty) {
-      setState(() => _error = 'Please enter an IVK');
+      setState(() => _error = 'Please enter a viewing key');
       return;
     }
 
-    if (!_ivkController.text.startsWith('zxviews1')) {
-      setState(() => _error = 'Invalid IVK format. Must start with zxviews1');
+    final trimmed = _ivkController.text.trim();
+    if (!(trimmed.startsWith('zxviews') || trimmed.startsWith('pirate-extended-viewing-key'))) {
+      setState(() => _error = 'Invalid viewing key format.');
       return;
     }
 
@@ -448,7 +449,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
       // Import via FFI
       final walletId = await FfiBridge.importIvk(
         name: _nameController.text.trim(),
-        ivk: _ivkController.text.trim(),
+        saplingIvk: trimmed,
         birthday: birthday ?? FfiBridge.defaultBirthdayHeight,
       );
 

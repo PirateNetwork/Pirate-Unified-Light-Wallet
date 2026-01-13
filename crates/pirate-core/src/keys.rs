@@ -9,8 +9,8 @@ use blake2s_simd::Params as Blake2sParams;
 use blake2b_simd::Params as Blake2bParams;
 use pirate_params::{Network, NetworkType};
 use zcash_client_backend::encoding::{
-    decode_extended_full_viewing_key, decode_payment_address, encode_extended_full_viewing_key,
-    encode_payment_address,
+    decode_extended_full_viewing_key, decode_extended_spending_key, decode_payment_address,
+    encode_extended_full_viewing_key, encode_payment_address,
 };
 use zcash_client_backend::keys::sapling as sapling_keys;
 use zcash_primitives::{
@@ -24,6 +24,7 @@ use zcash_primitives::{
         AccountId,
         DiversifiableFullViewingKey,
         DiversifierIndex,
+        Scope,
         ExtendedFullViewingKey as SaplingExtendedFullViewingKey,
         ExtendedSpendingKey as SaplingExtendedSpendingKey,
     },
@@ -43,6 +44,14 @@ fn sapling_extfvk_hrp_for_network(network: NetworkType) -> &'static str {
     }
 }
 
+fn sapling_extsk_hrp_for_network(network: NetworkType) -> &'static str {
+    match network {
+        NetworkType::Mainnet => "secret-extended-key-main",
+        NetworkType::Testnet => "secret-extended-key-test",
+        NetworkType::Regtest => "secret-extended-key-regtest",
+    }
+}
+
 fn sapling_incoming_viewing_key_hrp_for_network(network: NetworkType) -> &'static str {
     match network {
         NetworkType::Mainnet => "zivks",
@@ -56,6 +65,15 @@ fn orchard_extfvk_hrp_for_network(network: NetworkType) -> &'static str {
         NetworkType::Mainnet => "pirate-extended-viewing-key",
         NetworkType::Testnet => "pirate-extended-viewing-key-test",
         NetworkType::Regtest => "pirate-extended-viewing-key-regtest",
+    }
+}
+
+/// Orchard extended spending key HRP for a given network.
+pub fn orchard_extsk_hrp_for_network(network: NetworkType) -> &'static str {
+    match network {
+        NetworkType::Mainnet => "pirate-secret-extended-key",
+        NetworkType::Testnet => "pirate-secret-extended-key-test",
+        NetworkType::Regtest => "pirate-secret-extended-key-regtest",
     }
 }
 
@@ -164,6 +182,13 @@ impl ExtendedSpendingKey {
         ExtendedFullViewingKey { inner: dfvk }
     }
 
+    /// Derive internal (change) full viewing key per ZIP-32.
+    pub fn to_internal_fvk(&self) -> ExtendedFullViewingKey {
+        let internal = self.inner.derive_internal();
+        let dfvk = internal.to_diversifiable_full_viewing_key();
+        ExtendedFullViewingKey { inner: dfvk }
+    }
+
     /// Encode the Sapling extended full viewing key (xFVK) for the given network.
     #[allow(deprecated)]
     pub fn to_xfvk_bech32_for_network(&self, network: NetworkType) -> String {
@@ -186,6 +211,19 @@ impl ExtendedSpendingKey {
         let extsk = SaplingExtendedSpendingKey::from_bytes(&key_bytes)
             .map_err(|_| Error::InvalidKey("Invalid spending key bytes".to_string()))?;
         Ok(Self { inner: extsk })
+    }
+
+    /// Decode a Sapling extended spending key for any Pirate network.
+    pub fn from_bech32_any(encoded: &str) -> Result<(Self, NetworkType)> {
+        for network in [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Regtest] {
+            if let Ok(extsk) = decode_extended_spending_key(
+                sapling_extsk_hrp_for_network(network),
+                encoded,
+            ) {
+                return Ok((Self { inner: extsk }, network));
+            }
+        }
+        Err(Error::InvalidKey("Invalid Sapling extended spending key".to_string()))
     }
 }
 
@@ -267,6 +305,11 @@ impl IncomingViewingKey {
 }
 
 impl ExtendedFullViewingKey {
+    /// Derive internal (change) IVK bytes per ZIP-32.
+    pub fn to_internal_ivk_bytes(&self) -> [u8; 32] {
+        self.inner.to_ivk(Scope::Internal).to_repr()
+    }
+
     /// Derive payment address at index
     pub fn derive_address(&self, index: u32) -> PaymentAddress {
         let diversifier_index = DiversifierIndex::from(index);
@@ -278,6 +321,14 @@ impl ExtendedFullViewingKey {
                 addr
             });
         PaymentAddress { inner: addr }
+    }
+
+    /// Derive a payment address from a raw diversifier (11 bytes).
+    pub fn address_from_diversifier(&self, diversifier: [u8; 11]) -> Option<PaymentAddress> {
+        let sapling_div = sapling::Diversifier(diversifier);
+        self.inner
+            .diversified_address(sapling_div)
+            .map(|addr| PaymentAddress { inner: addr })
     }
 
     /// Decode a Sapling extended full viewing key (xFVK) for the given network.
@@ -726,6 +777,20 @@ impl OrchardExtendedSpendingKey {
             child_index,
         })
     }
+
+    /// Decode an Orchard extended spending key for any Pirate network.
+    pub fn from_bech32_any(encoded: &str) -> Result<(Self, NetworkType)> {
+        let (hrp, bytes) = bech32::decode(encoded)
+            .map_err(|e| Error::InvalidKey(format!("Bech32 decoding failed: {e}")))?;
+        let network = match hrp.as_str() {
+            "pirate-secret-extended-key" => NetworkType::Mainnet,
+            "pirate-secret-extended-key-test" => NetworkType::Testnet,
+            "pirate-secret-extended-key-regtest" => NetworkType::Regtest,
+            _ => return Err(Error::InvalidKey("Invalid Orchard extended spending key HRP".to_string())),
+        };
+        let key = Self::from_bytes(&bytes)?;
+        Ok((key, network))
+    }
 }
 
 /// Orchard extended full viewing key
@@ -758,12 +823,33 @@ impl OrchardExtendedFullViewingKey {
         }
     }
 
+    /// Derive internal (change) address at index.
+    pub fn address_at_internal(&self, index: u32) -> OrchardPaymentAddress {
+        OrchardPaymentAddress {
+            inner: self.inner.address_at(index, orchard::keys::Scope::Internal),
+        }
+    }
+
+    /// Derive an address from a raw diversifier (11 bytes).
+    pub fn address_from_diversifier(&self, diversifier: [u8; 11]) -> Option<OrchardPaymentAddress> {
+        let div = orchard::keys::Diversifier::from_bytes(diversifier);
+        Some(OrchardPaymentAddress {
+            inner: self.inner.address(div, orchard::keys::Scope::External),
+        })
+    }
+
     /// Derive Orchard incoming viewing key (IVK) from full viewing key
     /// 
     /// The IVK allows viewing incoming transactions but not spending.
     /// Returns 64 bytes (Orchard IVK format).
     pub fn to_ivk_bytes(&self) -> [u8; 64] {
         let ivk = self.inner.to_ivk(orchard::keys::Scope::External);
+        ivk.to_bytes()
+    }
+
+    /// Derive internal (change) Orchard IVK bytes.
+    pub fn to_internal_ivk_bytes(&self) -> [u8; 64] {
+        let ivk = self.inner.to_ivk(orchard::keys::Scope::Internal);
         ivk.to_bytes()
     }
 

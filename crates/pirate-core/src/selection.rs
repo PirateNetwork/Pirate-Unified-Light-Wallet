@@ -34,6 +34,8 @@ pub struct SelectableNote {
     pub txid: Vec<u8>,
     /// Output index
     pub output_index: u32,
+    /// Eligible for auto-consolidation (unlabeled/untagged address)
+    pub auto_consolidation_eligible: bool,
     /// Optional merkle path for spends (Sapling)
     pub merkle_path: Option<MerklePath<Node, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>>,
     /// Optional diversifier used to derive the address (Sapling)
@@ -61,6 +63,7 @@ impl SelectableNote {
             height,
             txid,
             output_index,
+            auto_consolidation_eligible: false,
             merkle_path: None,
             diversifier: None,
             note: None,
@@ -87,6 +90,7 @@ impl SelectableNote {
             height,
             txid,
             output_index,
+            auto_consolidation_eligible: false,
             merkle_path: None,
             diversifier: None,
             note: None,
@@ -100,6 +104,12 @@ impl SelectableNote {
     /// Set nullifier
     pub fn with_nullifier(mut self, nullifier: Vec<u8>) -> Self {
         self.nullifier = Some(nullifier);
+        self
+    }
+
+    /// Mark this note as eligible for auto-consolidation
+    pub fn with_auto_consolidation_eligible(mut self, eligible: bool) -> Self {
+        self.auto_consolidation_eligible = eligible;
         self
     }
 
@@ -221,6 +231,81 @@ impl NoteSelector {
         tracing::info!(
             "Selected {} notes, total={}, change={}",
             selected.len(),
+            total,
+            change
+        );
+
+        Ok(SelectionResult {
+            notes: selected,
+            total_value: total,
+            change,
+        })
+    }
+
+    /// Select notes and optionally include extra eligible notes for consolidation.
+    pub fn select_notes_with_consolidation(
+        &self,
+        mut available_notes: Vec<SelectableNote>,
+        target_amount: u64,
+        fee: u64,
+        extra_limit: usize,
+    ) -> Result<SelectionResult> {
+        let required = target_amount
+            .checked_add(fee)
+            .ok_or_else(|| Error::InsufficientFunds("Amount overflow".to_string()))?;
+
+        tracing::debug!(
+            "Selecting notes (auto-consolidation): target={}, fee={}, required={}, extra_limit={}",
+            target_amount,
+            fee,
+            required,
+            extra_limit
+        );
+
+        // Sort notes based on strategy
+        self.sort_notes(&mut available_notes);
+
+        let mut selected = Vec::new();
+        let mut total = 0u64;
+        let mut extra_selected = 0usize;
+
+        for note in available_notes {
+            if total < required {
+                let note_value = note.value;
+                selected.push(note);
+                total = total
+                    .checked_add(note_value)
+                    .ok_or_else(|| Error::InsufficientFunds("Value overflow".to_string()))?;
+                continue;
+            }
+
+            if extra_limit == 0 || extra_selected >= extra_limit {
+                break;
+            }
+
+            if note.auto_consolidation_eligible {
+                let note_value = note.value;
+                selected.push(note);
+                extra_selected += 1;
+                total = total
+                    .checked_add(note_value)
+                    .ok_or_else(|| Error::InsufficientFunds("Value overflow".to_string()))?;
+            }
+        }
+
+        if total < required {
+            return Err(Error::InsufficientFunds(format!(
+                "Required {} arrrtoshis, have {} arrrtoshis",
+                required, total
+            )));
+        }
+
+        let change = total - required;
+
+        tracing::info!(
+            "Selected {} notes ({} extra), total={}, change={}",
+            selected.len(),
+            extra_selected,
             total,
             change
         );

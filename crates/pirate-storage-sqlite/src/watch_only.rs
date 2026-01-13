@@ -1,4 +1,4 @@
-//! Watch-only wallet management via IVK (Incoming Viewing Key)
+//! Watch-only wallet management via viewing keys
 //!
 //! Watch-only wallets can:
 //! - View incoming transactions
@@ -54,9 +54,9 @@ impl WatchOnlyCapabilities {
     }
 }
 
-/// IVK export result
+/// Viewing key export result
 pub struct IvkExportResult {
-    /// The IVK string
+    /// The viewing key string
     ivk: Zeroizing<String>,
     /// Wallet ID source
     pub wallet_id: String,
@@ -74,23 +74,23 @@ impl IvkExportResult {
         }
     }
 
-    /// Get IVK string
+    /// Get viewing key string
     pub fn ivk(&self) -> &str {
         &self.ivk
     }
 
-    /// Get IVK for clipboard (zeroized copy)
+    /// Get viewing key for clipboard (zeroized copy)
     pub fn as_clipboard_string(&self) -> Zeroizing<String> {
         Zeroizing::new((*self.ivk).clone())
     }
 }
 
-/// IVK import request
+/// Viewing key import request
 #[derive(Debug, Clone)]
 pub struct IvkImportRequest {
     /// Wallet name
     pub name: String,
-    /// IVK string
+    /// Viewing key string
     pub ivk: String,
     /// Birthday height
     pub birthday_height: u32,
@@ -106,23 +106,17 @@ impl IvkImportRequest {
         }
     }
 
-    /// Validate IVK format
+    /// Validate viewing key format
     pub fn validate(&self) -> Result<()> {
-        // IVK should be a valid hex string of expected length
-        // Sapling IVK is 64 bytes (512 bits) when decoded
-        if self.ivk.is_empty() {
-            return Err(Error::Validation("IVK cannot be empty".to_string()));
+        if self.ivk.trim().is_empty() {
+            return Err(Error::Validation("Viewing key cannot be empty".to_string()));
         }
 
-        // Check for valid hex characters
-        if !self.ivk.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Err(Error::Validation("IVK must be a valid hex string".to_string()));
-        }
-
-        // Check length (64 bytes = 128 hex chars for Sapling IVK)
-        if self.ivk.len() != 128 && self.ivk.len() != 64 {
-            tracing::warn!("IVK has non-standard length: {}", self.ivk.len());
-            // Allow non-standard lengths but warn
+        let key = self.ivk.trim();
+        let is_sapling = key.starts_with("zxviews");
+        let is_orchard = key.starts_with("pirate-extended-viewing-key");
+        if !(is_sapling || is_orchard) {
+            return Err(Error::Validation("Invalid viewing key format".to_string()));
         }
 
         // Validate name
@@ -156,7 +150,7 @@ pub struct WatchOnlyWalletMeta {
     pub birthday_height: u32,
     /// Created timestamp
     pub created_at: i64,
-    /// IVK hash (for identification, not the actual IVK)
+    /// Viewing key fingerprint (for identification, not the actual key)
     pub ivk_fingerprint: String,
 }
 
@@ -185,7 +179,7 @@ impl WatchOnlyWalletMeta {
 
 /// Watch-only wallet manager
 pub struct WatchOnlyManager {
-    /// Screenshot guard for IVK export
+    /// Screenshot guard for viewing key export
     screenshot_guard: ScreenshotGuard,
     /// Secure clipboard
     clipboard: SecureClipboard,
@@ -200,25 +194,25 @@ impl WatchOnlyManager {
         }
     }
 
-    /// Export IVK from full wallet
+    /// Export viewing key from full wallet
     /// 
     /// This requires the wallet to be unlocked and not watch-only.
     pub fn export_ivk(&self, wallet_id: &str, ivk: String) -> Result<IvkExportResult> {
         // Enable screenshot protection during export
         let _guard = self.screenshot_guard.enable(ProtectionReason::ViewingKey);
 
-        tracing::info!("Exporting IVK for wallet {}", wallet_id);
+        tracing::info!("Exporting viewing key for wallet {}", wallet_id);
 
         Ok(IvkExportResult::new(ivk, wallet_id.to_string()))
     }
 
-    /// Copy IVK to clipboard with auto-clear
+    /// Copy viewing key to clipboard with auto-clear
     pub fn copy_ivk_to_clipboard(&self, result: &IvkExportResult) -> Zeroizing<String> {
         let ivk_string = result.as_clipboard_string();
         self.clipboard.prepare_copy_sensitive(&ivk_string, ClipboardDataType::ViewingKey)
     }
 
-    /// Import IVK to create watch-only wallet
+    /// Import viewing key to create watch-only wallet
     pub fn validate_import(&self, request: &IvkImportRequest) -> Result<()> {
         request.validate()
     }
@@ -305,12 +299,12 @@ pub mod messages {
 
     /// Import instructions
     pub const IMPORT_INSTRUCTIONS: &str = 
-        "Enter the Incoming Viewing Key (IVK) exported from another wallet. \
+        "Enter the viewing key exported from another wallet. \
          This creates a view-only copy that cannot spend funds.";
 
     /// Export warning
     pub const EXPORT_WARNING: &str = 
-        "Anyone with this IVK can see your incoming transactions and balance. \
+        "Anyone with this viewing key can see your incoming transactions and balance. \
          Only share it with services or devices you trust.";
 
     /// Birthday height explanation
@@ -346,12 +340,12 @@ mod tests {
         // Valid request
         let valid = IvkImportRequest::new(
             "My Watch Wallet".to_string(),
-            "a".repeat(128),
+            "zxviews-test-key".to_string(),
             2_000_000,
         );
         assert!(valid.validate().is_ok());
 
-        // Empty IVK
+        // Empty viewing key
         let empty_ivk = IvkImportRequest::new(
             "Test".to_string(),
             "".to_string(),
@@ -362,7 +356,7 @@ mod tests {
         // Empty name
         let empty_name = IvkImportRequest::new(
             "".to_string(),
-            "a".repeat(128),
+            "zxviews-test-key".to_string(),
             1000,
         );
         assert!(empty_name.validate().is_err());
@@ -370,7 +364,7 @@ mod tests {
         // Zero birthday
         let zero_birthday = IvkImportRequest::new(
             "Test".to_string(),
-            "a".repeat(128),
+            "zxviews-test-key".to_string(),
             0,
         );
         assert!(zero_birthday.validate().is_err());

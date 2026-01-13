@@ -149,7 +149,7 @@ extension _VariantColorExtension on PTextButtonVariant {
       case PTextButtonVariant.neutral:
         return AppColors.hoverOverlay;
       case PTextButtonVariant.subtle:
-        return AppColors.hoverOverlay.withValues(alpha: 0.75);
+        return AppColors.hoverOverlay;
       case PTextButtonVariant.danger:
         return AppColors.error.withValues(alpha: 0.12);
     }
