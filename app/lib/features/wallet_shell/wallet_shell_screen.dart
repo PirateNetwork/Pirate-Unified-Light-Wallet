@@ -10,6 +10,7 @@ import '../../core/ffi/generated/models.dart'
     show
         TunnelMode,
         TunnelMode_Tor,
+        TunnelMode_I2p,
         TunnelMode_Socks5,
         TunnelMode_Direct,
         SyncMode;
@@ -262,6 +263,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
   String _getTunnelModeDisplayName(TunnelMode mode) {
     return switch (mode) {
       TunnelMode_Tor() => 'Tor',
+      TunnelMode_I2p() => 'I2P',
       TunnelMode_Socks5(:final url) => 'SOCKS5 ($url)',
       TunnelMode_Direct() => 'Direct',
     };
@@ -405,7 +407,8 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
   void _switchTunnelMode() {
     final current = ref.read(tunnelModeProvider);
     final next = switch (current) {
-      TunnelMode_Tor() => const TunnelMode.direct(),
+      TunnelMode_Tor() => const TunnelMode.i2P(),
+      TunnelMode_I2p() => const TunnelMode.direct(),
       TunnelMode_Direct() =>
         const TunnelMode.socks5(url: 'socks5://127.0.0.1:1080'),
       TunnelMode_Socks5() => const TunnelMode.tor(),

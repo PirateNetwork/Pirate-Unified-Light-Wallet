@@ -29,8 +29,10 @@ pub use client::{
     CompactBlock, CompactTx, CompactSaplingSpend, CompactSaplingOutput, CompactOrchardAction, CompactOutput, BroadcastResult, LightdInfo,
     TransactionStatus, CompactBlockData, TreeState,
     DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_URL,
+    bootstrap_transport, tor_status, rotate_tor_exit, i2p_status, shutdown_transport,
 };
 pub use error::{Error, Result};
+pub use pirate_net::{TorStatus, I2pStatus};
 pub use frontier::{SaplingFrontier, SaplingCommitment, FrontierSnapshot, SAPLING_TREE_DEPTH};
 pub use orchard_frontier::{OrchardFrontier, OrchardFrontierSnapshot};
 pub use pipeline::{

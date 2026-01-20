@@ -1,12 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../design/theme.dart';
 import '../../../design/compat.dart';
 import '../../../design/tokens/colors.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
 import '../../../ui/atoms/p_text_button.dart';
+import '../../../ui/atoms/p_toggle.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
@@ -31,11 +35,30 @@ class PrivacyShieldScreen extends ConsumerStatefulWidget {
 
 class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   final _spkiPinController = TextEditingController();
+  final _torBridgeLinesController = TextEditingController();
+  final _torTransportPathController = TextEditingController();
+  final _i2pEndpointController = TextEditingController();
+  final _storage = const FlutterSecureStorage();
+  static const String _i2pWarningKey = 'i2p_first_use_ack';
   bool _isTestingConnection = false;
+  bool _torBridgeFieldsInitialized = false;
+  bool _i2pFieldsInitialized = false;
+  bool _isSavingI2pEndpoint = false;
+  bool _useTorBridges = false;
+  bool _fallbackToTorBridges = true;
+  String _torBridgeTransport = 'snowflake';
+  String? _torBridgeError;
+  String? _i2pEndpointError;
+
+  bool get _isDesktop =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   @override
   void dispose() {
     _spkiPinController.dispose();
+    _torBridgeLinesController.dispose();
+    _torTransportPathController.dispose();
+    _i2pEndpointController.dispose();
     super.dispose();
   }
 
@@ -46,6 +69,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     final dnsProvider = transportConfig.dnsProvider;
     final socks5Config = transportConfig.socks5Config;
     final tlsPins = transportConfig.tlsPins;
+    final torBridgeConfig = transportConfig.torBridge;
     final endpointConfig = ref.watch(lightdEndpointConfigProvider);
 
     // Initialize SPKI pin from current config
@@ -55,6 +79,18 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     );
     if (_spkiPinController.text.isEmpty && currentPin != null) {
       _spkiPinController.text = currentPin;
+    }
+    if (!_torBridgeFieldsInitialized) {
+      _useTorBridges = torBridgeConfig.useBridges;
+      _fallbackToTorBridges = torBridgeConfig.fallbackToBridges;
+      _torBridgeTransport = torBridgeConfig.transport;
+      _torBridgeLinesController.text = torBridgeConfig.bridgeLines.join('\n');
+      _torTransportPathController.text = torBridgeConfig.transportPath ?? '';
+      _torBridgeFieldsInitialized = true;
+    }
+    if (!_i2pFieldsInitialized) {
+      _i2pEndpointController.text = transportConfig.i2pEndpoint;
+      _i2pFieldsInitialized = true;
     }
 
     return PScaffold(
@@ -99,6 +135,14 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
               _buildSectionTitle('Tor Settings'),
               const SizedBox(height: PirateSpacing.sm),
               _buildTorSettings(context, ref),
+              const SizedBox(height: PirateSpacing.lg),
+            ],
+
+            // I2P Settings (desktop only)
+            if (transportMode == 'i2p' && _isDesktop) ...[
+              _buildSectionTitle('I2P Endpoint'),
+              const SizedBox(height: PirateSpacing.sm),
+              _buildI2pEndpointSettings(context, ref),
               const SizedBox(height: PirateSpacing.lg),
             ],
 
@@ -210,6 +254,19 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             AppColors.accentPrimary,
             currentMode == 'tor',
           ),
+          if (_isDesktop) ...[
+            Divider(height: 1, color: AppColors.borderDefault),
+            _buildModeOption(
+              context,
+              ref,
+              'i2p',
+              'I2P (Desktop Only)',
+              'Embedded I2P router with ephemeral identity. First startup may take a few minutes.',
+              Icons.router,
+              AppColors.accentSecondary,
+              currentMode == 'i2p',
+            ),
+          ],
           Divider(height: 1, color: AppColors.borderDefault),
           _buildModeOption(
             context,
@@ -249,7 +306,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   ) {
     return InkWell(
       onTap: () {
-        ref.read(transportConfigProvider.notifier).setMode(mode);
+        _handleTransportSelection(context, ref, mode);
       },
       child: Padding(
         padding: const EdgeInsets.all(PirateSpacing.md),
@@ -286,6 +343,54 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _handleTransportSelection(
+    BuildContext context,
+    WidgetRef ref,
+    String mode,
+  ) async {
+    if (mode == 'i2p') {
+      final proceed = await _confirmI2pFirstUse(context);
+      if (!proceed) return;
+    }
+    await ref.read(transportConfigProvider.notifier).setMode(mode);
+  }
+
+  Future<bool> _confirmI2pFirstUse(BuildContext context) async {
+    final seen = await _storage.read(key: _i2pWarningKey);
+    if (seen == 'true') {
+      return true;
+    }
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('I2P First Startup'),
+          content: const Text(
+            'The embedded I2P router uses a fresh, ephemeral identity each run. '
+            'The first startup can take a few minutes while it bootstraps. '
+            'Keep the app open until it connects.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Continue'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (proceed == true) {
+      await _storage.write(key: _i2pWarningKey, value: 'true');
+    }
+    return proceed ?? false;
   }
 
   Widget _buildSocks5Settings(
@@ -346,25 +451,161 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     );
   }
 
+  Widget _buildI2pEndpointSettings(BuildContext context, WidgetRef ref) {
+    final endpoint = _i2pEndpointController.text.trim();
+    final showMissingWarning = endpoint.isEmpty;
+
+    return PCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'I2P endpoints use .i2p hostnames (often ending in .b32.i2p).',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: PirateSpacing.sm),
+          PInput(
+            controller: _i2pEndpointController,
+            label: 'I2P Lightwalletd Endpoint',
+            hint: 'http://<base32>.b32.i2p:9067',
+            helperText: 'Example: http://<hash>.b32.i2p:9067',
+            errorText: _i2pEndpointError,
+            autocorrect: false,
+            enableSuggestions: false,
+            monospace: true,
+            onChanged: (_) {
+              if (_i2pEndpointError != null) {
+                setState(() {
+                  _i2pEndpointError = null;
+                });
+              }
+            },
+          ),
+          if (showMissingWarning) ...[
+            const SizedBox(height: PirateSpacing.xs),
+            Text(
+              'No I2P endpoint set. I2P mode will stay offline until you add one.',
+              style: TextStyle(
+                color: AppColors.warning,
+                fontSize: 12,
+              ),
+            ),
+          ],
+          const SizedBox(height: PirateSpacing.md),
+          SizedBox(
+            width: double.infinity,
+            child: PButton(
+              text: _isSavingI2pEndpoint ? 'Saving...' : 'Save I2P Endpoint',
+              onPressed: _isSavingI2pEndpoint
+                  ? null
+                  : () async {
+                      final candidate = _i2pEndpointController.text.trim();
+                      if (candidate.isEmpty) {
+                        setState(() {
+                          _i2pEndpointError = 'Enter an .i2p endpoint.';
+                        });
+                        return;
+                      }
+                      if (!_isValidI2pEndpoint(candidate)) {
+                        setState(() {
+                          _i2pEndpointError =
+                              'Endpoint must use a .i2p hostname.';
+                        });
+                        return;
+                      }
+                      setState(() {
+                        _isSavingI2pEndpoint = true;
+                      });
+                      try {
+                        await ref
+                            .read(transportConfigProvider.notifier)
+                            .setI2pEndpoint(candidate);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('I2P endpoint saved.'),
+                          ),
+                        );
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to save I2P endpoint: $e'),
+                            backgroundColor: AppColors.error,
+                          ),
+                        );
+                      } finally {
+                        if (mounted) {
+                          setState(() {
+                            _isSavingI2pEndpoint = false;
+                          });
+                        }
+                      }
+                    },
+              variant: PButtonVariant.secondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isValidI2pEndpoint(String value) {
+    var normalized = value.trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    if (normalized.startsWith('https://')) {
+      normalized = normalized.substring(8);
+    } else if (normalized.startsWith('http://')) {
+      normalized = normalized.substring(7);
+    }
+    if (normalized.endsWith('/')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    final host = normalized.split(':').first;
+    return host.endsWith('.i2p');
+  }
+
   Widget _buildTorSettings(BuildContext context, WidgetRef ref) {
     final torStatus = ref.watch(torStatusProvider);
+    final isBootstrapping = torStatus.status == 'bootstrapping';
+    final progress = torStatus.progress;
+    final routingSummary = _torRoutingSummary();
 
     return PCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Tor Status',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  'Tor Status',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-              _buildTorStatusIndicator(torStatus),
+              Wrap(
+                spacing: PirateSpacing.sm,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _buildTorStatusIndicator(torStatus),
+                  PTextButton(
+                    text: 'Switch exit node',
+                    compact: true,
+                    onPressed: torStatus.isReady
+                        ? () => _switchTorExit()
+                        : null,
+                  ),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: PirateSpacing.md),
@@ -375,16 +616,67 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
               fontSize: 13,
             ),
           ),
+          const SizedBox(height: PirateSpacing.xs),
+          Text(
+            routingSummary,
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+          if (isBootstrapping) ...[
+            const SizedBox(height: PirateSpacing.md),
+            LinearProgressIndicator(
+              value: progress == null ? null : (progress.clamp(0, 100) / 100.0),
+              minHeight: 6,
+              backgroundColor: AppColors.backgroundSurface,
+              color: AppColors.accentPrimary,
+            ),
+            const SizedBox(height: PirateSpacing.xs),
+            Text(
+              progress == null
+                  ? 'Bootstrapping...'
+                  : 'Bootstrapping... $progress%',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+            if (torStatus.blocked != null && torStatus.blocked!.isNotEmpty) ...[
+              const SizedBox(height: PirateSpacing.xs),
+              Text(
+                'Blocked: ${torStatus.blocked}',
+                style: TextStyle(
+                  color: AppColors.warning,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
+          if (torStatus.status == 'error' && torStatus.error != null) ...[
+            const SizedBox(height: PirateSpacing.xs),
+            Text(
+              torStatus.error!,
+              style: TextStyle(
+                color: AppColors.error,
+                fontSize: 12,
+              ),
+            ),
+          ],
+          if (_isDesktop) ...[
+            const SizedBox(height: PirateSpacing.md),
+            _buildTorAdvancedControls(context, ref),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildTorStatusIndicator(String status) {
+  Widget _buildTorStatusIndicator(TorStatusDetails status) {
     Color color;
     String label;
 
-    switch (status) {
+    switch (status.status) {
       case 'ready':
         color = Colors.green;
         label = 'Ready';
@@ -423,6 +715,256 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _switchTorExit() async {
+    try {
+      await FfiBridge.rotateTorExit();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Switched Tor exit node. Reconnecting...')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to switch exit node: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Widget _buildTorAdvancedControls(BuildContext context, WidgetRef ref) {
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      title: Text(
+        'Advanced',
+        style: TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      subtitle: Text(
+        'Bridges and transport overrides',
+        style: TextStyle(
+          color: AppColors.textSecondary,
+          fontSize: 12,
+        ),
+      ),
+      children: [
+        _buildTorBridgeControls(context, ref),
+      ],
+    );
+  }
+
+  Widget _buildTorBridgeControls(BuildContext context, WidgetRef ref) {
+    if (!_isDesktop) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Bridge transports (Snowflake/obfs4) are desktop-only.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PToggle(
+          value: _useTorBridges,
+          label: 'Use bridges immediately',
+          onChanged: (value) => setState(() {
+            _useTorBridges = value;
+          }),
+        ),
+        const SizedBox(height: PirateSpacing.xs),
+        PToggle(
+          value: _fallbackToTorBridges,
+          label: 'Fallback to bridges if direct fails',
+          onChanged: (value) => setState(() {
+            _fallbackToTorBridges = value;
+          }),
+        ),
+        const SizedBox(height: PirateSpacing.sm),
+        DropdownButtonFormField<String>(
+          value: _torBridgeTransport,
+          items: const [
+            DropdownMenuItem(value: 'snowflake', child: Text('Snowflake')),
+            DropdownMenuItem(value: 'obfs4', child: Text('obfs4')),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() {
+              _torBridgeTransport = value;
+            });
+          },
+          decoration: const InputDecoration(
+            labelText: 'Fallback bridge transport',
+            filled: true,
+            helperText: 'Only used if direct Tor fails.',
+          ),
+        ),
+        const SizedBox(height: PirateSpacing.sm),
+        PInput(
+          controller: _torBridgeLinesController,
+          label: 'Bridge lines',
+          hint: _torBridgeTransport == 'snowflake'
+              ? 'Leave blank to use bundled Snowflake bridges'
+              : 'Paste one bridge line per row',
+          helperText: 'One bridge per line. Used only for bridges/fallback.',
+          maxLines: 4,
+          monospace: true,
+        ),
+        const SizedBox(height: PirateSpacing.sm),
+        PInput(
+          controller: _torTransportPathController,
+          label: 'Transport binary path (optional)',
+          hint: 'Leave blank to use PATH',
+          monospace: true,
+        ),
+        if (_torBridgeError != null) ...[
+          const SizedBox(height: PirateSpacing.xs),
+          Text(
+            _torBridgeError!,
+            style: TextStyle(
+              color: AppColors.error,
+              fontSize: 12,
+            ),
+          ),
+        ],
+        const SizedBox(height: PirateSpacing.sm),
+        Row(
+          children: [
+            Expanded(
+              child: PButton(
+                text: 'Apply & Restart Tor',
+                variant: PButtonVariant.secondary,
+                onPressed: () => _applyTorBridgeSettings(ref),
+              ),
+            ),
+            const SizedBox(width: PirateSpacing.sm),
+            Expanded(
+              child: PTextButton(
+                text: 'Use Snowflake',
+                onPressed: () => _applyTorBridgePreset(ref, 'snowflake'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: PirateSpacing.xs),
+        Row(
+          children: [
+            Expanded(
+              child: PTextButton(
+                text: 'Use obfs4',
+                onPressed: () => _applyTorBridgePreset(ref, 'obfs4'),
+              ),
+            ),
+            const SizedBox(width: PirateSpacing.sm),
+            Expanded(
+              child: PTextButton(
+                text: 'Disable Bridges',
+                onPressed: () => _disableTorBridges(ref),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  List<String> _splitBridgeLines(String raw) {
+    return raw
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+  }
+
+  String _torTransportLabel(String transport) {
+    final normalized = transport.trim().toLowerCase();
+    if (normalized.isEmpty || normalized == 'snowflake') {
+      return 'Snowflake';
+    }
+    if (normalized == 'obfs4') {
+      return 'obfs4';
+    }
+    return transport;
+  }
+
+  String _torRoutingSummary() {
+    final transportLabel = _torTransportLabel(_torBridgeTransport);
+    if (_useTorBridges) {
+      return 'Attempting: $transportLabel (bridges)';
+    }
+    if (_fallbackToTorBridges) {
+      return 'Attempting: Direct -> Fallback: $transportLabel';
+    }
+    return 'Attempting: Direct (no fallback bridges)';
+  }
+
+  Future<void> _applyTorBridgeSettings(WidgetRef ref) async {
+    if (!_isDesktop) {
+      setState(() {
+        _torBridgeError = 'Bridge transports are desktop-only.';
+      });
+      return;
+    }
+
+    final lines = _splitBridgeLines(_torBridgeLinesController.text);
+    if ((_useTorBridges || _fallbackToTorBridges) &&
+        _torBridgeTransport == 'obfs4' &&
+        lines.isEmpty) {
+      setState(() {
+        _torBridgeError = 'obfs4 requires bridge lines from a provider.';
+      });
+      return;
+    }
+
+    setState(() {
+      _torBridgeError = null;
+    });
+
+    final path = _torTransportPathController.text.trim();
+    final config = TorBridgeConfig(
+      useBridges: _useTorBridges,
+      fallbackToBridges: _fallbackToTorBridges,
+      transport: _torBridgeTransport,
+      bridgeLines: lines,
+      transportPath: path.isEmpty ? null : path,
+    );
+
+    await ref.read(transportConfigProvider.notifier).setTorBridgeConfig(
+          config,
+          apply: true,
+        );
+  }
+
+  Future<void> _applyTorBridgePreset(WidgetRef ref, String transport) async {
+    setState(() {
+      _useTorBridges = true;
+      _fallbackToTorBridges = true;
+      _torBridgeTransport = transport;
+      _torBridgeError = null;
+    });
+    await _applyTorBridgeSettings(ref);
+  }
+
+  Future<void> _disableTorBridges(WidgetRef ref) async {
+    setState(() {
+      _useTorBridges = false;
+      _fallbackToTorBridges = false;
+      _torBridgeError = null;
+    });
+    await _applyTorBridgeSettings(ref);
   }
 
   Widget _buildDnsSelector(

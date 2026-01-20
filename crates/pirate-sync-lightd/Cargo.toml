@@ -14,8 +14,7 @@ live_lightd = []
 [dependencies]
 pirate-core = { path = "../pirate-core" }
 pirate-params = { path = "../pirate-params" }
-# pirate-net is optional - not needed for direct wifi connections
-# pirate-net = { path = "../pirate-net", optional = true }
+pirate-net = { path = "../pirate-net" }
 pirate-storage-sqlite = { path = "../pirate-storage-sqlite" }
 
 # Merkle tree for Sapling commitment tree (compatible with zcash_primitives 0.22)
@@ -33,6 +32,7 @@ orchard = { workspace = true }
 subtle = "2.5"
 
 tonic = { workspace = true }
+http = "1"
 blake2b_simd = { workspace = true }
 chacha20 = { version = "0.9", default-features = false }
 chacha20poly1305 = "0.10"

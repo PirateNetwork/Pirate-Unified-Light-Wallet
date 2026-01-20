@@ -28,14 +28,21 @@ warn() {
 # Parse arguments
 BUILD_TYPE="${1:-apk}"  # apk or bundle
 SIGN="${2:-false}"      # Sign the build
+REPRODUCIBLE="${REPRODUCIBLE:-0}"
 
 # Reproducible build settings
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || date +%s)}"
+export TZ=UTC
 export FLUTTER_SUPPRESS_ANALYTICS=true
 export DART_SUPPRESS_ANALYTICS=true
+export CARGO_INCREMENTAL=0
 
 log "Building Android $BUILD_TYPE (reproducible)"
 log "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+
+if [ "$REPRODUCIBLE" = "1" ]; then
+    SIGN=false
+fi
 
 cd "$APP_DIR"
 
@@ -45,7 +52,7 @@ flutter clean
 
 # Get dependencies
 log "Fetching dependencies..."
-flutter pub get
+flutter pub get --enforce-lockfile
 
 # Build based on type
 if [ "$BUILD_TYPE" = "bundle" ]; then
@@ -53,23 +60,32 @@ if [ "$BUILD_TYPE" = "bundle" ]; then
     flutter build appbundle --release
     
     OUTPUT_FILE="$APP_DIR/build/app/outputs/bundle/release/app-release.aab"
-    OUTPUT_NAME="pirate-unified-wallet-android.aab"
+    OUTPUT_NAME_BASE="pirate-unified-wallet-android"
 else
     log "Building Android APK..."
     flutter build apk --release --split-per-abi
     
     # Multiple ABIs
     ARM64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+    ARM64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-arm64-v8a-release-unsigned.apk"
     ARMV7_APK="$APP_DIR/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
+    ARMV7_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-armeabi-v7a-release-unsigned.apk"
     X86_64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-x86_64-release.apk"
+    X86_64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-x86_64-release-unsigned.apk"
     
-    OUTPUT_FILE="$ARM64_APK"
-    OUTPUT_NAME="pirate-unified-wallet-android-arm64-v8a.apk"
+    if [ -f "$ARM64_APK" ]; then
+        OUTPUT_FILE="$ARM64_APK"
+    else
+        OUTPUT_FILE="$ARM64_APK_UNSIGNED"
+    fi
+    OUTPUT_NAME_BASE="pirate-unified-wallet-android-arm64-v8a"
 fi
 
 if [ ! -f "$OUTPUT_FILE" ]; then
     error "Build failed: $OUTPUT_FILE not found"
 fi
+
+SIGNED=false
 
 # Sign if requested and keystore is available
 if [ "$SIGN" = "true" ]; then
@@ -98,7 +114,12 @@ if [ "$SIGN" = "true" ]; then
                 "$KEY_ALIAS"
         else
             # APK signing with apksigner
-            "$ANDROID_HOME/build-tools/34.0.0/apksigner" sign \
+            BUILD_TOOLS_VERSION="${ANDROID_BUILD_TOOLS_VERSION:-34.0.0}"
+            APKSIGNER_PATH="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+            if [ ! -f "$APKSIGNER_PATH" ]; then
+                error "apksigner not found at $APKSIGNER_PATH"
+            fi
+            "$APKSIGNER_PATH" sign \
                 --ks "$KEYSTORE_PATH" \
                 --ks-key-alias "$KEY_ALIAS" \
                 --ks-pass "pass:$KEYSTORE_PASSWORD" \
@@ -106,7 +127,22 @@ if [ "$SIGN" = "true" ]; then
                 "$OUTPUT_FILE"
         fi
         
+        SIGNED=true
         log "Signed successfully"
+    fi
+fi
+
+if [ "$SIGNED" = "true" ]; then
+    OUTPUT_NAME="${OUTPUT_NAME_BASE}.aab"
+else
+    OUTPUT_NAME="${OUTPUT_NAME_BASE}-unsigned.aab"
+fi
+
+if [ "$BUILD_TYPE" = "apk" ]; then
+    if [ "$SIGNED" = "true" ]; then
+        OUTPUT_NAME="${OUTPUT_NAME_BASE}.apk"
+    else
+        OUTPUT_NAME="${OUTPUT_NAME_BASE}-unsigned.apk"
     fi
 fi
 
@@ -126,4 +162,3 @@ sha256sum "$OUTPUT_NAME" > "$OUTPUT_NAME.sha256"
 log "Build complete!"
 log "Output: $OUTPUT_DIR/$OUTPUT_NAME"
 log "SHA-256: $(cat "$OUTPUT_NAME.sha256")"
-

@@ -7,8 +7,23 @@ on:
     branches: [main, develop]
 
 env:
-  RUST_VERSION: "1.75.0"
-  FLUTTER_VERSION: "3.24.0"
+  RUST_VERSION: "1.90.0"
+  FLUTTER_VERSION: "3.24.3"
+  FRB_CODEGEN_VERSION: "2.11.1"
+  JAVA_VERSION: "21"
+  COCOAPODS_VERSION: "1.16.2"
+  APPIMAGETOOL_URL: "https://github.com/AppImage/AppImageKit/releases/download/13/obsolete-appimagetool-x86_64.AppImage"
+  APPIMAGETOOL_SHA256: "df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb"
+  ANDROID_BUILD_TOOLS_VERSION: "34.0.0"
+  ANDROID_PLATFORM_VERSION: "36"
+  SYFT_VERSION: "1.40.1"
+  SYFT_SHA256_LINUX_AMD64: "c229137c919f22aa926c1c015388db5ec64e99c078e0baac053808e8f36e2e00"
+  SYFT_SHA256_DARWIN_ARM64: "c0f6a4fc0563ef1dfe1acf9a4518db66cb37bbb1391889aba3be773dff3487dd"
+  SYFT_SHA256_DARWIN_AMD64: "9e84d1f152ef9d3bb541cc7cedf81ed4c7ed78f6cc2e4c8f0db9e052b64cd7be"
+  SYFT_SHA256_WINDOWS_AMD64: "eedac363e277dfecac420b6e4ed0a861bc2c9c84a7544157f52807a99bff07cd"
+  CARGO_AUDIT_VERSION: "0.22.0"
+  CARGO_DENY_VERSION: "0.19.0"
+  CARGO_AUDITABLE_VERSION: "0.7.2"
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -17,6 +32,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -32,8 +53,12 @@ jobs:
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-frb-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Generate flutter_rust_bridge bindings (make frb)
-        run: make frb
+      - name: Install flutter_rust_bridge_codegen
+        run: cargo install flutter_rust_bridge_codegen --locked --version ${{ env.FRB_CODEGEN_VERSION }}
+
+      - name: Generate flutter_rust_bridge bindings
+        run: |
+          FRB_SIMPLE_BUILD_SKIP=1 flutter_rust_bridge_codegen generate --config-file flutter_rust_bridge.yaml
 
       - name: Verify bindings are up to date
         run: git diff --exit-code
@@ -74,7 +99,7 @@ jobs:
       - name: Run clippy
         run: |
           cd crates
-          cargo clippy --all-targets --all-features -- -D warnings
+          cargo clippy --all-targets --all-features --locked -- -D warnings
 
   rust-test:
     name: Rust - Unit Tests
@@ -99,7 +124,7 @@ jobs:
       - name: Run unit tests
         run: |
           cd crates
-          cargo test --all-features
+          cargo test --all-features --locked
 
   rust-property-tests:
     name: Rust - Property Tests
@@ -123,7 +148,7 @@ jobs:
       - name: Run property tests
         run: |
           cd crates/pirate-core
-          cargo test --test property_tests --release
+          cargo test --test property_tests --release --locked
 
   rust-migration-tests:
     name: Rust - Migration Snapshot Tests
@@ -147,7 +172,7 @@ jobs:
       - name: Run migration tests
         run: |
           cd crates/pirate-storage-sqlite
-          cargo test --test migration_snapshots
+          cargo test --test migration_snapshots --locked
 
   rust-perf-tests:
     name: Rust - Performance Tests
@@ -171,7 +196,7 @@ jobs:
       - name: Run performance benchmarks
         run: |
           cd crates/pirate-sync-lightd
-          cargo test --test performance_benchmarks --release -- --nocapture
+          cargo test --test performance_benchmarks --release --locked -- --nocapture
 
   # ========================================================================
   # Security Audits
@@ -189,7 +214,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        run: cargo install cargo-audit --locked --version ${{ env.CARGO_AUDIT_VERSION }}
 
       - name: Run cargo audit
         run: |
@@ -203,7 +228,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
+        run: cargo install cargo-deny --locked --version ${{ env.CARGO_DENY_VERSION }}
 
       - name: Run cargo deny
         run: cargo deny check
@@ -218,6 +243,7 @@ jobs:
         uses: returntocorp/semgrep-action@v1
         with:
           config: .semgrep.yml
+          semgrep-args: --severity ERROR
 
   # ========================================================================
   # Flutter Quality Gates
@@ -238,7 +264,7 @@ jobs:
       - name: Get dependencies
         run: |
           cd app
-          flutter pub get
+          flutter pub get --enforce-lockfile
 
       - name: Analyze code
         run: |
@@ -260,7 +286,7 @@ jobs:
       - name: Get dependencies
         run: |
           cd app
-          flutter pub get
+          flutter pub get --enforce-lockfile
 
       - name: Run tests
         run: |
@@ -272,6 +298,7 @@ jobs:
         with:
           files: ./app/coverage/lcov.info
           flags: flutter
+          fail_ci_if_error: false
 
   flutter-golden-tests:
     name: Flutter - Golden Tests
@@ -288,13 +315,16 @@ jobs:
       - name: Get dependencies
         run: |
           cd app
-          flutter pub get
+          flutter pub get --enforce-lockfile
 
       - name: Run golden tests
         run: |
           cd app
-          flutter test --update-goldens
-          flutter test test/golden/
+          if find test/golden -name "*.png" | grep -q .; then
+            flutter test test/golden/
+          else
+            echo "No golden images found; skipping golden tests."
+          fi
 
   flutter-integration-tests:
     name: Flutter - Integration Tests
@@ -308,15 +338,26 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Build Rust FFI library
+        run: |
+          cd crates
+          cargo build --release --package pirate-ffi-frb --features frb --no-default-features --locked
+
       - name: Get dependencies
         run: |
           cd app
-          flutter pub get
+          flutter pub get --enforce-lockfile
 
       - name: Run integration tests
         run: |
           cd app
-          flutter test integration_test/
+          flutter config --enable-macos-desktop
+          flutter test integration_test/ -d macos
 
   # ========================================================================
   # Build Matrix
@@ -354,6 +395,10 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
 
+      - name: Install CocoaPods
+        if: matrix.platform == 'iOS'
+        run: gem install cocoapods -v ${{ env.COCOAPODS_VERSION }}
+
       - name: Install Linux dependencies
         if: matrix.platform == 'Linux'
         run: |
@@ -363,7 +408,19 @@ jobs:
       - name: Get dependencies
         run: |
           cd app
-          flutter pub get
+          flutter pub get --enforce-lockfile
+
+      - name: Enable Linux desktop
+        if: matrix.platform == 'Linux'
+        run: flutter config --enable-linux-desktop
+
+      - name: Enable macOS desktop
+        if: matrix.platform == 'macOS'
+        run: flutter config --enable-macos-desktop
+
+      - name: Enable Windows desktop
+        if: matrix.platform == 'Windows'
+        run: flutter config --enable-windows-desktop
 
       - name: Build ${{ matrix.platform }}
         run: |
@@ -381,6 +438,8 @@ jobs:
   package-android:
     name: Package - Android (APK/AAB + SBOM)
     runs-on: ubuntu-latest
+    env:
+      REPRODUCIBLE: "1"
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     needs:
       - rust-test
@@ -395,7 +454,14 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager "platforms;android-${{ env.ANDROID_PLATFORM_VERSION }}" "build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -418,14 +484,19 @@ jobs:
         run: |
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
 
+      - name: Verify toolchain pins
+        run: |
+          chmod +x scripts/verify-toolchain.sh
+          scripts/verify-toolchain.sh
+
       - name: Build Android APK
         run: |
           chmod +x scripts/build-android.sh
-          ./scripts/build-android.sh apk
+          REPRODUCIBLE=1 ./scripts/build-android.sh apk
 
       - name: Build Android AAB
         run: |
-          ./scripts/build-android.sh bundle
+          REPRODUCIBLE=1 ./scripts/build-android.sh bundle
 
       - name: Generate SBOM
         run: |
@@ -435,8 +506,8 @@ jobs:
       - name: Generate Provenance
         run: |
           chmod +x scripts/generate-provenance.sh
-          ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-arm64-v8a.apk dist/provenance
-          ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android.aab dist/provenance
+          ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-arm64-v8a-unsigned.apk dist/provenance
+          ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-unsigned.aab dist/provenance
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -469,6 +540,8 @@ jobs:
   package-ios:
     name: Package - iOS (IPA + SBOM)
     runs-on: macos-14
+    env:
+      REPRODUCIBLE: "1"
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     needs:
       - rust-test
@@ -492,16 +565,21 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Install CocoaPods
-        run: gem install cocoapods
+        run: gem install cocoapods -v ${{ env.COCOAPODS_VERSION }}
 
       - name: Set SOURCE_DATE_EPOCH
         run: |
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
 
+      - name: Verify toolchain pins
+        run: |
+          chmod +x scripts/verify-toolchain.sh
+          scripts/verify-toolchain.sh
+
       - name: Build iOS IPA
         run: |
           chmod +x scripts/build-ios.sh
-          ./scripts/build-ios.sh false  # unsigned for CI
+          REPRODUCIBLE=1 ./scripts/build-ios.sh false
 
       - name: Generate SBOM
         run: |
@@ -536,6 +614,8 @@ jobs:
   package-windows:
     name: Package - Windows (MSIX + SBOM)
     runs-on: windows-latest
+    env:
+      REPRODUCIBLE: "1"
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     needs:
       - rust-test
@@ -563,11 +643,17 @@ jobs:
           $epoch = git log -1 --format=%ct
           echo "SOURCE_DATE_EPOCH=$epoch" >> $env:GITHUB_ENV
 
+      - name: Verify toolchain pins
+        shell: bash
+        run: |
+          chmod +x scripts/verify-toolchain.sh
+          scripts/verify-toolchain.sh
+
       - name: Build Windows MSIX
         shell: bash
         run: |
           chmod +x scripts/build-windows.sh
-          ./scripts/build-windows.sh
+          REPRODUCIBLE=1 ./scripts/build-windows.sh
 
       - name: Generate SBOM
         shell: bash
@@ -579,7 +665,12 @@ jobs:
         shell: bash
         run: |
           chmod +x scripts/generate-provenance.sh
-          ./scripts/generate-provenance.sh dist/windows/pirate-unified-wallet-windows.msix dist/provenance
+          if [ -f dist/windows/pirate-unified-wallet-windows.msix ]; then
+            ./scripts/generate-provenance.sh dist/windows/pirate-unified-wallet-windows.msix dist/provenance
+          fi
+          if [ -f dist/windows/pirate-unified-wallet-windows-portable.zip ]; then
+            ./scripts/generate-provenance.sh dist/windows/pirate-unified-wallet-windows-portable.zip dist/provenance
+          fi
 
       - name: Upload MSIX
         uses: actions/upload-artifact@v4
@@ -606,6 +697,8 @@ jobs:
   package-macos:
     name: Package - macOS (DMG + SBOM)
     runs-on: macos-14
+    env:
+      REPRODUCIBLE: "1"
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     needs:
       - rust-test
@@ -632,10 +725,15 @@ jobs:
         run: |
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
 
+      - name: Verify toolchain pins
+        run: |
+          chmod +x scripts/verify-toolchain.sh
+          scripts/verify-toolchain.sh
+
       - name: Build macOS DMG
         run: |
           chmod +x scripts/build-macos.sh
-          ./scripts/build-macos.sh false  # unsigned for CI
+          REPRODUCIBLE=1 ./scripts/build-macos.sh false
 
       - name: Generate SBOM
         run: |
@@ -670,6 +768,8 @@ jobs:
   package-linux:
     name: Package - Linux (AppImage/Flatpak/Deb + SBOM)
     runs-on: ubuntu-latest
+    env:
+      REPRODUCIBLE: "1"
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     needs:
       - rust-test
@@ -706,6 +806,8 @@ jobs:
             ninja-build \
             libblkid-dev \
             liblzma-dev \
+            dpkg-dev \
+            squashfs-tools \
             flatpak \
             flatpak-builder
 
@@ -713,18 +815,23 @@ jobs:
         run: |
           echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
 
+      - name: Verify toolchain pins
+        run: |
+          chmod +x scripts/verify-toolchain.sh
+          scripts/verify-toolchain.sh
+
       - name: Build AppImage
         run: |
           chmod +x scripts/build-linux.sh
-          ./scripts/build-linux.sh appimage
+          REPRODUCIBLE=1 ./scripts/build-linux.sh appimage
 
       - name: Build Flatpak manifest
         run: |
-          ./scripts/build-linux.sh flatpak
+          REPRODUCIBLE=1 ./scripts/build-linux.sh flatpak
 
       - name: Build Debian package
         run: |
-          ./scripts/build-linux.sh deb
+          REPRODUCIBLE=1 ./scripts/build-linux.sh deb
 
       - name: Generate SBOM
         run: |

@@ -140,6 +140,28 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
+# Bundle Tor pluggable transport binaries (desktop-only).
+set(TOR_PT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tor-pt/linux")
+if(EXISTS "${TOR_PT_DIR}")
+  install(DIRECTORY "${TOR_PT_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/tor-pt"
+    COMPONENT Runtime)
+endif()
+
+# Bundle embedded I2P router binaries (desktop-only).
+set(I2P_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../i2p/linux")
+if(EXISTS "${I2P_DIR}")
+  install(DIRECTORY "${I2P_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/i2p"
+    COMPONENT Runtime)
+  install(CODE "
+    file(GLOB I2P_BINARIES \"\${CMAKE_INSTALL_PREFIX}/i2p/*\")
+    foreach(bin \${I2P_BINARIES})
+      file(CHMOD \"\${bin}\" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+    endforeach()
+    " COMPONENT Runtime)
+endif()
+
 # Install the AOT library on non-Debug builds only.
 if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"

@@ -17,6 +17,7 @@ NC := \033[0m # No Color
 RUST_DIR := crates
 APP_DIR := app
 CI_DIR := .github/workflows
+FRB_CODEGEN_VERSION ?= 2.11.1
 
 # Detect OS
 ifeq ($(OS),Windows_NT)
@@ -74,8 +75,8 @@ bootstrap-flutter: ## Install Flutter dependencies
 
 frb: ## Generate flutter_rust_bridge bindings
 	@echo "$(BLUE)🔗 Generating flutter_rust_bridge bindings...$(NC)"
-	@command -v flutter_rust_bridge_codegen >/dev/null 2>&1 || $(CARGO) install flutter_rust_bridge_codegen --locked
-	@flutter_rust_bridge_codegen generate --config-file crates/pirate-ffi-frb/frb.toml
+	@command -v flutter_rust_bridge_codegen >/dev/null 2>&1 || $(CARGO) install flutter_rust_bridge_codegen --locked --version $(FRB_CODEGEN_VERSION)
+	@FRB_SIMPLE_BUILD_SKIP=1 flutter_rust_bridge_codegen generate --config-file flutter_rust_bridge.yaml
 	@echo "$(GREEN)✅ FRB bindings generated$(NC)"
 
 params: ## Pre-warm proving parameters (Sapling/Orchard) - embedded loader
@@ -284,4 +285,3 @@ version: ## Show version information
 tree: ## Show project structure
 	@echo "$(BLUE)📁 Project Structure$(NC)"
 	@tree -L 3 -I 'target|build|node_modules|.dart_tool' || echo "Install 'tree' command for directory visualization"
-

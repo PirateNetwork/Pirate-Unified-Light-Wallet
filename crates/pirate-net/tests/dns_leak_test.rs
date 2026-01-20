@@ -29,7 +29,7 @@ async fn test_dns_tunneling_configuration() {
     let config = DnsConfig {
         provider: DnsProvider::CloudflareDoH,
         tunnel_dns: true,
-        socks_proxy: Some("127.0.0.1:9050".to_string()),
+        socks_proxy: Some("socks5h://127.0.0.1:9050".to_string()),
     };
 
     let resolver = DnsResolver::new(config);
@@ -83,7 +83,7 @@ fn test_dns_leak_prevention_checklist() {
     let config = DnsConfig {
         provider: DnsProvider::CloudflareDoH,
         tunnel_dns: true,
-        socks_proxy: Some("127.0.0.1:9050".to_string()),
+        socks_proxy: Some("socks5h://127.0.0.1:9050".to_string()),
     };
     let resolver = DnsResolver::new(config);
     assert!(resolver.is_tunneled());
@@ -152,7 +152,7 @@ async fn test_no_cleartext_dns_port_53() {
     let config = DnsConfig {
         provider: DnsProvider::CloudflareDoH,
         tunnel_dns: true,
-        socks_proxy: Some("127.0.0.1:9050".to_string()),
+        socks_proxy: Some("socks5h://127.0.0.1:9050".to_string()),
     };
 
     let resolver = DnsResolver::new(config);
@@ -209,7 +209,7 @@ async fn test_private_dns_resolution_flow() {
     let config = DnsConfig {
         provider: DnsProvider::CloudflareDoH,
         tunnel_dns: true,
-        socks_proxy: Some("127.0.0.1:9050".to_string()),
+        socks_proxy: Some("socks5h://127.0.0.1:9050".to_string()),
     };
 
     let resolver = DnsResolver::new(config.clone());

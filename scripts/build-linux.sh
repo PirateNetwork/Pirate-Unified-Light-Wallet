@@ -29,11 +29,71 @@ FORMAT="${1:-appimage}"  # appimage, flatpak, or deb
 
 # Reproducible build settings
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || date +%s)}"
+export TZ=UTC
 export FLUTTER_SUPPRESS_ANALYTICS=true
 export DART_SUPPRESS_ANALYTICS=true
+export CARGO_INCREMENTAL=0
 
 log "Building Linux $FORMAT (reproducible)"
 log "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+
+normalize_mtime() {
+    local target="$1"
+    if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+        return 0
+    fi
+    local stamp
+    stamp="$(date -u -d "@$SOURCE_DATE_EPOCH" +"%Y%m%d%H%M.%S" 2>/dev/null || date -u -r "$SOURCE_DATE_EPOCH" +"%Y%m%d%H%M.%S")"
+    find "$target" -exec touch -t "$stamp" {} + 2>/dev/null || true
+}
+
+download_file() {
+    local url="$1"
+    local dest="$2"
+    if command -v curl &> /dev/null; then
+        curl -fsSL --retry 3 --retry-delay 2 -o "$dest" "$url"
+        return 0
+    fi
+    if command -v wget &> /dev/null; then
+        wget -q -O "$dest" "$url"
+        return 0
+    fi
+    error "Missing download tool: install curl or wget."
+}
+
+sha256_check() {
+    local file="$1"
+    local expected="$2"
+    if [[ -z "$expected" ]]; then
+        error "Missing expected SHA256 for $file"
+    fi
+    if command -v sha256sum &> /dev/null; then
+        local actual
+        actual="$(sha256sum "$file" | awk '{print $1}')"
+        [[ "$actual" == "$expected" ]] || error "SHA256 mismatch for $file"
+        return 0
+    fi
+    if command -v shasum &> /dev/null; then
+        local actual
+        actual="$(shasum -a 256 "$file" | awk '{print $1}')"
+        [[ "$actual" == "$expected" ]] || error "SHA256 mismatch for $file"
+        return 0
+    fi
+    error "Missing sha256sum/shasum to verify $file"
+}
+
+ensure_flathub_remote() {
+    if ! command -v flatpak &> /dev/null; then
+        return 0
+    fi
+    if ! flatpak remotes | awk '{print $1}' | grep -q '^flathub$'; then
+        log "Adding Flathub remote..."
+        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    fi
+}
+
+log "Fetching Tor/I2P assets..."
+"$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 
 cd "$APP_DIR"
 
@@ -43,7 +103,7 @@ flutter clean
 
 # Get dependencies
 log "Fetching dependencies..."
-flutter pub get
+flutter pub get --enforce-lockfile
 
 # Build Linux app
 log "Building Linux app..."
@@ -78,11 +138,15 @@ build_appimage() {
     
     # Install appimagetool if not available
     if ! command -v appimagetool &> /dev/null; then
-        warn "appimagetool not found. Downloading..."
-        wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage \
-            -O /tmp/appimagetool
-        chmod +x /tmp/appimagetool
-        APPIMAGETOOL=/tmp/appimagetool
+        if [[ -z "${APPIMAGETOOL_URL:-}" || -z "${APPIMAGETOOL_SHA256:-}" ]]; then
+            error "appimagetool not found. Set APPIMAGETOOL_URL and APPIMAGETOOL_SHA256 for reproducible builds."
+        fi
+        warn "appimagetool not found. Downloading pinned binary..."
+        local appimagetool_tmp="/tmp/appimagetool"
+        download_file "$APPIMAGETOOL_URL" "$appimagetool_tmp"
+        sha256_check "$appimagetool_tmp" "$APPIMAGETOOL_SHA256"
+        chmod +x "$appimagetool_tmp"
+        APPIMAGETOOL="$appimagetool_tmp"
     else
         APPIMAGETOOL=appimagetool
     fi
@@ -128,6 +192,7 @@ EOF
     chmod +x "$APPDIR/AppRun"
     
     # Build AppImage
+    normalize_mtime "$APPDIR"
     ARCH=x86_64 $APPIMAGETOOL "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
     
     # Generate checksum
@@ -174,6 +239,7 @@ EOF
     
     # Check if flatpak-builder is available
     if command -v flatpak-builder &> /dev/null; then
+        ensure_flathub_remote
         log "Building Flatpak..."
         flatpak-builder --force-clean "$OUTPUT_DIR/flatpak-build" "$FLATPAK_MANIFEST"
         
@@ -248,6 +314,7 @@ License: MIT or Apache-2.0
 EOF
     
     # Build deb package
+    normalize_mtime "$DEB_DIR"
     dpkg-deb --build "$DEB_DIR" "$OUTPUT_DIR/pirate-unified-wallet_1.0.0_amd64.deb"
     
     # Generate checksum
@@ -270,12 +337,18 @@ create_apt_repo_metadata() {
     # Copy deb to pool
     cp "$OUTPUT_DIR/pirate-unified-wallet_1.0.0_amd64.deb" "$REPO_DIR/pool/main/"
     
+    if ! command -v dpkg-scanpackages &> /dev/null; then
+        error "dpkg-scanpackages not found. Install dpkg-dev to generate apt metadata."
+    fi
+
     # Create Packages file
     cd "$REPO_DIR"
     dpkg-scanpackages pool/main /dev/null | gzip -9c > dists/stable/main/binary-amd64/Packages.gz
     dpkg-scanpackages pool/main /dev/null > dists/stable/main/binary-amd64/Packages
     
     # Create Release file
+    local release_date
+    release_date="$(date -u -d "@$SOURCE_DATE_EPOCH" +"%a, %d %b %Y %H:%M:%S %Z" 2>/dev/null || date -u +"%a, %d %b %Y %H:%M:%S %Z")"
     cat > "dists/stable/Release" <<EOF
 Origin: Pirate Chain
 Label: Pirate Chain
@@ -284,7 +357,7 @@ Codename: stable
 Architectures: amd64
 Components: main
 Description: Pirate Chain official package repository
-Date: $(date -u +"%a, %d %b %Y %H:%M:%S %Z")
+Date: $release_date
 EOF
     
     # Generate hashes
@@ -335,4 +408,3 @@ EOF
 }
 
 log "Build complete!"
-

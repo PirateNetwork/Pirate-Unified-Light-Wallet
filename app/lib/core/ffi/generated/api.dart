@@ -7,9 +7,9 @@ import 'frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_book_entry_to_ffi`, `address_prefix_network_type_for_endpoint`, `address_prefix_network_type`, `app_passphrase`, `auto_consolidation_enabled`, `auto_consolidation_setting_key`, `build_tx_internal`, `debug_log_path`, `decode_frontier_snapshot`, `decode_orchard_address_bytes_from_note_bytes`, `decode_sapling_address_bytes_from_note_bytes`, `delete_wallet_meta`, `derive_db_key`, `detect_network_from_endpoint`, `encode_orchard_extsk`, `encode_sapling_xfvk_from_bytes`, `ensure_primary_account_key`, `ensure_wallet_registry_loaded`, `ensure_wallet_registry_schema`, `force_store_sealed_db_key`, `get_registry_setting`, `get_wallet_meta`, `infer_key_network_type_from_addresses`, `key_type_to_info`, `load_salt`, `load_sealed_key`, `load_wallet_registry_activity`, `load_wallet_registry`, `log_orchard_address_samples`, `map_stage`, `maybe_store_sealed_db_key`, `normalize_filter_ids`, `open_encrypted_db_with_migration`, `open_wallet_db_for`, `open_wallet_db_with_passphrase`, `open_wallet_registry_with_passphrase`, `open_wallet_registry`, `orchard_activation_override`, `orchard_anchor_from_frontier_hex`, `orchard_extsk_hrp_for_network`, `parse_endpoint_url`, `parse_rfc3339_timestamp`, `persist_wallet_meta`, `rederive_wallet_keys_for_network`, `reencrypt_blob`, `reencrypt_optional_blob`, `reencrypt_wallet_tables`, `registry_master_key`, `reseal_registry_db_key`, `reseal_wallet_db_key`, `resolve_spend_key_id`, `resolve_wallet_birthday_height`, `sapling_extfvk_hrp_for_network`, `sapling_extsk_hrp_for_network`, `set_active_wallet_registry`, `set_registry_setting`, `should_generate_orchard`, `sign_tx_internal`, `store_sealed_key`, `sync_status_inner`, `touch_wallet_last_synced`, `touch_wallet_last_used`, `try_unseal_db_key`, `validate_spendable_key`, `wallet_base_dir`, `wallet_db_key_path`, `wallet_db_keys`, `wallet_db_path_for`, `wallet_db_salt_path`, `wallet_master_key`, `wallet_network_type`, `wallet_registry_key_path`, `wallet_registry_path`, `wallet_registry_salt_path`, `write_salt`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `DECOY_VAULT`, `LIGHTD_ENDPOINTS`, `SEED_EXPORT`, `SYNC_SESSIONS`, `SyncSession`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`, `WalletRegistryActivity`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
+// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_book_entry_to_ffi`, `address_prefix_network_type_for_endpoint`, `address_prefix_network_type`, `app_passphrase`, `auto_consolidation_enabled`, `auto_consolidation_setting_key`, `broadcast_tx_inner`, `build_tx_internal`, `debug_log_path`, `decode_frontier_snapshot`, `decode_orchard_address_bytes_from_note_bytes`, `decode_sapling_address_bytes_from_note_bytes`, `delete_wallet_meta`, `derive_db_key`, `detect_network_from_endpoint`, `encode_orchard_extsk`, `encode_sapling_xfvk_from_bytes`, `ensure_primary_account_key`, `ensure_wallet_registry_loaded`, `ensure_wallet_registry_schema`, `escape_json`, `fetch_transaction_memo_inner`, `force_store_sealed_db_key`, `get_registry_setting`, `get_wallet_meta`, `infer_key_network_type_from_addresses`, `key_type_to_info`, `load_registry_tunnel_mode`, `load_salt`, `load_sealed_key`, `load_wallet_registry_activity`, `load_wallet_registry`, `log_orchard_address_samples`, `map_stage`, `maybe_store_sealed_db_key`, `normalize_filter_ids`, `open_encrypted_db_with_migration`, `open_wallet_db_for`, `open_wallet_db_with_passphrase`, `open_wallet_registry_with_passphrase`, `open_wallet_registry`, `orchard_activation_override`, `orchard_anchor_from_frontier_hex`, `parse_endpoint_url`, `parse_rfc3339_timestamp`, `parse_tunnel_mode_setting`, `persist_registry_tunnel_mode`, `persist_wallet_meta`, `redact_socks5_url`, `rederive_wallet_keys_for_network`, `reencrypt_blob`, `reencrypt_optional_blob`, `reencrypt_wallet_tables`, `registry_master_key`, `reseal_registry_db_key`, `reseal_wallet_db_key`, `resolve_spend_key_id`, `resolve_wallet_birthday_height`, `run_on_runtime`, `run_sync_engine_task`, `sapling_extfvk_hrp_for_network`, `sapling_extsk_hrp_for_network`, `set_active_wallet_registry`, `set_registry_setting`, `should_generate_orchard`, `sign_tx_internal`, `spawn_bootstrap_transport`, `start_background_sync_inner`, `start_background_sync_round_robin_inner`, `store_sealed_key`, `sync_status_inner`, `test_node_inner`, `touch_wallet_last_synced`, `touch_wallet_last_used`, `try_unseal_db_key`, `tunnel_transport_config_for`, `tunnel_transport_config`, `validate_spendable_key`, `wait_for_sync_stop`, `wallet_base_dir`, `wallet_db_key_path`, `wallet_db_keys`, `wallet_db_path_for`, `wallet_db_salt_path`, `wallet_master_key`, `wallet_network_type`, `wallet_registry_key_path`, `wallet_registry_path`, `wallet_registry_salt_path`, `write_salt`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `DECOY_VAULT`, `LIGHTD_ENDPOINTS`, `PENDING_TUNNEL_MODE`, `SEED_EXPORT`, `SYNC_SESSIONS`, `SyncSession`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`, `WalletRegistryActivity`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
 // These functions are ignored (category: IgnoreBecauseOwnerTyShouldIgnore): `default`
 
 /// Create new wallet
@@ -536,6 +536,34 @@ Future<void> setTunnel({required TunnelMode mode}) =>
 
 /// Get current tunnel mode
 Future<TunnelMode> getTunnel() => RustLib.instance.api.crateApiGetTunnel();
+
+/// Bootstrap tunnel transport early (Tor/I2P/SOCKS5) without unlocking wallets.
+Future<void> bootstrapTunnel({required TunnelMode mode}) =>
+    RustLib.instance.api.crateApiBootstrapTunnel(mode: mode);
+
+/// Shutdown any active transport manager (Tor/I2P/SOCKS5).
+Future<void> shutdownTransport() =>
+    RustLib.instance.api.crateApiShutdownTransport();
+
+/// Configure Tor bridge settings (Snowflake/obfs4/custom) for censorship circumvention.
+Future<void> setTorBridgeSettings(
+        {required bool useBridges,
+        required bool fallbackToBridges,
+        required String transport,
+        required List<String> bridgeLines,
+        String? transportPath}) =>
+    RustLib.instance.api.crateApiSetTorBridgeSettings(
+        useBridges: useBridges,
+        fallbackToBridges: fallbackToBridges,
+        transport: transport,
+        bridgeLines: bridgeLines,
+        transportPath: transportPath);
+
+/// Get current Tor bootstrap status for UI.
+Future<String> getTorStatus() => RustLib.instance.api.crateApiGetTorStatus();
+
+/// Rotate Tor exit circuits for new streams and reconnect sync channels.
+Future<void> rotateTorExit() => RustLib.instance.api.crateApiRotateTorExit();
 
 /// Get wallet balance
 ///

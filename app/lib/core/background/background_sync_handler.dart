@@ -92,7 +92,7 @@ class BackgroundSyncHandler {
   Future<Map<String, dynamic>> _executeBackgroundSync(dynamic arguments) async {
     final args = arguments as Map<Object?, Object?>;
     final walletId = args['walletId'] as String?;
-    final mode = args['mode'] as String? ?? 'compact';
+    final syncMode = args['mode'] as String? ?? 'compact';
     final maxDurationSecs = (args['maxDurationSecs'] as num?)?.toInt() ?? 60;
     // ignore: unused_local_variable
     final _maxBlocks = (args['maxBlocks'] as num?)?.toInt() ?? 5000;
@@ -106,19 +106,17 @@ class BackgroundSyncHandler {
 
     try {
       // Configure tunnel mode if specified
-      if (tunnelMode != 'tor') {
-        final mode = switch (tunnelMode.toLowerCase()) {
-          'tor' => const TunnelMode.tor(),
-          'socks5' => TunnelMode.socks5(url: socks5Url ?? 'socks5://localhost:1080'),
-          'direct' => const TunnelMode.direct(),
-          _ => const TunnelMode.tor(),
-        };
-        await FfiBridge.setTunnel(mode, socksUrl: socks5Url);
-      }
+      final selection = switch (tunnelMode.toLowerCase()) {
+        'tor' => const TunnelMode.tor(),
+        'socks5' => TunnelMode.socks5(url: socks5Url ?? 'socks5://localhost:1080'),
+        'direct' => const TunnelMode.direct(),
+        _ => const TunnelMode.tor(),
+      };
+      await FfiBridge.setTunnel(selection, socksUrl: socks5Url);
 
       // Verify tunnel is working before sync
       final currentTunnel = await FfiBridge.getTunnel();
-      if (currentTunnel == TunnelMode.tor) {
+      if (currentTunnel is TunnelMode_Tor) {
         // Test Tor connection
         final torWorking = await _testTorConnection();
         if (!torWorking) {
@@ -127,7 +125,7 @@ class BackgroundSyncHandler {
             message: 'Unable to establish Tor connection. Please check your network settings.',
           );
         }
-      } else if (currentTunnel == TunnelMode.socks5) {
+      } else if (currentTunnel is TunnelMode_Socks5) {
         // Test SOCKS5 connection
         final socks5Working = await _testSocks5Connection(socks5Url);
         if (!socks5Working) {
@@ -140,14 +138,14 @@ class BackgroundSyncHandler {
 
       if (useRoundRobin || resolvedWalletId == null || resolvedWalletId.isEmpty) {
         return await FfiBridge.executeBackgroundSyncRoundRobin(
-          mode: mode,
+          mode: syncMode,
           maxDurationSecs: maxDurationSecs,
         );
       }
 
       return await FfiBridge.executeBackgroundSync(
         walletId: resolvedWalletId,
-        mode: mode,
+        mode: syncMode,
         maxDurationSecs: maxDurationSecs,
       );
     } on PlatformException {
@@ -184,13 +182,8 @@ class BackgroundSyncHandler {
   /// Test Tor connection
   Future<bool> _testTorConnection() async {
     try {
-      // In production, this would test the actual Tor connection
-      // For now, simulate a brief connection test
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      
-      // Check if Tor is configured and reachable
-      final networkInfo = await FfiBridge.getNetworkInfo();
-      return networkInfo.torEnabled;
+      final status = await FfiBridge.getTorStatus();
+      return status == 'ready';
     } catch (e) {
       print('[BackgroundSyncHandler] Tor connection test failed: $e');
       return false;

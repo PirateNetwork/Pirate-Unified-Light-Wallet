@@ -4,11 +4,8 @@ TODO
 High priority
 -------------
 - Fix overlapping/overflowing text in mobile UI.
-- Work on Tor (Arti) integration.
-- Work on SOCKS5 + DNSCrypt integration.
-- Work on I2P integration (and UI).
-- Work on gated WireGuard integration (UI for Windows/Linux/Android only).
 - Integrate Panic PIN.
+- Fix github action checks
 
 Medium
 ------
@@ -35,3 +32,4 @@ Low priority
 - Talk to card providers.
 - Explore alt packaging/publishing (F-Droid, APT for Linux).
 - Decide with team on an app name + logo/icon
+- Add support for offline signing (without hardware wallet)

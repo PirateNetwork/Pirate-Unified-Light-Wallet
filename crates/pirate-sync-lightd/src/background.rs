@@ -4,7 +4,7 @@
 
 use crate::{Result, SyncEngine};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 use tracing::{info, warn, error, debug};
 
 const MIN_DEPTH: u64 = 10;
@@ -74,13 +74,19 @@ impl Default for BackgroundSyncConfig {
 
 /// Background sync orchestrator
 pub struct BackgroundSyncOrchestrator {
-    sync_engine: Arc<RwLock<SyncEngine>>,
+    sync_engine: Arc<Mutex<SyncEngine>>,
     config: BackgroundSyncConfig,
+}
+
+#[allow(dead_code)]
+fn _assert_background_sync_orchestrator_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<BackgroundSyncOrchestrator>();
 }
 
 impl BackgroundSyncOrchestrator {
     /// Create new background sync orchestrator
-    pub fn new(sync_engine: Arc<RwLock<SyncEngine>>, config: BackgroundSyncConfig) -> Self {
+    pub fn new(sync_engine: Arc<Mutex<SyncEngine>>, config: BackgroundSyncConfig) -> Self {
         Self {
             sync_engine,
             config,
@@ -98,7 +104,7 @@ impl BackgroundSyncOrchestrator {
 
         // Get current state
         let start_height = {
-            let engine = self.sync_engine.read().await;
+            let engine = self.sync_engine.clone().lock_owned().await;
             let progress = engine.progress();
             let progress_guard = progress.read().await;
             progress_guard.current_height()
@@ -154,9 +160,8 @@ impl BackgroundSyncOrchestrator {
                     duration_secs,
                     errors: vec![],
                     new_balance: {
-                        let engine = self.sync_engine.read().await;
-                        engine
-                            .total_balance_at_height(end_height, MIN_DEPTH)?
+                        let engine = self.sync_engine.clone().lock_owned().await;
+                        engine.total_balance_at_height(end_height, MIN_DEPTH)?
                     },
                     new_transactions: new_txs,
                 })
@@ -181,7 +186,7 @@ impl BackgroundSyncOrchestrator {
 
     /// Execute compact sync (quick, frequent)
     async fn execute_compact_sync(&self, start: u64, target: u64) -> Result<(u64, u32)> {
-        let mut engine = self.sync_engine.write().await;
+        let mut engine = self.sync_engine.clone().lock_owned().await;
         
         // Check if we're in a spam period by checking recent sync performance
         // If recent batches were heavy, reduce max_blocks to prevent timeouts
@@ -230,7 +235,7 @@ impl BackgroundSyncOrchestrator {
 
     /// Execute deep sync (thorough, less frequent)
     async fn execute_deep_sync(&self, start: u64, target: u64) -> Result<(u64, u32)> {
-        let mut engine = self.sync_engine.write().await;
+        let mut engine = self.sync_engine.clone().lock_owned().await;
         
         // Check if we're in a spam period (same logic as compact sync)
         let max_blocks = {
@@ -276,7 +281,7 @@ impl BackgroundSyncOrchestrator {
 
     /// Calculate target height for sync
     async fn calculate_target_height(&self, _current: u64, _mode: BackgroundSyncMode) -> Result<u64> {
-        let engine = self.sync_engine.read().await;
+        let engine = self.sync_engine.clone().lock_owned().await;
         let progress = engine.progress();
         let progress_guard = progress.read().await;
         
@@ -286,7 +291,7 @@ impl BackgroundSyncOrchestrator {
 
     /// Check if background sync is needed
     pub async fn is_sync_needed(&self) -> Result<bool> {
-        let engine = self.sync_engine.read().await;
+        let engine = self.sync_engine.clone().lock_owned().await;
         let progress = engine.progress();
         let progress_guard = progress.read().await;
         
@@ -326,7 +331,7 @@ mod tests {
     #[test]
     fn test_recommend_sync_mode() {
         let config = BackgroundSyncConfig::default();
-        let engine = Arc::new(RwLock::new(SyncEngine::new("http://test".to_string(), 0)));
+        let engine = Arc::new(Mutex::new(SyncEngine::new("http://test".to_string(), 0)));
         
         let orchestrator = BackgroundSyncOrchestrator::new(engine, config);
         

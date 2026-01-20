@@ -905,6 +905,9 @@ sealed class TunnelMode with _$TunnelMode {
   /// Tor (default)
   const factory TunnelMode.tor() = TunnelMode_Tor;
 
+  /// I2P (desktop only)
+  const factory TunnelMode.i2P() = TunnelMode_I2p;
+
   /// SOCKS5 proxy
   const factory TunnelMode.socks5({
     /// Proxy URL

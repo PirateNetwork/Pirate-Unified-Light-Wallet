@@ -36,6 +36,7 @@ function Convert-ToUnixPath($Path) {
 $PROJECT_ROOT = $PSScriptRoot
 $CRATES_DIR = Join-Path $PROJECT_ROOT "crates"
 $APP_DIR = Join-Path $PROJECT_ROOT "app"
+$env:CARGO_INCREMENTAL = "0"
 
 # Check for cargo
 $CARGO = "$env:USERPROFILE\.cargo\bin\cargo.exe"
@@ -79,7 +80,7 @@ if ($Windows -or $All) {
     
     Push-Location $CRATES_DIR
     try {
-        & $CARGO build --release --target x86_64-pc-windows-msvc --package pirate-ffi-frb --features frb --no-default-features
+        & $CARGO build --release --target x86_64-pc-windows-msvc --package pirate-ffi-frb --features frb --no-default-features --locked
         
         if ($LASTEXITCODE -eq 0) {
             # DLL is in target/x86_64-pc-windows-msvc/release/deps/ for cdylib
@@ -200,11 +201,18 @@ if ($Android -or $All) {
         @{ Rust = "x86_64-linux-android"; ABI = "x86_64" }
     )
 
+    $RUSTUP = "$env:USERPROFILE\\.cargo\\bin\\rustup.exe"
+    if (Test-Path $RUSTUP) {
+        & $RUSTUP target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+    } elseif (Get-Command rustup -ErrorAction SilentlyContinue) {
+        rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+    }
+
     Push-Location $CRATES_DIR
     try {
         foreach ($arch in $ARCHS) {
             Write-ColorOutput "Blue" "Building for $($arch.Rust) ($($arch.ABI))..."
-            & $CARGO build --release --target $arch.Rust --package pirate-ffi-frb --features frb --no-default-features
+            & $CARGO build --release --target $arch.Rust --package pirate-ffi-frb --features frb --no-default-features --locked
             if ($LASTEXITCODE -ne 0) {
                 Write-ColorOutput "Red" "Android build failed for $($arch.Rust)"
                 exit 1

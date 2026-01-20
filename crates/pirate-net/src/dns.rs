@@ -1,8 +1,9 @@
-//! DNS resolution via DNSCrypt/DoH
+//! DNS resolution via DoH or system resolver.
 //!
-//! Provides privacy-preserving DNS resolution to prevent leaks.
+//! Provides privacy-preserving DNS resolution to prevent leaks when possible.
 
 use crate::Result;
+use crate::debug_log::log_debug_event;
 use std::net::IpAddr;
 use tracing::{info, debug, warn};
 
@@ -17,8 +18,6 @@ pub enum DnsProvider {
     GoogleDoH,
     /// Custom DoH endpoint
     CustomDoH(String),
-    /// DNSCrypt resolver
-    DNSCrypt(String),
     /// System resolver (NOT RECOMMENDED - may leak)
     System,
 }
@@ -42,7 +41,6 @@ impl DnsProvider {
             Self::Quad9DoH => "Quad9 (9.9.9.9)",
             Self::GoogleDoH => "Google (8.8.8.8)",
             Self::CustomDoH(_) => "Custom DoH",
-            Self::DNSCrypt(_) => "DNSCrypt",
             Self::System => "System (Not Private)",
         }
     }
@@ -54,13 +52,13 @@ impl DnsProvider {
 }
 
 /// DNS resolver configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnsConfig {
     /// DNS provider
     pub provider: DnsProvider,
     /// Tunnel DNS through SOCKS proxy
     pub tunnel_dns: bool,
-    /// SOCKS proxy address (if tunneling)
+    /// SOCKS proxy URL (if tunneling)
     pub socks_proxy: Option<String>,
 }
 
@@ -69,12 +67,13 @@ impl Default for DnsConfig {
         Self {
             provider: DnsProvider::CloudflareDoH,
             tunnel_dns: true,
-            socks_proxy: Some("127.0.0.1:9050".to_string()),
+            socks_proxy: Some("socks5h://127.0.0.1:9050".to_string()),
         }
     }
 }
 
 /// DNS resolver
+#[derive(Clone)]
 pub struct DnsResolver {
     config: DnsConfig,
 }
@@ -100,16 +99,8 @@ impl DnsResolver {
                 warn!("Using system DNS for {}: Privacy not guaranteed!", hostname);
                 self.resolve_system(hostname).await
             }
-            provider if provider.doh_url().is_some() => {
-                self.resolve_doh(hostname).await
-            }
-            DnsProvider::DNSCrypt(resolver) => {
-                self.resolve_dnscrypt(hostname, resolver).await
-            }
-            _ => {
-                warn!("Unsupported DNS provider, falling back to system");
-                self.resolve_system(hostname).await
-            }
+            provider if provider.doh_url().is_some() => self.resolve_doh(hostname).await,
+            _ => self.resolve_system(hostname).await,
         }
     }
 
@@ -122,9 +113,14 @@ impl DnsResolver {
         // Build HTTP client
         let client = if self.config.tunnel_dns {
             if let Some(ref proxy) = self.config.socks_proxy {
-                debug!("Tunneling DNS through SOCKS proxy: {}", proxy);
+                let proxy_url = if proxy.contains("://") {
+                    proxy.clone()
+                } else {
+                    format!("socks5h://{}", proxy)
+                };
+                debug!("Tunneling DNS through SOCKS proxy: {}", proxy_url);
                 reqwest::Client::builder()
-                    .proxy(reqwest::Proxy::all(format!("socks5://{}", proxy))
+                    .proxy(reqwest::Proxy::all(proxy_url)
                         .map_err(|e| crate::Error::Network(format!("Proxy error: {}", e)))?)
                     .build()
                     .map_err(|e| crate::Error::Network(format!("HTTP client error: {}", e)))?
@@ -135,46 +131,43 @@ impl DnsResolver {
             reqwest::Client::new()
         };
 
-        // Make DoH query
-        // Format: https://dns.example.com/dns-query?name=example.com&type=A
-        let query_url = format!("{}?name={}&type=A", doh_url, hostname);
-        
-        let response = client
-            .get(&query_url)
-            .header("Accept", "application/dns-json")
-            .send()
-            .await
-            .map_err(|e| crate::Error::Network(format!("DoH query failed: {}", e)))?;
+        let mut addrs = Vec::new();
 
-        if !response.status().is_success() {
-            return Err(crate::Error::Network(format!(
-                "DoH query failed with status: {}",
-                response.status()
-            )));
+        for record_type in ["A", "AAAA"] {
+            let query_url = format!("{}?name={}&type={}", doh_url, hostname, record_type);
+            let response = client
+                .get(&query_url)
+                .header("Accept", "application/dns-json")
+                .send()
+                .await
+                .map_err(|e| crate::Error::Network(format!("DoH query failed: {}", e)))?;
+
+            if !response.status().is_success() {
+                warn!(
+                    "DoH query failed with status {} for {} ({})",
+                    response.status(),
+                    hostname,
+                    record_type
+                );
+                continue;
+            }
+
+            let body = response
+                .text()
+                .await
+                .map_err(|e| crate::Error::Network(format!("Failed to read DoH response: {}", e)))?;
+
+            debug!("DoH response ({}) for {}: {}", record_type, hostname, body);
+
+            addrs.extend(parse_doh_response(&body));
         }
 
-        // Parse response (simplified - production would use full DNS message parsing)
-        let body = response.text().await
-            .map_err(|e| crate::Error::Network(format!("Failed to read DoH response: {}", e)))?;
+        if addrs.is_empty() {
+            warn!("DoH returned no IPs for {}, falling back to system resolver", hostname);
+            return self.resolve_system(hostname).await;
+        }
 
-        debug!("DoH response: {}", body);
-
-        // TODO: Parse JSON response and extract IPs
-        // For now, return placeholder
-        // In production, parse the JSON and extract "Answer" records
-        
-        // Fallback to system resolver for now
-        self.resolve_system(hostname).await
-    }
-
-    /// Resolve via DNSCrypt
-    async fn resolve_dnscrypt(&self, hostname: &str, _resolver: &str) -> Result<Vec<IpAddr>> {
-        debug!("DNSCrypt resolution: {}", hostname);
-        
-        // TODO: Implement DNSCrypt protocol
-        // For now, fallback to system
-        warn!("DNSCrypt not yet implemented, using system resolver");
-        self.resolve_system(hostname).await
+        Ok(addrs)
     }
 
     /// Resolve via system resolver (NOT PRIVATE)
@@ -182,6 +175,11 @@ impl DnsResolver {
         use tokio::net::lookup_host;
         
         warn!("Using system DNS for {} - this may leak information!", hostname);
+        log_debug_event(
+            "dns.rs:DnsResolver::resolve_system",
+            "dns_system_resolve",
+            &format!("host={}", hostname),
+        );
         
         let addrs: Vec<IpAddr> = lookup_host(format!("{}:443", hostname))
             .await
@@ -215,6 +213,33 @@ impl Default for DnsResolver {
     fn default() -> Self {
         Self::new(DnsConfig::default())
     }
+}
+
+#[derive(serde::Deserialize)]
+struct DohResponse {
+    #[serde(rename = "Answer")]
+    answer: Option<Vec<DohAnswer>>,
+}
+
+#[derive(serde::Deserialize)]
+struct DohAnswer {
+    #[serde(rename = "data")]
+    data: String,
+}
+
+fn parse_doh_response(body: &str) -> Vec<IpAddr> {
+    let parsed: std::result::Result<DohResponse, serde_json::Error> =
+        serde_json::from_str(body);
+    let Ok(response) = parsed else {
+        return Vec::new();
+    };
+
+    response
+        .answer
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| entry.data.parse::<IpAddr>().ok())
+        .collect()
 }
 
 #[cfg(test)]

@@ -17,12 +17,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
 CRATES_DIR="$PROJECT_ROOT/crates"
 APP_DIR="$PROJECT_ROOT/app"
+export CARGO_INCREMENTAL=0
 
 # Check for cargo
 if ! command -v cargo &> /dev/null; then
     echo -e "${RED}ERROR: Cargo not found${NC}"
     echo "   Please install Rust from https://rustup.rs"
     exit 1
+fi
+
+if command -v rustup &> /dev/null; then
+    rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 fi
 
 # Check for Android NDK
@@ -46,7 +51,7 @@ if command -v cargo-ndk &> /dev/null; then
         -t armeabi-v7a \
         -t x86_64 \
         -o "$APP_DIR/android/app/src/main/jniLibs" \
-        build --release -p pirate-ffi-frb --features frb --no-default-features
+        build --release -p pirate-ffi-frb --features frb --no-default-features --locked
     echo -e "${GREEN}OK. Android build complete!${NC}"
     exit 0
 fi
@@ -57,7 +62,7 @@ for i in "${!ARCHS[@]}"; do
 
     echo -e "${BLUE}Building for $ARCH ($ABI)...${NC}"
 
-    cargo build --release --target "$ARCH" --package pirate-ffi-frb --features frb --no-default-features
+    cargo build --release --target "$ARCH" --package pirate-ffi-frb --features frb --no-default-features --locked
 
     if [ $? -eq 0 ]; then
         SO_PATH="$CRATES_DIR/target/$ARCH/release/libpirate_ffi_frb.so"

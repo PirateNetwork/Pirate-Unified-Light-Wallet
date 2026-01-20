@@ -256,6 +256,8 @@ impl SyncStatus {
 pub enum TunnelMode {
     /// Tor (default)
     Tor,
+    /// I2P (desktop only)
+    I2p,
     /// SOCKS5 proxy
     Socks5 {
         /// Proxy URL

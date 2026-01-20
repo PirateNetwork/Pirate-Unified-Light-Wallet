@@ -2,7 +2,7 @@
 //!
 //! Provides encrypted storage for transport settings.
 
-use crate::{TransportMode, Socks5Config, DnsProvider, TlsPinning, CertificatePin};
+use crate::{TransportMode, Socks5Config, DnsProvider, CertificatePin};
 use serde::{Serialize, Deserialize};
 
 /// Persistent transport configuration
@@ -12,6 +12,9 @@ pub struct StoredTransportConfig {
     pub mode: StoredTransportMode,
     /// Tor settings
     pub tor: TorSettings,
+    /// I2P settings (desktop only)
+    #[serde(default)]
+    pub i2p: I2pSettings,
     /// SOCKS5 settings
     pub socks5: Option<Socks5Settings>,
     /// DNS settings
@@ -25,6 +28,7 @@ impl Default for StoredTransportConfig {
         Self {
             mode: StoredTransportMode::Tor,
             tor: TorSettings::default(),
+            i2p: I2pSettings::default(),
             socks5: None,
             dns: DnsSettings::default(),
             tls_pinning: TlsPinningSettings::default(),
@@ -38,6 +42,9 @@ pub enum StoredTransportMode {
     /// Tor (default)
     #[serde(rename = "tor")]
     Tor,
+    /// I2P (desktop only)
+    #[serde(rename = "i2p")]
+    I2p,
     /// SOCKS5 proxy
     #[serde(rename = "socks5")]
     Socks5,
@@ -50,6 +57,7 @@ impl From<TransportMode> for StoredTransportMode {
     fn from(mode: TransportMode) -> Self {
         match mode {
             TransportMode::Tor => Self::Tor,
+            TransportMode::I2p => Self::I2p,
             TransportMode::Socks5 => Self::Socks5,
             TransportMode::Direct => Self::Direct,
         }
@@ -60,6 +68,7 @@ impl From<StoredTransportMode> for TransportMode {
     fn from(mode: StoredTransportMode) -> Self {
         match mode {
             StoredTransportMode::Tor => Self::Tor,
+            StoredTransportMode::I2p => Self::I2p,
             StoredTransportMode::Socks5 => Self::Socks5,
             StoredTransportMode::Direct => Self::Direct,
         }
@@ -83,6 +92,36 @@ impl Default for TorSettings {
             enabled: true,
             socks_port: 9050,
             debug: false,
+        }
+    }
+}
+
+/// I2P settings (desktop only)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct I2pSettings {
+    /// Enable I2P
+    pub enabled: bool,
+    /// Optional path to embedded i2pd binary
+    pub binary_path: Option<String>,
+    /// Optional persistent data dir
+    pub data_dir: Option<String>,
+    /// Router listens on this address
+    pub address: String,
+    /// SOCKS proxy port
+    pub socks_port: u16,
+    /// Use ephemeral identities (new data dir per launch)
+    pub ephemeral: bool,
+}
+
+impl Default for I2pSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            binary_path: None,
+            data_dir: None,
+            address: "127.0.0.1".to_string(),
+            socks_port: 4447,
+            ephemeral: true,
         }
     }
 }
@@ -129,8 +168,6 @@ pub struct DnsSettings {
     pub provider: StoredDnsProvider,
     /// Custom DoH URL (if provider is Custom)
     pub custom_doh_url: Option<String>,
-    /// Custom DNSCrypt resolver (if provider is DNSCrypt)
-    pub custom_dnscrypt: Option<String>,
     /// Tunnel DNS through SOCKS proxy
     pub tunnel_dns: bool,
 }
@@ -140,7 +177,6 @@ impl Default for DnsSettings {
         Self {
             provider: StoredDnsProvider::CloudflareDoH,
             custom_doh_url: None,
-            custom_dnscrypt: None,
             tunnel_dns: true,
         }
     }
@@ -161,11 +197,8 @@ pub enum StoredDnsProvider {
     /// Custom DoH
     #[serde(rename = "custom_doh")]
     CustomDoH,
-    /// DNSCrypt
-    #[serde(rename = "dnscrypt")]
-    DNSCrypt,
     /// System (not recommended)
-    #[serde(rename = "system")]
+    #[serde(rename = "system", alias = "dnscrypt")]
     System,
 }
 
@@ -176,7 +209,6 @@ impl From<DnsProvider> for StoredDnsProvider {
             DnsProvider::Quad9DoH => Self::Quad9DoH,
             DnsProvider::GoogleDoH => Self::GoogleDoH,
             DnsProvider::CustomDoH(_) => Self::CustomDoH,
-            DnsProvider::DNSCrypt(_) => Self::DNSCrypt,
             DnsProvider::System => Self::System,
         }
     }

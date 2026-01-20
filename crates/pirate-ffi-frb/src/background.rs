@@ -137,7 +137,7 @@ pub async fn verify_background_sync_tunnel() -> Result<bool> {
     // We can at least verify that a tunnel mode is configured.
     // Real enforcement/checks will be added when `pirate-net` is wired into the lightwalletd client (milestone 2).
     let mode: TunnelMode = api::get_tunnel()?;
-    Ok(matches!(mode, TunnelMode::Tor | TunnelMode::Socks5 { .. } | TunnelMode::Direct))
+    Ok(matches!(mode, TunnelMode::Tor | TunnelMode::I2p | TunnelMode::Socks5 { .. } | TunnelMode::Direct))
 }
 
 #[derive(Debug, Clone)]

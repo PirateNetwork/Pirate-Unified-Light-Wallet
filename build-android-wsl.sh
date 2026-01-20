@@ -18,8 +18,13 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 
+if command -v rustup >/dev/null 2>&1; then
+  rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+fi
+
 export ANDROID_NDK_HOME="$NDK_HOME"
 export ANDROID_NDK_ROOT="$NDK_HOME"
+export CARGO_INCREMENTAL=0
 
 BIN_DIR="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
 SYSROOT="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
@@ -69,7 +74,7 @@ env \
   -t armeabi-v7a \
   -t x86_64 \
   -o "$JNI_DIR" \
-  build --release -p pirate-ffi-frb --features frb --no-default-features
+  build --release -p pirate-ffi-frb --features frb --no-default-features --locked
 
 echo "Built libs:"
 find "$JNI_DIR" -type f -name "libpirate_ffi_frb.so" -print

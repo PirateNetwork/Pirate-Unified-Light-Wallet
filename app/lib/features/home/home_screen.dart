@@ -19,8 +19,10 @@ import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/balance_hero.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../ui/organisms/p_sliver_header.dart';
-import '../../core/ffi/generated/models.dart' show TxInfo, TunnelMode, TunnelMode_Tor, TunnelMode_Socks5;
+import '../../core/ffi/generated/models.dart'
+    show TxInfo, TunnelMode, TunnelMode_Tor, TunnelMode_I2p, TunnelMode_Socks5;
 import '../../core/providers/wallet_providers.dart';
+import '../settings/providers/transport_providers.dart';
 import '../address_book/providers/address_book_provider.dart';
 
 /// Home screen
@@ -61,6 +63,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final balanceAsync = ref.watch(balanceStreamProvider);
     final transactionsAsync = ref.watch(transactionsProvider);
     final tunnelMode = ref.watch(tunnelModeProvider);
+    final torStatus = ref.watch(torStatusProvider);
+    final transportConfig = ref.watch(transportConfigProvider);
     final endpointConfigAsync = ref.watch(lightdEndpointConfigProvider);
     
     // Get sync status
@@ -78,36 +82,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
 
     final endpointConfig = endpointConfigAsync.value;
-    final usesPrivacyTunnel = (tunnelMode is TunnelMode_Tor) || 
+    final i2pEndpoint = transportConfig.i2pEndpoint.trim();
+    final i2pEndpointReady =
+        !(tunnelMode is TunnelMode_I2p) || i2pEndpoint.isNotEmpty;
+    final usesPrivacyTunnel = (tunnelMode is TunnelMode_Tor) ||
+        (tunnelMode is TunnelMode_I2p) ||
         (tunnelMode is TunnelMode_Socks5);
+    final tunnelReady =
+        (!(tunnelMode is TunnelMode_Tor) || torStatus.isReady) &&
+        i2pEndpointReady;
+    final tunnelError =
+        (tunnelMode is TunnelMode_Tor && torStatus.status == 'error') ||
+        (tunnelMode is TunnelMode_I2p && !i2pEndpointReady);
 
     // Determine privacy status: only show offline if endpoint is not set or if there's a real connection error
     // If endpoint is set and test connection works, don't show offline just because sync hasn't started
     // Don't show "Connecting" when sync is complete and monitoring - use sync status to determine
     final hasEndpoint = endpointConfig != null || endpointConfigAsync.hasValue;
-    final hasStatus = syncStatus != null &&
-        (syncStatus!.targetHeight > BigInt.zero ||
-            syncStatus!.localHeight > BigInt.zero);
-    final privacyStatus = !hasEndpoint
+    final effectiveHasEndpoint =
+        tunnelMode is TunnelMode_I2p ? i2pEndpointReady : hasEndpoint;
+    final tunnelBlocked = usesPrivacyTunnel && !tunnelReady;
+    final displaySyncStatus = tunnelBlocked ? null : syncStatus;
+    final hasStatus = displaySyncStatus != null &&
+        (displaySyncStatus!.targetHeight > BigInt.zero ||
+            displaySyncStatus!.localHeight > BigInt.zero);
+    final privacyStatus = !effectiveHasEndpoint
         ? PrivacyStatus.offline
-        : !hasStatus
-            ? PrivacyStatus.connecting
-            : usesPrivacyTunnel
-                ? PrivacyStatus.private
-                : PrivacyStatus.limited;
+        : tunnelBlocked
+            ? (tunnelError ? PrivacyStatus.offline : PrivacyStatus.connecting)
+            : !hasStatus
+                ? PrivacyStatus.connecting
+                : usesPrivacyTunnel
+                    ? PrivacyStatus.private
+                    : PrivacyStatus.limited;
     
-    final syncProgress = (syncStatus?.percent ?? 0.0) / 100.0;
-    final currentHeight = syncStatus?.localHeight ?? BigInt.zero;
-    final targetHeight = syncStatus?.targetHeight ?? BigInt.zero;
+    final syncProgress = (displaySyncStatus?.percent ?? 0.0) / 100.0;
+    final currentHeight = displaySyncStatus?.localHeight ?? BigInt.zero;
+    final targetHeight = displaySyncStatus?.targetHeight ?? BigInt.zero;
     final heightLag =
         targetHeight > currentHeight ? targetHeight - currentHeight : BigInt.zero;
     const syncLagThreshold = 10;
     final isNearTip =
         targetHeight > BigInt.zero && heightLag <= BigInt.from(syncLagThreshold);
-    final isSyncing = !isNearTip && (syncStatus?.isSyncing ?? false);
-    final isComplete = isNearTip || (syncStatus?.isComplete ?? false);
+    final isSyncing =
+        !tunnelBlocked && !isNearTip && (displaySyncStatus?.isSyncing ?? false);
+    final isComplete = !tunnelBlocked &&
+        (isNearTip || (displaySyncStatus?.isComplete ?? false));
     // Show progress bar when actively syncing OR when monitoring (sync running but caught up)
-    final showProgress = isSyncing || (isComplete && isSyncRunning);
+    final showProgress =
+        !tunnelBlocked && (isSyncing || (isComplete && isSyncRunning));
     
     // Control animation based on sync state
     // Keep animation going when syncing OR when monitoring (caught up but sync is still active)
@@ -222,14 +245,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 targetHeight: targetHeight.toInt(),
                 stage: isComplete
                     ? 'Synced'
-                    : syncStatus?.stageName ??
-                        (syncStatus != null ? 'Syncing' : 'Not synced'),
+                    : displaySyncStatus?.stageName ??
+                        (displaySyncStatus != null ? 'Syncing' : 'Not synced'),
                 eta: isComplete
                     ? null
-                    : syncStatus?.etaFormatted ??
+                    : displaySyncStatus?.etaFormatted ??
                         (isSyncing ? 'Calculating...' : null),
                 blocksPerSecond:
-                    syncStatus?.blocksPerSecond ?? 0.0,
+                    displaySyncStatus?.blocksPerSecond ?? 0.0,
                 animation: _syncAnimationController,
                 isSyncing: isSyncing,
                 isComplete: isComplete,

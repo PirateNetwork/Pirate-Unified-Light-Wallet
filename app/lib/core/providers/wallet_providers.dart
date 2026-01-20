@@ -475,6 +475,8 @@ class TunnelModeNotifier extends Notifier<TunnelMode> {
 
   Future<void> setTor() => setTunnelMode(const TunnelMode.tor());
 
+  Future<void> setI2p() => setTunnelMode(const TunnelMode.i2P());
+
   Future<void> setDirect() => setTunnelMode(const TunnelMode.direct());
 
   Future<void> setSocks5(String url) =>

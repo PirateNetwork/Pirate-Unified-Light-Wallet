@@ -1,4 +1,4 @@
-# Sync Harness - Testing Tool
+﻿# Sync Harness - Testing Tool
 
 CLI tool for testing and benchmarking the Pirate Chain sync engine.
 
@@ -38,10 +38,7 @@ cargo run --bin sync-harness -- full-sync \
   --birthday 3800000
 ```
 
-Output:
-```
-[00:02:34] ========================================> 45% Scanning Notes | 1,234,567/2,500,000 (45.0%) | 812.3 blocks/s | ETA: 25m 12s
-```
+Output includes progress lines with percent, blocks/sec, and ETA.
 
 ### Performance Benchmark
 
@@ -52,20 +49,7 @@ cargo run --bin sync-harness -- benchmark \
   --runs 5
 ```
 
-Output:
-```
-Run 1/5
-  Duration: 12.34s | 810.4 blocks/s
-Run 2/5
-  Duration: 11.98s | 834.7 blocks/s
-...
-
-📊 Benchmark Results:
-  Runs: 5
-  Total blocks: 50000
-  Average duration: 12.15s
-  Average speed: 821.8 blocks/s
-```
+Output includes per-run timing plus aggregate averages.
 
 ### Interrupt Test
 
@@ -116,10 +100,10 @@ For accurate performance testing:
 
 The harness respects privacy settings:
 
-- All requests route through configured tunnel (Tor/SOCKS5)
+- All requests route through configured tunnel (Tor/I2P/SOCKS5)
 - No clearnet leaks
 - TLS pinning enforced
-- DNSCrypt for DNS resolution
+- DoH for DNS resolution (system fallback for direct mode)
 
 Test with different tunnel modes:
 
@@ -163,4 +147,6 @@ Example CI usage:
 - Reduce batch size
 - Reduce parallel workers
 - Check for memory leaks with `valgrind` or `heaptrack`
+
+
 

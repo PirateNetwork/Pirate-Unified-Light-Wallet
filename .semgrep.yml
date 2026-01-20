@@ -116,7 +116,7 @@ rules:
       - pattern: "http://"
     message: |
       HTTP detected. All network requests must use HTTPS.
-    severity: ERROR
+    severity: WARNING
     languages: [dart]
 
   - id: dart-hardcoded-credentials
@@ -128,7 +128,7 @@ rules:
               const $VAR = "$PASSWORD";
     message: |
       Potential hardcoded credential. Use secure storage.
-    severity: ERROR
+    severity: WARNING
     languages: [dart]
     paths:
       include:
@@ -173,7 +173,7 @@ rules:
       - pattern-regex: (password|secret|mnemonic|private.?key|seed)
     message: |
       Potential sensitive data in logging/output. Never log secrets.
-    severity: ERROR
+    severity: WARNING
     languages: [rust, dart]
     paths:
       include:

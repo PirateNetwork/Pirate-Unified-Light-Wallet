@@ -6,6 +6,7 @@
 library ffi_bridge;
 
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show Int64List;
@@ -103,6 +104,45 @@ class FfiBridgeStatus {
     if (!frbGenerated) return 'FRB codegen pending';
     if (!nativeLibraryLoaded) return 'Native library not loaded';
     return 'Fully operational';
+  }
+}
+
+class TorStatusDetails {
+  final String status;
+  final int? progress;
+  final String? blocked;
+  final String? error;
+
+  const TorStatusDetails({
+    required this.status,
+    this.progress,
+    this.blocked,
+    this.error,
+  });
+
+  bool get isReady => status == 'ready';
+
+  factory TorStatusDetails.fromRaw(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is Map<String, dynamic>) {
+          final status = decoded['status'] as String? ?? trimmed;
+          final rawProgress = decoded['progress'];
+          final progress = rawProgress is num ? rawProgress.toInt() : null;
+          final blocked = decoded['blocked'] as String?;
+          final error = decoded['error'] as String?;
+          return TorStatusDetails(
+            status: status,
+            progress: progress,
+            blocked: blocked,
+            error: error,
+          );
+        }
+      } catch (_) {}
+    }
+    return TorStatusDetails(status: trimmed);
   }
 }
 
@@ -233,6 +273,8 @@ class NodeTestResult {
     switch (transportMode.toLowerCase()) {
       case 'tor':
         return '🧅';
+      case 'i2p':
+        return 'dYO?';
       case 'socks5':
         return '🔌';
       case 'direct':
@@ -1134,6 +1176,63 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  static Future<void> bootstrapTunnel(TunnelMode mode) async {
+    if (kUseFrbBindings) {
+      await api.bootstrapTunnel(mode: mode);
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<void> shutdownTransport() async {
+    if (kUseFrbBindings) {
+      await api.shutdownTransport();
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<TorStatusDetails> getTorStatusDetails() async {
+    if (kUseFrbBindings) {
+      final raw = await api.getTorStatus();
+      return TorStatusDetails.fromRaw(raw);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<String> getTorStatus() async {
+    final details = await getTorStatusDetails();
+    return details.status;
+  }
+
+  static Future<void> rotateTorExit() async {
+    if (kUseFrbBindings) {
+      await api.rotateTorExit();
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<void> setTorBridgeSettings({
+    required bool useBridges,
+    required bool fallbackToBridges,
+    required String transport,
+    required List<String> bridgeLines,
+    String? transportPath,
+  }) async {
+    if (kUseFrbBindings) {
+      await api.setTorBridgeSettings(
+        useBridges: useBridges,
+        fallbackToBridges: fallbackToBridges,
+        transport: transport,
+        bridgeLines: bridgeLines,
+        transportPath: transportPath,
+      );
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   // Auto Consolidation
   static Future<bool> getAutoConsolidationEnabled(WalletId id) async {
     if (kUseFrbBindings) {
@@ -1347,6 +1446,20 @@ class FfiBridge {
     return (double.parse(arrr) * 100000000).toInt();
   }
 
+  static Future<bool> _isTunnelReadyForSync(TunnelMode mode) async {
+    if (mode is TunnelMode_Tor) {
+      try {
+        return await getTorStatus() == 'ready';
+      } catch (_) {
+        return false;
+      }
+    }
+    if (mode is TunnelMode_Socks5) {
+      return mode.url.trim().isNotEmpty;
+    }
+    return true;
+  }
+
   // Streams - Real sync progress from sync engine
   static Stream<SyncStatus> syncProgressStream(WalletId id) async* {
     int idleCount = 0;
@@ -1357,6 +1470,23 @@ class FfiBridge {
 
     while (true) {
       try {
+        final tunnelMode = await getTunnel();
+        final tunnelReady = await _isTunnelReadyForSync(tunnelMode);
+
+        if (!tunnelReady) {
+          final isRunning = await isSyncRunning(id);
+          if (isRunning) {
+            try {
+              await cancelSync(id);
+            } catch (_) {}
+          }
+
+          final status = await syncStatus(id);
+          yield status;
+          await Future<void>.delayed(const Duration(seconds: 2));
+          continue;
+        }
+
         // Check if sync is running (even when caught up, sync monitors for new blocks)
         final isRunning = await isSyncRunning(id);
 
@@ -1572,6 +1702,7 @@ class FfiBridge {
   }) async {
     final tunnelMode = switch (mode.toLowerCase()) {
       'tor' => const TunnelMode.tor(),
+      'i2p' => const TunnelMode.i2P(),
       'socks5' =>
         TunnelMode.socks5(url: socks5Url ?? 'socks5://localhost:1080'),
       'direct' => const TunnelMode.direct(),
@@ -2420,6 +2551,8 @@ extension TunnelModeExtension on TunnelMode {
     final typeName = runtimeType.toString();
     if (typeName.contains('Tor')) {
       return 'tor';
+    } else if (typeName.contains('I2p') || typeName.contains('I2P')) {
+      return 'i2p';
     } else if (typeName.contains('Direct')) {
       return 'direct';
     }

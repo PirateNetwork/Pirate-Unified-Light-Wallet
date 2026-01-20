@@ -2,14 +2,18 @@
 //!
 //! Tests proving traffic enforcement and privacy guarantees.
 
-use pirate_net::{TransportManager, TransportConfig, TransportMode, Socks5Config, DnsConfig, DnsProvider, TorConfig};
+use pirate_net::{TransportManager, TransportConfig, TransportMode, Socks5Config, DnsConfig, DnsProvider, TorConfig, I2pConfig};
 
 #[tokio::test]
 async fn test_tor_mode_requires_tor_client() {
     // Configure Tor mode but don't initialize Tor client
     let config = TransportConfig {
         mode: TransportMode::Tor,
-        tor_enabled: false, // Tor disabled!
+        tor: TorConfig {
+            enabled: false, // Tor disabled!
+            ..TorConfig::default()
+        },
+        i2p: I2pConfig::default(),
         socks5: None,
         dns_config: DnsConfig::default(),
     };
@@ -28,7 +32,8 @@ async fn test_socks5_mode_requires_config() {
     // Configure SOCKS5 mode but don't provide config
     let config = TransportConfig {
         mode: TransportMode::Socks5,
-        tor_enabled: false,
+        tor: TorConfig::default(),
+        i2p: I2pConfig::default(),
         socks5: None, // No SOCKS5 config!
         dns_config: DnsConfig::default(),
     };
@@ -53,7 +58,8 @@ async fn test_socks5_with_valid_config() {
 
     let config = TransportConfig {
         mode: TransportMode::Socks5,
-        tor_enabled: false,
+        tor: TorConfig::default(),
+        i2p: I2pConfig::default(),
         socks5: Some(socks5),
         dns_config: DnsConfig::default(),
     };
@@ -69,7 +75,8 @@ async fn test_socks5_with_valid_config() {
 async fn test_direct_mode_creates_client() {
     let config = TransportConfig {
         mode: TransportMode::Direct,
-        tor_enabled: false,
+        tor: TorConfig::default(),
+        i2p: I2pConfig::default(),
         socks5: None,
         dns_config: DnsConfig::default(),
     };
@@ -86,6 +93,10 @@ async fn test_privacy_status() {
     // Tor mode is private
     let tor_config = TransportConfig {
         mode: TransportMode::Tor,
+        tor: TorConfig {
+            enabled: false,
+            ..TorConfig::default()
+        },
         ..Default::default()
     };
     let tor_manager = TransportManager::new(tor_config).await.unwrap();
@@ -105,6 +116,18 @@ async fn test_privacy_status() {
     let socks5_manager = TransportManager::new(socks5_config).await.unwrap();
     assert!(socks5_manager.is_private().await, "SOCKS5 should be private");
 
+    // I2P mode is private
+    let i2p_config = TransportConfig {
+        mode: TransportMode::I2p,
+        i2p: I2pConfig {
+            enabled: false,
+            ..I2pConfig::default()
+        },
+        ..Default::default()
+    };
+    let i2p_manager = TransportManager::new(i2p_config).await.unwrap();
+    assert!(i2p_manager.is_private().await, "I2P should be private");
+
     // Direct mode is NOT private
     let direct_config = TransportConfig {
         mode: TransportMode::Direct,
@@ -119,7 +142,7 @@ async fn test_dns_tunneling() {
     let config = DnsConfig {
         provider: DnsProvider::CloudflareDoH,
         tunnel_dns: true,
-        socks_proxy: Some("127.0.0.1:9050".to_string()),
+        socks_proxy: Some("socks5h://127.0.0.1:9050".to_string()),
     };
 
     let resolver = pirate_net::DnsResolver::new(config);
@@ -142,6 +165,7 @@ async fn test_dns_privacy_status() {
 #[test]
 fn test_transport_mode_names() {
     assert_eq!(TransportMode::Tor.name(), "Tor (Most Private)");
+    assert_eq!(TransportMode::I2p.name(), "I2P (Desktop Only)");
     assert_eq!(TransportMode::Socks5.name(), "SOCKS5 Proxy");
     assert_eq!(TransportMode::Direct.name(), "Direct (Not Private)");
 }

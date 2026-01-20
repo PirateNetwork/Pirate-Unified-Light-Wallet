@@ -1002,11 +1002,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     if (raw is TunnelMode_Tor) {
       return [0].jsify()!;
     }
+    if (raw is TunnelMode_I2p) {
+      return [1].jsify()!;
+    }
     if (raw is TunnelMode_Socks5) {
-      return [1, cst_encode_String(raw.url)].jsify()!;
+      return [2, cst_encode_String(raw.url)].jsify()!;
     }
     if (raw is TunnelMode_Direct) {
-      return [2].jsify()!;
+      return [3].jsify()!;
     }
 
     throw Exception('unreachable');
@@ -1418,6 +1421,9 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__are_seed_screenshots_blocked(NativePortType port_) =>
       wasmModule.wire__crate__api__are_seed_screenshots_blocked(port_);
 
+  void wire__crate__api__bootstrap_tunnel(NativePortType port_, JSAny mode) =>
+      wasmModule.wire__crate__api__bootstrap_tunnel(port_, mode);
+
   void wire__crate__api__broadcast_tx(NativePortType port_, JSAny signed) =>
       wasmModule.wire__crate__api__broadcast_tx(port_, signed);
 
@@ -1653,6 +1659,9 @@ class RustLibWire implements BaseWire {
           NativePortType port_, String wallet_id, int? limit) =>
       wasmModule.wire__crate__api__get_sync_logs(port_, wallet_id, limit);
 
+  void wire__crate__api__get_tor_status(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_tor_status(port_);
+
   void wire__crate__api__get_tunnel(NativePortType port_) =>
       wasmModule.wire__crate__api__get_tunnel(port_);
 
@@ -1776,6 +1785,9 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__restore_wallet(
           port_, name, mnemonic, passphrase_opt, birthday_opt);
 
+  void wire__crate__api__rotate_tor_exit(NativePortType port_) =>
+      wasmModule.wire__crate__api__rotate_tor_exit(port_);
+
   void wire__crate__api__search_address_book(
           NativePortType port_, String wallet_id, String query) =>
       wasmModule.wire__crate__api__search_address_book(port_, wallet_id, query);
@@ -1806,6 +1818,16 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__set_panic_pin(NativePortType port_, String pin) =>
       wasmModule.wire__crate__api__set_panic_pin(port_, pin);
 
+  void wire__crate__api__set_tor_bridge_settings(
+          NativePortType port_,
+          bool use_bridges,
+          bool fallback_to_bridges,
+          String transport,
+          JSAny bridge_lines,
+          String? transport_path) =>
+      wasmModule.wire__crate__api__set_tor_bridge_settings(port_, use_bridges,
+          fallback_to_bridges, transport, bridge_lines, transport_path);
+
   void wire__crate__api__set_tunnel(NativePortType port_, JSAny mode) =>
       wasmModule.wire__crate__api__set_tunnel(port_, mode);
 
@@ -1813,6 +1835,9 @@ class RustLibWire implements BaseWire {
           NativePortType port_, String wallet_id, int birthday_height) =>
       wasmModule.wire__crate__api__set_wallet_birthday_height(
           port_, wallet_id, birthday_height);
+
+  void wire__crate__api__shutdown_transport(NativePortType port_) =>
+      wasmModule.wire__crate__api__shutdown_transport(port_);
 
   void wire__crate__api__sign_tx(
           NativePortType port_, String wallet_id, JSAny pending) =>
@@ -1920,6 +1945,9 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void wire__crate__api__are_seed_screenshots_blocked(
       NativePortType port_);
+
+  external void wire__crate__api__bootstrap_tunnel(
+      NativePortType port_, JSAny mode);
 
   external void wire__crate__api__broadcast_tx(
       NativePortType port_, JSAny signed);
@@ -2085,6 +2113,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__get_sync_logs(
       NativePortType port_, String wallet_id, int? limit);
 
+  external void wire__crate__api__get_tor_status(NativePortType port_);
+
   external void wire__crate__api__get_tunnel(NativePortType port_);
 
   external void wire__crate__api__get_vault_mode(NativePortType port_);
@@ -2173,6 +2203,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__restore_wallet(NativePortType port_,
       String name, String mnemonic, String? passphrase_opt, int? birthday_opt);
 
+  external void wire__crate__api__rotate_tor_exit(NativePortType port_);
+
   external void wire__crate__api__search_address_book(
       NativePortType port_, String wallet_id, String query);
 
@@ -2194,10 +2226,20 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__set_panic_pin(
       NativePortType port_, String pin);
 
+  external void wire__crate__api__set_tor_bridge_settings(
+      NativePortType port_,
+      bool use_bridges,
+      bool fallback_to_bridges,
+      String transport,
+      JSAny bridge_lines,
+      String? transport_path);
+
   external void wire__crate__api__set_tunnel(NativePortType port_, JSAny mode);
 
   external void wire__crate__api__set_wallet_birthday_height(
       NativePortType port_, String wallet_id, int birthday_height);
+
+  external void wire__crate__api__shutdown_transport(NativePortType port_);
 
   external void wire__crate__api__sign_tx(
       NativePortType port_, String wallet_id, JSAny pending);

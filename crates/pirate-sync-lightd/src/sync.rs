@@ -225,6 +225,12 @@ pub struct SyncEngine {
     enrich_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
+#[allow(dead_code)]
+fn _assert_sync_engine_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<SyncEngine>();
+}
+
 struct PrefetchTask {
     start: u64,
     end: u64,
@@ -914,6 +920,29 @@ impl SyncEngine {
 
         loop {
             attempt += 1;
+            // #region agent log
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let id = format!("{:08x}", ts);
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:tree_state_attempt","message":"tree state attempt","data":{{"tree_height":{},"attempt":{},"timeout_secs":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                    id,
+                    ts,
+                    tree_height,
+                    attempt,
+                    timeout.as_secs()
+                );
+            }
+            // #endregion
 
             let bridge_future = tokio::time::timeout(
                 timeout,

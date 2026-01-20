@@ -99,6 +99,7 @@ fn test_light_client_clone() {
 #[test]
 fn test_transport_mode_privacy() {
     assert!(TransportMode::Tor.is_private());
+    assert!(TransportMode::I2p.is_private());
     assert!(TransportMode::Socks5.is_private());
     assert!(!TransportMode::Direct.is_private());
 }

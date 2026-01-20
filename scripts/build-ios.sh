@@ -31,11 +31,31 @@ fi
 
 # Reproducible build settings
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || date +%s)}"
+export TZ=UTC
 export FLUTTER_SUPPRESS_ANALYTICS=true
 export DART_SUPPRESS_ANALYTICS=true
+export CARGO_INCREMENTAL=0
 
 log "Building iOS IPA (reproducible)"
 log "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+
+normalize_mtime() {
+    local target="$1"
+    if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+        return 0
+    fi
+    local stamp
+    stamp="$(date -u -d "@$SOURCE_DATE_EPOCH" +"%Y%m%d%H%M.%S" 2>/dev/null || date -u -r "$SOURCE_DATE_EPOCH" +"%Y%m%d%H%M.%S")"
+    find "$target" -exec touch -t "$stamp" {} + 2>/dev/null || true
+}
+
+REPRODUCIBLE="${REPRODUCIBLE:-0}"
+
+zip_dir_deterministic() {
+    local src="$1"
+    local dest="$2"
+    (cd "$src" && normalize_mtime "." && LC_ALL=C find . -type f -print | sort | zip -X -@ "$dest")
+}
 
 cd "$APP_DIR"
 
@@ -45,8 +65,8 @@ flutter clean
 
 # Get dependencies
 log "Fetching dependencies..."
-flutter pub get
-cd ios && pod install && cd ..
+flutter pub get --enforce-lockfile
+cd ios && pod install --deployment && cd ..
 
 # Build unsigned IPA first
 log "Building iOS app..."
@@ -54,6 +74,9 @@ flutter build ios --release --no-codesign
 
 # Check for signing configuration
 SIGN="${1:-auto}"  # auto, true, or false
+if [ "$REPRODUCIBLE" = "1" ]; then
+    SIGN=false
+fi
 
 if [ "$SIGN" = "auto" ]; then
     # Check if we have signing certificates
@@ -88,7 +111,7 @@ else
     cd build/ios/iphoneos
     mkdir -p Payload
     cp -r Runner.app Payload/
-    zip -r Runner.ipa Payload
+    zip_dir_deterministic "Payload" "Runner.ipa"
     
     IPA_FILE="Runner.ipa"
     cd "$APP_DIR"
@@ -122,4 +145,3 @@ if [ "$SIGN" = "true" ]; then
 else
     warn "IPA is unsigned. Sign before submitting to App Store."
 fi
-

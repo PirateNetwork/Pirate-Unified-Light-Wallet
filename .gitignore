@@ -336,6 +336,10 @@ DB/
 tor_data/
 *.torrc
 
+# Bundled Tor/I2P binaries (download during build/packaging)
+app/i2p/
+app/tor-pt/
+
 # Test data
 test_wallet.db
 test_keys/

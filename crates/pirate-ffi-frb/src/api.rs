@@ -69,6 +69,8 @@ use directories::ProjectDirs;
 use hex;
 use sha2::{Digest, Sha256};
 use rusqlite::params;
+use std::future::Future;
+use std::pin::Pin;
 
 // Global state with thread-safe access
 lazy_static::lazy_static! {
@@ -76,12 +78,16 @@ lazy_static::lazy_static! {
     static ref WALLETS: Arc<RwLock<Vec<WalletMeta>>> = Arc::new(RwLock::new(Vec::new()));
     /// Currently active wallet ID
     static ref ACTIVE_WALLET: Arc<RwLock<Option<WalletId>>> = Arc::new(RwLock::new(None));
-    /// Network tunnel configuration (Direct default - Tor/SOCKS5 not implemented yet)
-    static ref TUNNEL_MODE: Arc<RwLock<TunnelMode>> = Arc::new(RwLock::new(TunnelMode::Direct));
+    /// Network tunnel configuration (Tor default)
+    static ref TUNNEL_MODE: Arc<RwLock<TunnelMode>> = Arc::new(RwLock::new(TunnelMode::Tor));
+    /// Pending tunnel mode to persist once registry is available.
+    static ref PENDING_TUNNEL_MODE: Arc<RwLock<Option<TunnelMode>>> = Arc::new(RwLock::new(None));
 }
 
 static REGISTRY_LOADED: AtomicBool = AtomicBool::new(false);
 const REGISTRY_APP_PASSPHRASE_KEY: &str = "app_passphrase_hash";
+const REGISTRY_TUNNEL_MODE_KEY: &str = "tunnel_mode";
+const REGISTRY_TUNNEL_SOCKS5_URL_KEY: &str = "tunnel_socks5_url";
 
 fn debug_log_path() -> PathBuf {
     let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
@@ -107,14 +113,7 @@ fn resolve_wallet_birthday_height(birthday_opt: Option<u32>) -> u32 {
     }
 
     let endpoint = LightdEndpoint::default();
-    let (transport, socks5_url) = {
-        let tunnel_mode = TUNNEL_MODE.read().clone();
-        match tunnel_mode {
-            TunnelMode::Tor => (TransportMode::Tor, None),
-            TunnelMode::Socks5 { url: u } => (TransportMode::Socks5, Some(u)),
-            TunnelMode::Direct => (TransportMode::Direct, None),
-        }
-    };
+    let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
     let client_config = LightClientConfig {
         endpoint: endpoint.url(),
         transport,
@@ -127,6 +126,7 @@ fn resolve_wallet_birthday_height(birthday_opt: Option<u32>) -> u32 {
         retry: RetryConfig::default(),
         connect_timeout: std::time::Duration::from_secs(10),
         request_timeout: std::time::Duration::from_secs(10),
+        allow_direct_fallback,
     };
     let client = LightClient::with_config(client_config);
     let fetch_latest = || async {
@@ -793,6 +793,157 @@ fn set_registry_setting(db: &Database, key: &str, value: Option<&str>) -> Result
     Ok(())
 }
 
+async fn run_sync_engine_task<F, T>(
+    sync: Arc<tokio::sync::Mutex<SyncEngine>>,
+    task: F,
+) -> Result<T>
+where
+    F: for<'a> FnOnce(&'a mut SyncEngine) -> Pin<Box<dyn Future<Output = Result<T>> + 'a>>
+        + Send
+        + 'static,
+    T: Send + 'static,
+{
+    let join = tokio::task::spawn_blocking(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| anyhow!("Failed to build sync runtime: {}", e))?;
+        runtime.block_on(async move {
+            let mut engine = sync.lock().await;
+            task(&mut engine).await
+        })
+    });
+
+    join.await
+        .map_err(|e| anyhow!("Sync task join error: {}", e))?
+}
+
+async fn run_on_runtime<F, Fut, T>(task: F) -> Result<T>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = Result<T>> + 'static,
+    T: Send + 'static,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let result = (|| -> Result<T> {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| anyhow!("Failed to build runtime: {}", e))?;
+            runtime.block_on(task())
+        })();
+        let _ = tx.send(result);
+    });
+
+    rx.await
+        .map_err(|e| anyhow!("Runtime task join error: {}", e))?
+}
+
+fn parse_tunnel_mode_setting(mode: &str, socks5_url: Option<String>) -> Option<TunnelMode> {
+    let normalized = mode.trim().to_lowercase();
+    match normalized.as_str() {
+        "tor" => Some(TunnelMode::Tor),
+        "i2p" => Some(TunnelMode::I2p),
+        "socks5" => {
+            let url = socks5_url
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "socks5://localhost:1080".to_string());
+            Some(TunnelMode::Socks5 { url })
+        }
+        "direct" => Some(TunnelMode::Direct),
+        _ => None,
+    }
+}
+
+fn load_registry_tunnel_mode(db: &Database) -> Result<Option<TunnelMode>> {
+    let mode = get_registry_setting(db, REGISTRY_TUNNEL_MODE_KEY)?;
+    let Some(mode_str) = mode else {
+        return Ok(None);
+    };
+    let socks5_url = get_registry_setting(db, REGISTRY_TUNNEL_SOCKS5_URL_KEY)?;
+    let parsed = parse_tunnel_mode_setting(&mode_str, socks5_url);
+    if parsed.is_none() {
+        tracing::warn!("Unknown tunnel mode setting: {}", mode_str);
+    }
+    Ok(parsed)
+}
+
+fn persist_registry_tunnel_mode(db: &Database, mode: &TunnelMode) -> Result<()> {
+    let (mode_str, socks5_url) = match mode {
+        TunnelMode::Tor => ("tor", None),
+        TunnelMode::I2p => ("i2p", None),
+        TunnelMode::Socks5 { url } => ("socks5", Some(url.as_str())),
+        TunnelMode::Direct => ("direct", None),
+    };
+    set_registry_setting(db, REGISTRY_TUNNEL_MODE_KEY, Some(mode_str))?;
+    set_registry_setting(db, REGISTRY_TUNNEL_SOCKS5_URL_KEY, socks5_url)?;
+    Ok(())
+}
+
+fn redact_socks5_url(url: &str) -> String {
+    if let Some(scheme_pos) = url.find("://") {
+        let auth_start = scheme_pos + 3;
+        if let Some(at_pos) = url[auth_start..].find('@') {
+            let at_pos = auth_start + at_pos;
+            let mut redacted = String::new();
+            redacted.push_str(&url[..auth_start]);
+            redacted.push_str("***@");
+            redacted.push_str(&url[at_pos + 1..]);
+            return redacted;
+        }
+    }
+    url.to_string()
+}
+
+fn escape_json(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+fn tunnel_transport_config_for(mode: &TunnelMode) -> (TransportMode, Option<String>, bool) {
+    match mode {
+        TunnelMode::Tor => (TransportMode::Tor, None, false),
+        TunnelMode::I2p => (TransportMode::I2p, None, false),
+        TunnelMode::Socks5 { url } => (TransportMode::Socks5, Some(url.clone()), false),
+        TunnelMode::Direct => (TransportMode::Direct, None, true),
+    }
+}
+
+fn tunnel_transport_config() -> (TransportMode, Option<String>, bool) {
+    let tunnel_mode = TUNNEL_MODE.read().clone();
+    tunnel_transport_config_for(&tunnel_mode)
+}
+
+fn spawn_bootstrap_transport(mode: TunnelMode) {
+    let (transport, socks5_url, _) = tunnel_transport_config_for(&mode);
+    let task = async move {
+        if let Err(e) = pirate_sync_lightd::bootstrap_transport(transport, socks5_url).await {
+            tracing::warn!("Failed to bootstrap transport: {}", e);
+        }
+    };
+
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(task);
+    } else {
+        std::thread::spawn(move || {
+            if let Ok(runtime) = tokio::runtime::Runtime::new() {
+                let _ = runtime.block_on(task);
+            }
+        });
+    }
+}
+
 /// Store app passphrase hash for local verification
 /// 
 /// IMPORTANT: This function opens/creates the database with the passphrase,
@@ -1384,6 +1535,21 @@ fn ensure_wallet_registry_loaded() -> Result<()> {
                     }
                 }
             }
+        }
+    }
+
+    if let Ok(mode) = load_registry_tunnel_mode(&db) {
+        if let Some(mode) = mode {
+            *TUNNEL_MODE.write() = mode;
+        }
+    }
+
+    if let Some(pending) = PENDING_TUNNEL_MODE.write().take() {
+        if let Err(e) = persist_registry_tunnel_mode(&db, &pending) {
+            tracing::warn!("Failed to persist pending tunnel mode: {}", e);
+            *PENDING_TUNNEL_MODE.write() = Some(pending);
+        } else {
+            *TUNNEL_MODE.write() = pending;
         }
     }
 
@@ -3550,7 +3716,7 @@ fn sign_tx_internal(
         let sessions = SYNC_SESSIONS.read();
         if let Some(session_arc) = sessions.get(&wallet_id) {
             // Try to get sync engine without blocking
-            if let Ok(session) = session_arc.try_read() {
+            if let Ok(session) = session_arc.try_lock() {
                 if let Some(ref sync) = session.sync {
                     if let Ok(engine) = sync.try_lock() {
                         // Compute witnesses for Orchard notes
@@ -3745,7 +3911,7 @@ fn sign_tx_internal(
 
         let sessions = SYNC_SESSIONS.read();
         if let Some(session_arc) = sessions.get(&wallet_id) {
-            if let Ok(session) = session_arc.try_read() {
+            if let Ok(session) = session_arc.try_lock() {
                 if let Some(ref sync) = session.sync {
                     if let Ok(engine) = sync.try_lock() {
                         if let Some(anchor_bytes) =
@@ -3792,14 +3958,7 @@ fn sign_tx_internal(
 
         if anchor_opt.is_none() {
             let endpoint = get_lightd_endpoint(wallet_id.clone())?;
-            let (transport, socks5_url) = {
-                let tunnel_mode = TUNNEL_MODE.read().clone();
-                match tunnel_mode {
-                    TunnelMode::Tor => (TransportMode::Tor, None),
-                    TunnelMode::Socks5 { url: u } => (TransportMode::Socks5, Some(u)),
-                    TunnelMode::Direct => (TransportMode::Direct, None),
-                }
-            };
+            let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
 
             let client_config = LightClientConfig {
                 endpoint,
@@ -3809,6 +3968,7 @@ fn sign_tx_internal(
                 retry: RetryConfig::default(),
                 connect_timeout: std::time::Duration::from_secs(30),
                 request_timeout: std::time::Duration::from_secs(60),
+                allow_direct_fallback,
             };
             let client = LightClient::with_config(client_config);
 
@@ -4075,6 +4235,10 @@ pub fn sign_tx_filtered(
 /// Sends transaction via lightwalletd gRPC SendTransaction.
 /// Returns TxId on success, or error with details.
 pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
+    run_on_runtime(move || broadcast_tx_inner(signed)).await
+}
+
+async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
     tracing::info!("Broadcasting transaction {}", signed.txid);
     // #region agent log
     if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -4100,11 +4264,40 @@ pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
     let wallet_id = get_active_wallet()?
         .ok_or_else(|| anyhow!("No active wallet"))?;
     
-    // Get lightwalletd endpoint
-    let endpoint = get_lightd_endpoint(wallet_id)?;
+    // Get lightwalletd endpoint configuration
+    let endpoint_config = get_lightd_endpoint_config(wallet_id)?;
+    let endpoint_url = endpoint_config.url();
+    let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
+    let tls_enabled = endpoint_config.use_tls;
+    let host = endpoint_config.host.clone();
+    let is_ip_address = host.parse::<std::net::IpAddr>().is_ok();
+    let tls_server_name = if tls_enabled {
+        if is_ip_address {
+            Some("lightd1.piratechain.com".to_string())
+        } else {
+            Some(host.clone())
+        }
+    } else {
+        None
+    };
+
+    let client_config = LightClientConfig {
+        endpoint: endpoint_url.clone(),
+        transport,
+        socks5_url,
+        tls: TlsConfig {
+            enabled: tls_enabled,
+            spki_pin: endpoint_config.tls_pin.clone(),
+            server_name: tls_server_name,
+        },
+        retry: RetryConfig::default(),
+        connect_timeout: std::time::Duration::from_secs(30),
+        request_timeout: std::time::Duration::from_secs(60),
+        allow_direct_fallback,
+    };
 
     // Create lightwalletd client and broadcast
-    let client = pirate_sync_lightd::LightClient::new(endpoint.clone());
+    let client = pirate_sync_lightd::LightClient::with_config(client_config);
     if let Err(e) = client.connect().await {
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -4120,11 +4313,11 @@ pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
                 file,
                 r#"{{"id":"log_broadcast_connect_error","timestamp":{},"location":"api.rs:2212","message":"broadcast connect failed","data":{{"endpoint":"{}","error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                 ts,
-                endpoint,
+                endpoint_url,
                 e
             );
         }
-        return Err(anyhow!("Failed to connect to {}: {}", endpoint, e));
+        return Err(anyhow!("Failed to connect to {}: {}", endpoint_url, e));
     }
 
     let txid_hex = client
@@ -4146,7 +4339,7 @@ pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
                     r#"{{"id":"log_broadcast_error","timestamp":{},"location":"api.rs:2226","message":"broadcast failed","data":{{"txid":"{}","endpoint":"{}","error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                     ts,
                     signed.txid,
-                    endpoint,
+                    endpoint_url,
                     e
                 );
             }
@@ -4155,7 +4348,7 @@ pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
 
     tracing::info!(
         "Broadcast to {} succeeded: {} ({} bytes)",
-        endpoint, txid_hex, signed.size
+        endpoint_url, txid_hex, signed.size
     );
     // #region agent log
     if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -4173,7 +4366,7 @@ pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
             r#"{{"id":"log_broadcast_ok","timestamp":{},"location":"api.rs:2263","message":"broadcast ok","data":{{"txid":"{}","endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
             ts,
             signed.txid,
-            endpoint
+            endpoint_url
         );
     }
     // #endregion
@@ -4315,7 +4508,7 @@ lazy_static::lazy_static! {
     // IMPORTANT: `SyncEngine` is not `Send + Sync` (it holds a rusqlite-backed storage sink),
     // so we store sessions in a `parking_lot::RwLock` and never move them across threads.
     // FRB calls are handled on a single thread by default.
-    static ref SYNC_SESSIONS: Arc<RwLock<HashMap<WalletId, Arc<tokio::sync::RwLock<SyncSession>>>>> =
+    static ref SYNC_SESSIONS: Arc<RwLock<HashMap<WalletId, Arc<tokio::sync::Mutex<SyncSession>>>>> =
         Arc::new(RwLock::new(HashMap::new()));
 }
 
@@ -4440,14 +4633,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     let endpoint_url = endpoint_config.url();
     
     // Extract tunnel mode before async
-    let (transport, socks5_url) = {
-        let tunnel_mode = TUNNEL_MODE.read().clone();
-        match tunnel_mode {
-            TunnelMode::Tor => (TransportMode::Tor, None),
-            TunnelMode::Socks5 { url: u } => (TransportMode::Socks5, Some(u)),
-            TunnelMode::Direct => (TransportMode::Direct, None),
-        }
-    };
+    let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
     
     // Parse endpoint URL to determine TLS settings (same logic as test_node)
     let normalized_url = endpoint_url.trim().to_string();
@@ -4505,6 +4691,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         retry: RetryConfig::default(),
         connect_timeout: std::time::Duration::from_secs(30),
         request_timeout: std::time::Duration::from_secs(60),
+        allow_direct_fallback,
     };
     
     let network_type = wallet_network_type(&wallet_id)?;
@@ -4547,14 +4734,14 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         .map_err(|e| anyhow!("Failed to initialize sync engine: {}", e))?;
     let sync = Arc::new(Mutex::new(sync));
     let (progress, perf, cancel_flag) = {
-        let engine = sync.lock().await;
+        let engine = sync.clone().lock_owned().await;
         (engine.progress(), engine.perf_counters(), engine.cancel_flag())
     };
     
     // Store session
     {
         let mut sessions = SYNC_SESSIONS.write();
-        let session = Arc::new(tokio::sync::RwLock::new(SyncSession {
+        let session = Arc::new(tokio::sync::Mutex::new(SyncSession {
             sync: Some(Arc::clone(&sync)),
             cancelled: Some(cancel_flag),
             progress: Some(progress),
@@ -4586,25 +4773,35 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         }; // sessions guard dropped here before any await points
         
         if let Some(session_arc) = session_arc_opt {
-            let sync_opt = { session_arc.read().await.sync.clone() };
+            let sync_opt = { session_arc.lock().await.sync.clone() };
 
             if let Some(sync) = sync_opt {
-                let result = {
-                    let mut engine = sync.lock().await;
-                    tracing::info!("Starting sync_from_birthday for wallet {}", wallet_id_for_task);
-                    let result = engine.sync_from_birthday().await;
-                    if let Err(ref e) = result {
-                        tracing::error!("Sync error in engine: {:?}", e);
-                    }
-                    result
-                };
+                let wallet_id_for_log = wallet_id_for_task.clone();
+                let result = run_sync_engine_task(sync.clone(), move |engine| {
+                    Box::pin(async move {
+                        tracing::info!(
+                            "Starting sync_from_birthday for wallet {}",
+                            wallet_id_for_log
+                        );
+                        let result = engine
+                            .sync_from_birthday()
+                            .await
+                            .map_err(anyhow::Error::from);
+                        if let Err(ref e) = result {
+                            tracing::error!("Sync error in engine: {:?}", e);
+                        }
+                        result
+                    })
+                })
+                .await;
 
                 // Snapshot status after sync attempt.
+                let (progress_arc, perf_snapshot) = {
+                    let engine = sync.clone().lock_owned().await;
+                    (engine.progress(), engine.perf_counters().snapshot())
+                };
                 let status_opt = {
-                    let engine = sync.lock().await;
-                    let progress_arc = engine.progress();
                     let progress = progress_arc.read().await;
-                    let perf = engine.perf_counters().snapshot();
                     let status = SyncStatus {
                         local_height: progress.current_height(),
                         target_height: progress.target_height(),
@@ -4612,9 +4809,9 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                         eta: progress.eta_seconds(),
                         stage: map_stage(progress.stage()),
                         last_checkpoint: progress.last_checkpoint(),
-                        blocks_per_second: perf.blocks_per_second,
-                        notes_decrypted: perf.notes_decrypted,
-                        last_batch_ms: perf.avg_batch_ms,
+                        blocks_per_second: perf_snapshot.blocks_per_second,
+                        notes_decrypted: perf_snapshot.notes_decrypted,
+                        last_batch_ms: perf_snapshot.avg_batch_ms,
                     };
                     tracing::debug!(
                         "Sync status snapshot: local={}, target={}, stage={:?}, percent={:.2}%",
@@ -4626,7 +4823,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                     Some(status)
                 };
 
-                let mut session = session_arc.write().await;
+                let mut session = session_arc.lock().await;
                 if let Some(status) = status_opt {
                     session.last_status = status;
                 }
@@ -4655,7 +4852,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                 }
                 // Don't set is_running = false here - sync continues monitoring even after catching up
             } else {
-                session_arc.write().await.is_running = false;
+                session_arc.lock().await.is_running = false;
             }
         }
     });
@@ -4846,7 +5043,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
     };
 
     let (progress_handle, perf_handle, sync_handle, last_status, last_target_update) = {
-        if let Ok(session) = session_arc.try_read() {
+        if let Ok(session) = session_arc.try_lock() {
             (
                 session.progress.clone(),
                 session.perf.clone(),
@@ -4947,9 +5144,17 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         let sync_clone = Arc::clone(sync);
                         let session_arc_clone = Arc::clone(&session_arc);
                         handle.spawn(async move {
-                        let engine = sync_clone.lock().await;
-                            if engine.update_target_height().await.is_ok() {
-                                let mut session = session_arc_clone.write().await;
+                            let result = run_sync_engine_task(sync_clone, |engine| {
+                                Box::pin(async move {
+                                    engine
+                                        .update_target_height()
+                                        .await
+                                        .map_err(anyhow::Error::from)
+                                })
+                            })
+                            .await;
+                            if result.is_ok() {
+                                let mut session = session_arc_clone.lock().await;
                                 session.last_target_height_update = Some(std::time::Instant::now());
                             }
                         });
@@ -4974,7 +5179,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     .map_or(0, |perf| perf.avg_batch_ms),
             };
 
-            if let Ok(mut session) = session_arc.try_write() {
+            if let Ok(mut session) = session_arc.try_lock() {
                 session.last_status = status.clone();
             }
 
@@ -5010,9 +5215,17 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         let sync_clone = Arc::clone(&sync);
                         let session_arc_clone = Arc::clone(&session_arc);
                         handle.spawn(async move {
-                        let engine = sync_clone.lock().await;
-                            if engine.update_target_height().await.is_ok() {
-                                let mut session = session_arc_clone.write().await;
+                            let result = run_sync_engine_task(sync_clone, |engine| {
+                                Box::pin(async move {
+                                    engine
+                                        .update_target_height()
+                                        .await
+                                        .map_err(anyhow::Error::from)
+                                })
+                            })
+                            .await;
+                            if result.is_ok() {
+                                let mut session = session_arc_clone.lock().await;
                                 session.last_target_height_update = Some(std::time::Instant::now());
                             }
                         });
@@ -5031,7 +5244,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     last_batch_ms: perf.avg_batch_ms,
                 };
 
-                if let Ok(mut session) = session_arc.try_write() {
+                if let Ok(mut session) = session_arc.try_lock() {
                     session.last_status = status.clone();
                 }
 
@@ -5073,7 +5286,7 @@ pub fn get_last_checkpoint(wallet_id: WalletId) -> Result<Option<CheckpointInfo>
     
     // Try to get checkpoint height from sync session
     let checkpoint_height_opt = if let Some(session_arc) = sessions.get(&wallet_id) {
-        if let Ok(session) = session_arc.try_read() {
+        if let Ok(session) = session_arc.try_lock() {
             session.last_status.last_checkpoint.map(|h| h as u32)
         } else {
             None
@@ -5114,6 +5327,32 @@ pub struct CheckpointInfo {
     pub height: u32,
     /// Unix timestamp when checkpoint was created
     pub timestamp: i64,
+}
+
+async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let running = {
+            let sessions = SYNC_SESSIONS.read();
+            if let Some(session_arc) = sessions.get(wallet_id) {
+                if let Ok(session) = session_arc.try_lock() {
+                    session.is_running
+                } else {
+                    true
+                }
+            } else {
+                false
+            }
+        };
+
+        if !running {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
 }
 
 /// Rescan wallet from specific height
@@ -5202,11 +5441,41 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         }
     }
     // #endregion
+
+    let wait_ok = wait_for_sync_stop(&wallet_id, std::time::Duration::from_secs(10)).await;
+    // #region agent log
+    {
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let step = if wait_ok {
+                "cancel_sync_wait_done"
+            } else {
+                "cancel_sync_wait_timeout"
+            };
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                ts,
+                wallet_id,
+                step
+            );
+        }
+    }
+    // #endregion
+
     if let Some(session_arc) = {
         let sessions = SYNC_SESSIONS.read();
         sessions.get(&wallet_id).cloned()
     } {
-        if let Ok(mut session) = session_arc.try_write() {
+        if let Ok(mut session) = session_arc.try_lock() {
             session.is_running = false;
             session.last_status = SyncStatus {
                 local_height: 0,
@@ -5541,14 +5810,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     let endpoint_url = endpoint_config.url();
     
     // Extract tunnel mode before async
-    let (transport, socks5_url) = {
-        let tunnel_mode = TUNNEL_MODE.read().clone();
-        match tunnel_mode {
-            TunnelMode::Tor => (TransportMode::Tor, None),
-            TunnelMode::Socks5 { url: u } => (TransportMode::Socks5, Some(u)),
-            TunnelMode::Direct => (TransportMode::Direct, None),
-        }
-    };
+    let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
     
     // Parse endpoint URL to determine TLS settings (same logic as test_node)
     let normalized_url = endpoint_url.trim().to_string();
@@ -5594,6 +5856,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         retry: RetryConfig::default(),
         connect_timeout: std::time::Duration::from_secs(30),
         request_timeout: std::time::Duration::from_secs(60),
+        allow_direct_fallback,
     };
     
     tracing::info!("rescan: Using endpoint {} (TLS: {}, transport: {:?})", endpoint_url, tls_enabled, transport);
@@ -5632,14 +5895,14 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         .map_err(|e| anyhow!("Failed to initialize sync engine: {}", e))?;
     let sync = Arc::new(Mutex::new(sync));
     let (progress, perf, cancel_flag) = {
-        let engine = sync.lock().await;
+        let engine = sync.clone().lock_owned().await;
         (engine.progress(), engine.perf_counters(), engine.cancel_flag())
     };
     
     // Store session
     {
         let mut sessions = SYNC_SESSIONS.write();
-        let session = Arc::new(tokio::sync::RwLock::new(SyncSession {
+        let session = Arc::new(tokio::sync::Mutex::new(SyncSession {
             sync: Some(Arc::clone(&sync)),
             cancelled: Some(cancel_flag),
             progress: Some(progress),
@@ -5693,19 +5956,25 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         }; // sessions guard dropped here before any await points
         
         if let Some(session_arc) = session_arc_opt {
-            let sync_opt = { session_arc.read().await.sync.clone() };
+            let sync_opt = { session_arc.lock().await.sync.clone() };
 
             if let Some(sync) = sync_opt {
-                let result = {
-                    let mut engine = sync.lock().await;
-                    engine.sync_range(from_height as u64, None).await
-                };
+                let result = run_sync_engine_task(sync.clone(), move |engine| {
+                    Box::pin(async move {
+                        engine
+                            .sync_range(from_height as u64, None)
+                            .await
+                            .map_err(anyhow::Error::from)
+                    })
+                })
+                .await;
 
+                let (progress_arc, perf_snapshot) = {
+                    let engine = sync.clone().lock_owned().await;
+                    (engine.progress(), engine.perf_counters().snapshot())
+                };
                 let status_opt = {
-                    let engine = sync.lock().await;
-                    let progress_arc = engine.progress();
                     let progress = progress_arc.read().await;
-                    let perf = engine.perf_counters().snapshot();
                     Some(SyncStatus {
                         local_height: progress.current_height(),
                         target_height: progress.target_height(),
@@ -5713,13 +5982,13 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                         eta: progress.eta_seconds(),
                         stage: map_stage(progress.stage()),
                         last_checkpoint: progress.last_checkpoint(),
-                        blocks_per_second: perf.blocks_per_second,
-                        notes_decrypted: perf.notes_decrypted,
-                        last_batch_ms: perf.avg_batch_ms,
+                        blocks_per_second: perf_snapshot.blocks_per_second,
+                        notes_decrypted: perf_snapshot.notes_decrypted,
+                        last_batch_ms: perf_snapshot.avg_batch_ms,
                     })
                 };
 
-                let mut session = session_arc.write().await;
+                let mut session = session_arc.lock().await;
                 if let Some(status) = status_opt {
                     session.last_status = status;
                 }
@@ -5729,7 +5998,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 }
                 session.is_running = false;
             } else {
-                session_arc.write().await.is_running = false;
+                session_arc.lock().await.is_running = false;
             }
         }
     });
@@ -5746,7 +6015,7 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
     }; // sessions guard dropped here before any await points
     
     if let Some(session_arc) = session_arc_opt {
-        let cancel_opt = { session_arc.read().await.cancelled.clone() };
+        let cancel_opt = { session_arc.lock().await.cancelled.clone() };
         if let Some(cancelled) = cancel_opt {
             *cancelled.write().await = true;
             tracing::info!("Sync cancelled for wallet {}", wallet_id);
@@ -5773,11 +6042,20 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
             // #endregion
         } else {
             // Fall back to locking the engine if we don't have a cancel flag.
-            let session = session_arc.read().await;
-            if let Some(ref sync) = session.sync {
-                let engine = sync.lock().await;
-                engine.cancel().await;
-                tracing::info!("Sync cancelled for wallet {}", wallet_id);
+            let sync_opt = { session_arc.lock().await.sync.clone() };
+            if let Some(sync) = sync_opt {
+                let result = run_sync_engine_task(sync.clone(), |engine| {
+                    Box::pin(async move {
+                        engine.cancel().await;
+                        Ok(())
+                    })
+                })
+                .await;
+                if result.is_ok() {
+                    tracing::info!("Sync cancelled for wallet {}", wallet_id);
+                } else if let Err(e) = result {
+                    tracing::warn!("Failed to cancel sync for wallet {}: {}", wallet_id, e);
+                }
                 // #region agent log
                 {
                     use std::io::Write;
@@ -5801,7 +6079,7 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
                 // #endregion
             }
         }
-        if let Ok(mut session) = session_arc.try_write() {
+        if let Ok(mut session) = session_arc.try_lock() {
             session.is_running = false;
         }
     }
@@ -5814,7 +6092,7 @@ pub fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
     let sessions = SYNC_SESSIONS.read();
     
     if let Some(session_arc) = sessions.get(&wallet_id) {
-        if let Ok(session) = session_arc.try_read() {
+        if let Ok(session) = session_arc.try_lock() {
             return Ok(session.is_running);
         }
     }
@@ -5829,7 +6107,7 @@ pub fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
 use pirate_sync_lightd::{
     BackgroundSyncOrchestrator, BackgroundSyncConfig, BackgroundSyncMode,
 };
-use tokio::sync::RwLock as TokioRwLock;
+use tokio::sync::Mutex as TokioMutex;
 
 const WARM_WALLET_WINDOW_SECS: i64 = 7 * 24 * 60 * 60;
 const BG_SYNC_CURSOR_KEY: &str = "bg_rr_cursor";
@@ -5843,28 +6121,66 @@ const BG_SYNC_CURSOR_KEY: &str = "bg_rr_cursor";
 /// conflicts with foreground sync. The background sync will use the same
 /// wallet database and storage.
 pub async fn start_background_sync(wallet_id: WalletId, mode: Option<String>) -> Result<crate::models::BackgroundSyncResult> {
+    run_on_runtime(move || start_background_sync_inner(wallet_id, mode)).await
+}
+
+async fn start_background_sync_inner(
+    wallet_id: WalletId,
+    mode: Option<String>,
+) -> Result<crate::models::BackgroundSyncResult> {
     tracing::info!("Starting background sync for wallet {} with mode {:?}", wallet_id, mode);
     
     // Extract all needed data before async operations
-    let (birthday_height, endpoint) = {
+    let (birthday_height, endpoint_config) = {
         let wallet = get_wallet_meta(&wallet_id)?;
         let birthday_height = wallet.birthday_height;
-        let endpoint = get_lightd_endpoint(wallet_id.clone())?;
-        (birthday_height, endpoint)
+        let endpoint_config = get_lightd_endpoint_config(wallet_id.clone())?;
+        (birthday_height, endpoint_config)
+    };
+
+    let endpoint_url = endpoint_config.url();
+    let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
+    let tls_enabled = endpoint_config.use_tls;
+    let host = endpoint_config.host.clone();
+    let is_ip_address = host.parse::<std::net::IpAddr>().is_ok();
+    let tls_server_name = if tls_enabled {
+        if is_ip_address {
+            Some("lightd1.piratechain.com".to_string())
+        } else {
+            Some(host.clone())
+        }
+    } else {
+        None
+    };
+
+    let client_config = LightClientConfig {
+        endpoint: endpoint_url,
+        transport,
+        socks5_url,
+        tls: TlsConfig {
+            enabled: tls_enabled,
+            spki_pin: endpoint_config.tls_pin.clone(),
+            server_name: tls_server_name,
+        },
+        retry: RetryConfig::default(),
+        connect_timeout: std::time::Duration::from_secs(30),
+        request_timeout: std::time::Duration::from_secs(60),
+        allow_direct_fallback,
     };
     
     let network_type = wallet_network_type(&wallet_id)?;
     // Create sync engine for background sync
     let config = SyncConfig::default();
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
-    let sync_engine = SyncEngine::with_config(endpoint, birthday_height, config)
+    let client = LightClient::with_config(client_config);
+    let sync_engine = SyncEngine::with_client_and_config(client, birthday_height, config)
         .with_wallet(wallet_id.clone(), db_key, master_key, network_type)
         .map_err(|e| anyhow!("Failed to initialize background sync engine: {}", e))?;
     
     // Create orchestrator
     let bg_config = BackgroundSyncConfig::default();
     let orchestrator = BackgroundSyncOrchestrator::new(
-        Arc::new(TokioRwLock::new(sync_engine)),
+        Arc::new(TokioMutex::new(sync_engine)),
         bg_config
     );
     
@@ -5910,6 +6226,12 @@ pub async fn start_background_sync(wallet_id: WalletId, mode: Option<String>) ->
 /// Chooses the next wallet to sync based on recent usage and rotates fairly
 /// across wallets over successive runs.
 pub async fn start_background_sync_round_robin(
+    mode: Option<String>,
+) -> Result<crate::models::WalletBackgroundSyncResult> {
+    run_on_runtime(move || start_background_sync_round_robin_inner(mode)).await
+}
+
+async fn start_background_sync_round_robin_inner(
     mode: Option<String>,
 ) -> Result<crate::models::WalletBackgroundSyncResult> {
     ensure_wallet_registry_loaded()?;
@@ -5966,7 +6288,7 @@ pub async fn start_background_sync_round_robin(
     }
 
     let next_wallet_id = ordered[0].id.clone();
-    let result = start_background_sync(next_wallet_id.clone(), mode).await?;
+    let result = start_background_sync_inner(next_wallet_id.clone(), mode).await?;
 
     if let Err(e) = set_registry_setting(&registry_db, BG_SYNC_CURSOR_KEY, Some(&next_wallet_id)) {
         tracing::warn!(
@@ -5998,10 +6320,12 @@ pub async fn is_background_sync_needed(wallet_id: WalletId) -> Result<bool> {
     };
     
     if let Some(session_arc) = session_arc_opt {
-        let session = session_arc.read().await;
-        if let Some(ref sync) = session.sync {
-            let engine = sync.lock().await;
-            let progress_arc = engine.progress();
+        let sync_opt = { session_arc.lock().await.sync.clone() };
+        if let Some(sync) = sync_opt {
+            let progress_arc = {
+                let engine = sync.clone().lock_owned().await;
+                engine.progress()
+            };
             let progress = progress_arc.read().await;
             Ok(progress.current_height() < progress.target_height())
         } else {
@@ -6025,7 +6349,7 @@ pub fn get_recommended_background_sync_mode(_wallet_id: WalletId, minutes_since_
     // Use default config to determine mode
     let config = BackgroundSyncConfig::default();
     let temp_orchestrator = BackgroundSyncOrchestrator::new(
-        Arc::new(TokioRwLock::new(SyncEngine::new("dummy".to_string(), 0))),
+        Arc::new(TokioMutex::new(SyncEngine::new("dummy".to_string(), 0))),
         config
     );
     
@@ -6589,13 +6913,253 @@ fn parse_endpoint_url(url: &str) -> Result<(String, u16, bool)> {
 /// Set network tunnel mode
 pub fn set_tunnel(mode: TunnelMode) -> Result<()> {
     tracing::info!("Setting tunnel mode: {:?}", mode);
-    *TUNNEL_MODE.write() = mode;
+    *TUNNEL_MODE.write() = mode.clone();
+    // #region agent log
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let (mode_label, socks5_label) = match &mode {
+            TunnelMode::Tor => ("tor", "none".to_string()),
+            TunnelMode::I2p => ("i2p", "none".to_string()),
+            TunnelMode::Direct => ("direct", "none".to_string()),
+            TunnelMode::Socks5 { url } => ("socks5", redact_socks5_url(url)),
+        };
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_tunnel_set","timestamp":{},"location":"api.rs:{}", "message":"set_tunnel","data":{{"mode":"{}","socks5":"{}"}}}}"#,
+            ts,
+            line!(),
+            mode_label,
+            socks5_label
+        );
+    }
+    // #endregion
+    if let Ok(registry_db) = open_wallet_registry() {
+        if let Err(e) = persist_registry_tunnel_mode(&registry_db, &mode) {
+            tracing::warn!("Failed to persist tunnel mode: {}", e);
+            *PENDING_TUNNEL_MODE.write() = Some(mode.clone());
+        }
+    } else {
+        *PENDING_TUNNEL_MODE.write() = Some(mode.clone());
+    }
+    spawn_bootstrap_transport(mode);
     Ok(())
 }
 
 /// Get current tunnel mode
 pub fn get_tunnel() -> Result<TunnelMode> {
     Ok(TUNNEL_MODE.read().clone())
+}
+
+/// Bootstrap tunnel transport early (Tor/I2P/SOCKS5) without unlocking wallets.
+pub async fn bootstrap_tunnel(mode: TunnelMode) -> Result<()> {
+    let (transport, socks5_url, _) = tunnel_transport_config_for(&mode);
+    // #region agent log
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let (mode_label, socks5_label) = match &mode {
+            TunnelMode::Tor => ("tor", "none".to_string()),
+            TunnelMode::I2p => ("i2p", "none".to_string()),
+            TunnelMode::Direct => ("direct", "none".to_string()),
+            TunnelMode::Socks5 { url } => ("socks5", redact_socks5_url(url)),
+        };
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_tunnel_bootstrap","timestamp":{},"location":"api.rs:{}", "message":"bootstrap_tunnel","data":{{"mode":"{}","socks5":"{}"}}}}"#,
+            ts,
+            line!(),
+            mode_label,
+            socks5_label
+        );
+    }
+    // #endregion
+    pirate_sync_lightd::bootstrap_transport(transport, socks5_url)
+        .await
+        .map_err(|e| anyhow!("Failed to bootstrap transport: {}", e))?;
+    Ok(())
+}
+
+/// Shutdown any active transport manager (Tor/I2P/SOCKS5).
+pub async fn shutdown_transport() -> Result<()> {
+    // #region agent log
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_tunnel_shutdown","timestamp":{},"location":"api.rs:{}", "message":"shutdown_transport","data":{{}}}}"#,
+            ts,
+            line!()
+        );
+    }
+    // #endregion
+    pirate_sync_lightd::shutdown_transport().await;
+    Ok(())
+}
+
+/// Configure Tor bridge settings (Snowflake/obfs4/custom) for censorship circumvention.
+pub async fn set_tor_bridge_settings(
+    use_bridges: bool,
+    fallback_to_bridges: bool,
+    transport: String,
+    bridge_lines: Vec<String>,
+    transport_path: Option<String>,
+) -> Result<()> {
+    pirate_sync_lightd::client::set_tor_bridge_settings(
+        use_bridges,
+        fallback_to_bridges,
+        transport.clone(),
+        bridge_lines.clone(),
+        transport_path.clone(),
+    )?;
+
+    // #region agent log
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_tor_bridge_settings","timestamp":{},"location":"api.rs:{}", "message":"set_tor_bridge_settings","data":{{"use_bridges":{},"fallback_to_bridges":{},"transport":"{}","bridge_lines":{},"transport_path_set":{}}}}}"#,
+            ts,
+            line!(),
+            use_bridges,
+            fallback_to_bridges,
+            escape_json(&transport),
+            bridge_lines.len(),
+            transport_path.as_ref().map(|p| !p.trim().is_empty()).unwrap_or(false)
+        );
+    }
+    // #endregion
+
+    let current = TUNNEL_MODE.read().clone();
+    if matches!(current, TunnelMode::Tor) {
+        pirate_sync_lightd::bootstrap_transport(TransportMode::Tor, None)
+            .await
+            .map_err(|e| anyhow!("Failed to bootstrap transport: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Get current Tor bootstrap status for UI.
+pub async fn get_tor_status() -> Result<String> {
+    let status = pirate_sync_lightd::tor_status().await;
+    let payload = match status {
+        Some(pirate_sync_lightd::TorStatus::Ready) => {
+            "{\"status\":\"ready\"}".to_string()
+        }
+        Some(pirate_sync_lightd::TorStatus::Bootstrapping { progress, blocked }) => {
+            if let Some(blocked) = blocked {
+                format!(
+                    "{{\"status\":\"bootstrapping\",\"progress\":{},\"blocked\":\"{}\"}}",
+                    progress,
+                    escape_json(&blocked)
+                )
+            } else {
+                format!(
+                    "{{\"status\":\"bootstrapping\",\"progress\":{}}}",
+                    progress
+                )
+            }
+        }
+        Some(pirate_sync_lightd::TorStatus::Error(message)) => {
+            format!(
+                "{{\"status\":\"error\",\"error\":\"{}\"}}",
+                escape_json(&message)
+            )
+        }
+        Some(pirate_sync_lightd::TorStatus::NotStarted) | None => {
+            "{\"status\":\"not_started\"}".to_string()
+        }
+    };
+    Ok(payload)
+}
+
+/// Rotate Tor exit circuits for new streams and reconnect sync channels.
+pub async fn rotate_tor_exit() -> Result<()> {
+    pirate_sync_lightd::rotate_tor_exit()
+        .await
+        .map_err(|e| anyhow!("Failed to rotate Tor exit: {}", e))?;
+
+    // #region agent log
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_tor_exit_rotate","timestamp":{},"location":"api.rs:{}", "message":"tor_exit_rotate","data":{{}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+            ts,
+            line!()
+        );
+    }
+    // #endregion
+
+    let sessions: Vec<(WalletId, Arc<tokio::sync::Mutex<SyncSession>>)> = {
+        let sessions = SYNC_SESSIONS.read();
+        sessions
+            .iter()
+            .map(|(wallet_id, session)| (wallet_id.clone(), Arc::clone(session)))
+            .collect()
+    };
+
+    for (wallet_id, session_arc) in sessions {
+        let sync_opt = { session_arc.lock().await.sync.clone() };
+        if let Some(sync) = sync_opt {
+            let wallet_id_for_log = wallet_id.clone();
+            let result = run_sync_engine_task(sync.clone(), move |engine| {
+                Box::pin(async move {
+                    engine.disconnect().await;
+                    Ok(())
+                })
+            })
+            .await;
+            if let Err(e) = result {
+                tracing::warn!(
+                    "Failed to disconnect sync engine for {} after Tor exit rotation: {}",
+                    wallet_id_for_log,
+                    e
+                );
+            }
+        }
+    }
+
+    Ok(())
 }
 
 // ============================================================================
@@ -6822,10 +7386,18 @@ pub async fn fetch_transaction_memo(
     txid: String,
     output_index: Option<u32>,
 ) -> Result<Option<String>> {
+    run_on_runtime(move || fetch_transaction_memo_inner(wallet_id, txid, output_index)).await
+}
+
+async fn fetch_transaction_memo_inner(
+    wallet_id: WalletId,
+    txid: String,
+    output_index: Option<u32>,
+) -> Result<Option<String>> {
     tracing::info!("Fetching memo for transaction {} (output_index: {:?})", txid, output_index);
     
     // Extract all data from DB in a block scope to ensure repo is dropped before async
-    let (endpoint, account_id, ivk_by_output, output_indices, notes_with_memos, txid_array, txid_bytes) = {
+    let (endpoint_config, account_id, ivk_by_output, output_indices, notes_with_memos, txid_array, txid_bytes) = {
         // Open encrypted wallet DB
         let (_db, repo) = open_wallet_db_for(&wallet_id)?;
         
@@ -6914,7 +7486,7 @@ pub async fn fetch_transaction_memo(
         }
         
         // Extract all needed data before async operations
-        let endpoint = get_lightd_endpoint(wallet_id.clone())?;
+        let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
         let account_id = secret.account_id;
         // Collect all notes with memos before async operations
         let mut notes_with_memos = Vec::new();
@@ -6938,10 +7510,40 @@ pub async fn fetch_transaction_memo(
         // Return all extracted data (repo and _db are dropped here)
         (endpoint, account_id, ivk_by_output, output_indices, notes_with_memos, txid_array, txid_bytes)
     };
+
+    let endpoint_url = endpoint_config.url();
+    let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
+    let tls_enabled = endpoint_config.use_tls;
+    let host = endpoint_config.host.clone();
+    let is_ip_address = host.parse::<std::net::IpAddr>().is_ok();
+    let tls_server_name = if tls_enabled {
+        if is_ip_address {
+            Some("lightd1.piratechain.com".to_string())
+        } else {
+            Some(host.clone())
+        }
+    } else {
+        None
+    };
+
+    let client_config = LightClientConfig {
+        endpoint: endpoint_url,
+        transport,
+        socks5_url,
+        tls: TlsConfig {
+            enabled: tls_enabled,
+            spki_pin: endpoint_config.tls_pin.clone(),
+            server_name: tls_server_name,
+        },
+        retry: RetryConfig::default(),
+        connect_timeout: std::time::Duration::from_secs(30),
+        request_timeout: std::time::Duration::from_secs(60),
+        allow_direct_fallback,
+    };
     
     // Try validating stored memos
     for (idx, stored_memo, cmu_opt, ivk_bytes) in notes_with_memos {
-        let client = pirate_sync_lightd::LightClient::new(endpoint.clone());
+        let client = pirate_sync_lightd::LightClient::with_config(client_config.clone());
         
         match client.connect().await {
             Ok(_) => {
@@ -6987,7 +7589,7 @@ pub async fn fetch_transaction_memo(
     }
     
     // Memo not in database or validation failed, fetch and decrypt
-    let client = pirate_sync_lightd::LightClient::new(endpoint);
+    let client = pirate_sync_lightd::LightClient::with_config(client_config);
     client.connect().await
         .map_err(|e| anyhow!("Failed to connect to lightwalletd: {}", e))?;
     
@@ -7575,28 +8177,21 @@ pub fn get_checkpoint_details(_wallet_id: WalletId, height: u32) -> Result<Optio
 
 /// Test connection to a lightwalletd endpoint
 pub async fn test_node(url: String, tls_pin: Option<String>) -> Result<crate::models::NodeTestResult> {
+    run_on_runtime(move || test_node_inner(url, tls_pin)).await
+}
+
+async fn test_node_inner(
+    url: String,
+    tls_pin: Option<String>,
+) -> Result<crate::models::NodeTestResult> {
     use std::time::Instant;
     use pirate_sync_lightd::client::{LightClient, LightClientConfig, TransportMode};
     
     let start_time = Instant::now();
     
     // Extract all needed data before async context to ensure Send
-    let (transport, socks5_url) = {
-        let tunnel_mode = TUNNEL_MODE.read().clone();
-        tracing::info!("test_node: Using tunnel mode: {:?}", tunnel_mode);
-        match tunnel_mode {
-            TunnelMode::Tor => {
-                tracing::warn!("test_node: Tor mode requested but not fully implemented, falling back to Direct");
-                (TransportMode::Direct, None) // Force Direct for now since Tor isn't ready
-            },
-            TunnelMode::Socks5 { url: _ } => {
-                tracing::warn!("test_node: SOCKS5 mode requested but not fully implemented, falling back to Direct");
-                (TransportMode::Direct, None) // Force Direct for now since SOCKS5 isn't ready
-            },
-            TunnelMode::Direct => (TransportMode::Direct, None),
-        }
-    };
-    tracing::info!("test_node: Final transport mode: {:?}, endpoint: {}", transport, url);
+    let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
+    tracing::info!("test_node: Using transport mode: {:?}, endpoint: {}", transport, url);
     
     // Normalize endpoint URL - ensure it has the correct format for tonic
     // Tonic requires format: https://host:port or http://host:port
@@ -7677,6 +8272,7 @@ pub async fn test_node(url: String, tls_pin: Option<String>) -> Result<crate::mo
         retry: Default::default(),
         connect_timeout: std::time::Duration::from_secs(30),
         request_timeout: std::time::Duration::from_secs(60),
+        allow_direct_fallback,
     };
     
     let client = LightClient::with_config(config);

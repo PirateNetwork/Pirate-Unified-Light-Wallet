@@ -44,9 +44,10 @@ fi
 # Verify flutter_rust_bridge_codegen is available
 CARGO_BIN="${CARGO_HOME:-$HOME/.cargo}/bin"
 FRB_CODEGEN="$CARGO_BIN/flutter_rust_bridge_codegen"
+FRB_VERSION="${FRB_CODEGEN_VERSION:-2.11.1}"
 if [ ! -f "$FRB_CODEGEN" ]; then
     echo -e "${YELLOW}⚠️  flutter_rust_bridge_codegen not found, installing...${NC}"
-    cargo install flutter_rust_bridge_codegen --locked
+    cargo install flutter_rust_bridge_codegen --locked --version "$FRB_VERSION"
     FRB_CODEGEN="$CARGO_BIN/flutter_rust_bridge_codegen"
 fi
 
@@ -136,4 +137,6 @@ else
 fi
 
 echo -e "${GREEN}✅ Done!${NC}"
+
+
 

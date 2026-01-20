@@ -23,6 +23,32 @@ warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+sha256_file() {
+    local file="$1"
+    if command -v sha256sum &> /dev/null; then
+        sha256sum "$file" | awk '{print $1}'
+        return 0
+    fi
+    if command -v shasum &> /dev/null; then
+        shasum -a 256 "$file" | awk '{print $1}'
+        return 0
+    fi
+    error "Missing sha256sum/shasum to hash $file"
+}
+
+write_sha256() {
+    local file="$1"
+    if command -v sha256sum &> /dev/null; then
+        sha256sum "$file" > "$file.sha256"
+        return 0
+    fi
+    if command -v shasum &> /dev/null; then
+        shasum -a 256 "$file" > "$file.sha256"
+        return 0
+    fi
+    error "Missing sha256sum/shasum to write checksum for $file"
+}
+
 ARTIFACT="${1:-}"
 OUTPUT_DIR="${2:-$PROJECT_ROOT/dist/provenance}"
 
@@ -43,7 +69,7 @@ log "Generating provenance for: $ARTIFACT"
 # ============================================================================
 
 ARTIFACT_NAME=$(basename "$ARTIFACT")
-ARTIFACT_HASH=$(sha256sum "$ARTIFACT" | awk '{print $1}')
+ARTIFACT_HASH=$(sha256_file "$ARTIFACT")
 
 # Get Git info
 GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -52,8 +78,10 @@ GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 GIT_REMOTE=$(git config --get remote.origin.url 2>/dev/null || echo "unknown")
 
 # Get build environment
-BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || date +%s)}"
+BUILD_DATE=$(date -u -d "@$SOURCE_DATE_EPOCH" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || \
+    date -u -r "$SOURCE_DATE_EPOCH" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || \
+    date -u +"%Y-%m-%dT%H:%M:%SZ")
 BUILD_USER="${USER:-unknown}"
 BUILD_HOST="${HOSTNAME:-unknown}"
 
@@ -220,11 +248,10 @@ sed -i "s/{artifact}/$ARTIFACT_NAME/g" "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md" 2>
 log "Verification instructions created"
 
 # Generate checksum for provenance
-sha256sum "$OUTPUT_DIR/$ARTIFACT_NAME.provenance.json" > "$OUTPUT_DIR/$ARTIFACT_NAME.provenance.json.sha256"
+write_sha256 "$OUTPUT_DIR/$ARTIFACT_NAME.provenance.json"
 
 log "Provenance generation complete!"
 log "Output: $OUTPUT_DIR"
 log ""
 log "Files:"
 ls -lh "$OUTPUT_DIR"
-

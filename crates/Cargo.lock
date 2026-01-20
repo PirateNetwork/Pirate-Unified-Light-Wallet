@@ -275,6 +275,7 @@ dependencies = [
  "tor-netdoc",
  "tor-persist",
  "tor-proto",
+ "tor-ptmgr",
  "tor-rtcompat",
  "tracing",
  "void",
@@ -1276,7 +1277,7 @@ checksum = "357422a457ccb850dc8f1c1680e0670079560feaad6c2e247e3f345c4fab8a3f"
 dependencies = [
  "heck 0.5.0",
  "indexmap 2.12.1",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "proc-macro-crate 3.4.0",
  "proc-macro2",
  "quote",
@@ -3467,13 +3468,20 @@ name = "pirate-net"
 version = "0.1.0"
 dependencies = [
  "arti-client",
+ "directories",
+ "futures-util",
+ "http",
+ "http-body-util",
  "hyper",
+ "hyper-util",
+ "once_cell",
  "parking_lot",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-socks",
  "tonic",
  "tor-rtcompat",
  "tower 0.5.2",
@@ -3534,6 +3542,7 @@ dependencies = [
  "directories",
  "group",
  "hex",
+ "http",
  "incrementalmerkletree 0.5.1",
  "jubjub",
  "num_cpus",
@@ -3541,6 +3550,7 @@ dependencies = [
  "orchard",
  "parking_lot",
  "pirate-core",
+ "pirate-net",
  "pirate-params",
  "pirate-storage-sqlite",
  "prost 0.13.5",
@@ -3805,7 +3815,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.111",
@@ -3851,7 +3861,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -3888,9 +3898,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5228,6 +5238,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-socks"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d4770b8024672c1101b3f6733eab95b18007dbe0847a8afe341fcf79e06043f"
+dependencies = [
+ "either",
+ "futures-util",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-stream"
 version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5736,6 +5758,7 @@ dependencies = [
  "tor-netdoc",
  "tor-persist",
  "tor-proto",
+ "tor-protover",
  "tor-relay-selection",
  "tor-rtcompat",
  "tor-units",
@@ -6020,6 +6043,32 @@ checksum = "88cf099c5c91216c7d0a6b2d4c67bb18f0786ad8c8273063d6a45c51b49b40c2"
 dependencies = [
  "caret",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tor-ptmgr"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbc00185a99bc57adc381a7248842270e1deeb5b04067c67c2f8ddea54248c2d"
+dependencies = [
+ "async-trait",
+ "cfg-if",
+ "derive_builder_fork_arti",
+ "fs-mistrust",
+ "futures",
+ "itertools 0.13.0",
+ "oneshot-fused-workaround",
+ "serde",
+ "thiserror 1.0.69",
+ "tor-async-utils",
+ "tor-basic-utils",
+ "tor-chanmgr",
+ "tor-config",
+ "tor-error",
+ "tor-linkspec",
+ "tor-rtcompat",
+ "tor-socksproto",
+ "tracing",
 ]
 
 [[package]]

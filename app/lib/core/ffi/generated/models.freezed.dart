@@ -51,6 +51,7 @@ extension TunnelModePatterns on TunnelMode {
   @optionalTypeArgs
   TResult maybeMap<TResult extends Object?>({
     TResult Function(TunnelMode_Tor value)? tor,
+    TResult Function(TunnelMode_I2p value)? i2P,
     TResult Function(TunnelMode_Socks5 value)? socks5,
     TResult Function(TunnelMode_Direct value)? direct,
     required TResult orElse(),
@@ -59,6 +60,8 @@ extension TunnelModePatterns on TunnelMode {
     switch (_that) {
       case TunnelMode_Tor() when tor != null:
         return tor(_that);
+      case TunnelMode_I2p() when i2P != null:
+        return i2P(_that);
       case TunnelMode_Socks5() when socks5 != null:
         return socks5(_that);
       case TunnelMode_Direct() when direct != null:
@@ -84,6 +87,7 @@ extension TunnelModePatterns on TunnelMode {
   @optionalTypeArgs
   TResult map<TResult extends Object?>({
     required TResult Function(TunnelMode_Tor value) tor,
+    required TResult Function(TunnelMode_I2p value) i2P,
     required TResult Function(TunnelMode_Socks5 value) socks5,
     required TResult Function(TunnelMode_Direct value) direct,
   }) {
@@ -91,6 +95,8 @@ extension TunnelModePatterns on TunnelMode {
     switch (_that) {
       case TunnelMode_Tor():
         return tor(_that);
+      case TunnelMode_I2p():
+        return i2P(_that);
       case TunnelMode_Socks5():
         return socks5(_that);
       case TunnelMode_Direct():
@@ -113,6 +119,7 @@ extension TunnelModePatterns on TunnelMode {
   @optionalTypeArgs
   TResult? mapOrNull<TResult extends Object?>({
     TResult? Function(TunnelMode_Tor value)? tor,
+    TResult? Function(TunnelMode_I2p value)? i2P,
     TResult? Function(TunnelMode_Socks5 value)? socks5,
     TResult? Function(TunnelMode_Direct value)? direct,
   }) {
@@ -120,6 +127,8 @@ extension TunnelModePatterns on TunnelMode {
     switch (_that) {
       case TunnelMode_Tor() when tor != null:
         return tor(_that);
+      case TunnelMode_I2p() when i2P != null:
+        return i2P(_that);
       case TunnelMode_Socks5() when socks5 != null:
         return socks5(_that);
       case TunnelMode_Direct() when direct != null:
@@ -144,6 +153,7 @@ extension TunnelModePatterns on TunnelMode {
   @optionalTypeArgs
   TResult maybeWhen<TResult extends Object?>({
     TResult Function()? tor,
+    TResult Function()? i2P,
     TResult Function(String url)? socks5,
     TResult Function()? direct,
     required TResult orElse(),
@@ -152,6 +162,8 @@ extension TunnelModePatterns on TunnelMode {
     switch (_that) {
       case TunnelMode_Tor() when tor != null:
         return tor();
+      case TunnelMode_I2p() when i2P != null:
+        return i2P();
       case TunnelMode_Socks5() when socks5 != null:
         return socks5(_that.url);
       case TunnelMode_Direct() when direct != null:
@@ -177,6 +189,7 @@ extension TunnelModePatterns on TunnelMode {
   @optionalTypeArgs
   TResult when<TResult extends Object?>({
     required TResult Function() tor,
+    required TResult Function() i2P,
     required TResult Function(String url) socks5,
     required TResult Function() direct,
   }) {
@@ -184,6 +197,8 @@ extension TunnelModePatterns on TunnelMode {
     switch (_that) {
       case TunnelMode_Tor():
         return tor();
+      case TunnelMode_I2p():
+        return i2P();
       case TunnelMode_Socks5():
         return socks5(_that.url);
       case TunnelMode_Direct():
@@ -206,6 +221,7 @@ extension TunnelModePatterns on TunnelMode {
   @optionalTypeArgs
   TResult? whenOrNull<TResult extends Object?>({
     TResult? Function()? tor,
+    TResult? Function()? i2P,
     TResult? Function(String url)? socks5,
     TResult? Function()? direct,
   }) {
@@ -213,6 +229,8 @@ extension TunnelModePatterns on TunnelMode {
     switch (_that) {
       case TunnelMode_Tor() when tor != null:
         return tor();
+      case TunnelMode_I2p() when i2P != null:
+        return i2P();
       case TunnelMode_Socks5() when socks5 != null:
         return socks5(_that.url);
       case TunnelMode_Direct() when direct != null:
@@ -240,6 +258,26 @@ class TunnelMode_Tor extends TunnelMode {
   @override
   String toString() {
     return 'TunnelMode.tor()';
+  }
+}
+
+/// @nodoc
+
+class TunnelMode_I2p extends TunnelMode {
+  const TunnelMode_I2p() : super._();
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        (other.runtimeType == runtimeType && other is TunnelMode_I2p);
+  }
+
+  @override
+  int get hashCode => runtimeType.hashCode;
+
+  @override
+  String toString() {
+    return 'TunnelMode.i2P()';
   }
 }
 

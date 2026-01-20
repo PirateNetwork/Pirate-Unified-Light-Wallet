@@ -1108,14 +1108,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       wireObj.tag = 0;
       return;
     }
+    if (apiObj is TunnelMode_I2p) {
+      wireObj.tag = 1;
+      return;
+    }
     if (apiObj is TunnelMode_Socks5) {
       var pre_url = cst_encode_String(apiObj.url);
-      wireObj.tag = 1;
+      wireObj.tag = 2;
       wireObj.kind.Socks5.url = pre_url;
       return;
     }
     if (apiObj is TunnelMode_Direct) {
-      wireObj.tag = 2;
+      wireObj.tag = 3;
       return;
     }
   }
@@ -1601,6 +1605,21 @@ class RustLibWire implements BaseWire {
   late final _wire__crate__api__are_seed_screenshots_blocked =
       _wire__crate__api__are_seed_screenshots_blockedPtr
           .asFunction<void Function(int)>();
+
+  void wire__crate__api__bootstrap_tunnel(
+    int port_,
+    ffi.Pointer<wire_cst_tunnel_mode> mode,
+  ) {
+    return _wire__crate__api__bootstrap_tunnel(port_, mode);
+  }
+
+  late final _wire__crate__api__bootstrap_tunnelPtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Void Function(ffi.Int64, ffi.Pointer<wire_cst_tunnel_mode>)>>(
+      'frbgen_pirate_wallet_wire__crate__api__bootstrap_tunnel');
+  late final _wire__crate__api__bootstrap_tunnel =
+      _wire__crate__api__bootstrap_tunnelPtr
+          .asFunction<void Function(int, ffi.Pointer<wire_cst_tunnel_mode>)>();
 
   void wire__crate__api__broadcast_tx(
     int port_,
@@ -2681,6 +2700,17 @@ class RustLibWire implements BaseWire {
             ffi.Pointer<ffi.Uint32>,
           )>();
 
+  void wire__crate__api__get_tor_status(int port_) {
+    return _wire__crate__api__get_tor_status(port_);
+  }
+
+  late final _wire__crate__api__get_tor_statusPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+    'frbgen_pirate_wallet_wire__crate__api__get_tor_status',
+  );
+  late final _wire__crate__api__get_tor_status =
+      _wire__crate__api__get_tor_statusPtr.asFunction<void Function(int)>();
+
   void wire__crate__api__get_tunnel(int port_) {
     return _wire__crate__api__get_tunnel(port_);
   }
@@ -3257,6 +3287,17 @@ class RustLibWire implements BaseWire {
             ffi.Pointer<ffi.Uint32>,
           )>();
 
+  void wire__crate__api__rotate_tor_exit(int port_) {
+    return _wire__crate__api__rotate_tor_exit(port_);
+  }
+
+  late final _wire__crate__api__rotate_tor_exitPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+    'frbgen_pirate_wallet_wire__crate__api__rotate_tor_exit',
+  );
+  late final _wire__crate__api__rotate_tor_exit =
+      _wire__crate__api__rotate_tor_exitPtr.asFunction<void Function(int)>();
+
   void wire__crate__api__search_address_book(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -3419,6 +3460,45 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__set_panic_pinPtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
 
+  void wire__crate__api__set_tor_bridge_settings(
+    int port_,
+    bool use_bridges,
+    bool fallback_to_bridges,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> transport,
+    ffi.Pointer<wire_cst_list_String> bridge_lines,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> transport_path,
+  ) {
+    return _wire__crate__api__set_tor_bridge_settings(
+      port_,
+      use_bridges,
+      fallback_to_bridges,
+      transport,
+      bridge_lines,
+      transport_path,
+    );
+  }
+
+  late final _wire__crate__api__set_tor_bridge_settingsPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Bool,
+            ffi.Bool,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_String>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__set_tor_bridge_settings');
+  late final _wire__crate__api__set_tor_bridge_settings =
+      _wire__crate__api__set_tor_bridge_settingsPtr.asFunction<
+          void Function(
+            int,
+            bool,
+            bool,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_String>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>();
+
   void wire__crate__api__set_tunnel(
     int port_,
     ffi.Pointer<wire_cst_tunnel_mode> mode,
@@ -3457,6 +3537,17 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__set_wallet_birthday_heightPtr.asFunction<
           void Function(
               int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, int)>();
+
+  void wire__crate__api__shutdown_transport(int port_) {
+    return _wire__crate__api__shutdown_transport(port_);
+  }
+
+  late final _wire__crate__api__shutdown_transportPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+    'frbgen_pirate_wallet_wire__crate__api__shutdown_transport',
+  );
+  late final _wire__crate__api__shutdown_transport =
+      _wire__crate__api__shutdown_transportPtr.asFunction<void Function(int)>();
 
   void wire__crate__api__sign_tx(
     int port_,
@@ -4161,6 +4252,21 @@ final class wire_cst_list_prim_u_8_strict extends ffi.Struct {
   external int len;
 }
 
+final class wire_cst_TunnelMode_Socks5 extends ffi.Struct {
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> url;
+}
+
+final class TunnelModeKind extends ffi.Union {
+  external wire_cst_TunnelMode_Socks5 Socks5;
+}
+
+final class wire_cst_tunnel_mode extends ffi.Struct {
+  @ffi.Int32()
+  external int tag;
+
+  external TunnelModeKind kind;
+}
+
 final class wire_cst_signed_tx extends ffi.Struct {
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> txid;
 
@@ -4207,19 +4313,11 @@ final class wire_cst_lightd_endpoint extends ffi.Struct {
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> label;
 }
 
-final class wire_cst_TunnelMode_Socks5 extends ffi.Struct {
-  external ffi.Pointer<wire_cst_list_prim_u_8_strict> url;
-}
+final class wire_cst_list_String extends ffi.Struct {
+  external ffi.Pointer<ffi.Pointer<wire_cst_list_prim_u_8_strict>> ptr;
 
-final class TunnelModeKind extends ffi.Union {
-  external wire_cst_TunnelMode_Socks5 Socks5;
-}
-
-final class wire_cst_tunnel_mode extends ffi.Struct {
   @ffi.Int32()
-  external int tag;
-
-  external TunnelModeKind kind;
+  external int len;
 }
 
 final class wire_cst_pending_tx extends ffi.Struct {
@@ -4295,13 +4393,6 @@ final class wire_cst_watch_only_banner_info extends ffi.Struct {
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> subtitle;
 
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> icon;
-}
-
-final class wire_cst_list_String extends ffi.Struct {
-  external ffi.Pointer<ffi.Pointer<wire_cst_list_prim_u_8_strict>> ptr;
-
-  @ffi.Int32()
-  external int len;
 }
 
 final class wire_cst_address_balance_info extends ffi.Struct {

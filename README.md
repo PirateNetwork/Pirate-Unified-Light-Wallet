@@ -19,7 +19,35 @@ Prereqs:
 - Windows: install Rust + Flutter + VS Build Tools + OpenSSL.
 - Android: install Android Studio + SDK/NDK, then run `flutter doctor`.
 
-2) Generate bindings
+2) Fetch Tor/I2P assets (desktop builds only)
+
+The build scripts pull official Tor Browser bundles + i2pd, verify pinned hashes,
+extract Snowflake/obfs4, and bundle them into desktop builds.
+
+- macOS/Linux:
+```
+bash scripts/fetch-tor-i2p-assets.sh
+```
+
+- Windows (requires 7-Zip or set `SEVEN_ZIP_PATH`):
+```
+powershell -ExecutionPolicy Bypass -File scripts\fetch-tor-i2p-assets.ps1
+```
+
+Optional overrides (advanced):
+- Tor Browser:
+  - `TOR_BROWSER_VERSION` (default 15.0.4)
+  - `TOR_BROWSER_BASE_URL` (defaults to `https://dist.torproject.org/torbrowser/$TOR_BROWSER_VERSION`)
+  - `TOR_BROWSER_LINUX_URL` / `TOR_BROWSER_MACOS_URL` / `TOR_BROWSER_WINDOWS_URL`
+  - `TOR_BROWSER_LINUX_SHA256` / `TOR_BROWSER_MACOS_SHA256` / `TOR_BROWSER_WINDOWS_SHA256`
+- i2pd:
+  - `I2PD_VERSION` (default 2.58.0)
+  - `I2PD_BASE_URL`
+  - `I2PD_LINUX_AMD64_SHA512` / `I2PD_LINUX_ARM64_SHA512`
+  - `I2PD_MACOS_SHA512` / `I2PD_WINDOWS_SHA512`
+- Set `SKIP_TOR_I2P_FETCH=1` to skip fetching assets.
+
+3) Generate bindings
 
 From repo root:
 
@@ -27,7 +55,7 @@ From repo root:
 bash generate_ffi_bindings.sh
 ```
 
-3) Build Rust libs (multi-target)
+4) Build Rust libs (multi-target)
 
 - Windows (DLL):
 ```
@@ -43,7 +71,7 @@ or
 bash build-android-wsl.sh
 ```
 
-4) Build Flutter apps (multi-target)
+5) Build Flutter apps (multi-target)
 
 - Windows:
 ```
@@ -61,3 +89,30 @@ Outputs
 -------
 - Windows: `app/build/windows/x64/runner/Release/`
 - Android: `app/build/app/outputs/flutter-apk/`
+
+Reproducible Packaging Notes
+----------------------------
+- Windows MSIX packaging: requires `msix_config` in `app/pubspec.yaml`. Set
+  `MSIX_VERSION` to install a pinned `msix` tool if it is not already installed.
+- Linux AppImage packaging: install `appimagetool` or set `APPIMAGETOOL_URL` and
+  `APPIMAGETOOL_SHA256` to download a pinned binary.
+- Android: release builds are unsigned by default for reproducibility. Use
+  `scripts/build-android.sh <apk|bundle> true` to sign after building.
+- Set `REPRODUCIBLE=1` to force unsigned outputs (skip signing/notarization).
+
+Reproducible Toolchain Pins
+---------------------------
+- Rust: `1.90.0` (see `rust-toolchain.toml`)
+- Flutter: `3.24.3` (stable)
+- Java: `21`
+- Gradle: `8.11.1` (see `app/android/gradle/wrapper/gradle-wrapper.properties`)
+- Android build-tools: `34.0.0` (apksigner)
+- Android platform: `36`
+- CocoaPods: `1.16.2`
+- flutter_rust_bridge_codegen: `2.11.1`
+- Syft: `1.40.1`
+
+Verify versions:
+```
+scripts/verify-toolchain.sh
+```

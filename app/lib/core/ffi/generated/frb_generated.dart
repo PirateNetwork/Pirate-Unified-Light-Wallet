@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1389405564;
+  int get rustContentHash => -1087210657;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -93,6 +93,8 @@ abstract class RustLibApi extends BaseApi {
       {required String walletId, required String address});
 
   Future<bool> crateApiAreSeedScreenshotsBlocked();
+
+  Future<void> crateApiBootstrapTunnel({required TunnelMode mode});
 
   Future<String> crateApiBroadcastTx({required SignedTx signed});
 
@@ -245,6 +247,8 @@ abstract class RustLibApi extends BaseApi {
   Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs(
       {required String walletId, int? limit});
 
+  Future<String> crateApiGetTorStatus();
+
   Future<TunnelMode> crateApiGetTunnel();
 
   Future<String> crateApiGetVaultMode();
@@ -330,6 +334,8 @@ abstract class RustLibApi extends BaseApi {
       String? passphraseOpt,
       int? birthdayOpt});
 
+  Future<void> crateApiRotateTorExit();
+
   Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook(
       {required String walletId, required String query});
 
@@ -350,10 +356,19 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiSetPanicPin({required String pin});
 
+  Future<void> crateApiSetTorBridgeSettings(
+      {required bool useBridges,
+      required bool fallbackToBridges,
+      required String transport,
+      required List<String> bridgeLines,
+      String? transportPath});
+
   Future<void> crateApiSetTunnel({required TunnelMode mode});
 
   Future<void> crateApiSetWalletBirthdayHeight(
       {required String walletId, required int birthdayHeight});
+
+  Future<void> crateApiShutdownTransport();
 
   Future<SignedTx> crateApiSignTx(
       {required String walletId, required PendingTx pending});
@@ -519,6 +534,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "are_seed_screenshots_blocked",
         argNames: [],
+      );
+
+  @override
+  Future<void> crateApiBootstrapTunnel({required TunnelMode mode}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_box_autoadd_tunnel_mode(mode);
+        return wire.wire__crate__api__bootstrap_tunnel(port_, arg0);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_unit,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiBootstrapTunnelConstMeta,
+      argValues: [mode],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiBootstrapTunnelConstMeta => const TaskConstMeta(
+        debugName: "bootstrap_tunnel",
+        argNames: ["mode"],
       );
 
   @override
@@ -1835,6 +1872,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiGetTorStatus() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        return wire.wire__crate__api__get_tor_status(port_);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_String,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiGetTorStatusConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiGetTorStatusConstMeta => const TaskConstMeta(
+        debugName: "get_tor_status",
+        argNames: [],
+      );
+
+  @override
   Future<TunnelMode> crateApiGetTunnel() {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -2552,6 +2610,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiRotateTorExit() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        return wire.wire__crate__api__rotate_tor_exit(port_);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_unit,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiRotateTorExitConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiRotateTorExitConstMeta => const TaskConstMeta(
+        debugName: "rotate_tor_exit",
+        argNames: [],
+      );
+
+  @override
   Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook(
       {required String walletId, required String query}) {
     return handler.executeNormal(NormalTask(
@@ -2722,6 +2801,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiSetTorBridgeSettings(
+      {required bool useBridges,
+      required bool fallbackToBridges,
+      required String transport,
+      required List<String> bridgeLines,
+      String? transportPath}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_bool(useBridges);
+        var arg1 = cst_encode_bool(fallbackToBridges);
+        var arg2 = cst_encode_String(transport);
+        var arg3 = cst_encode_list_String(bridgeLines);
+        var arg4 = cst_encode_opt_String(transportPath);
+        return wire.wire__crate__api__set_tor_bridge_settings(
+            port_, arg0, arg1, arg2, arg3, arg4);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_unit,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiSetTorBridgeSettingsConstMeta,
+      argValues: [
+        useBridges,
+        fallbackToBridges,
+        transport,
+        bridgeLines,
+        transportPath
+      ],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSetTorBridgeSettingsConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_tor_bridge_settings",
+        argNames: [
+          "useBridges",
+          "fallbackToBridges",
+          "transport",
+          "bridgeLines",
+          "transportPath"
+        ],
+      );
+
+  @override
   Future<void> crateApiSetTunnel({required TunnelMode mode}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -2767,6 +2891,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "set_wallet_birthday_height",
         argNames: ["walletId", "birthdayHeight"],
+      );
+
+  @override
+  Future<void> crateApiShutdownTransport() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        return wire.wire__crate__api__shutdown_transport(port_);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_unit,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiShutdownTransportConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiShutdownTransportConstMeta => const TaskConstMeta(
+        debugName: "shutdown_transport",
+        argNames: [],
       );
 
   @override
@@ -3820,10 +3965,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 0:
         return TunnelMode_Tor();
       case 1:
+        return TunnelMode_I2p();
+      case 2:
         return TunnelMode_Socks5(
           url: dco_decode_String(raw[1]),
         );
-      case 2:
+      case 3:
         return TunnelMode_Direct();
       default:
         throw Exception("unreachable");
@@ -4711,9 +4858,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 0:
         return TunnelMode_Tor();
       case 1:
+        return TunnelMode_I2p();
+      case 2:
         var var_url = sse_decode_String(deserializer);
         return TunnelMode_Socks5(url: var_url);
-      case 2:
+      case 3:
         return TunnelMode_Direct();
       default:
         throw UnimplementedError('');
@@ -5516,11 +5665,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     switch (self) {
       case TunnelMode_Tor():
         sse_encode_i_32(0, serializer);
-      case TunnelMode_Socks5(url: final url):
+      case TunnelMode_I2p():
         sse_encode_i_32(1, serializer);
+      case TunnelMode_Socks5(url: final url):
+        sse_encode_i_32(2, serializer);
         sse_encode_String(url, serializer);
       case TunnelMode_Direct():
-        sse_encode_i_32(2, serializer);
+        sse_encode_i_32(3, serializer);
     }
   }
 

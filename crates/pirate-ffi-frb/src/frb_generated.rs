@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1389405564;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1087210657;
 
 // Section: executor
 
@@ -145,6 +145,30 @@ fn wire__crate__api__are_seed_screenshots_blocked_impl(
                         let output_ok = crate::api::are_seed_screenshots_blocked()?;
                         Ok(output_ok)
                     })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__bootstrap_tunnel_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    mode: impl CstDecode<crate::models::TunnelMode>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "bootstrap_tunnel",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_mode = mode.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::bootstrap_tunnel(api_mode).await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
                 )
             }
         },
@@ -1489,6 +1513,26 @@ fn wire__crate__api__get_sync_logs_impl(
         },
     )
 }
+fn wire__crate__api__get_tor_status_impl(port_: flutter_rust_bridge::for_generated::MessagePort) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_tor_status",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::get_tor_status().await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__get_tunnel_impl(port_: flutter_rust_bridge::for_generated::MessagePort) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -2215,6 +2259,26 @@ fn wire__crate__api__restore_wallet_impl(
         },
     )
 }
+fn wire__crate__api__rotate_tor_exit_impl(port_: flutter_rust_bridge::for_generated::MessagePort) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "rotate_tor_exit",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::rotate_tor_exit().await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__search_address_book_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -2397,6 +2461,45 @@ fn wire__crate__api__set_panic_pin_impl(
         },
     )
 }
+fn wire__crate__api__set_tor_bridge_settings_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    use_bridges: impl CstDecode<bool>,
+    fallback_to_bridges: impl CstDecode<bool>,
+    transport: impl CstDecode<String>,
+    bridge_lines: impl CstDecode<Vec<String>>,
+    transport_path: impl CstDecode<Option<String>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_tor_bridge_settings",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_use_bridges = use_bridges.cst_decode();
+            let api_fallback_to_bridges = fallback_to_bridges.cst_decode();
+            let api_transport = transport.cst_decode();
+            let api_bridge_lines = bridge_lines.cst_decode();
+            let api_transport_path = transport_path.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::set_tor_bridge_settings(
+                            api_use_bridges,
+                            api_fallback_to_bridges,
+                            api_transport,
+                            api_bridge_lines,
+                            api_transport_path,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__set_tunnel_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     mode: impl CstDecode<crate::models::TunnelMode>,
@@ -2443,6 +2546,28 @@ fn wire__crate__api__set_wallet_birthday_height_impl(
                         )?;
                         Ok(output_ok)
                     })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__shutdown_transport_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "shutdown_transport",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::shutdown_transport().await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
                 )
             }
         },
@@ -3788,10 +3913,13 @@ impl SseDecode for crate::models::TunnelMode {
                 return crate::models::TunnelMode::Tor;
             }
             1 => {
+                return crate::models::TunnelMode::I2p;
+            }
+            2 => {
                 let mut var_url = <String>::sse_decode(deserializer);
                 return crate::models::TunnelMode::Socks5 { url: var_url };
             }
-            2 => {
+            3 => {
                 return crate::models::TunnelMode::Direct;
             }
             _ => {
@@ -4489,10 +4617,11 @@ impl flutter_rust_bridge::IntoDart for crate::models::TunnelMode {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
             crate::models::TunnelMode::Tor => [0.into_dart()].into_dart(),
+            crate::models::TunnelMode::I2p => [1.into_dart()].into_dart(),
             crate::models::TunnelMode::Socks5 { url } => {
-                [1.into_dart(), url.into_into_dart().into_dart()].into_dart()
+                [2.into_dart(), url.into_into_dart().into_dart()].into_dart()
             }
-            crate::models::TunnelMode::Direct => [2.into_dart()].into_dart(),
+            crate::models::TunnelMode::Direct => [3.into_dart()].into_dart(),
             _ => {
                 unimplemented!("");
             }
@@ -5206,12 +5335,15 @@ impl SseEncode for crate::models::TunnelMode {
             crate::models::TunnelMode::Tor => {
                 <i32>::sse_encode(0, serializer);
             }
-            crate::models::TunnelMode::Socks5 { url } => {
+            crate::models::TunnelMode::I2p => {
                 <i32>::sse_encode(1, serializer);
+            }
+            crate::models::TunnelMode::Socks5 { url } => {
+                <i32>::sse_encode(2, serializer);
                 <String>::sse_encode(url, serializer);
             }
             crate::models::TunnelMode::Direct => {
-                <i32>::sse_encode(2, serializer);
+                <i32>::sse_encode(3, serializer);
             }
             _ => {
                 unimplemented!("");
@@ -5825,13 +5957,14 @@ mod io {
         fn cst_decode(self) -> crate::models::TunnelMode {
             match self.tag {
                 0 => crate::models::TunnelMode::Tor,
-                1 => {
+                1 => crate::models::TunnelMode::I2p,
+                2 => {
                     let ans = unsafe { self.kind.Socks5 };
                     crate::models::TunnelMode::Socks5 {
                         url: ans.url.cst_decode(),
                     }
                 }
-                2 => crate::models::TunnelMode::Direct,
+                3 => crate::models::TunnelMode::Direct,
                 _ => unreachable!(),
             }
         }
@@ -6382,6 +6515,14 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__bootstrap_tunnel(
+        port_: i64,
+        mode: *mut wire_cst_tunnel_mode,
+    ) {
+        wire__crate__api__bootstrap_tunnel_impl(port_, mode)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__broadcast_tx(
         port_: i64,
         signed: *mut wire_cst_signed_tx,
@@ -6843,6 +6984,11 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_tor_status(port_: i64) {
+        wire__crate__api__get_tor_status_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_tunnel(port_: i64) {
         wire__crate__api__get_tunnel_impl(port_)
     }
@@ -7088,6 +7234,11 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__rotate_tor_exit(port_: i64) {
+        wire__crate__api__rotate_tor_exit_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__search_address_book(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
@@ -7150,6 +7301,25 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_tor_bridge_settings(
+        port_: i64,
+        use_bridges: bool,
+        fallback_to_bridges: bool,
+        transport: *mut wire_cst_list_prim_u_8_strict,
+        bridge_lines: *mut wire_cst_list_String,
+        transport_path: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__set_tor_bridge_settings_impl(
+            port_,
+            use_bridges,
+            fallback_to_bridges,
+            transport,
+            bridge_lines,
+            transport_path,
+        )
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_tunnel(
         port_: i64,
         mode: *mut wire_cst_tunnel_mode,
@@ -7164,6 +7334,11 @@ mod io {
         birthday_height: u32,
     ) {
         wire__crate__api__set_wallet_birthday_height_impl(port_, wallet_id, birthday_height)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__shutdown_transport(port_: i64) {
+        wire__crate__api__shutdown_transport_impl(port_)
     }
 
     #[unsafe(no_mangle)]
@@ -8584,10 +8759,11 @@ mod web {
             let self_ = self.unchecked_into::<flutter_rust_bridge::for_generated::js_sys::Array>();
             match self_.get(0).unchecked_into_f64() as _ {
                 0 => crate::models::TunnelMode::Tor,
-                1 => crate::models::TunnelMode::Socks5 {
+                1 => crate::models::TunnelMode::I2p,
+                2 => crate::models::TunnelMode::Socks5 {
                     url: self_.get(1).cst_decode(),
                 },
-                2 => crate::models::TunnelMode::Direct,
+                3 => crate::models::TunnelMode::Direct,
                 _ => unreachable!(),
             }
         }
@@ -8868,6 +9044,14 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
     ) {
         wire__crate__api__are_seed_screenshots_blocked_impl(port_)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__bootstrap_tunnel(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        mode: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+    ) {
+        wire__crate__api__bootstrap_tunnel_impl(port_, mode)
     }
 
     #[wasm_bindgen]
@@ -9348,6 +9532,13 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__get_tor_status(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__get_tor_status_impl(port_)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__get_tunnel(port_: flutter_rust_bridge::for_generated::MessagePort) {
         wire__crate__api__get_tunnel_impl(port_)
     }
@@ -9599,6 +9790,13 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__rotate_tor_exit(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__rotate_tor_exit_impl(port_)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__search_address_book(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
@@ -9661,6 +9859,25 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__set_tor_bridge_settings(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        use_bridges: bool,
+        fallback_to_bridges: bool,
+        transport: String,
+        bridge_lines: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        transport_path: Option<String>,
+    ) {
+        wire__crate__api__set_tor_bridge_settings_impl(
+            port_,
+            use_bridges,
+            fallback_to_bridges,
+            transport,
+            bridge_lines,
+            transport_path,
+        )
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__set_tunnel(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         mode: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
@@ -9675,6 +9892,13 @@ mod web {
         birthday_height: u32,
     ) {
         wire__crate__api__set_wallet_birthday_height_impl(port_, wallet_id, birthday_height)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__shutdown_transport(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__shutdown_transport_impl(port_)
     }
 
     #[wasm_bindgen]

@@ -14,7 +14,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::io::Write;
-use tokio::sync::RwLock;
+use once_cell::sync::Lazy;
+use pirate_net::{
+    TransportManager as NetTransportManager,
+    TransportConfig as NetTransportConfig,
+    TransportMode as NetTransportMode,
+    Socks5Config as NetSocks5Config,
+    TorConfig as NetTorConfig,
+    TorBridgeConfig,
+    TorBridgeTransport,
+    I2pConfig as NetI2pConfig,
+    DnsConfig as NetDnsConfig,
+};
+use rand::Rng;
+use tokio::sync::{Mutex, RwLock};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tracing::{debug, error, info, warn};
 
@@ -74,6 +87,8 @@ pub enum TransportMode {
     /// Route through Tor (default, most private)
     #[default]
     Tor,
+    /// Route through I2P (desktop only)
+    I2p,
     /// Route through custom SOCKS5 proxy
     Socks5,
     /// Direct connection (NOT RECOMMENDED - exposes IP)
@@ -84,6 +99,86 @@ impl TransportMode {
     /// Check if this mode preserves privacy
     pub fn is_private(&self) -> bool {
         !matches!(self, Self::Direct)
+    }
+}
+
+struct GlobalTransportState {
+    manager: RwLock<Option<Arc<NetTransportManager>>>,
+}
+
+impl GlobalTransportState {
+    async fn get_or_init(&self, config: NetTransportConfig) -> Result<Arc<NetTransportManager>> {
+        let existing = {
+            let guard = self.manager.read().await;
+            guard.as_ref().map(Arc::clone)
+        };
+        if let Some(manager) = existing {
+            manager
+                .update_config(config)
+                .await
+                .map_err(map_net_error)?;
+            return Ok(manager);
+        }
+
+        let created = Arc::new(NetTransportManager::new(config.clone()).await.map_err(map_net_error)?);
+        let existing = {
+            let mut guard = self.manager.write().await;
+            if let Some(manager) = guard.as_ref() {
+                Some(Arc::clone(manager))
+            } else {
+                *guard = Some(Arc::clone(&created));
+                None
+            }
+        };
+
+        if let Some(manager) = existing {
+            manager
+                .update_config(config)
+                .await
+                .map_err(map_net_error)?;
+            Ok(manager)
+        } else {
+            Ok(created)
+        }
+    }
+
+    async fn get(&self) -> Option<Arc<NetTransportManager>> {
+        let manager = {
+            let guard = self.manager.read().await;
+            guard.as_ref().map(Arc::clone)
+        };
+        manager
+    }
+
+    async fn shutdown(&self) {
+        let manager = {
+            let mut guard = self.manager.write().await;
+            let manager = guard.as_ref().map(Arc::clone);
+            *guard = None;
+            manager
+        };
+        if let Some(manager) = manager {
+            manager.shutdown().await;
+        }
+    }
+}
+
+static GLOBAL_TRANSPORT: Lazy<GlobalTransportState> = Lazy::new(|| GlobalTransportState {
+    manager: RwLock::new(None),
+});
+
+static TOR_CONFIG_OVERRIDE: Lazy<std::sync::RwLock<Option<NetTorConfig>>> =
+    Lazy::new(|| std::sync::RwLock::new(None));
+
+pub fn set_tor_config_override(config: NetTorConfig) {
+    if let Ok(mut guard) = TOR_CONFIG_OVERRIDE.write() {
+        *guard = Some(config);
+    }
+}
+
+pub fn clear_tor_config_override() {
+    if let Ok(mut guard) = TOR_CONFIG_OVERRIDE.write() {
+        *guard = None;
     }
 }
 
@@ -113,7 +208,7 @@ impl Default for TlsConfig {
 pub struct LightClientConfig {
     /// Endpoint URL (e.g., "http://64.23.167.130:9067")
     pub endpoint: String,
-    /// Transport mode (Tor, SOCKS5, or Direct)
+    /// Transport mode (Tor, I2P, SOCKS5, or Direct)
     pub transport: TransportMode,
     /// SOCKS5 proxy URL (required if transport is Socks5)
     pub socks5_url: Option<String>,
@@ -125,6 +220,8 @@ pub struct LightClientConfig {
     pub connect_timeout: Duration,
     /// Request timeout
     pub request_timeout: Duration,
+    /// Legacy flag kept for compatibility (direct fallback is disabled).
+    pub allow_direct_fallback: bool,
 }
 
 impl Default for LightClientConfig {
@@ -137,6 +234,7 @@ impl Default for LightClientConfig {
             retry: RetryConfig::default(),
             connect_timeout: Duration::from_secs(30),
             request_timeout: Duration::from_secs(120),
+            allow_direct_fallback: false,
         }
     }
 }
@@ -188,6 +286,370 @@ impl LightClientConfig {
         self.tls.enabled = true;
         self
     }
+}
+
+fn map_net_error(err: pirate_net::Error) -> Error {
+    Error::Network(err.to_string())
+}
+
+fn build_transport_config(config: &LightClientConfig) -> Result<NetTransportConfig> {
+    build_transport_config_from_mode(config.transport, config.socks5_url.as_deref())
+}
+
+fn build_transport_config_from_mode(
+    mode: TransportMode,
+    socks5_url: Option<&str>,
+) -> Result<NetTransportConfig> {
+    let net_mode = match mode {
+        TransportMode::Tor => NetTransportMode::Tor,
+        TransportMode::I2p => NetTransportMode::I2p,
+        TransportMode::Socks5 => NetTransportMode::Socks5,
+        TransportMode::Direct => NetTransportMode::Direct,
+    };
+
+    let socks5 = if net_mode == NetTransportMode::Socks5 {
+        let url = socks5_url
+            .ok_or_else(|| Error::Connection("SOCKS5 URL required for SOCKS5 transport".to_string()))?;
+        Some(parse_socks5_url(url)?)
+    } else {
+        None
+    };
+
+    let mut tor = tor_config_from_env();
+    tor.enabled = net_mode == NetTransportMode::Tor;
+
+    let mut i2p = i2p_config_from_env();
+    i2p.enabled = net_mode == NetTransportMode::I2p;
+
+    let mut dns_config = NetDnsConfig::default();
+    match net_mode {
+        NetTransportMode::Socks5 => {
+            if let Some(ref proxy) = socks5 {
+                dns_config.tunnel_dns = true;
+                dns_config.socks_proxy = Some(proxy.proxy_url());
+            }
+        }
+        NetTransportMode::I2p => {
+            dns_config.tunnel_dns = true;
+            dns_config.socks_proxy = Some(format!("socks5h://{}:{}", i2p.address, i2p.socks_port));
+        }
+        NetTransportMode::Direct => {
+            dns_config.tunnel_dns = false;
+            dns_config.socks_proxy = None;
+        }
+        NetTransportMode::Tor => {
+            dns_config.tunnel_dns = false;
+            dns_config.socks_proxy = None;
+        }
+    }
+
+    Ok(NetTransportConfig {
+        mode: net_mode,
+        tor,
+        i2p,
+        socks5,
+        dns_config,
+    })
+}
+
+fn parse_socks5_url(url: &str) -> Result<NetSocks5Config> {
+    let trimmed = url.trim();
+    let uri: http::Uri = trimmed
+        .parse()
+        .map_err(|e| Error::Connection(format!("Invalid SOCKS5 URL '{}': {}", trimmed, e)))?;
+    if let Some(scheme) = uri.scheme_str() {
+        let scheme = scheme.to_lowercase();
+        if scheme != "socks5" && scheme != "socks5h" {
+            return Err(Error::Connection(format!(
+                "Unsupported SOCKS5 URL scheme '{}'",
+                scheme
+            )));
+        }
+    }
+    let host = uri
+        .host()
+        .ok_or_else(|| Error::Connection("SOCKS5 URL missing host".to_string()))?
+        .to_string();
+    let port = uri.port_u16().unwrap_or(1080);
+
+    let mut username = None;
+    let mut password = None;
+    if let Some(authority) = uri.authority() {
+        if let Some((userinfo, _)) = authority.as_str().rsplit_once('@') {
+            if let Some((user, pass)) = userinfo.split_once(':') {
+                if !user.is_empty() {
+                    username = Some(user.to_string());
+                }
+                if !pass.is_empty() {
+                    password = Some(pass.to_string());
+                }
+            } else if !userinfo.is_empty() {
+                username = Some(userinfo.to_string());
+            }
+        }
+    }
+
+    Ok(NetSocks5Config {
+        host,
+        port,
+        username,
+        password,
+    })
+}
+
+fn tor_config_from_env_raw() -> NetTorConfig {
+    let mut config = NetTorConfig::default();
+
+    if let Ok(value) = env::var("PIRATE_TOR_STATE_DIR") {
+        if !value.trim().is_empty() {
+            config.state_dir = PathBuf::from(value);
+        }
+    }
+    if let Ok(value) = env::var("PIRATE_TOR_CACHE_DIR") {
+        if !value.trim().is_empty() {
+            config.cache_dir = PathBuf::from(value);
+        }
+    }
+    if let Ok(value) = env::var("PIRATE_TOR_BOOTSTRAP_TIMEOUT_SECS") {
+        if let Ok(secs) = value.trim().parse::<u64>() {
+            config.bootstrap_timeout = Duration::from_secs(secs.max(1));
+        }
+    }
+    if let Ok(value) = env::var("PIRATE_TOR_CONNECT_TIMEOUT_SECS") {
+        if let Ok(secs) = value.trim().parse::<u64>() {
+            config.connect_timeout = Duration::from_secs(secs.max(1));
+        }
+    }
+    if let Ok(value) = env::var("PIRATE_TOR_DEBUG") {
+        config.debug = parse_bool_env(&value);
+    }
+    if let Ok(value) = env::var("PIRATE_TOR_USE_BRIDGES") {
+        config.use_bridges = parse_bool_env(&value);
+    }
+    if let Ok(value) = env::var("PIRATE_TOR_FALLBACK_BRIDGES") {
+        config.fallback_to_bridges = parse_bool_env(&value);
+    }
+
+    let bridge_lines = env::var("PIRATE_TOR_BRIDGE_LINES")
+        .ok()
+        .as_deref()
+        .map(split_list_env)
+        .unwrap_or_default();
+
+    if !bridge_lines.is_empty() {
+        let transport = match env::var("PIRATE_TOR_BRIDGE_TRANSPORT")
+            .unwrap_or_else(|_| "obfs4".to_string())
+            .to_lowercase()
+            .as_str()
+        {
+            "snowflake" => TorBridgeTransport::Snowflake,
+            "obfs4" => TorBridgeTransport::Obfs4,
+            custom => TorBridgeTransport::Custom(custom.to_string()),
+        };
+
+        let transport_path = env::var("PIRATE_TOR_BRIDGE_PATH")
+            .ok()
+            .and_then(|path| if path.trim().is_empty() { None } else { Some(PathBuf::from(path)) });
+
+        config.bridges = Some(TorBridgeConfig {
+            transport,
+            bridge_lines,
+            transport_path,
+        });
+    }
+
+    config
+}
+
+fn tor_config_from_env() -> NetTorConfig {
+    if let Ok(guard) = TOR_CONFIG_OVERRIDE.read() {
+        if let Some(config) = guard.clone() {
+            return config;
+        }
+    }
+    tor_config_from_env_raw()
+}
+
+pub fn set_tor_bridge_settings(
+    use_bridges: bool,
+    fallback_to_bridges: bool,
+    transport: String,
+    bridge_lines: Vec<String>,
+    transport_path: Option<String>,
+) -> Result<()> {
+    let mut config = tor_config_from_env_raw();
+    let normalized_transport = transport.trim().to_lowercase();
+
+    let mut bridge_lines = normalize_bridge_lines_input(bridge_lines);
+    if (use_bridges || fallback_to_bridges)
+        && bridge_lines.is_empty()
+        && normalized_transport == "snowflake"
+    {
+        bridge_lines = bundled_snowflake_bridges();
+    }
+
+    if use_bridges || fallback_to_bridges {
+        if bridge_lines.is_empty() {
+            config.use_bridges = false;
+            config.fallback_to_bridges = false;
+            config.bridges = None;
+        } else {
+            let transport = match normalized_transport.as_str() {
+                "obfs4" => TorBridgeTransport::Obfs4,
+                "snowflake" => TorBridgeTransport::Snowflake,
+                "" => TorBridgeTransport::Snowflake,
+                custom => TorBridgeTransport::Custom(custom.to_string()),
+            };
+            let path = transport_path
+                .as_ref()
+                .and_then(|value| {
+                    let trimmed = value.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(PathBuf::from(trimmed))
+                    }
+                });
+
+            config.use_bridges = use_bridges;
+            config.fallback_to_bridges = fallback_to_bridges;
+            config.bridges = Some(TorBridgeConfig {
+                transport,
+                bridge_lines,
+                transport_path: path,
+            });
+        }
+    } else {
+        config.use_bridges = false;
+        config.fallback_to_bridges = false;
+        config.bridges = None;
+    }
+
+    set_tor_config_override(config);
+    Ok(())
+}
+
+fn i2p_config_from_env() -> NetI2pConfig {
+    let mut config = NetI2pConfig::default();
+
+    if let Ok(value) = env::var("PIRATE_I2P_BINARY") {
+        if !value.trim().is_empty() {
+            config.binary_path = Some(PathBuf::from(value));
+        }
+    }
+    if let Ok(value) = env::var("PIRATE_I2P_DATA_DIR") {
+        if !value.trim().is_empty() {
+            config.data_dir = Some(PathBuf::from(value));
+        }
+    }
+    if let Ok(value) = env::var("PIRATE_I2P_ADDRESS") {
+        if !value.trim().is_empty() {
+            config.address = value;
+        }
+    }
+    if let Ok(value) = env::var("PIRATE_I2P_SOCKS_PORT") {
+        if let Ok(port) = value.trim().parse::<u16>() {
+            config.socks_port = port;
+        }
+    }
+    if let Ok(value) = env::var("PIRATE_I2P_EPHEMERAL") {
+        config.ephemeral = parse_bool_env(&value);
+    }
+    if let Ok(value) = env::var("PIRATE_I2P_STARTUP_TIMEOUT_SECS") {
+        if let Ok(secs) = value.trim().parse::<u64>() {
+            config.startup_timeout = Duration::from_secs(secs.max(1));
+        }
+    }
+    if let Ok(value) = env::var("PIRATE_I2P_EXTRA_ARGS") {
+        let extra_args = split_list_env(&value);
+        if !extra_args.is_empty() {
+            config.extra_args = extra_args;
+        }
+    }
+
+    config
+}
+
+fn parse_bool_env(value: &str) -> bool {
+    matches!(
+        value.trim().to_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+fn split_list_env(value: &str) -> Vec<String> {
+    value
+        .split(|c| c == ',' || c == ';' || c == '\n' || c == '\r')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn parse_bridge_lines(raw: &str) -> Vec<String> {
+    raw.lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .filter(|line| !line.starts_with('#') && !line.starts_with("//"))
+        .map(|line| line.to_string())
+        .collect()
+}
+
+fn normalize_bridge_lines_input(lines: Vec<String>) -> Vec<String> {
+    let mut normalized = parse_bridge_lines(&lines.join("\n"));
+    normalized.retain(|line| {
+        let lower = line.to_lowercase();
+        lower != "bridge snowflake" && lower != "snowflake"
+    });
+    normalized
+}
+
+fn bundled_snowflake_bridges() -> Vec<String> {
+    let raw = include_str!("../assets/tor/snowflake_bridges.txt");
+    parse_bridge_lines(raw)
+}
+
+fn jitter_duration(duration: Duration) -> Duration {
+    let millis = duration.as_millis() as u64;
+    if millis == 0 {
+        return duration;
+    }
+    let jitter = rand::thread_rng().gen_range(0.8..1.2);
+    let jittered = (millis as f64 * jitter) as u64;
+    Duration::from_millis(jittered.max(1))
+}
+
+/// Bootstrap transport early (Tor/I2P/SOCKS5) without touching wallet state.
+pub async fn bootstrap_transport(mode: TransportMode, socks5_url: Option<String>) -> Result<()> {
+    let config = build_transport_config_from_mode(mode, socks5_url.as_deref())?;
+    GLOBAL_TRANSPORT.get_or_init(config).await?;
+    Ok(())
+}
+
+/// Get current Tor status if transport manager is initialized.
+pub async fn tor_status() -> Option<pirate_net::TorStatus> {
+    let manager = GLOBAL_TRANSPORT.get().await?;
+    manager.tor_status().await
+}
+
+/// Rotate Tor exit circuits by isolating future streams.
+pub async fn rotate_tor_exit() -> Result<()> {
+    let manager = GLOBAL_TRANSPORT
+        .get()
+        .await
+        .ok_or_else(|| Error::Connection("Transport manager not initialized".to_string()))?;
+    manager.rotate_tor_exit().await.map_err(map_net_error)?;
+    Ok(())
+}
+
+/// Get current I2P status if transport manager is initialized.
+pub async fn i2p_status() -> Option<pirate_net::I2pStatus> {
+    let manager = GLOBAL_TRANSPORT.get().await?;
+    manager.i2p_status().await
+}
+
+/// Shutdown any active transport manager.
+pub async fn shutdown_transport() {
+    GLOBAL_TRANSPORT.shutdown().await;
 }
 
 /// Compact block data received from lightwalletd
@@ -460,7 +922,19 @@ pub struct TreeState {
 /// - Broadcast transactions
 pub struct LightClient {
     config: LightClientConfig,
-    channel: Arc<RwLock<Option<Channel>>>,
+    channel: Arc<Mutex<Option<Channel>>>,
+}
+
+#[allow(dead_code)]
+fn _assert_light_client_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<LightClient>();
+}
+
+#[allow(dead_code)]
+fn _assert_channel_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Channel>();
 }
 
 impl LightClient {
@@ -473,7 +947,7 @@ impl LightClient {
                 endpoint,
                 ..Default::default()
             },
-            channel: Arc::new(RwLock::new(None)),
+            channel: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -481,7 +955,7 @@ impl LightClient {
     pub fn with_config(config: LightClientConfig) -> Self {
         Self {
             config,
-            channel: Arc::new(RwLock::new(None)),
+            channel: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -493,7 +967,7 @@ impl LightClient {
                 retry: retry_config,
                 ..Default::default()
             },
-            channel: Arc::new(RwLock::new(None)),
+            channel: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -505,7 +979,7 @@ impl LightClient {
     /// Check if client is connected
     pub fn is_connected(&self) -> bool {
         // Channel exists (actual connectivity tested on RPC call)
-        self.channel.try_read().map(|g| g.is_some()).unwrap_or(false)
+        self.channel.try_lock().map(|g| g.is_some()).unwrap_or(false)
     }
 
     /// Connect to lightwalletd server with retry
@@ -517,7 +991,7 @@ impl LightClient {
             match self.try_connect().await {
                 Ok(channel) => {
                     info!("Connected to lightwalletd at {}", self.config.endpoint);
-                    *self.channel.write().await = Some(channel);
+                    *self.channel.lock().await = Some(channel);
                     return Ok(());
                 }
                 Err(e) => {
@@ -532,7 +1006,7 @@ impl LightClient {
                         attempt, backoff, e
                     );
 
-                    tokio::time::sleep(backoff).await;
+                    tokio::time::sleep(jitter_duration(backoff)).await;
 
                     backoff = std::cmp::min(
                         Duration::from_millis(
@@ -548,7 +1022,7 @@ impl LightClient {
 
     /// Disconnect from server
     pub async fn disconnect(&self) {
-        *self.channel.write().await = None;
+        *self.channel.lock().await = None;
         info!("Disconnected from lightwalletd");
     }
 
@@ -620,79 +1094,66 @@ impl LightClient {
                 })?;
         }
 
-        // Connect based on transport mode
-        match self.config.transport {
-            TransportMode::Direct => {
-                warn!("Using DIRECT connection - IP address exposed to server!");
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                    let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:501","message":"Direct connect attempt","data":{{"endpoint":"{}","tls_enabled":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#, 
-                        id, ts, endpoint_url, self.config.tls.enabled);
-                }
-                // #endregion
-                let result = endpoint.connect().await;
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                    let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:503","message":"Direct connect result","data":{{"success":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#, 
-                        id, ts, result.is_ok(), result.as_ref().err());
-                }
-                // #endregion
-                result.map_err(|e| {
-                    error!("Direct connection failed to {}: {:?}", endpoint_url, e);
-                    // Provide more detailed error information
-                    let error_msg = format!("{:?}", e);
-                    let error_str = format!("{}", e);
-                    
-                    // Check for certificate validation errors (common when connecting via IP)
-                    if error_msg.contains("certificate") || error_msg.contains("tls") || error_msg.contains("ssl") || 
-                       error_msg.contains("InvalidCertificate") || error_msg.contains("NotValidForName") ||
-                       error_str.contains("certificate") || error_str.contains("tls") || error_str.contains("ssl") {
-                        Error::Connection(format!("TLS/SSL certificate validation failed for {}: {}. This often happens when connecting via IP address because the server's certificate is issued for a hostname (e.g., lightd1.piratechain.com). Try using the hostname instead of the IP address, or ensure the certificate includes the IP in its SAN field.", endpoint_url, e))
-                    } else if error_msg.contains("timeout") || error_msg.contains("timed out") || error_str.contains("timeout") {
-                        Error::Connection(format!("Connection timeout to {}: {}. The server may be unreachable or firewall may be blocking.", endpoint_url, e))
-                    } else if error_msg.contains("refused") || error_msg.contains("connection refused") || error_str.contains("refused") {
-                        Error::Connection(format!("Connection refused by {}: {}. The server may be down or not accepting connections.", endpoint_url, e))
-                    } else if error_msg.contains("dns") || error_msg.contains("name resolution") || error_msg.contains("failed to lookup") || error_str.contains("dns") {
-                        Error::Connection(format!("DNS resolution failed for {}: {}. The hostname may not exist or DNS may be misconfigured. Try using the IP address directly.", endpoint_url, e))
-                    } else {
-                        // Log the full error for debugging
-                        error!("Full transport error details: {:?}", e);
-                        Error::Transport(e)
+        if self.config.transport == TransportMode::Direct {
+            warn!("Using DIRECT connection - IP address exposed to server!");
+        }
+
+        let transport_config = build_transport_config(&self.config)?;
+        let manager = GLOBAL_TRANSPORT.get_or_init(transport_config).await?;
+        let result = manager.create_grpc_channel(endpoint).await;
+
+        match result {
+            Ok(channel) => Ok(channel),
+            Err(e) => {
+                error!("Connection failed to {}: {}", endpoint_url, e);
+                let error_msg = e.to_string();
+
+                if matches!(self.config.transport, TransportMode::Direct) {
+                    let cleaned = error_msg.to_lowercase();
+                    if cleaned.contains("certificate")
+                        || cleaned.contains("tls")
+                        || cleaned.contains("ssl")
+                        || cleaned.contains("invalidcertificate")
+                        || cleaned.contains("notvalidforname")
+                    {
+                        return Err(Error::Connection(format!(
+                            "TLS/SSL certificate validation failed for {}: {}. This often happens when connecting via IP address because the server's certificate is issued for a hostname (e.g., lightd1.piratechain.com). Try using the hostname instead of the IP address, or ensure the certificate includes the IP in its SAN field.",
+                            endpoint_url, error_msg
+                        )));
                     }
-                })
-            }
-            TransportMode::Tor => {
-                // For Tor routing, we need a custom connector
-                // This requires hyper-socks2 or similar
-                // Tor routing requires pirate-net integration
-                warn!("Tor transport: Using direct connection (Tor connector requires pirate-net integration)");
-                // TODO: Integrate with pirate-net TorClient for proper Tor routing
-                // See: pirate-net/src/transport.rs create_grpc_channel
-                endpoint.connect().await.map_err(|e| {
-                    error!("Tor (fallback to direct) connection failed to {}: {:?}", endpoint_url, e);
-                    Error::Transport(e)
-                })
-            }
-            TransportMode::Socks5 => {
-                // SOCKS5 requires custom connector
-                let socks5_url = self.config.socks5_url.as_ref()
-                    .ok_or_else(|| Error::Connection("SOCKS5 URL required for SOCKS5 transport".to_string()))?;
-                warn!("SOCKS5 transport to {}: Using direct connection (SOCKS5 connector requires hyper-socks2)", socks5_url);
-                // TODO: Implement SOCKS5 connector
-                endpoint.connect().await.map_err(|e| {
-                    error!("SOCKS5 (fallback to direct) connection failed to {}: {:?}", endpoint_url, e);
-                    Error::Transport(e)
-                })
+                    if cleaned.contains("timeout") || cleaned.contains("timed out") {
+                        return Err(Error::Connection(format!(
+                            "Connection timeout to {}: {}. The server may be unreachable or firewall may be blocking.",
+                            endpoint_url, error_msg
+                        )));
+                    }
+                    if cleaned.contains("refused") || cleaned.contains("connection refused") {
+                        return Err(Error::Connection(format!(
+                            "Connection refused by {}: {}. The server may be down or not accepting connections.",
+                            endpoint_url, error_msg
+                        )));
+                    }
+                    if cleaned.contains("dns")
+                        || cleaned.contains("name resolution")
+                        || cleaned.contains("failed to lookup")
+                    {
+                        return Err(Error::Connection(format!(
+                            "DNS resolution failed for {}: {}. The hostname may not exist or DNS may be misconfigured. Try using the IP address directly.",
+                            endpoint_url, error_msg
+                        )));
+                    }
+                }
+
+                Err(Error::Connection(format!(
+                    "Transport connection failed: {}",
+                    error_msg
+                )))
             }
         }
     }
 
     async fn get_client(&self) -> Result<CompactTxStreamerClient<Channel>> {
-        let guard = self.channel.read().await;
+        let guard = self.channel.lock().await;
         let channel = guard.as_ref()
             .ok_or_else(|| Error::Connection("Not connected".to_string()))?
             .clone();
@@ -990,10 +1451,11 @@ impl LightClient {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
             
-            let request = tonic::Request::new(BlockId {
+            let mut request = tonic::Request::new(BlockId {
                 height,
                 hash: Vec::new(),
             });
+            request.set_timeout(self.config.request_timeout);
             
             let response = client.get_tree_state(request).await?;
             let tree_state = response.into_inner();
@@ -1033,10 +1495,11 @@ impl LightClient {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
             
-            let request = tonic::Request::new(BlockId {
+            let mut request = tonic::Request::new(BlockId {
                 height,
                 hash: Vec::new(),
             });
+            request.set_timeout(self.config.request_timeout);
             
             let response = client.get_bridge_tree_state(request).await?;
             let tree_state = response.into_inner();
@@ -1107,8 +1570,8 @@ impl LightClient {
     /// Execute operation with retry logic
     async fn with_retry<F, Fut, T>(&self, mut operation: F) -> Result<T>
     where
-        F: FnMut() -> Fut,
-        Fut: std::future::Future<Output = Result<T>>,
+        F: FnMut() -> Fut + Send,
+        Fut: std::future::Future<Output = Result<T>> + Send,
     {
         let mut attempt = 0;
         let mut backoff = self.config.retry.initial_backoff;
@@ -1127,7 +1590,7 @@ impl LightClient {
                         attempt, backoff, e
                     );
 
-                    tokio::time::sleep(backoff).await;
+                    tokio::time::sleep(jitter_duration(backoff)).await;
 
                     backoff = std::cmp::min(
                         Duration::from_millis(
@@ -1289,6 +1752,7 @@ mod tests {
     #[test]
     fn test_transport_mode_privacy() {
         assert!(TransportMode::Tor.is_private());
+        assert!(TransportMode::I2p.is_private());
         assert!(TransportMode::Socks5.is_private());
         assert!(!TransportMode::Direct.is_private());
     }

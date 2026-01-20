@@ -77,7 +77,9 @@ unknown-registry = "deny"
 unknown-git = "deny"
 
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+allow-git = [
+    "https://github.com/piratenetwork/librustzcash",
+]
 
 [sources.allow-org]
 # Allow specific GitHub orgs (for git dependencies)

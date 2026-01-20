@@ -31,11 +31,28 @@ fi
 
 # Reproducible build settings
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || date +%s)}"
+export TZ=UTC
 export FLUTTER_SUPPRESS_ANALYTICS=true
 export DART_SUPPRESS_ANALYTICS=true
+export CARGO_INCREMENTAL=0
 
 log "Building macOS universal DMG (reproducible)"
 log "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+
+normalize_mtime() {
+    local target="$1"
+    if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+        return 0
+    fi
+    local stamp
+    stamp="$(date -u -d "@$SOURCE_DATE_EPOCH" +"%Y%m%d%H%M.%S" 2>/dev/null || date -u -r "$SOURCE_DATE_EPOCH" +"%Y%m%d%H%M.%S")"
+    find "$target" -exec touch -t "$stamp" {} + 2>/dev/null || true
+}
+
+REPRODUCIBLE="${REPRODUCIBLE:-0}"
+
+log "Fetching Tor/I2P assets..."
+"$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 
 cd "$APP_DIR"
 
@@ -45,7 +62,7 @@ flutter clean
 
 # Get dependencies
 log "Fetching dependencies..."
-flutter pub get
+flutter pub get --enforce-lockfile
 
 # Build macOS app
 log "Building macOS app..."
@@ -59,6 +76,9 @@ fi
 
 # Sign the app if certificate is available
 SIGN="${1:-auto}"
+if [ "$REPRODUCIBLE" = "1" ]; then
+    SIGN=false
+fi
 if [ "$SIGN" = "auto" ]; then
     if security find-identity -v -p codesigning | grep -q "Developer ID Application"; then
         SIGN=true
@@ -96,6 +116,7 @@ mkdir -p "$PROJECT_ROOT/dist/macos"
 # Create temporary directory for DMG contents
 TMP_DMG_DIR=$(mktemp -d)
 cp -R "$APP_PATH" "$TMP_DMG_DIR/"
+normalize_mtime "$TMP_DMG_DIR"
 
 # Create symbolic link to Applications
 ln -s /Applications "$TMP_DMG_DIR/Applications"
@@ -121,6 +142,9 @@ fi
 
 # Notarize if credentials are available
 NOTARIZE="${MACOS_NOTARIZE:-false}"
+if [ "$REPRODUCIBLE" = "1" ]; then
+    NOTARIZE=false
+fi
 if [ "$NOTARIZE" = "true" ] && [ "$SIGN" = "true" ]; then
     log "Notarizing DMG..."
     
@@ -161,4 +185,3 @@ if [ "$SIGN" = "true" ]; then
         log "DMG is notarized and ready for distribution"
     fi
 fi
-

@@ -45,6 +45,10 @@ if [[ ! -d "$NDK_BIN" ]]; then
   exit 1
 fi
 
+if command -v rustup >/dev/null 2>&1; then
+  rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+fi
+
 if [[ "$NDK_HOME" == /* ]]; then
   export ANDROID_NDK_HOME="$(cygpath -w "$NDK_HOME")"
 else

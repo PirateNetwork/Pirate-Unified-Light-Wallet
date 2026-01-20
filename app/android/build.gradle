@@ -12,6 +12,12 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
+subprojects {
+    tasks.withType(AbstractArchiveTask).configureEach {
+        reproducibleFileOrder = true
+        preserveFileTimestamps = false
+    }
+}
 
 tasks.register("clean", Delete) {
     delete rootProject.buildDir

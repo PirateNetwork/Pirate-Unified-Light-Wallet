@@ -6,10 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'core/ffi/ffi_bridge.dart';
 import 'core/ffi/generated/frb_generated.dart';
 import 'design/theme.dart';
 import 'design/tokens/colors.dart';
 import 'features/settings/providers/preferences_providers.dart';
+import 'features/settings/providers/transport_providers.dart';
 import 'routes/app_router.dart';
 
 void main() async {
@@ -67,13 +69,58 @@ void main() async {
   );
 }
 
-class PirateWalletApp extends ConsumerWidget {
+class PirateWalletApp extends ConsumerStatefulWidget {
   const PirateWalletApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PirateWalletApp> createState() => _PirateWalletAppState();
+}
+
+class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
+    with WindowListener {
+  bool _closing = false;
+
+  bool get _isDesktop =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isDesktop) {
+      windowManager.addListener(this);
+      windowManager.setPreventClose(true);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_isDesktop) {
+      windowManager.removeListener(this);
+    }
+    super.dispose();
+  }
+
+  Future<void> _shutdownTransports() async {
+    try {
+      await FfiBridge.shutdownTransport()
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {}
+  }
+
+  @override
+  void onWindowClose() async {
+    if (_closing) return;
+    _closing = true;
+    await _shutdownTransports();
+    await windowManager.destroy();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeModeSetting = ref.watch(appThemeModeProvider);
+    // Trigger transport config load early so tunnel bootstrap can start pre-unlock.
+    ref.watch(transportConfigProvider);
     
     // Determine brightness based on theme mode
     // For system mode, we'll sync in the builder after MaterialApp is built

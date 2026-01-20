@@ -102,6 +102,22 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
+# Bundle Tor pluggable transport binaries (desktop-only).
+set(TOR_PT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tor-pt/windows")
+if(EXISTS "${TOR_PT_DIR}")
+  install(DIRECTORY "${TOR_PT_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/tor-pt"
+    COMPONENT Runtime)
+endif()
+
+# Bundle embedded I2P router binaries (desktop-only).
+set(I2P_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../i2p/windows")
+if(EXISTS "${I2P_DIR}")
+  install(DIRECTORY "${I2P_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/i2p"
+    COMPONENT Runtime)
+endif()
+
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
