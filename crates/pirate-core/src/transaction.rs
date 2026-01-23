@@ -2,27 +2,20 @@
 //!
 //! Integrates with zcash_primitives for proof generation and signing.
 
-use crate::{Error, Memo, Result};
-use crate::keys::{PaymentAddress, ExtendedSpendingKey};
-use crate::selection::{NoteSelector, SelectableNote, SelectionStrategy};
 use crate::fees::FeeCalculator;
+use crate::keys::{ExtendedSpendingKey, PaymentAddress};
 use crate::params::sapling_prover;
+use crate::selection::{NoteSelector, SelectableNote, SelectionStrategy};
+use crate::{Error, Memo, Result};
 use pirate_params::{Network, NetworkType};
 
+use incrementalmerkletree::MerklePath;
 use zcash_primitives::{
     consensus::{BlockHeight, NetworkUpgrade, Parameters},
-    sapling::{
-        Node as SaplingNode,
-        NOTE_COMMITMENT_TREE_DEPTH,
-    },
     memo::MemoBytes,
-    transaction::{
-        builder::Builder as TxBuilder,
-        components::Amount,
-        TxId,
-    },
+    sapling::{Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH},
+    transaction::{builder::Builder as TxBuilder, components::Amount, TxId},
 };
-use incrementalmerkletree::MerklePath;
 use zcash_proofs::prover::LocalTxProver;
 
 /// Pirate Chain network parameters
@@ -247,11 +240,7 @@ impl TransactionBuilder {
         // Recalculate fee with actual input count
         let actual_fee = match self.fee_override {
             Some(fee) => fee,
-            None => fee_calc.calculate_fee(
-                selection.notes.len(),
-                self.outputs.len(),
-                has_memo,
-            )?,
+            None => fee_calc.calculate_fee(selection.notes.len(), self.outputs.len(), has_memo)?,
         };
 
         // Calculate change
@@ -259,15 +248,13 @@ impl TransactionBuilder {
         let total_output = output_sum
             .checked_add(actual_fee)
             .ok_or_else(|| Error::AmountOverflow("Output + fee overflow".to_string()))?;
-        
-        let change = total_input
-            .checked_sub(total_output)
-            .ok_or_else(|| Error::InsufficientFunds(
-                format!("Need {} but have {}", total_output, total_input)
-            ))?;
+
+        let change = total_input.checked_sub(total_output).ok_or_else(|| {
+            Error::InsufficientFunds(format!("Need {} but have {}", total_output, total_input))
+        })?;
 
         Ok(PendingTransaction {
-            temp_id: format!("pending-{}", hex::encode(&rand::random::<[u8; 16]>())),
+            temp_id: format!("pending-{}", hex::encode(rand::random::<[u8; 16]>())),
             outputs: self.outputs.clone(),
             input_value: total_input,
             output_value: output_sum,
@@ -277,12 +264,6 @@ impl TransactionBuilder {
     }
 
     /// Build and sign transaction
-    /// 
-    /// Note: This is a simplified version. Full implementation requires:
-    /// - Witness tree for note commitments
-    /// - Proper spend proof generation
-    /// - Output note encryption
-    /// - Signature binding
     pub async fn build_and_sign(
         &self,
         spending_key: &ExtendedSpendingKey,
@@ -320,17 +301,15 @@ impl TransactionBuilder {
             .checked_add(actual_fee)
             .ok_or_else(|| Error::AmountOverflow("Output + fee overflow".to_string()))?;
 
-        let change = total_input
-            .checked_sub(total_output)
-            .ok_or_else(|| Error::InsufficientFunds(
-                format!("Need {} but have {}", total_output, total_input)
-            ))?;
+        let change = total_input.checked_sub(total_output).ok_or_else(|| {
+            Error::InsufficientFunds(format!("Need {} but have {}", total_output, total_input))
+        })?;
 
         let pending_outputs = self.outputs.clone();
 
         // Create prover from cached Sapling parameters (loaded once per process)
-        let mut prover: LocalTxProver = sapling_prover();
-        
+        let prover: LocalTxProver = sapling_prover();
+
         // Create transaction builder (Anchor is optional for Sapling-only)
         let mut tx_builder = TxBuilder::new(
             self.network.clone(),
@@ -340,17 +319,17 @@ impl TransactionBuilder {
 
         // Add Sapling spends with witness data
         for note in &selection.notes {
-            let diversifier = note
-                .diversifier
-                .ok_or_else(|| Error::TransactionBuild("Missing diversifier for note".to_string()))?;
+            let diversifier = note.diversifier.ok_or_else(|| {
+                Error::TransactionBuild("Missing diversifier for note".to_string())
+            })?;
             let sapling_note = note
                 .note
                 .clone()
                 .ok_or_else(|| Error::TransactionBuild("Missing Sapling note data".to_string()))?;
             let merkle_path: MerklePath<SaplingNode, { NOTE_COMMITMENT_TREE_DEPTH }> =
-                note.merkle_path
-                    .clone()
-                    .ok_or_else(|| Error::TransactionBuild("Missing Sapling witness path".to_string()))?;
+                note.merkle_path.clone().ok_or_else(|| {
+                    Error::TransactionBuild("Missing Sapling witness path".to_string())
+                })?;
 
             tx_builder
                 .add_sapling_spend(
@@ -359,7 +338,9 @@ impl TransactionBuilder {
                     sapling_note,
                     merkle_path,
                 )
-                .map_err(|e| Error::TransactionBuild(format!("Failed to add Sapling spend: {:?}", e)))?;
+                .map_err(|e| {
+                    Error::TransactionBuild(format!("Failed to add Sapling spend: {:?}", e))
+                })?;
         }
 
         // Add outputs
@@ -372,17 +353,20 @@ impl TransactionBuilder {
 
             tx_builder
                 .add_sapling_output(
-                    Some(ovk.clone()),
-                    output.address.inner.clone(),
+                    Some(ovk),
+                    output.address.inner,
                     Amount::from_i64(output.amount as i64)
                         .map_err(|_| Error::InvalidAmount("Amount out of range".to_string()))?,
                     memo_bytes,
                 )
-                .map_err(|e| Error::TransactionBuild(format!("Failed to add Sapling output: {:?}", e)))?;
+                .map_err(|e| {
+                    Error::TransactionBuild(format!("Failed to add Sapling output: {:?}", e))
+                })?;
         }
 
         // Add change output if needed
-        if change > 10_000 { // Dust threshold
+        if change > 10_000 {
+            // Dust threshold
             let change_addr = spending_key
                 .to_internal_fvk()
                 .derive_address(change_diversifier_index)
@@ -392,11 +376,14 @@ impl TransactionBuilder {
                 .add_sapling_output(
                     Some(ovk),
                     change_addr,
-                    Amount::from_i64(change as i64)
-                        .map_err(|_| Error::InvalidAmount("Change amount out of range".to_string()))?,
+                    Amount::from_i64(change as i64).map_err(|_| {
+                        Error::InvalidAmount("Change amount out of range".to_string())
+                    })?,
                     MemoBytes::empty(),
                 )
-                .map_err(|e| Error::TransactionBuild(format!("Failed to add change output: {:?}", e)))?;
+                .map_err(|e| {
+                    Error::TransactionBuild(format!("Failed to add change output: {:?}", e))
+                })?;
         }
 
         // Build transaction with fixed fee rule
@@ -404,14 +391,15 @@ impl TransactionBuilder {
         let fee_amount = Amount::from_u64(actual_fee)
             .map_err(|_| Error::InvalidAmount("Fee amount out of range".to_string()))?;
         let fee_rule = FeeRule::non_standard(fee_amount);
-        let (tx, _tx_metadata) = tx_builder
-            .build(&mut prover, &fee_rule)
-            .map_err(|e| Error::TransactionBuild(format!("Failed to build transaction: {:?}", e)))?;
+        let (tx, _tx_metadata) = tx_builder.build(&prover, &fee_rule).map_err(|e| {
+            Error::TransactionBuild(format!("Failed to build transaction: {:?}", e))
+        })?;
 
         // Serialize transaction to raw bytes
         let mut raw_tx = Vec::new();
-        tx.write(&mut raw_tx)
-            .map_err(|e| Error::TransactionBuild(format!("Failed to serialize transaction: {:?}", e)))?;
+        tx.write(&mut raw_tx).map_err(|e| {
+            Error::TransactionBuild(format!("Failed to serialize transaction: {:?}", e))
+        })?;
 
         let tx_size = raw_tx.len();
         let txid = tx.txid();
@@ -445,7 +433,7 @@ mod tests {
     fn test_add_output() {
         let mut builder = TransactionBuilder::new();
         let addr = PaymentAddress::test_address();
-        
+
         builder.add_output(addr, 100_000, None).unwrap();
         assert_eq!(builder.outputs.len(), 1);
     }
@@ -454,7 +442,7 @@ mod tests {
     fn test_add_output_zero_amount() {
         let mut builder = TransactionBuilder::new();
         let addr = PaymentAddress::test_address();
-        
+
         let result = builder.add_output(addr, 0, None);
         assert!(result.is_err());
     }
@@ -463,15 +451,13 @@ mod tests {
     fn test_build_pending() {
         let mut builder = TransactionBuilder::new();
         let addr = PaymentAddress::test_address();
-        
+
         builder.add_output(addr, 100_000, None).unwrap();
 
         // Create mock notes
-        let notes = vec![
-            SelectableNote::new(150_000, vec![], 0, vec![], 0),
-        ];
+        let notes = vec![SelectableNote::new(150_000, vec![], 0, vec![], 0)];
 
-        let pending = builder.build_pending(&notes).unwrap();
+        let pending = builder.build_pending(notes).unwrap();
         assert_eq!(pending.output_value, 100_000);
         assert!(pending.fee > 0);
         assert!(pending.change > 0);
@@ -481,15 +467,13 @@ mod tests {
     fn test_insufficient_funds() {
         let mut builder = TransactionBuilder::new();
         let addr = PaymentAddress::test_address();
-        
+
         builder.add_output(addr, 100_000, None).unwrap();
 
         // Create mock notes with insufficient value
-        let notes = vec![
-            SelectableNote::new(50_000, vec![], 0, vec![], 0),
-        ];
+        let notes = vec![SelectableNote::new(50_000, vec![], 0, vec![], 0)];
 
-        let result = builder.build_pending(&notes);
+        let result = builder.build_pending(notes);
         assert!(result.is_err());
     }
 }

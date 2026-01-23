@@ -4,9 +4,11 @@
 //! using Sapling key types from `zcash_primitives`.
 
 use crate::{Error, Result};
+use bech32::{Bech32, Hrp};
 use bip39::{Language, Mnemonic};
-use blake2s_simd::Params as Blake2sParams;
 use blake2b_simd::Params as Blake2bParams;
+use blake2s_simd::Params as Blake2sParams;
+use orchard::keys::{FullViewingKey as OrchardFullViewingKey, SpendingKey};
 use pirate_params::{Network, NetworkType};
 use zcash_client_backend::encoding::{
     decode_extended_full_viewing_key, decode_extended_spending_key, decode_payment_address,
@@ -21,16 +23,11 @@ use zcash_primitives::{
         keys::{NullifierDerivingKey, OutgoingViewingKey, SaplingIvk},
     },
     zip32::{
-        AccountId,
-        DiversifiableFullViewingKey,
-        DiversifierIndex,
-        Scope,
+        AccountId, DiversifiableFullViewingKey, DiversifierIndex,
         ExtendedFullViewingKey as SaplingExtendedFullViewingKey,
-        ExtendedSpendingKey as SaplingExtendedSpendingKey,
+        ExtendedSpendingKey as SaplingExtendedSpendingKey, Scope,
     },
 };
-use orchard::keys::{SpendingKey, FullViewingKey as OrchardFullViewingKey};
-use bech32::{Bech32, Hrp};
 
 /// PRF^Expand domain separator for ZIP-32 Orchard child key derivation
 const PRF_EXPAND_PERSONALIZATION: &[u8; 16] = b"Zcash_ExpandSeed";
@@ -144,15 +141,15 @@ impl ExtendedSpendingKey {
     }
 
     /// Generate new random mnemonic
-    /// 
+    ///
     /// # Arguments
     /// * `word_count` - Number of words in mnemonic (12, 18, or 24). Defaults to 24.
-    /// 
+    ///
     /// # Returns
     /// BIP39 mnemonic phrase with the specified number of words
     pub fn generate_mnemonic(word_count: Option<u32>) -> String {
         let word_count = word_count.unwrap_or(24);
-        
+
         // BIP39 entropy requirements:
         // 12 words = 128 bits = 16 bytes
         // 18 words = 192 bits = 24 bytes
@@ -166,13 +163,13 @@ impl ExtendedSpendingKey {
                 (32, 24)
             }
         };
-        
+
         let mut entropy = vec![0u8; entropy_size];
         use rand::RngCore;
         rand::thread_rng().fill_bytes(&mut entropy);
-        
-        let mnemonic = Mnemonic::from_entropy(&entropy)
-            .expect("Entropy should always produce valid mnemonic");
+
+        let mnemonic =
+            Mnemonic::from_entropy(&entropy).expect("Entropy should always produce valid mnemonic");
         mnemonic.to_string()
     }
 
@@ -215,15 +212,20 @@ impl ExtendedSpendingKey {
 
     /// Decode a Sapling extended spending key for any Pirate network.
     pub fn from_bech32_any(encoded: &str) -> Result<(Self, NetworkType)> {
-        for network in [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Regtest] {
-            if let Ok(extsk) = decode_extended_spending_key(
-                sapling_extsk_hrp_for_network(network),
-                encoded,
-            ) {
+        for network in [
+            NetworkType::Mainnet,
+            NetworkType::Testnet,
+            NetworkType::Regtest,
+        ] {
+            if let Ok(extsk) =
+                decode_extended_spending_key(sapling_extsk_hrp_for_network(network), encoded)
+            {
                 return Ok((Self { inner: extsk }, network));
             }
         }
-        Err(Error::InvalidKey("Invalid Sapling extended spending key".to_string()))
+        Err(Error::InvalidKey(
+            "Invalid Sapling extended spending key".to_string(),
+        ))
     }
 }
 
@@ -256,7 +258,9 @@ impl IncomingViewingKey {
     /// Import IVK from legacy string format (zxviews1... hex).
     pub fn from_string(ivk_str: &str) -> Result<Self> {
         if !ivk_str.starts_with("zxviews1") {
-            return Err(Error::InvalidKey("IVK must start with zxviews1".to_string()));
+            return Err(Error::InvalidKey(
+                "IVK must start with zxviews1".to_string(),
+            ));
         }
 
         let hex_part = &ivk_str[8..];
@@ -284,16 +288,13 @@ impl IncomingViewingKey {
             return Err(Error::InvalidKey("Invalid Sapling IVK HRP".to_string()));
         }
         if data.len() != 32 {
-            return Err(Error::InvalidKey("Sapling IVK must be 32 bytes".to_string()));
+            return Err(Error::InvalidKey(
+                "Sapling IVK must be 32 bytes".to_string(),
+            ));
         }
         let mut ivk_bytes = [0u8; 32];
         ivk_bytes.copy_from_slice(&data[..32]);
         Ok(Self { inner: ivk_bytes })
-    }
-
-    /// Export IVK as legacy string format (zxviews1... hex).
-    pub fn to_string(&self) -> String {
-        format!("zxviews1{}", hex::encode(self.inner))
     }
 
     /// Get the underlying Sapling IVK bytes for use with trial decryption
@@ -301,6 +302,12 @@ impl IncomingViewingKey {
     /// and can be used directly with sapling_crypto trial decryption functions
     pub fn to_sapling_ivk_bytes(&self) -> [u8; 32] {
         self.inner
+    }
+}
+
+impl std::fmt::Display for IncomingViewingKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "zxviews1{}", hex::encode(self.inner))
     }
 }
 
@@ -312,15 +319,25 @@ impl ExtendedFullViewingKey {
 
     /// Derive payment address at index
     pub fn derive_address(&self, index: u32) -> PaymentAddress {
-        let diversifier_index = DiversifierIndex::from(index);
-        let addr = self
-            .inner
-            .address(diversifier_index)
-            .unwrap_or_else(|| {
-                let (_diversifier_index, addr) = self.inner.default_address();
-                addr
-            });
-        PaymentAddress { inner: addr }
+        // Treat index as "nth valid address", not a raw diversifier index.
+        let mut search_index = DiversifierIndex::new();
+        let mut addr = None;
+
+        for _ in 0..=index {
+            let (found_index, found_addr) = self
+                .inner
+                .find_address(search_index)
+                .unwrap_or_else(|| self.inner.default_address());
+            addr = Some(found_addr);
+            search_index = found_index;
+            if search_index.increment().is_err() {
+                break;
+            }
+        }
+
+        PaymentAddress {
+            inner: addr.expect("diversifier space exhausted"),
+        }
     }
 
     /// Derive a payment address from a raw diversifier (11 bytes).
@@ -333,24 +350,32 @@ impl ExtendedFullViewingKey {
 
     /// Decode a Sapling extended full viewing key (xFVK) for the given network.
     pub fn from_xfvk_bech32_for_network(network: NetworkType, encoded: &str) -> Result<Self> {
-        let extfvk = decode_extended_full_viewing_key(sapling_extfvk_hrp_for_network(network), encoded)
-            .map_err(|_| Error::InvalidKey("Invalid Sapling extended viewing key".to_string()))?;
+        let extfvk =
+            decode_extended_full_viewing_key(sapling_extfvk_hrp_for_network(network), encoded)
+                .map_err(|_| {
+                    Error::InvalidKey("Invalid Sapling extended viewing key".to_string())
+                })?;
         let dfvk = DiversifiableFullViewingKey::from(extfvk);
         Ok(Self { inner: dfvk })
     }
 
     /// Decode a Sapling extended full viewing key (xFVK) for any Pirate network.
     pub fn from_xfvk_bech32_any(encoded: &str) -> Result<Self> {
-        for network in [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Regtest] {
-            if let Ok(extfvk) = decode_extended_full_viewing_key(
-                sapling_extfvk_hrp_for_network(network),
-                encoded,
-            ) {
+        for network in [
+            NetworkType::Mainnet,
+            NetworkType::Testnet,
+            NetworkType::Regtest,
+        ] {
+            if let Ok(extfvk) =
+                decode_extended_full_viewing_key(sapling_extfvk_hrp_for_network(network), encoded)
+            {
                 let dfvk = DiversifiableFullViewingKey::from(extfvk);
                 return Ok(Self { inner: dfvk });
             }
         }
-        Err(Error::InvalidKey("Invalid Sapling extended viewing key".to_string()))
+        Err(Error::InvalidKey(
+            "Invalid Sapling extended viewing key".to_string(),
+        ))
     }
 
     /// Export as incoming viewing key (IVK)
@@ -360,22 +385,20 @@ impl ExtendedFullViewingKey {
     pub fn to_ivk(&self) -> IncomingViewingKey {
         // Get the underlying Sapling FullViewingKey from the DFVK (Pirate fork provides fvk()).
         let fvk: &FullViewingKey = self.inner.fvk();
-        
+
         // Serialize FullViewingKey to bytes (96 bytes: 32 ak + 32 nk + 32 ovk)
         let mut fvk_bytes = Vec::new();
         fvk.write(&mut fvk_bytes)
             .expect("FullViewingKey should serialize to 96 bytes");
-        
+
         // Extract ak (first 32 bytes) and nk (next 32 bytes) from serialized FVK
         // FullViewingKey serialization: ak (32 bytes) || nk (32 bytes) || ovk (32 bytes)
         if fvk_bytes.len() < 64 {
             panic!("FullViewingKey serialization should be at least 64 bytes");
         }
-        let ak: [u8; 32] = fvk_bytes[0..32].try_into()
-            .expect("ak should be 32 bytes");
-        let nk: [u8; 32] = fvk_bytes[32..64].try_into()
-            .expect("nk should be 32 bytes");
-        
+        let ak: [u8; 32] = fvk_bytes[0..32].try_into().expect("ak should be 32 bytes");
+        let nk: [u8; 32] = fvk_bytes[32..64].try_into().expect("nk should be 32 bytes");
+
         // Compute IVK using CRH_IVK: IVK = CRH(ak || nk)
         // This matches the implementation in pirate/src/rust/src/sapling/spec.rs::crh_ivk
         let mut h = Blake2sParams::new()
@@ -384,12 +407,15 @@ impl ExtendedFullViewingKey {
             .to_state();
         h.update(&ak);
         h.update(&nk);
-        let mut ivk_bytes: [u8; 32] = h.finalize().as_ref().try_into()
+        let mut ivk_bytes: [u8; 32] = h
+            .finalize()
+            .as_ref()
+            .try_into()
             .expect("Blake2s output should be 32 bytes");
-        
+
         // Drop the last five bits, so it can be interpreted as a scalar.
         ivk_bytes[31] &= 0b0000_0111;
-        
+
         IncomingViewingKey { inner: ivk_bytes }
     }
 
@@ -524,7 +550,9 @@ impl OrchardPaymentAddress {
 
         let hrp_str = hrp.as_str();
         if hrp_str != "pirate" && hrp_str != "pirate-test" && hrp_str != "pirate-regtest" {
-            return Err(Error::InvalidAddress("Invalid Orchard address HRP".to_string()));
+            return Err(Error::InvalidAddress(
+                "Invalid Orchard address HRP".to_string(),
+            ));
         }
 
         let raw: [u8; 43] = data
@@ -546,7 +574,7 @@ impl OrchardPaymentAddress {
 }
 
 /// Orchard extended spending key
-/// 
+///
 /// Derived from master seed using ZIP-32 Orchard key derivation.
 /// Path: m/32'/coin_type'/account'
 #[derive(Clone, Debug)]
@@ -565,7 +593,7 @@ pub struct OrchardExtendedSpendingKey {
 
 impl OrchardExtendedSpendingKey {
     /// Derive master Orchard spending key from seed bytes
-    /// 
+    ///
     /// Uses ZIP-32 Orchard master key generation:
     /// I := BLAKE2b-512("ZcashIP32Orchard", seed)
     /// sk_m := I[0..32]
@@ -576,22 +604,26 @@ impl OrchardExtendedSpendingKey {
         }
 
         const ZIP32_ORCHARD_PERSONALIZATION: &[u8; 16] = b"ZcashIP32Orchard";
-        
+
         // I := BLAKE2b-512("ZcashIP32Orchard", seed)
-        let i: [u8; 64] = {
-            let mut hasher = Blake2bParams::new()
-                .hash_length(64)
-                .personal(ZIP32_ORCHARD_PERSONALIZATION)
-                .to_state();
-            hasher.update(seed);
-            hasher.finalize().as_bytes().try_into()
-                .map_err(|_| Error::InvalidKey("Failed to derive Orchard master key".to_string()))?
-        };
+        let i: [u8; 64] =
+            {
+                let mut hasher = Blake2bParams::new()
+                    .hash_length(64)
+                    .personal(ZIP32_ORCHARD_PERSONALIZATION)
+                    .to_state();
+                hasher.update(seed);
+                hasher.finalize().as_bytes().try_into().map_err(|_| {
+                    Error::InvalidKey("Failed to derive Orchard master key".to_string())
+                })?
+            };
 
         // I_L is used as the master spending key sk_m
         let sk_m = SpendingKey::from_bytes(i[..32].try_into().unwrap());
         if sk_m.is_none().into() {
-            return Err(Error::InvalidKey("Invalid Orchard spending key from seed".to_string()));
+            return Err(Error::InvalidKey(
+                "Invalid Orchard spending key from seed".to_string(),
+            ));
         }
         let sk_m = sk_m.unwrap();
 
@@ -609,41 +641,48 @@ impl OrchardExtendedSpendingKey {
     }
 
     /// Derive a child key at the given hardened index
-    /// 
+    ///
     /// Uses ZIP-32 Orchard child key derivation:
     /// I := PRF^Expand(c_par, [0x81] || sk_par || I2LEOSP(i))
     /// sk_i := I[0..32]
     /// c_i := I[32..64]
-    /// 
+    ///
     /// The index must be < 2^31 (non-hardened). It will be automatically hardened
     /// by adding 2^31 (ZIP32 hardened index).
     pub fn derive_child(&self, index: u32) -> Result<Self> {
         if index >= (1u32 << 31) {
-            return Err(Error::InvalidKey(format!("Child index {} must be < 2^31", index)));
+            return Err(Error::InvalidKey(format!(
+                "Child index {} must be < 2^31",
+                index
+            )));
         }
-        
+
         // Automatically harden the index (add 2^31)
         let hardened_index = index | (1u32 << 31);
 
         // I := PRF^Expand(c_par, [0x81] || sk_par || I2LEOSP(i))
         // PRF^Expand(sk, dst, t) := BLAKE2b-512("Zcash_ExpandSeed", sk || dst || t)
-        let i: [u8; 64] = {
-            let mut hasher = Blake2bParams::new()
-                .hash_length(64)
-                .personal(PRF_EXPAND_PERSONALIZATION)
-                .to_state();
-            hasher.update(&self.chain_code);
-            hasher.update(&[ZIP32_ORCHARD_CHILD_DOMAIN]);
-            hasher.update(self.inner.to_bytes());
-            hasher.update(&hardened_index.to_le_bytes());
-            hasher.finalize().as_bytes().try_into()
-                .map_err(|_| Error::InvalidKey("Failed to derive Orchard child key".to_string()))?
-        };
+        let i: [u8; 64] =
+            {
+                let mut hasher = Blake2bParams::new()
+                    .hash_length(64)
+                    .personal(PRF_EXPAND_PERSONALIZATION)
+                    .to_state();
+                hasher.update(&self.chain_code);
+                hasher.update(&[ZIP32_ORCHARD_CHILD_DOMAIN]);
+                hasher.update(self.inner.to_bytes());
+                hasher.update(&hardened_index.to_le_bytes());
+                hasher.finalize().as_bytes().try_into().map_err(|_| {
+                    Error::InvalidKey("Failed to derive Orchard child key".to_string())
+                })?
+            };
 
         // I_L is used as the child spending key sk_i
         let sk_i = SpendingKey::from_bytes(i[..32].try_into().unwrap());
         if sk_i.is_none().into() {
-            return Err(Error::InvalidKey("Invalid Orchard child spending key".to_string()));
+            return Err(Error::InvalidKey(
+                "Invalid Orchard child spending key".to_string(),
+            ));
         }
         let sk_i = sk_i.unwrap();
 
@@ -664,21 +703,21 @@ impl OrchardExtendedSpendingKey {
     }
 
     /// Derive account-level key from master using path m/32'/coin_type'/account'
-    /// 
+    ///
     /// Derivation path:
     /// - m/32' (ZIP32 purpose, hardened)
     /// - m/32'/coin_type' (BIP-44 coin type, hardened)
     /// - m/32'/coin_type'/account' (account index, hardened)
     pub fn derive_account(&self, coin_type: u32, account: u32) -> Result<Self> {
         const ZIP32_PURPOSE: u32 = 32;
-        
+
         // derive_child expects non-hardened indices (< 2^31) and handles hardening internally
         // Derive m/32' (hardened)
         let purpose_key = self.derive_child(ZIP32_PURPOSE)?;
-        
+
         // Derive m/32'/coin_type' (hardened)
         let coin_type_key = purpose_key.derive_child(coin_type)?;
-        
+
         // Derive m/32'/coin_type'/account' (hardened)
         coin_type_key.derive_child(account)
     }
@@ -714,9 +753,7 @@ impl OrchardExtendedSpendingKey {
 
         let depth = bytes[0];
         let parent_fvk_tag = [bytes[1], bytes[2], bytes[3], bytes[4]];
-        let child_index = u32::from_le_bytes([
-            bytes[5], bytes[6], bytes[7], bytes[8],
-        ]);
+        let child_index = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&bytes[9..41]);
         let sk_bytes: [u8; 32] = bytes[41..73]
@@ -748,9 +785,7 @@ impl OrchardExtendedSpendingKey {
 
         // Fallback to legacy serialization (depth | child_index | chain_code | sk)
         let depth = bytes[0];
-        let child_index = u32::from_le_bytes([
-            bytes[1], bytes[2], bytes[3], bytes[4],
-        ]);
+        let child_index = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&bytes[5..37]);
         let sk_bytes: [u8; 32] = bytes[37..69]
@@ -759,7 +794,9 @@ impl OrchardExtendedSpendingKey {
 
         let sk = SpendingKey::from_bytes(sk_bytes);
         if sk.is_none().into() {
-            return Err(Error::InvalidKey("Invalid Orchard spending key bytes".to_string()));
+            return Err(Error::InvalidKey(
+                "Invalid Orchard spending key bytes".to_string(),
+            ));
         }
         let sk = sk.unwrap();
         let parent_fvk_tag = if depth == 0 {
@@ -786,7 +823,11 @@ impl OrchardExtendedSpendingKey {
             "pirate-secret-extended-key" => NetworkType::Mainnet,
             "pirate-secret-extended-key-test" => NetworkType::Testnet,
             "pirate-secret-extended-key-regtest" => NetworkType::Regtest,
-            _ => return Err(Error::InvalidKey("Invalid Orchard extended spending key HRP".to_string())),
+            _ => {
+                return Err(Error::InvalidKey(
+                    "Invalid Orchard extended spending key HRP".to_string(),
+                ))
+            }
         };
         let key = Self::from_bytes(&bytes)?;
         Ok((key, network))
@@ -839,7 +880,7 @@ impl OrchardExtendedFullViewingKey {
     }
 
     /// Derive Orchard incoming viewing key (IVK) from full viewing key
-    /// 
+    ///
     /// The IVK allows viewing incoming transactions but not spending.
     /// Returns 64 bytes (Orchard IVK format).
     pub fn to_ivk_bytes(&self) -> [u8; 64] {
@@ -871,8 +912,9 @@ impl OrchardExtendedFullViewingKey {
         data.write_all(&self.chain_code)?;
 
         // Serialize Orchard Full Viewing Key (ak || nk || rivk)
-        self.inner.write(&mut data)
-            .map_err(|e| Error::InvalidKey(format!("Failed to serialize Orchard FullViewingKey: {}", e)))?;
+        self.inner.write(&mut data).map_err(|e| {
+            Error::InvalidKey(format!("Failed to serialize Orchard FullViewingKey: {}", e))
+        })?;
 
         let hrp = Hrp::parse(orchard_extfvk_hrp_for_network(network))
             .map_err(|e| Error::InvalidKey(format!("Invalid HRP: {}", e)))?;
@@ -910,7 +952,9 @@ impl OrchardExtendedFullViewingKey {
             && hrp_str != "pirate-extended-viewing-key-test"
             && hrp_str != "pirate-extended-viewing-key-regtest"
         {
-            return Err(Error::InvalidKey("Invalid Orchard extended viewing key HRP".to_string()));
+            return Err(Error::InvalidKey(
+                "Invalid Orchard extended viewing key HRP".to_string(),
+            ));
         }
 
         Self::from_bech32_payload(bytes)
@@ -926,15 +970,19 @@ impl OrchardExtendedFullViewingKey {
         let depth = bytes[0];
         let parent_fvk_tag = [bytes[1], bytes[2], bytes[3], bytes[4]];
         let child_index = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
-        
+
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&bytes[9..41]);
 
         // Deserialize Orchard Full Viewing Key (96 bytes: ak || nk || rivk)
         // Orchard FullViewingKey implements Read trait (like Sapling FullViewingKey)
-        let fvk_bytes = &bytes[41..137];
-        let fvk = OrchardFullViewingKey::read(&mut fvk_bytes.as_ref())
-            .map_err(|e| Error::InvalidKey(format!("Failed to deserialize Orchard FullViewingKey: {}", e)))?;
+        let mut fvk_bytes = &bytes[41..137];
+        let fvk = OrchardFullViewingKey::read(&mut fvk_bytes).map_err(|e| {
+            Error::InvalidKey(format!(
+                "Failed to deserialize Orchard FullViewingKey: {}",
+                e
+            ))
+        })?;
 
         Ok(Self {
             inner: fvk,
@@ -953,7 +1001,8 @@ impl OrchardExtendedFullViewingKey {
         data.extend_from_slice(&self.child_index.to_le_bytes());
         data.extend_from_slice(&self.chain_code);
         // Serialize Orchard FullViewingKey using write() method
-        self.inner.write(&mut data)
+        self.inner
+            .write(&mut data)
             .expect("Failed to serialize Orchard FullViewingKey");
         data
     }
@@ -967,14 +1016,18 @@ impl OrchardExtendedFullViewingKey {
         let depth = bytes[0];
         let parent_fvk_tag = [bytes[1], bytes[2], bytes[3], bytes[4]];
         let child_index = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
-        
+
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&bytes[9..41]);
 
         // Deserialize Orchard FullViewingKey using read() method
-        let fvk_bytes = &bytes[41..137];
-        let fvk = OrchardFullViewingKey::read(&mut fvk_bytes.as_ref())
-            .map_err(|e| Error::InvalidKey(format!("Failed to deserialize Orchard FullViewingKey: {}", e)))?;
+        let mut fvk_bytes = &bytes[41..137];
+        let fvk = OrchardFullViewingKey::read(&mut fvk_bytes).map_err(|e| {
+            Error::InvalidKey(format!(
+                "Failed to deserialize Orchard FullViewingKey: {}",
+                e
+            ))
+        })?;
 
         Ok(Self {
             inner: fvk,
@@ -1004,27 +1057,27 @@ mod tests {
 
     #[test]
     fn test_generate_mnemonic() {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
+        let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
         let words: Vec<&str> = mnemonic.split_whitespace().collect();
         assert_eq!(words.len(), 24);
     }
 
     #[test]
     fn test_from_mnemonic() {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
+        let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
         let result = ExtendedSpendingKey::from_mnemonic(&mnemonic, "");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_derive_address() {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
+        let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
         let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap();
         let fvk = sk.to_extended_fvk();
-        
+
         let addr1 = fvk.derive_address(0);
         let addr2 = fvk.derive_address(1);
-        
+
         assert_ne!(addr1, addr2);
     }
 

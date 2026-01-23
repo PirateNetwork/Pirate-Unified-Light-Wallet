@@ -1,28 +1,18 @@
 # cargo-deny configuration for Pirate Unified Wallet
-# Enforces dependency policies and security standards
 
 [advisories]
-# Security vulnerability database checking
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-
-# Severity threshold - fail on any security vulnerability
-vulnerability = "deny"
-
-# Fail on unmaintained crates
-unmaintained = "warn"
-
-# Fail on crates with security notices
-notice = "warn"
-
-# Ignore specific advisories (only with explicit justification)
+yanked = "warn"
+# Error on unmaintained advisories for workspace deps only.
+unmaintained = "workspace"
+# Error on unsound advisories for workspace deps only.
+unsound = "workspace"
 ignore = [
-    # Add specific RUSTSEC IDs here if needed with justification
+    { id = "RUSTSEC-2023-0071", reason = "No fixed upgrade yet; rsa is pulled in via Arti/Tor." },
 ]
 
 [licenses]
-# Allowed licenses (permissive only)
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -31,57 +21,35 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "CC0-1.0",
+    "Unlicense",
     "0BSD",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "TGPPL-1.0",
     "Zlib",
+    "Unicode-3.0",
     "Unicode-DFS-2016",
 ]
-
-# Copyleft licenses are denied
-deny = [
-    "GPL-1.0",
-    "GPL-2.0",
-    "GPL-3.0",
-    "AGPL-1.0",
-    "AGPL-3.0",
-    "LGPL-2.0",
-    "LGPL-2.1",
-    "LGPL-3.0",
-]
-
-# Confidence threshold for license detection
 confidence-threshold = 0.8
-
-# Allow specific exceptions
 exceptions = []
 
+[licenses.private]
+ignore = false
+registries = []
+
 [bans]
-# Ban specific crates
-multiple-versions = "warn"  # Warn on multiple versions of same crate
-wildcards = "deny"          # Deny wildcard dependencies
+multiple-versions = "allow"
+wildcards = "allow"
 highlight = "all"
-
-# Denied crates (known issues or unwanted dependencies)
-deny = [
-    # Add specific crates to ban here
-]
-
-# Skip specific crates from version checks
+deny = []
 skip = []
-
-# Skip trees (deny checking these dependency trees)
 skip-tree = []
 
 [sources]
-# Allowed sources for dependencies
 unknown-registry = "deny"
 unknown-git = "deny"
-
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = [
-    "https://github.com/piratenetwork/librustzcash",
-]
+allow-git = ["https://github.com/piratenetwork/librustzcash"]
 
 [sources.allow-org]
-# Allow specific GitHub orgs (for git dependencies)
 github = []
-

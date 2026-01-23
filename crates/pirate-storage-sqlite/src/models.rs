@@ -200,4 +200,3 @@ pub struct TransactionRecord {
     /// Memo (from first note with memo)
     pub memo: Option<Vec<u8>>,
 }
-

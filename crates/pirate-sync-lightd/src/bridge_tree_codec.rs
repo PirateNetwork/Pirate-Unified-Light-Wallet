@@ -93,9 +93,10 @@ where
 {
     let has_prior = read_u8(&mut reader)?;
     let prior_position = if has_prior == 1 {
-        Some(read_position(&mut reader).map_err(|e| {
-            Error::Sync(format!("Failed to read bridge prior position: {}", e))
-        })?)
+        Some(
+            read_position(&mut reader)
+                .map_err(|e| Error::Sync(format!("Failed to read bridge prior position: {}", e)))?,
+        )
     } else {
         None
     };
@@ -136,15 +137,20 @@ fn write_checkpoint<W: Write>(mut writer: W, checkpoint: &Checkpoint<u32>) -> Re
     let marked = checkpoint.marked();
     write_u32(&mut writer, marked.len() as u32)?;
     for pos in marked {
-        write_position(&mut writer, *pos)
-            .map_err(|e| Error::Sync(format!("Failed to write checkpoint marked position: {}", e)))?;
+        write_position(&mut writer, *pos).map_err(|e| {
+            Error::Sync(format!("Failed to write checkpoint marked position: {}", e))
+        })?;
     }
 
     let forgotten = checkpoint.forgotten();
     write_u32(&mut writer, forgotten.len() as u32)?;
     for pos in forgotten {
-        write_position(&mut writer, *pos)
-            .map_err(|e| Error::Sync(format!("Failed to write checkpoint forgotten position: {}", e)))?;
+        write_position(&mut writer, *pos).map_err(|e| {
+            Error::Sync(format!(
+                "Failed to write checkpoint forgotten position: {}",
+                e
+            ))
+        })?;
     }
 
     Ok(())
@@ -153,23 +159,27 @@ fn write_checkpoint<W: Write>(mut writer: W, checkpoint: &Checkpoint<u32>) -> Re
 fn read_checkpoint<R: Read>(mut reader: R) -> Result<Checkpoint<u32>> {
     let id = read_u32(&mut reader)?;
     let bridges_len = read_u64(&mut reader)?;
-    let bridges_len = usize::try_from(bridges_len).map_err(|_| {
-        Error::Sync("Checkpoint bridges_len exceeds usize".to_string())
-    })?;
+    let bridges_len = usize::try_from(bridges_len)
+        .map_err(|_| Error::Sync("Checkpoint bridges_len exceeds usize".to_string()))?;
 
     let marked_len = read_u32(&mut reader)? as usize;
     let mut marked = BTreeSet::new();
     for _ in 0..marked_len {
-        let pos = read_position(&mut reader)
-            .map_err(|e| Error::Sync(format!("Failed to read checkpoint marked position: {}", e)))?;
+        let pos = read_position(&mut reader).map_err(|e| {
+            Error::Sync(format!("Failed to read checkpoint marked position: {}", e))
+        })?;
         marked.insert(pos);
     }
 
     let forgotten_len = read_u32(&mut reader)? as usize;
     let mut forgotten = BTreeSet::new();
     for _ in 0..forgotten_len {
-        let pos = read_position(&mut reader)
-            .map_err(|e| Error::Sync(format!("Failed to read checkpoint forgotten position: {}", e)))?;
+        let pos = read_position(&mut reader).map_err(|e| {
+            Error::Sync(format!(
+                "Failed to read checkpoint forgotten position: {}",
+                e
+            ))
+        })?;
         forgotten.insert(pos);
     }
 
@@ -217,7 +227,9 @@ where
     Ok(buf)
 }
 
-pub fn deserialize_bridge_tree<H, const DEPTH: u8>(bytes: &[u8]) -> Result<BridgeTree<H, u32, DEPTH>>
+pub fn deserialize_bridge_tree<H, const DEPTH: u8>(
+    bytes: &[u8],
+) -> Result<BridgeTree<H, u32, DEPTH>>
 where
     H: bridgetree::Hashable + HashSer + Clone + Ord,
 {
@@ -262,6 +274,12 @@ where
         checkpoints.push_back(read_checkpoint(&mut cursor)?);
     }
 
-    BridgeTree::from_parts(prior_bridges, current_bridge, saved, checkpoints, max_checkpoints)
-        .map_err(|e| Error::Sync(format!("Failed to restore BridgeTree: {:?}", e)))
+    BridgeTree::from_parts(
+        prior_bridges,
+        current_bridge,
+        saved,
+        checkpoints,
+        max_checkpoints,
+    )
+    .map_err(|e| Error::Sync(format!("Failed to restore BridgeTree: {:?}", e)))
 }

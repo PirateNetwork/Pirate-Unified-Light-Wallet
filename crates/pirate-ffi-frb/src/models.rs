@@ -43,13 +43,13 @@ impl Output {
     pub fn new(addr: String, amount: u64, memo: Option<String>) -> Self {
         Self { addr, amount, memo }
     }
-    
+
     /// Validate output
     pub fn validate(&self) -> Result<(), String> {
         if self.amount == 0 {
             return Err("Amount cannot be zero".to_string());
         }
-        
+
         let is_orchard = self.addr.starts_with("pirate1")
             || self.addr.starts_with("pirate-test1")
             || self.addr.starts_with("pirate-regtest1");
@@ -61,13 +61,13 @@ impl Output {
                 "Invalid address format (must start with zs1... or pirate1...)".to_string(),
             );
         }
-        
+
         if let Some(ref memo) = self.memo {
-            if memo.as_bytes().len() > 512 {
-                return Err(format!("Memo too long: {} bytes (max 512)", memo.as_bytes().len()));
+            if memo.len() > 512 {
+                return Err(format!("Memo too long: {} bytes (max 512)", memo.len()));
             }
         }
-        
+
         Ok(())
     }
 }
@@ -100,7 +100,7 @@ impl PendingTx {
     pub fn has_memo(&self) -> bool {
         self.outputs.iter().any(|o| o.memo.is_some())
     }
-    
+
     /// Get total value being sent
     pub fn total_send_value(&self) -> u64 {
         self.total_amount + self.fee
@@ -150,7 +150,10 @@ impl TxError {
     /// Get user-friendly message
     pub fn user_message(&self) -> String {
         match self {
-            TxError::InsufficientFunds { required, available } => {
+            TxError::InsufficientFunds {
+                required,
+                available,
+            } => {
                 format!(
                     "Insufficient funds: need {} ARRR, have {} ARRR",
                     *required as f64 / 100_000_000.0,
@@ -224,12 +227,12 @@ impl SyncStatus {
     pub fn is_syncing(&self) -> bool {
         self.local_height < self.target_height && self.target_height > 0
     }
-    
+
     /// Check if sync is complete
     pub fn is_complete(&self) -> bool {
         self.local_height >= self.target_height && self.target_height > 0
     }
-    
+
     /// Get formatted ETA string
     pub fn eta_formatted(&self) -> String {
         match self.eta {
@@ -239,7 +242,7 @@ impl SyncStatus {
             None => "Calculating...".to_string(),
         }
     }
-    
+
     /// Get stage display name
     pub fn stage_name(&self) -> &'static str {
         match self.stage {

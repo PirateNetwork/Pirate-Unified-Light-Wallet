@@ -1,13 +1,13 @@
 //! Shared compact block cache for multi-wallet sync.
 
-use crate::{Error, Result};
 use crate::client::CompactBlockData;
+use crate::{Error, Result};
+use directories::ProjectDirs;
 use once_cell::sync::Lazy;
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use directories::ProjectDirs;
 use tokio::sync::{Mutex, Notify};
 
 pub struct BlockCache {
@@ -87,10 +87,12 @@ impl BlockCache {
             "SELECT height, data FROM blocks WHERE height BETWEEN ?1 AND ?2 ORDER BY height ASC",
         ).map_err(|e| Error::Storage(e.to_string()))?;
 
-        let rows = stmt.query_map(params![start as i64, end as i64], |row| {
-            let data: Vec<u8> = row.get(1)?;
-            Ok(data)
-        }).map_err(|e| Error::Storage(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![start as i64, end as i64], |row| {
+                let data: Vec<u8> = row.get(1)?;
+                Ok(data)
+            })
+            .map_err(|e| Error::Storage(e.to_string()))?;
 
         let mut blocks = Vec::new();
         for row in rows {
@@ -107,12 +109,13 @@ impl BlockCache {
         }
 
         let conn = self.open_conn()?;
-        let tx = conn.unchecked_transaction()
+        let tx = conn
+            .unchecked_transaction()
             .map_err(|e| Error::Storage(e.to_string()))?;
         {
-            let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO blocks (height, data) VALUES (?1, ?2)",
-            ).map_err(|e| Error::Storage(e.to_string()))?;
+            let mut stmt = tx
+                .prepare("INSERT OR REPLACE INTO blocks (height, data) VALUES (?1, ?2)")
+                .map_err(|e| Error::Storage(e.to_string()))?;
 
             for block in blocks {
                 let encoded = encode_block(block)?;
@@ -136,13 +139,13 @@ impl BlockCache {
                 data BLOB NOT NULL
              );
              CREATE INDEX IF NOT EXISTS idx_blocks_height ON blocks(height);",
-        ).map_err(|e| Error::Storage(e.to_string()))?;
+        )
+        .map_err(|e| Error::Storage(e.to_string()))?;
         Ok(cache)
     }
 
     fn open_conn(&self) -> Result<Connection> {
-        Connection::open(&self.path)
-            .map_err(|e| Error::Storage(e.to_string()))
+        Connection::open(&self.path).map_err(|e| Error::Storage(e.to_string()))
     }
 }
 
@@ -188,11 +191,9 @@ fn cache_path_for_endpoint(endpoint: &str) -> Result<PathBuf> {
 
 fn encode_block(block: &CompactBlockData) -> Result<Vec<u8>> {
     // Use serde for serialization to avoid prost version conflicts
-    serde_json::to_vec(block)
-        .map_err(|e| Error::Storage(e.to_string()))
+    serde_json::to_vec(block).map_err(|e| Error::Storage(e.to_string()))
 }
 
 fn decode_block(bytes: &[u8]) -> Result<CompactBlockData> {
-    serde_json::from_slice(bytes)
-        .map_err(|e| Error::Storage(e.to_string()))
+    serde_json::from_slice(bytes).map_err(|e| Error::Storage(e.to_string()))
 }

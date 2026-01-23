@@ -34,7 +34,7 @@ impl SyncProvider for ObliviousProvider {
             // Future implementation
             Err(Error::NotImplemented)
         }
-        
+
         #[cfg(not(feature = "oblivious_sync"))]
         {
             Err(Error::NotImplemented)
@@ -54,4 +54,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-

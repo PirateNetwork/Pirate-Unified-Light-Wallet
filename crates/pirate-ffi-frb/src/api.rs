@@ -18,59 +18,52 @@
 //! single-process mobile/desktop apps. State is persisted to encrypted SQLite.
 
 use crate::models::*;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use bech32::{Bech32, Hrp};
+use directories::ProjectDirs;
+use hex;
+use orchard::note::ExtractedNoteCommitment;
+use orchard::tree::MerkleHashOrchard;
+use orchard::Address as OrchardAddress;
+use parking_lot::RwLock;
+use pirate_core::keys::{
+    orchard_extsk_hrp_for_network, ExtendedFullViewingKey, ExtendedSpendingKey,
+    OrchardExtendedFullViewingKey, OrchardExtendedSpendingKey, OrchardPaymentAddress,
+    PaymentAddress,
+};
+use pirate_core::wallet::Wallet;
+use pirate_params::{Network, NetworkType};
+use pirate_storage_sqlite::FrontierStorage;
+use pirate_storage_sqlite::{
+    address_book::{
+        AddressBookEntry as DbAddressBookEntry, AddressBookStorage, ColorTag as DbColorTag,
+    },
+    passphrase_store, platform_keystore,
+    security::{generate_salt, AppPassphrase, EncryptionAlgorithm, MasterKey, SealedKey},
+    Account, AccountKey, AddressType, Database, EncryptionKey, KeyScope, KeyType, KeystoreResult,
+    Repository, WalletSecret,
+};
+use pirate_sync_lightd::client::{
+    LightClient, LightClientConfig, RetryConfig, TlsConfig, TransportMode,
+};
+use pirate_sync_lightd::OrchardFrontier;
+use rusqlite::params;
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
+use std::future::Future;
 use std::io::Write;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use parking_lot::RwLock;
-use pirate_core::keys::{
-    ExtendedSpendingKey,
-    ExtendedFullViewingKey,
-    PaymentAddress,
-    OrchardExtendedSpendingKey,
-    OrchardExtendedFullViewingKey,
-    OrchardPaymentAddress,
-    orchard_extsk_hrp_for_network,
+use std::sync::Arc;
+use zcash_client_backend::encoding::{
+    encode_extended_full_viewing_key, encode_extended_spending_key,
 };
-use pirate_core::wallet::Wallet;
-use pirate_storage_sqlite::{
-    address_book::{AddressBookEntry as DbAddressBookEntry, AddressBookStorage, ColorTag as DbColorTag},
-    Database,
-    EncryptionKey,
-    Repository,
-    WalletSecret,
-    AccountKey,
-    Account,
-    AddressType,
-    KeyType,
-    KeyScope,
-    passphrase_store,
-    security::{AppPassphrase, EncryptionAlgorithm, MasterKey, SealedKey, generate_salt},
-    KeystoreResult,
-    platform_keystore,
-};
-use pirate_params::{Network, NetworkType};
-use pirate_sync_lightd::client::{LightClient, LightClientConfig, TlsConfig, RetryConfig, TransportMode};
-use pirate_sync_lightd::OrchardFrontier;
-use pirate_storage_sqlite::FrontierStorage;
 use zcash_primitives::merkle_tree::{read_frontier_v0, read_frontier_v1};
 use zcash_primitives::sapling::PaymentAddress as SaplingPaymentAddress;
 use zcash_primitives::zip32::ExtendedFullViewingKey as SaplingExtendedFullViewingKey;
-use orchard::Address as OrchardAddress;
-use orchard::note::ExtractedNoteCommitment;
-use orchard::tree::MerkleHashOrchard;
-use zcash_client_backend::encoding::{encode_extended_full_viewing_key, encode_extended_spending_key};
-use std::path::{Path, PathBuf};
-use directories::ProjectDirs;
-use hex;
-use sha2::{Digest, Sha256};
-use rusqlite::params;
-use std::future::Future;
-use std::pin::Pin;
 
 // Global state with thread-safe access
 lazy_static::lazy_static! {
@@ -139,10 +132,7 @@ fn resolve_wallet_birthday_height(birthday_opt: Option<u32>) -> u32 {
         Ok(handle) => handle.block_on(fetch_latest()),
         Err(_) => {
             let runtime = tokio::runtime::Runtime::new().ok();
-            runtime
-                .as_ref()
-                .and_then(|rt| Some(rt.block_on(fetch_latest())))
-                .flatten()
+            runtime.as_ref().and_then(|rt| rt.block_on(fetch_latest()))
         }
     };
 
@@ -177,16 +167,21 @@ fn log_orchard_address_samples(wallet_id: &WalletId) {
         let _ = writeln!(
             file,
             r#"{{"id":"log_orchard_address_samples","timestamp":{},"location":"api.rs:log_orchard_address_samples","message":"orchard address sample header","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-            ts,
-            wallet_id
+            ts, wallet_id
         );
     }
 
     for index in 0u32..10u32 {
         let address = orchard_fvk.address_at(index);
-        let addr_mainnet = address.encode_for_network(NetworkType::Mainnet).unwrap_or_default();
-        let addr_testnet = address.encode_for_network(NetworkType::Testnet).unwrap_or_default();
-        let addr_regtest = address.encode_for_network(NetworkType::Regtest).unwrap_or_default();
+        let addr_mainnet = address
+            .encode_for_network(NetworkType::Mainnet)
+            .unwrap_or_default();
+        let addr_testnet = address
+            .encode_for_network(NetworkType::Testnet)
+            .unwrap_or_default();
+        let addr_regtest = address
+            .encode_for_network(NetworkType::Regtest)
+            .unwrap_or_default();
 
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -197,19 +192,14 @@ fn log_orchard_address_samples(wallet_id: &WalletId) {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_orchard_address_sample","timestamp":{},"location":"api.rs:log_orchard_address_samples","message":"orchard address sample","data":{{"wallet_id":"{}","index":{},"mainnet":"{}","testnet":"{}","regtest":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts,
-                wallet_id,
-                index,
-                addr_mainnet,
-                addr_testnet,
-                addr_regtest
+                ts, wallet_id, index, addr_mainnet, addr_testnet, addr_regtest
             );
         }
     }
 }
 
 /// Create new wallet
-/// 
+///
 /// Always generates a 24-word mnemonic seed phrase for new wallets.
 /// For restoring wallets with 12 or 18 word seeds, use `restore_wallet()`.
 pub fn create_wallet(
@@ -223,23 +213,19 @@ pub fn create_wallet(
     // (12 and 18 word seeds are only supported for restoring old wallets)
     let mnemonic = ExtendedSpendingKey::generate_mnemonic(Some(24));
     let network = pirate_params::Network::mainnet(); // Will be updated when endpoint is set
-    let extsk = ExtendedSpendingKey::from_mnemonic_with_account(
-        &mnemonic,
-        "",
-        network.network_type,
-        0,
-    )?;
+    let extsk =
+        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, "", network.network_type, 0)?;
     let _wallet = Wallet::from_mnemonic(&mnemonic, "")?;
-    
+
     // Derive Orchard key from same seed
     // Derive account-level key: m/32'/coin_type'/account'
     let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic, "")?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
-    
+
     let coin_type = network.coin_type;
     let account = 0; // First account
     let orchard_extsk = orchard_master.derive_account(coin_type, account)?;
-    
+
     let birthday_height = resolve_wallet_birthday_height(birthday_opt);
 
     let name_for_account = name.clone();
@@ -288,14 +274,17 @@ pub fn create_wallet(
         repo.upsert_wallet_secret(&encrypted_secret)?;
         let _ = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
 
-        tracing::info!("Persisted wallet secret (Sapling + Orchard) for wallet {}", wallet_id);
+        tracing::info!(
+            "Persisted wallet secret (Sapling + Orchard) for wallet {}",
+            wallet_id
+        );
     }
 
     Ok(wallet_id)
 }
 
 /// Restore wallet from mnemonic
-/// 
+///
 /// Supports restoring wallets with 12, 18, or 24 word mnemonic seeds
 /// (for backward compatibility with old wallets that used 12 or 18 word seeds).
 /// New wallets created with `create_wallet()` always use 24-word seeds.
@@ -308,7 +297,7 @@ pub fn restore_wallet(
     ensure_wallet_registry_loaded()?;
 
     let passphrase = passphrase_opt.unwrap_or_default();
-    
+
     // Validate mnemonic by attempting to create wallet (accepts 12, 18, or 24 words)
     let network = pirate_params::Network::mainnet(); // Will be updated when endpoint is set
     let extsk = ExtendedSpendingKey::from_mnemonic_with_account(
@@ -318,19 +307,18 @@ pub fn restore_wallet(
         0,
     )?;
     let _wallet = Wallet::from_mnemonic(&mnemonic, &passphrase)?;
-    
+
     // Derive Orchard key from same seed
     // Derive account-level key: m/32'/coin_type'/account'
     let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic, &passphrase)?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
-    
+
     let coin_type = network.coin_type;
     let account = 0; // First account
     let orchard_extsk = orchard_master.derive_account(coin_type, account)?;
-    
-    let birthday_height = birthday_opt.unwrap_or_else(|| {
-        pirate_params::Network::mainnet().default_birthday_height
-    });
+
+    let birthday_height =
+        birthday_opt.unwrap_or_else(|| pirate_params::Network::mainnet().default_birthday_height);
 
     let name_for_account = name.clone();
     let wallet_id = uuid::Uuid::new_v4().to_string();
@@ -385,7 +373,7 @@ pub fn restore_wallet(
 }
 
 /// Check if wallet registry database file exists (without opening it)
-/// 
+///
 /// This allows checking if wallets exist before the database is created or opened.
 pub fn wallet_registry_exists() -> Result<bool> {
     let path = wallet_registry_path()?;
@@ -393,7 +381,7 @@ pub fn wallet_registry_exists() -> Result<bool> {
 }
 
 /// List all wallets
-/// 
+///
 /// Returns empty list if database can't be opened (e.g., passphrase not set)
 /// NOTE: This will CREATE the database file if it doesn't exist (via open_wallet_registry)
 pub fn list_wallets() -> Result<Vec<WalletMeta>> {
@@ -424,7 +412,7 @@ pub fn switch_wallet(wallet_id: WalletId) -> Result<()> {
     if !wallets.iter().any(|w| w.id == wallet_id) {
         return Err(anyhow!("Wallet not found: {}", wallet_id));
     }
-    
+
     *ACTIVE_WALLET.write() = Some(wallet_id);
     let registry_db = open_wallet_registry()?;
     set_active_wallet_registry(&registry_db, ACTIVE_WALLET.read().as_deref())?;
@@ -480,8 +468,8 @@ fn wallet_registry_path() -> Result<PathBuf> {
 }
 
 fn app_passphrase() -> Result<String> {
-    let passphrase = passphrase_store::get_passphrase()
-        .map_err(|e| anyhow!("App is locked: {}", e))?;
+    let passphrase =
+        passphrase_store::get_passphrase().map_err(|e| anyhow!("App is locked: {}", e))?;
     Ok(passphrase.as_str().to_string())
 }
 
@@ -560,11 +548,7 @@ fn try_unseal_db_key(sealed: &SealedKey) -> Result<Option<EncryptionKey>> {
     }
 }
 
-fn maybe_store_sealed_db_key(
-    key: &EncryptionKey,
-    key_id: &str,
-    sealed_path: &Path,
-) -> Result<()> {
+fn maybe_store_sealed_db_key(key: &EncryptionKey, key_id: &str, sealed_path: &Path) -> Result<()> {
     let Some(keystore) = platform_keystore() else {
         return Ok(());
     };
@@ -676,8 +660,7 @@ fn open_encrypted_db_with_migration(
             }
             Err(e) if used_sealed => {
                 let derived = derive_db_key(passphrase, &salt)?;
-                let db = Database::open(db_path, &derived, master_key.clone())
-                    .map_err(|_| e)?;
+                let db = Database::open(db_path, &derived, master_key.clone()).map_err(|_| e)?;
                 maybe_store_sealed_db_key(&derived, key_id, sealed_key_path)?;
                 return Ok((db, derived));
             }
@@ -780,23 +763,24 @@ fn set_registry_setting(db: &Database, key: &str, value: Option<&str>) -> Result
         // Use direct execute() calls instead of prepared statements
         // SQLCipher may have issues with prepared statement execute() returning results
         let conn = db.conn();
-        
+
         // Delete any existing row
         conn.execute("DELETE FROM wallet_settings WHERE key = ?1", params![key])?;
-        
+
         // Insert new row
-        conn.execute("INSERT INTO wallet_settings (key, value) VALUES (?1, ?2)", params![key, val])?;
+        conn.execute(
+            "INSERT INTO wallet_settings (key, value) VALUES (?1, ?2)",
+            params![key, val],
+        )?;
     } else {
         // Delete if value is None
-        db.conn().execute("DELETE FROM wallet_settings WHERE key = ?1", params![key])?;
+        db.conn()
+            .execute("DELETE FROM wallet_settings WHERE key = ?1", params![key])?;
     }
     Ok(())
 }
 
-async fn run_sync_engine_task<F, T>(
-    sync: Arc<tokio::sync::Mutex<SyncEngine>>,
-    task: F,
-) -> Result<T>
+async fn run_sync_engine_task<F, T>(sync: Arc<tokio::sync::Mutex<SyncEngine>>, task: F) -> Result<T>
 where
     F: for<'a> FnOnce(&'a mut SyncEngine) -> Pin<Box<dyn Future<Output = Result<T>> + 'a>>
         + Send
@@ -938,21 +922,21 @@ fn spawn_bootstrap_transport(mode: TunnelMode) {
     } else {
         std::thread::spawn(move || {
             if let Ok(runtime) = tokio::runtime::Runtime::new() {
-                let _ = runtime.block_on(task);
+                runtime.block_on(task);
             }
         });
     }
 }
 
 /// Store app passphrase hash for local verification
-/// 
+///
 /// IMPORTANT: This function opens/creates the database with the passphrase,
 /// then stores the hash and caches the passphrase in memory for this session.
 pub fn set_app_passphrase(passphrase: String) -> Result<()> {
     // Hash the passphrase for storage (validates strength)
     let app_passphrase = AppPassphrase::hash(&passphrase)
         .map_err(|e| anyhow!("Failed to hash passphrase: {}", e))?;
-    
+
     // Now open the database (will be created with the correct passphrase)
     let registry_db = open_wallet_registry_with_passphrase(&passphrase)?;
     set_registry_setting(
@@ -977,30 +961,10 @@ pub fn verify_app_passphrase(passphrase: String) -> Result<bool> {
         // Database doesn't exist - can't verify passphrase
         return Err(anyhow!("Wallet registry database not found"));
     }
-    
+
     // Try to open the registry database with this passphrase
     let result = match open_wallet_registry_with_passphrase(&passphrase) {
-        Ok(db) => {
-            // Database opened successfully - verify the stored hash matches
-            match get_registry_setting(&db, REGISTRY_APP_PASSPHRASE_KEY) {
-                Ok(Some(stored_hash)) => {
-                    let app_passphrase = AppPassphrase::from_hash(stored_hash);
-                    app_passphrase.verify(&passphrase)
-                        .map_err(|e| anyhow!("Passphrase verification failed: {}", e))
-                        .unwrap_or(false)
-                }
-                Ok(None) => {
-                    // Hash not found - this shouldn't happen if database was created properly
-                    // But if database opened, passphrase is at least correct for decryption
-                    tracing::warn!("App passphrase hash not found in database, but database opened successfully");
-                    true
-                }
-                Err(e) => {
-                    tracing::error!("Failed to read passphrase hash from database: {}", e);
-                    false
-                }
-            }
-        }
+        Ok(db) => verify_app_passphrase_with_db(&db, &passphrase)?,
         Err(e) => {
             // Database couldn't be opened - passphrase is wrong or database is corrupted
             tracing::debug!("Failed to open database with provided passphrase: {}", e);
@@ -1011,22 +975,53 @@ pub fn verify_app_passphrase(passphrase: String) -> Result<bool> {
     Ok(result)
 }
 
+fn verify_app_passphrase_with_db(db: &Database, passphrase: &str) -> Result<bool> {
+    // Database opened successfully - verify the stored hash matches
+    match get_registry_setting(db, REGISTRY_APP_PASSPHRASE_KEY) {
+        Ok(Some(stored_hash)) => {
+            let app_passphrase = AppPassphrase::from_hash(stored_hash);
+            Ok(app_passphrase
+                .verify(passphrase)
+                .map_err(|e| anyhow!("Passphrase verification failed: {}", e))
+                .unwrap_or(false))
+        }
+        Ok(None) => {
+            // Hash not found - this shouldn't happen if database was created properly
+            // But if database opened, passphrase is at least correct for decryption
+            tracing::warn!(
+                "App passphrase hash not found in database, but database opened successfully"
+            );
+            Ok(true)
+        }
+        Err(e) => {
+            tracing::error!("Failed to read passphrase hash from database: {}", e);
+            Ok(false)
+        }
+    }
+}
+
 /// Unlock app with passphrase (caches passphrase in memory for wallet access)
 /// This allows wallets to be decrypted using the passphrase
 pub fn unlock_app(passphrase: String) -> Result<()> {
-    // Verify passphrase first by trying to open the database
-    let is_valid = verify_app_passphrase(passphrase.clone())?;
+    let path = wallet_registry_path()?;
+    if !path.exists() {
+        return Err(anyhow!("Wallet registry database not found"));
+    }
+
+    // Open registry once and verify passphrase against stored hash.
+    let db = open_wallet_registry_with_passphrase(&passphrase)?;
+    let is_valid = verify_app_passphrase_with_db(&db, &passphrase)?;
     if !is_valid {
         return Err(anyhow!("Invalid passphrase"));
     }
-    
+
     // Cache passphrase in memory for wallet decryption
     passphrase_store::set_passphrase(passphrase);
-    
+
     // Reload wallet registry with the correct passphrase
     REGISTRY_LOADED.store(false, Ordering::SeqCst);
-    ensure_wallet_registry_loaded()?;
-    
+    load_wallet_registry_state(&db)?;
+
     tracing::info!("App unlocked successfully");
     Ok(())
 }
@@ -1251,7 +1246,7 @@ pub fn change_app_passphrase(current_passphrase: String, new_passphrase: String)
             let old_db_key = EncryptionKey::from_bytes(info.old_db_key);
             db.rekey(&old_db_key)?;
             let tx = db.transaction()?;
-            reencrypt_wallet_tables(&*tx, &info.new_master_key, &info.old_master_key)?;
+            reencrypt_wallet_tables(&tx, &info.new_master_key, &info.old_master_key)?;
             tx.commit()?;
             let key_path = wallet_db_key_path(&info.wallet_id)?;
             let key_id = format!("pirate_wallet_{}_db", info.wallet_id);
@@ -1290,7 +1285,7 @@ pub fn change_app_passphrase(current_passphrase: String, new_passphrase: String)
 
         let reencrypt_result: Result<()> = {
             let tx = db.transaction()?;
-            if let Err(e) = reencrypt_wallet_tables(&*tx, &old_master_key, &new_master_key) {
+            if let Err(e) = reencrypt_wallet_tables(&tx, &old_master_key, &new_master_key) {
                 let _ = tx.rollback();
                 return Err(e);
             }
@@ -1320,12 +1315,10 @@ pub fn change_app_passphrase(current_passphrase: String, new_passphrase: String)
         });
     }
 
-    registry_db
-        .rekey(&new_registry_key)
-        .map_err(|e| {
-            let _ = rollback_wallets(&updated_wallets);
-            anyhow!("Failed to rekey registry database: {}", e)
-        })?;
+    registry_db.rekey(&new_registry_key).map_err(|e| {
+        let _ = rollback_wallets(&updated_wallets);
+        anyhow!("Failed to rekey registry database: {}", e)
+    })?;
 
     // Update registry passphrase hash after successful wallet updates.
     let new_hash = AppPassphrase::hash(&new_passphrase)
@@ -1341,7 +1334,11 @@ pub fn change_app_passphrase(current_passphrase: String, new_passphrase: String)
     }
 
     let registry_key_path = wallet_registry_key_path()?;
-    let _ = force_store_sealed_db_key(&new_registry_key, "pirate_wallet_registry_db", &registry_key_path);
+    let _ = force_store_sealed_db_key(
+        &new_registry_key,
+        "pirate_wallet_registry_db",
+        &registry_key_path,
+    );
 
     passphrase_store::set_passphrase(new_passphrase);
     REGISTRY_LOADED.store(false, Ordering::SeqCst);
@@ -1360,7 +1357,7 @@ pub fn change_app_passphrase_with_cached(new_passphrase: String) -> Result<()> {
 }
 
 /// Reseal registry + wallet DB keys using current platform keystore mode.
-/// 
+///
 /// This is used when biometrics are enabled/disabled to rewrap the DB keys
 /// under the appropriate keystore policy without changing the passphrase.
 pub fn reseal_db_keys_for_biometrics() -> Result<()> {
@@ -1499,7 +1496,11 @@ fn ensure_wallet_registry_loaded() -> Result<()> {
     }
 
     let db = open_wallet_registry()?;
-    let (wallets, active) = load_wallet_registry(&db)?;
+    load_wallet_registry_state(&db)
+}
+
+fn load_wallet_registry_state(db: &Database) -> Result<()> {
+    let (wallets, active) = load_wallet_registry(db)?;
     *WALLETS.write() = wallets;
     *ACTIVE_WALLET.write() = active;
 
@@ -1511,8 +1512,8 @@ fn ensure_wallet_registry_loaded() -> Result<()> {
         for wallet in WALLETS.read().iter() {
             let endpoint_key = format!("lightd_endpoint_{}", wallet.id);
             let pin_key = format!("lightd_tls_pin_{}", wallet.id);
-            let endpoint_url = get_registry_setting(&db, &endpoint_key)?;
-            let tls_pin = get_registry_setting(&db, &pin_key)?;
+            let endpoint_url = get_registry_setting(db, &endpoint_key)?;
+            let tls_pin = get_registry_setting(db, &pin_key)?;
 
             if let Some(url) = endpoint_url {
                 match parse_endpoint_url(&url) {
@@ -1538,14 +1539,12 @@ fn ensure_wallet_registry_loaded() -> Result<()> {
         }
     }
 
-    if let Ok(mode) = load_registry_tunnel_mode(&db) {
-        if let Some(mode) = mode {
-            *TUNNEL_MODE.write() = mode;
-        }
+    if let Ok(Some(mode)) = load_registry_tunnel_mode(db) {
+        *TUNNEL_MODE.write() = mode;
     }
 
     if let Some(pending) = PENDING_TUNNEL_MODE.write().take() {
-        if let Err(e) = persist_registry_tunnel_mode(&db, &pending) {
+        if let Err(e) = persist_registry_tunnel_mode(db, &pending) {
             tracing::warn!("Failed to persist pending tunnel mode: {}", e);
             *PENDING_TUNNEL_MODE.write() = Some(pending);
         } else {
@@ -1622,7 +1621,7 @@ pub fn get_auto_consolidation_candidate_count(wallet_id: WalletId) -> Result<u32
 /// Derive master key for field-level encryption from passphrase
 fn wallet_master_key(wallet_id: &str, passphrase: &str) -> Result<MasterKey> {
     let salt = Sha256::digest(wallet_id.as_bytes());
-    AppPassphrase::derive_key(&passphrase, &salt[..16])
+    AppPassphrase::derive_key(passphrase, &salt[..16])
         .map_err(|e| anyhow!("Failed to derive master key: {}", e))
 }
 
@@ -1651,10 +1650,7 @@ fn open_wallet_db_with_passphrase(
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_db_path","timestamp":{},"location":"api.rs:954","message":"open_wallet_db_with_passphrase","data":{{"wallet_id":"{}","path":"{}","cwd":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts,
-                wallet_id,
-                path_str,
-                cwd
+                ts, wallet_id, path_str, cwd
             );
         }
     }
@@ -1691,10 +1687,17 @@ fn open_wallet_db_for(wallet_id: &str) -> Result<(&'static Database, Repository<
     Ok((db_ref, Repository::new(db_ref)))
 }
 
-fn ensure_primary_account_key(repo: &Repository, wallet_id: &str, secret: &WalletSecret) -> Result<i64> {
+fn ensure_primary_account_key(
+    repo: &Repository,
+    wallet_id: &str,
+    secret: &WalletSecret,
+) -> Result<i64> {
     let keys = repo.get_account_keys(secret.account_id)?;
     let meta = get_wallet_meta(wallet_id)?;
-    if let Some(existing) = keys.iter().find(|k| k.key_type == KeyType::Seed && k.key_scope == KeyScope::Account) {
+    if let Some(existing) = keys
+        .iter()
+        .find(|k| k.key_type == KeyType::Seed && k.key_scope == KeyScope::Account)
+    {
         if let Some(id) = existing.id {
             if existing.birthday_height != meta.birthday_height as i64 {
                 let mut updated = existing.clone();
@@ -1889,13 +1892,16 @@ fn address_prefix_network_type_for_endpoint(
 fn address_prefix_network_type(wallet_id: &WalletId) -> Result<NetworkType> {
     let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
     let default_network = wallet_network_type(wallet_id)?;
-    Ok(address_prefix_network_type_for_endpoint(&endpoint, default_network))
+    Ok(address_prefix_network_type_for_endpoint(
+        &endpoint,
+        default_network,
+    ))
 }
 
 fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
     let wallet = get_wallet_meta(wallet_id)?;
     let network = Network::from_type(wallet_network_type(wallet_id)?);
-    
+
     // Get current block height from sync state
     let (_db, _repo) = open_wallet_db_for(wallet_id)?;
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(_db);
@@ -1906,7 +1912,7 @@ fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
     } else {
         current_height
     };
-    
+
     // Check if Orchard is activated at current height
     if let Some(override_height) = orchard_activation_override(wallet_id)? {
         return Ok(effective_height >= override_height);
@@ -1916,50 +1922,57 @@ fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
 }
 
 /// Get current receive address for wallet
-/// 
+///
 /// Returns the current diversified Sapling address from storage.
 /// If no address exists, generates and stores the first address (index 0).
 /// Call `next_receive_address` to rotate to a new unlinkable address.
 pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
     tracing::info!("Getting current receive address for wallet {}", wallet_id);
-    
+
     // Open encrypted wallet DB
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    
+
     // Get wallet secret to find account_id and derive address
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    
+
     // Load spending key
     let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
         .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?;
-    
+
     let key_id = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
 
     // Get current diversifier index from database
     let current_index = repo.get_current_diversifier_index(secret.account_id, key_id)?;
-    
+
     // Check if address already exists in database
-    if let Some(addr_record) = repo.get_address_by_index(secret.account_id, key_id, current_index)? {
-        tracing::debug!("Found existing address at index {}: {}", current_index, addr_record.address);
+    if let Some(addr_record) =
+        repo.get_address_by_index(secret.account_id, key_id, current_index)?
+    {
+        tracing::debug!(
+            "Found existing address at index {}: {}",
+            current_index,
+            addr_record.address
+        );
         return Ok(addr_record.address);
     }
-    
+
     // Determine if we should generate Orchard addresses
     let use_orchard = should_generate_orchard(&wallet_id)?;
-    
+
     // Address doesn't exist, generate it
     let (addr_string, address_type) = if use_orchard {
         // Generate Orchard address
-        let orchard_extsk_bytes = secret.orchard_extsk
-            .ok_or_else(|| anyhow!("Orchard key not found - wallet needs to be recreated with Orchard support"))?;
+        let orchard_extsk_bytes = secret.orchard_extsk.ok_or_else(|| {
+            anyhow!("Orchard key not found - wallet needs to be recreated with Orchard support")
+        })?;
         let orchard_extsk = OrchardExtendedSpendingKey::from_bytes(&orchard_extsk_bytes)
             .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
-        
+
         let orchard_fvk = orchard_extsk.to_extended_fvk();
         let orchard_addr = orchard_fvk.address_at(current_index);
-        
+
         let network_type = address_prefix_network_type(&wallet_id)?;
         let addr_string = orchard_addr.encode_for_network(network_type)?;
         (addr_string, AddressType::Orchard)
@@ -1970,7 +1983,7 @@ pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
         let addr_string = payment_addr.encode();
         (addr_string, AddressType::Sapling)
     };
-    
+
     // Store address in database
     let address = pirate_storage_sqlite::Address {
         id: None,
@@ -1985,29 +1998,30 @@ pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
         address_scope: pirate_storage_sqlite::AddressScope::External,
     };
     repo.upsert_address(&address)?;
-    
-    tracing::debug!("Generated and stored {} address at index {}: {}", 
+
+    tracing::debug!(
+        "Generated and stored {} address at index {}: {}",
         if use_orchard { "Orchard" } else { "Sapling" },
-        current_index, 
+        current_index,
         addr_string
     );
     Ok(addr_string)
 }
 
 /// Generate next receive address (diversifier rotation)
-/// 
+///
 /// Increments the diversifier index to generate a fresh, unlinkable address.
 /// Address type (Sapling or Orchard) is determined by network and current block height.
 /// Previous addresses remain valid for receiving funds.
 pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
     tracing::info!("Generating next receive address for wallet {}", wallet_id);
-    
+
     // Determine if we should generate Orchard addresses
     let use_orchard = should_generate_orchard(&wallet_id)?;
-    
+
     // Open encrypted wallet DB
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    
+
     // Get wallet secret to find account_id and derive address
     let secret = repo
         .get_wallet_secret(&wallet_id)?
@@ -2017,18 +2031,19 @@ pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
 
     // Get next diversifier index (current + 1)
     let next_index = repo.get_next_diversifier_index(secret.account_id, key_id)?;
-    
+
     // Generate address based on network/height
     let (addr_string, address_type) = if use_orchard {
         // Generate Orchard address
-        let orchard_extsk_bytes = secret.orchard_extsk
-            .ok_or_else(|| anyhow!("Orchard key not found - wallet needs to be recreated with Orchard support"))?;
+        let orchard_extsk_bytes = secret.orchard_extsk.ok_or_else(|| {
+            anyhow!("Orchard key not found - wallet needs to be recreated with Orchard support")
+        })?;
         let orchard_extsk = OrchardExtendedSpendingKey::from_bytes(&orchard_extsk_bytes)
             .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
-        
+
         let orchard_fvk = orchard_extsk.to_extended_fvk();
         let orchard_addr = orchard_fvk.address_at(next_index);
-        
+
         let network_type = address_prefix_network_type(&wallet_id)?;
         let addr_string = orchard_addr.encode_for_network(network_type)?;
         (addr_string, AddressType::Orchard)
@@ -2041,7 +2056,7 @@ pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
         let addr_string = payment_addr.encode();
         (addr_string, AddressType::Sapling)
     };
-    
+
     // Store address in database
     let address = pirate_storage_sqlite::Address {
         id: None,
@@ -2056,10 +2071,11 @@ pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
         address_scope: pirate_storage_sqlite::AddressScope::External,
     };
     repo.upsert_address(&address)?;
-    
-    tracing::info!("Generated and stored next {} address at index {}: {}", 
+
+    tracing::info!(
+        "Generated and stored next {} address at index {}: {}",
         if use_orchard { "Orchard" } else { "Sapling" },
-        next_index, 
+        next_index,
         addr_string
     );
     Ok(addr_string)
@@ -2069,21 +2085,21 @@ pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
 pub fn label_address(wallet_id: WalletId, addr: String, label: String) -> Result<()> {
     // Open encrypted wallet DB
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    
+
     // Get wallet secret to find account_id
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-    
+
     // Update address label (empty string means remove label)
     let label_opt = if label.is_empty() {
         None
     } else {
         Some(label.clone())
     };
-    
+
     repo.update_address_label(secret.account_id, &addr, label_opt)?;
-    
+
     tracing::info!("Labeled address {} as '{}'", addr, label);
     Ok(())
 }
@@ -2111,16 +2127,16 @@ pub fn set_address_color_tag(
 pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
     // Open encrypted wallet DB
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    
+
     // Get wallet secret to find account_id
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-    
+
     // Load all addresses for this account
     let mut addresses = repo.get_all_addresses(secret.account_id)?;
     addresses.retain(|addr| addr.address_scope != pirate_storage_sqlite::AddressScope::Internal);
-    
+
     // Convert to AddressInfo with labels
     let address_infos: Vec<AddressInfo> = addresses
         .into_iter()
@@ -2132,7 +2148,7 @@ pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
             color_tag: address_book_color_to_ffi(addr.color_tag),
         })
         .collect();
-    
+
     Ok(address_infos)
 }
 
@@ -2154,21 +2170,23 @@ pub fn list_address_balances(
         if note.address_id.is_some() {
             continue;
         }
-        let Some(note_bytes) = note.note.as_deref() else { continue };
+        let Some(note_bytes) = note.note.as_deref() else {
+            continue;
+        };
         let address_string = match note.note_type {
             pirate_storage_sqlite::models::NoteType::Sapling => {
                 decode_sapling_address_bytes_from_note_bytes(note_bytes)
                     .and_then(|bytes| SaplingPaymentAddress::from_bytes(&bytes))
-                    .map(|addr| {
-                        PaymentAddress { inner: addr }.encode_for_network(network_type)
-                    })
+                    .map(|addr| PaymentAddress { inner: addr }.encode_for_network(network_type))
             }
             pirate_storage_sqlite::models::NoteType::Orchard => {
                 if !orchard_active {
                     None
                 } else {
                     decode_orchard_address_bytes_from_note_bytes(note_bytes)
-                        .and_then(|bytes| Option::from(OrchardAddress::from_raw_address_bytes(&bytes)))
+                        .and_then(|bytes| {
+                            Option::from(OrchardAddress::from_raw_address_bytes(&bytes))
+                        })
                         .and_then(|addr| {
                             OrchardPaymentAddress { inner: addr }
                                 .encode_for_network(network_type)
@@ -2177,7 +2195,9 @@ pub fn list_address_balances(
                 }
             }
         };
-        let Some(address_string) = address_string else { continue };
+        let Some(address_string) = address_string else {
+            continue;
+        };
         let address_type = match note.note_type {
             pirate_storage_sqlite::models::NoteType::Sapling => AddressType::Sapling,
             pirate_storage_sqlite::models::NoteType::Orchard => AddressType::Orchard,
@@ -2219,16 +2239,14 @@ pub fn list_address_balances(
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height.max(sync_state.target_height);
     const MIN_DEPTH: u64 = 10;
-    let confirmation_threshold = if current_height >= MIN_DEPTH {
-        current_height - MIN_DEPTH
-    } else {
-        0
-    };
+    let confirmation_threshold = current_height.saturating_sub(MIN_DEPTH);
 
     let mut balances: HashMap<i64, (u64, u64, u64)> = HashMap::new();
 
     for note in notes {
-        let Some(address_id) = note.address_id else { continue };
+        let Some(address_id) = note.address_id else {
+            continue;
+        };
         if note.value <= 0 {
             continue;
         }
@@ -2407,7 +2425,10 @@ fn encode_sapling_xfvk_from_bytes(bytes: &[u8], network: NetworkType) -> Option<
     ))
 }
 
-fn encode_orchard_extsk(extsk: &OrchardExtendedSpendingKey, network: NetworkType) -> Result<String> {
+fn encode_orchard_extsk(
+    extsk: &OrchardExtendedSpendingKey,
+    network: NetworkType,
+) -> Result<String> {
     let hrp = Hrp::parse(orchard_extsk_hrp_for_network(network))
         .map_err(|e| anyhow!("Invalid Orchard HRP: {}", e))?;
     bech32::encode::<Bech32>(hrp, &extsk.to_bytes())
@@ -2452,7 +2473,11 @@ pub fn list_address_book(wallet_id: WalletId) -> Result<Vec<AddressBookEntryFfi>
 
     entries.sort_by(|a, b| {
         if a.is_favorite != b.is_favorite {
-            return if a.is_favorite { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
+            return if a.is_favorite {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
         }
         a.label.cmp(&b.label)
     });
@@ -2504,7 +2529,11 @@ pub fn update_address_book_entry(
         entry.label = label_value;
     }
     if let Some(notes_value) = notes {
-        entry.notes = if notes_value.is_empty() { None } else { Some(notes_value) };
+        entry.notes = if notes_value.is_empty() {
+            None
+        } else {
+            Some(notes_value)
+        };
     }
     if let Some(tag) = color_tag {
         entry.color_tag = address_book_color_from_ffi(tag);
@@ -2562,10 +2591,7 @@ pub fn get_address_book_count(wallet_id: WalletId) -> Result<u32> {
 }
 
 /// Get entry by ID
-pub fn get_address_book_entry(
-    wallet_id: WalletId,
-    id: i64,
-) -> Result<Option<AddressBookEntryFfi>> {
+pub fn get_address_book_entry(wallet_id: WalletId, id: i64) -> Result<Option<AddressBookEntryFfi>> {
     let (db, _repo) = open_wallet_db_for(&wallet_id)?;
     let entry = AddressBookStorage::get_by_id(db.conn(), &wallet_id, id)?;
     match entry {
@@ -2629,17 +2655,17 @@ pub fn get_recently_used_addresses(
 /// Uses the zxviews... Bech32 format for watch-only wallets.
 pub fn export_ivk(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
-    
+
     if wallet.watch_only {
         return Err(anyhow!("Cannot export viewing key from watch-only wallet"));
     }
-    
+
     // Load wallet secret from encrypted storage
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-    
+
     // Derive xFVK from stored spending key
     let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
         .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?;
@@ -2649,7 +2675,7 @@ pub fn export_ivk(wallet_id: WalletId) -> Result<String> {
 }
 
 /// Export Orchard Extended Full Viewing Key as Bech32 (for watch-only wallets)
-/// 
+///
 /// Returns Bech32-encoded string with the network-specific HRP.
 /// Uses the standard Orchard viewing key export format.
 /// Use export_ivk() for Sapling viewing keys (zxviews... format).
@@ -2666,7 +2692,8 @@ pub fn export_orchard_viewing_key(wallet_id: WalletId) -> Result<String> {
         let orchard_extsk = OrchardExtendedSpendingKey::from_bytes(orchard_extsk_bytes)
             .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
         let orchard_fvk = orchard_extsk.to_extended_fvk();
-        orchard_fvk.to_bech32_for_network(network_type)
+        orchard_fvk
+            .to_bech32_for_network(network_type)
             .map_err(|e| anyhow!("Failed to encode Orchard viewing key: {}", e))
     } else {
         Err(anyhow!("Orchard keys not available for this wallet"))
@@ -2674,23 +2701,23 @@ pub fn export_orchard_viewing_key(wallet_id: WalletId) -> Result<String> {
 }
 
 /// Export legacy Orchard viewing key (returns hex-encoded 64 bytes) - DEPRECATED
-/// 
+///
 /// Use export_orchard_viewing_key() instead for watch-only wallets.
 /// This method is kept for backward compatibility.
 #[deprecated(note = "Use export_orchard_viewing_key() instead")]
 pub fn export_orchard_ivk(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
-    
+
     if wallet.watch_only {
         return Err(anyhow!("Cannot export viewing key from watch-only wallet"));
     }
-    
+
     // Load wallet secret from encrypted storage
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-    
+
     // Derive legacy Orchard viewing key from stored Orchard spending key
     if let Some(orchard_extsk_bytes) = secret.orchard_extsk.as_ref() {
         let orchard_extsk = OrchardExtendedSpendingKey::from_bytes(orchard_extsk_bytes)
@@ -2707,11 +2734,16 @@ pub fn export_orchard_ivk(wallet_id: WalletId) -> Result<String> {
 ///
 /// Supports Sapling viewing keys (zxviews...) and Orchard extended viewing keys (bech32).
 /// If both are provided, creates a watch-only wallet that can view both Sapling and Orchard transactions.
-pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option<String>, birthday: u32) -> Result<WalletId> {
+pub fn import_ivk(
+    name: String,
+    sapling_ivk: Option<String>,
+    orchard_ivk: Option<String>,
+    birthday: u32,
+) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
     // Validate viewing keys by attempting to create wallet
     let _wallet = Wallet::from_ivks(sapling_ivk.as_deref(), orchard_ivk.as_deref())?;
-    
+
     let wallet_id = uuid::Uuid::new_v4().to_string();
     let meta = WalletMeta {
         id: wallet_id.clone(),
@@ -2725,7 +2757,7 @@ pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option
     // Clone values before moving meta
     let account_name = meta.name.clone();
     let account_created_at = meta.created_at;
-    
+
     WALLETS.write().push(meta.clone());
     *ACTIVE_WALLET.write() = Some(wallet_id.clone());
 
@@ -2736,7 +2768,7 @@ pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option
 
     // Store viewing keys in encrypted storage
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    
+
     // Create account for this wallet
     let account = Account {
         id: None,
@@ -2744,7 +2776,7 @@ pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option
         created_at: account_created_at,
     };
     let account_id = repo.insert_account(&account)?;
-    
+
     // Store viewing keys in wallet_secret (watch-only wallets don't have mnemonic)
     let mut dfvk_bytes: Option<Vec<u8>> = None;
     if let Some(ref value) = sapling_ivk {
@@ -2774,7 +2806,7 @@ pub fn import_ivk(name: String, sapling_ivk: Option<String>, orchard_ivk: Option
         encrypted_mnemonic: None, // Watch-only wallets don't have mnemonic
         created_at: account_created_at,
     };
-    
+
     let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret)?;
     repo.upsert_wallet_secret(&encrypted_secret)?;
 
@@ -2947,7 +2979,9 @@ pub fn generate_address_for_key(
             .ok_or_else(|| anyhow!("Orchard viewing key not available"))?;
         let fvk = OrchardExtendedFullViewingKey::from_bytes(fvk_bytes)
             .map_err(|e| anyhow!("Invalid Orchard viewing key bytes: {}", e))?;
-        let addr = fvk.address_at(next_index).encode_for_network(network_type)?;
+        let addr = fvk
+            .address_at(next_index)
+            .encode_for_network(network_type)?;
         (addr, AddressType::Orchard)
     } else {
         let dfvk_bytes = key
@@ -2956,7 +2990,9 @@ pub fn generate_address_for_key(
             .ok_or_else(|| anyhow!("Sapling viewing key not available"))?;
         let dfvk = ExtendedFullViewingKey::from_bytes(dfvk_bytes)
             .ok_or_else(|| anyhow!("Invalid Sapling viewing key bytes"))?;
-        let addr = dfvk.derive_address(next_index).encode_for_network(network_type);
+        let addr = dfvk
+            .derive_address(next_index)
+            .encode_for_network(network_type);
         (addr, AddressType::Sapling)
     };
 
@@ -3005,7 +3041,9 @@ pub fn import_spending_key(
         let (extsk, network) = ExtendedSpendingKey::from_bech32_any(value)
             .map_err(|e| anyhow!("Invalid Sapling spending key: {}", e))?;
         if network != wallet_network {
-            return Err(anyhow!("Sapling spending key network does not match wallet"));
+            return Err(anyhow!(
+                "Sapling spending key network does not match wallet"
+            ));
         }
         network_from_key = Some(network);
         sapling_dfvk = Some(extsk.to_extended_fvk().to_bytes());
@@ -3016,11 +3054,15 @@ pub fn import_spending_key(
         let (extsk, network) = OrchardExtendedSpendingKey::from_bech32_any(value)
             .map_err(|e| anyhow!("Invalid Orchard spending key: {}", e))?;
         if network != wallet_network {
-            return Err(anyhow!("Orchard spending key network does not match wallet"));
+            return Err(anyhow!(
+                "Orchard spending key network does not match wallet"
+            ));
         }
         if let Some(existing) = network_from_key {
             if existing != network {
-                return Err(anyhow!("Sapling and Orchard keys are for different networks"));
+                return Err(anyhow!(
+                    "Sapling and Orchard keys are for different networks"
+                ));
             }
         }
         orchard_fvk = Some(extsk.to_extended_fvk().to_bytes());
@@ -3049,37 +3091,38 @@ pub fn import_spending_key(
 }
 
 /// Export mnemonic seed (DANGEROUS - requires authentication)
-/// 
+///
 /// This is a high-security operation that requires:
 /// 1. Passphrase verification (Argon2id)
 /// 2. Biometric confirmation (if available)
 /// 3. Screenshot blocking is enabled
-/// 
+///
 /// Use `export_seed_with_passphrase` for the gated flow.
-/// 
+///
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
 pub fn export_seed(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
-    
+
     if wallet.watch_only {
         return Err(anyhow!("Cannot export seed from watch-only wallet"));
     }
-    
+
     // Load wallet secret from encrypted storage
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-    
+
     // Check if mnemonic is stored (wallet was created/restored from seed)
-    let mnemonic_bytes = secret.encrypted_mnemonic
-        .ok_or_else(|| anyhow!("Seed not available. This wallet was imported from private key or is watch-only."))?;
-    
+    let mnemonic_bytes = secret.encrypted_mnemonic.ok_or_else(|| {
+        anyhow!("Seed not available. This wallet was imported from private key or is watch-only.")
+    })?;
+
     // Decrypt mnemonic (database encryption handles decryption)
     let mnemonic = String::from_utf8(mnemonic_bytes)
         .map_err(|e| anyhow!("Failed to decode mnemonic: {}", e))?;
-    
+
     tracing::info!("Seed exported for wallet {}", wallet_id);
     Ok(mnemonic)
 }
@@ -3089,8 +3132,8 @@ pub fn export_seed(wallet_id: WalletId) -> Result<String> {
 // ============================================================================
 
 use pirate_core::{
-    MAX_MEMO_LENGTH,
-    FeeCalculator, FeePolicy, NoteSelector, SelectionStrategy, DEFAULT_FEE, MIN_FEE, MAX_FEE,
+    FeeCalculator, FeePolicy, NoteSelector, SelectionStrategy, DEFAULT_FEE, MAX_FEE,
+    MAX_MEMO_LENGTH, MIN_FEE,
 };
 
 /// Maximum number of outputs per transaction
@@ -3099,7 +3142,7 @@ const AUTO_CONSOLIDATION_THRESHOLD: usize = 30;
 const AUTO_CONSOLIDATION_MAX_EXTRA_NOTES: usize = 20;
 
 fn normalize_filter_ids(ids: Option<Vec<i64>>) -> Option<Vec<i64>> {
-    let Some(values) = ids else { return None };
+    let values = ids?;
     let mut unique = HashSet::new();
     let mut normalized = Vec::new();
     for id in values {
@@ -3139,7 +3182,9 @@ fn resolve_spend_key_id(
         if !ids.is_empty() {
             let unique: HashSet<i64> = ids.iter().copied().collect();
             if unique.len() > 1 {
-                return Err(anyhow!("Multiple key groups are not supported in a single transaction"));
+                return Err(anyhow!(
+                    "Multiple key groups are not supported in a single transaction"
+                ));
             }
             let key_id = *unique.iter().next().unwrap();
             validate_spendable_key(repo, account_id, key_id)?;
@@ -3183,13 +3228,13 @@ fn resolve_spend_key_id(
 }
 
 /// Build transaction with note selection, fee calculation, and change
-/// 
+///
 /// Validates:
 /// - All addresses are valid Sapling (zs1...)
 /// - All amounts are non-zero
 /// - All memos are valid UTF-8 and <= 512 bytes
 /// - Sufficient funds available
-/// 
+///
 /// Returns PendingTx with fee, change, and input information
 fn build_tx_internal(
     wallet_id: WalletId,
@@ -3200,7 +3245,8 @@ fn build_tx_internal(
 ) -> Result<PendingTx> {
     tracing::info!(
         "Building transaction for wallet {} with {} outputs",
-        wallet_id, outputs.len()
+        wallet_id,
+        outputs.len()
     );
 
     // Validate output count
@@ -3210,34 +3256,36 @@ fn build_tx_internal(
     if outputs.len() > MAX_OUTPUTS_PER_TX {
         return Err(anyhow!(
             "Too many outputs: {} (maximum {})",
-            outputs.len(), MAX_OUTPUTS_PER_TX
+            outputs.len(),
+            MAX_OUTPUTS_PER_TX
         ));
     }
 
     // Validate each output
     let mut has_memo = false;
     let mut total_amount = 0u64;
-    
+
     for (i, output) in outputs.iter().enumerate() {
         // Validate output
-        output.validate()
+        output
+            .validate()
             .map_err(|e| anyhow!("Output {}: {}", i + 1, e))?;
-        
+
         // Detect and validate address type (Sapling or Orchard)
-        let is_orchard = output.addr.starts_with("pirate1") 
-            || output.addr.starts_with("pirate-test1") 
+        let is_orchard = output.addr.starts_with("pirate1")
+            || output.addr.starts_with("pirate-test1")
             || output.addr.starts_with("pirate-regtest1");
-        let is_sapling = output.addr.starts_with("zs1") 
-            || output.addr.starts_with("ztestsapling1") 
+        let is_sapling = output.addr.starts_with("zs1")
+            || output.addr.starts_with("ztestsapling1")
             || output.addr.starts_with("zregtestsapling1");
-        
+
         if !is_orchard && !is_sapling {
             return Err(anyhow!(
                 "Invalid address at output {}: must be Sapling (zs1...) or Orchard (pirate1...) address",
                 i + 1
             ));
         }
-        
+
         // Decode address to validate (try both types)
         if is_orchard {
             OrchardPaymentAddress::decode_any_network(&output.addr)
@@ -3246,28 +3294,33 @@ fn build_tx_internal(
             PaymentAddress::decode_any_network(&output.addr)
                 .map_err(|e| anyhow!("Invalid Sapling address at output {}: {}", i + 1, e))?;
         }
-        
+
         // Validate memo if present
         if let Some(ref memo_text) = output.memo {
-            let memo_bytes = memo_text.as_bytes().len();
+            let memo_bytes = memo_text.len();
             if memo_bytes > MAX_MEMO_LENGTH {
                 return Err(anyhow!(
                     "Memo at output {} is too long: {} bytes (maximum {})",
-                    i + 1, memo_bytes, MAX_MEMO_LENGTH
+                    i + 1,
+                    memo_bytes,
+                    MAX_MEMO_LENGTH
                 ));
             }
-            
+
             // Validate UTF-8 (Rust strings are already UTF-8, but check for control chars)
-            if memo_text.chars().any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r') {
+            if memo_text
+                .chars()
+                .any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r')
+            {
                 return Err(anyhow!(
                     "Memo at output {} contains invalid control characters",
                     i + 1
                 ));
             }
-            
+
             has_memo = true;
         }
-        
+
         // Sum amounts
         total_amount = total_amount
             .checked_add(output.amount)
@@ -3370,7 +3423,8 @@ fn build_tx_internal(
     if required_total > available_balance {
         return Err(anyhow!(
             "Insufficient funds: need {} arrrtoshis, have {} arrrtoshis",
-            required_total, available_balance
+            required_total,
+            available_balance
         ));
     }
 
@@ -3411,7 +3465,10 @@ fn build_tx_internal(
 
     tracing::info!(
         "Built pending tx {}: {} outputs, {} fee, {} change",
-        pending.id, pending.outputs.len(), pending.fee, pending.change
+        pending.id,
+        pending.outputs.len(),
+        pending.fee,
+        pending.change
     );
 
     Ok(pending)
@@ -3464,11 +3521,8 @@ pub fn build_consolidation_tx(
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let selectable_notes = repo.get_unspent_selectable_notes_filtered(
-        secret.account_id,
-        Some(vec![key_id]),
-        None,
-    )?;
+    let selectable_notes =
+        repo.get_unspent_selectable_notes_filtered(secret.account_id, Some(vec![key_id]), None)?;
     let available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
 
     if available_balance == 0 {
@@ -3487,7 +3541,8 @@ pub fn build_consolidation_tx(
     if available_balance <= fee {
         return Err(anyhow!(
             "Insufficient funds: need {} arrrtoshis for fee, have {} arrrtoshis",
-            fee, available_balance
+            fee,
+            available_balance
         ));
     }
 
@@ -3567,7 +3622,7 @@ pub fn build_sweep_tx(
 }
 
 /// Sign pending transaction
-/// 
+///
 /// Loads wallet from secure storage, performs note selection,
 /// generates Sapling proofs, and signs the transaction.
 fn sign_tx_internal(
@@ -3576,7 +3631,11 @@ fn sign_tx_internal(
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<SignedTx> {
-    tracing::info!("Signing transaction {} for wallet {}", pending.id, wallet_id);
+    tracing::info!(
+        "Signing transaction {} for wallet {}",
+        pending.id,
+        wallet_id
+    );
     // #region agent log
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
@@ -3615,10 +3674,7 @@ fn sign_tx_internal(
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_sign_tx_step","timestamp":{},"location":"api.rs:2035","message":"sign_tx step","data":{{"wallet_id":"{}","step":"{}","detail":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                ts,
-                wallet_id,
-                step,
-                detail
+                ts, wallet_id, step, detail
             );
         }
     };
@@ -3631,12 +3687,10 @@ fn sign_tx_internal(
     })?;
     log_step("open_db_ok", "");
     log_step("load_wallet_secret_start", "");
-    let secret = repo
-        .get_wallet_secret(&wallet_id)?
-        .ok_or_else(|| {
-            log_step("load_wallet_secret_error", "missing");
-            anyhow!("No wallet secret found for {}", wallet_id)
-        })?;
+    let secret = repo.get_wallet_secret(&wallet_id)?.ok_or_else(|| {
+        log_step("load_wallet_secret_error", "missing");
+        anyhow!("No wallet secret found for {}", wallet_id)
+    })?;
     log_step("load_wallet_secret_ok", "");
 
     let key_ids_filter = normalize_filter_ids(key_ids_filter);
@@ -3648,28 +3702,29 @@ fn sign_tx_internal(
         address_ids_filter.as_deref(),
     )?;
 
-    let (sapling_extsk_bytes, orchard_extsk_bytes, change_key_id) = if let Some(key_id) = signing_key_id {
-        let key = repo
-            .get_account_key_by_id(key_id)?
-            .ok_or_else(|| anyhow!("Key group not found"))?;
-        if key.account_id != secret.account_id {
-            return Err(anyhow!("Key group does not belong to this wallet"));
-        }
-        if !key.spendable {
-            return Err(anyhow!("Key group is not spendable"));
-        }
-        let sapling_bytes = key
-            .sapling_extsk
-            .clone()
-            .ok_or_else(|| anyhow!("Sapling spending key missing for key group"))?;
-        (sapling_bytes, key.orchard_extsk.clone(), key_id)
-    } else {
-        (
-            secret.extsk.clone(),
-            secret.orchard_extsk.clone(),
-            ensure_primary_account_key(&repo, &wallet_id, &secret)?,
-        )
-    };
+    let (sapling_extsk_bytes, orchard_extsk_bytes, change_key_id) =
+        if let Some(key_id) = signing_key_id {
+            let key = repo
+                .get_account_key_by_id(key_id)?
+                .ok_or_else(|| anyhow!("Key group not found"))?;
+            if key.account_id != secret.account_id {
+                return Err(anyhow!("Key group does not belong to this wallet"));
+            }
+            if !key.spendable {
+                return Err(anyhow!("Key group is not spendable"));
+            }
+            let sapling_bytes = key
+                .sapling_extsk
+                .clone()
+                .ok_or_else(|| anyhow!("Sapling spending key missing for key group"))?;
+            (sapling_bytes, key.orchard_extsk.clone(), key_id)
+        } else {
+            (
+                secret.extsk.clone(),
+                secret.orchard_extsk.clone(),
+                ensure_primary_account_key(&repo, &wallet_id, &secret)?,
+            )
+        };
 
     let extsk = ExtendedSpendingKey::from_bytes(&sapling_extsk_bytes).map_err(|e| {
         log_step("extsk_parse_error", &format!("{:?}", e));
@@ -3691,9 +3746,9 @@ fn sign_tx_internal(
             address_ids_filter.clone(),
         )
         .map_err(|e| {
-        log_step("load_selectable_notes_error", &format!("{:?}", e));
-        e
-    })?;
+            log_step("load_selectable_notes_error", &format!("{:?}", e));
+            e
+        })?;
     log_step(
         "load_selectable_notes_ok",
         &format!("notes={}", selectable_notes.len()),
@@ -3705,9 +3760,7 @@ fn sign_tx_internal(
             .any(|note| note.note_type == pirate_core::selection::NoteType::Orchard)
     {
         log_step("orchard_extsk_missing", "");
-        return Err(anyhow!(
-            "Orchard spending key missing for this key group"
-        ));
+        return Err(anyhow!("Orchard spending key missing for this key group"));
     }
 
     // Compute Orchard witnesses for notes that need them
@@ -3725,15 +3778,18 @@ fn sign_tx_internal(
                                 if let Some(position) = note.orchard_position {
                                     // Compute witness asynchronously
                                     let witness_result = futures::executor::block_on(
-                                        engine.get_orchard_witness(position)
+                                        engine.get_orchard_witness(position),
                                     );
-                                    
+
                                     match witness_result {
                                         Ok(Some(merkle_path)) => {
                                             // Reference: builder_ffi.rs (use .into() to convert)
                                             // incrementalmerkletree::MerklePath to orchard::tree::MerklePath
                                             note.orchard_merkle_path = Some(merkle_path.into());
-                                            tracing::debug!("Computed Orchard witness for position {}", position);
+                                            tracing::debug!(
+                                                "Computed Orchard witness for position {}",
+                                                position
+                                            );
                                         }
                                         Ok(None) => {
                                             tracing::warn!("No witness available for Orchard note at position {}", position);
@@ -3826,19 +3882,19 @@ fn sign_tx_internal(
         builder.with_auto_consolidation_extra_limit(auto_consolidation_extra_limit);
     }
     let mut has_orchard_output = false;
-    
+
     for out in &pending.outputs {
         // Detect address type
-        let is_orchard = out.addr.starts_with("pirate1") 
-            || out.addr.starts_with("pirate-test1") 
+        let is_orchard = out.addr.starts_with("pirate1")
+            || out.addr.starts_with("pirate-test1")
             || out.addr.starts_with("pirate-regtest1");
-        
+
         let memo = out
             .memo
             .as_ref()
             .filter(|s| !s.is_empty())
             .map(|s| pirate_core::memo::Memo::from_text_truncated(s.clone()));
-        
+
         if is_orchard {
             has_orchard_output = true;
             let addr = OrchardPaymentAddress::decode_any_network(&out.addr)
@@ -3872,9 +3928,7 @@ fn sign_tx_internal(
             continue;
         }
 
-        if auto_consolidation_extra_limit == 0
-            || extra_selected >= auto_consolidation_extra_limit
-        {
+        if auto_consolidation_extra_limit == 0 || extra_selected >= auto_consolidation_extra_limit {
             break;
         }
 
@@ -3897,7 +3951,10 @@ fn sign_tx_internal(
         e
     })?;
     let target_height = sync_state.local_height as u32;
-    log_step("load_sync_state_ok", &format!("target_height={}", target_height));
+    log_step(
+        "load_sync_state_ok",
+        &format!("target_height={}", target_height),
+    );
 
     // Fetch Orchard anchor from frontier first, then lightwalletd if needed.
     let orchard_anchor_opt = if has_orchard_output {
@@ -3990,7 +4047,9 @@ fn sign_tx_internal(
                         return None;
                     }
 
-                    orchard_anchor_from_frontier_hex(&tree_state.orchard_tree).ok().flatten()
+                    orchard_anchor_from_frontier_hex(&tree_state.orchard_tree)
+                        .ok()
+                        .flatten()
                 };
 
                 match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
@@ -4035,9 +4094,9 @@ fn sign_tx_internal(
             pirate_storage_sqlite::AddressScope::Internal,
         )
         .map_err(|e| {
-        log_step("next_diversifier_error", &format!("{:?}", e));
-        e
-    })?;
+            log_step("next_diversifier_error", &format!("{:?}", e));
+            e
+        })?;
     log_step(
         "next_diversifier_ok",
         &format!("{}", next_diversifier_index),
@@ -4045,12 +4104,12 @@ fn sign_tx_internal(
 
     if pending.change > 10_000 {
         let (change_addr, address_type) = if use_orchard_change {
-            let orchard_extsk = orchard_extsk_opt.as_ref().ok_or_else(|| {
-                anyhow!("Orchard spending key required for Orchard change")
-            })?;
+            let orchard_extsk = orchard_extsk_opt
+                .as_ref()
+                .ok_or_else(|| anyhow!("Orchard spending key required for Orchard change"))?;
             let orchard_fvk = orchard_extsk.to_extended_fvk();
             let addr = orchard_fvk
-                .address_at_internal(next_diversifier_index as u32)
+                .address_at_internal(next_diversifier_index)
                 .encode_for_network(network_type)?;
             (addr, AddressType::Orchard)
         } else {
@@ -4124,9 +4183,7 @@ fn sign_tx_internal(
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_sign_tx_error","timestamp":{},"location":"api.rs:2166","message":"build_and_sign failed","data":{{"wallet_id":"{}","error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    ts,
-                    wallet_id_for_log,
-                    e
+                    ts, wallet_id_for_log, e
                 );
             }
             return Err(anyhow!("Build/sign failed: {}", e));
@@ -4145,8 +4202,7 @@ fn sign_tx_internal(
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_sign_tx_error","timestamp":{},"location":"api.rs:2166","message":"build_and_sign timeout","data":{{"wallet_id":"{}","timeout_secs":120}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    ts,
-                    wallet_id_for_log
+                    ts, wallet_id_for_log
                 );
             }
             return Err(anyhow!("Build/sign timed out after 120s"));
@@ -4165,8 +4221,7 @@ fn sign_tx_internal(
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_sign_tx_error","timestamp":{},"location":"api.rs:2166","message":"build_and_sign failed","data":{{"wallet_id":"{}","error":"channel disconnected"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    ts,
-                    wallet_id_for_log
+                    ts, wallet_id_for_log
                 );
             }
             return Err(anyhow!("Build/sign failed: channel disconnected"));
@@ -4175,7 +4230,8 @@ fn sign_tx_internal(
 
     tracing::info!(
         "Signed transaction {}: {} bytes",
-        signed_core.txid, signed_core.size
+        signed_core.txid,
+        signed_core.size
     );
     // #region agent log
     if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -4191,10 +4247,7 @@ fn sign_tx_internal(
         let _ = writeln!(
             file,
             r#"{{"id":"log_sign_tx_ok","timestamp":{},"location":"api.rs:2222","message":"sign_tx ok","data":{{"wallet_id":"{}","txid":"{}","size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-            ts,
-            wallet_id,
-            signed_core.txid.to_string(),
-            signed_core.size
+            ts, wallet_id, signed_core.txid, signed_core.size
         );
     }
     // #endregion
@@ -4212,11 +4265,7 @@ pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
 }
 
 /// Sign pending transaction using notes from a specific key group
-pub fn sign_tx_for_key(
-    wallet_id: WalletId,
-    pending: PendingTx,
-    key_id: i64,
-) -> Result<SignedTx> {
+pub fn sign_tx_for_key(wallet_id: WalletId, pending: PendingTx, key_id: i64) -> Result<SignedTx> {
     sign_tx_internal(wallet_id, pending, Some(vec![key_id]), None)
 }
 
@@ -4231,7 +4280,7 @@ pub fn sign_tx_filtered(
 }
 
 /// Broadcast signed transaction to the network
-/// 
+///
 /// Sends transaction via lightwalletd gRPC SendTransaction.
 /// Returns TxId on success, or error with details.
 pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
@@ -4254,16 +4303,14 @@ async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
         let _ = writeln!(
             file,
             r#"{{"id":"log_broadcast_start","timestamp":{},"location":"api.rs:2233","message":"broadcast start","data":{{"txid":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-            ts,
-            signed.txid
+            ts, signed.txid
         );
     }
     // #endregion
-    
+
     // Get active wallet for endpoint
-    let wallet_id = get_active_wallet()?
-        .ok_or_else(|| anyhow!("No active wallet"))?;
-    
+    let wallet_id = get_active_wallet()?.ok_or_else(|| anyhow!("No active wallet"))?;
+
     // Get lightwalletd endpoint configuration
     let endpoint_config = get_lightd_endpoint_config(wallet_id)?;
     let endpoint_url = endpoint_config.url();
@@ -4312,9 +4359,7 @@ async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_broadcast_connect_error","timestamp":{},"location":"api.rs:2212","message":"broadcast connect failed","data":{{"endpoint":"{}","error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                ts,
-                endpoint_url,
-                e
+                ts, endpoint_url, e
             );
         }
         return Err(anyhow!("Failed to connect to {}: {}", endpoint_url, e));
@@ -4348,7 +4393,9 @@ async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
 
     tracing::info!(
         "Broadcast to {} succeeded: {} ({} bytes)",
-        endpoint_url, txid_hex, signed.size
+        endpoint_url,
+        txid_hex,
+        signed.size
     );
     // #region agent log
     if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -4364,9 +4411,7 @@ async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
         let _ = writeln!(
             file,
             r#"{{"id":"log_broadcast_ok","timestamp":{},"location":"api.rs:2263","message":"broadcast ok","data":{{"txid":"{}","endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-            ts,
-            signed.txid,
-            endpoint_url
+            ts, signed.txid, endpoint_url
         );
     }
     // #endregion
@@ -4375,32 +4420,29 @@ async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
 }
 
 /// Estimate fee for transaction without building it
-pub fn estimate_fee(
-    num_outputs: usize,
-    has_memo: bool,
-    fee_policy: Option<String>,
-) -> Result<u64> {
+pub fn estimate_fee(num_outputs: usize, has_memo: bool, fee_policy: Option<String>) -> Result<u64> {
     let calculator = FeeCalculator::new();
-    let estimated_inputs = (num_outputs + 1) / 2;
-    
+    let estimated_inputs = num_outputs.div_ceil(2);
+
     let base_fee = calculator
         .calculate_fee(estimated_inputs, num_outputs, has_memo)
         .map_err(|e| anyhow!("Fee calculation error: {}", e))?;
-    
+
     // Apply fee policy
     let policy = match fee_policy.as_deref() {
         Some("low") => FeePolicy::Low,
         Some("high") => FeePolicy::High,
         Some("standard") | None => FeePolicy::Standard,
         Some(custom) => {
-            let fee: u64 = custom.parse()
+            let fee: u64 = custom
+                .parse()
                 .map_err(|_| anyhow!("Invalid fee: {}", custom))?;
             FeePolicy::Custom(fee)
         }
     };
-    
+
     let fee = policy.apply(base_fee);
-    Ok(fee.max(MIN_FEE).min(MAX_FEE))
+    Ok(fee.clamp(MIN_FEE, MAX_FEE))
 }
 
 /// Get fee information
@@ -4449,7 +4491,9 @@ fn decode_frontier_snapshot(bytes: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<u8>)> 
     const FRONTIER_SNAPSHOT_MAGIC: [u8; 4] = *b"PFRT";
     const FRONTIER_SNAPSHOT_VERSION: u8 = 1;
 
-    if bytes.len() < FRONTIER_SNAPSHOT_MAGIC.len() + 1 || !bytes.starts_with(&FRONTIER_SNAPSHOT_MAGIC) {
+    if bytes.len() < FRONTIER_SNAPSHOT_MAGIC.len() + 1
+        || !bytes.starts_with(&FRONTIER_SNAPSHOT_MAGIC)
+    {
         return Ok((bytes.to_vec(), Vec::new()));
     }
 
@@ -4481,7 +4525,9 @@ fn decode_frontier_snapshot(bytes: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<u8>)> 
     Ok((sapling_bytes, orchard_bytes))
 }
 
-fn orchard_anchor_from_frontier_hex(frontier_hex: &str) -> anyhow::Result<Option<orchard::tree::Anchor>> {
+fn orchard_anchor_from_frontier_hex(
+    frontier_hex: &str,
+) -> anyhow::Result<Option<orchard::tree::Anchor>> {
     if frontier_hex.is_empty() {
         return Ok(None);
     }
@@ -4571,30 +4617,30 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis();
-        let id = uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>();
+        let id = uuid::Uuid::new_v4()
+            .to_string()
+            .chars()
+            .take(8)
+            .collect::<String>();
         let _ = writeln!(
             file,
             r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:2306","message":"start_sync wallet","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
-            id,
-            ts,
-            wallet_id
+            id, ts, wallet_id
         );
     }
     // #endregion
-    
+
     // Get wallet birthday height
     let wallet = get_wallet_meta(&wallet_id)?;
     let birthday_height = wallet.birthday_height;
     let start_height = {
-        let resume_height_opt = open_wallet_db_for(&wallet_id)
-            .ok()
-            .and_then(|(db, _repo)| {
-                let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
-                sync_storage
-                    .load_sync_state()
-                    .ok()
-                    .map(|state| state.local_height as u32)
-            });
+        let resume_height_opt = open_wallet_db_for(&wallet_id).ok().and_then(|(db, _repo)| {
+            let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+            sync_storage
+                .load_sync_state()
+                .ok()
+                .map(|state| state.local_height as u32)
+        });
         // #region agent log
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -4614,11 +4660,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:2319","message":"start_sync resume_height","data":{{"wallet_id":"{}","resume_height":"{:?}","birthday_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
-                id,
-                ts,
-                wallet_id,
-                resume_height_opt,
-                birthday_height
+                id, ts, wallet_id, resume_height_opt, birthday_height
             );
         }
         // #endregion
@@ -4627,14 +4669,14 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             _ => birthday_height,
         }
     };
-    
+
     // Get endpoint configuration (not just URL)
     let endpoint_config = get_lightd_endpoint_config(wallet_id.clone())?;
     let endpoint_url = endpoint_config.url();
-    
+
     // Extract tunnel mode before async
     let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
-    
+
     // Parse endpoint URL to determine TLS settings (same logic as test_node)
     let normalized_url = endpoint_url.trim().to_string();
     let tls_enabled = if normalized_url.starts_with("http://") {
@@ -4644,16 +4686,16 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     } else {
         endpoint_config.use_tls // Use config value if no protocol specified
     };
-    
+
     // Extract hostname for TLS SNI
-    let host = if normalized_url.starts_with("https://") {
-        normalized_url[8..].split(':').next().unwrap_or("").to_string()
-    } else if normalized_url.starts_with("http://") {
-        normalized_url[7..].split(':').next().unwrap_or("").to_string()
+    let host = if let Some(stripped) = normalized_url.strip_prefix("https://") {
+        stripped.split(':').next().unwrap_or("").to_string()
+    } else if let Some(stripped) = normalized_url.strip_prefix("http://") {
+        stripped.split(':').next().unwrap_or("").to_string()
     } else {
         endpoint_config.host.clone()
     };
-    
+
     let is_ip_address = host.parse::<std::net::IpAddr>().is_ok();
     let tls_server_name = if tls_enabled {
         if is_ip_address {
@@ -4665,19 +4707,38 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     } else {
         None
     };
-    
-    tracing::info!("start_sync: Using endpoint {} (TLS: {}, transport: {:?})", endpoint_url, tls_enabled, transport);
-    
+
+    tracing::info!(
+        "start_sync: Using endpoint {} (TLS: {}, transport: {:?})",
+        endpoint_url,
+        tls_enabled,
+        transport
+    );
+
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
         use std::io::Write;
-        let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-        let id = uuid::Uuid::new_v4().to_string().chars().take(8).collect::<String>();
-        let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:1964","message":"start_sync config","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","host":"{}","tls_server_name":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#, 
-            id, ts, endpoint_url, tls_enabled, transport, host, tls_server_name);
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let id = uuid::Uuid::new_v4()
+            .to_string()
+            .chars()
+            .take(8)
+            .collect::<String>();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:1964","message":"start_sync config","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","host":"{}","tls_server_name":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+            id, ts, endpoint_url, tls_enabled, transport, host, tls_server_name
+        );
     }
     // #endregion
-    
+
     // Create LightClient config with proper TLS settings
     let client_config = LightClientConfig {
         endpoint: endpoint_url.clone(),
@@ -4693,10 +4754,16 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         request_timeout: std::time::Duration::from_secs(60),
         allow_direct_fallback,
     };
-    
+
     let network_type = wallet_network_type(&wallet_id)?;
     let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
-    let (max_parallel_decrypt, max_batch_memory_bytes, target_batch_bytes, min_batch_bytes, max_batch_bytes) = if is_mobile {
+    let (
+        max_parallel_decrypt,
+        max_batch_memory_bytes,
+        target_batch_bytes,
+        min_batch_bytes,
+        max_batch_bytes,
+    ) = if is_mobile {
         (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
     } else {
         (32, Some(500_000_000), 32_000_000, 4_000_000, 64_000_000)
@@ -4710,10 +4777,10 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             SyncMode::Compact => 2_000, // Faster sync with larger batches (used when server recommendations disabled)
             SyncMode::Deep => 1_000,    // Smaller batches for deep scan
         },
-        min_batch_size: 100, // Minimum for spam blocks
+        min_batch_size: 100,                    // Minimum for spam blocks
         max_batch_size: 2_000, // Maximum batch size to prevent OOM (also caps server recommendations)
         use_server_batch_recommendations: true, // Use server's ~4MB chunk recommendations (typically ~199 blocks)
-        mini_checkpoint_every: 5, // Mini-checkpoint every 5 batches
+        mini_checkpoint_every: 5,               // Mini-checkpoint every 5 batches
         max_parallel_decrypt,
         lazy_memo_decode: true, // Default to lazy memo decoding
         defer_full_tx_fetch: true,
@@ -4723,7 +4790,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         heavy_block_threshold_bytes: 500_000, // 500KB per block = heavy/spam
         max_batch_memory_bytes,
     };
-    
+
     // Create sync engine with wallet context and proper client config
     // We need to modify SyncEngine to accept a LightClientConfig instead of just a URL
     // For now, create the client manually and pass it to a modified sync engine
@@ -4735,9 +4802,13 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     let sync = Arc::new(Mutex::new(sync));
     let (progress, perf, cancel_flag) = {
         let engine = sync.clone().lock_owned().await;
-        (engine.progress(), engine.perf_counters(), engine.cancel_flag())
+        (
+            engine.progress(),
+            engine.perf_counters(),
+            engine.cancel_flag(),
+        )
     };
-    
+
     // Store session
     {
         let mut sessions = SYNC_SESSIONS.write();
@@ -4762,7 +4833,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         }));
         sessions.insert(wallet_id.clone(), session.clone());
     }
-    
+
     // Start sync in background
     let wallet_id_for_task = wallet_id.clone();
     tokio::spawn(async move {
@@ -4771,7 +4842,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             let sessions = SYNC_SESSIONS.read();
             sessions.get(&wallet_id_for_task).cloned()
         }; // sessions guard dropped here before any await points
-        
+
         if let Some(session_arc) = session_arc_opt {
             let sync_opt = { session_arc.lock().await.sync.clone() };
 
@@ -4831,9 +4902,14 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                     Ok(()) => {
                         // Sync caught up - but it's still running in the background monitoring for new blocks
                         // Don't set is_running = false, sync continues indefinitely
-                        tracing::info!("Sync caught up for wallet {} (still monitoring for new blocks)", wallet_id_for_task);
+                        tracing::info!(
+                            "Sync caught up for wallet {} (still monitoring for new blocks)",
+                            wallet_id_for_task
+                        );
                         if let Ok(registry_db) = open_wallet_registry() {
-                            if let Err(e) = touch_wallet_last_synced(&registry_db, &wallet_id_for_task) {
+                            if let Err(e) =
+                                touch_wallet_last_synced(&registry_db, &wallet_id_for_task)
+                            {
                                 tracing::warn!(
                                     "Failed to update last_synced_at for {}: {}",
                                     wallet_id_for_task,
@@ -4856,7 +4932,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             }
         }
     });
-    
+
     Ok(())
 }
 
@@ -4880,8 +4956,7 @@ pub fn sync_status(wallet_id: WalletId) -> Result<SyncStatus> {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_sync_status_panic","timestamp":{},"location":"api.rs:2557","message":"sync_status panic","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                    ts,
-                    wallet_id_for_panic
+                    ts, wallet_id_for_panic
                 );
             }
             Ok(SyncStatus {
@@ -4915,8 +4990,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_sync_status_call","timestamp":{},"location":"api.rs:2557","message":"sync_status call","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                ts,
-                wallet_id
+                ts, wallet_id
             );
         }
     }
@@ -4944,8 +5018,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     let _ = writeln!(
                         file,
                         r#"{{"id":"log_sync_status_session_none","timestamp":{},"location":"api.rs:2568","message":"sync_status no session in map","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                        ts,
-                        wallet_id
+                        ts, wallet_id
                     );
                 }
             }
@@ -4973,11 +5046,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                             let _ = writeln!(
                                 file,
                                 r#"{{"id":"log_sync_status_state","timestamp":{},"location":"api.rs:2585","message":"sync_status returning from sync_state","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                                ts,
-                                wallet_id,
-                                state.local_height,
-                                state.target_height,
-                                percent
+                                ts, wallet_id, state.local_height, state.target_height, percent
                             );
                         }
                     }
@@ -5010,8 +5079,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     let _ = writeln!(
                         file,
                         r#"{{"id":"log_sync_status_no_session","timestamp":{},"location":"api.rs:2590","message":"sync_status no session","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                        ts,
-                        wallet_id
+                        ts, wallet_id
                     );
                 }
             }
@@ -5019,13 +5087,20 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             // Return default status if no session
             // #region agent log
             use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                let _ = writeln!(file, r#"{{"id":"log_sync_status_default","timestamp":{},"location":"api.rs:2200","message":"sync_status returning default zeros","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"G"}}"#, 
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_sync_status_default","timestamp":{},"location":"api.rs:2200","message":"sync_status returning default zeros","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"G"}}"#,
                     std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis(),
-                    wallet_id);
+                    wallet_id
+                );
             }
             // #endregion
             return Ok(SyncStatus {
@@ -5067,8 +5142,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     let _ = writeln!(
                         file,
                         r#"{{"id":"log_sync_status_lock_busy","timestamp":{},"location":"api.rs:2626","message":"sync_status session lock busy","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                        ts,
-                        wallet_id
+                        ts, wallet_id
                     );
                 }
             }
@@ -5096,11 +5170,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                             let _ = writeln!(
                                 file,
                                 r#"{{"id":"log_sync_status_state_busy","timestamp":{},"location":"api.rs:2652","message":"sync_status returning from sync_state (lock busy)","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                                ts,
-                                wallet_id,
-                                state.local_height,
-                                state.target_height,
-                                percent
+                                ts, wallet_id, state.local_height, state.target_height, percent
                             );
                         }
                     }
@@ -5174,9 +5244,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 notes_decrypted: perf_snapshot
                     .as_ref()
                     .map_or(0, |perf| perf.notes_decrypted),
-                last_batch_ms: perf_snapshot
-                    .as_ref()
-                    .map_or(0, |perf| perf.avg_batch_ms),
+                last_batch_ms: perf_snapshot.as_ref().map_or(0, |perf| perf.avg_batch_ms),
             };
 
             if let Ok(mut session) = session_arc.try_lock() {
@@ -5185,13 +5253,24 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
 
             // #region agent log
             use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                let _ = writeln!(file, r#"{{"id":"log_sync_status","timestamp":{},"location":"api.rs:2166","message":"sync_status returning","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{},"stage":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#, 
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_sync_status","timestamp":{},"location":"api.rs:2166","message":"sync_status returning","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{},"stage":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                     std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis(),
-                    wallet_id, status.local_height, status.target_height, status.percent, status.stage);
+                    wallet_id,
+                    status.local_height,
+                    status.target_height,
+                    status.percent,
+                    status.stage
+                );
             }
             // #endregion
 
@@ -5250,13 +5329,24 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
 
                 // #region agent log
                 use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                    let _ = writeln!(file, r#"{{"id":"log_sync_status","timestamp":{},"location":"api.rs:2166","message":"sync_status returning","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{},"stage":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#, 
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_sync_status","timestamp":{},"location":"api.rs:2166","message":"sync_status returning","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{},"stage":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                         std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis(),
-                        wallet_id, status.local_height, status.target_height, status.percent, status.stage);
+                        wallet_id,
+                        status.local_height,
+                        status.target_height,
+                        status.percent,
+                        status.stage
+                    );
                 }
                 // #endregion
 
@@ -5268,13 +5358,24 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
     // Fallback to last known status
     // #region agent log
     use std::io::Write;
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-        let _ = writeln!(file, r#"{{"id":"log_sync_status_fallback","timestamp":{},"location":"api.rs:2192","message":"sync_status using fallback last_status","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{},"stage":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}}"#, 
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_sync_status_fallback","timestamp":{},"location":"api.rs:2192","message":"sync_status using fallback last_status","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{},"stage":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}}"#,
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis(),
-            wallet_id, last_status.local_height, last_status.target_height, last_status.percent, last_status.stage);
+            wallet_id,
+            last_status.local_height,
+            last_status.target_height,
+            last_status.percent,
+            last_status.stage
+        );
     }
     // #endregion
     Ok(last_status)
@@ -5283,7 +5384,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
 /// Get last checkpoint info for diagnostics
 pub fn get_last_checkpoint(wallet_id: WalletId) -> Result<Option<CheckpointInfo>> {
     let sessions = SYNC_SESSIONS.read();
-    
+
     // Try to get checkpoint height from sync session
     let checkpoint_height_opt = if let Some(session_arc) = sessions.get(&wallet_id) {
         if let Ok(session) = session_arc.try_lock() {
@@ -5295,21 +5396,22 @@ pub fn get_last_checkpoint(wallet_id: WalletId) -> Result<Option<CheckpointInfo>
         None
     };
     drop(sessions);
-    
+
     // Load actual checkpoint from database using CheckpointManager
     let (db, _repo) = open_wallet_db_for(&wallet_id)?;
     use pirate_storage_sqlite::CheckpointManager;
     let manager = CheckpointManager::new(db.conn());
-    
+
     // If we have a height from sync session, try to get checkpoint at that height
     // Otherwise, get the latest checkpoint
     let checkpoint = if let Some(height) = checkpoint_height_opt {
-        manager.get_at_height(height)?
+        manager
+            .get_at_height(height)?
             .or_else(|| manager.get_latest().ok().flatten())
     } else {
         manager.get_latest()?
     };
-    
+
     if let Some(checkpoint) = checkpoint {
         Ok(Some(CheckpointInfo {
             height: checkpoint.height,
@@ -5357,7 +5459,11 @@ async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: std::time::Duration) 
 
 /// Rescan wallet from specific height
 pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
-    tracing::info!("Rescanning wallet {} from height {}", wallet_id, from_height);
+    tracing::info!(
+        "Rescanning wallet {} from height {}",
+        wallet_id,
+        from_height
+    );
     // #region agent log
     {
         use std::io::Write;
@@ -5373,14 +5479,12 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rescan_start","timestamp":{},"location":"api.rs:3050","message":"rescan start","data":{{"wallet_id":"{}","from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts,
-                wallet_id,
-                from_height
+                ts, wallet_id, from_height
             );
         }
     }
     // #endregion
-    
+
     // Validate from_height
     if from_height == 0 {
         return Err(anyhow!("Invalid rescan height: must be > 0"));
@@ -5401,8 +5505,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3058","message":"rescan step","data":{{"wallet_id":"{}","step":"cancel_sync_start"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts,
-                wallet_id
+                ts, wallet_id
             );
         }
     }
@@ -5434,9 +5537,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3076","message":"rescan step","data":{{"wallet_id":"{}","step":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts,
-                wallet_id,
-                step
+                ts, wallet_id, step
             );
         }
     }
@@ -5463,9 +5564,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts,
-                wallet_id,
-                step
+                ts, wallet_id, step
             );
         }
     }
@@ -5510,8 +5609,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3105","message":"rescan step","data":{{"wallet_id":"{}","step":"session_removed"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts,
-                wallet_id
+                ts, wallet_id
             );
         }
     }
@@ -5534,8 +5632,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3119","message":"rescan step","data":{{"wallet_id":"{}","step":"get_passphrase_start"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts,
-                    wallet_id
+                    ts, wallet_id
                 );
             }
         }
@@ -5556,9 +5653,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     let _ = writeln!(
                         file,
                         r#"{{"id":"log_rescan_passphrase_error","timestamp":{},"location":"api.rs:3070","message":"rescan passphrase error","data":{{"wallet_id":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                        ts,
-                        wallet_id,
-                        e
+                        ts, wallet_id, e
                     );
                 }
                 return Err(e);
@@ -5579,8 +5674,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3146","message":"rescan step","data":{{"wallet_id":"{}","step":"get_passphrase_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts,
-                    wallet_id
+                    ts, wallet_id
                 );
             }
         }
@@ -5600,8 +5694,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3159","message":"rescan step","data":{{"wallet_id":"{}","step":"open_db_start"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts,
-                    wallet_id
+                    ts, wallet_id
                 );
             }
         }
@@ -5643,8 +5736,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3181","message":"rescan step","data":{{"wallet_id":"{}","step":"open_db_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts,
-                    wallet_id
+                    ts, wallet_id
                 );
             }
         }
@@ -5664,9 +5756,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3194","message":"rescan step","data":{{"wallet_id":"{}","step":"truncate_start","truncate_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts,
-                    wallet_id,
-                    truncate_height
+                    ts, wallet_id, truncate_height
                 );
             }
         }
@@ -5707,8 +5797,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3219","message":"rescan step","data":{{"wallet_id":"{}","step":"truncate_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts,
-                    wallet_id
+                    ts, wallet_id
                 );
             }
         }
@@ -5774,8 +5863,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3254","message":"rescan step","data":{{"wallet_id":"{}","step":"reset_state_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts,
-                    wallet_id
+                    ts, wallet_id
                 );
             }
         }
@@ -5804,14 +5892,14 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         }
     }
     // #endregion
-    
+
     // Get endpoint configuration (not just URL)
     let endpoint_config = get_lightd_endpoint_config(wallet_id.clone())?;
     let endpoint_url = endpoint_config.url();
-    
+
     // Extract tunnel mode before async
     let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
-    
+
     // Parse endpoint URL to determine TLS settings (same logic as test_node)
     let normalized_url = endpoint_url.trim().to_string();
     let tls_enabled = if normalized_url.starts_with("http://") {
@@ -5821,16 +5909,16 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     } else {
         endpoint_config.use_tls // Use config value if no protocol specified
     };
-    
+
     // Extract hostname for TLS SNI
-    let host = if normalized_url.starts_with("https://") {
-        normalized_url[8..].split(':').next().unwrap_or("").to_string()
-    } else if normalized_url.starts_with("http://") {
-        normalized_url[7..].split(':').next().unwrap_or("").to_string()
+    let host = if let Some(stripped) = normalized_url.strip_prefix("https://") {
+        stripped.split(':').next().unwrap_or("").to_string()
+    } else if let Some(stripped) = normalized_url.strip_prefix("http://") {
+        stripped.split(':').next().unwrap_or("").to_string()
     } else {
         endpoint_config.host.clone()
     };
-    
+
     let is_ip_address = host.parse::<std::net::IpAddr>().is_ok();
     let tls_server_name = if tls_enabled {
         if is_ip_address {
@@ -5842,7 +5930,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     } else {
         None
     };
-    
+
     // Create LightClient config with proper TLS settings
     let client_config = LightClientConfig {
         endpoint: endpoint_url.clone(),
@@ -5858,12 +5946,23 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         request_timeout: std::time::Duration::from_secs(60),
         allow_direct_fallback,
     };
-    
-    tracing::info!("rescan: Using endpoint {} (TLS: {}, transport: {:?})", endpoint_url, tls_enabled, transport);
-    
+
+    tracing::info!(
+        "rescan: Using endpoint {} (TLS: {}, transport: {:?})",
+        endpoint_url,
+        tls_enabled,
+        transport
+    );
+
     let network_type = wallet_network_type(&wallet_id)?;
     let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
-    let (max_parallel_decrypt, max_batch_memory_bytes, target_batch_bytes, min_batch_bytes, max_batch_bytes) = if is_mobile {
+    let (
+        max_parallel_decrypt,
+        max_batch_memory_bytes,
+        target_batch_bytes,
+        min_batch_bytes,
+        max_batch_bytes,
+    ) = if is_mobile {
         (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
     } else {
         (32, Some(500_000_000), 32_000_000, 4_000_000, 64_000_000)
@@ -5886,7 +5985,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         heavy_block_threshold_bytes: 500_000,
         max_batch_memory_bytes,
     };
-    
+
     // Create sync engine with wallet context and proper client config
     let client = LightClient::with_config(client_config);
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
@@ -5896,9 +5995,13 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     let sync = Arc::new(Mutex::new(sync));
     let (progress, perf, cancel_flag) = {
         let engine = sync.clone().lock_owned().await;
-        (engine.progress(), engine.perf_counters(), engine.cancel_flag())
+        (
+            engine.progress(),
+            engine.perf_counters(),
+            engine.cancel_flag(),
+        )
     };
-    
+
     // Store session
     {
         let mut sessions = SYNC_SESSIONS.write();
@@ -5938,14 +6041,12 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rescan_session","timestamp":{},"location":"api.rs:3142","message":"rescan session created","data":{{"wallet_id":"{}","from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts,
-                wallet_id,
-                from_height
+                ts, wallet_id, from_height
             );
         }
     }
     // #endregion
-    
+
     // Start rescan in background
     let wallet_id_for_task = wallet_id.clone();
     tokio::spawn(async move {
@@ -5954,7 +6055,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             let sessions = SYNC_SESSIONS.read();
             sessions.get(&wallet_id_for_task).cloned()
         }; // sessions guard dropped here before any await points
-        
+
         if let Some(session_arc) = session_arc_opt {
             let sync_opt = { session_arc.lock().await.sync.clone() };
 
@@ -5994,7 +6095,9 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 }
                 match result {
                     Ok(()) => tracing::info!("Rescan completed for wallet {}", wallet_id_for_task),
-                    Err(e) => tracing::error!("Rescan failed for wallet {}: {:?}", wallet_id_for_task, e),
+                    Err(e) => {
+                        tracing::error!("Rescan failed for wallet {}: {:?}", wallet_id_for_task, e)
+                    }
                 }
                 session.is_running = false;
             } else {
@@ -6002,7 +6105,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             }
         }
     });
-    
+
     Ok(())
 }
 
@@ -6013,7 +6116,7 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
         let sessions = SYNC_SESSIONS.read();
         sessions.get(&wallet_id).cloned()
     }; // sessions guard dropped here before any await points
-    
+
     if let Some(session_arc) = session_arc_opt {
         let cancel_opt = { session_arc.lock().await.cancelled.clone() };
         if let Some(cancelled) = cancel_opt {
@@ -6034,8 +6137,7 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
                     let _ = writeln!(
                         file,
                         r#"{{"id":"log_cancel_sync","timestamp":{},"location":"api.rs:3679","message":"cancel sync","data":{{"wallet_id":"{}","path":"cancel_flag"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                        ts,
-                        wallet_id
+                        ts, wallet_id
                     );
                 }
             }
@@ -6071,8 +6173,7 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
                         let _ = writeln!(
                             file,
                             r#"{{"id":"log_cancel_sync","timestamp":{},"location":"api.rs:3696","message":"cancel sync","data":{{"wallet_id":"{}","path":"engine"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                            ts,
-                            wallet_id
+                            ts, wallet_id
                         );
                     }
                 }
@@ -6083,20 +6184,20 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
             session.is_running = false;
         }
     }
-    
+
     Ok(())
 }
 
 /// Check if sync is running for a wallet
 pub fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
     let sessions = SYNC_SESSIONS.read();
-    
+
     if let Some(session_arc) = sessions.get(&wallet_id) {
         if let Ok(session) = session_arc.try_lock() {
             return Ok(session.is_running);
         }
     }
-    
+
     Ok(false)
 }
 
@@ -6104,23 +6205,24 @@ pub fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
 // Background Sync
 // ============================================================================
 
-use pirate_sync_lightd::{
-    BackgroundSyncOrchestrator, BackgroundSyncConfig, BackgroundSyncMode,
-};
+use pirate_sync_lightd::{BackgroundSyncConfig, BackgroundSyncMode, BackgroundSyncOrchestrator};
 use tokio::sync::Mutex as TokioMutex;
 
 const WARM_WALLET_WINDOW_SECS: i64 = 7 * 24 * 60 * 60;
 const BG_SYNC_CURSOR_KEY: &str = "bg_rr_cursor";
 
 /// Start background sync for a wallet
-/// 
+///
 /// This should be called from iOS BGAppRefreshTask or Android WorkManager.
 /// The sync will run with time limits and battery constraints.
-/// 
+///
 /// Note: This creates a new SyncEngine instance for background sync to avoid
 /// conflicts with foreground sync. The background sync will use the same
 /// wallet database and storage.
-pub async fn start_background_sync(wallet_id: WalletId, mode: Option<String>) -> Result<crate::models::BackgroundSyncResult> {
+pub async fn start_background_sync(
+    wallet_id: WalletId,
+    mode: Option<String>,
+) -> Result<crate::models::BackgroundSyncResult> {
     run_on_runtime(move || start_background_sync_inner(wallet_id, mode)).await
 }
 
@@ -6128,8 +6230,12 @@ async fn start_background_sync_inner(
     wallet_id: WalletId,
     mode: Option<String>,
 ) -> Result<crate::models::BackgroundSyncResult> {
-    tracing::info!("Starting background sync for wallet {} with mode {:?}", wallet_id, mode);
-    
+    tracing::info!(
+        "Starting background sync for wallet {} with mode {:?}",
+        wallet_id,
+        mode
+    );
+
     // Extract all needed data before async operations
     let (birthday_height, endpoint_config) = {
         let wallet = get_wallet_meta(&wallet_id)?;
@@ -6167,7 +6273,7 @@ async fn start_background_sync_inner(
         request_timeout: std::time::Duration::from_secs(60),
         allow_direct_fallback,
     };
-    
+
     let network_type = wallet_network_type(&wallet_id)?;
     // Create sync engine for background sync
     let config = SyncConfig::default();
@@ -6176,35 +6282,31 @@ async fn start_background_sync_inner(
     let sync_engine = SyncEngine::with_client_and_config(client, birthday_height, config)
         .with_wallet(wallet_id.clone(), db_key, master_key, network_type)
         .map_err(|e| anyhow!("Failed to initialize background sync engine: {}", e))?;
-    
+
     // Create orchestrator
     let bg_config = BackgroundSyncConfig::default();
-    let orchestrator = BackgroundSyncOrchestrator::new(
-        Arc::new(TokioMutex::new(sync_engine)),
-        bg_config
-    );
-    
+    let orchestrator =
+        BackgroundSyncOrchestrator::new(Arc::new(TokioMutex::new(sync_engine)), bg_config);
+
     // Determine sync mode
     let sync_mode = match mode.as_deref() {
         Some("deep") => BackgroundSyncMode::Deep,
         Some("compact") | None => BackgroundSyncMode::Compact,
         _ => BackgroundSyncMode::Compact,
     };
-    
+
     // Execute background sync
-    let result = orchestrator.execute_sync(sync_mode).await
+    let result = orchestrator
+        .execute_sync(sync_mode)
+        .await
         .map_err(|e| anyhow!("Background sync failed: {}", e))?;
 
     if let Ok(registry_db) = open_wallet_registry() {
         if let Err(e) = touch_wallet_last_synced(&registry_db, &wallet_id) {
-            tracing::warn!(
-                "Failed to update last_synced_at for {}: {}",
-                wallet_id,
-                e
-            );
+            tracing::warn!("Failed to update last_synced_at for {}: {}", wallet_id, e);
         }
     }
-    
+
     // Convert to FFI model
     Ok(crate::models::BackgroundSyncResult {
         mode: match result.mode {
@@ -6242,11 +6344,9 @@ async fn start_background_sync_round_robin_inner(
         return Err(anyhow!("No wallets available for background sync"));
     }
 
-    candidates.retain(|candidate| {
-        match is_sync_running(candidate.id.clone()) {
-            Ok(is_running) => !is_running,
-            Err(_) => true,
-        }
+    candidates.retain(|candidate| match is_sync_running(candidate.id.clone()) {
+        Ok(is_running) => !is_running,
+        Err(_) => true,
     });
 
     if candidates.is_empty() {
@@ -6316,9 +6416,9 @@ pub async fn is_background_sync_needed(wallet_id: WalletId) -> Result<bool> {
     // Extract session Arc before async operations
     let session_arc_opt = {
         let sessions = SYNC_SESSIONS.read();
-        sessions.get(&wallet_id).map(|arc| Arc::clone(arc))
+        sessions.get(&wallet_id).map(Arc::clone)
     };
-    
+
     if let Some(session_arc) = session_arc_opt {
         let sync_opt = { session_arc.lock().await.sync.clone() };
         if let Some(sync) = sync_opt {
@@ -6336,7 +6436,7 @@ pub async fn is_background_sync_needed(wallet_id: WalletId) -> Result<bool> {
         let passphrase = app_passphrase()?;
         let (db, _key, _master_key) = open_wallet_db_with_passphrase(&wallet_id, &passphrase)?;
         let sync_state = pirate_storage_sqlite::SyncStateStorage::new(&db);
-        
+
         match sync_state.load_sync_state() {
             Ok(state) => Ok(state.local_height < state.target_height),
             Err(_) => Ok(false),
@@ -6345,14 +6445,17 @@ pub async fn is_background_sync_needed(wallet_id: WalletId) -> Result<bool> {
 }
 
 /// Get recommended background sync mode based on time since last sync
-pub fn get_recommended_background_sync_mode(_wallet_id: WalletId, minutes_since_last: u32) -> Result<String> {
+pub fn get_recommended_background_sync_mode(
+    _wallet_id: WalletId,
+    minutes_since_last: u32,
+) -> Result<String> {
     // Use default config to determine mode
     let config = BackgroundSyncConfig::default();
     let temp_orchestrator = BackgroundSyncOrchestrator::new(
         Arc::new(TokioMutex::new(SyncEngine::new("dummy".to_string(), 0))),
-        config
+        config,
     );
-    
+
     let mode = temp_orchestrator.recommend_sync_mode(minutes_since_last);
     Ok(match mode {
         BackgroundSyncMode::Compact => "compact".to_string(),
@@ -6371,7 +6474,7 @@ pub const DEFAULT_LIGHTD_USE_TLS: bool = false;
 
 lazy_static::lazy_static! {
     /// Persisted endpoint per wallet (in production, stored encrypted)
-    static ref LIGHTD_ENDPOINTS: Arc<RwLock<std::collections::HashMap<WalletId, LightdEndpoint>>> = 
+    static ref LIGHTD_ENDPOINTS: Arc<RwLock<std::collections::HashMap<WalletId, LightdEndpoint>>> =
         Arc::new(RwLock::new(std::collections::HashMap::new()));
 }
 
@@ -6408,7 +6511,7 @@ impl LightdEndpoint {
         let scheme = if self.use_tls { "https" } else { "http" };
         format!("{}://{}:{}", scheme, self.host, self.port)
     }
-    
+
     /// Display string (host:port)
     pub fn display_string(&self) -> String {
         format!("{}:{}", self.host, self.port)
@@ -6426,7 +6529,7 @@ pub fn set_lightd_endpoint(
     let (host, port, use_tls) = parse_endpoint_url(&url)?;
     // Detect network type from endpoint
     let network_type = detect_network_from_endpoint(&host, port);
-    
+
     let endpoint = LightdEndpoint {
         host,
         port,
@@ -6436,11 +6539,18 @@ pub fn set_lightd_endpoint(
     };
 
     let endpoint_url = endpoint.url();
-    
-    tracing::info!("Set lightd endpoint for wallet {}: {} (network: {:?})", wallet_id, endpoint.url(), network_type);
-    
-    LIGHTD_ENDPOINTS.write().insert(wallet_id.clone(), endpoint.clone());
-    
+
+    tracing::info!(
+        "Set lightd endpoint for wallet {}: {} (network: {:?})",
+        wallet_id,
+        endpoint.url(),
+        network_type
+    );
+
+    LIGHTD_ENDPOINTS
+        .write()
+        .insert(wallet_id.clone(), endpoint.clone());
+
     // Update wallet network type
     let mut wallets = WALLETS.write();
     if let Some(wallet) = wallets.iter_mut().find(|w| w.id == wallet_id) {
@@ -6453,7 +6563,11 @@ pub fn set_lightd_endpoint(
         wallet.network_type = Some(format!("{:?}", new_network_type).to_lowercase());
         let registry_db = open_wallet_registry()?;
         persist_wallet_meta(&registry_db, wallet)?;
-        tracing::info!("Updated wallet {} network type to {:?}", wallet_id, new_network_type);
+        tracing::info!(
+            "Updated wallet {} network type to {:?}",
+            wallet_id,
+            new_network_type
+        );
 
         {
             let ts = chrono::Utc::now().timestamp_millis();
@@ -6483,12 +6597,14 @@ pub fn set_lightd_endpoint(
         }
 
         if old_network_type != new_network_type {
-            if let Err(err) = rederive_wallet_keys_for_network(
-                &wallet_id,
-                old_network_type,
-                new_network_type,
-            ) {
-                tracing::warn!("Failed to re-derive keys for wallet {}: {:?}", wallet_id, err);
+            if let Err(err) =
+                rederive_wallet_keys_for_network(&wallet_id, old_network_type, new_network_type)
+            {
+                tracing::warn!(
+                    "Failed to re-derive keys for wallet {}: {:?}",
+                    wallet_id,
+                    err
+                );
             }
         } else {
             let ts = chrono::Utc::now().timestamp_millis();
@@ -6518,25 +6634,19 @@ pub fn set_lightd_endpoint(
 /// Get lightwalletd endpoint
 pub fn get_lightd_endpoint(wallet_id: WalletId) -> Result<String> {
     let endpoints = LIGHTD_ENDPOINTS.read();
-    let endpoint = endpoints
-        .get(&wallet_id)
-        .cloned()
-        .unwrap_or_default();
-    
+    let endpoint = endpoints.get(&wallet_id).cloned().unwrap_or_default();
+
     Ok(endpoint.url())
 }
 
 /// Get full endpoint configuration
 pub fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEndpoint> {
     let endpoints = LIGHTD_ENDPOINTS.read();
-    Ok(endpoints
-        .get(&wallet_id)
-        .cloned()
-        .unwrap_or_default())
+    Ok(endpoints.get(&wallet_id).cloned().unwrap_or_default())
 }
 
 /// Detect network type from endpoint URL
-/// 
+///
 /// Detects network based on hostname and port:
 /// - `lightd1.piratechain.com:9067` → Mainnet (Sapling only)
 /// - `64.23.167.130:9067` → Mainnet (Orchard-ready, but not activated)
@@ -6546,18 +6656,18 @@ fn detect_network_from_endpoint(host: &str, port: u16) -> NetworkType {
     if port == 8067 {
         return NetworkType::Testnet;
     }
-    
+
     // Mainnet uses port 9067
     // lightd1.piratechain.com is mainnet
     if host == "lightd1.piratechain.com" || host.contains("piratechain.com") {
         return NetworkType::Mainnet;
     }
-    
+
     // 64.23.167.130:9067 is mainnet (orchard-ready server)
     if host == "64.23.167.130" && port == 9067 {
         return NetworkType::Mainnet;
     }
-    
+
     // Default to mainnet for unknown endpoints
     NetworkType::Mainnet
 }
@@ -6580,8 +6690,7 @@ fn infer_key_network_type_from_addresses(
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rederive_address_count","timestamp":{},"location":"api.rs:infer_key_network_type_from_addresses","message":"no stored addresses","data":{{"account_id":{},"count":0}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts,
-                account_id
+                ts, account_id
             );
         }
         return Ok(None);
@@ -6589,7 +6698,11 @@ fn infer_key_network_type_from_addresses(
 
     let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic, "")?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
-    let candidates = [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Regtest];
+    let candidates = [
+        NetworkType::Mainnet,
+        NetworkType::Testnet,
+        NetworkType::Regtest,
+    ];
 
     let mut best_network = None;
     let mut best_matches = 0usize;
@@ -6645,27 +6758,19 @@ fn infer_key_network_type_from_addresses(
             }
             summary.push_str(&format!(
                 r#"{{"network":"{:?}","matches":{}}}"#,
-                candidate,
-                matches
+                candidate, matches
             ));
         }
-        let sample = addresses
-            .first()
-            .map(|addr| {
-                let prefix_len = addr.address.chars().take(8).count();
-                let sample = addr.address.chars().take(prefix_len).collect::<String>();
-                (sample, addr.address_type)
-            });
+        let sample = addresses.first().map(|addr| {
+            let prefix_len = addr.address.chars().take(8).count();
+            let sample = addr.address.chars().take(prefix_len).collect::<String>();
+            (sample, addr.address_type)
+        });
         if let Some((sample_prefix, sample_type)) = sample {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rederive_address_match","timestamp":{},"location":"api.rs:infer_key_network_type_from_addresses","message":"address match summary","data":{{"account_id":{},"count":{},"sample_prefix":"{}","sample_type":"{:?}","matches":[{}]}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts,
-                account_id,
-                address_count,
-                sample_prefix,
-                sample_type,
-                summary
+                ts, account_id, address_count, sample_prefix, sample_type, summary
             );
         }
     }
@@ -6705,7 +6810,10 @@ fn rederive_wallet_keys_for_network(
     let mnemonic_bytes = match secret.encrypted_mnemonic.as_ref() {
         Some(bytes) => bytes,
         None => {
-            tracing::warn!("Wallet {} has no mnemonic stored; skipping key re-derive", wallet_id);
+            tracing::warn!(
+                "Wallet {} has no mnemonic stored; skipping key re-derive",
+                wallet_id
+            );
             let ts = chrono::Utc::now().timestamp_millis();
             if let Ok(mut file) = std::fs::OpenOptions::new()
                 .create(true)
@@ -6735,7 +6843,11 @@ fn rederive_wallet_keys_for_network(
 
     let mut matches_any = current_extsk.to_bytes() == secret.extsk;
     if !matches_any {
-        let candidates = [NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Regtest];
+        let candidates = [
+            NetworkType::Mainnet,
+            NetworkType::Testnet,
+            NetworkType::Regtest,
+        ];
         for candidate in candidates {
             if candidate == old_network_type {
                 continue;
@@ -6775,12 +6887,8 @@ fn rederive_wallet_keys_for_network(
     }
 
     let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
-    let inferred_network = infer_key_network_type_from_addresses(
-        &mnemonic,
-        secret.account_id,
-        &repo,
-        &endpoint,
-    )?;
+    let inferred_network =
+        infer_key_network_type_from_addresses(&mnemonic, secret.account_id, &repo, &endpoint)?;
     let key_network_type = if let Some((network_type, matched, total)) = inferred_network {
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -6791,12 +6899,7 @@ fn rederive_wallet_keys_for_network(
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rederive_infer","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive inferred key network","data":{{"wallet_id":"{}","inferred_network":"{:?}","matched":{},"total":{},"endpoint_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts,
-                wallet_id,
-                network_type,
-                matched,
-                total,
-                new_network_type
+                ts, wallet_id, network_type, matched, total, new_network_type
             );
         }
         network_type
@@ -6812,10 +6915,7 @@ fn rederive_wallet_keys_for_network(
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rederive_prefix_fallback","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive using prefix network fallback","data":{{"wallet_id":"{}","endpoint_network":"{:?}","prefix_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                    ts,
-                    wallet_id,
-                    new_network_type,
-                    prefix_network
+                    ts, wallet_id, new_network_type, prefix_network
                 );
             }
         }
@@ -6870,7 +6970,7 @@ fn rederive_wallet_keys_for_network(
 fn parse_endpoint_url(url: &str) -> Result<(String, u16, bool)> {
     let mut normalized = url.trim().to_string();
     let mut use_tls = DEFAULT_LIGHTD_USE_TLS;
-    
+
     // Handle scheme
     if normalized.starts_with("https://") {
         normalized = normalized[8..].to_string();
@@ -6879,30 +6979,31 @@ fn parse_endpoint_url(url: &str) -> Result<(String, u16, bool)> {
         normalized = normalized[7..].to_string();
         use_tls = false;
     }
-    
+
     // Remove trailing slash
     if normalized.ends_with('/') {
         normalized.pop();
     }
-    
+
     // Parse host:port
     let parts: Vec<&str> = normalized.split(':').collect();
     if parts.is_empty() || parts.len() > 2 {
         return Err(anyhow!("Invalid endpoint URL format"));
     }
-    
+
     let host = parts[0].to_string();
     if host.is_empty() {
         return Err(anyhow!("Empty host"));
     }
-    
+
     let port = if parts.len() == 2 {
-        parts[1].parse::<u16>()
+        parts[1]
+            .parse::<u16>()
             .map_err(|_| anyhow!("Invalid port number"))?
     } else {
         DEFAULT_LIGHTD_PORT
     };
-    
+
     Ok((host, port, use_tls))
 }
 
@@ -7055,7 +7156,10 @@ pub async fn set_tor_bridge_settings(
             fallback_to_bridges,
             escape_json(&transport),
             bridge_lines.len(),
-            transport_path.as_ref().map(|p| !p.trim().is_empty()).unwrap_or(false)
+            transport_path
+                .as_ref()
+                .map(|p| !p.trim().is_empty())
+                .unwrap_or(false)
         );
     }
     // #endregion
@@ -7074,9 +7178,7 @@ pub async fn set_tor_bridge_settings(
 pub async fn get_tor_status() -> Result<String> {
     let status = pirate_sync_lightd::tor_status().await;
     let payload = match status {
-        Some(pirate_sync_lightd::TorStatus::Ready) => {
-            "{\"status\":\"ready\"}".to_string()
-        }
+        Some(pirate_sync_lightd::TorStatus::Ready) => "{\"status\":\"ready\"}".to_string(),
         Some(pirate_sync_lightd::TorStatus::Bootstrapping { progress, blocked }) => {
             if let Some(blocked) = blocked {
                 format!(
@@ -7085,10 +7187,7 @@ pub async fn get_tor_status() -> Result<String> {
                     escape_json(&blocked)
                 )
             } else {
-                format!(
-                    "{{\"status\":\"bootstrapping\",\"progress\":{}}}",
-                    progress
-                )
+                format!("{{\"status\":\"bootstrapping\",\"progress\":{}}}", progress)
             }
         }
         Some(pirate_sync_lightd::TorStatus::Error(message)) => {
@@ -7167,22 +7266,22 @@ pub async fn rotate_tor_exit() -> Result<()> {
 // ============================================================================
 
 /// Get wallet balance
-/// 
+///
 /// Calculates balance from unspent notes in the database.
 /// - spendable: Confirmed unspent notes (with 10+ confirmations)
 /// - pending: Unconfirmed unspent notes
 /// - total: spendable + pending
 pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
     tracing::info!("Getting balance for wallet {}", wallet_id);
-    
+
     // Open encrypted wallet DB
     let (db, repo) = open_wallet_db_for(&wallet_id)?;
-    
+
     // Get wallet secret to find account_id
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    
+
     // Get current height from sync state
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
     let sync_state = sync_storage.load_sync_state()?;
@@ -7203,15 +7302,12 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_get_balance","timestamp":{},"location":"api.rs:4186","message":"get_balance start","data":{{"wallet_id":"{}","account_id":{},"current_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts,
-                wallet_id,
-                secret.account_id,
-                current_height
+                ts, wallet_id, secret.account_id, current_height
             );
         }
     }
     // #endregion
-    
+
     // Standard confirmation depth for Pirate Chain (10 blocks, same as Zcash)
     const MIN_DEPTH: u64 = 10;
 
@@ -7248,15 +7344,20 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
                 wallet_id,
                 count,
                 sum_value,
-                min_h.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string()),
-                max_h.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string())
+                min_h
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "null".to_string()),
+                max_h
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "null".to_string())
             );
         }
     }
     // #endregion
-    
+
     // Calculate balance from unspent notes
-    let (spendable, pending, total) = repo.calculate_balance(secret.account_id, current_height, MIN_DEPTH)?;
+    let (spendable, pending, total) =
+        repo.calculate_balance(secret.account_id, current_height, MIN_DEPTH)?;
 
     // #region agent log
     {
@@ -7273,22 +7374,21 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_get_balance","timestamp":{},"location":"api.rs:4204","message":"get_balance result","data":{{"wallet_id":"{}","total":{},"spendable":{},"pending":{},"min_depth":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts,
-                wallet_id,
-                total,
-                spendable,
-                pending,
-                MIN_DEPTH
+                ts, wallet_id, total, spendable, pending, MIN_DEPTH
             );
         }
     }
     // #endregion
-    
+
     tracing::debug!(
         "Balance for wallet {}: total={}, spendable={}, pending={} (height={})",
-        wallet_id, total, spendable, pending, current_height
+        wallet_id,
+        total,
+        spendable,
+        pending,
+        current_height
     );
-    
+
     Ok(Balance {
         total,
         spendable,
@@ -7297,31 +7397,35 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
 }
 
 /// List transactions
-/// 
+///
 /// Returns transaction history from the database, aggregated by transaction ID.
 /// Transactions are sorted by height descending (newest first).
 pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<TxInfo>> {
-    tracing::info!("Listing transactions for wallet {} (limit: {:?})", wallet_id, limit);
-    
+    tracing::info!(
+        "Listing transactions for wallet {} (limit: {:?})",
+        wallet_id,
+        limit
+    );
+
     // Open encrypted wallet DB
     let (db, repo) = open_wallet_db_for(&wallet_id)?;
-    
+
     // Get wallet secret to find account_id
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    
+
     // Get current height from sync state
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height;
-    
+
     // Standard confirmation depth for Pirate Chain (10 blocks)
     const MIN_DEPTH: u64 = 10;
-    
+
     // Get transactions from database
     let tx_records = repo.get_transactions(secret.account_id, limit, current_height, MIN_DEPTH)?;
-    
+
     // Convert to TxInfo format
     let transactions: Vec<TxInfo> = tx_records
         .into_iter()
@@ -7333,25 +7437,24 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
             } else {
                 false
             };
-            
+
             // Decode memo from bytes to string (if present)
             let memo_str = tx.memo.and_then(|memo_bytes| {
                 // Memo is typically UTF-8, but may have null padding
                 // Remove null bytes and try to decode
-                let trimmed: Vec<u8> = memo_bytes
-                    .into_iter()
-                    .take_while(|&b| b != 0)
-                    .collect();
-                
+                let trimmed: Vec<u8> = memo_bytes.into_iter().take_while(|&b| b != 0).collect();
+
                 // Try UTF-8 decode
-                String::from_utf8(trimmed)
-                    .ok()
-                    .filter(|s| !s.is_empty())
+                String::from_utf8(trimmed).ok().filter(|s| !s.is_empty())
             });
-            
+
             TxInfo {
                 txid: tx.txid,
-                height: if tx.height > 0 { Some(tx.height as u32) } else { None },
+                height: if tx.height > 0 {
+                    Some(tx.height as u32)
+                } else {
+                    None
+                },
                 timestamp: tx.timestamp,
                 amount: tx.amount,
                 fee: tx.fee,
@@ -7360,9 +7463,13 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
             }
         })
         .collect();
-    
-    tracing::debug!("Found {} transactions for wallet {}", transactions.len(), wallet_id);
-    
+
+    tracing::debug!(
+        "Found {} transactions for wallet {}",
+        transactions.len(),
+        wallet_id
+    );
+
     Ok(transactions)
 }
 
@@ -7394,29 +7501,43 @@ async fn fetch_transaction_memo_inner(
     txid: String,
     output_index: Option<u32>,
 ) -> Result<Option<String>> {
-    tracing::info!("Fetching memo for transaction {} (output_index: {:?})", txid, output_index);
-    
+    tracing::info!(
+        "Fetching memo for transaction {} (output_index: {:?})",
+        txid,
+        output_index
+    );
+
     // Extract all data from DB in a block scope to ensure repo is dropped before async
-    let (endpoint_config, account_id, ivk_by_output, output_indices, notes_with_memos, txid_array, txid_bytes) = {
+    let (
+        endpoint_config,
+        account_id,
+        ivk_by_output,
+        output_indices,
+        notes_with_memos,
+        txid_array,
+        txid_bytes,
+    ) = {
         // Open encrypted wallet DB
         let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-        
+
         // Get wallet secret to find account_id
         let secret = repo
             .get_wallet_secret(&wallet_id)?
             .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-        
+
         // Parse txid from hex
-        let txid_bytes = hex::decode(&txid)
-            .map_err(|e| anyhow!("Invalid txid hex: {}", e))?;
-        
+        let txid_bytes = hex::decode(&txid).map_err(|e| anyhow!("Invalid txid hex: {}", e))?;
+
         if txid_bytes.len() != 32 {
-            return Err(anyhow!("Invalid txid length: {} (expected 32 bytes)", txid_bytes.len()));
+            return Err(anyhow!(
+                "Invalid txid length: {} (expected 32 bytes)",
+                txid_bytes.len()
+            ));
         }
-        
+
         let mut txid_array = [0u8; 32];
         txid_array.copy_from_slice(&txid_bytes[..32]);
-        
+
         let default_ivk_bytes = if !secret.extsk.is_empty() {
             ExtendedSpendingKey::from_bytes(&secret.extsk)
                 .map(|extsk| extsk.to_extended_fvk().to_ivk().to_sapling_ivk_bytes())
@@ -7478,13 +7599,11 @@ async fn fetch_transaction_memo_inner(
         if let Some(idx) = output_index {
             output_indices = vec![idx as i64];
             let idx_i64 = idx as i64;
-            if !ivk_by_output.contains_key(&idx_i64) {
-                if let Some(default_ivk) = default_ivk_bytes {
-                    ivk_by_output.insert(idx_i64, default_ivk);
-                }
+            if let Some(default_ivk) = default_ivk_bytes {
+                ivk_by_output.entry(idx_i64).or_insert(default_ivk);
             }
         }
-        
+
         // Extract all needed data before async operations
         let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
         let account_id = secret.account_id;
@@ -7506,9 +7625,17 @@ async fn fetch_transaction_memo_inner(
                 }
             }
         }
-        
+
         // Return all extracted data (repo and _db are dropped here)
-        (endpoint, account_id, ivk_by_output, output_indices, notes_with_memos, txid_array, txid_bytes)
+        (
+            endpoint,
+            account_id,
+            ivk_by_output,
+            output_indices,
+            notes_with_memos,
+            txid_array,
+            txid_bytes,
+        )
     };
 
     let endpoint_url = endpoint_config.url();
@@ -7540,11 +7667,11 @@ async fn fetch_transaction_memo_inner(
         request_timeout: std::time::Duration::from_secs(60),
         allow_direct_fallback,
     };
-    
+
     // Try validating stored memos
     for (idx, stored_memo, cmu_opt, ivk_bytes) in notes_with_memos {
         let client = pirate_sync_lightd::LightClient::with_config(client_config.clone());
-        
+
         match client.connect().await {
             Ok(_) => {
                 match client.get_transaction(&txid_array).await {
@@ -7575,7 +7702,8 @@ async fn fetch_transaction_memo_inner(
                     }
                     _ => {
                         // If validation fails, return stored memo anyway
-                        let memo_str = pirate_sync_lightd::sapling::full_decrypt::decode_memo(&stored_memo);
+                        let memo_str =
+                            pirate_sync_lightd::sapling::full_decrypt::decode_memo(&stored_memo);
                         return Ok(memo_str);
                     }
                 }
@@ -7587,15 +7715,19 @@ async fn fetch_transaction_memo_inner(
             }
         }
     }
-    
+
     // Memo not in database or validation failed, fetch and decrypt
     let client = pirate_sync_lightd::LightClient::with_config(client_config);
-    client.connect().await
+    client
+        .connect()
+        .await
         .map_err(|e| anyhow!("Failed to connect to lightwalletd: {}", e))?;
-    
-    let raw_tx_bytes = client.get_transaction(&txid_array).await
+
+    let raw_tx_bytes = client
+        .get_transaction(&txid_array)
+        .await
         .map_err(|e| anyhow!("Failed to fetch transaction: {}", e))?;
-    
+
     // Get commitment from note if available (re-open DB) and decrypt
     for idx in output_indices {
         let ivk_bytes = match ivk_by_output.get(&idx) {
@@ -7616,7 +7748,7 @@ async fn fetch_transaction_memo_inner(
                 None
             }
         };
-        
+
         // Decrypt memo
         match pirate_sync_lightd::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes(
             &raw_tx_bytes,
@@ -7628,9 +7760,10 @@ async fn fetch_transaction_memo_inner(
                 // Store memo in database (re-open DB)
                 let (_db3, repo3) = open_wallet_db_for(&wallet_id)?;
                 repo3.update_note_memo(account_id, &txid_bytes, idx, Some(&decrypted.memo))?;
-                
+
                 // Decode and return
-                let memo_str = pirate_sync_lightd::sapling::full_decrypt::decode_memo(&decrypted.memo);
+                let memo_str =
+                    pirate_sync_lightd::sapling::full_decrypt::decode_memo(&decrypted.memo);
                 tracing::info!("Fetched and stored memo for tx {} output {}", txid, idx);
                 return Ok(memo_str);
             }
@@ -7644,7 +7777,7 @@ async fn fetch_transaction_memo_inner(
             }
         }
     }
-    
+
     // No memo found for any output
     Ok(None)
 }
@@ -7654,14 +7787,14 @@ async fn fetch_transaction_memo_inner(
 // ============================================================================
 
 /// Generate new mnemonic (utility function for testing/development)
-/// 
+///
 /// **Note**: New wallets always use 24-word seeds. This function is provided
 /// for testing/utilities. For wallet creation, use `create_wallet()` which
 /// always generates 24-word seeds.
-/// 
+///
 /// # Arguments
 /// * `word_count` - Number of words in mnemonic (12, 18, or 24). Defaults to 24 if None.
-/// 
+///
 /// # Returns
 /// BIP39 mnemonic phrase with the specified number of words
 pub fn generate_mnemonic(word_count: Option<u32>) -> Result<String> {
@@ -7671,7 +7804,7 @@ pub fn generate_mnemonic(word_count: Option<u32>) -> Result<String> {
             return Err(anyhow!("Invalid word count: must be 12, 18, or 24"));
         }
     }
-    
+
     Ok(ExtendedSpendingKey::generate_mnemonic(word_count))
 }
 
@@ -7686,7 +7819,7 @@ pub fn validate_mnemonic(mnemonic: String) -> Result<bool> {
 /// Get network info
 pub fn get_network_info() -> Result<NetworkInfo> {
     let net = pirate_params::Network::mainnet();
-    
+
     Ok(NetworkInfo {
         name: net.name.to_string(),
         coin_type: net.coin_type,
@@ -7703,8 +7836,7 @@ pub fn format_amount(arrrtoshis: u64) -> Result<String> {
 
 /// Parse amount (ARRR to arrrtoshis)
 pub fn parse_amount(arrr: String) -> Result<u64> {
-    let value: f64 = arrr.parse()
-        .map_err(|_| anyhow!("Invalid amount"))?;
+    let value: f64 = arrr.parse().map_err(|_| anyhow!("Invalid amount"))?;
     Ok((value * 100_000_000.0) as u64)
 }
 
@@ -7713,22 +7845,21 @@ pub fn parse_amount(arrr: String) -> Result<u64> {
 // ============================================================================
 
 use pirate_storage_sqlite::{
-    PanicPin, DecoyVaultManager, VaultMode,
-    SeedExportManager, ExportFlowState, seed_warnings,
-    WatchOnlyManager, WatchOnlyCapabilities, IvkImportRequest, WatchOnlyBanner,
+    seed_warnings, DecoyVaultManager, ExportFlowState, IvkImportRequest, PanicPin,
+    SeedExportManager, VaultMode, WatchOnlyBanner, WatchOnlyCapabilities, WatchOnlyManager,
 };
 
 lazy_static::lazy_static! {
     /// Global decoy vault manager
-    static ref DECOY_VAULT: Arc<RwLock<DecoyVaultManager>> = 
+    static ref DECOY_VAULT: Arc<RwLock<DecoyVaultManager>> =
         Arc::new(RwLock::new(DecoyVaultManager::new()));
-    
+
     /// Global seed export manager
-    static ref SEED_EXPORT: Arc<RwLock<SeedExportManager>> = 
+    static ref SEED_EXPORT: Arc<RwLock<SeedExportManager>> =
         Arc::new(RwLock::new(SeedExportManager::new()));
-    
+
     /// Global watch-only manager
-    static ref WATCH_ONLY: Arc<RwLock<WatchOnlyManager>> = 
+    static ref WATCH_ONLY: Arc<RwLock<WatchOnlyManager>> =
         Arc::new(RwLock::new(WatchOnlyManager::new()));
 }
 
@@ -7742,22 +7873,22 @@ pub fn set_panic_pin(pin: String) -> Result<()> {
     if pin.len() < 4 || pin.len() > 8 {
         return Err(anyhow!("PIN must be 4-8 digits"));
     }
-    
+
     if !pin.chars().all(|c| c.is_ascii_digit()) {
         return Err(anyhow!("PIN must contain only digits"));
     }
-    
+
     // Hash PIN with Argon2id
-    let panic_pin = PanicPin::hash(&pin)
-        .map_err(|e| anyhow!("Failed to hash PIN: {}", e))?;
-    
+    let panic_pin = PanicPin::hash(&pin).map_err(|e| anyhow!("Failed to hash PIN: {}", e))?;
+
     let salt = pirate_storage_sqlite::generate_salt().to_vec();
-    
+
     // Enable decoy vault
     let vault = DECOY_VAULT.read();
-    vault.enable(panic_pin.hash_string().to_string(), salt)
+    vault
+        .enable(panic_pin.hash_string().to_string(), salt)
         .map_err(|e| anyhow!("Failed to enable decoy vault: {}", e))?;
-    
+
     tracing::info!("Panic PIN configured and decoy vault enabled");
     Ok(())
 }
@@ -7771,16 +7902,18 @@ pub fn has_panic_pin() -> Result<bool> {
 /// Verify panic PIN (returns true if PIN matches and activates decoy mode)
 pub fn verify_panic_pin(pin: String) -> Result<bool> {
     let vault = DECOY_VAULT.read();
-    
-    let is_panic = vault.verify_panic_pin(&pin)
+
+    let is_panic = vault
+        .verify_panic_pin(&pin)
         .map_err(|e| anyhow!("Failed to verify PIN: {}", e))?;
-    
+
     if is_panic {
-        vault.activate_decoy()
+        vault
+            .activate_decoy()
             .map_err(|e| anyhow!("Failed to activate decoy: {}", e))?;
         tracing::warn!("Decoy vault activated via panic PIN");
     }
-    
+
     Ok(is_panic)
 }
 
@@ -7802,9 +7935,10 @@ pub fn get_vault_mode() -> Result<String> {
 /// Clear panic PIN and disable decoy vault
 pub fn clear_panic_pin() -> Result<()> {
     let vault = DECOY_VAULT.read();
-    vault.disable()
+    vault
+        .disable()
         .map_err(|e| anyhow!("Failed to disable decoy vault: {}", e))?;
-    
+
     tracing::info!("Panic PIN cleared and decoy vault disabled");
     Ok(())
 }
@@ -7831,63 +7965,69 @@ pub fn exit_decoy_mode() -> Result<()> {
 /// Start seed export flow (step 1: show warning)
 pub fn start_seed_export(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
-    
+
     if wallet.watch_only {
         return Err(anyhow!("Cannot export seed from watch-only wallet"));
     }
     let manager = SEED_EXPORT.write();
-    let state = manager.start_export(wallet_id)
+    let state = manager
+        .start_export(wallet_id)
         .map_err(|e| anyhow!("Failed to start export: {}", e))?;
-    
+
     Ok(format!("{:?}", state))
 }
 
 /// Acknowledge seed export warning (step 2)
 pub fn acknowledge_seed_warning() -> Result<String> {
     let manager = SEED_EXPORT.write();
-    let state = manager.acknowledge_warning()
+    let state = manager
+        .acknowledge_warning()
         .map_err(|e| anyhow!("Failed to acknowledge: {}", e))?;
-    
+
     Ok(format!("{:?}", state))
 }
 
 /// Complete biometric step (step 3)
 pub fn complete_seed_biometric(success: bool) -> Result<String> {
     let manager = SEED_EXPORT.write();
-    let state = manager.complete_biometric(success)
+    let state = manager
+        .complete_biometric(success)
         .map_err(|e| anyhow!("Failed to complete biometric: {}", e))?;
-    
+
     Ok(format!("{:?}", state))
 }
 
 /// Skip biometric (when not available)
 pub fn skip_seed_biometric() -> Result<String> {
     let manager = SEED_EXPORT.write();
-    let state = manager.skip_biometric()
+    let state = manager
+        .skip_biometric()
         .map_err(|e| anyhow!("Failed to skip biometric: {}", e))?;
-    
+
     Ok(format!("{:?}", state))
 }
 
 /// Verify passphrase and get seed (step 4 - final)
-/// 
+///
 /// This is the final step of the gated seed export flow.
 /// Verifies passphrase against stored Argon2id hash before returning the seed.
-/// 
+///
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
 pub fn export_seed_with_passphrase(wallet_id: WalletId, passphrase: String) -> Result<Vec<String>> {
     let manager = SEED_EXPORT.read();
-    
+
     // Verify flow state
     if manager.state() != ExportFlowState::AwaitingPassphrase {
-        return Err(anyhow!("Invalid export flow state. Complete previous steps first."));
+        return Err(anyhow!(
+            "Invalid export flow state. Complete previous steps first."
+        ));
     }
     drop(manager);
 
     // Get wallet and verify
     let wallet = get_wallet_meta(&wallet_id)?;
-    
+
     if wallet.watch_only {
         return Err(anyhow!("Cannot export seed from watch-only wallet"));
     }
@@ -7906,21 +8046,22 @@ pub fn export_seed_with_passphrase(wallet_id: WalletId, passphrase: String) -> R
             return Err(anyhow!("Invalid passphrase"));
         }
     }
-    
+
     // Load wallet secret from encrypted storage
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-    
+
     // Check if mnemonic is stored (wallet was created/restored from seed)
-    let mnemonic_bytes = secret.encrypted_mnemonic
-        .ok_or_else(|| anyhow!("Seed not available. This wallet was imported from private key or is watch-only."))?;
-    
+    let mnemonic_bytes = secret.encrypted_mnemonic.ok_or_else(|| {
+        anyhow!("Seed not available. This wallet was imported from private key or is watch-only.")
+    })?;
+
     // Decrypt mnemonic (database encryption handles decryption)
     let mnemonic = String::from_utf8(mnemonic_bytes)
         .map_err(|e| anyhow!("Failed to decode mnemonic: {}", e))?;
-    
+
     let words: Vec<String> = mnemonic.split_whitespace().map(String::from).collect();
 
     let result = {
@@ -7928,7 +8069,10 @@ pub fn export_seed_with_passphrase(wallet_id: WalletId, passphrase: String) -> R
         manager.complete_export_verified(words)?
     };
 
-    tracing::info!("Seed exported for wallet {} (gated flow completed)", wallet_id);
+    tracing::info!(
+        "Seed exported for wallet {} (gated flow completed)",
+        wallet_id
+    );
 
     Ok(result.words().to_vec())
 }
@@ -7990,7 +8134,7 @@ pub struct SeedExportWarnings {
 /// Export Sapling viewing key from full wallet (for creating watch-only on another device)
 pub fn export_ivk_secure(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
-    
+
     if wallet.watch_only {
         return Err(anyhow!("Cannot export viewing key from watch-only wallet"));
     }
@@ -7999,7 +8143,7 @@ pub fn export_ivk_secure(wallet_id: WalletId) -> Result<String> {
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-    
+
     // Derive xFVK from stored spending key
     let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
         .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?;
@@ -8010,13 +8154,14 @@ pub fn export_ivk_secure(wallet_id: WalletId) -> Result<String> {
         _ => NetworkType::Mainnet,
     };
     let ivk = extsk.to_xfvk_bech32_for_network(network_type);
-    
+
     let manager = WATCH_ONLY.read();
-    let result = manager.export_ivk(&wallet_id, ivk)
+    let result = manager
+        .export_ivk(&wallet_id, ivk)
         .map_err(|e| anyhow!("Failed to export viewing key: {}", e))?;
-    
+
     tracing::info!("Viewing key exported for wallet {}", wallet_id);
-    
+
     Ok(result.ivk().to_string())
 }
 
@@ -8029,7 +8174,8 @@ pub fn import_ivk_as_watch_only(
     // Validate import request
     let request = IvkImportRequest::new(name.clone(), ivk.clone(), birthday_height);
     let manager = WATCH_ONLY.read();
-    manager.validate_import(&request)
+    manager
+        .validate_import(&request)
         .map_err(|e| anyhow!("Invalid viewing key import: {}", e))?;
 
     let wallet_id = import_ivk(name, Some(ivk), None, birthday_height)?;
@@ -8040,13 +8186,13 @@ pub fn import_ivk_as_watch_only(
 /// Get watch-only capabilities for a wallet
 pub fn get_watch_only_capabilities(wallet_id: WalletId) -> Result<WatchOnlyCapabilitiesInfo> {
     let wallet = get_wallet_meta(&wallet_id)?;
-    
+
     let caps = if wallet.watch_only {
         WatchOnlyCapabilities::watch_only()
     } else {
         WatchOnlyCapabilities::full_wallet()
     };
-    
+
     Ok(WatchOnlyCapabilitiesInfo {
         can_view_incoming: caps.can_view_incoming,
         can_view_outgoing: caps.can_view_outgoing,
@@ -8071,13 +8217,13 @@ pub struct WatchOnlyCapabilitiesInfo {
 /// Get watch-only banner info for a wallet
 pub fn get_watch_only_banner(wallet_id: WalletId) -> Result<Option<WatchOnlyBannerInfo>> {
     let wallet = get_wallet_meta(&wallet_id)?;
-    
+
     if !wallet.watch_only {
         return Ok(None);
     }
-    
+
     let banner = WatchOnlyBanner::incoming_only();
-    
+
     Ok(Some(WatchOnlyBannerInfo {
         banner_type: format!("{:?}", banner.banner_type),
         title: banner.title,
@@ -8106,22 +8252,22 @@ pub fn get_build_info() -> Result<BuildInfo> {
     // Determine target triple at compile time using cfg attributes
     #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
     let target_triple = "x86_64-pc-windows-msvc";
-    
+
     #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
     let target_triple = "x86_64-unknown-linux-gnu";
-    
+
     #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
     let target_triple = "x86_64-apple-darwin";
-    
+
     #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
     let target_triple = "aarch64-apple-darwin";
-    
+
     #[cfg(all(target_arch = "aarch64", target_os = "android"))]
     let target_triple = "aarch64-linux-android";
-    
+
     #[cfg(all(target_arch = "aarch64", target_os = "ios"))]
     let target_triple = "aarch64-apple-ios";
-    
+
     #[cfg(not(any(
         all(target_arch = "x86_64", target_os = "windows"),
         all(target_arch = "x86_64", target_os = "linux"),
@@ -8131,41 +8277,49 @@ pub fn get_build_info() -> Result<BuildInfo> {
         all(target_arch = "aarch64", target_os = "ios"),
     )))]
     let target_triple = "unknown";
-    
+
     Ok(BuildInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         git_commit: option_env!("GIT_COMMIT").unwrap_or("unknown").to_string(),
         build_date: option_env!("BUILD_DATE").unwrap_or("unknown").to_string(),
-        rust_version: option_env!("CARGO_PKG_RUST_VERSION").unwrap_or("unknown").to_string(),
+        rust_version: option_env!("CARGO_PKG_RUST_VERSION")
+            .unwrap_or("unknown")
+            .to_string(),
         target_triple: target_triple.to_string(),
     })
 }
 
 /// Get sync logs for diagnostics
-pub fn get_sync_logs(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<crate::models::SyncLogEntryFfi>> {
+pub fn get_sync_logs(
+    wallet_id: WalletId,
+    limit: Option<u32>,
+) -> Result<Vec<crate::models::SyncLogEntryFfi>> {
     let limit = limit.unwrap_or(200);
-    
+
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let logs = repo.get_sync_logs(&wallet_id, limit)?;
-    
-    Ok(logs.into_iter().map(|(timestamp, level, module, message)| {
-        crate::models::SyncLogEntryFfi {
-            timestamp,
-            level,
-            module,
-            message,
-        }
-    }).collect())
+
+    Ok(logs
+        .into_iter()
+        .map(
+            |(timestamp, level, module, message)| crate::models::SyncLogEntryFfi {
+                timestamp,
+                level,
+                module,
+                message,
+            },
+        )
+        .collect())
 }
 
 /// Get checkpoint details at specific height
 pub fn get_checkpoint_details(_wallet_id: WalletId, height: u32) -> Result<Option<CheckpointInfo>> {
     let (db, _repo) = open_wallet_db_for(&_wallet_id)?;
-    
+
     // Use CheckpointManager to get checkpoint at height
     use pirate_storage_sqlite::CheckpointManager;
     let manager = CheckpointManager::new(db.conn());
-    
+
     match manager.get_at_height(height)? {
         Some(checkpoint) => Ok(Some(CheckpointInfo {
             height: checkpoint.height,
@@ -8176,7 +8330,10 @@ pub fn get_checkpoint_details(_wallet_id: WalletId, height: u32) -> Result<Optio
 }
 
 /// Test connection to a lightwalletd endpoint
-pub async fn test_node(url: String, tls_pin: Option<String>) -> Result<crate::models::NodeTestResult> {
+pub async fn test_node(
+    url: String,
+    tls_pin: Option<String>,
+) -> Result<crate::models::NodeTestResult> {
     run_on_runtime(move || test_node_inner(url, tls_pin)).await
 }
 
@@ -8184,19 +8341,23 @@ async fn test_node_inner(
     url: String,
     tls_pin: Option<String>,
 ) -> Result<crate::models::NodeTestResult> {
+    use pirate_sync_lightd::client::{LightClient, LightClientConfig};
     use std::time::Instant;
-    use pirate_sync_lightd::client::{LightClient, LightClientConfig, TransportMode};
-    
+
     let start_time = Instant::now();
-    
+
     // Extract all needed data before async context to ensure Send
     let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
-    tracing::info!("test_node: Using transport mode: {:?}, endpoint: {}", transport, url);
-    
+    tracing::info!(
+        "test_node: Using transport mode: {:?}, endpoint: {}",
+        transport,
+        url
+    );
+
     // Normalize endpoint URL - ensure it has the correct format for tonic
     // Tonic requires format: https://host:port or http://host:port
     let normalized_url = url.trim().to_string();
-    
+
     // Determine if TLS is enabled
     // Explicitly check for http:// (no TLS) vs https:// (TLS) vs no protocol (default to TLS)
     let tls_enabled = if normalized_url.starts_with("http://") {
@@ -8207,41 +8368,52 @@ async fn test_node_inner(
         // No protocol specified - default to TLS (https) for security
         true
     };
-    
+
     // Remove protocol if present to parse host:port
-    let host_port = if normalized_url.starts_with("https://") {
-        normalized_url[8..].to_string()
-    } else if normalized_url.starts_with("http://") {
-        normalized_url[7..].to_string()
+    let host_port = if let Some(stripped) = normalized_url.strip_prefix("https://") {
+        stripped.to_string()
+    } else if let Some(stripped) = normalized_url.strip_prefix("http://") {
+        stripped.to_string()
     } else {
         normalized_url.clone()
     };
-    
+
     // Remove trailing slash
     let host_port = host_port.trim_end_matches('/').to_string();
-    
+
     // Parse host and port
     let (host, port) = if host_port.contains(':') {
         let parts: Vec<&str> = host_port.split(':').collect();
         if parts.len() != 2 {
             return Err(anyhow!("Invalid endpoint format: expected host:port"));
         }
-        (parts[0].to_string(), parts[1].parse::<u16>()
-            .map_err(|_| anyhow!("Invalid port number in endpoint"))?)
+        (
+            parts[0].to_string(),
+            parts[1]
+                .parse::<u16>()
+                .map_err(|_| anyhow!("Invalid port number in endpoint"))?,
+        )
     } else {
         // No port specified, use default
         (host_port, 9067)
     };
-    
+
     // Check if host is an IP address
     let is_ip_address = host.parse::<std::net::IpAddr>().is_ok();
-    
+
     // Reconstruct endpoint URL in correct format for tonic
     let scheme = if tls_enabled { "https" } else { "http" };
     let endpoint = format!("{}://{}:{}", scheme, host, port);
-    
-    tracing::info!("test_node: Parsed endpoint URL: {} (TLS: {}, host: {}, port: {}, is_ip: {})", endpoint, tls_enabled, host, port, is_ip_address);
-    
+
+    tracing::info!(
+        "test_node: Parsed endpoint URL: {} (TLS: {}, host: {}, port: {}, is_ip: {})",
+        endpoint,
+        tls_enabled,
+        host,
+        port,
+        is_ip_address
+    );
+
     // Create client config (all data is Send-safe now)
     // For TLS SNI: If connecting via IP address, we need to use the hostname from the certificate
     // The certificate is likely issued for lightd1.piratechain.com, not the IP
@@ -8259,7 +8431,7 @@ async fn test_node_inner(
     } else {
         None
     };
-    
+
     let config = LightClientConfig {
         endpoint: endpoint.clone(),
         transport,
@@ -8274,29 +8446,40 @@ async fn test_node_inner(
         request_timeout: std::time::Duration::from_secs(60),
         allow_direct_fallback,
     };
-    
+
     let client = LightClient::with_config(config);
-    
+
     // Try to connect and get latest block
-    tracing::info!("test_node: Attempting to connect to {} (hostname: {})", endpoint, host);
+    tracing::info!(
+        "test_node: Attempting to connect to {} (hostname: {})",
+        endpoint,
+        host
+    );
     match client.connect().await {
         Ok(_) => {
             tracing::info!("test_node: Connection successful, fetching latest block...");
             match client.get_latest_block().await {
                 Ok(height) => {
-                    tracing::info!("test_node: Successfully retrieved latest block height: {}", height);
+                    tracing::info!(
+                        "test_node: Successfully retrieved latest block height: {}",
+                        height
+                    );
                     // Try to get server info if available
                     let (server_version, chain_name) = match client.get_lightd_info().await {
                         Ok(info) => {
-                            tracing::info!("test_node: Server info - version: {}, chain: {}", info.version, info.chain_name);
+                            tracing::info!(
+                                "test_node: Server info - version: {}, chain: {}",
+                                info.version,
+                                info.chain_name
+                            );
                             (Some(info.version), Some(info.chain_name))
-                        },
+                        }
                         Err(e) => {
                             tracing::warn!("test_node: Failed to get server info: {}", e);
                             (None, None)
-                        },
+                        }
                     };
-                    
+
                     // Check TLS pin if provided
                     let tls_pin_matched = if tls_pin.is_some() {
                         // Note: TLS pin verification happens during connection
@@ -8305,9 +8488,9 @@ async fn test_node_inner(
                     } else {
                         None
                     };
-                    
+
                     let response_time = start_time.elapsed().as_millis() as u64;
-                    
+
                     Ok(crate::models::NodeTestResult {
                         success: true,
                         latest_block_height: Some(height),
@@ -8321,7 +8504,7 @@ async fn test_node_inner(
                         server_version,
                         chain_name,
                     })
-                },
+                }
                 Err(e) => {
                     let response_time = start_time.elapsed().as_millis() as u64;
                     // Clean up error message - remove duplicate "transport error" if present
@@ -8331,7 +8514,7 @@ async fn test_node_inner(
                     } else {
                         error_msg
                     };
-                    
+
                     Ok(crate::models::NodeTestResult {
                         success: false,
                         latest_block_height: None,
@@ -8340,25 +8523,34 @@ async fn test_node_inner(
                         tls_pin_matched: None,
                         expected_pin: tls_pin,
                         actual_pin: None,
-                        error_message: Some(format!("Failed to get latest block: {}", cleaned_error)),
+                        error_message: Some(format!(
+                            "Failed to get latest block: {}",
+                            cleaned_error
+                        )),
                         response_time_ms: response_time,
                         server_version: None,
                         chain_name: None,
                     })
-                },
+                }
             }
-        },
+        }
         Err(e) => {
             let response_time = start_time.elapsed().as_millis() as u64;
-            tracing::error!("test_node: Connection failed after {}ms: {}", response_time, e);
-            
+            tracing::error!(
+                "test_node: Connection failed after {}ms: {}",
+                response_time,
+                e
+            );
+
             // Clean up error message - remove duplicate "transport error" if present
             let error_msg = format!("{}", e);
             let cleaned_error = if error_msg.contains("transport error: transport error") {
                 error_msg.replace("transport error: transport error", "transport error")
             } else if error_msg.starts_with("Transport error: ") {
                 // Remove redundant "Transport error: " prefix if the inner error already says "transport error"
-                let inner = error_msg.strip_prefix("Transport error: ").unwrap_or(&error_msg);
+                let inner = error_msg
+                    .strip_prefix("Transport error: ")
+                    .unwrap_or(&error_msg);
                 if inner.contains("transport error") {
                     inner.to_string()
                 } else {
@@ -8367,16 +8559,20 @@ async fn test_node_inner(
             } else {
                 error_msg
             };
-            
+
             // Provide more helpful error message
-            let final_error = if cleaned_error.contains("dns") || cleaned_error.contains("name resolution") || cleaned_error.contains("failed to lookup") || cleaned_error.contains("Name or service not known") {
+            let final_error = if cleaned_error.contains("dns")
+                || cleaned_error.contains("name resolution")
+                || cleaned_error.contains("failed to lookup")
+                || cleaned_error.contains("Name or service not known")
+            {
                 format!("DNS resolution failed: {}. The hostname '{}' cannot be resolved to an IP address. This may be a DNS configuration issue on your network. Try using the IP address directly (e.g., https://64.23.167.130:9067) or check your DNS settings.", cleaned_error, host)
             } else if cleaned_error.contains("transport error") {
                 format!("Connection failed: {}. The connection attempt failed before we could query the latest block height. This could be due to DNS resolution failure, TLS/certificate issues, or network connectivity problems. Check your network connection, DNS settings, and endpoint URL.", cleaned_error)
             } else {
                 format!("Connection failed: {}. Latest block height not retrieved because connection failed.", cleaned_error)
             };
-            
+
             Ok(crate::models::NodeTestResult {
                 success: false,
                 latest_block_height: None, // No block height retrieved because connection failed
@@ -8390,7 +8586,6 @@ async fn test_node_inner(
                 server_version: None,
                 chain_name: None,
             })
-        },
+        }
     }
 }
-

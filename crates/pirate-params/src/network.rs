@@ -121,4 +121,3 @@ mod tests {
         assert_eq!(net.network_type, NetworkType::Testnet);
     }
 }
-

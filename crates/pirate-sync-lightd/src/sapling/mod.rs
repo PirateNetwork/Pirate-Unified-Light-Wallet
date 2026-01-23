@@ -3,7 +3,5 @@
 //! using an IVK derived from the wallet's spending/view key.
 //! This is a focused subset and does not bring the full wallet state machine.
 
-pub mod trial_decrypt;
 pub mod full_decrypt;
-
-
+pub mod trial_decrypt;

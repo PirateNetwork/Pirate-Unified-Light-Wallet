@@ -111,7 +111,7 @@ impl FeeCalculator {
     pub fn marginal_fee(&self) -> u64 {
         DEFAULT_FEE
     }
-    
+
     /// Legacy accessor for grace actions (ZIP-317).
     pub fn grace_actions(&self) -> u64 {
         2
@@ -181,11 +181,11 @@ mod tests {
         // Fees should be identical (fixed fee)
         assert_eq!(fee_with_memo, fee_without_memo);
     }
-    
+
     #[test]
     fn test_fixed_fee_ignores_counts() {
         let calculator = FeeCalculator::new();
-        
+
         let fee_1_1 = calculator.calculate_fee(1, 1, false).unwrap();
         let fee_2_2 = calculator.calculate_fee(2, 2, false).unwrap();
         let fee_1_0 = calculator.calculate_fee(1, 0, false).unwrap();

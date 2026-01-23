@@ -71,7 +71,12 @@ impl<'a> SyncStateStorage<'a> {
                     updated_at = ?4
                 WHERE id = 1
                 "#,
-                params![local_height, target_height, last_checkpoint_height, updated_at],
+                params![
+                    local_height,
+                    target_height,
+                    last_checkpoint_height,
+                    updated_at
+                ],
             )?;
             Ok(())
         })
@@ -95,7 +100,12 @@ impl<'a> SyncStateStorage<'a> {
                 updated_at = ?4
             WHERE id = 1
             "#,
-            params![local_height, target_height, last_checkpoint_height, updated_at],
+            params![
+                local_height,
+                target_height,
+                last_checkpoint_height,
+                updated_at
+            ],
         )?;
 
         Ok(())
@@ -334,7 +344,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     fn test_db() -> Database {
-        use crate::security::{MasterKey, EncryptionAlgorithm};
+        use crate::security::{EncryptionAlgorithm, MasterKey};
         let file = NamedTempFile::new().unwrap();
         let salt = crate::security::generate_salt();
         let key = EncryptionKey::from_passphrase("test", &salt).unwrap();
@@ -419,4 +429,3 @@ mod tests {
         assert_eq!(state.local_height, 1000);
     }
 }
-

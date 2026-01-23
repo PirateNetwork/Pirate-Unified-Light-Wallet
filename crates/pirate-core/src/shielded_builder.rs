@@ -7,29 +7,22 @@
 //! Based on the Rust builder path in the node (`builder_ffi.rs`), but
 //! adapted for lightwalletd anchors.
 
-use crate::{Error, Memo, Result};
-use crate::keys::{PaymentAddress, ExtendedSpendingKey, OrchardExtendedSpendingKey};
-use crate::selection::{NoteSelector, SelectableNote, SelectionStrategy};
 use crate::fees::FeeCalculator;
+use crate::keys::{ExtendedSpendingKey, OrchardExtendedSpendingKey, PaymentAddress};
 use crate::params::sapling_prover;
+use crate::selection::{NoteSelector, SelectableNote, SelectionStrategy};
+use crate::{Error, Memo, Result};
 use pirate_params::{Network, NetworkType};
 
+use incrementalmerkletree::MerklePath;
+use orchard::tree::Anchor as OrchardAnchor;
 use zcash_primitives::{
     consensus::{BlockHeight, NetworkUpgrade, Parameters},
-    sapling::{
-        Node as SaplingNode,
-        NOTE_COMMITMENT_TREE_DEPTH,
-    },
     memo::MemoBytes,
-    transaction::{
-        builder::Builder as TxBuilder,
-        components::Amount,
-        TxId,
-    },
+    sapling::{Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH},
+    transaction::{builder::Builder as TxBuilder, components::Amount, TxId},
 };
-use incrementalmerkletree::MerklePath;
 use zcash_proofs::prover::LocalTxProver;
-use orchard::tree::Anchor as OrchardAnchor;
 
 /// Pirate Chain network parameters
 #[derive(Clone, Debug)]
@@ -286,14 +279,21 @@ impl ShieldedBuilder {
         change_diversifier_index: u32,
     ) -> Result<SignedShieldedTransaction> {
         // Calculate required output amount
-        let output_sum: u64 = self.outputs.iter().map(|o| match o {
-            ShieldedOutput::Sapling { amount, .. } | ShieldedOutput::Orchard { amount, .. } => *amount,
-        }).sum();
+        let output_sum: u64 =
+            self.outputs
+                .iter()
+                .map(|o| match o {
+                    ShieldedOutput::Sapling { amount, .. }
+                    | ShieldedOutput::Orchard { amount, .. } => *amount,
+                })
+                .sum();
 
         // Calculate fee
         let fee_calc = FeeCalculator::new();
         let has_memo = self.outputs.iter().any(|o| match o {
-            ShieldedOutput::Sapling { memo, .. } | ShieldedOutput::Orchard { memo, .. } => memo.is_some(),
+            ShieldedOutput::Sapling { memo, .. } | ShieldedOutput::Orchard { memo, .. } => {
+                memo.is_some()
+            }
         });
 
         // Estimate fee (fixed for Pirate, or override)
@@ -321,32 +321,29 @@ impl ShieldedBuilder {
         // Get note count and check for Orchard spends before moving selection.notes
         let note_count = selection.notes.len();
         let total_input = selection.total_value;
-        let has_orchard_spends = selection.notes.iter().any(|n| n.note_type == crate::selection::NoteType::Orchard);
+        let has_orchard_spends = selection
+            .notes
+            .iter()
+            .any(|n| n.note_type == crate::selection::NoteType::Orchard);
 
         // Recalculate fee with actual input count
         let actual_fee = match self.fee_override {
             Some(fee) => fee,
-            None => fee_calc.calculate_fee(
-                note_count,
-                self.outputs.len(),
-                has_memo,
-            )?,
+            None => fee_calc.calculate_fee(note_count, self.outputs.len(), has_memo)?,
         };
 
         // Calculate change
         let total_output = output_sum
             .checked_add(actual_fee)
             .ok_or_else(|| Error::AmountOverflow("Output + fee overflow".to_string()))?;
-        
-        let change = total_input
-            .checked_sub(total_output)
-            .ok_or_else(|| Error::InsufficientFunds(
-                format!("Need {} but have {}", total_output, total_input)
-            ))?;
+
+        let change = total_input.checked_sub(total_output).ok_or_else(|| {
+            Error::InsufficientFunds(format!("Need {} but have {}", total_output, total_input))
+        })?;
 
         // Create prover from cached Sapling parameters
-        let mut prover: LocalTxProver = sapling_prover();
-        
+        let prover: LocalTxProver = sapling_prover();
+
         // Create transaction builder with Orchard anchor
         let mut tx_builder = TxBuilder::new(
             self.network.clone(),
@@ -360,18 +357,20 @@ impl ShieldedBuilder {
             match note.note_type {
                 crate::selection::NoteType::Sapling => {
                     if note.diversifier.is_some() {
-                        let diversifier = note
-                            .diversifier
-                            .as_ref()
-                            .ok_or_else(|| Error::TransactionBuild("Missing diversifier for note".to_string()))?;
-                        let sapling_note = note
-                            .note
-                            .as_ref()
-                            .ok_or_else(|| Error::TransactionBuild("Missing Sapling note data".to_string()))?;
+                        let diversifier = note.diversifier.as_ref().ok_or_else(|| {
+                            Error::TransactionBuild("Missing diversifier for note".to_string())
+                        })?;
+                        let sapling_note = note.note.as_ref().ok_or_else(|| {
+                            Error::TransactionBuild("Missing Sapling note data".to_string())
+                        })?;
                         let merkle_path: MerklePath<SaplingNode, { NOTE_COMMITMENT_TREE_DEPTH }> =
                             note.merkle_path
                                 .as_ref()
-                                .ok_or_else(|| Error::TransactionBuild("Missing Sapling witness path".to_string()))?
+                                .ok_or_else(|| {
+                                    Error::TransactionBuild(
+                                        "Missing Sapling witness path".to_string(),
+                                    )
+                                })?
                                 .clone();
 
                         tx_builder
@@ -381,31 +380,36 @@ impl ShieldedBuilder {
                                 sapling_note.clone(),
                                 merkle_path,
                             )
-                            .map_err(|e| Error::TransactionBuild(format!("Failed to add Sapling spend: {:?}", e)))?;
+                            .map_err(|e| {
+                                Error::TransactionBuild(format!(
+                                    "Failed to add Sapling spend: {:?}",
+                                    e
+                                ))
+                            })?;
                     }
                 }
                 crate::selection::NoteType::Orchard => {
                     // For Orchard spends, we need the note, merkle path, and spending key
-                    let orchard_note = note
-                        .orchard_note
-                        .as_ref()
-                        .ok_or_else(|| Error::TransactionBuild("Missing Orchard note data".to_string()))?;
-                    let orchard_merkle_path = note
-                        .orchard_merkle_path
-                        .ok_or_else(|| Error::TransactionBuild("Missing Orchard merkle path".to_string()))?;
-                    let orchard_sk = orchard_spending_key
-                        .ok_or_else(|| Error::TransactionBuild("Orchard spending key required for Orchard spends".to_string()))?;
+                    let orchard_note = note.orchard_note.as_ref().ok_or_else(|| {
+                        Error::TransactionBuild("Missing Orchard note data".to_string())
+                    })?;
+                    let orchard_merkle_path = note.orchard_merkle_path.ok_or_else(|| {
+                        Error::TransactionBuild("Missing Orchard merkle path".to_string())
+                    })?;
+                    let orchard_sk = orchard_spending_key.ok_or_else(|| {
+                        Error::TransactionBuild(
+                            "Orchard spending key required for Orchard spends".to_string(),
+                        )
+                    })?;
 
                     // Extract SpendingKey from OrchardExtendedSpendingKey
                     let sk = &orchard_sk.inner;
 
                     tx_builder
-                        .add_orchard_spend::<()>(
-                            sk.clone(),
-                            orchard_note.clone(),
-                            orchard_merkle_path,
-                        )
-                        .map_err(|e| Error::TransactionBuild(format!("Failed to add Orchard spend: {:?}", e)))?;
+                        .add_orchard_spend::<()>(*sk, *orchard_note, orchard_merkle_path)
+                        .map_err(|e| {
+                            Error::TransactionBuild(format!("Failed to add Orchard spend: {:?}", e))
+                        })?;
                 }
             }
         }
@@ -414,11 +418,14 @@ impl ShieldedBuilder {
         let sapling_ovk = sapling_spending_key
             .to_extended_fvk()
             .outgoing_viewing_key();
-        let orchard_ovk = orchard_spending_key
-            .map(|sk| sk.to_extended_fvk().to_ovk());
+        let orchard_ovk = orchard_spending_key.map(|sk| sk.to_extended_fvk().to_ovk());
         for output in &self.outputs {
             match output {
-                ShieldedOutput::Sapling { address, amount, memo } => {
+                ShieldedOutput::Sapling {
+                    address,
+                    amount,
+                    memo,
+                } => {
                     let memo_bytes = match memo {
                         Some(m) => m.to_memo_bytes()?,
                         None => MemoBytes::empty(),
@@ -426,15 +433,25 @@ impl ShieldedBuilder {
 
                     tx_builder
                         .add_sapling_output(
-                            Some(sapling_ovk.clone()),
-                            address.inner.clone(),
-                            Amount::from_i64(*amount as i64)
-                                .map_err(|_| Error::InvalidAmount("Amount out of range".to_string()))?,
+                            Some(sapling_ovk),
+                            address.inner,
+                            Amount::from_i64(*amount as i64).map_err(|_| {
+                                Error::InvalidAmount("Amount out of range".to_string())
+                            })?,
                             memo_bytes,
                         )
-                        .map_err(|e| Error::TransactionBuild(format!("Failed to add Sapling output: {:?}", e)))?;
+                        .map_err(|e| {
+                            Error::TransactionBuild(format!(
+                                "Failed to add Sapling output: {:?}",
+                                e
+                            ))
+                        })?;
                 }
-                ShieldedOutput::Orchard { address, amount, memo } => {
+                ShieldedOutput::Orchard {
+                    address,
+                    amount,
+                    memo,
+                } => {
                     let memo_bytes = match memo {
                         Some(m) => {
                             // Convert Memo to MemoBytes (same as Sapling)
@@ -450,26 +467,39 @@ impl ShieldedBuilder {
                             *amount,
                             memo_bytes,
                         )
-                        .map_err(|e| Error::TransactionBuild(format!("Failed to add Orchard output: {:?}", e)))?;
+                        .map_err(|e| {
+                            Error::TransactionBuild(format!(
+                                "Failed to add Orchard output: {:?}",
+                                e
+                            ))
+                        })?;
                 }
             }
         }
 
         // Add change output if needed
-        if change > 10_000 { // Dust threshold
+        if change > 10_000 {
+            // Dust threshold
             // Determine change address type:
             // - Use Orchard if we have Orchard outputs or Orchard spends
             // - Otherwise use Sapling
             // Note: has_orchard_spends was already computed before moving selection.notes
-            let has_orchard_outputs = self.outputs.iter().any(|o| matches!(o, ShieldedOutput::Orchard { .. }));
+            let has_orchard_outputs = self
+                .outputs
+                .iter()
+                .any(|o| matches!(o, ShieldedOutput::Orchard { .. }));
             let use_orchard_change = has_orchard_outputs || has_orchard_spends;
 
             if use_orchard_change {
                 // Use Orchard change address
                 let orchard_fvk = orchard_spending_key
-                    .ok_or_else(|| Error::TransactionBuild("Orchard spending key required for Orchard change".to_string()))?
+                    .ok_or_else(|| {
+                        Error::TransactionBuild(
+                            "Orchard spending key required for Orchard change".to_string(),
+                        )
+                    })?
                     .to_extended_fvk();
-                let change_addr = orchard_fvk.address_at_internal(change_diversifier_index as u32);
+                let change_addr = orchard_fvk.address_at_internal(change_diversifier_index);
 
                 tx_builder
                     .add_orchard_output::<()>(
@@ -478,7 +508,12 @@ impl ShieldedBuilder {
                         change,
                         MemoBytes::empty(),
                     )
-                    .map_err(|e| Error::TransactionBuild(format!("Failed to add Orchard change output: {:?}", e)))?;
+                    .map_err(|e| {
+                        Error::TransactionBuild(format!(
+                            "Failed to add Orchard change output: {:?}",
+                            e
+                        ))
+                    })?;
             } else {
                 // Use Sapling change address
                 let change_addr = sapling_spending_key
@@ -490,11 +525,17 @@ impl ShieldedBuilder {
                     .add_sapling_output(
                         Some(sapling_ovk),
                         change_addr,
-                        Amount::from_i64(change as i64)
-                            .map_err(|_| Error::InvalidAmount("Change amount out of range".to_string()))?,
+                        Amount::from_i64(change as i64).map_err(|_| {
+                            Error::InvalidAmount("Change amount out of range".to_string())
+                        })?,
                         MemoBytes::empty(),
                     )
-                    .map_err(|e| Error::TransactionBuild(format!("Failed to add Sapling change output: {:?}", e)))?;
+                    .map_err(|e| {
+                        Error::TransactionBuild(format!(
+                            "Failed to add Sapling change output: {:?}",
+                            e
+                        ))
+                    })?;
             }
         }
 
@@ -503,14 +544,15 @@ impl ShieldedBuilder {
         let fee_amount = Amount::from_u64(actual_fee)
             .map_err(|_| Error::InvalidAmount("Fee amount out of range".to_string()))?;
         let fee_rule = FeeRule::non_standard(fee_amount);
-        let (tx, _tx_metadata) = tx_builder
-            .build(&mut prover, &fee_rule)
-            .map_err(|e| Error::TransactionBuild(format!("Failed to build transaction: {:?}", e)))?;
+        let (tx, _tx_metadata) = tx_builder.build(&prover, &fee_rule).map_err(|e| {
+            Error::TransactionBuild(format!("Failed to build transaction: {:?}", e))
+        })?;
 
         // Serialize transaction to raw bytes
         let mut raw_tx = Vec::new();
-        tx.write(&mut raw_tx)
-            .map_err(|e| Error::TransactionBuild(format!("Failed to serialize transaction: {:?}", e)))?;
+        tx.write(&mut raw_tx).map_err(|e| {
+            Error::TransactionBuild(format!("Failed to serialize transaction: {:?}", e))
+        })?;
 
         let tx_size = raw_tx.len();
         let txid = tx.txid();

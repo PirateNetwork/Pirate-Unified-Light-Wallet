@@ -7,12 +7,12 @@
 //!
 //! The parameters are initialised lazily and cached for reuse.
 
+use bellman::groth16::{Parameters, PreparedVerifyingKey};
+use bls12_381::Bls12;
 use once_cell::sync::OnceCell;
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::Arc;
-use bellman::groth16::{Parameters, PreparedVerifyingKey};
-use bls12_381::Bls12;
 use zcash_proofs::prover::LocalTxProver;
 
 use orchard::circuit::{ProvingKey as OrchardProvingKey, VerifyingKey as OrchardVerifyingKey};
@@ -82,7 +82,7 @@ pub fn orchard_params() -> &'static OrchardParams {
 }
 
 /// Build a `LocalTxProver` using cached Sapling parameters.
-/// 
+///
 /// Note: The API now requires file paths, so we write parameters to temporary files.
 /// This is less efficient but required by the new API.
 pub fn sapling_prover() -> LocalTxProver {
@@ -92,27 +92,25 @@ pub fn sapling_prover() -> LocalTxProver {
 
 fn sapling_param_paths() -> (PathBuf, PathBuf) {
     static PATHS: OnceCell<(PathBuf, PathBuf)> = OnceCell::new();
-    PATHS.get_or_init(|| {
-        let temp_dir = std::env::temp_dir();
-        let pid = std::process::id();
-        let spend_path = temp_dir.join(format!("pirate-sapling-spend-{}.params", pid));
-        let output_path = temp_dir.join(format!("pirate-sapling-output-{}.params", pid));
+    PATHS
+        .get_or_init(|| {
+            let temp_dir = std::env::temp_dir();
+            let pid = std::process::id();
+            let spend_path = temp_dir.join(format!("pirate-sapling-spend-{}.params", pid));
+            let output_path = temp_dir.join(format!("pirate-sapling-output-{}.params", pid));
 
-        let (spend_bytes, output_bytes) = wagyu_zcash_parameters::load_sapling_parameters();
-        write_params_file(&spend_path, &spend_bytes);
-        write_params_file(&output_path, &output_bytes);
+            let (spend_bytes, output_bytes) = wagyu_zcash_parameters::load_sapling_parameters();
+            write_params_file(&spend_path, &spend_bytes);
+            write_params_file(&output_path, &output_bytes);
 
-        (spend_path, output_path)
-    })
-    .clone()
+            (spend_path, output_path)
+        })
+        .clone()
 }
 
 fn write_params_file(path: &PathBuf, bytes: &[u8]) {
     let tmp_path = path.with_extension("tmp");
-    std::fs::write(&tmp_path, bytes)
-        .expect("Failed to write temporary params file");
+    std::fs::write(&tmp_path, bytes).expect("Failed to write temporary params file");
     let _ = std::fs::remove_file(path);
-    std::fs::rename(&tmp_path, path)
-        .expect("Failed to move params file into place");
+    std::fs::rename(&tmp_path, path).expect("Failed to move params file into place");
 }
-

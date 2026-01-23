@@ -1,5 +1,5 @@
 //! Compact Sapling trial decryption
-//! 
+//!
 //! Given an IVK (derived from EXTSK/DFVK) and a compact output (cmu, epk, truncated
 //! ciphertext), attempts to decrypt and recover the note plaintext.
 //!
@@ -11,18 +11,13 @@
 //! This is sufficient to decrypt the first part of the plaintext (leadbyte + diversifier + value)
 //! and verify the note commitment matches, but not enough to decrypt the memo.
 
-use zcash_primitives::{
-    sapling::{
-        note::ExtractedNoteCommitment,
-        note_encryption::sapling_ka_agree,
-    },
-};
-use group::GroupEncoding;
-use jubjub::{ExtendedPoint, Fr};
+use crate::client::CompactSaplingOutput;
+use blake2b_simd::Params;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::ChaCha20;
-use blake2b_simd::Params;
-use crate::client::CompactSaplingOutput;
+use group::GroupEncoding;
+use jubjub::{ExtendedPoint, Fr};
+use zcash_primitives::sapling::{note::ExtractedNoteCommitment, note_encryption::sapling_ka_agree};
 
 /// Decrypted compact note data (minimal fields we need).
 pub struct DecryptedCompactNote {
@@ -53,7 +48,7 @@ fn kdf_sapling(dhsecret: &[u8; 32], epk: &[u8; 32]) -> [u8; 32] {
     hasher.update(dhsecret);
     hasher.update(epk);
     let k = hasher.finalize();
-    
+
     let mut key_bytes = [0u8; 32];
     key_bytes.copy_from_slice(k.as_bytes());
     key_bytes
@@ -68,7 +63,7 @@ fn kdf_sapling(dhsecret: &[u8; 32], epk: &[u8; 32]) -> [u8; 32] {
 /// 3. If a note matches, the wallet can optionally fetch the full transaction to decrypt the memo
 ///
 /// Returns the decrypted note with value and diversifier if successful.
-/// 
+///
 /// **Memo Handling:**
 /// - Memo is NOT available from compact decryption (requires full 580-byte ciphertext)
 /// - To get memo, light wallets:
@@ -176,14 +171,12 @@ pub fn try_decrypt_compact_output(
         return None;
     }
 
-    return Some(DecryptedCompactNote {
+    Some(DecryptedCompactNote {
         leadbyte,
         diversifier,
         address: payment_address.to_bytes(),
         value,
         rseed: rseed_bytes,
         memo: None,
-    });
-
-    // unreachable
+    })
 }

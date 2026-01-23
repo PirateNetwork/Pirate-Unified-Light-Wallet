@@ -73,11 +73,11 @@ pub enum Error {
     /// Network error
     #[error("Network error: {0}")]
     Network(String),
-    
+
     /// Network is down/unavailable
     #[error("Network unavailable: {0}")]
     NetworkDown(String),
-    
+
     /// Transaction broadcast failed
     #[error("Broadcast failed: {0}")]
     BroadcastFailed(String),
@@ -317,4 +317,3 @@ mod tests {
         assert_eq!(ErrorCategory::Network.to_string(), "Network");
     }
 }
-

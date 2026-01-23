@@ -39,46 +39,46 @@ pub mod sync_state;
 pub mod watch_only;
 
 pub use address_book::{
-    AddressBookEntry, AddressBookStorage, ColorTag,
-    MAX_LABEL_LENGTH, MAX_NOTES_LENGTH,
+    AddressBookEntry, AddressBookStorage, ColorTag, MAX_LABEL_LENGTH, MAX_NOTES_LENGTH,
 };
 pub use checkpoints::{Checkpoint, CheckpointManager};
 pub use database::Database;
 pub use decoy_vault::{
-    DecoyVaultManager, DecoyVaultConfig, DecoyVaultStorage, VaultMode,
-    DecoyBalance, DecoyTransactionList, DecoyWalletMeta,
+    DecoyBalance, DecoyTransactionList, DecoyVaultConfig, DecoyVaultManager, DecoyVaultStorage,
+    DecoyWalletMeta, VaultMode,
 };
 pub use encryption::EncryptionKey;
 pub use error::{Error, Result};
-pub use frontier::{FrontierStorage, FrontierSnapshotRow};
+pub use frontier::{FrontierSnapshotRow, FrontierStorage};
 pub use keystore::{
-    PlatformKeystore, MockKeystore, KeystoreManager, KeystoreCapabilities, KeystoreResult,
-    Platform, BiometricType, BiometricConfig, BiometricManager, BiometricState,
-    clear_platform_keystore, platform_keystore, set_platform_keystore,
+    clear_platform_keystore, platform_keystore, set_platform_keystore, BiometricConfig,
+    BiometricManager, BiometricState, BiometricType, KeystoreCapabilities, KeystoreManager,
+    KeystoreResult, MockKeystore, Platform, PlatformKeystore,
 };
 pub use models::*;
-pub use repository::Repository;
 pub use passphrase_store::{clear_passphrase, get_passphrase, is_passphrase_set, set_passphrase};
+pub use repository::Repository;
 pub use screenshot_guard::{
-    ScreenshotGuard, ScreenshotProtectionGuard, ScreenshotProtectionStatus,
-    ProtectionState, ProtectionReason,
+    ProtectionReason, ProtectionState, ScreenshotGuard, ScreenshotProtectionGuard,
+    ScreenshotProtectionStatus,
 };
 pub use secure_clipboard::{
-    SecureClipboard, ClipboardTimer, ClipboardDataType, ClipboardPlatform, MockClipboard,
-    DEFAULT_CLEAR_TIMEOUT_SECS, SEED_CLEAR_TIMEOUT_SECS, ADDRESS_CLEAR_TIMEOUT_SECS,
+    ClipboardDataType, ClipboardPlatform, ClipboardTimer, MockClipboard, SecureClipboard,
+    ADDRESS_CLEAR_TIMEOUT_SECS, DEFAULT_CLEAR_TIMEOUT_SECS, SEED_CLEAR_TIMEOUT_SECS,
 };
-pub use security::{MasterKey, AppPassphrase, SealedKey, EncryptionAlgorithm, PanicPin, PassphraseStrength, generate_salt, hash_sha256};
+pub use security::{
+    generate_salt, hash_sha256, AppPassphrase, EncryptionAlgorithm, MasterKey, PanicPin,
+    PassphraseStrength, SealedKey,
+};
 pub use seed_export::{
-    SeedExportManager, SeedExportRequest, SeedExportResult, ExportFlowState, ExportAuditEntry,
-    warnings as seed_warnings,
+    warnings as seed_warnings, ExportAuditEntry, ExportFlowState, SeedExportManager,
+    SeedExportRequest, SeedExportResult,
 };
 pub use sync_state::{
-    SyncStateStorage, SyncStateRow, atomic_sync_update, truncate_above_height,
-    MAX_BUSY_RETRIES, BASE_BACKOFF_MS, MAX_BACKOFF_MS,
+    atomic_sync_update, truncate_above_height, SyncStateRow, SyncStateStorage, BASE_BACKOFF_MS,
+    MAX_BACKOFF_MS, MAX_BUSY_RETRIES,
 };
 pub use watch_only::{
-    WatchOnlyManager, WatchOnlyCapabilities, IvkExportResult, IvkImportRequest,
-    WatchOnlyWalletMeta, WatchOnlyBanner, WatchOnlyBannerType,
-    messages as watch_only_messages,
+    messages as watch_only_messages, IvkExportResult, IvkImportRequest, WatchOnlyBanner,
+    WatchOnlyBannerType, WatchOnlyCapabilities, WatchOnlyManager, WatchOnlyWalletMeta,
 };
-

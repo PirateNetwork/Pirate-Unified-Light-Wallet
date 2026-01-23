@@ -1,10 +1,10 @@
 //! Data access layer
 
-use crate::{models::*, Database, Result};
 use crate::address_book::ColorTag;
+use crate::{models::*, Database, Result};
 use pirate_params::consensus::ConsensusParams;
-use rusqlite::{params, OptionalExtension};
 use rusqlite::params_from_iter;
+use rusqlite::{params, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::PathBuf;
@@ -56,13 +56,17 @@ impl<'a> Repository<'a> {
 
     /// Encrypt sensitive BLOB data
     fn encrypt_blob(&self, data: &[u8]) -> Result<Vec<u8>> {
-        self.db.master_key().encrypt(data)
+        self.db
+            .master_key()
+            .encrypt(data)
             .map_err(|e| crate::Error::Encryption(format!("Failed to encrypt data: {}", e)))
     }
 
     /// Decrypt sensitive BLOB data
     fn decrypt_blob(&self, encrypted: &[u8]) -> Result<Vec<u8>> {
-        self.db.master_key().decrypt(encrypted)
+        self.db
+            .master_key()
+            .decrypt(encrypted)
             .map_err(|e| crate::Error::Encryption(format!("Failed to decrypt data: {}", e)))
     }
 
@@ -91,7 +95,9 @@ impl<'a> Repository<'a> {
     fn decrypt_int64(&self, encrypted: &[u8]) -> Result<i64> {
         let decrypted = self.decrypt_blob(encrypted)?;
         if decrypted.len() != 8 {
-            return Err(crate::Error::Encryption("Invalid encrypted integer length".to_string()));
+            return Err(crate::Error::Encryption(
+                "Invalid encrypted integer length".to_string(),
+            ));
         }
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&decrypted);
@@ -123,7 +129,9 @@ impl<'a> Repository<'a> {
     fn decrypt_bool(&self, encrypted: &[u8]) -> Result<bool> {
         let decrypted = self.decrypt_blob(encrypted)?;
         if decrypted.is_empty() {
-            return Err(crate::Error::Encryption("Invalid encrypted boolean length".to_string()));
+            return Err(crate::Error::Encryption(
+                "Invalid encrypted boolean length".to_string(),
+            ));
         }
         Ok(decrypted[0] != 0)
     }
@@ -209,7 +217,7 @@ impl<'a> Repository<'a> {
             crate::models::NoteType::Sapling => "Sapling",
             crate::models::NoteType::Orchard => "Orchard",
         };
-        
+
         // Encrypt ALL fields for maximum privacy (Pirate Chain privacy-first wallet)
         let encrypted_account_id = self.encrypt_int64(note.account_id)?;
         let encrypted_value = self.encrypt_int64(note.value)?;
@@ -219,8 +227,10 @@ impl<'a> Repository<'a> {
         let encrypted_height = self.encrypt_int64(note.height)?;
         let encrypted_txid = self.encrypt_blob(&note.txid)?;
         let encrypted_output_index = self.encrypt_int64(note.output_index)?;
-        let encrypted_diversifier = self.encrypt_blob(note.diversifier.as_deref().unwrap_or(&[]))?;
-        let encrypted_merkle_path = self.encrypt_blob(note.merkle_path.as_deref().unwrap_or(&[]))?;
+        let encrypted_diversifier =
+            self.encrypt_blob(note.diversifier.as_deref().unwrap_or(&[]))?;
+        let encrypted_merkle_path =
+            self.encrypt_blob(note.merkle_path.as_deref().unwrap_or(&[]))?;
         let encrypted_note = self.encrypt_blob(note.note.as_deref().unwrap_or(&[]))?;
         let encrypted_anchor = self.encrypt_optional_blob(note.anchor.as_deref())?;
         let encrypted_position = self.encrypt_optional_int64(note.position)?;
@@ -228,7 +238,7 @@ impl<'a> Repository<'a> {
         let encrypted_spent_txid = self.encrypt_optional_blob(note.spent_txid.as_deref())?;
         let encrypted_address_id = self.encrypt_optional_int64(note.address_id)?;
         let encrypted_key_id = self.encrypt_optional_int64(note.key_id)?;
-        
+
         self.db.conn().execute(
             "INSERT INTO notes (account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
@@ -272,8 +282,10 @@ impl<'a> Repository<'a> {
         let encrypted_height = self.encrypt_int64(note.height)?;
         let encrypted_txid = self.encrypt_blob(&note.txid)?;
         let encrypted_output_index = self.encrypt_int64(note.output_index)?;
-        let encrypted_diversifier = self.encrypt_blob(note.diversifier.as_deref().unwrap_or(&[]))?;
-        let encrypted_merkle_path = self.encrypt_blob(note.merkle_path.as_deref().unwrap_or(&[]))?;
+        let encrypted_diversifier =
+            self.encrypt_blob(note.diversifier.as_deref().unwrap_or(&[]))?;
+        let encrypted_merkle_path =
+            self.encrypt_blob(note.merkle_path.as_deref().unwrap_or(&[]))?;
         let encrypted_note = self.encrypt_blob(note.note.as_deref().unwrap_or(&[]))?;
         let encrypted_anchor = self.encrypt_optional_blob(note.anchor.as_deref())?;
         let encrypted_position = self.encrypt_optional_int64(note.position)?;
@@ -312,7 +324,13 @@ impl<'a> Repository<'a> {
     /// Insert or update a transaction record.
     ///
     /// We store the **block timestamp** (first confirmation time) when available.
-    pub fn upsert_transaction(&self, txid_hex: &str, height: i64, timestamp: i64, fee: i64) -> Result<()> {
+    pub fn upsert_transaction(
+        &self,
+        txid_hex: &str,
+        height: i64,
+        timestamp: i64,
+        fee: i64,
+    ) -> Result<()> {
         self.db.conn().execute(
             "INSERT INTO transactions (txid, height, timestamp, fee)
              VALUES (?1, ?2, ?3, ?4)
@@ -351,10 +369,9 @@ impl<'a> Repository<'a> {
             }
         };
 
-        self.db.conn().execute(
-            "DELETE FROM memos WHERE tx_id = ?1",
-            params![tx_id],
-        )?;
+        self.db
+            .conn()
+            .execute("DELETE FROM memos WHERE tx_id = ?1", params![tx_id])?;
         self.db.conn().execute(
             "INSERT INTO memos (tx_id, memo) VALUES (?1, ?2)",
             params![tx_id, encrypted_memo],
@@ -385,11 +402,13 @@ impl<'a> Repository<'a> {
         }
 
         // Build a `WHERE txid IN (?, ?, ...)` query dynamically.
-        let placeholders = std::iter::repeat("?")
-            .take(txids.len())
+        let placeholders = std::iter::repeat_n("?", txids.len())
             .collect::<Vec<_>>()
             .join(",");
-        let sql = format!("SELECT txid, timestamp FROM transactions WHERE txid IN ({})", placeholders);
+        let sql = format!(
+            "SELECT txid, timestamp FROM transactions WHERE txid IN ({})",
+            placeholders
+        );
 
         let mut stmt = self.db.conn().prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(txids.iter()), |row| {
@@ -409,11 +428,13 @@ impl<'a> Repository<'a> {
             return Ok(HashMap::new());
         }
 
-        let placeholders = std::iter::repeat("?")
-            .take(txids.len())
+        let placeholders = std::iter::repeat_n("?", txids.len())
             .collect::<Vec<_>>()
             .join(",");
-        let sql = format!("SELECT txid, height FROM transactions WHERE txid IN ({})", placeholders);
+        let sql = format!(
+            "SELECT txid, height FROM transactions WHERE txid IN ({})",
+            placeholders
+        );
 
         let mut stmt = self.db.conn().prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(txids.iter()), |row| {
@@ -434,11 +455,13 @@ impl<'a> Repository<'a> {
             return Ok(HashMap::new());
         }
 
-        let placeholders = std::iter::repeat("?")
-            .take(txids.len())
+        let placeholders = std::iter::repeat_n("?", txids.len())
             .collect::<Vec<_>>()
             .join(",");
-        let sql = format!("SELECT txid, fee FROM transactions WHERE txid IN ({})", placeholders);
+        let sql = format!(
+            "SELECT txid, fee FROM transactions WHERE txid IN ({})",
+            placeholders
+        );
 
         let mut stmt = self.db.conn().prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(txids.iter()), |row| {
@@ -460,8 +483,7 @@ impl<'a> Repository<'a> {
             return Ok(HashMap::new());
         }
 
-        let placeholders = std::iter::repeat("?")
-            .take(txids.len())
+        let placeholders = std::iter::repeat_n("?", txids.len())
             .collect::<Vec<_>>()
             .join(",");
         let sql = format!(
@@ -493,56 +515,57 @@ impl<'a> Repository<'a> {
             "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
         )?;
 
-        let notes = stmt.query_map([], |row| {
-            let note_type_str: String = row.get(2)?;
-            let note_type = match note_type_str.as_str() {
-                "Orchard" => crate::models::NoteType::Orchard,
-                _ => crate::models::NoteType::Sapling, // Default to Sapling for backward compatibility
-            };
-            
-            // All fields are encrypted for privacy - need explicit type annotations
-            let encrypted_account_id: Vec<u8> = row.get::<_, Vec<u8>>(1)?;
-            let encrypted_value: Vec<u8> = row.get::<_, Vec<u8>>(3)?;
-            let encrypted_nullifier: Vec<u8> = row.get::<_, Vec<u8>>(4)?;
-            let encrypted_commitment: Vec<u8> = row.get::<_, Vec<u8>>(5)?;
-            let encrypted_spent: Vec<u8> = row.get::<_, Vec<u8>>(6)?;
-            let encrypted_height: Vec<u8> = row.get::<_, Vec<u8>>(7)?;
-            let encrypted_txid: Vec<u8> = row.get::<_, Vec<u8>>(8)?;
-            let encrypted_output_index: Vec<u8> = row.get::<_, Vec<u8>>(9)?;
-            let encrypted_spent_txid: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(10)?;
-            let encrypted_diversifier: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(11)?;
-            let encrypted_merkle_path: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(12)?;
-            let encrypted_note: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(13)?;
-            let encrypted_anchor: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(14)?;
-            let encrypted_position: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(15)?;
-            let encrypted_memo: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(16)?;
-            let encrypted_address_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(17)?;
-            let encrypted_key_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(18)?;
+        let notes = stmt
+            .query_map([], |row| {
+                let note_type_str: String = row.get(2)?;
+                let note_type = match note_type_str.as_str() {
+                    "Orchard" => crate::models::NoteType::Orchard,
+                    _ => crate::models::NoteType::Sapling, // Default to Sapling for backward compatibility
+                };
 
-            // Note: Decryption happens after collecting to handle errors properly
-            Ok((
-                row.get(0)?, // id
-                encrypted_account_id,
-                note_type,
-                encrypted_value,
-                encrypted_nullifier,
-                encrypted_commitment,
-                encrypted_spent,
-                encrypted_height,
-                encrypted_txid,
-                encrypted_output_index,
-                encrypted_spent_txid,
-                encrypted_diversifier,
-                encrypted_merkle_path,
-                encrypted_note,
-                encrypted_anchor,
-                encrypted_position,
-                encrypted_memo,
-                encrypted_address_id,
-                encrypted_key_id,
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+                // All fields are encrypted for privacy - need explicit type annotations
+                let encrypted_account_id: Vec<u8> = row.get::<_, Vec<u8>>(1)?;
+                let encrypted_value: Vec<u8> = row.get::<_, Vec<u8>>(3)?;
+                let encrypted_nullifier: Vec<u8> = row.get::<_, Vec<u8>>(4)?;
+                let encrypted_commitment: Vec<u8> = row.get::<_, Vec<u8>>(5)?;
+                let encrypted_spent: Vec<u8> = row.get::<_, Vec<u8>>(6)?;
+                let encrypted_height: Vec<u8> = row.get::<_, Vec<u8>>(7)?;
+                let encrypted_txid: Vec<u8> = row.get::<_, Vec<u8>>(8)?;
+                let encrypted_output_index: Vec<u8> = row.get::<_, Vec<u8>>(9)?;
+                let encrypted_spent_txid: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(10)?;
+                let encrypted_diversifier: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(11)?;
+                let encrypted_merkle_path: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(12)?;
+                let encrypted_note: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(13)?;
+                let encrypted_anchor: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(14)?;
+                let encrypted_position: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(15)?;
+                let encrypted_memo: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(16)?;
+                let encrypted_address_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(17)?;
+                let encrypted_key_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(18)?;
+
+                // Note: Decryption happens after collecting to handle errors properly
+                Ok((
+                    row.get(0)?, // id
+                    encrypted_account_id,
+                    note_type,
+                    encrypted_value,
+                    encrypted_nullifier,
+                    encrypted_commitment,
+                    encrypted_spent,
+                    encrypted_height,
+                    encrypted_txid,
+                    encrypted_output_index,
+                    encrypted_spent_txid,
+                    encrypted_diversifier,
+                    encrypted_merkle_path,
+                    encrypted_note,
+                    encrypted_anchor,
+                    encrypted_position,
+                    encrypted_memo,
+                    encrypted_address_id,
+                    encrypted_key_id,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         // Decrypt all notes including all metadata for privacy
         let total_rows = notes.len();
@@ -550,10 +573,31 @@ impl<'a> Repository<'a> {
         let mut matched = 0usize;
         let mut invalid_values = 0usize;
         let mut seen: HashSet<(Vec<u8>, i64, crate::models::NoteType)> = HashSet::new();
-        for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo, enc_address_id, enc_key_id) in notes {
+        for (
+            id,
+            enc_account_id,
+            note_type,
+            enc_value,
+            enc_nullifier,
+            enc_commitment,
+            enc_spent,
+            enc_height,
+            enc_txid,
+            enc_output_index,
+            enc_spent_txid,
+            enc_diversifier,
+            enc_merkle_path,
+            enc_note,
+            enc_anchor,
+            enc_position,
+            enc_memo,
+            enc_address_id,
+            enc_key_id,
+        ) in notes
+        {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
             let decrypted_spent = self.decrypt_bool(&enc_spent)?;
-            
+
             // Filter by account_id and spent status in memory (privacy-first approach)
             if decrypted_account_id != account_id || decrypted_spent {
                 continue;
@@ -607,11 +651,7 @@ impl<'a> Repository<'a> {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_unspent_notes","timestamp":{},"location":"repository.rs:344","message":"get_unspent_notes","data":{{"account_id":{},"rows":{},"matched":{},"invalid_values":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts,
-                account_id,
-                total_rows,
-                matched,
-                invalid_values
+                ts, account_id, total_rows, matched, invalid_values
             );
         }
         // #endregion
@@ -620,7 +660,7 @@ impl<'a> Repository<'a> {
     }
 
     /// Insert wallet secret (encrypted EXTSK)
-    /// 
+    ///
     /// Note: This function expects the secret fields to already be encrypted.
     /// Use the encrypt_wallet_secret_fields helper to encrypt before calling.
     pub fn upsert_wallet_secret(&self, secret: &WalletSecret) -> Result<()> {
@@ -628,7 +668,7 @@ impl<'a> Repository<'a> {
         let encrypted_wallet_id = self.encrypt_string(&secret.wallet_id)?;
         let encrypted_account_id = self.encrypt_int64(secret.account_id)?;
         let encrypted_created_at = self.encrypt_int64(secret.created_at)?;
-        
+
         self.db.conn().execute(
             "INSERT INTO wallet_secrets (wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -643,7 +683,7 @@ impl<'a> Repository<'a> {
     pub fn encrypt_wallet_secret_fields(&self, secret: &WalletSecret) -> Result<WalletSecret> {
         Ok(WalletSecret {
             wallet_id: secret.wallet_id.clone(), // Will be encrypted in upsert_wallet_secret
-            account_id: secret.account_id, // Will be encrypted in upsert_wallet_secret
+            account_id: secret.account_id,       // Will be encrypted in upsert_wallet_secret
             extsk: self.encrypt_blob(&secret.extsk)?,
             dfvk: self.encrypt_optional_blob(secret.dfvk.as_deref())?, // Encrypt viewing key for privacy
             orchard_extsk: self.encrypt_optional_blob(secret.orchard_extsk.as_deref())?,
@@ -676,7 +716,7 @@ impl<'a> Repository<'a> {
             let encrypted_created_at: Vec<u8> = row.get::<_, Vec<u8>>(8)?;
 
             let wallet_id_decrypted = self.decrypt_string(&encrypted_wallet_id_db)?;
-            
+
             // Filter by wallet_id
             if wallet_id_decrypted == wallet_id {
                 let account_id = self.decrypt_int64(&encrypted_account_id)?;
@@ -701,7 +741,7 @@ impl<'a> Repository<'a> {
                 }));
             }
         }
-        
+
         Ok(None)
     }
 
@@ -786,38 +826,54 @@ impl<'a> Repository<'a> {
             "SELECT id, account_id, key_type, key_scope, label, birthday_height, created_at, spendable, sapling_extsk, sapling_dfvk, orchard_extsk, orchard_fvk, encrypted_mnemonic FROM account_keys WHERE account_id = ?1",
         )?;
 
-        let keys = stmt.query_map([account_id], |row| {
-            let key_type_str: String = row.get(2)?;
-            let key_scope_str: String = row.get(3)?;
-            let key_type = match key_type_str.as_str() {
-                "import_spend" => KeyType::ImportSpend,
-                "import_view" => KeyType::ImportView,
-                _ => KeyType::Seed,
-            };
-            let key_scope = match key_scope_str.as_str() {
-                "single_address" => KeyScope::SingleAddress,
-                _ => KeyScope::Account,
-            };
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, i64>(1)?,
-                key_type,
-                key_scope,
-                row.get::<_, Option<String>>(4)?,
-                row.get::<_, i64>(5)?,
-                row.get::<_, i64>(6)?,
-                row.get::<_, i64>(7)?,
-                row.get::<_, Option<Vec<u8>>>(8)?,
-                row.get::<_, Option<Vec<u8>>>(9)?,
-                row.get::<_, Option<Vec<u8>>>(10)?,
-                row.get::<_, Option<Vec<u8>>>(11)?,
-                row.get::<_, Option<Vec<u8>>>(12)?,
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        let keys = stmt
+            .query_map([account_id], |row| {
+                let key_type_str: String = row.get(2)?;
+                let key_scope_str: String = row.get(3)?;
+                let key_type = match key_type_str.as_str() {
+                    "import_spend" => KeyType::ImportSpend,
+                    "import_view" => KeyType::ImportView,
+                    _ => KeyType::Seed,
+                };
+                let key_scope = match key_scope_str.as_str() {
+                    "single_address" => KeyScope::SingleAddress,
+                    _ => KeyScope::Account,
+                };
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    key_type,
+                    key_scope,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, Option<Vec<u8>>>(8)?,
+                    row.get::<_, Option<Vec<u8>>>(9)?,
+                    row.get::<_, Option<Vec<u8>>>(10)?,
+                    row.get::<_, Option<Vec<u8>>>(11)?,
+                    row.get::<_, Option<Vec<u8>>>(12)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut decrypted = Vec::with_capacity(keys.len());
-        for (id, acc_id, key_type, key_scope, label, birthday_height, created_at, spendable_raw, sapling_extsk, sapling_dfvk, orchard_extsk, orchard_fvk, encrypted_mnemonic) in keys {
+        for (
+            id,
+            acc_id,
+            key_type,
+            key_scope,
+            label,
+            birthday_height,
+            created_at,
+            spendable_raw,
+            sapling_extsk,
+            sapling_dfvk,
+            orchard_extsk,
+            orchard_fvk,
+            encrypted_mnemonic,
+        ) in keys
+        {
             decrypted.push(AccountKey {
                 id: Some(id),
                 account_id: acc_id,
@@ -858,8 +914,8 @@ impl<'a> Repository<'a> {
                     _ => KeyScope::Account,
                 };
                 Ok((
-                    row.get::<_, i64>(0)?,              // id
-                    row.get::<_, i64>(1)?,              // account_id
+                    row.get::<_, i64>(0)?, // id
+                    row.get::<_, i64>(1)?, // account_id
                     key_type,
                     key_scope,
                     row.get::<_, Option<String>>(4)?,   // label
@@ -889,7 +945,8 @@ impl<'a> Repository<'a> {
             orchard_extsk,
             orchard_fvk,
             encrypted_mnemonic,
-        )) = row else {
+        )) = row
+        else {
             return Ok(None);
         };
 
@@ -912,7 +969,8 @@ impl<'a> Repository<'a> {
 
     /// Delete an account key by id.
     pub fn delete_account_key(&self, key_id: i64) -> Result<()> {
-        self.db.conn()
+        self.db
+            .conn()
             .execute("DELETE FROM account_keys WHERE id = ?1", [key_id])?;
         Ok(())
     }
@@ -936,14 +994,18 @@ impl<'a> Repository<'a> {
         key_ids_filter: Option<Vec<i64>>,
         address_ids_filter: Option<Vec<i64>>,
     ) -> Result<Vec<pirate_core::selection::SelectableNote>> {
-        use pirate_core::selection::SelectableNote;
-        use orchard::note::{Note as OrchardNote, Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed};
+        use orchard::note::{
+            Note as OrchardNote, Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed,
+        };
+        use orchard::tree::{
+            Anchor as OrchardAnchor, MerkleHashOrchard, MerklePath as OrchardMerklePath,
+        };
         use orchard::value::NoteValue as OrchardNoteValue;
         use orchard::Address as OrchardAddress;
-        use orchard::tree::{Anchor as OrchardAnchor, MerkleHashOrchard, MerklePath as OrchardMerklePath};
-        use zcash_primitives::sapling::{Node, Note as SaplingNote, PaymentAddress, Rseed};
-        use zcash_primitives::sapling::value::NoteValue as SaplingNoteValue;
+        use pirate_core::selection::SelectableNote;
         use zcash_primitives::merkle_tree::merkle_path_from_slice;
+        use zcash_primitives::sapling::value::NoteValue as SaplingNoteValue;
+        use zcash_primitives::sapling::{Node, Note as SaplingNote, PaymentAddress, Rseed};
 
         const SAPLING_NOTE_BYTES_VERSION: u8 = 1;
         const ORCHARD_NOTE_BYTES_VERSION: u8 = 1;
@@ -1042,7 +1104,7 @@ impl<'a> Repository<'a> {
                 let unlabeled = address
                     .label
                     .as_ref()
-                    .map_or(true, |label| label.trim().is_empty());
+                    .is_none_or(|label| label.trim().is_empty());
                 let untagged = address.color_tag == ColorTag::None;
                 if unlabeled && untagged {
                     Some(id)
@@ -1058,12 +1120,12 @@ impl<'a> Repository<'a> {
         let notes = if key_filter.is_some() || address_filter.is_some() {
             let mut filtered = Vec::new();
             for note in notes {
-                let key_match = key_filter.as_ref().map_or(false, |set| {
-                    note.key_id.map_or(false, |id| set.contains(&id))
-                });
-                let address_match = address_filter.as_ref().map_or(false, |set| {
-                    note.address_id.map_or(false, |id| set.contains(&id))
-                });
+                let key_match = key_filter
+                    .as_ref()
+                    .is_some_and(|set| note.key_id.is_some_and(|id| set.contains(&id)));
+                let address_match = address_filter
+                    .as_ref()
+                    .is_some_and(|set| note.address_id.is_some_and(|id| set.contains(&id)));
 
                 if key_match || address_match {
                     filtered.push(note);
@@ -1103,20 +1165,22 @@ impl<'a> Repository<'a> {
                         if merkle_path.is_empty() {
                             None
                         } else {
-                            merkle_path_from_slice::<Node, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>(
-                                &merkle_path[..],
-                            )
+                            merkle_path_from_slice::<
+                                Node,
+                                { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
+                            >(&merkle_path[..])
                             .ok()
                         }
                     });
 
-                    let (address_bytes, leadbyte, rseed_bytes) = match n.note.as_deref().and_then(parse_sapling_note_bytes) {
-                        Some(data) => data,
-                        None => {
-                            skipped_missing_note += 1;
-                            continue;
-                        }
-                    };
+                    let (address_bytes, leadbyte, rseed_bytes) =
+                        match n.note.as_deref().and_then(parse_sapling_note_bytes) {
+                            Some(data) => data,
+                            None => {
+                                skipped_missing_note += 1;
+                                continue;
+                            }
+                        };
 
                     let address = match PaymentAddress::from_bytes(&address_bytes) {
                         Some(addr) => addr,
@@ -1155,9 +1219,10 @@ impl<'a> Repository<'a> {
                     );
                     sn.auto_consolidation_eligible = n
                         .address_id
-                        .map_or(false, |id| eligible_address_ids.contains(&id));
+                        .is_some_and(|id| eligible_address_ids.contains(&id));
 
-                    if let Some(nullifier) = (!n.nullifier.is_empty()).then(|| n.nullifier.clone()) {
+                    if let Some(nullifier) = (!n.nullifier.is_empty()).then(|| n.nullifier.clone())
+                    {
                         sn = sn.with_nullifier(nullifier);
                     }
 
@@ -1173,15 +1238,18 @@ impl<'a> Repository<'a> {
                     result.push(sn);
                 }
                 crate::models::NoteType::Orchard => {
-                    let (address_bytes, rho_bytes, rseed_bytes) = match n.note.as_deref().and_then(parse_orchard_note_bytes) {
-                        Some(data) => data,
-                        None => {
-                            skipped_missing_note += 1;
-                            continue;
-                        }
-                    };
+                    let (address_bytes, rho_bytes, rseed_bytes) =
+                        match n.note.as_deref().and_then(parse_orchard_note_bytes) {
+                            Some(data) => data,
+                            None => {
+                                skipped_missing_note += 1;
+                                continue;
+                            }
+                        };
 
-                    let address = match Option::from(OrchardAddress::from_raw_address_bytes(&address_bytes)) {
+                    let address = match Option::from(OrchardAddress::from_raw_address_bytes(
+                        &address_bytes,
+                    )) {
                         Some(addr) => addr,
                         None => {
                             skipped_invalid_address += 1;
@@ -1197,7 +1265,8 @@ impl<'a> Repository<'a> {
                         }
                     };
 
-                    let rseed = match Option::from(OrchardRandomSeed::from_bytes(rseed_bytes, &rho)) {
+                    let rseed = match Option::from(OrchardRandomSeed::from_bytes(rseed_bytes, &rho))
+                    {
                         Some(value) => value,
                         None => {
                             skipped_invalid_rseed += 1;
@@ -1210,7 +1279,9 @@ impl<'a> Repository<'a> {
                         Err(_) => continue,
                     };
                     let note_value = OrchardNoteValue::from_raw(value);
-                    let note = match Option::from(OrchardNote::from_parts(address, note_value, rho, rseed)) {
+                    let note = match Option::from(OrchardNote::from_parts(
+                        address, note_value, rho, rseed,
+                    )) {
                         Some(value) => value,
                         None => {
                             skipped_invalid_note += 1;
@@ -1227,9 +1298,10 @@ impl<'a> Repository<'a> {
                     );
                     sn.auto_consolidation_eligible = n
                         .address_id
-                        .map_or(false, |id| eligible_address_ids.contains(&id));
+                        .is_some_and(|id| eligible_address_ids.contains(&id));
 
-                    if let Some(nullifier) = (!n.nullifier.is_empty()).then(|| n.nullifier.clone()) {
+                    if let Some(nullifier) = (!n.nullifier.is_empty()).then(|| n.nullifier.clone())
+                    {
                         sn = sn.with_nullifier(nullifier);
                     }
 
@@ -1324,12 +1396,12 @@ impl<'a> Repository<'a> {
     }
 
     /// Calculate balance from unspent notes (both Sapling and Orchard)
-    /// 
+    ///
     /// Returns (spendable, pending, total) where:
     /// - spendable: Confirmed unspent notes (with minDepth confirmations)
     /// - pending: Unconfirmed unspent notes
     /// - total: spendable + pending
-    /// 
+    ///
     /// Includes both Sapling and Orchard notes in the balance calculation.
     pub fn calculate_balance(
         &self,
@@ -1339,21 +1411,17 @@ impl<'a> Repository<'a> {
     ) -> Result<(u64, u64, u64)> {
         // Get all unspent notes for this account (both Sapling and Orchard)
         let notes = self.get_unspent_notes(account_id)?;
-        
+
         let mut spendable = 0u64;
         let mut pending = 0u64;
-        
+
         // Calculate confirmation threshold
-        let confirmation_threshold = if current_height >= min_depth {
-            current_height - min_depth
-        } else {
-            0 // If chain is shorter than min_depth, all notes are pending
-        };
-        
+        let confirmation_threshold = current_height.saturating_sub(min_depth);
+
         for note in notes {
             let note_height = note.height as u64;
             let note_value = note.value as u64;
-            
+
             // Note is confirmed if it has at least min_depth confirmations
             // (i.e., note_height <= current_height - min_depth)
             // This applies to both Sapling and Orchard notes
@@ -1368,11 +1436,11 @@ impl<'a> Repository<'a> {
                     .ok_or_else(|| crate::error::Error::Storage("Balance overflow".to_string()))?;
             }
         }
-        
+
         let total = spendable
             .checked_add(pending)
             .ok_or_else(|| crate::error::Error::Storage("Balance overflow".to_string()))?;
-        
+
         Ok((spendable, pending, total))
     }
 
@@ -1431,7 +1499,6 @@ impl<'a> Repository<'a> {
             crate::models::AddressScope::External,
         )
     }
-
 
     /// Backfill missing key_id on legacy addresses (created before key management).
     pub fn backfill_address_key_id(&self, account_id: i64, key_id: i64) -> Result<usize> {
@@ -1494,22 +1561,21 @@ impl<'a> Repository<'a> {
         Ok(())
     }
 
-
     /// Get address by address string.
     pub fn get_address_by_string(&self, account_id: i64, address: &str) -> Result<Option<Address>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses              WHERE account_id = ?1 AND address = ?2",
         )?;
 
-        let result = stmt.query_row(
-            params![account_id, address],
-            |row| {
+        let result = stmt
+            .query_row(params![account_id, address], |row| {
                 let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
                 let address_type = match address_type_str.as_str() {
                     "Orchard" => crate::models::AddressType::Orchard,
                     _ => crate::models::AddressType::Sapling,
                 };
-                let address_scope_str: String = row.get(9).unwrap_or_else(|_| "external".to_string());
+                let address_scope_str: String =
+                    row.get(9).unwrap_or_else(|_| "external".to_string());
                 let address_scope = match address_scope_str.as_str() {
                     "internal" => crate::models::AddressScope::Internal,
                     _ => crate::models::AddressScope::External,
@@ -1526,28 +1592,33 @@ impl<'a> Repository<'a> {
                     color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
                     address_scope,
                 })
-            },
-        ).optional()?;
+            })
+            .optional()?;
 
         Ok(result)
     }
 
     /// Get address by diversifier index for a key group
-    pub fn get_address_by_index(&self, account_id: i64, key_id: i64, diversifier_index: u32) -> Result<Option<Address>> {
+    pub fn get_address_by_index(
+        &self,
+        account_id: i64,
+        key_id: i64,
+        diversifier_index: u32,
+    ) -> Result<Option<Address>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses 
              WHERE account_id = ?1 AND key_id = ?2 AND diversifier_index = ?3",
         )?;
 
-        let result = stmt.query_row(
-            [account_id, key_id, diversifier_index as i64],
-            |row| {
+        let result = stmt
+            .query_row([account_id, key_id, diversifier_index as i64], |row| {
                 let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
                 let address_type = match address_type_str.as_str() {
                     "Orchard" => crate::models::AddressType::Orchard,
                     _ => crate::models::AddressType::Sapling, // Default to Sapling
                 };
-                let address_scope_str: String = row.get(9).unwrap_or_else(|_| "external".to_string());
+                let address_scope_str: String =
+                    row.get(9).unwrap_or_else(|_| "external".to_string());
                 let address_scope = match address_scope_str.as_str() {
                     "internal" => crate::models::AddressScope::Internal,
                     _ => crate::models::AddressScope::External,
@@ -1564,8 +1635,8 @@ impl<'a> Repository<'a> {
                     color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
                     address_scope,
                 })
-            },
-        ).optional()?;
+            })
+            .optional()?;
 
         Ok(result)
     }
@@ -1578,15 +1649,15 @@ impl<'a> Repository<'a> {
              ORDER BY diversifier_index ASC",
         )?;
 
-        let addresses = stmt.query_map(
-            [account_id],
-            |row| {
+        let addresses = stmt
+            .query_map([account_id], |row| {
                 let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
                 let address_type = match address_type_str.as_str() {
                     "Orchard" => crate::models::AddressType::Orchard,
                     _ => crate::models::AddressType::Sapling, // Default to Sapling
                 };
-                let address_scope_str: String = row.get(9).unwrap_or_else(|_| "external".to_string());
+                let address_scope_str: String =
+                    row.get(9).unwrap_or_else(|_| "external".to_string());
                 let address_scope = match address_scope_str.as_str() {
                     "internal" => crate::models::AddressScope::Internal,
                     _ => crate::models::AddressScope::External,
@@ -1603,9 +1674,8 @@ impl<'a> Repository<'a> {
                     color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
                     address_scope,
                 })
-            },
-        )?
-        .collect::<std::result::Result<Vec<Address>, rusqlite::Error>>()?;
+            })?
+            .collect::<std::result::Result<Vec<Address>, rusqlite::Error>>()?;
 
         Ok(addresses)
     }
@@ -1625,7 +1695,8 @@ impl<'a> Repository<'a> {
                     "Orchard" => crate::models::AddressType::Orchard,
                     _ => crate::models::AddressType::Sapling,
                 };
-                let address_scope_str: String = row.get(9).unwrap_or_else(|_| "external".to_string());
+                let address_scope_str: String =
+                    row.get(9).unwrap_or_else(|_| "external".to_string());
                 let address_scope = match address_scope_str.as_str() {
                     "internal" => crate::models::AddressScope::Internal,
                     _ => crate::models::AddressScope::External,
@@ -1649,7 +1720,12 @@ impl<'a> Repository<'a> {
     }
 
     /// Update address label
-    pub fn update_address_label(&self, account_id: i64, address: &str, label: Option<String>) -> Result<()> {
+    pub fn update_address_label(
+        &self,
+        account_id: i64,
+        address: &str,
+        label: Option<String>,
+    ) -> Result<()> {
         self.db.conn().execute(
             "UPDATE addresses SET label = ?1 WHERE account_id = ?2 AND address = ?3",
             params![label, account_id, address],
@@ -1672,7 +1748,7 @@ impl<'a> Repository<'a> {
     }
 
     /// Get transaction history for an account
-    /// 
+    ///
     /// Aggregates notes by transaction to determine send/receive and net amounts.
     /// Returns transactions sorted by height descending (newest first).
     pub fn get_transactions(
@@ -1682,8 +1758,8 @@ impl<'a> Repository<'a> {
         _current_height: u64,
         _min_depth: u64,
     ) -> Result<Vec<TransactionRecord>> {
-        use std::collections::HashMap;
         use hex;
+        use std::collections::HashMap;
 
         // Since account_id is encrypted, we need to decrypt all notes and filter
         // This is less efficient but necessary for maximum privacy
@@ -1691,20 +1767,34 @@ impl<'a> Repository<'a> {
             "SELECT account_id, note_type, txid, height, value, spent, spent_txid, output_index, memo, address_id, key_id FROM notes ORDER BY height DESC, id DESC"
         )?;
 
-        let notes: Vec<(Vec<u8>, String, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, Option<Vec<u8>>, Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>)> = all_notes
+        type EncryptedNoteRow = (
+            Vec<u8>,
+            String,
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Vec<u8>,
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+        );
+
+        let notes: Vec<EncryptedNoteRow> = all_notes
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, Vec<u8>>(0)?,  // encrypted account_id
-                    row.get::<_, String>(1)?,   // note_type
-                    row.get::<_, Vec<u8>>(2)?,  // encrypted txid
-                    row.get::<_, Vec<u8>>(3)?,  // encrypted height
-                    row.get::<_, Vec<u8>>(4)?,  // encrypted value
-                    row.get::<_, Vec<u8>>(5)?,  // encrypted spent
+                    row.get::<_, Vec<u8>>(0)?,          // encrypted account_id
+                    row.get::<_, String>(1)?,           // note_type
+                    row.get::<_, Vec<u8>>(2)?,          // encrypted txid
+                    row.get::<_, Vec<u8>>(3)?,          // encrypted height
+                    row.get::<_, Vec<u8>>(4)?,          // encrypted value
+                    row.get::<_, Vec<u8>>(5)?,          // encrypted spent
                     row.get::<_, Option<Vec<u8>>>(6)?,  // encrypted spent_txid
-                    row.get::<_, Vec<u8>>(7)?,  // encrypted output_index
+                    row.get::<_, Vec<u8>>(7)?,          // encrypted output_index
                     row.get::<_, Option<Vec<u8>>>(8)?,  // encrypted memo
                     row.get::<_, Option<Vec<u8>>>(9)?,  // encrypted address_id
-                    row.get::<_, Option<Vec<u8>>>(10)?,  // encrypted key_id
+                    row.get::<_, Option<Vec<u8>>>(10)?, // encrypted key_id
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1739,15 +1829,28 @@ impl<'a> Repository<'a> {
         let mut tx_map: HashMap<String, TxAggregate> = HashMap::new();
 
         let mut seen: HashMap<(Vec<u8>, i64, crate::models::NoteType), bool> = HashMap::new();
-        for (enc_account_id, note_type_str, enc_txid, enc_height, enc_value, enc_spent, enc_spent_txid, enc_output_index, encrypted_memo, enc_address_id, _enc_key_id) in notes {
+        for (
+            enc_account_id,
+            note_type_str,
+            enc_txid,
+            enc_height,
+            enc_value,
+            enc_spent,
+            enc_spent_txid,
+            enc_output_index,
+            encrypted_memo,
+            enc_address_id,
+            _enc_key_id,
+        ) in notes
+        {
             // Decrypt all fields
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
-            
+
             // Filter by account_id
             if decrypted_account_id != account_id {
                 continue;
             }
-            
+
             let note_type = match note_type_str.as_str() {
                 "Orchard" => crate::models::NoteType::Orchard,
                 _ => crate::models::NoteType::Sapling,
@@ -1790,7 +1893,9 @@ impl<'a> Repository<'a> {
 
             if process_incoming {
                 let txid_hex = hex::encode(&txid_bytes);
-                let entry = tx_map.entry(txid_hex.clone()).or_insert_with(|| TxAggregate::new(height));
+                let entry = tx_map
+                    .entry(txid_hex.clone())
+                    .or_insert_with(|| TxAggregate::new(height));
 
                 if height > entry.height {
                     entry.height = height;
@@ -1813,7 +1918,7 @@ impl<'a> Repository<'a> {
             if process_outgoing {
                 let spend_txid_hex = spent_txid
                     .as_ref()
-                    .map(|bytes| hex::encode(bytes))
+                    .map(hex::encode)
                     .unwrap_or_else(|| hex::encode(&txid_bytes));
                 let entry_height = if spent_txid.is_some() { 0 } else { height };
                 let entry = tx_map
@@ -1897,7 +2002,8 @@ impl<'a> Repository<'a> {
 
         // Sort by height descending (newest first), then by txid and amount
         transactions.sort_by(|a, b| {
-            b.height.cmp(&a.height)
+            b.height
+                .cmp(&a.height)
                 .then_with(|| b.txid.cmp(&a.txid))
                 .then_with(|| b.amount.cmp(&a.amount))
         });
@@ -1917,20 +2023,29 @@ impl<'a> Repository<'a> {
             "SELECT account_id, note_type, txid, output_index, commitment, height FROM notes",
         )?;
 
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, Vec<u8>>(0)?,  // encrypted account_id
-                row.get::<_, String>(1)?,   // note_type
-                row.get::<_, Vec<u8>>(2)?,  // encrypted txid
-                row.get::<_, Vec<u8>>(3)?,  // encrypted output_index
-                row.get::<_, Vec<u8>>(4)?,  // encrypted commitment
-                row.get::<_, Vec<u8>>(5)?,  // encrypted height
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, Vec<u8>>(0)?, // encrypted account_id
+                    row.get::<_, String>(1)?,  // note_type
+                    row.get::<_, Vec<u8>>(2)?, // encrypted txid
+                    row.get::<_, Vec<u8>>(3)?, // encrypted output_index
+                    row.get::<_, Vec<u8>>(4)?, // encrypted commitment
+                    row.get::<_, Vec<u8>>(5)?, // encrypted height
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut refs = Vec::new();
-        for (enc_account_id, note_type_str, enc_txid, enc_output_index, enc_commitment, enc_height) in rows {
+        for (
+            enc_account_id,
+            note_type_str,
+            enc_txid,
+            enc_output_index,
+            enc_commitment,
+            enc_height,
+        ) in rows
+        {
             if note_type_str.as_str() != "Orchard" {
                 continue;
             }
@@ -1972,46 +2087,71 @@ impl<'a> Repository<'a> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
         )?;
-        
-        let notes = stmt.query_map([], |row| {
-            let note_type_str: String = row.get::<_, String>(2)?;
-            let note_type = match note_type_str.as_str() {
-                "Orchard" => crate::models::NoteType::Orchard,
-                _ => crate::models::NoteType::Sapling,
-            };
-            
-            Ok((
-                row.get::<_, i64>(0)?, // id
-                row.get::<_, Vec<u8>>(1)?, // encrypted account_id
-                note_type,
-                row.get::<_, Vec<u8>>(3)?, // encrypted value
-                row.get::<_, Vec<u8>>(4)?, // encrypted nullifier
-                row.get::<_, Vec<u8>>(5)?, // encrypted commitment
-                row.get::<_, Vec<u8>>(6)?, // encrypted spent
-                row.get::<_, Vec<u8>>(7)?, // encrypted height
-                row.get::<_, Vec<u8>>(8)?, // encrypted txid
-                row.get::<_, Vec<u8>>(9)?, // encrypted output_index
-                row.get::<_, Option<Vec<u8>>>(10)?, // encrypted spent_txid
-                row.get::<_, Option<Vec<u8>>>(11)?, // encrypted diversifier
-                row.get::<_, Option<Vec<u8>>>(12)?, // encrypted merkle_path
-                row.get::<_, Option<Vec<u8>>>(13)?, // encrypted note
-                row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
-                row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
-                row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
-                row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
-                row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-        
+
+        let notes = stmt
+            .query_map([], |row| {
+                let note_type_str: String = row.get::<_, String>(2)?;
+                let note_type = match note_type_str.as_str() {
+                    "Orchard" => crate::models::NoteType::Orchard,
+                    _ => crate::models::NoteType::Sapling,
+                };
+
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    note_type,
+                    row.get::<_, Vec<u8>>(3)?,          // encrypted value
+                    row.get::<_, Vec<u8>>(4)?,          // encrypted nullifier
+                    row.get::<_, Vec<u8>>(5)?,          // encrypted commitment
+                    row.get::<_, Vec<u8>>(6)?,          // encrypted spent
+                    row.get::<_, Vec<u8>>(7)?,          // encrypted height
+                    row.get::<_, Vec<u8>>(8)?,          // encrypted txid
+                    row.get::<_, Vec<u8>>(9)?,          // encrypted output_index
+                    row.get::<_, Option<Vec<u8>>>(10)?, // encrypted spent_txid
+                    row.get::<_, Option<Vec<u8>>>(11)?, // encrypted diversifier
+                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted merkle_path
+                    row.get::<_, Option<Vec<u8>>>(13)?, // encrypted note
+                    row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
+                    row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
+                    row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
+                    row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
+                    row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
         // Decrypt and filter in memory
-        for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo, enc_address_id, enc_key_id) in notes {
+        for (
+            id,
+            enc_account_id,
+            note_type,
+            enc_value,
+            enc_nullifier,
+            enc_commitment,
+            enc_spent,
+            enc_height,
+            enc_txid,
+            enc_output_index,
+            enc_spent_txid,
+            enc_diversifier,
+            enc_merkle_path,
+            enc_note,
+            enc_anchor,
+            enc_position,
+            enc_memo,
+            enc_address_id,
+            enc_key_id,
+        ) in notes
+        {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
             let decrypted_txid = self.decrypt_blob(&enc_txid)?;
             let decrypted_output_index = self.decrypt_int64(&enc_output_index)?;
-            
+
             // Filter by search criteria
-            if decrypted_account_id == account_id && decrypted_txid == txid && decrypted_output_index == output_index {
+            if decrypted_account_id == account_id
+                && decrypted_txid == txid
+                && decrypted_output_index == output_index
+            {
                 return Ok(Some(NoteRecord {
                     id: Some(id),
                     account_id: decrypted_account_id,
@@ -2035,7 +2175,7 @@ impl<'a> Repository<'a> {
                 }));
             }
         }
-        
+
         Ok(None)
     }
 
@@ -2047,19 +2187,21 @@ impl<'a> Repository<'a> {
         txid: &[u8],
         output_index: i64,
     ) -> Result<usize> {
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, txid, output_index FROM notes",
-        )?;
+        let mut stmt = self
+            .db
+            .conn()
+            .prepare("SELECT id, account_id, txid, output_index FROM notes")?;
 
-        let notes = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,     // id
-                row.get::<_, Vec<u8>>(1)?, // encrypted account_id
-                row.get::<_, Vec<u8>>(2)?, // encrypted txid
-                row.get::<_, Vec<u8>>(3)?, // encrypted output_index
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        let notes = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    row.get::<_, Vec<u8>>(2)?, // encrypted txid
+                    row.get::<_, Vec<u8>>(3)?, // encrypted output_index
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut deleted = 0usize;
         for (id, enc_acc_id, enc_tx, enc_out_idx) in notes {
@@ -2071,10 +2213,9 @@ impl<'a> Repository<'a> {
                 && decrypted_txid == txid
                 && decrypted_output_index == output_index
             {
-                self.db.conn().execute(
-                    "DELETE FROM notes WHERE id = ?1",
-                    params![id],
-                )?;
+                self.db
+                    .conn()
+                    .execute("DELETE FROM notes WHERE id = ?1", params![id])?;
                 deleted += 1;
             }
         }
@@ -2093,30 +2234,35 @@ impl<'a> Repository<'a> {
     ) -> Result<()> {
         // Encrypt memo for storage
         let encrypted_memo = self.encrypt_optional_blob(memo)?;
-        
+
         // Since fields are encrypted, we need to find the note by decrypting all
         // This is less efficient but necessary for maximum privacy
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, txid, output_index FROM notes",
-        )?;
-        
-        let notes = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?, // id
-                row.get::<_, Vec<u8>>(1)?, // encrypted account_id
-                row.get::<_, Vec<u8>>(2)?, // encrypted txid
-                row.get::<_, Vec<u8>>(3)?, // encrypted output_index
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-        
+        let mut stmt = self
+            .db
+            .conn()
+            .prepare("SELECT id, account_id, txid, output_index FROM notes")?;
+
+        let notes = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    row.get::<_, Vec<u8>>(2)?, // encrypted txid
+                    row.get::<_, Vec<u8>>(3)?, // encrypted output_index
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
         // Find matching note by decrypting and comparing
         for (id, enc_acc_id, enc_tx, enc_out_idx) in notes {
             let decrypted_account_id = self.decrypt_int64(&enc_acc_id)?;
             let decrypted_txid = self.decrypt_blob(&enc_tx)?;
             let decrypted_output_index = self.decrypt_int64(&enc_out_idx)?;
-            
-            if decrypted_account_id == account_id && decrypted_txid == txid && decrypted_output_index == output_index {
+
+            if decrypted_account_id == account_id
+                && decrypted_txid == txid
+                && decrypted_output_index == output_index
+            {
                 // Found the note, update it using the id
                 self.db.conn().execute(
                     "UPDATE notes SET memo = ?1 WHERE id = ?2",
@@ -2125,33 +2271,31 @@ impl<'a> Repository<'a> {
                 return Ok(());
             }
         }
-        
+
         // Note not found
         Ok(())
     }
 
     /// Mark a note as spent by nullifier.
     /// Note: Since all fields are encrypted, we decrypt all notes and filter in memory.
-    pub fn mark_note_spent_by_nullifier(
-        &self,
-        account_id: i64,
-        nullifier: &[u8],
-    ) -> Result<bool> {
+    pub fn mark_note_spent_by_nullifier(&self, account_id: i64, nullifier: &[u8]) -> Result<bool> {
         let encrypted_spent = self.encrypt_bool(true)?;
 
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, nullifier, spent FROM notes",
-        )?;
+        let mut stmt = self
+            .db
+            .conn()
+            .prepare("SELECT id, account_id, nullifier, spent FROM notes")?;
 
-        let notes = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?, // id
-                row.get::<_, Vec<u8>>(1)?, // encrypted account_id
-                row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
-                row.get::<_, Vec<u8>>(3)?, // encrypted spent
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        let notes = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
+                    row.get::<_, Vec<u8>>(3)?, // encrypted spent
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut updated = false;
         for (id, enc_account_id, enc_nullifier, enc_spent) in notes {
@@ -2191,19 +2335,21 @@ impl<'a> Repository<'a> {
         let encrypted_spent = self.encrypt_bool(true)?;
         let encrypted_spent_txid = self.encrypt_blob(spent_txid)?;
 
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, nullifier, spent FROM notes",
-        )?;
+        let mut stmt = self
+            .db
+            .conn()
+            .prepare("SELECT id, account_id, nullifier, spent FROM notes")?;
 
-        let notes = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?, // id
-                row.get::<_, Vec<u8>>(1)?, // encrypted account_id
-                row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
-                row.get::<_, Vec<u8>>(3)?, // encrypted spent
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        let notes = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
+                    row.get::<_, Vec<u8>>(3)?, // encrypted spent
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut updated = false;
         for (id, enc_account_id, enc_nullifier, enc_spent) in notes {
@@ -2250,19 +2396,21 @@ impl<'a> Repository<'a> {
 
         let encrypted_spent = self.encrypt_bool(true)?;
 
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, nullifier, spent FROM notes",
-        )?;
+        let mut stmt = self
+            .db
+            .conn()
+            .prepare("SELECT id, account_id, nullifier, spent FROM notes")?;
 
-        let notes = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?, // id
-                row.get::<_, Vec<u8>>(1)?, // encrypted account_id
-                row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
-                row.get::<_, Vec<u8>>(3)?, // encrypted spent
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        let notes = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
+                    row.get::<_, Vec<u8>>(3)?, // encrypted spent
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut updated_count = 0u64;
         for (id, enc_account_id, enc_nullifier, enc_spent) in notes {
@@ -2315,19 +2463,21 @@ impl<'a> Repository<'a> {
 
         let encrypted_spent = self.encrypt_bool(true)?;
 
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, nullifier, spent FROM notes",
-        )?;
+        let mut stmt = self
+            .db
+            .conn()
+            .prepare("SELECT id, account_id, nullifier, spent FROM notes")?;
 
-        let notes = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?, // id
-                row.get::<_, Vec<u8>>(1)?, // encrypted account_id
-                row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
-                row.get::<_, Vec<u8>>(3)?, // encrypted spent
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        let notes = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
+                    row.get::<_, Vec<u8>>(3)?, // encrypted spent
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let conn = self.db.conn();
         conn.execute_batch("BEGIN IMMEDIATE;")?;
@@ -2359,14 +2509,12 @@ impl<'a> Repository<'a> {
                     let _ = conn.execute_batch("ROLLBACK;");
                     return Err(e.into());
                 }
-            } else {
-                if let Err(e) = conn.execute(
-                    "UPDATE notes SET spent = ?1, spent_txid = ?2 WHERE id = ?3",
-                    params![encrypted_spent, encrypted_spent_txid, id],
-                ) {
-                    let _ = conn.execute_batch("ROLLBACK;");
-                    return Err(e.into());
-                }
+            } else if let Err(e) = conn.execute(
+                "UPDATE notes SET spent = ?1, spent_txid = ?2 WHERE id = ?3",
+                params![encrypted_spent, encrypted_spent_txid, id],
+            ) {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(e.into());
             }
             updated += 1;
         }
@@ -2376,10 +2524,7 @@ impl<'a> Repository<'a> {
     }
 
     /// Mark notes as spent by row id and record the spending txid.
-    pub fn mark_notes_spent_by_ids_with_txid(
-        &self,
-        entries: &[(i64, [u8; 32])],
-    ) -> Result<u64> {
+    pub fn mark_notes_spent_by_ids_with_txid(&self, entries: &[(i64, [u8; 32])]) -> Result<u64> {
         if entries.is_empty() {
             return Ok(0);
         }
@@ -2405,53 +2550,71 @@ impl<'a> Repository<'a> {
 
     /// Get all notes for a transaction (by txid) with decrypted fields
     /// Note: Since all fields are encrypted, we decrypt all notes and filter in memory for privacy
-    pub fn get_notes_by_txid(
-        &self,
-        account_id: i64,
-        txid: &[u8],
-    ) -> Result<Vec<NoteRecord>> {
+    pub fn get_notes_by_txid(&self, account_id: i64, txid: &[u8]) -> Result<Vec<NoteRecord>> {
         // Since fields are encrypted, we need to decrypt all and filter
         let mut stmt = self.db.conn().prepare(
             "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
         )?;
 
-        let notes_data = stmt.query_map([], |row| {
-            let note_type_str: String = row.get::<_, String>(2)?;
-            let note_type = match note_type_str.as_str() {
-                "Orchard" => crate::models::NoteType::Orchard,
-                _ => crate::models::NoteType::Sapling,
-            };
-            
-            Ok((
-                row.get::<_, i64>(0)?, // id
-                row.get::<_, Vec<u8>>(1)?, // encrypted account_id
-                note_type,
-                row.get::<_, Vec<u8>>(3)?, // encrypted value
-                row.get::<_, Vec<u8>>(4)?, // encrypted nullifier
-                row.get::<_, Vec<u8>>(5)?, // encrypted commitment
-                row.get::<_, Vec<u8>>(6)?, // encrypted spent
-                row.get::<_, Vec<u8>>(7)?, // encrypted height
-                row.get::<_, Vec<u8>>(8)?, // encrypted txid
-                row.get::<_, Vec<u8>>(9)?, // encrypted output_index
-                row.get::<_, Option<Vec<u8>>>(10)?, // encrypted spent_txid
-                row.get::<_, Option<Vec<u8>>>(11)?, // encrypted diversifier
-                row.get::<_, Option<Vec<u8>>>(12)?, // encrypted merkle_path
-                row.get::<_, Option<Vec<u8>>>(13)?, // encrypted note
-                row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
-                row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
-                row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
-                row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
-                row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        let notes_data = stmt
+            .query_map([], |row| {
+                let note_type_str: String = row.get::<_, String>(2)?;
+                let note_type = match note_type_str.as_str() {
+                    "Orchard" => crate::models::NoteType::Orchard,
+                    _ => crate::models::NoteType::Sapling,
+                };
+
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    note_type,
+                    row.get::<_, Vec<u8>>(3)?,          // encrypted value
+                    row.get::<_, Vec<u8>>(4)?,          // encrypted nullifier
+                    row.get::<_, Vec<u8>>(5)?,          // encrypted commitment
+                    row.get::<_, Vec<u8>>(6)?,          // encrypted spent
+                    row.get::<_, Vec<u8>>(7)?,          // encrypted height
+                    row.get::<_, Vec<u8>>(8)?,          // encrypted txid
+                    row.get::<_, Vec<u8>>(9)?,          // encrypted output_index
+                    row.get::<_, Option<Vec<u8>>>(10)?, // encrypted spent_txid
+                    row.get::<_, Option<Vec<u8>>>(11)?, // encrypted diversifier
+                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted merkle_path
+                    row.get::<_, Option<Vec<u8>>>(13)?, // encrypted note
+                    row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
+                    row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
+                    row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
+                    row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
+                    row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         // Decrypt all notes and filter by account_id and txid
         let mut decrypted_notes = Vec::new();
-        for (id, enc_account_id, note_type, enc_value, enc_nullifier, enc_commitment, enc_spent, enc_height, enc_txid, enc_output_index, enc_spent_txid, enc_diversifier, enc_merkle_path, enc_note, enc_anchor, enc_position, enc_memo, enc_address_id, enc_key_id) in notes_data {
+        for (
+            id,
+            enc_account_id,
+            note_type,
+            enc_value,
+            enc_nullifier,
+            enc_commitment,
+            enc_spent,
+            enc_height,
+            enc_txid,
+            enc_output_index,
+            enc_spent_txid,
+            enc_diversifier,
+            enc_merkle_path,
+            enc_note,
+            enc_anchor,
+            enc_position,
+            enc_memo,
+            enc_address_id,
+            enc_key_id,
+        ) in notes_data
+        {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
             let decrypted_txid = self.decrypt_blob(&enc_txid)?;
-            
+
             // Filter by search criteria
             if decrypted_account_id == account_id && decrypted_txid == txid {
                 decrypted_notes.push(NoteRecord {
@@ -2477,7 +2640,7 @@ impl<'a> Repository<'a> {
                 });
             }
         }
-        
+
         // Sort by output_index
         decrypted_notes.sort_by_key(|n| n.output_index);
 
@@ -2509,16 +2672,16 @@ impl<'a> Repository<'a> {
         let mut stmt = self.db.conn().prepare(
             "SELECT timestamp, level, module, message FROM sync_logs WHERE wallet_id = ?1 ORDER BY timestamp DESC LIMIT ?2"
         )?;
-        
+
         let rows = stmt.query_map(params![wallet_id, limit as i64], |row| {
             Ok((
-                row.get(0)?,  // timestamp
-                row.get(1)?,  // level
-                row.get(2)?,  // module
-                row.get(3)?,  // message
+                row.get(0)?, // timestamp
+                row.get(1)?, // level
+                row.get(2)?, // module
+                row.get(3)?, // message
             ))
         })?;
-        
+
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| e.into())
     }
@@ -2527,7 +2690,11 @@ impl<'a> Repository<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{encryption::EncryptionKey, security::{MasterKey, EncryptionAlgorithm}};
+    use crate::{
+        encryption::EncryptionKey,
+        security::{EncryptionAlgorithm, MasterKey},
+        FrontierStorage,
+    };
     use tempfile::NamedTempFile;
 
     fn test_db() -> Database {
@@ -2565,19 +2732,22 @@ mod tests {
 
         // Encrypt before storage
         let encrypted_secret = repo.encrypt_wallet_secret_fields(&secret).unwrap();
-        
+
         // Verify encrypted fields are different from plaintext
         assert_ne!(encrypted_secret.extsk, secret.extsk);
         assert_ne!(encrypted_secret.dfvk, secret.dfvk);
         assert_ne!(encrypted_secret.orchard_extsk, secret.orchard_extsk);
-        assert_ne!(encrypted_secret.encrypted_mnemonic, secret.encrypted_mnemonic);
+        assert_ne!(
+            encrypted_secret.encrypted_mnemonic,
+            secret.encrypted_mnemonic
+        );
 
         // Store encrypted secret
         repo.upsert_wallet_secret(&encrypted_secret).unwrap();
 
         // Retrieve and decrypt
         let retrieved = repo.get_wallet_secret("test-wallet").unwrap().unwrap();
-        
+
         // Verify decrypted data matches original
         assert_eq!(retrieved.extsk, secret.extsk);
         assert_eq!(retrieved.dfvk, secret.dfvk);
@@ -2609,11 +2779,12 @@ mod tests {
         repo1.upsert_wallet_secret(&encrypted_secret).unwrap();
 
         // Get the encrypted data directly from DB
-        let encrypted_extsk: Vec<u8> = db1.conn().query_row(
-            "SELECT extsk FROM wallet_secrets WHERE wallet_id = ?1",
-            ["test-wallet"],
-            |row| row.get(0)
-        ).unwrap();
+        let encrypted_extsk: Vec<u8> = db1
+            .conn()
+            .query_row("SELECT extsk FROM wallet_secrets LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
 
         // Try to decrypt with wrong key - should fail
         let master_key2 = MasterKey::generate(EncryptionAlgorithm::ChaCha20Poly1305);
@@ -2663,7 +2834,10 @@ mod tests {
         repo.insert_note(&note).unwrap();
 
         // Retrieve note (decryption happens inside)
-        let retrieved = repo.get_note_by_txid_and_index(account_id, &note.txid, note.output_index).unwrap().unwrap();
+        let retrieved = repo
+            .get_note_by_txid_and_index(account_id, &note.txid, note.output_index)
+            .unwrap()
+            .unwrap();
 
         // Verify decrypted fields match original
         assert_eq!(retrieved.nullifier, note.nullifier);
@@ -2689,8 +2863,14 @@ mod tests {
         let account_id = repo.insert_account(&account).unwrap();
 
         let plaintext_memo = b"secret memo";
-        let plaintext_nullifier = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
-        let plaintext_commitment = vec![4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35];
+        let plaintext_nullifier = vec![
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+            25, 26, 27, 28, 29, 30, 31, 32,
+        ];
+        let plaintext_commitment = vec![
+            4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+            27, 28, 29, 30, 31, 32, 33, 34, 35,
+        ];
         let note = NoteRecord {
             id: None,
             account_id,
@@ -2716,24 +2896,49 @@ mod tests {
         repo.insert_note(&note).unwrap();
 
         // Check that all sensitive fields are stored encrypted (different from plaintext)
-        let (stored_nullifier, stored_commitment, stored_memo): (Vec<u8>, Vec<u8>, Option<Vec<u8>>) = db.conn().query_row(
-            "SELECT nullifier, commitment, memo FROM notes WHERE account_id = ?1 AND txid = ?2",
-            params![account_id, &note.txid],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        ).unwrap();
+        let (stored_nullifier, stored_commitment, stored_memo): (
+            Vec<u8>,
+            Vec<u8>,
+            Option<Vec<u8>>,
+        ) = db
+            .conn()
+            .query_row(
+                "SELECT nullifier, commitment, memo FROM notes LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
 
         // Verify nullifier is encrypted
-        assert_ne!(stored_nullifier, plaintext_nullifier, "Nullifier should be encrypted in database");
-        assert!(stored_nullifier.len() > plaintext_nullifier.len(), "Encrypted nullifier should be larger (includes metadata and nonce)");
-        
+        assert_ne!(
+            stored_nullifier, plaintext_nullifier,
+            "Nullifier should be encrypted in database"
+        );
+        assert!(
+            stored_nullifier.len() > plaintext_nullifier.len(),
+            "Encrypted nullifier should be larger (includes metadata and nonce)"
+        );
+
         // Verify commitment is encrypted
-        assert_ne!(stored_commitment, plaintext_commitment, "Commitment should be encrypted in database");
-        assert!(stored_commitment.len() > plaintext_commitment.len(), "Encrypted commitment should be larger (includes metadata and nonce)");
-        
+        assert_ne!(
+            stored_commitment, plaintext_commitment,
+            "Commitment should be encrypted in database"
+        );
+        assert!(
+            stored_commitment.len() > plaintext_commitment.len(),
+            "Encrypted commitment should be larger (includes metadata and nonce)"
+        );
+
         // Verify memo is encrypted
         if let Some(encrypted_memo) = stored_memo {
-            assert_ne!(encrypted_memo, plaintext_memo, "Memo should be encrypted in database");
-            assert!(encrypted_memo.len() > plaintext_memo.len(), "Encrypted memo should be larger (includes metadata and nonce)");
+            assert_ne!(
+                encrypted_memo, plaintext_memo,
+                "Memo should be encrypted in database"
+            );
+            assert!(
+                encrypted_memo.len() > plaintext_memo.len(),
+                "Encrypted memo should be larger (includes metadata and nonce)"
+            );
         }
     }
 
@@ -2743,20 +2948,34 @@ mod tests {
         let storage = FrontierStorage::new(&db);
 
         let plaintext_frontier = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        storage.save_frontier_snapshot(100, &plaintext_frontier, "1.0.0").unwrap();
+        storage
+            .save_frontier_snapshot(100, &plaintext_frontier, "1.0.0")
+            .unwrap();
 
         // Verify stored frontier is encrypted
-        let stored_frontier: Vec<u8> = db.conn().query_row(
-            "SELECT frontier FROM frontier_snapshots WHERE height = ?1",
-            [100],
-            |row| row.get(0)
-        ).unwrap();
+        let stored_frontier: Vec<u8> = db
+            .conn()
+            .query_row(
+                "SELECT frontier FROM frontier_snapshots WHERE height = ?1",
+                [100],
+                |row| row.get(0),
+            )
+            .unwrap();
 
-        assert_ne!(stored_frontier, plaintext_frontier, "Frontier should be encrypted in database");
-        assert!(stored_frontier.len() > plaintext_frontier.len(), "Encrypted data should be larger");
+        assert_ne!(
+            stored_frontier, plaintext_frontier,
+            "Frontier should be encrypted in database"
+        );
+        assert!(
+            stored_frontier.len() > plaintext_frontier.len(),
+            "Encrypted data should be larger"
+        );
 
         // Verify decryption works
         let loaded = storage.load_last_snapshot().unwrap().unwrap();
-        assert_eq!(loaded.1, plaintext_frontier, "Decrypted frontier should match original");
+        assert_eq!(
+            loaded.1, plaintext_frontier,
+            "Decrypted frontier should match original"
+        );
     }
 }

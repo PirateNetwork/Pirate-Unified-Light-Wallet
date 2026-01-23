@@ -1,7 +1,7 @@
 //! Encryption key derivation
 
-use crate::{Error, Result};
 use crate::security::derive_key_bytes;
+use crate::{Error, Result};
 use sha2::{Digest, Sha256};
 
 /// Encryption key for database
@@ -40,4 +40,3 @@ impl EncryptionKey {
         &self.0
     }
 }
-

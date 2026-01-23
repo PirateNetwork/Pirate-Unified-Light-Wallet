@@ -40,6 +40,8 @@ dependencies:
   # Utilities
   path_provider: ^2.1.4
   share_plus: ^12.0.1
+  crypto: ^3.0.3
+  url_launcher: ^6.3.0
   
   # FFI Bridge
   flutter_rust_bridge: ^2.11.1

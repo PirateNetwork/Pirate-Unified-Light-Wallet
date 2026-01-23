@@ -67,7 +67,7 @@ impl<'a> CheckpointManager<'a> {
         sapling_tree_size: u32,
     ) -> Result<i64> {
         let timestamp = chrono::Utc::now().timestamp();
-        
+
         self.conn.execute(
             r#"
             INSERT INTO checkpoints (height, hash, timestamp, sapling_tree_size, created_at)
@@ -135,10 +135,7 @@ impl<'a> CheckpointManager<'a> {
 
     /// Rollback to checkpoint
     pub fn rollback_to_checkpoint(&self, checkpoint: &Checkpoint) -> Result<()> {
-        tracing::info!(
-            "Rolling back to checkpoint at height {}",
-            checkpoint.height
-        );
+        tracing::info!("Rolling back to checkpoint at height {}", checkpoint.height);
 
         // Begin transaction
         let tx = self.conn.unchecked_transaction()?;
@@ -186,11 +183,9 @@ impl<'a> CheckpointManager<'a> {
 
     /// Count checkpoints
     pub fn count(&self) -> Result<u32> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM checkpoints",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM checkpoints", [], |row| row.get(0))?;
 
         Ok(count as u32)
     }
@@ -204,18 +199,16 @@ impl<'a> CheckpointManager<'a> {
                 return Ok(true);
             }
         }
-        
+
         Ok(false)
     }
 
     /// Detect database corruption
     fn detect_corruption(&self) -> Result<bool> {
         // Run integrity check
-        let result: String = self.conn.query_row(
-            "PRAGMA integrity_check",
-            [],
-            |row| row.get(0),
-        )?;
+        let result: String = self
+            .conn
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
 
         Ok(result != "ok")
     }
@@ -229,18 +222,20 @@ mod tests {
     fn setup_test_db() -> Connection {
         let file = NamedTempFile::new().unwrap();
         let conn = Connection::open(file.path()).unwrap();
-        
+
         // Create required tables
         conn.execute(
             "CREATE TABLE notes (id INTEGER PRIMARY KEY, height INTEGER)",
             [],
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         conn.execute(
             "CREATE TABLE transactions (id INTEGER PRIMARY KEY, height INTEGER)",
             [],
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         conn
     }
 
@@ -248,13 +243,13 @@ mod tests {
     fn test_checkpoint_creation() {
         let conn = setup_test_db();
         let manager = CheckpointManager::new(&conn);
-        
+
         manager.init_tables().unwrap();
-        
+
         let id = manager
             .create_checkpoint(1000, "hash123".to_string(), 500)
             .unwrap();
-        
+
         assert!(id > 0);
     }
 
@@ -262,12 +257,16 @@ mod tests {
     fn test_get_latest_checkpoint() {
         let conn = setup_test_db();
         let manager = CheckpointManager::new(&conn);
-        
+
         manager.init_tables().unwrap();
-        
-        manager.create_checkpoint(1000, "hash1".to_string(), 500).unwrap();
-        manager.create_checkpoint(2000, "hash2".to_string(), 1000).unwrap();
-        
+
+        manager
+            .create_checkpoint(1000, "hash1".to_string(), 500)
+            .unwrap();
+        manager
+            .create_checkpoint(2000, "hash2".to_string(), 1000)
+            .unwrap();
+
         let latest = manager.get_latest().unwrap().unwrap();
         assert_eq!(latest.height, 2000);
     }
@@ -276,28 +275,36 @@ mod tests {
     fn test_rollback_to_checkpoint() {
         let conn = setup_test_db();
         let manager = CheckpointManager::new(&conn);
-        
+
         manager.init_tables().unwrap();
-        
+
         // Create checkpoints
-        manager.create_checkpoint(1000, "hash1".to_string(), 500).unwrap();
-        let cp2 = manager.create_checkpoint(2000, "hash2".to_string(), 1000).unwrap();
-        
+        manager
+            .create_checkpoint(1000, "hash1".to_string(), 500)
+            .unwrap();
+        let _cp2 = manager
+            .create_checkpoint(2000, "hash2".to_string(), 1000)
+            .unwrap();
+
         // Add some data above checkpoint
-        conn.execute("INSERT INTO notes (height) VALUES (2100)", []).unwrap();
-        conn.execute("INSERT INTO notes (height) VALUES (2200)", []).unwrap();
-        
+        conn.execute("INSERT INTO notes (height) VALUES (2100)", [])
+            .unwrap();
+        conn.execute("INSERT INTO notes (height) VALUES (2200)", [])
+            .unwrap();
+
         // Rollback
         let checkpoint = manager.get_at_height(2000).unwrap().unwrap();
         manager.rollback_to_checkpoint(&checkpoint).unwrap();
-        
+
         // Verify data above checkpoint is deleted
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM notes WHERE height > 2000", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT COUNT(*) FROM notes WHERE height > 2000",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
-        
+
         assert_eq!(count, 0);
     }
 
@@ -305,22 +312,22 @@ mod tests {
     fn test_prune_old_checkpoints() {
         let conn = setup_test_db();
         let manager = CheckpointManager::new(&conn);
-        
+
         manager.init_tables().unwrap();
-        
+
         // Create 5 checkpoints
         for i in 1..=5 {
             manager
                 .create_checkpoint(i * 1000, format!("hash{}", i), i * 500)
                 .unwrap();
         }
-        
+
         // Keep only 3
         manager.prune_old_checkpoints(3).unwrap();
-        
+
         let count = manager.count().unwrap();
         assert_eq!(count, 3);
-        
+
         // Latest should still be there
         let latest = manager.get_latest().unwrap().unwrap();
         assert_eq!(latest.height, 5000);
@@ -330,16 +337,21 @@ mod tests {
     fn test_get_at_height() {
         let conn = setup_test_db();
         let manager = CheckpointManager::new(&conn);
-        
+
         manager.init_tables().unwrap();
-        
-        manager.create_checkpoint(1000, "hash1".to_string(), 500).unwrap();
-        manager.create_checkpoint(2000, "hash2".to_string(), 1000).unwrap();
-        manager.create_checkpoint(3000, "hash3".to_string(), 1500).unwrap();
-        
+
+        manager
+            .create_checkpoint(1000, "hash1".to_string(), 500)
+            .unwrap();
+        manager
+            .create_checkpoint(2000, "hash2".to_string(), 1000)
+            .unwrap();
+        manager
+            .create_checkpoint(3000, "hash3".to_string(), 1500)
+            .unwrap();
+
         // Get at height 2500 should return checkpoint at 2000
         let cp = manager.get_at_height(2500).unwrap().unwrap();
         assert_eq!(cp.height, 2000);
     }
 }
-

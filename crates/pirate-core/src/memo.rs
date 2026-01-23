@@ -13,9 +13,10 @@ pub const MAX_MEMO_LENGTH: usize = 512;
 pub const MEMO_WARNING_LENGTH: usize = 400;
 
 /// Memo types
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum Memo {
     /// Empty memo (no data)
+    #[default]
     Empty,
     /// Text memo (UTF-8 string)
     Text(String),
@@ -38,12 +39,11 @@ impl Memo {
         }
 
         // Check byte length (UTF-8 can have multi-byte chars)
-        let byte_len = text.as_bytes().len();
+        let byte_len = text.len();
         if byte_len > MAX_MEMO_LENGTH {
             return Err(Error::MemoTooLong(format!(
                 "Memo is {} bytes, maximum is {} bytes",
-                byte_len,
-                MAX_MEMO_LENGTH
+                byte_len, MAX_MEMO_LENGTH
             )));
         }
 
@@ -70,7 +70,7 @@ impl Memo {
 
         // Truncate to fit within MAX_MEMO_LENGTH bytes
         let truncated = Self::truncate_to_bytes(&text, MAX_MEMO_LENGTH);
-        
+
         // Filter control characters
         let filtered: String = truncated
             .chars()
@@ -86,14 +86,14 @@ impl Memo {
 
     /// Truncate string to fit within byte limit (respecting UTF-8 boundaries)
     fn truncate_to_bytes(s: &str, max_bytes: usize) -> String {
-        if s.as_bytes().len() <= max_bytes {
+        if s.len() <= max_bytes {
             return s.to_string();
         }
 
         let mut result = String::new();
         for c in s.chars() {
             let char_len = c.len_utf8();
-            if result.as_bytes().len() + char_len > max_bytes {
+            if result.len() + char_len > max_bytes {
                 break;
             }
             result.push(c);
@@ -110,7 +110,7 @@ impl Memo {
     pub fn byte_len(&self) -> usize {
         match self {
             Memo::Empty => 0,
-            Memo::Text(text) => text.as_bytes().len(),
+            Memo::Text(text) => text.len(),
             Memo::Arbitrary(bytes) => bytes.len(),
         }
     }
@@ -161,7 +161,7 @@ impl Memo {
 
         // Find first null byte
         let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-        
+
         if end == 0 {
             return Ok(Memo::Empty);
         }
@@ -192,7 +192,7 @@ impl Memo {
     pub fn len(&self) -> usize {
         match self {
             Memo::Empty => 0,
-            Memo::Text(text) => text.as_bytes().len(),
+            Memo::Text(text) => text.len(),
             Memo::Arbitrary(bytes) => bytes.len(),
         }
     }
@@ -218,12 +218,6 @@ impl Memo {
             Memo::Arbitrary(bytes) => MemoBytes::from_bytes(bytes)
                 .map_err(|e| Error::InvalidMemo(format!("Invalid memo bytes: {:?}", e))),
         }
-    }
-}
-
-impl Default for Memo {
-    fn default() -> Self {
-        Memo::Empty
     }
 }
 

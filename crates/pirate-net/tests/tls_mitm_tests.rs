@@ -2,7 +2,16 @@
 //!
 //! Tests proving certificate pinning protects against man-in-the-middle attacks.
 
-use pirate_net::{TlsPinning, CertificatePin};
+use pirate_net::{CertificatePin, TlsPinning};
+
+fn make_pin(prefix: &str, fill: char) -> String {
+    let mut pin = prefix.to_string();
+    while pin.len() < 44 {
+        pin.push(fill);
+    }
+    pin.truncate(44);
+    pin
+}
 
 #[test]
 fn test_pin_enforcement_blocks_mismatch() {
@@ -11,7 +20,7 @@ fn test_pin_enforcement_blocks_mismatch() {
     // Add pin for test.com
     let pin = CertificatePin::new(
         "test.com".to_string(),
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
+        make_pin("PIN_A_", 'A'),
         "Test pin".to_string(),
     );
 
@@ -21,10 +30,13 @@ fn test_pin_enforcement_blocks_mismatch() {
     assert!(pinning.verify("test.com", &pin.spki_sha256).is_ok());
 
     // Wrong pin should FAIL (MITM detected!)
-    let wrong_pin = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
-    let result = pinning.verify("test.com", wrong_pin);
-    
-    assert!(result.is_err(), "Wrong pin should be rejected when enforced");
+    let wrong_pin = make_pin("PIN_B_", 'B');
+    let result = pinning.verify("test.com", &wrong_pin);
+
+    assert!(
+        result.is_err(),
+        "Wrong pin should be rejected when enforced"
+    );
     assert!(result.unwrap_err().to_string().contains("pin mismatch"));
 }
 
@@ -34,16 +46,16 @@ fn test_pin_warning_mode_allows_mismatch() {
 
     let pin = CertificatePin::new(
         "test.com".to_string(),
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
+        make_pin("PIN_A_", 'A'),
         "Test pin".to_string(),
     );
 
     pinning.add_pin(pin).unwrap();
 
     // Wrong pin should PASS with warning (not enforced)
-    let wrong_pin = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
-    let result = pinning.verify("test.com", wrong_pin);
-    
+    let wrong_pin = make_pin("PIN_B_", 'B');
+    let result = pinning.verify("test.com", &wrong_pin);
+
     assert!(result.is_ok(), "Wrong pin should pass when not enforced");
 }
 
@@ -54,13 +66,13 @@ fn test_multiple_pins_any_match() {
     // Add two pins for same host (e.g., primary + backup cert)
     let pin1 = CertificatePin::new(
         "example.com".to_string(),
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
+        make_pin("PIN_A_", 'A'),
         "Primary cert".to_string(),
     );
 
     let pin2 = CertificatePin::new(
         "example.com".to_string(),
-        "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=".to_string(),
+        make_pin("PIN_B_", 'B'),
         "Backup cert".to_string(),
     );
 
@@ -72,7 +84,9 @@ fn test_multiple_pins_any_match() {
     assert!(pinning.verify("example.com", &pin2.spki_sha256).is_ok());
 
     // Different pin should fail
-    assert!(pinning.verify("example.com", "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=").is_err());
+    assert!(pinning
+        .verify("example.com", &make_pin("PIN_C_", 'C'))
+        .is_err());
 }
 
 #[test]
@@ -81,8 +95,8 @@ fn test_no_pins_allows_any_cert() {
 
     // No pins configured for test.com
     // Any cert should pass
-    let result = pinning.verify("test.com", "ANYPIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
-    
+    let result = pinning.verify("test.com", &make_pin("ANY_", 'A'));
+
     assert!(result.is_ok(), "Should pass when no pins configured");
 }
 
@@ -91,7 +105,7 @@ fn test_pin_validation() {
     // Valid pin (44 chars)
     let valid = CertificatePin::new(
         "test.com".to_string(),
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
+        make_pin("PIN_A_", 'A'),
         "Valid".to_string(),
     );
     assert!(valid.validate().is_ok());
@@ -107,7 +121,7 @@ fn test_pin_validation() {
     // Invalid pin (too long)
     let invalid2 = CertificatePin::new(
         "test.com".to_string(),
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
+        "A".repeat(45),
         "Invalid".to_string(),
     );
     assert!(invalid2.validate().is_err());
@@ -119,7 +133,7 @@ fn test_pin_export_import() {
 
     let pin = CertificatePin::new(
         "secure.example.com".to_string(),
-        "SECUREPIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
+        make_pin("SECUREPIN_", 'A'),
         "Secure server".to_string(),
     );
 
@@ -135,7 +149,9 @@ fn test_pin_export_import() {
     pinning2.import(&exported).unwrap();
 
     // Verify imported pins work
-    assert!(pinning2.verify("secure.example.com", &pin.spki_sha256).is_ok());
+    assert!(pinning2
+        .verify("secure.example.com", &pin.spki_sha256)
+        .is_ok());
 }
 
 #[test]
@@ -145,7 +161,7 @@ fn test_pin_rotation() {
     // Old pin
     let old_pin = CertificatePin::new(
         "example.com".to_string(),
-        "OLDPIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
+        make_pin("OLDPIN_", 'A'),
         "Old cert".to_string(),
     );
 
@@ -157,7 +173,7 @@ fn test_pin_rotation() {
     // Add new pin (for rotation period)
     let new_pin = CertificatePin::new(
         "example.com".to_string(),
-        "NEWPIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
+        make_pin("NEWPIN_", 'B'),
         "New cert".to_string(),
     );
 
@@ -180,9 +196,9 @@ fn test_pin_rotation() {
 fn test_default_pins_loaded() {
     let pinning = TlsPinning::default();
 
-    // Default should have pins for lightd.pirate.black
+    // Defaults are intentionally empty until gRPC cert extraction is available.
     let pins = pinning.get_pins("lightd.pirate.black");
-    assert!(!pins.is_empty(), "Should have default pins for Pirate lightwalletd");
+    assert!(pins.is_empty(), "Pins should be empty while disabled");
 }
 
 #[test]
@@ -192,22 +208,23 @@ fn test_mitm_scenario_simulation() {
     // Legitimate server pin
     let legit_pin = CertificatePin::new(
         "bank.example.com".to_string(),
-        "LEGITIMATE_PIN_AAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
+        make_pin("LEGIT_", 'A'),
         "Bank's real certificate".to_string(),
     );
 
     pinning.add_pin(legit_pin.clone()).unwrap();
 
     // Attacker's fake certificate
-    let attacker_pin = "ATTACKER_PIN_BBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+    let attacker_pin = make_pin("ATTACKER_", 'B');
 
     // Attack should be detected and blocked
-    let result = pinning.verify("bank.example.com", attacker_pin);
-    
+    let result = pinning.verify("bank.example.com", &attacker_pin);
+
     assert!(result.is_err(), "MITM attack should be detected");
     assert!(result.unwrap_err().to_string().contains("mismatch"));
 
     // Legitimate cert should still work
-    assert!(pinning.verify("bank.example.com", &legit_pin.spki_sha256).is_ok());
+    assert!(pinning
+        .verify("bank.example.com", &legit_pin.spki_sha256)
+        .is_ok());
 }
-

@@ -51,11 +51,7 @@ pub fn log_debug_event(location: &str, message: &str, data: &str) {
         let _ = writeln!(
             file,
             r#"{{"id":"net_{}","timestamp":{},"location":"{}","message":"{}","data":"{}"}}"#,
-            id,
-            ts,
-            location,
-            message,
-            data
+            id, ts, location, message, data
         );
     }
 }

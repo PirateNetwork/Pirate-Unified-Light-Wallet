@@ -9,60 +9,65 @@
 //! - Checkpoint loading and restoration
 //! - Rollback on interruption/corruption/reorg
 
-use crate::{LightClient, Result, SyncProgress, Error};
-use crate::client::CompactBlockData;
 use crate::block_cache::{acquire_inflight, BlockCache, InflightLease};
-use crate::progress::SyncStage;
-use crate::pipeline::{DecryptedNote, PerfCounters};
+use crate::client::CompactBlockData;
 use crate::frontier::SaplingFrontier;
-use crate::orchard_frontier::OrchardFrontier;
-use crate::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes;
 use crate::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes;
+use crate::orchard_frontier::OrchardFrontier;
 use crate::pipeline::NoteType;
+use crate::pipeline::{DecryptedNote, PerfCounters};
+use crate::progress::SyncStage;
+use crate::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes;
+use crate::{Error, LightClient, Result, SyncProgress};
+use directories::ProjectDirs;
+use group::ff::PrimeField;
+use hex;
 use orchard::keys::{
-    Diversifier as OrchardDiversifier,
-    IncomingViewingKey as OrchardIncomingViewingKey,
+    Diversifier as OrchardDiversifier, IncomingViewingKey as OrchardIncomingViewingKey,
     PreparedIncomingViewingKey as OrchardPreparedIncomingViewingKey,
 };
 use orchard::note::{
-    ExtractedNoteCommitment as OrchardExtractedNoteCommitment,
-    Note as OrchardNote,
-    Nullifier as OrchardNullifier,
-    RandomSeed as OrchardRandomSeed,
+    ExtractedNoteCommitment as OrchardExtractedNoteCommitment, Note as OrchardNote,
+    Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed,
 };
 use orchard::note_encryption::{CompactAction, OrchardDomain};
 use orchard::tree::MerkleHashOrchard;
 use orchard::value::NoteValue as OrchardNoteValue;
 use orchard::Address as OrchardAddress;
-use pirate_storage_sqlite::{
-    Database, EncryptionKey, FrontierStorage, NoteRecord, Repository,
-    SyncStateStorage, truncate_above_height,
+use pirate_core::keys::{
+    ExtendedFullViewingKey, ExtendedSpendingKey, OrchardExtendedFullViewingKey,
+    OrchardExtendedSpendingKey, OrchardPaymentAddress as PirateOrchardPaymentAddress,
+    PaymentAddress as PiratePaymentAddress,
 };
-use pirate_storage_sqlite::repository::OrchardNoteRef;
-use pirate_storage_sqlite::models::{AccountKey, AddressScope, KeyScope, KeyType};
-use pirate_storage_sqlite::security::MasterKey;
-use pirate_core::keys::{ExtendedSpendingKey, ExtendedFullViewingKey, OrchardExtendedSpendingKey, OrchardExtendedFullViewingKey, PaymentAddress as PiratePaymentAddress, OrchardPaymentAddress as PirateOrchardPaymentAddress};
 use pirate_core::transaction::PirateNetwork;
 use pirate_params::consensus::ConsensusParams;
 use pirate_params::NetworkType;
-use group::ff::PrimeField;
-use hex;
-use subtle::CtOption;
+use pirate_storage_sqlite::models::{AccountKey, AddressScope, KeyScope, KeyType};
+use pirate_storage_sqlite::repository::OrchardNoteRef;
+use pirate_storage_sqlite::security::MasterKey;
+use pirate_storage_sqlite::{
+    truncate_above_height, Database, EncryptionKey, FrontierStorage, NoteRecord, Repository,
+    SyncStateStorage,
+};
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::path::{Path, PathBuf};
-use directories::ProjectDirs;
-use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
-use std::sync::Arc;
 use std::io::Write;
-use rayon::prelude::*;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use subtle::CtOption;
+use tokio::sync::RwLock;
 use zcash_note_encryption::try_output_recovery_with_ovk;
-use zcash_note_encryption::{batch as note_batch, EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE};
+use zcash_note_encryption::{
+    batch as note_batch, EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE,
+};
 use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::merkle_tree::{read_frontier_v0, read_frontier_v1, write_merkle_path};
+use zcash_primitives::sapling::keys::{
+    OutgoingViewingKey as SaplingOutgoingViewingKey, PreparedIncomingViewingKey,
+};
 use zcash_primitives::sapling::note_encryption::{try_sapling_output_recovery, SaplingDomain};
-use zcash_primitives::sapling::keys::{OutgoingViewingKey as SaplingOutgoingViewingKey, PreparedIncomingViewingKey};
 use zcash_primitives::sapling::{PaymentAddress as SaplingPaymentAddress, Rseed, SaplingIvk};
 use zcash_primitives::transaction::Transaction;
 
@@ -110,10 +115,10 @@ fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKey
     let sapling_ivk = sapling_dfvk
         .as_ref()
         .map(|dfvk| dfvk.to_ivk().to_sapling_ivk_bytes());
-    let orchard_ivk = orchard_fvk
+    let orchard_ivk = orchard_fvk.as_ref().map(|fvk| fvk.to_ivk_bytes());
+    let sapling_ovk = sapling_dfvk
         .as_ref()
-        .map(|fvk| fvk.to_ivk_bytes());
-    let sapling_ovk = sapling_dfvk.as_ref().map(|dfvk| dfvk.outgoing_viewing_key());
+        .map(|dfvk| dfvk.outgoing_viewing_key());
     let orchard_ovk = orchard_fvk.as_ref().map(|fvk| fvk.to_ovk());
 
     Ok(Some(WalletKeyGroup {
@@ -174,7 +179,13 @@ const MIN_PARALLEL_OUTPUTS: usize = 256;
 impl Default for SyncConfig {
     fn default() -> Self {
         let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
-        let (max_parallel_decrypt, max_batch_memory_bytes, target_batch_bytes, min_batch_bytes, max_batch_bytes) = if is_mobile {
+        let (
+            max_parallel_decrypt,
+            max_batch_memory_bytes,
+            target_batch_bytes,
+            min_batch_bytes,
+            max_batch_bytes,
+        ) = if is_mobile {
             (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
         } else {
             (32, Some(500_000_000), 32_000_000, 4_000_000, 64_000_000)
@@ -186,7 +197,7 @@ impl Default for SyncConfig {
             min_batch_size: 100, // Minimum batch size for spam blocks
             max_batch_size: 2_000, // Maximum batch size (caps server batches to prevent OOM)
             use_server_batch_recommendations: true, // Use server's ~4MB chunk recommendations (typically ~199 blocks)
-            mini_checkpoint_every: 5, // Mini-checkpoint every 5 batches
+            mini_checkpoint_every: 5,               // Mini-checkpoint every 5 batches
             max_parallel_decrypt,
             lazy_memo_decode: true,
             defer_full_tx_fetch: true,
@@ -248,7 +259,7 @@ impl SyncEngine {
             .thread_name(|i| format!("trial-decrypt-{}", i))
             .build()
             .expect("failed to build trial-decrypt thread pool");
-        let enrich_limit = std::cmp::max(1, std::cmp::min(4, config.max_parallel_decrypt));
+        let enrich_limit = config.max_parallel_decrypt.clamp(1, 4);
         Self {
             client: LightClient::new(endpoint),
             progress: Arc::new(RwLock::new(SyncProgress::new())),
@@ -309,16 +320,14 @@ impl SyncEngine {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:185","message":"nullifier_cache loaded","data":{{"count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                id,
-                ts,
-                loaded
+                id, ts, loaded
             );
         }
         tracing::debug!("Loaded {} unspent nullifiers into cache", loaded);
         Ok(())
     }
 
-    fn update_nullifier_cache(&mut self, entries: &[( [u8; 32], i64 )]) {
+    fn update_nullifier_cache(&mut self, entries: &[([u8; 32], i64)]) {
         for (nf, id) in entries {
             self.nullifier_cache.insert(*nf, *id);
         }
@@ -333,7 +342,7 @@ impl SyncEngine {
             .thread_name(|i| format!("trial-decrypt-{}", i))
             .build()
             .expect("failed to build trial-decrypt thread pool");
-        let enrich_limit = std::cmp::max(1, std::cmp::min(4, config.max_parallel_decrypt));
+        let enrich_limit = config.max_parallel_decrypt.clamp(1, 4);
         Self {
             client: LightClient::new(endpoint),
             progress: Arc::new(RwLock::new(SyncProgress::new())),
@@ -355,7 +364,11 @@ impl SyncEngine {
     }
 
     /// Create with pre-configured client and custom sync config
-    pub fn with_client_and_config(client: LightClient, birthday_height: u32, config: SyncConfig) -> Self {
+    pub fn with_client_and_config(
+        client: LightClient,
+        birthday_height: u32,
+        config: SyncConfig,
+    ) -> Self {
         let cpu_limit = num_cpus::get().max(1);
         let decrypt_threads = std::cmp::min(config.max_parallel_decrypt.max(1), cpu_limit);
         let decrypt_pool = rayon::ThreadPoolBuilder::new()
@@ -363,7 +376,7 @@ impl SyncEngine {
             .thread_name(|i| format!("trial-decrypt-{}", i))
             .build()
             .expect("failed to build trial-decrypt thread pool");
-        let enrich_limit = std::cmp::max(1, std::cmp::min(4, config.max_parallel_decrypt));
+        let enrich_limit = config.max_parallel_decrypt.clamp(1, 4);
         Self {
             client,
             progress: Arc::new(RwLock::new(SyncProgress::new())),
@@ -438,8 +451,9 @@ impl SyncEngine {
             };
 
             let orchard_fvk_bytes = if let Some(ref extsk_bytes) = secret.orchard_extsk {
-                let extsk = OrchardExtendedSpendingKey::from_bytes(extsk_bytes)
-                    .map_err(|e| Error::Sync(format!("Invalid Orchard spending key bytes: {}", e)))?;
+                let extsk = OrchardExtendedSpendingKey::from_bytes(extsk_bytes).map_err(|e| {
+                    Error::Sync(format!("Invalid Orchard spending key bytes: {}", e))
+                })?;
                 Some(extsk.to_extended_fvk().to_bytes())
             } else {
                 secret
@@ -452,13 +466,21 @@ impl SyncEngine {
             let fallback_key = AccountKey {
                 id: None,
                 account_id: secret.account_id,
-                key_type: if secret.extsk.is_empty() { KeyType::ImportView } else { KeyType::Seed },
+                key_type: if secret.extsk.is_empty() {
+                    KeyType::ImportView
+                } else {
+                    KeyType::Seed
+                },
                 key_scope: KeyScope::Account,
                 label: None,
                 birthday_height: 0,
                 created_at: chrono::Utc::now().timestamp(),
                 spendable: !secret.extsk.is_empty(),
-                sapling_extsk: if secret.extsk.is_empty() { None } else { Some(secret.extsk.clone()) },
+                sapling_extsk: if secret.extsk.is_empty() {
+                    None
+                } else {
+                    Some(secret.extsk.clone())
+                },
                 sapling_dfvk: sapling_dfvk_bytes,
                 orchard_extsk: secret.orchard_extsk.clone(),
                 orchard_fvk: orchard_fvk_bytes,
@@ -505,7 +527,9 @@ impl SyncEngine {
             };
 
             if stored_height > 0 {
-                if let Some(snapshot_height) = self.restore_frontiers_from_storage(stored_height).await? {
+                if let Some(snapshot_height) =
+                    self.restore_frontiers_from_storage(stored_height).await?
+                {
                     if snapshot_height < stored_height {
                         // Frontier snapshot is behind. Try to rebuild the frontier from cached
                         // compact blocks to avoid truncating notes or fetching tree state.
@@ -536,12 +560,7 @@ impl SyncEngine {
                             let _ = writeln!(
                                 file,
                                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:303","message":"frontier snapshot behind; cache rebuild","data":{{"stored_height":{},"snapshot_height":{},"start_height":{},"rebuilt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                                id,
-                                ts,
-                                stored_height,
-                                snapshot_height,
-                                start_height,
-                                rebuilt
+                                id, ts, stored_height, snapshot_height, start_height, rebuilt
                             );
                         }
                         // #endregion
@@ -590,7 +609,11 @@ impl SyncEngine {
     /// Total wallet balance at a given chain height (spendable + pending).
     ///
     /// Returns `Ok(None)` if the engine has no attached wallet storage.
-    pub fn total_balance_at_height(&self, current_height: u64, min_depth: u64) -> Result<Option<u64>> {
+    pub fn total_balance_at_height(
+        &self,
+        current_height: u64,
+        min_depth: u64,
+    ) -> Result<Option<u64>> {
         let sink = match self.storage.as_ref() {
             Some(s) => s,
             None => return Ok(None),
@@ -620,7 +643,7 @@ impl SyncEngine {
         let count = txs
             .iter()
             .filter(|t| {
-                let h = t.height as i64;
+                let h = t.height;
                 h > from_height as i64 && h <= current_height as i64
             })
             .count() as u32;
@@ -629,34 +652,71 @@ impl SyncEngine {
 
     /// Sync specific range
     pub async fn sync_range(&mut self, start_height: u64, end_height: Option<u64>) -> Result<()> {
-        tracing::info!("sync_range called: start={}, end_height={:?}", start_height, end_height);
-        
+        tracing::info!(
+            "sync_range called: start={}, end_height={:?}",
+            start_height,
+            end_height
+        );
+
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:275","message":"sync_range entry","data":{{"start":{},"end_height":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#, 
-                id, ts, start_height, end_height);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:275","message":"sync_range entry","data":{{"start":{},"end_height":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                id, ts, start_height, end_height
+            );
         }
         // #endregion
-        
+
         // Connect to lightwalletd
         tracing::debug!("Connecting to lightwalletd...");
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:280","message":"connect attempt","data":{{}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#, 
-                id, ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:280","message":"connect attempt","data":{{}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#,
+                id, ts
+            );
         }
         // #endregion
         let connect_result = self.client.connect().await;
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:283","message":"connect result","data":{{"success":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#, 
-                id, ts, connect_result.is_ok(), connect_result.as_ref().err());
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:283","message":"connect result","data":{{"success":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#,
+                id,
+                ts,
+                connect_result.is_ok(),
+                connect_result.as_ref().err()
+            );
         }
         // #endregion
         connect_result.map_err(|e| {
@@ -674,20 +734,44 @@ impl SyncEngine {
             None => {
                 tracing::debug!("Fetching latest block from server...");
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:294","message":"get_latest_block call","data":{{}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#, 
-                        id, ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:294","message":"get_latest_block call","data":{{}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                        id, ts
+                    );
                 }
                 // #endregion
                 let latest_result = self.client.get_latest_block().await;
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:297","message":"get_latest_block result in sync","data":{{"success":{},"height":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#, 
-                        id, ts, latest_result.is_ok(), latest_result.as_ref().ok().copied().unwrap_or(0), latest_result.as_ref().err());
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:297","message":"get_latest_block result in sync","data":{{"success":{},"height":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                        id,
+                        ts,
+                        latest_result.is_ok(),
+                        latest_result.as_ref().ok().copied().unwrap_or(0),
+                        latest_result.as_ref().err()
+                    );
                 }
                 // #endregion
                 let latest = latest_result.map_err(|e| {
@@ -741,20 +825,47 @@ impl SyncEngine {
         );
 
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:332","message":"sync_range_internal entry","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#, 
-                id, ts, start_height, end, end - start_height + 1);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:332","message":"sync_range_internal entry","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                id,
+                ts,
+                start_height,
+                end,
+                end - start_height + 1
+            );
         }
         // #endregion
         let result = self.sync_range_internal(start_height, end).await;
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:333","message":"sync_range_internal result","data":{{"success":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#, 
-                id, ts, result.is_ok(), result.as_ref().err());
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:333","message":"sync_range_internal result","data":{{"success":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                id,
+                ts,
+                result.is_ok(),
+                result.as_ref().err()
+            );
         }
         // #endregion
 
@@ -837,9 +948,7 @@ impl SyncEngine {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:502","message":"initialize frontiers tree state","data":{{"tree_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                id,
-                ts,
-                tree_height
+                id, ts, tree_height
             );
         }
         // #endregion
@@ -863,21 +972,21 @@ impl SyncEngine {
         fn parse_frontier_hex<H>(
             label: &str,
             hex_str: &str,
-        ) -> Result<bridgetree::Frontier<H, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>>
+        ) -> Result<
+            bridgetree::Frontier<H, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>,
+        >
         where
             H: bridgetree::Hashable + zcash_primitives::merkle_tree::HashSer + Clone,
         {
-            let bytes = hex::decode(hex_str).map_err(|e| {
-                Error::Sync(format!("Failed to decode {} bytes: {}", label, e))
-            })?;
+            let bytes = hex::decode(hex_str)
+                .map_err(|e| Error::Sync(format!("Failed to decode {} bytes: {}", label, e)))?;
 
             if let Ok(frontier) = read_frontier_v1::<H, _>(&bytes[..]) {
                 return Ok(frontier);
             }
 
-            read_frontier_v0::<H, _>(&bytes[..]).map_err(|e| {
-                Error::Sync(format!("Failed to parse {} frontier: {}", label, e))
-            })
+            read_frontier_v0::<H, _>(&bytes[..])
+                .map_err(|e| Error::Sync(format!("Failed to parse {} frontier: {}", label, e)))
         }
 
         {
@@ -913,7 +1022,10 @@ impl SyncEngine {
         Ok(())
     }
 
-    async fn fetch_tree_state_with_retry(&self, tree_height: u64) -> Result<crate::client::TreeState> {
+    async fn fetch_tree_state_with_retry(
+        &self,
+        tree_height: u64,
+    ) -> Result<crate::client::TreeState> {
         let max_attempts = 3u32;
         let timeout = Duration::from_secs(120);
         let mut attempt = 0u32;
@@ -944,14 +1056,10 @@ impl SyncEngine {
             }
             // #endregion
 
-            let bridge_future = tokio::time::timeout(
-                timeout,
-                self.client.get_bridge_tree_state(tree_height),
-            );
-            let legacy_future = tokio::time::timeout(
-                timeout,
-                self.client.get_tree_state(tree_height),
-            );
+            let bridge_future =
+                tokio::time::timeout(timeout, self.client.get_bridge_tree_state(tree_height));
+            let legacy_future =
+                tokio::time::timeout(timeout, self.client.get_tree_state(tree_height));
             tokio::pin!(bridge_future);
             tokio::pin!(legacy_future);
 
@@ -1091,16 +1199,17 @@ impl SyncEngine {
         let mut last_checkpoint_height = start.saturating_sub(1);
         let mut last_major_checkpoint_height = start.saturating_sub(1);
         let mut batches_since_mini_checkpoint = 0u32;
-        
+
         // Adaptive batch sizing for spam blocks (byte-based targets)
         let mut current_target_bytes = self.config.target_batch_bytes;
         let mut consecutive_heavy_batches = 0u32;
-        let mut avg_block_size_estimate = (self.config.target_batch_bytes / self.config.batch_size.max(1)).max(1);
+        let mut avg_block_size_estimate =
+            (self.config.target_batch_bytes / self.config.batch_size.max(1)).max(1);
         let mut pending_fetch: Option<PrefetchTask> = None;
 
         // Reset perf counters
         self.perf.reset();
-        
+
         // Reset cancellation flag.
         *self.cancelled.write().await = false;
 
@@ -1137,11 +1246,21 @@ impl SyncEngine {
         self.cleanup_orchard_false_positives().await?;
 
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:361","message":"sync loop start","data":{{"current":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#, 
-                id, ts, current_height, end);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:361","message":"sync loop start","data":{{"current":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                id, ts, current_height, end
+            );
         }
         // #endregion
 
@@ -1149,279 +1268,373 @@ impl SyncEngine {
         loop {
             // Main sync loop: sync from current_height to end
             while current_height <= end {
-            // Check for cancellation
-            if self.is_cancelled().await {
-                tracing::warn!("Sync cancelled at height {}", current_height);
-                return Err(Error::Sync("Sync cancelled".to_string()));
-            }
+                // Check for cancellation
+                if self.is_cancelled().await {
+                    tracing::warn!("Sync cancelled at height {}", current_height);
+                    return Err(Error::Sync("Sync cancelled".to_string()));
+                }
 
-            let batch_start_time = Instant::now();
-            let mut persist_ms: u128 = 0;
-            let mut apply_spends_ms: u128 = 0;
+                let batch_start_time = Instant::now();
+                let mut persist_ms: u128 = 0;
+                let mut apply_spends_ms: u128 = 0;
 
-            if pending_fetch.is_none() {
-                let (batch_end, _desired_blocks) = self
-                    .compute_batch_end(current_height, end, current_target_bytes, avg_block_size_estimate)
-                    .await?;
-                pending_fetch = Some(self.spawn_prefetch(current_height, batch_end));
-            }
+                if pending_fetch.is_none() {
+                    let (batch_end, _desired_blocks) = self
+                        .compute_batch_end(
+                            current_height,
+                            end,
+                            current_target_bytes,
+                            avg_block_size_estimate,
+                        )
+                        .await?;
+                    pending_fetch = Some(self.spawn_prefetch(current_height, batch_end));
+                }
 
-            let PrefetchTask {
-                start: batch_start,
-                end: batch_end,
-                handle,
-            } = pending_fetch.take().unwrap();
+                let PrefetchTask {
+                    start: batch_start,
+                    end: batch_end,
+                    handle,
+                } = pending_fetch.take().unwrap();
 
-            // Stage 1: Fetch blocks (with retry logic)
-            self.progress.write().await.set_stage(SyncStage::Headers);
-            // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let id = format!("{:08x}", ts);
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:505","message":"fetch_blocks_with_retry start","data":{{"current_height":{},"batch_end":{},"batch_size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                    id,
-                    ts,
-                    batch_start,
-                    batch_end,
-                    batch_end - batch_start + 1
-                );
-            }
-            // #endregion
+                // Stage 1: Fetch blocks (with retry logic)
+                self.progress.write().await.set_stage(SyncStage::Headers);
+                // #region agent log
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:505","message":"fetch_blocks_with_retry start","data":{{"current_height":{},"batch_end":{},"batch_size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
+                        id,
+                        ts,
+                        batch_start,
+                        batch_end,
+                        batch_end - batch_start + 1
+                    );
+                }
+                // #endregion
 
-            let fetch_wait_start = Instant::now();
-            let blocks = handle
-                .await
-                .map_err(|e| Error::Sync(e.to_string()))??;
-            let fetch_wait_ms = fetch_wait_start.elapsed().as_millis();
+                let fetch_wait_start = Instant::now();
+                let blocks = handle.await.map_err(|e| Error::Sync(e.to_string()))??;
+                let fetch_wait_ms = fetch_wait_start.elapsed().as_millis();
 
-            // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let id = format!("{:08x}", ts);
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:506","message":"fetch_blocks_with_retry result","data":{{"current_height":{},"batch_end":{},"blocks_count":{},"wait_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                    id,
-                    ts,
-                    batch_start,
-                    batch_end,
-                    blocks.len(),
-                    fetch_wait_ms
-                );
-            }
-            // #endregion
+                // #region agent log
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:506","message":"fetch_blocks_with_retry result","data":{{"current_height":{},"batch_end":{},"blocks_count":{},"wait_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
+                        id,
+                        ts,
+                        batch_start,
+                        batch_end,
+                        blocks.len(),
+                        fetch_wait_ms
+                    );
+                }
+                // #endregion
 
-            if blocks.is_empty() {
-                tracing::warn!("Empty block batch at {}-{}", batch_start, batch_end);
-                current_height = batch_end + 1;
-                continue;
-            }
+                if blocks.is_empty() {
+                    tracing::warn!("Empty block batch at {}-{}", batch_start, batch_end);
+                    current_height = batch_end + 1;
+                    continue;
+                }
 
-            // Detect heavy/spam blocks and adapt batch size
-            // Count actual bytes in outputs and actions
-            let total_block_size: u64 = blocks.iter()
-                .map(|b| {
-                    // Count actual bytes in Sapling outputs
-                    let sapling_bytes: u64 = b.transactions.iter()
-                        .map(|tx| {
-                            tx.outputs.iter()
-                                .map(|out| {
-                                    // Each Sapling output: cmu (32) + ephemeral_key (32) + ciphertext
-                                    // Compact ciphertext is 52 bytes minimum
-                                    32 + 32 + out.ciphertext.len().max(52) as u64
-                                })
-                                .sum::<u64>()
-                        })
-                        .sum();
-                    
-                    // Count actual bytes in Orchard actions
-                    let orchard_bytes: u64 = b.transactions.iter()
-                        .map(|tx| {
-                            tx.actions.iter()
-                                .map(|action| {
-                                    // Each Orchard action: nullifier (32) + cmx (32) + ephemeral_key (32) + 
-                                    // enc_ciphertext (52+ minimum) + out_ciphertext (52+ minimum)
-                                    32 + 32 + 32 + 
-                                    action.enc_ciphertext.len().max(52) as u64 +
-                                    action.out_ciphertext.len().max(52) as u64
-                                })
-                                .sum::<u64>()
-                        })
-                        .sum();
-                    
-                    // Transaction overhead (hash, etc.) - estimate ~100 bytes per tx
-                    let tx_overhead = b.transactions.len() as u64 * 100;
-                    tx_overhead + sapling_bytes + orchard_bytes
-                })
-                .sum();
-            let avg_block_size = total_block_size / blocks.len().max(1) as u64;
-            avg_block_size_estimate = avg_block_size.max(1);
-            let is_heavy_batch = avg_block_size > self.config.heavy_block_threshold_bytes;
+                // Detect heavy/spam blocks and adapt batch size
+                // Count actual bytes in outputs and actions
+                let total_block_size: u64 = blocks
+                    .iter()
+                    .map(|b| {
+                        // Count actual bytes in Sapling outputs
+                        let sapling_bytes: u64 = b
+                            .transactions
+                            .iter()
+                            .map(|tx| {
+                                tx.outputs
+                                    .iter()
+                                    .map(|out| {
+                                        // Each Sapling output: cmu (32) + ephemeral_key (32) + ciphertext
+                                        // Compact ciphertext is 52 bytes minimum
+                                        32 + 32 + out.ciphertext.len().max(52) as u64
+                                    })
+                                    .sum::<u64>()
+                            })
+                            .sum();
 
-            if is_heavy_batch {
-                consecutive_heavy_batches += 1;
-                // Reduce target bytes significantly for spam blocks.
-                current_target_bytes = std::cmp::max(
-                    self.config.min_batch_bytes,
-                    current_target_bytes / 4,
-                );
-                tracing::warn!(
+                        // Count actual bytes in Orchard actions
+                        let orchard_bytes: u64 = b
+                            .transactions
+                            .iter()
+                            .map(|tx| {
+                                tx.actions
+                                    .iter()
+                                    .map(|action| {
+                                        // Each Orchard action: nullifier (32) + cmx (32) + ephemeral_key (32) +
+                                        // enc_ciphertext (52+ minimum) + out_ciphertext (52+ minimum)
+                                        32 + 32
+                                            + 32
+                                            + action.enc_ciphertext.len().max(52) as u64
+                                            + action.out_ciphertext.len().max(52) as u64
+                                    })
+                                    .sum::<u64>()
+                            })
+                            .sum();
+
+                        // Transaction overhead (hash, etc.) - estimate ~100 bytes per tx
+                        let tx_overhead = b.transactions.len() as u64 * 100;
+                        tx_overhead + sapling_bytes + orchard_bytes
+                    })
+                    .sum();
+                let avg_block_size = total_block_size / blocks.len().max(1) as u64;
+                avg_block_size_estimate = avg_block_size.max(1);
+                let is_heavy_batch = avg_block_size > self.config.heavy_block_threshold_bytes;
+
+                if is_heavy_batch {
+                    consecutive_heavy_batches += 1;
+                    // Reduce target bytes significantly for spam blocks.
+                    current_target_bytes =
+                        std::cmp::max(self.config.min_batch_bytes, current_target_bytes / 4);
+                    tracing::warn!(
                     "Heavy block detected at height {} (avg {} bytes/block), reducing target bytes to {} (consecutive: {})",
                     current_height,
                     avg_block_size,
                     current_target_bytes,
                     consecutive_heavy_batches
                 );
-                
-                // Create mini-checkpoint more frequently during spam blocks
-                // This prevents losing progress if connection is unstable
-                if consecutive_heavy_batches >= 2 {
-                    self.create_checkpoint(batch_end).await?;
-                    batches_since_mini_checkpoint = 0;
-                    last_checkpoint_height = batch_end;
-                    
-                    {
-                        let progress = self.progress.write().await;
-                        progress.set_checkpoint(batch_end);
+
+                    // Create mini-checkpoint more frequently during spam blocks
+                    // This prevents losing progress if connection is unstable
+                    if consecutive_heavy_batches >= 2 {
+                        self.create_checkpoint(batch_end).await?;
+                        batches_since_mini_checkpoint = 0;
+                        last_checkpoint_height = batch_end;
+
+                        {
+                            let progress = self.progress.write().await;
+                            progress.set_checkpoint(batch_end);
+                        }
+
+                        tracing::info!(
+                            "Emergency checkpoint at {} due to spam blocks (target bytes: {})",
+                            batch_end,
+                            current_target_bytes
+                        );
                     }
-                    
-                    tracing::info!(
-                        "Emergency checkpoint at {} due to spam blocks (target bytes: {})",
+                } else {
+                    // Reset counter and gradually increase batch size back to normal
+                    consecutive_heavy_batches = 0;
+                    if current_target_bytes < self.config.target_batch_bytes {
+                        let bump = std::cmp::max(1, self.config.target_batch_bytes / 4);
+                        current_target_bytes = std::cmp::min(
+                            self.config.target_batch_bytes,
+                            current_target_bytes + bump,
+                        );
+                        tracing::debug!(
+                            "Normal blocks detected, increasing target bytes to {}",
+                            current_target_bytes
+                        );
+                    }
+                }
+
+                // Prefetch next batch while we process this one.
+                let next_start = batch_end + 1;
+                if next_start <= end {
+                    let (next_end, _desired_blocks) = self
+                        .compute_batch_end(
+                            next_start,
+                            end,
+                            current_target_bytes,
+                            avg_block_size_estimate,
+                        )
+                        .await?;
+                    pending_fetch = Some(self.spawn_prefetch(next_start, next_end));
+                }
+
+                // Stage 2: Trial decryption (batched with parallelism)
+                self.progress.write().await.set_stage(SyncStage::Notes);
+                // #region agent log
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:846","message":"trial_decrypt start","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        id,
+                        ts,
+                        current_height,
                         batch_end,
-                        current_target_bytes
+                        blocks.len()
                     );
                 }
-            } else {
-                // Reset counter and gradually increase batch size back to normal
-                consecutive_heavy_batches = 0;
-                if current_target_bytes < self.config.target_batch_bytes {
-                    let bump = std::cmp::max(1, self.config.target_batch_bytes / 4);
-                    current_target_bytes = std::cmp::min(
-                        self.config.target_batch_bytes,
-                        current_target_bytes + bump,
-                    );
-                    tracing::debug!(
-                        "Normal blocks detected, increasing target bytes to {}",
-                        current_target_bytes
+                // #endregion
+                let decrypt_start = Instant::now();
+                let mut notes = self.trial_decrypt_batch(&blocks).await?;
+                let decrypt_ms = decrypt_start.elapsed().as_millis();
+                // #region agent log
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:852","message":"trial_decrypt done","data":{{"start":{},"end":{},"notes":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        id,
+                        ts,
+                        current_height,
+                        batch_end,
+                        notes.len(),
+                        decrypt_ms
                     );
                 }
-            }
+                // #endregion
 
-            // Prefetch next batch while we process this one.
-            let next_start = batch_end + 1;
-            if next_start <= end {
-                let (next_end, _desired_blocks) = self
-                    .compute_batch_end(next_start, end, current_target_bytes, avg_block_size_estimate)
+                tracing::debug!(
+                    "Batch {}-{}: found {} notes",
+                    current_height,
+                    batch_end,
+                    notes.len()
+                );
+
+                // Stage 3: Update frontier (witness tree) - MUST happen before persisting notes
+                // so we can store positions in the database
+                self.progress.write().await.set_stage(SyncStage::Witness);
+                // #region agent log
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:862","message":"update_frontier start","data":{{"start":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        id, ts, current_height, batch_end
+                    );
+                }
+                // #endregion
+                let frontier_start = Instant::now();
+                let (commitments_applied, position_mappings) =
+                    self.update_frontier(&blocks, &notes).await?;
+                let frontier_ms = frontier_start.elapsed().as_millis();
+                // #region agent log
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:866","message":"update_frontier done","data":{{"start":{},"end":{},"commitments":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        id, ts, current_height, batch_end, commitments_applied, frontier_ms
+                    );
+                }
+                // #endregion
+                self.apply_positions(&mut notes, &position_mappings).await;
+                self.apply_sapling_nullifiers(&mut notes, &position_mappings)
                     .await?;
-                pending_fetch = Some(self.spawn_prefetch(next_start, next_end));
-            }
 
-            // Stage 2: Trial decryption (batched with parallelism)
-            self.progress.write().await.set_stage(SyncStage::Notes);
-            // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:846","message":"trial_decrypt start","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                    id, ts, current_height, batch_end, blocks.len());
-            }
-            // #endregion
-            let decrypt_start = Instant::now();
-            let mut notes = self.trial_decrypt_batch(&blocks).await?;
-            let decrypt_ms = decrypt_start.elapsed().as_millis();
-            // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:852","message":"trial_decrypt done","data":{{"start":{},"end":{},"notes":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                    id, ts, current_height, batch_end, notes.len(), decrypt_ms);
-            }
-            // #endregion
+                let require_memos = !self.config.lazy_memo_decode;
+                if !notes.is_empty() && !self.config.defer_full_tx_fetch {
+                    self.fetch_and_enrich_notes(&mut notes, require_memos)
+                        .await?;
+                }
 
-            tracing::debug!(
-                "Batch {}-{}: found {} notes",
-                current_height,
-                batch_end,
-                notes.len()
-            );
+                if !notes.is_empty() {
+                    let max_money = ConsensusParams::mainnet().max_money;
+                    let require_orchard_nullifier =
+                        self.keys.iter().any(|keys| keys.orchard_fvk.is_some());
+                    let mut filtered_value = 0usize;
+                    let mut filtered_nullifier = 0usize;
+                    notes.retain(|note| {
+                        if note.value == 0 || note.value > max_money {
+                            filtered_value += 1;
+                            return false;
+                        }
+                        if require_orchard_nullifier
+                            && note.note_type == NoteType::Orchard
+                            && note.nullifier.iter().all(|b| *b == 0)
+                        {
+                            filtered_nullifier += 1;
+                            return false;
+                        }
+                        true
+                    });
 
-            // Stage 3: Update frontier (witness tree) - MUST happen before persisting notes
-            // so we can store positions in the database
-            self.progress.write().await.set_stage(SyncStage::Witness);
-            // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:862","message":"update_frontier start","data":{{"start":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                    id, ts, current_height, batch_end);
-            }
-            // #endregion
-            let frontier_start = Instant::now();
-            let (commitments_applied, position_mappings) = self.update_frontier(&blocks, &notes).await?;
-            let frontier_ms = frontier_start.elapsed().as_millis();
-            // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:866","message":"update_frontier done","data":{{"start":{},"end":{},"commitments":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                    id, ts, current_height, batch_end, commitments_applied, frontier_ms);
-            }
-            // #endregion
-            self.apply_positions(&mut notes, &position_mappings).await;
-            self.apply_sapling_nullifiers(&mut notes, &position_mappings).await?;
-
-            let require_memos = !self.config.lazy_memo_decode;
-            if !notes.is_empty() && !self.config.defer_full_tx_fetch {
-                self.fetch_and_enrich_notes(&mut notes, require_memos).await?;
-            }
-
-            if !notes.is_empty() {
-                let max_money = ConsensusParams::mainnet().max_money;
-                let require_orchard_nullifier = self
-                    .keys
-                    .iter()
-                    .any(|keys| keys.orchard_fvk.is_some());
-                let mut filtered_value = 0usize;
-                let mut filtered_nullifier = 0usize;
-                notes.retain(|note| {
-                    if note.value == 0 || note.value > max_money {
-                        filtered_value += 1;
-                        return false;
+                    let filtered = filtered_value + filtered_nullifier;
+                    if filtered > 0 {
+                        if let Ok(mut file) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(debug_log_path())
+                        {
+                            use std::io::Write;
+                            let ts = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis();
+                            let id = format!("{:08x}", ts);
+                            let _ = writeln!(
+                                file,
+                                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:878","message":"filtered invalid notes","data":{{"filtered":{},"filtered_value":{},"filtered_nullifier":{},"remaining":{},"require_orchard_nullifier":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                                id,
+                                ts,
+                                filtered,
+                                filtered_value,
+                                filtered_nullifier,
+                                notes.len(),
+                                require_orchard_nullifier
+                            );
+                        }
                     }
-                    if require_orchard_nullifier
-                        && note.note_type == NoteType::Orchard
-                        && note.nullifier.iter().all(|b| *b == 0)
-                    {
-                        filtered_nullifier += 1;
-                        return false;
-                    }
-                    true
-                });
+                }
 
-                let filtered = filtered_value + filtered_nullifier;
-                if filtered > 0 {
+                // Persist decrypted notes if storage is configured (after frontier update to get positions)
+                if let Some(ref sink) = self.storage {
+                    let persist_start = Instant::now();
+                    // #region agent log
                     if let Ok(mut file) = std::fs::OpenOptions::new()
                         .create(true)
                         .append(true)
@@ -1435,262 +1648,321 @@ impl SyncEngine {
                         let id = format!("{:08x}", ts);
                         let _ = writeln!(
                             file,
-                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:878","message":"filtered invalid notes","data":{{"filtered":{},"filtered_value":{},"filtered_nullifier":{},"remaining":{},"require_orchard_nullifier":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:881","message":"persist_notes start","data":{{"start":{},"end":{},"notes":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                             id,
                             ts,
-                            filtered,
-                            filtered_value,
-                            filtered_nullifier,
-                            notes.len(),
-                            require_orchard_nullifier
+                            current_height,
+                            batch_end,
+                            notes.len()
                         );
                     }
-                }
-            }
-
-            // Persist decrypted notes if storage is configured (after frontier update to get positions)
-            if let Some(ref sink) = self.storage {
-                let persist_start = Instant::now();
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                    use std::io::Write;
-                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                    let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:881","message":"persist_notes start","data":{{"start":{},"end":{},"notes":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                        id, ts, current_height, batch_end, notes.len());
-                }
-                // #endregion
-                // Build txid->block_time map for this batch to persist accurate confirmation timestamps.
-                let mut tx_times: HashMap<String, i64> = HashMap::new();
-                let mut tx_fees: HashMap<String, i64> = HashMap::new();
-                for b in &blocks {
-                    let ts = b.time as i64;
-                    for tx in &b.transactions {
-                        let txid_hex = hex::encode(&tx.hash);
-                        tx_times.insert(txid_hex.clone(), ts);
-                        tx_fees.insert(txid_hex, tx.fee.unwrap_or(0) as i64);
+                    // #endregion
+                    // Build txid->block_time map for this batch to persist accurate confirmation timestamps.
+                    let mut tx_times: HashMap<String, i64> = HashMap::new();
+                    let mut tx_fees: HashMap<String, i64> = HashMap::new();
+                    for b in &blocks {
+                        let ts = b.time as i64;
+                        for tx in &b.transactions {
+                            let txid_hex = hex::encode(&tx.hash);
+                            tx_times.insert(txid_hex.clone(), ts);
+                            tx_fees.insert(txid_hex, tx.fee.unwrap_or(0) as i64);
+                        }
                     }
+
+                    let inserted =
+                        sink.persist_notes(&notes, &tx_times, &tx_fees, &position_mappings)?;
+                    if !inserted.is_empty() {
+                        self.update_nullifier_cache(&inserted);
+                    }
+                    persist_ms = persist_start.elapsed().as_millis();
+                    // #region agent log
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:900","message":"persist_notes done","data":{{"start":{},"end":{},"notes":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                            id,
+                            ts,
+                            current_height,
+                            batch_end,
+                            notes.len(),
+                            persist_ms
+                        );
+                    }
+                    // #endregion
                 }
 
-                let inserted = sink.persist_notes(&notes, &tx_times, &tx_fees, &position_mappings)?;
-                if !inserted.is_empty() {
-                    self.update_nullifier_cache(&inserted);
+                if !blocks.is_empty() {
+                    // #region agent log
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:906","message":"apply_spends start","data":{{"start":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                            id, ts, current_height, batch_end
+                        );
+                    }
+                    // #endregion
+                    let apply_start = Instant::now();
+                    self.apply_spends(&blocks).await?;
+                    apply_spends_ms = apply_start.elapsed().as_millis();
+                    // #region agent log
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:909","message":"apply_spends done","data":{{"start":{},"end":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                            id, ts, current_height, batch_end, apply_spends_ms
+                        );
+                    }
+                    // #endregion
                 }
-                persist_ms = persist_start.elapsed().as_millis();
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                    use std::io::Write;
-                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                    let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:900","message":"persist_notes done","data":{{"start":{},"end":{},"notes":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                        id, ts, current_height, batch_end, notes.len(), persist_ms);
+
+                if self.config.defer_full_tx_fetch && !notes.is_empty() {
+                    self.spawn_background_enrich(notes.clone(), require_memos);
                 }
-                // #endregion
-            }
 
-            if !blocks.is_empty() {
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                    use std::io::Write;
-                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                    let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:906","message":"apply_spends start","data":{{"start":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                    id, ts, current_height, batch_end);
-            }
-            // #endregion
-                let apply_start = Instant::now();
-                self.apply_spends(&blocks).await?;
-                apply_spends_ms = apply_start.elapsed().as_millis();
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                    use std::io::Write;
-                    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                    let id = format!("{:08x}", ts);
-                    let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:909","message":"apply_spends done","data":{{"start":{},"end":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#, 
-                        id, ts, current_height, batch_end, apply_spends_ms);
-                }
-                // #endregion
-            }
-
-            if self.config.defer_full_tx_fetch && !notes.is_empty() {
-                self.spawn_background_enrich(notes.clone(), require_memos);
-            }
-
-            // Record batch performance
-            let batch_duration = batch_start_time.elapsed();
-            self.perf.record_batch(
-                blocks.len() as u64,
-                notes.len() as u64,
-                commitments_applied,
-                batch_duration.as_millis() as u64,
-            );
-
-            // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                let id = format!("{:08x}", ts);
-                let avg_block_size = total_block_size / blocks.len().max(1) as u64;
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:915","message":"batch_stage_timing","data":{{"start":{},"end":{},"blocks":{},"notes":{},"total_bytes":{},"avg_block_bytes":{},"fetch_wait_ms":{},"decrypt_ms":{},"frontier_ms":{},"persist_ms":{},"apply_spends_ms":{},"batch_total_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    id,
-                    ts,
-                    current_height,
-                    batch_end,
-                    blocks.len(),
-                    notes.len(),
-                    total_block_size,
-                    avg_block_size,
-                    fetch_wait_ms,
-                    decrypt_ms,
-                    frontier_ms,
-                    persist_ms,
-                    apply_spends_ms,
-                    batch_duration.as_millis()
-                );
-            }
-            // #endregion
-
-            // Update progress with perf metrics
-            {
-                let progress = self.progress.write().await;
-                progress.set_current(batch_end);
-                progress.update_eta();
-                progress.record_batch(
+                // Record batch performance
+                let batch_duration = batch_start_time.elapsed();
+                self.perf.record_batch(
+                    blocks.len() as u64,
                     notes.len() as u64,
                     commitments_applied,
                     batch_duration.as_millis() as u64,
                 );
-            }
-            // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                let id = format!("{:08x}", ts);
-                let progress = self.progress.read().await;
-                let wallet_id = self.wallet_id.as_deref().unwrap_or("unknown");
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:664","message":"progress updated","data":{{"current_height":{},"target_height":{},"percent":{:.2},"stage":"{:?}","wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}}"#, 
-                    id, ts, progress.current_height(), progress.target_height(), progress.percentage(), progress.stage(), wallet_id);
-            }
-            // #endregion
 
-            batches_since_mini_checkpoint += 1;
-            let blocks_since_major_checkpoint = batch_end - last_major_checkpoint_height;
+                // #region agent log
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let avg_block_size = total_block_size / blocks.len().max(1) as u64;
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:915","message":"batch_stage_timing","data":{{"start":{},"end":{},"blocks":{},"notes":{},"total_bytes":{},"avg_block_bytes":{},"fetch_wait_ms":{},"decrypt_ms":{},"frontier_ms":{},"persist_ms":{},"apply_spends_ms":{},"batch_total_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        id,
+                        ts,
+                        current_height,
+                        batch_end,
+                        blocks.len(),
+                        notes.len(),
+                        total_block_size,
+                        avg_block_size,
+                        fetch_wait_ms,
+                        decrypt_ms,
+                        frontier_ms,
+                        persist_ms,
+                        apply_spends_ms,
+                        batch_duration.as_millis()
+                    );
+                }
+                // #endregion
 
-            // Mini-checkpoint every N batches
-            if batches_since_mini_checkpoint >= self.config.mini_checkpoint_every {
-                self.create_checkpoint(batch_end).await?;
-                batches_since_mini_checkpoint = 0;
-                last_checkpoint_height = batch_end;
-
+                // Update progress with perf metrics
                 {
                     let progress = self.progress.write().await;
-                    progress.set_checkpoint(batch_end);
+                    progress.set_current(batch_end);
+                    progress.update_eta();
+                    progress.record_batch(
+                        notes.len() as u64,
+                        commitments_applied,
+                        batch_duration.as_millis() as u64,
+                    );
                 }
-
-                tracing::debug!(
-                    "Mini-checkpoint at {} ({:.1} blk/s, {} notes, {}ms/batch)",
-                    batch_end,
-                    self.perf.blocks_per_second(),
-                    self.perf.snapshot().notes_decrypted,
-                    self.perf.snapshot().avg_batch_ms
-                );
-            }
-
-            // Major checkpoint every CHECKPOINT_INTERVAL blocks
-            if blocks_since_major_checkpoint >= self.config.checkpoint_interval as u64 {
-                self.create_checkpoint(batch_end).await?;
-                last_checkpoint_height = batch_end;
-                last_major_checkpoint_height = batch_end;
-                batches_since_mini_checkpoint = 0;
-
+                // #region agent log
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
                 {
-                    let progress = self.progress.write().await;
-                    progress.set_checkpoint(batch_end);
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let progress = self.progress.read().await;
+                    let wallet_id = self.wallet_id.as_deref().unwrap_or("unknown");
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:664","message":"progress updated","data":{{"current_height":{},"target_height":{},"percent":{:.2},"stage":"{:?}","wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}}"#,
+                        id,
+                        ts,
+                        progress.current_height(),
+                        progress.target_height(),
+                        progress.percentage(),
+                        progress.stage(),
+                        wallet_id
+                    );
+                }
+                // #endregion
+
+                batches_since_mini_checkpoint += 1;
+                let blocks_since_major_checkpoint = batch_end - last_major_checkpoint_height;
+
+                // Mini-checkpoint every N batches
+                if batches_since_mini_checkpoint >= self.config.mini_checkpoint_every {
+                    self.create_checkpoint(batch_end).await?;
+                    batches_since_mini_checkpoint = 0;
+                    last_checkpoint_height = batch_end;
+
+                    {
+                        let progress = self.progress.write().await;
+                        progress.set_checkpoint(batch_end);
+                    }
+
+                    tracing::debug!(
+                        "Mini-checkpoint at {} ({:.1} blk/s, {} notes, {}ms/batch)",
+                        batch_end,
+                        self.perf.blocks_per_second(),
+                        self.perf.snapshot().notes_decrypted,
+                        self.perf.snapshot().avg_batch_ms
+                    );
                 }
 
-                tracing::info!(
-                    "Major checkpoint at height {} ({:.1} blk/s)",
-                    batch_end,
-                    self.perf.blocks_per_second()
-                );
-            }
+                // Major checkpoint every CHECKPOINT_INTERVAL blocks
+                if blocks_since_major_checkpoint >= self.config.checkpoint_interval as u64 {
+                    self.create_checkpoint(batch_end).await?;
+                    last_checkpoint_height = batch_end;
+                    last_major_checkpoint_height = batch_end;
+                    batches_since_mini_checkpoint = 0;
 
-            // Save sync state periodically
-            self.save_sync_state(batch_end, end, last_checkpoint_height).await?;
+                    {
+                        let progress = self.progress.write().await;
+                        progress.set_checkpoint(batch_end);
+                    }
 
-            current_height = batch_end + 1;
-            // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-                let id = format!("{:08x}", ts);
-                let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:709","message":"current_height updated","data":{{"new_current_height":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#, 
-                    id, ts, current_height, end);
-            }
-            // #endregion
-            
-        }
-
-        // After main sync loop completes, check if there are more blocks to sync
-        // This handles the case where sync completed the initial range but blockchain moved forward
-        // Keep checking and syncing until we're fully caught up, then keep monitoring for new blocks
-        let current = {
-            let progress = self.progress.read().await;
-            progress.current_height()
-        };
-        
-        match self.client.get_latest_block().await {
-            Ok(latest_height) => {
-                if latest_height > current {
                     tracing::info!(
+                        "Major checkpoint at height {} ({:.1} blk/s)",
+                        batch_end,
+                        self.perf.blocks_per_second()
+                    );
+                }
+
+                // Save sync state periodically
+                self.save_sync_state(batch_end, end, last_checkpoint_height)
+                    .await?;
+
+                current_height = batch_end + 1;
+                // #region agent log
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:709","message":"current_height updated","data":{{"new_current_height":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
+                        id, ts, current_height, end
+                    );
+                }
+                // #endregion
+            }
+
+            // After main sync loop completes, check if there are more blocks to sync
+            // This handles the case where sync completed the initial range but blockchain moved forward
+            // Keep checking and syncing until we're fully caught up, then keep monitoring for new blocks
+            let current = {
+                let progress = self.progress.read().await;
+                progress.current_height()
+            };
+
+            match self.client.get_latest_block().await {
+                Ok(latest_height) => {
+                    if latest_height > current {
+                        tracing::info!(
                         "Found {} new blocks after sync completion, continuing sync from {} to {}",
                         latest_height - current,
                         current,
                         latest_height
                     );
-                    // Update progress target and stage
-                    {
-                        let progress = self.progress.write().await;
-                        progress.set_target(latest_height);
-                        progress.set_stage(SyncStage::Headers);
-                    }
-                    // Continue syncing from current to latest - re-enter the main sync loop
-                    end = latest_height;
-                    current_height = current;
-                    // Reset batch tracking for the new range
-                    batches_since_mini_checkpoint = 0;
-                    // Re-enter the outer loop (which will re-enter the main sync loop)
-                    continue; // Continue outer loop to re-enter main sync loop
-                } else {
-                    // Caught up - wait a bit then check again for new blocks
-                    // This keeps sync running continuously instead of stopping
-                    // Set stage to Complete to indicate we're monitoring
-                    // When monitoring, current_height == target_height, so complete() is safe
-                    {
-                        let progress = self.progress.read().await;
-                        if progress.stage() != SyncStage::Complete {
-                            drop(progress);
+                        // Update progress target and stage
+                        {
                             let progress = self.progress.write().await;
-                            // Use complete() to set stage and ETA correctly
-                            // This is safe because when monitoring, current_height == target_height
-                            progress.complete();
+                            progress.set_target(latest_height);
+                            progress.set_stage(SyncStage::Headers);
                         }
+                        // Continue syncing from current to latest - re-enter the main sync loop
+                        end = latest_height;
+                        current_height = current;
+                        // Reset batch tracking for the new range
+                        batches_since_mini_checkpoint = 0;
+                        // Re-enter the outer loop (which will re-enter the main sync loop)
+                        continue; // Continue outer loop to re-enter main sync loop
+                    } else {
+                        // Caught up - wait a bit then check again for new blocks
+                        // This keeps sync running continuously instead of stopping
+                        // Set stage to Complete to indicate we're monitoring
+                        // When monitoring, current_height == target_height, so complete() is safe
+                        {
+                            let progress = self.progress.read().await;
+                            if progress.stage() != SyncStage::Complete {
+                                drop(progress);
+                                let progress = self.progress.write().await;
+                                // Use complete() to set stage and ETA correctly
+                                // This is safe because when monitoring, current_height == target_height
+                                progress.complete();
+                            }
+                        }
+                        tracing::debug!(
+                            "Caught up to blockchain tip ({}), waiting for new blocks...",
+                            current
+                        );
+                        tokio::time::sleep(Duration::from_secs(10)).await; // Check every 10 seconds
+                                                                           // Continue the outer loop to check again
+                        continue;
                     }
-                    tracing::debug!("Caught up to blockchain tip ({}), waiting for new blocks...", current);
-                    tokio::time::sleep(Duration::from_secs(10)).await; // Check every 10 seconds
-                    // Continue the outer loop to check again
-                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to check for new blocks after sync: {}, retrying in 30s",
+                        e
+                    );
+                    tokio::time::sleep(Duration::from_secs(30)).await; // Wait longer on error
+                    continue; // Retry
                 }
             }
-            Err(e) => {
-                tracing::warn!("Failed to check for new blocks after sync: {}, retrying in 30s", e);
-                tokio::time::sleep(Duration::from_secs(30)).await; // Wait longer on error
-                continue; // Retry
-            }
         }
-    }
     }
 
     async fn fetch_blocks_with_retry_inner(
@@ -1769,12 +2041,7 @@ impl SyncEngine {
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    tracing::debug!(
-                        "Block cache read failed for {}-{}: {}",
-                        start,
-                        end,
-                        e
-                    );
+                    tracing::debug!("Block cache read failed for {}-{}: {}", start, end, e);
                     if let Ok(mut file) = std::fs::OpenOptions::new()
                         .create(true)
                         .append(true)
@@ -1789,11 +2056,7 @@ impl SyncEngine {
                         let _ = writeln!(
                             file,
                             r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache read error","data":{{"start":{},"end":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                            id,
-                            ts,
-                            start,
-                            end,
-                            e
+                            id, ts, start, end, e
                         );
                     }
                 }
@@ -1817,17 +2080,16 @@ impl SyncEngine {
                 }
                 InflightLease::Leader(token) => {
                     let mut attempts = 0;
-                        let result = loop {
-                            // Use get_compact_block_range with retry logic
-                            match client
-                                .get_compact_block_range(start as u32..(end + 1) as u32)
-                                .await
-                            {
-                                Ok(blocks) => {
-                                    if let Ok(cache) = BlockCache::for_endpoint(client.endpoint())
-                                    {
-                                        if let Err(e) = cache.store_blocks(&blocks) {
-                                            tracing::debug!(
+                    let result = loop {
+                        // Use get_compact_block_range with retry logic
+                        match client
+                            .get_compact_block_range(start as u32..(end + 1) as u32)
+                            .await
+                        {
+                            Ok(blocks) => {
+                                if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
+                                    if let Err(e) = cache.store_blocks(&blocks) {
+                                        tracing::debug!(
                                             "Block cache store failed for {}-{}: {}",
                                             start,
                                             end,
@@ -1877,7 +2139,6 @@ impl SyncEngine {
                 }
             }
         }
-
     }
 
     async fn trial_decrypt_batch(&self, blocks: &[CompactBlockData]) -> Result<Vec<DecryptedNote>> {
@@ -1950,10 +2211,7 @@ impl SyncEngine {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:trial_decrypt_batch","message":"trial_decrypt ivk availability","data":{{"sapling":{},"orchard":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                id,
-                ts,
-                has_sapling_ivk,
-                has_orchard_ivk
+                id, ts, has_sapling_ivk, has_orchard_ivk
             );
         }
 
@@ -2041,8 +2299,8 @@ impl SyncEngine {
         current_target_bytes: u64,
         avg_block_size_estimate: u64,
     ) -> Result<(u64, u64)> {
-        let mut target_bytes = current_target_bytes
-            .clamp(self.config.min_batch_bytes, self.config.max_batch_bytes);
+        let mut target_bytes =
+            current_target_bytes.clamp(self.config.min_batch_bytes, self.config.max_batch_bytes);
         if let Some(max_memory) = self.config.max_batch_memory_bytes {
             target_bytes = target_bytes.min(max_memory);
         }
@@ -2052,8 +2310,8 @@ impl SyncEngine {
         if desired_blocks == 0 {
             desired_blocks = 1;
         }
-        desired_blocks = desired_blocks
-            .clamp(self.config.min_batch_size, self.config.max_batch_size);
+        desired_blocks =
+            desired_blocks.clamp(self.config.min_batch_size, self.config.max_batch_size);
 
         let desired_end = std::cmp::min(current_height + desired_blocks - 1, end);
 
@@ -2061,14 +2319,17 @@ impl SyncEngine {
             return Ok((desired_end, desired_blocks));
         }
 
-        match self.client.get_lite_wallet_block_group(current_height).await {
+        match self
+            .client
+            .get_lite_wallet_block_group(current_height)
+            .await
+        {
             Ok(server_end) => {
                 let optimal_end = std::cmp::min(server_end, end);
-                let server_batch_size = optimal_end.saturating_sub(current_height).saturating_add(1);
-                let max_capped_end = std::cmp::min(
-                    optimal_end,
-                    current_height + self.config.max_batch_size - 1,
-                );
+                let server_batch_size =
+                    optimal_end.saturating_sub(current_height).saturating_add(1);
+                let max_capped_end =
+                    std::cmp::min(optimal_end, current_height + self.config.max_batch_size - 1);
                 let batch_end = std::cmp::max(desired_end, max_capped_end);
 
                 if max_capped_end > current_height {
@@ -2160,9 +2421,7 @@ impl SyncEngine {
                     let _ = writeln!(
                         file,
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:spawn_background_enrich","message":"background enrich failed","data":{{"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                        id,
-                        ts,
-                        e
+                        id, ts, e
                     );
                 }
             }
@@ -2351,8 +2610,8 @@ impl SyncEngine {
                 .key_id
                 .and_then(|key_id| key_index_by_id.get(&key_id).and_then(|idx| keys.get(*idx)))
                 .or(fallback_group.as_ref());
-            let orchard_nullifier_zero_local = note.note_type == NoteType::Orchard
-                && note.nullifier.iter().all(|b| *b == 0);
+            let orchard_nullifier_zero_local =
+                note.note_type == NoteType::Orchard && note.nullifier.iter().all(|b| *b == 0);
             if orchard_nullifier_zero_local {
                 orchard_nullifier_zero += 1;
                 if key_group
@@ -2463,11 +2722,19 @@ impl SyncEngine {
         let sapling_ovk = keys
             .iter()
             .find_map(|key| key.sapling_ovk.as_ref())
-            .or_else(|| fallback_group.as_ref().and_then(|key| key.sapling_ovk.as_ref()));
+            .or_else(|| {
+                fallback_group
+                    .as_ref()
+                    .and_then(|key| key.sapling_ovk.as_ref())
+            });
         let orchard_ovk = keys
             .iter()
             .find_map(|key| key.orchard_ovk.as_ref())
-            .or_else(|| fallback_group.as_ref().and_then(|key| key.orchard_ovk.as_ref()));
+            .or_else(|| {
+                fallback_group
+                    .as_ref()
+                    .and_then(|key| key.orchard_ovk.as_ref())
+            });
 
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -2591,7 +2858,7 @@ impl SyncEngine {
                         {
                             match decrypt_memo_from_raw_tx_with_ivk_bytes(
                                 &raw_tx_bytes,
-                                note.output_index as usize,
+                                note.output_index,
                                 sapling_ivk,
                                 Some(&note.commitment),
                             ) {
@@ -2628,7 +2895,7 @@ impl SyncEngine {
 
                         match decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
                             &raw_tx_bytes,
-                            note.output_index as usize,
+                            note.output_index,
                             orchard_ivk,
                             Some(&note.commitment),
                         ) {
@@ -2756,11 +3023,7 @@ impl SyncEngine {
                                     let _ = writeln!(
                                         file,
                                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"orchard full decrypt none","data":{{"txid_prefix":"{}","cmx_prefix":"{}","output_index":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                                        id,
-                                        ts,
-                                        txid_prefix,
-                                        cmx_prefix,
-                                        note.output_index
+                                        id, ts, txid_prefix, cmx_prefix, note.output_index
                                     );
                                 }
                                 if note.tx_hash.len() == 32 {
@@ -2793,12 +3056,7 @@ impl SyncEngine {
                                     let _ = writeln!(
                                         file,
                                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"orchard full decrypt error","data":{{"txid_prefix":"{}","cmx_prefix":"{}","output_index":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                                        id,
-                                        ts,
-                                        txid_prefix,
-                                        cmx_prefix,
-                                        note.output_index,
-                                        e
+                                        id, ts, txid_prefix, cmx_prefix, note.output_index, e
                                     );
                                 }
                             }
@@ -2952,18 +3210,20 @@ impl SyncEngine {
                 }
             };
 
+            let action_index = match usize::try_from(note_ref.output_index) {
+                Ok(index) => index,
+                Err(_) => continue,
+            };
             match decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
                 &raw_tx,
-                note_ref.output_index as usize,
+                action_index,
                 orchard_ivk,
                 Some(&note_ref.commitment),
             ) {
                 Ok(Some(_)) => {}
                 Ok(None) => {
-                    let _ = sink.delete_note_by_txid_and_index(
-                        &note_ref.txid,
-                        note_ref.output_index,
-                    );
+                    let _ =
+                        sink.delete_note_by_txid_and_index(&note_ref.txid, note_ref.output_index);
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -3299,9 +3559,8 @@ impl SyncEngine {
             let rseed = if leadbyte == 0x02 {
                 zcash_primitives::sapling::Rseed::AfterZip212(rseed_bytes)
             } else {
-                let rcm = Option::from(jubjub::Fr::from_bytes(&rseed_bytes)).ok_or_else(|| {
-                    Error::Sync("Invalid Sapling rseed bytes".to_string())
-                })?;
+                let rcm = Option::from(jubjub::Fr::from_bytes(&rseed_bytes))
+                    .ok_or_else(|| Error::Sync("Invalid Sapling rseed bytes".to_string()))?;
                 zcash_primitives::sapling::Rseed::BeforeZip212(rcm)
             };
 
@@ -3325,7 +3584,8 @@ impl SyncEngine {
             let nf = sapling_note.nf(&nk, position);
             note.nullifier = nf.0;
             if note.note_bytes.is_empty() {
-                note.note_bytes = encode_sapling_note_bytes(sapling_note.recipient(), leadbyte, rseed_bytes);
+                note.note_bytes =
+                    encode_sapling_note_bytes(sapling_note.recipient(), leadbyte, rseed_bytes);
             }
         }
 
@@ -3422,10 +3682,7 @@ impl SyncEngine {
                 }
             }
         }
-        if matched_spends == 0
-            && !spend_nullifiers.is_empty()
-            && !self.nullifier_cache.is_empty()
-        {
+        if matched_spends == 0 && !spend_nullifiers.is_empty() && !self.nullifier_cache.is_empty() {
             match sink.mark_notes_spent_by_nullifiers_with_txid(&spend_nullifiers) {
                 Ok(updated) => {
                     if updated > 0 {
@@ -3472,7 +3729,17 @@ impl SyncEngine {
 
     /// Get witness for an Orchard note at a given position
     /// Returns None if position is not marked or witness cannot be computed
-    pub async fn get_orchard_witness(&self, position: u64) -> Result<Option<incrementalmerkletree::MerklePath<orchard::tree::MerkleHashOrchard, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>>> {
+    pub async fn get_orchard_witness(
+        &self,
+        position: u64,
+    ) -> Result<
+        Option<
+            incrementalmerkletree::MerklePath<
+                orchard::tree::MerkleHashOrchard,
+                { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
+            >,
+        >,
+    > {
         let orchard_frontier = self.orchard_frontier.read().await;
         orchard_frontier.witness(position)
     }
@@ -3498,7 +3765,11 @@ impl SyncEngine {
         if let Some(ref sink) = self.storage {
             let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
             let storage = FrontierStorage::new(&db);
-            storage.save_frontier_snapshot(height as u32, &snapshot_bytes, env!("CARGO_PKG_VERSION"))?;
+            storage.save_frontier_snapshot(
+                height as u32,
+                &snapshot_bytes,
+                env!("CARGO_PKG_VERSION"),
+            )?;
             let _ = storage.prune_old_snapshots(FRONTIER_SNAPSHOT_RETAIN);
         }
 
@@ -3526,7 +3797,10 @@ impl SyncEngine {
             }
         }
 
-        if let Some(snapshot_height) = self.restore_frontiers_from_storage(checkpoint_height).await? {
+        if let Some(snapshot_height) = self
+            .restore_frontiers_from_storage(checkpoint_height)
+            .await?
+        {
             return Ok(snapshot_height);
         }
 
@@ -3565,7 +3839,10 @@ impl SyncEngine {
     /// Detect and handle reorg
     pub async fn detect_and_handle_reorg(&mut self, height: u64) -> Result<bool> {
         let local_block = if let Ok(cache) = BlockCache::for_endpoint(self.client.endpoint()) {
-            cache.load_range(height, height).ok().and_then(|mut blocks| blocks.pop())
+            cache
+                .load_range(height, height)
+                .ok()
+                .and_then(|mut blocks| blocks.pop())
         } else {
             None
         };
@@ -3603,7 +3880,7 @@ impl SyncEngine {
     }
 
     /// Update target height from server (non-blocking)
-    /// 
+    ///
     /// Fetches the latest block height from the server and updates the progress target.
     /// This allows the sync progress to reflect the current blockchain tip even as new blocks are mined.
     pub async fn update_target_height(&self) -> Result<()> {
@@ -3612,7 +3889,7 @@ impl SyncEngine {
                 let progress = self.progress.write().await;
                 let current_target = progress.target_height();
                 drop(progress); // Release lock before updating
-                
+
                 if latest_height > current_target {
                     let progress = self.progress.write().await;
                     progress.set_target(latest_height);
@@ -3671,11 +3948,7 @@ fn encode_sapling_note_bytes(
     encode_sapling_note_bytes_from_address_bytes(address.to_bytes(), leadbyte, rseed)
 }
 
-fn encode_orchard_note_bytes(
-    address: &OrchardAddress,
-    rho: [u8; 32],
-    rseed: [u8; 32],
-) -> Vec<u8> {
+fn encode_orchard_note_bytes(address: &OrchardAddress, rho: [u8; 32], rseed: [u8; 32]) -> Vec<u8> {
     let mut out = Vec::with_capacity(1 + 43 + 32 + 32);
     out.push(ORCHARD_NOTE_BYTES_VERSION);
     out.extend_from_slice(&address.to_raw_address_bytes());
@@ -3683,7 +3956,6 @@ fn encode_orchard_note_bytes(
     out.extend_from_slice(&rseed);
     out
 }
-
 
 fn decode_sapling_address_bytes_from_note_bytes(note_bytes: &[u8]) -> Option<[u8; 43]> {
     if note_bytes.is_empty() {
@@ -3751,7 +4023,9 @@ fn encode_frontier_snapshot(sapling_bytes: &[u8], orchard_bytes: &[u8]) -> Vec<u
 }
 
 fn decode_frontier_snapshot(bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
-    if bytes.len() < FRONTIER_SNAPSHOT_MAGIC.len() + 1 || !bytes.starts_with(&FRONTIER_SNAPSHOT_MAGIC) {
+    if bytes.len() < FRONTIER_SNAPSHOT_MAGIC.len() + 1
+        || !bytes.starts_with(&FRONTIER_SNAPSHOT_MAGIC)
+    {
         return Ok((bytes.to_vec(), Vec::new()));
     }
 
@@ -3923,8 +4197,12 @@ impl StorageSink {
             };
 
             let address_type = match note.note_type {
-                crate::pipeline::NoteType::Sapling => pirate_storage_sqlite::models::AddressType::Sapling,
-                crate::pipeline::NoteType::Orchard => pirate_storage_sqlite::models::AddressType::Orchard,
+                crate::pipeline::NoteType::Sapling => {
+                    pirate_storage_sqlite::models::AddressType::Sapling
+                }
+                crate::pipeline::NoteType::Orchard => {
+                    pirate_storage_sqlite::models::AddressType::Orchard
+                }
             };
 
             let address_record = pirate_storage_sqlite::Address {
@@ -3946,51 +4224,51 @@ impl StorageSink {
         };
 
         for n in notes {
-                // Skip if we don't have essential fields
-                if n.txid.is_empty() {
-                    continue;
-                }
-                let txid_hex = hex::encode(&n.txid);
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let id = format!("{:08x}", ts);
-                    let nf_is_zero = n.nullifier.iter().all(|b| *b == 0);
-                    let txid_short = if txid_hex.len() > 12 {
-                        &txid_hex[..12]
-                    } else {
-                        &txid_hex
-                    };
-                    let db_path = self.db_path.to_string_lossy();
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:2435","message":"persist_note record","data":{{"account_id":{},"note_type":"{:?}","value":{},"height":{},"output_index":{},"nullifier_zero":{},"txid_prefix":"{}","db_path":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                        id,
-                        ts,
-                        self.account_id,
-                        n.note_type,
-                        n.value,
-                        n.height,
-                        n.output_index,
-                        nf_is_zero,
-                        txid_short,
-                        db_path
-                    );
-                }
-                // #endregion
-                // Block timestamp is the "first confirmation time" for mined txs.
-                // Use now() as fallback for unconfirmed / missing.
-                let timestamp = tx_times
-                    .get(&txid_hex)
-                    .copied()
+            // Skip if we don't have essential fields
+            if n.txid.is_empty() {
+                continue;
+            }
+            let txid_hex = hex::encode(&n.txid);
+            // #region agent log
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let id = format!("{:08x}", ts);
+                let nf_is_zero = n.nullifier.iter().all(|b| *b == 0);
+                let txid_short = if txid_hex.len() > 12 {
+                    &txid_hex[..12]
+                } else {
+                    &txid_hex
+                };
+                let db_path = self.db_path.to_string_lossy();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:2435","message":"persist_note record","data":{{"account_id":{},"note_type":"{:?}","value":{},"height":{},"output_index":{},"nullifier_zero":{},"txid_prefix":"{}","db_path":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    id,
+                    ts,
+                    self.account_id,
+                    n.note_type,
+                    n.value,
+                    n.height,
+                    n.output_index,
+                    nf_is_zero,
+                    txid_short,
+                    db_path
+                );
+            }
+            // #endregion
+            // Block timestamp is the "first confirmation time" for mined txs.
+            // Use now() as fallback for unconfirmed / missing.
+            let timestamp = tx_times
+                .get(&txid_hex)
+                .copied()
                 .unwrap_or_else(|| chrono::Utc::now().timestamp());
             let fee = tx_fees.get(&txid_hex).copied().unwrap_or(0);
 
@@ -3999,7 +4277,9 @@ impl StorageSink {
 
             let address_id = derive_address_id(n, timestamp)?;
 
-            if let Ok(Some(existing)) = repo.get_note_by_txid_and_index(self.account_id, &n.txid, n.output_index as i64) {
+            if let Ok(Some(existing)) =
+                repo.get_note_by_txid_and_index(self.account_id, &n.txid, n.output_index as i64)
+            {
                 let mut updated = existing.clone();
                 let mut changed = false;
 
@@ -4058,10 +4338,14 @@ impl StorageSink {
             }
 
             let note_type = match n.note_type {
-                crate::pipeline::NoteType::Orchard => pirate_storage_sqlite::models::NoteType::Orchard,
-                crate::pipeline::NoteType::Sapling => pirate_storage_sqlite::models::NoteType::Sapling,
+                crate::pipeline::NoteType::Orchard => {
+                    pirate_storage_sqlite::models::NoteType::Orchard
+                }
+                crate::pipeline::NoteType::Sapling => {
+                    pirate_storage_sqlite::models::NoteType::Sapling
+                }
             };
-            
+
             let record = NoteRecord {
                 id: None,
                 account_id: self.account_id,
@@ -4074,7 +4358,7 @@ impl StorageSink {
                 height: n.height as i64,
                 txid: n.txid.clone(),
                 output_index: n.output_index as i64,
-                address_id: address_id,
+                address_id,
                 spent_txid: None,
                 diversifier: if !n.diversifier.is_empty() {
                     Some(n.diversifier.clone())
@@ -4094,8 +4378,10 @@ impl StorageSink {
                 anchor: n.anchor.map(|a| a.to_vec()),
                 position: {
                     let fallback = match n.note_type {
-                        crate::pipeline::NoteType::Sapling => TxOutputKey::new(&n.tx_hash, n.output_index)
-                            .and_then(|key| position_mappings.sapling_by_tx.get(&key).copied()),
+                        crate::pipeline::NoteType::Sapling => {
+                            TxOutputKey::new(&n.tx_hash, n.output_index)
+                                .and_then(|key| position_mappings.sapling_by_tx.get(&key).copied())
+                        }
                         crate::pipeline::NoteType::Orchard => position_mappings
                             .orchard_by_commitment
                             .get(&n.commitment)
@@ -4114,28 +4400,28 @@ impl StorageSink {
                     }
                 }
                 Err(e) => {
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:2478","message":"persist_note error","data":{{"txid_prefix":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                        id,
-                        ts,
-                        &txid_hex[..txid_hex.len().min(12)],
-                        e
-                    );
-                }
-                // #endregion
+                    // #region agent log
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let id = format!("{:08x}", ts);
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:2478","message":"persist_note error","data":{{"txid_prefix":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                            id,
+                            ts,
+                            &txid_hex[..txid_hex.len().min(12)],
+                            e
+                        );
+                    }
+                    // #endregion
                 }
             }
         }
@@ -4146,7 +4432,11 @@ impl StorageSink {
         Ok(inserted)
     }
 
-    fn get_note_by_txid_and_index(&self, txid: &[u8], output_index: i64) -> Result<Option<NoteRecord>> {
+    fn get_note_by_txid_and_index(
+        &self,
+        txid: &[u8],
+        output_index: i64,
+    ) -> Result<Option<NoteRecord>> {
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
         Ok(repo.get_note_by_txid_and_index(self.account_id, txid, output_index)?)
@@ -4172,7 +4462,7 @@ impl StorageSink {
 
     fn mark_notes_spent_by_nullifiers_with_txid(
         &self,
-        entries: &Vec<([u8; 32], [u8; 32])>,
+        entries: &[([u8; 32], [u8; 32])],
     ) -> Result<u64> {
         if entries.is_empty() {
             return Ok(0);
@@ -4182,10 +4472,7 @@ impl StorageSink {
         Ok(repo.mark_notes_spent_by_nullifiers_with_txid(self.account_id, entries)?)
     }
 
-    fn mark_notes_spent_by_ids_with_txid(
-        &self,
-        entries: &Vec<(i64, [u8; 32])>,
-    ) -> Result<u64> {
+    fn mark_notes_spent_by_ids_with_txid(&self, entries: &[(i64, [u8; 32])]) -> Result<u64> {
         if entries.is_empty() {
             return Ok(0);
         }
@@ -4194,7 +4481,13 @@ impl StorageSink {
         Ok(repo.mark_notes_spent_by_ids_with_txid(entries)?)
     }
 
-    fn upsert_transaction(&self, txid_hex: &str, height: i64, timestamp: i64, fee: i64) -> Result<()> {
+    fn upsert_transaction(
+        &self,
+        txid_hex: &str,
+        height: i64,
+        timestamp: i64,
+        fee: i64,
+    ) -> Result<()> {
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
         Ok(repo.upsert_transaction(txid_hex, height, timestamp, fee)?)
@@ -4218,7 +4511,12 @@ impl StorageSink {
         Ok(sync_state.load_sync_state()?)
     }
 
-    fn save_sync_state(&self, local_height: u64, target_height: u64, last_checkpoint_height: u64) -> Result<()> {
+    fn save_sync_state(
+        &self,
+        local_height: u64,
+        target_height: u64,
+        last_checkpoint_height: u64,
+    ) -> Result<()> {
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let sync_state = SyncStateStorage::new(&db);
         Ok(sync_state.save_sync_state(local_height, target_height, last_checkpoint_height)?)
@@ -4292,7 +4590,10 @@ impl ShieldedOutput<SaplingDomain<PirateNetwork>, COMPACT_NOTE_SIZE> for Sapling
         EphemeralKeyBytes(self.epk)
     }
 
-    fn cmstar_bytes(&self) -> <SaplingDomain<PirateNetwork> as zcash_note_encryption::Domain>::ExtractedCommitmentBytes {
+    fn cmstar_bytes(
+        &self,
+    ) -> <SaplingDomain<PirateNetwork> as zcash_note_encryption::Domain>::ExtractedCommitmentBytes
+    {
         self.cmu
     }
 
@@ -4312,12 +4613,20 @@ fn sapling_rseed_to_bytes(note: &zcash_primitives::sapling::Note) -> (u8, [u8; 3
     }
 }
 
+type CompactDecryptResult<D> = Option<(
+    (
+        <D as zcash_note_encryption::Domain>::Note,
+        <D as zcash_note_encryption::Domain>::Recipient,
+    ),
+    usize,
+)>;
+
 fn try_compact_note_decryption_parallel<D, Output>(
     pool: &rayon::ThreadPool,
     ivks: &[D::IncomingViewingKey],
     outputs: &[(D, Output)],
     max_parallel: usize,
-) -> Vec<Option<((D::Note, D::Recipient), usize)>>
+) -> Vec<CompactDecryptResult<D>>
 where
     D: zcash_note_encryption::BatchDomain + Sync,
     Output: ShieldedOutput<D, COMPACT_NOTE_SIZE> + Sync,
@@ -4339,11 +4648,11 @@ where
         return note_batch::try_compact_note_decryption(ivks, outputs);
     }
 
-    let mut chunk_size = (outputs_len + max_parallel - 1) / max_parallel;
+    let mut chunk_size = outputs_len.div_ceil(max_parallel);
     if chunk_size < MIN_PARALLEL_OUTPUTS {
         chunk_size = MIN_PARALLEL_OUTPUTS;
     }
-    let chunk_count = (outputs_len + chunk_size - 1) / chunk_size;
+    let chunk_count = outputs_len.div_ceil(chunk_size);
     if chunk_count <= 1 {
         return note_batch::try_compact_note_decryption(ivks, outputs);
     }
@@ -4359,6 +4668,7 @@ where
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn trial_decrypt_batch_impl(
     blocks: &[CompactBlockData],
     sapling_ivks: &[PreparedIncomingViewingKey],
@@ -4398,8 +4708,18 @@ fn trial_decrypt_batch_impl(
                     let mut ciphertext = [0u8; 52];
                     ciphertext.copy_from_slice(&output.ciphertext[..52]);
 
-                    let domain = SaplingDomain::for_height(PirateNetwork::default(), BlockHeight::from_u32(height as u32));
-                    sapling_outputs.push((domain, SaplingBatchOutput { epk, cmu, ciphertext }));
+                    let domain = SaplingDomain::for_height(
+                        PirateNetwork::default(),
+                        BlockHeight::from_u32(height as u32),
+                    );
+                    sapling_outputs.push((
+                        domain,
+                        SaplingBatchOutput {
+                            epk,
+                            cmu,
+                            ciphertext,
+                        },
+                    ));
                     sapling_meta.push(SaplingOutputMeta {
                         height,
                         tx_index,

@@ -12,22 +12,26 @@ pub mod error;
 pub mod fees;
 pub mod keys;
 pub mod memo;
-pub mod params;
 pub mod notes;
+pub mod params;
 pub mod selection;
 pub mod shielded_builder;
 pub mod transaction;
 pub mod wallet;
 
-pub use address::{AddressManager, SaplingAddress, parse_sapling_address};
+pub use address::{parse_sapling_address, AddressManager, SaplingAddress};
 pub use diversifier::{
-    DiversifierIndex, DiversifierRotationService, DiversifierState, AddressUsage,
-    RotationPolicy, DEFAULT_GAP_LIMIT, MAX_DIVERSIFIER_INDEX,
+    AddressUsage, DiversifierIndex, DiversifierRotationService, DiversifierState, RotationPolicy,
+    DEFAULT_GAP_LIMIT, MAX_DIVERSIFIER_INDEX,
 };
 pub use error::{Error, ErrorCategory, Result};
-pub use fees::{FeeCalculator, FeePolicy, DEFAULT_FEE, MIN_FEE, MAX_FEE};
+pub use fees::{FeeCalculator, FeePolicy, DEFAULT_FEE, MAX_FEE, MIN_FEE};
 pub use memo::{Memo, MAX_MEMO_LENGTH, MEMO_WARNING_LENGTH};
+pub use params::{orchard_params, sapling_params, sapling_prover};
 pub use selection::{NoteSelector, NoteType, SelectableNote, SelectionResult, SelectionStrategy};
-pub use shielded_builder::{ShieldedBuilder, ShieldedOutput, PendingShieldedTransaction, SignedShieldedTransaction};
-pub use transaction::{TransactionBuilder, TransactionOutput, PendingTransaction, SignedTransaction};
-pub use params::{sapling_prover, sapling_params, orchard_params};
+pub use shielded_builder::{
+    PendingShieldedTransaction, ShieldedBuilder, ShieldedOutput, SignedShieldedTransaction,
+};
+pub use transaction::{
+    PendingTransaction, SignedTransaction, TransactionBuilder, TransactionOutput,
+};

@@ -54,7 +54,7 @@ impl ProtectionReason {
             Self::Sensitive => "Sensitive content",
         }
     }
-    
+
     /// Get security level (higher = more sensitive)
     pub fn security_level(&self) -> u8 {
         match self {
@@ -69,7 +69,7 @@ impl ProtectionReason {
 }
 
 /// Screenshot guard manager
-/// 
+///
 /// Manages screenshot protection state across the application.
 /// The actual platform-specific implementation is done via FFI.
 pub struct ScreenshotGuard {
@@ -93,46 +93,46 @@ impl ScreenshotGuard {
             ref_count: AtomicU32::new(0),
         }
     }
-    
+
     /// Set platform support status (called from FFI during init)
     pub fn set_platform_supported(&self, supported: bool) {
         self.platform_supported.store(supported, Ordering::SeqCst);
     }
-    
+
     /// Check if platform supports screenshot blocking
     pub fn is_platform_supported(&self) -> bool {
         self.platform_supported.load(Ordering::SeqCst)
     }
-    
+
     /// Get current protection state
     pub fn state(&self) -> ProtectionState {
         *self.state.read().unwrap()
     }
-    
+
     /// Enable screenshot protection
-    /// 
+    ///
     /// Returns a guard that automatically disables protection on drop.
     pub fn enable(&self, reason: ProtectionReason) -> ScreenshotProtectionGuard {
         self.ref_count.fetch_add(1, Ordering::SeqCst);
         self.protection_stack.write().unwrap().push(reason);
         *self.state.write().unwrap() = ProtectionState::Enabled;
-        
+
         tracing::debug!(
             "Screenshot protection enabled: {} (ref_count: {})",
             reason.description(),
             self.ref_count.load(Ordering::SeqCst)
         );
-        
+
         ScreenshotProtectionGuard {
             guard: Arc::new(self.clone_inner()),
             reason,
         }
     }
-    
+
     /// Disable screenshot protection
     fn disable_internal(&self, reason: ProtectionReason) {
         let prev_count = self.ref_count.fetch_sub(1, Ordering::SeqCst);
-        
+
         // Remove reason from stack
         {
             let mut stack = self.protection_stack.write().unwrap();
@@ -140,7 +140,7 @@ impl ScreenshotGuard {
                 stack.remove(pos);
             }
         }
-        
+
         // Only fully disable if no more protections active
         if prev_count == 1 {
             *self.state.write().unwrap() = ProtectionState::Disabled;
@@ -152,7 +152,7 @@ impl ScreenshotGuard {
             );
         }
     }
-    
+
     /// Temporarily suspend protection (for accessibility screenshots)
     pub fn suspend(&self) -> bool {
         if *self.state.read().unwrap() == ProtectionState::Enabled {
@@ -163,7 +163,7 @@ impl ScreenshotGuard {
             false
         }
     }
-    
+
     /// Resume protection after suspension
     pub fn resume(&self) {
         if *self.state.read().unwrap() == ProtectionState::Suspended {
@@ -171,12 +171,12 @@ impl ScreenshotGuard {
             tracing::debug!("Screenshot protection resumed");
         }
     }
-    
+
     /// Get active protection reasons
     pub fn active_reasons(&self) -> Vec<ProtectionReason> {
         self.protection_stack.read().unwrap().clone()
     }
-    
+
     /// Get highest security level among active protections
     pub fn highest_security_level(&self) -> u8 {
         self.protection_stack
@@ -187,7 +187,7 @@ impl ScreenshotGuard {
             .max()
             .unwrap_or(0)
     }
-    
+
     /// Check if protection is currently active
     pub fn is_active(&self) -> bool {
         matches!(
@@ -195,7 +195,7 @@ impl ScreenshotGuard {
             ProtectionState::Enabled | ProtectionState::Suspended
         )
     }
-    
+
     fn clone_inner(&self) -> ScreenshotGuardInner {
         // This is used by the RAII `ScreenshotProtectionGuard` to run cleanup on drop.
         // We can't capture `self` directly in a `'static` closure, so we clone the guard
@@ -232,7 +232,7 @@ struct ScreenshotGuardInner {
 }
 
 /// RAII guard for screenshot protection
-/// 
+///
 /// When this guard is dropped, screenshot protection is automatically
 /// decremented (and disabled if no other protections are active).
 pub struct ScreenshotProtectionGuard {
@@ -258,7 +258,7 @@ impl Drop for ScreenshotProtectionGuard {
 // =============================================================================
 
 /// Android screenshot blocking
-/// 
+///
 /// Uses WindowManager.LayoutParams.FLAG_SECURE to prevent:
 /// - Screenshots
 /// - Screen recording
@@ -266,7 +266,7 @@ impl Drop for ScreenshotProtectionGuard {
 #[cfg(target_os = "android")]
 pub mod android {
     /// Set FLAG_SECURE on activity window
-    /// 
+    ///
     /// FFI call to:
     /// ```kotlin
     /// window.setFlags(
@@ -278,7 +278,7 @@ pub mod android {
         // FFI call to Kotlin
         let _ = secure;
     }
-    
+
     /// Check if FLAG_SECURE is currently set
     pub fn is_secure_flag_set() -> bool {
         // FFI call to Kotlin
@@ -287,7 +287,7 @@ pub mod android {
 }
 
 /// iOS screenshot blocking
-/// 
+///
 /// Uses multiple techniques:
 /// 1. Add invisible secure text field to capture screenshots
 /// 2. Observe UIApplication.userDidTakeScreenshotNotification
@@ -295,7 +295,7 @@ pub mod android {
 #[cfg(target_os = "ios")]
 pub mod ios {
     /// Enable screenshot prevention
-    /// 
+    ///
     /// FFI call to Swift:
     /// ```swift
     /// // Add secure text field overlay
@@ -308,14 +308,14 @@ pub mod ios {
     pub fn enable_protection() {
         // FFI call to Swift
     }
-    
+
     /// Disable screenshot prevention
     pub fn disable_protection() {
         // FFI call to Swift
     }
-    
+
     /// Register for screenshot notification
-    /// 
+    ///
     /// FFI call to observe:
     /// ```swift
     /// NotificationCenter.default.addObserver(
@@ -332,13 +332,13 @@ pub mod ios {
 }
 
 /// Desktop screenshot blocking (limited)
-/// 
+///
 /// Desktop platforms have limited screenshot prevention capabilities.
 /// We use application-level hints that may be ignored by screen capture tools.
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 pub mod desktop {
     /// Attempt to prevent window capture
-    /// 
+    ///
     /// Platform-specific approaches:
     /// - Windows: SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE) on Win10 2004+
     /// - macOS: NSWindow.sharingType = .none
@@ -346,7 +346,7 @@ pub mod desktop {
     pub fn set_capture_prevention(enabled: bool) {
         let _ = enabled;
     }
-    
+
     /// Check if capture prevention is supported
     pub fn is_capture_prevention_supported() -> bool {
         #[cfg(target_os = "windows")]
@@ -354,12 +354,12 @@ pub mod desktop {
             // Check Windows version >= 10.0.19041 (2004)
             false
         }
-        
+
         #[cfg(target_os = "macos")]
         {
             true // macOS always supports NSWindow.sharingType
         }
-        
+
         #[cfg(target_os = "linux")]
         {
             false // No standard API
@@ -401,63 +401,63 @@ impl From<&ScreenshotGuard> for ScreenshotProtectionStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_protection_reason_levels() {
         assert_eq!(ProtectionReason::SeedPhrase.security_level(), 10);
         assert_eq!(ProtectionReason::Sensitive.security_level(), 3);
     }
-    
+
     #[test]
     fn test_screenshot_guard_lifecycle() {
         let guard_manager = ScreenshotGuard::new();
-        
+
         assert_eq!(guard_manager.state(), ProtectionState::Disabled);
         assert!(!guard_manager.is_active());
-        
+
         // Enable protection
         let _protection = guard_manager.enable(ProtectionReason::SeedPhrase);
-        
+
         assert_eq!(guard_manager.state(), ProtectionState::Enabled);
         assert!(guard_manager.is_active());
         assert_eq!(guard_manager.highest_security_level(), 10);
-        
+
         // Suspend
         guard_manager.suspend();
         assert_eq!(guard_manager.state(), ProtectionState::Suspended);
-        
+
         // Resume
         guard_manager.resume();
         assert_eq!(guard_manager.state(), ProtectionState::Enabled);
     }
-    
+
     #[test]
     fn test_nested_protections() {
         let guard_manager = ScreenshotGuard::new();
-        
+
         let _p1 = guard_manager.enable(ProtectionReason::Sensitive);
         assert_eq!(guard_manager.ref_count.load(Ordering::SeqCst), 1);
-        
+
         let _p2 = guard_manager.enable(ProtectionReason::SeedPhrase);
         assert_eq!(guard_manager.ref_count.load(Ordering::SeqCst), 2);
-        
+
         // Highest security level should be SeedPhrase's
         assert_eq!(guard_manager.highest_security_level(), 10);
-        
+
         // Both reasons should be active
         let reasons = guard_manager.active_reasons();
         assert_eq!(reasons.len(), 2);
     }
-    
+
     #[test]
     fn test_protection_status() {
         let guard_manager = ScreenshotGuard::new();
         guard_manager.set_platform_supported(true);
-        
+
         let _protection = guard_manager.enable(ProtectionReason::ViewingKey);
-        
+
         let status = ScreenshotProtectionStatus::from(&guard_manager);
-        
+
         assert_eq!(status.state, ProtectionState::Enabled);
         assert_eq!(status.active_count, 1);
         assert!(status.platform_supported);
@@ -465,4 +465,3 @@ mod tests {
         assert_eq!(status.reasons.len(), 1);
     }
 }
-

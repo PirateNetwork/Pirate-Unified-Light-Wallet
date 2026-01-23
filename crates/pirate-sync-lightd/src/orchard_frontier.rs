@@ -13,10 +13,7 @@ use incrementalmerkletree::{MerklePath, Position};
 use orchard::tree::MerkleHashOrchard;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use zcash_primitives::{
-    consensus::BlockHeight,
-    sapling::NOTE_COMMITMENT_TREE_DEPTH,
-};
+use zcash_primitives::{consensus::BlockHeight, sapling::NOTE_COMMITMENT_TREE_DEPTH};
 
 use crate::{bridge_tree_codec, Error, Result};
 
@@ -68,7 +65,7 @@ impl OrchardFrontier {
         // Convert commitment bytes to ExtractedNoteCommitment, then to MerkleHashOrchard
         // Use the same cmx -> MerkleHashOrchard conversion as the node.
         use orchard::note::ExtractedNoteCommitment;
-        
+
         let cmx_ct = ExtractedNoteCommitment::from_bytes(&cm);
         let cmx = match cmx_ct.into() {
             Some(c) => c,
@@ -76,14 +73,16 @@ impl OrchardFrontier {
                 return Err(Error::Sync("Invalid commitment bytes".to_string()));
             }
         };
-        
+
         let commitment = MerkleHashOrchard::from_cmx(&cmx);
-        
+
         // Append to tree - returns bool in bridgetree 0.4
         if !self.inner.append(commitment) {
-            return Err(Error::Sync("Orchard note commitment tree is full".to_string()));
+            return Err(Error::Sync(
+                "Orchard note commitment tree is full".to_string(),
+            ));
         }
-        
+
         let position = self.next_position;
         self.next_position = self.next_position.saturating_add(1);
         Ok(position)
@@ -97,9 +96,10 @@ impl OrchardFrontier {
     pub fn mark_position(&mut self) -> Result<Position> {
         // In bridgetree 0.4, mark() returns Position directly (not Result)
         // It marks the current tip (most recently appended)
-        let pos = self.inner.mark().ok_or_else(|| {
-            Error::Sync("Cannot mark: tree is empty".to_string())
-        })?;
+        let pos = self
+            .inner
+            .mark()
+            .ok_or_else(|| Error::Sync("Cannot mark: tree is empty".to_string()))?;
         self.marked_positions.insert(pos, true);
         Ok(pos)
     }
@@ -108,9 +108,12 @@ impl OrchardFrontier {
     ///
     /// Computes the merkle path from the marked position to the current root.
     /// Returns None if the position is not marked or if the tree is empty.
-    pub fn witness(&self, position: u64) -> Result<Option<MerklePath<MerkleHashOrchard, NOTE_COMMITMENT_TREE_DEPTH>>> {
+    pub fn witness(
+        &self,
+        position: u64,
+    ) -> Result<Option<MerklePath<MerkleHashOrchard, NOTE_COMMITMENT_TREE_DEPTH>>> {
         let pos = Position::from(position);
-        
+
         // Check if position is marked
         if !self.marked_positions.contains_key(&pos) {
             return Ok(None);
@@ -119,9 +122,12 @@ impl OrchardFrontier {
         // Get witness from bridge tree
         // Use checkpoint_depth = 0 to get witness from latest checkpoint
         // In bridgetree 0.4, witness() returns Result<Vec<MerkleHashOrchard>, Error>
-        let auth_path = self.inner
-            .witness(pos, 0)
-            .map_err(|e| Error::Sync(format!("Failed to compute witness for position {}: {:?}", position, e)))?;
+        let auth_path = self.inner.witness(pos, 0).map_err(|e| {
+            Error::Sync(format!(
+                "Failed to compute witness for position {}: {:?}",
+                position, e
+            ))
+        })?;
 
         // Create MerklePath from auth_path and position
         // MerklePath::from_parts constructs from authentication path and position
@@ -135,7 +141,9 @@ impl OrchardFrontier {
     pub fn root(&self) -> Option<[u8; 32]> {
         // In bridgetree 0.4, root() returns Option<MerkleHashOrchard>
         // checkpoint_depth = 0 means latest checkpoint
-        self.inner.root(0).map(|root: MerkleHashOrchard| root.to_bytes())
+        self.inner
+            .root(0)
+            .map(|root: MerkleHashOrchard| root.to_bytes())
     }
 
     /// Checkpoint the tree at a specific block height
@@ -185,14 +193,17 @@ impl OrchardFrontier {
     /// This requires calling rewind_one() multiple times.
     pub fn rewind_to_height(&mut self, height: BlockHeight) -> Result<()> {
         if let Some(checkpoint_height) = self.last_checkpoint {
-            if height >= checkpoint_height {
+            if height > checkpoint_height {
                 return Ok(()); // Nothing to rewind
             }
-            
+
             // Calculate how many checkpoints to rewind
-            let blocks_to_rewind = <u32>::from(checkpoint_height) - <u32>::from(height);
+            let mut blocks_to_rewind = <u32>::from(checkpoint_height) - <u32>::from(height);
+            if blocks_to_rewind == 0 {
+                blocks_to_rewind = 1;
+            }
             let checkpoint_count = self.inner.checkpoints().len();
-            
+
             for _ in 0..blocks_to_rewind {
                 if !self.inner.rewind() {
                     // No more checkpoints
@@ -205,20 +216,22 @@ impl OrchardFrontier {
                     break;
                 }
             }
-            
+
             // Update last_checkpoint
             if checkpoint_count > blocks_to_rewind as usize {
                 self.last_checkpoint = Some(height);
             } else {
                 self.last_checkpoint = None;
             }
-            
+
             // Remove marked positions that are after the rewind
             // marked_indices() returns a reference to a collection of marked positions
             // We need to check which positions are still valid
             // In bridgetree 0.4, marked_indices() returns something iterable
-            let marked_indices: BTreeSet<Position> = self.inner.marked_indices().iter().map(|(pos, _)| *pos).collect();
-            self.marked_positions.retain(|&pos, _| marked_indices.contains(&pos));
+            let marked_indices: BTreeSet<Position> =
+                self.inner.marked_indices().keys().copied().collect();
+            self.marked_positions
+                .retain(|&pos, _| marked_indices.contains(&pos));
         }
 
         self.next_position = self
@@ -226,7 +239,7 @@ impl OrchardFrontier {
             .current_position()
             .map(|pos| u64::from(pos) + 1)
             .unwrap_or(0);
-        
+
         Ok(())
     }
 
@@ -279,17 +292,23 @@ impl OrchardFrontier {
     /// Initialize from a frontier (tree state) and reset positions.
     pub fn init_from_frontier(
         &mut self,
-        frontier: incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, NOTE_COMMITMENT_TREE_DEPTH>,
+        frontier: incrementalmerkletree::frontier::Frontier<
+            MerkleHashOrchard,
+            NOTE_COMMITMENT_TREE_DEPTH,
+        >,
     ) {
-        self.inner = frontier
-            .value()
-            .map_or_else(
-                || BridgeTree::new(MAX_CHECKPOINTS),
-                |nonempty_frontier| BridgeTree::from_frontier(MAX_CHECKPOINTS, nonempty_frontier.clone()),
-            );
+        self.inner = frontier.value().map_or_else(
+            || BridgeTree::new(MAX_CHECKPOINTS),
+            |nonempty_frontier| {
+                BridgeTree::from_frontier(MAX_CHECKPOINTS, nonempty_frontier.clone())
+            },
+        );
         self.last_checkpoint = None;
         self.marked_positions.clear();
-        self.next_position = frontier.value().map(|f| u64::from(f.position()) + 1).unwrap_or(0);
+        self.next_position = frontier
+            .value()
+            .map(|f| u64::from(f.position()) + 1)
+            .unwrap_or(0);
     }
 }
 
@@ -368,7 +387,7 @@ mod tests {
             let mut cm = [0u8; 32];
             cm[0] = i;
             let pos = frontier.apply_note_commitment(cm).unwrap();
-            assert_eq!(pos, i);
+            assert_eq!(pos, u64::from(i));
         }
 
         assert_eq!(frontier.tree_size(), 10);
@@ -426,4 +445,3 @@ mod tests {
         assert_eq!(frontier.tree_size(), 10);
     }
 }
-

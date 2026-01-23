@@ -1,11 +1,14 @@
 //! Wallet management
 
-use crate::{Error, Result};
-use crate::keys::{ExtendedSpendingKey, ExtendedFullViewingKey, IncomingViewingKey, PaymentAddress, OrchardExtendedFullViewingKey};
+use crate::keys::{
+    ExtendedFullViewingKey, ExtendedSpendingKey, IncomingViewingKey, OrchardExtendedFullViewingKey,
+    PaymentAddress,
+};
 use crate::notes::Note;
+use crate::{Error, Result};
+use hex;
 use orchard::keys::IncomingViewingKey as OrchardIncomingViewingKey;
 use pirate_params::Network;
-use hex;
 
 /// Wallet type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,14 +41,15 @@ impl Wallet {
             0,
         )?;
         let viewing_key = spending_key.to_extended_fvk();
-        
+
         // Derive Orchard keys from the same seed
         // Get seed bytes from mnemonic (same as used for Sapling)
-        let seed_bytes = crate::keys::ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic, passphrase)?;
+        let seed_bytes =
+            crate::keys::ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic, passphrase)?;
         let orchard_master = crate::keys::OrchardExtendedSpendingKey::master(&seed_bytes)?;
         let orchard_extsk = orchard_master.derive_account(network.coin_type, 0)?;
         let orchard_viewing_key = orchard_extsk.to_extended_fvk();
-        
+
         Ok(Self {
             wallet_type: WalletType::Full,
             spending_key: Some(spending_key),
@@ -76,7 +80,8 @@ impl Wallet {
 
         if sapling_ivk.is_none() && orchard_ivk.is_none() {
             return Err(Error::InvalidKey(
-                "Invalid viewing key format - must be Sapling xFVK or Orchard extended viewing key".to_string(),
+                "Invalid viewing key format - must be Sapling xFVK or Orchard extended viewing key"
+                    .to_string(),
             ));
         }
 
@@ -90,7 +95,7 @@ impl Wallet {
             notes: Vec::new(),
         })
     }
-    
+
     /// Create from both Sapling and Orchard viewing keys (watch-only wallet).
     pub fn from_ivks(sapling_ivk: Option<&str>, orchard_ivk: Option<&str>) -> Result<Self> {
         let mut sapling_viewing_key = None;
@@ -108,9 +113,11 @@ impl Wallet {
             orchard_viewing_key = fvk;
             orchard = Some(ivk);
         }
-        
+
         if sapling.is_none() && orchard.is_none() {
-            return Err(Error::InvalidKey("At least one viewing key (Sapling or Orchard) must be provided".to_string()));
+            return Err(Error::InvalidKey(
+                "At least one viewing key (Sapling or Orchard) must be provided".to_string(),
+            ));
         }
 
         Ok(Self {
@@ -143,12 +150,12 @@ impl Wallet {
     pub fn incoming_ivk(&self) -> Option<&IncomingViewingKey> {
         self.incoming_ivk.as_ref()
     }
-    
+
     /// Get the wallet's Orchard incoming viewing key (IVK), if this is a watch-only wallet.
     pub fn orchard_incoming_ivk(&self) -> Option<&OrchardIncomingViewingKey> {
         self.orchard_incoming_ivk.as_ref()
     }
-    
+
     /// Get the wallet's Orchard viewing key, if available.
     pub fn orchard_viewing_key(&self) -> Option<&OrchardExtendedFullViewingKey> {
         self.orchard_viewing_key.as_ref()
@@ -171,9 +178,9 @@ impl Wallet {
                 .to_ivk_string()
         }
     }
-    
+
     /// Export Orchard Extended Full Viewing Key as Bech32 (for watch-only wallets)
-    /// 
+    ///
     /// Returns Bech32-encoded string with "pirate-extended-viewing-key" HRP.
     /// Uses the standard Orchard viewing key Bech32 format.
     pub fn export_orchard_viewing_key(&self) -> Option<String> {
@@ -183,21 +190,21 @@ impl Wallet {
             None
         }
     }
-    
+
     /// Export Orchard IVK (returns hex-encoded 64 bytes) - DEPRECATED
-    /// 
+    ///
     /// Use export_orchard_viewing_key() instead for watch-only wallets.
     /// This method is kept for backward compatibility.
     #[deprecated(note = "Use export_orchard_viewing_key() instead")]
     pub fn export_orchard_ivk(&self) -> Option<String> {
-        if let Some(ivk) = self.orchard_incoming_ivk.as_ref() {
-            Some(hex::encode(ivk.to_bytes()))
-        } else if let Some(fvk) = self.orchard_viewing_key.as_ref() {
-            // Full wallet - derive IVK from viewing key
-            Some(hex::encode(fvk.to_ivk_bytes()))
-        } else {
-            None
-        }
+        self.orchard_incoming_ivk
+            .as_ref()
+            .map(|ivk| hex::encode(ivk.to_bytes()))
+            .or_else(|| {
+                self.orchard_viewing_key
+                    .as_ref()
+                    .map(|fvk| hex::encode(fvk.to_ivk_bytes()))
+            })
     }
 
     /// Get default address
@@ -217,7 +224,11 @@ impl Wallet {
 
     /// Get balance
     pub fn balance(&self) -> u64 {
-        self.notes.iter().filter(|n| !n.spent).map(|n| n.value).sum()
+        self.notes
+            .iter()
+            .filter(|n| !n.spent)
+            .map(|n| n.value)
+            .sum()
     }
 
     /// Add note
@@ -241,7 +252,10 @@ fn parse_sapling_watch_key(
 
 fn parse_orchard_watch_key(
     value: &str,
-) -> Result<(Option<OrchardExtendedFullViewingKey>, OrchardIncomingViewingKey)> {
+) -> Result<(
+    Option<OrchardExtendedFullViewingKey>,
+    OrchardIncomingViewingKey,
+)> {
     if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bech32_any(value) {
         let ivk_bytes = fvk.to_ivk_bytes();
         let ivk_ct = OrchardIncomingViewingKey::from_bytes(&ivk_bytes);
@@ -254,4 +268,3 @@ fn parse_orchard_watch_key(
         "Invalid Orchard viewing key format (expected extended viewing key)".to_string(),
     ))
 }
-

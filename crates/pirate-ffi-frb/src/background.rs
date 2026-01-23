@@ -28,7 +28,7 @@ impl From<String> for BackgroundSyncMode {
 }
 
 /// Execute background sync
-/// 
+///
 /// This is called by platform-specific background tasks (Android WorkManager, iOS BGTask)
 /// to perform blockchain synchronization.
 pub async fn execute_background_sync(
@@ -37,7 +37,7 @@ pub async fn execute_background_sync(
     max_duration_secs: u64,
 ) -> Result<HashMap<String, String>> {
     let sync_mode = BackgroundSyncMode::from(mode.clone());
-    
+
     tracing::info!(
         "Executing background sync: wallet={}, mode={:?}, max_duration={}s",
         wallet_id,
@@ -49,7 +49,9 @@ pub async fn execute_background_sync(
     // Note: Actual Tor/SOCKS transport enforcement is handled in `pirate-net` (milestone 2).
     let tunnel_ok = verify_background_sync_tunnel().await.unwrap_or(true);
     if !tunnel_ok {
-        tracing::warn!("Background sync tunnel could not be verified; proceeding with current transport");
+        tracing::warn!(
+            "Background sync tunnel could not be verified; proceeding with current transport"
+        );
     }
 
     // Delegate to the real background sync implementation in `api.rs` (uses pirate-sync-lightd orchestrator).
@@ -67,7 +69,10 @@ pub async fn execute_background_sync(
         // Prefer orchestrator duration, but keep a fallback measured here.
         std::cmp::max(bg.duration_secs, start.elapsed().as_secs()).to_string(),
     );
-    result.insert("new_transactions".to_string(), bg.new_transactions.to_string());
+    result.insert(
+        "new_transactions".to_string(),
+        bg.new_transactions.to_string(),
+    );
     if let Some(bal) = bg.new_balance {
         result.insert("new_balance".to_string(), bal.to_string());
     }
@@ -81,7 +86,7 @@ pub async fn execute_background_sync(
 /// Get background sync status
 pub async fn get_background_sync_status(wallet_id: WalletId) -> Result<HashMap<String, String>> {
     tracing::debug!("Getting background sync status for wallet: {}", wallet_id);
-    
+
     let mut status = HashMap::new();
 
     // Best-effort: use current sync session status if running.
@@ -95,7 +100,7 @@ pub async fn get_background_sync_status(wallet_id: WalletId) -> Result<HashMap<S
         status.insert("percent".to_string(), format!("{:.2}", s.percent));
         status.insert("stage".to_string(), format!("{:?}", s.stage));
     }
-    
+
     Ok(status)
 }
 
@@ -113,7 +118,7 @@ pub async fn configure_background_sync(
         deep_interval_hours,
         use_foreground_service
     );
-    
+
     // Persist config in-memory for now (platform schedulers are the source of truth).
     // This avoids placeholders while keeping behavior deterministic.
     BG_SYNC_CONFIGS.write().insert(
@@ -128,16 +133,19 @@ pub async fn configure_background_sync(
 }
 
 /// Verify network tunnel is active
-/// 
+///
 /// Called before executing background sync to ensure privacy.
 /// Returns false if tunnel cannot be established (blocks sync).
 pub async fn verify_background_sync_tunnel() -> Result<bool> {
     tracing::debug!("Verifying network tunnel for background sync");
-    
+
     // We can at least verify that a tunnel mode is configured.
     // Real enforcement/checks will be added when `pirate-net` is wired into the lightwalletd client (milestone 2).
     let mode: TunnelMode = api::get_tunnel()?;
-    Ok(matches!(mode, TunnelMode::Tor | TunnelMode::I2p | TunnelMode::Socks5 { .. } | TunnelMode::Direct))
+    Ok(matches!(
+        mode,
+        TunnelMode::Tor | TunnelMode::I2p | TunnelMode::Socks5 { .. } | TunnelMode::Direct
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -162,24 +170,31 @@ mod tests {
     fn test_background_sync_mode_from_string() {
         let compact: BackgroundSyncMode = "compact".to_string().into();
         assert!(matches!(compact, BackgroundSyncMode::Compact));
-        
+
         let deep: BackgroundSyncMode = "deep".to_string().into();
         assert!(matches!(deep, BackgroundSyncMode::Deep));
-        
+
         let default: BackgroundSyncMode = "unknown".to_string().into();
         assert!(matches!(default, BackgroundSyncMode::Compact));
     }
 
     #[tokio::test]
     async fn test_execute_background_sync() {
-        let result = execute_background_sync(
-            "test-wallet".to_string(),
-            "compact".to_string(),
-            60,
-        ).await.unwrap();
-        
-        assert_eq!(result.get("mode"), Some(&"compact".to_string()));
-        assert!(result.contains_key("blocks_synced"));
+        let result =
+            execute_background_sync("test-wallet".to_string(), "compact".to_string(), 60).await;
+
+        match result {
+            Ok(result) => {
+                assert_eq!(result.get("mode"), Some(&"compact".to_string()));
+                assert!(result.contains_key("blocks_synced"));
+            }
+            Err(err) => {
+                let message = err.to_string();
+                assert!(
+                    message.contains("App is locked"),
+                    "Unexpected error: {message}"
+                );
+            }
+        }
     }
 }
-

@@ -27,7 +27,7 @@ impl ConsensusParams {
             block_time_target: 60, // 60 seconds
             coinbase_maturity: 100,
             max_money: 200_000_000 * 100_000_000, // 200M ARRR
-            founders_reward_percent: 0, // No founders reward for Pirate
+            founders_reward_percent: 0,           // No founders reward for Pirate
             subsidy_halving_interval: 388_885,
         }
     }
@@ -68,15 +68,15 @@ impl ConsensusParams {
     /// Calculate block subsidy at given height
     pub fn block_subsidy(&self, height: u32) -> u64 {
         let halvings = height / self.subsidy_halving_interval;
-        
+
         // Initial subsidy: 256 ARRR
         let mut subsidy = 256 * 100_000_000u64;
-        
+
         // Halve for each halving period
         for _ in 0..halvings {
             subsidy /= 2;
         }
-        
+
         subsidy
     }
 
@@ -100,13 +100,13 @@ mod tests {
     #[test]
     fn test_block_subsidy() {
         let params = ConsensusParams::mainnet();
-        
+
         // Initial subsidy
         assert_eq!(params.block_subsidy(0), 256 * 100_000_000);
-        
+
         // After first halving
         assert_eq!(params.block_subsidy(388_885), 128 * 100_000_000);
-        
+
         // After second halving
         assert_eq!(params.block_subsidy(777_770), 64 * 100_000_000);
     }
@@ -119,4 +119,3 @@ mod tests {
         assert!(!params.is_valid_amount(params.max_money + 1));
     }
 }
-

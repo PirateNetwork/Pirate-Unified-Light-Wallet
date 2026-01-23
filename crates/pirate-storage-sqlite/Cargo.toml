@@ -6,6 +6,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+native-keystore = []
+
 [dependencies]
 pirate-core = { path = "../pirate-core" }
 pirate-params = { path = "../pirate-params" }

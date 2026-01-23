@@ -1,9 +1,10 @@
 //! Orchard trial decryption using zcash_note_encryption
-//! 
+//!
 //! References node Orchard trial decryption logic.
 //! - pirate/src/rust/src/orchard_actions.rs (try_orchard_decrypt_action_ivk)
 //! - Uses zcash_note_encryption::try_note_decryption with OrchardDomain
 
+use crate::{client::CompactOrchardAction, Error};
 use orchard::{
     keys::{IncomingViewingKey, PreparedIncomingViewingKey},
     note::{ExtractedNoteCommitment, Nullifier},
@@ -12,7 +13,6 @@ use orchard::{
     Action as OrchardAction,
 };
 use zcash_note_encryption::{try_compact_note_decryption, try_note_decryption, EphemeralKeyBytes};
-use crate::{Error, client::CompactOrchardAction};
 
 /// Decrypted Orchard note data
 pub struct DecryptedOrchardNote {
@@ -48,32 +48,32 @@ pub fn try_decrypt_orchard_action(
         return Err(Error::Sync("Invalid Orchard IVK bytes".to_string()));
     }
     let ivk = ivk_ct.unwrap();
-    
+
     let prepared_ivk = PreparedIncomingViewingKey::new(&ivk);
-    
+
     // Create the Orchard domain for this action.
     let domain = OrchardDomain::for_action(action);
-    
+
     // Use zcash_note_encryption::try_note_decryption.
     // Full node signature: try_note_decryption(&domain, &prepared_ivk, action)
     match try_note_decryption(&domain, &prepared_ivk, action) {
         Some((note, payment_address, memo_bytes)) => {
             // Extract value
             let value = note.value().inner();
-            
+
             // Extract address (43 bytes)
             let address = payment_address.to_raw_address_bytes();
-            
+
             // Extract memo (512 bytes)
             let mut memo = [0u8; 512];
             memo.copy_from_slice(&memo_bytes[..512]);
-            
+
             // Extract rho (32 bytes)
             let rho = note.rho().to_bytes();
-            
+
             // Extract rseed (32 bytes)
             let rseed = *note.rseed().as_bytes();
-            
+
             Ok(Some(DecryptedOrchardNote {
                 value,
                 address,

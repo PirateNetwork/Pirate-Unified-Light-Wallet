@@ -47,9 +47,7 @@ impl SaplingAddress {
 
         // Basic length check (Sapling addresses are typically 78 characters)
         if self.address.len() < 70 || self.address.len() > 85 {
-            return Err(Error::InvalidAddress(
-                "Invalid address length".to_string(),
-            ));
+            return Err(Error::InvalidAddress("Invalid address length".to_string()));
         }
 
         Ok(())
@@ -227,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_address_manager_fresh_addresses() {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
+        let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
         let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap();
         let fvk = sk.to_extended_fvk();
 
@@ -248,7 +246,10 @@ mod tests {
 
     #[test]
     fn test_address_labeling() {
-        let mut manager = AddressManager::new();
+        let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
+        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap();
+        let fvk = sk.to_extended_fvk();
+        let mut manager = AddressManager::new_with_viewing_key(fvk);
 
         let addr = manager.generate_fresh_address().unwrap();
         manager
@@ -276,7 +277,10 @@ mod tests {
 
     #[test]
     fn test_list_addresses() {
-        let mut manager = AddressManager::new();
+        let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
+        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap();
+        let fvk = sk.to_extended_fvk();
+        let mut manager = AddressManager::new_with_viewing_key(fvk);
 
         manager.generate_fresh_address().unwrap();
         manager.generate_fresh_address().unwrap();
@@ -287,9 +291,7 @@ mod tests {
 
         // Should be sorted by diversifier index
         for i in 1..addrs.len() {
-            assert!(
-                addrs[i - 1].diversifier_index.as_u32() < addrs[i].diversifier_index.as_u32()
-            );
+            assert!(addrs[i - 1].diversifier_index.as_u32() < addrs[i].diversifier_index.as_u32());
         }
     }
 
@@ -302,4 +304,3 @@ mod tests {
         assert!(invalid_prefix.validate().is_err());
     }
 }
-

@@ -2,7 +2,10 @@
 //!
 //! Tests proving traffic enforcement and privacy guarantees.
 
-use pirate_net::{TransportManager, TransportConfig, TransportMode, Socks5Config, DnsConfig, DnsProvider, TorConfig, I2pConfig};
+use pirate_net::{
+    DnsConfig, DnsProvider, I2pConfig, Socks5Config, TorConfig, TransportConfig, TransportManager,
+    TransportMode,
+};
 
 #[tokio::test]
 async fn test_tor_mode_requires_tor_client() {
@@ -22,9 +25,15 @@ async fn test_tor_mode_requires_tor_client() {
 
     // Attempt to create HTTP client should fail
     let result = manager.create_http_client().await;
-    
-    assert!(result.is_err(), "Should fail when Tor is required but not initialized");
-    assert!(result.unwrap_err().to_string().contains("Tor client not initialized"));
+
+    assert!(
+        result.is_err(),
+        "Should fail when Tor is required but not initialized"
+    );
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Tor client not initialized"));
 }
 
 #[tokio::test]
@@ -42,9 +51,15 @@ async fn test_socks5_mode_requires_config() {
 
     // Should fail without SOCKS5 config
     let result = manager.create_http_client().await;
-    
-    assert!(result.is_err(), "Should fail when SOCKS5 config not provided");
-    assert!(result.unwrap_err().to_string().contains("SOCKS5 config not provided"));
+
+    assert!(
+        result.is_err(),
+        "Should fail when SOCKS5 config not provided"
+    );
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("SOCKS5 config not provided"));
 }
 
 #[tokio::test]
@@ -85,7 +100,10 @@ async fn test_direct_mode_creates_client() {
 
     // Direct mode should always succeed (but not private!)
     let client = manager.create_http_client().await;
-    assert!(client.is_ok(), "Direct mode should create client without proxy");
+    assert!(
+        client.is_ok(),
+        "Direct mode should create client without proxy"
+    );
 }
 
 #[tokio::test]
@@ -114,7 +132,10 @@ async fn test_privacy_status() {
         ..Default::default()
     };
     let socks5_manager = TransportManager::new(socks5_config).await.unwrap();
-    assert!(socks5_manager.is_private().await, "SOCKS5 should be private");
+    assert!(
+        socks5_manager.is_private().await,
+        "SOCKS5 should be private"
+    );
 
     // I2P mode is private
     let i2p_config = TransportConfig {
@@ -134,7 +155,10 @@ async fn test_privacy_status() {
         ..Default::default()
     };
     let direct_manager = TransportManager::new(direct_config).await.unwrap();
-    assert!(!direct_manager.is_private().await, "Direct should NOT be private");
+    assert!(
+        !direct_manager.is_private().await,
+        "Direct should NOT be private"
+    );
 }
 
 #[tokio::test]
@@ -146,9 +170,12 @@ async fn test_dns_tunneling() {
     };
 
     let resolver = pirate_net::DnsResolver::new(config);
-    
+
     // Verify DNS is configured for tunneling
-    assert!(resolver.is_tunneled(), "DNS should be configured for tunneling");
+    assert!(
+        resolver.is_tunneled(),
+        "DNS should be configured for tunneling"
+    );
 }
 
 #[tokio::test]
@@ -157,7 +184,7 @@ async fn test_dns_privacy_status() {
     assert!(DnsProvider::CloudflareDoH.is_private());
     assert!(DnsProvider::Quad9DoH.is_private());
     assert!(DnsProvider::GoogleDoH.is_private());
-    
+
     // System DNS is NOT private
     assert!(!DnsProvider::System.is_private());
 }
@@ -176,4 +203,3 @@ fn test_dns_provider_names() {
     assert_eq!(DnsProvider::Quad9DoH.name(), "Quad9 (9.9.9.9)");
     assert_eq!(DnsProvider::System.name(), "System (Not Private)");
 }
-

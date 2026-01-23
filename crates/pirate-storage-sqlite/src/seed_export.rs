@@ -13,10 +13,10 @@
 
 #![allow(missing_docs)]
 
-use crate::{Error, Result};
+use crate::screenshot_guard::{ProtectionReason, ScreenshotGuard};
+use crate::secure_clipboard::{ClipboardDataType, SecureClipboard};
 use crate::security::AppPassphrase;
-use crate::screenshot_guard::{ScreenshotGuard, ProtectionReason};
-use crate::secure_clipboard::{SecureClipboard, ClipboardDataType};
+use crate::{Error, Result};
 use zeroize::Zeroizing;
 
 /// Export flow state
@@ -197,7 +197,7 @@ impl SeedExportManager {
         }
 
         *state = ExportFlowState::AwaitingBiometric;
-        
+
         tracing::info!("Seed export warning acknowledged");
         Ok(*state)
     }
@@ -221,7 +221,7 @@ impl SeedExportManager {
         }
 
         *state = ExportFlowState::AwaitingPassphrase;
-        
+
         tracing::info!("Seed export biometric step completed");
         Ok(*state)
     }
@@ -249,9 +249,13 @@ impl SeedExportManager {
     }
 
     /// Complete export with verified passphrase
-    pub fn complete_export(&self, passphrase: &str, seed_words: Vec<String>) -> Result<SeedExportResult> {
+    pub fn complete_export(
+        &self,
+        passphrase: &str,
+        seed_words: Vec<String>,
+    ) -> Result<SeedExportResult> {
         let verified = self.verify_passphrase(passphrase)?;
-        
+
         if !verified {
             return Err(Error::Security("Invalid passphrase".to_string()));
         }
@@ -259,7 +263,8 @@ impl SeedExportManager {
         let mut state = self.state.write().unwrap();
         let request = self.request.read().unwrap();
 
-        let wallet_id = request.as_ref()
+        let wallet_id = request
+            .as_ref()
             .map(|r| r.wallet_id.clone())
             .unwrap_or_default();
 
@@ -280,7 +285,8 @@ impl SeedExportManager {
         let mut state = self.state.write().unwrap();
         let request = self.request.read().unwrap();
 
-        let wallet_id = request.as_ref()
+        let wallet_id = request
+            .as_ref()
             .map(|r| r.wallet_id.clone())
             .unwrap_or_default();
 
@@ -295,7 +301,8 @@ impl SeedExportManager {
     /// Copy seed to clipboard with auto-clear
     pub fn copy_to_clipboard(&self, seed: &SeedExportResult) -> Zeroizing<String> {
         let seed_string = seed.as_string();
-        self.clipboard.prepare_copy_sensitive(&seed_string, ClipboardDataType::SeedPhrase)
+        self.clipboard
+            .prepare_copy_sensitive(&seed_string, ClipboardDataType::SeedPhrase)
     }
 
     /// Get clipboard remaining time
@@ -345,24 +352,21 @@ impl Default for SeedExportManager {
 /// Warning messages for export flow
 pub mod warnings {
     /// Primary warning message
-    pub const PRIMARY_WARNING: &str = 
-        "Your seed phrase is the ONLY way to recover your wallet. \
+    pub const PRIMARY_WARNING: &str = "Your seed phrase is the ONLY way to recover your wallet. \
          Anyone with access to these words can steal all your funds.";
 
     /// Secondary warning
-    pub const SECONDARY_WARNING: &str = 
-        "Never share your seed phrase with anyone. \
+    pub const SECONDARY_WARNING: &str = "Never share your seed phrase with anyone. \
          Never enter it on any website. \
          Never store it digitally in an unencrypted format.";
 
     /// Backup instructions
-    pub const BACKUP_INSTRUCTIONS: &str = 
+    pub const BACKUP_INSTRUCTIONS: &str =
         "Write down these 24 words on paper and store them in a secure location. \
          Consider using a metal backup for fire/water resistance.";
 
     /// Clipboard warning
-    pub const CLIPBOARD_WARNING: &str = 
-        "The seed phrase has been copied to your clipboard. \
+    pub const CLIPBOARD_WARNING: &str = "The seed phrase has been copied to your clipboard. \
          It will be automatically cleared in 10 seconds for security.";
 }
 
@@ -419,7 +423,7 @@ mod tests {
     fn test_export_cancellation() {
         let manager = SeedExportManager::new();
         manager.start_export("wallet_123".to_string()).unwrap();
-        
+
         manager.cancel();
         assert_eq!(manager.state(), ExportFlowState::Cancelled);
     }
@@ -431,13 +435,13 @@ mod tests {
             "abandon".to_string(),
             "abandon".to_string(),
         ];
-        
+
         let result = SeedExportResult::new(words, "test".to_string());
         assert_eq!(result.word_count(), 3);
-        
+
         let seed_string = result.as_string();
         assert_eq!(&*seed_string, "abandon abandon abandon");
-        
+
         // Result will be zeroized on drop
     }
 
@@ -453,4 +457,3 @@ mod tests {
         assert!(request.is_ready_for_passphrase());
     }
 }
-

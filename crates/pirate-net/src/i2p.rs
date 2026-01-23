@@ -2,15 +2,15 @@
 //!
 //! Provides an embedded I2P router process with ephemeral identities.
 
-use crate::{Error, Result, Socks5Config};
 use crate::debug_log::log_debug_event;
+use crate::{Error, Result, Socks5Config};
 use directories::ProjectDirs;
 use std::env;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -135,11 +135,7 @@ fn find_i2pd_binary() -> Option<PathBuf> {
         }
     }
 
-    log_debug_event(
-        "i2p.rs:find_i2pd_binary",
-        "i2p_bin_missing",
-        "bin=i2pd",
-    );
+    log_debug_event("i2p.rs:find_i2pd_binary", "i2p_bin_missing", "bin=i2pd");
     None
 }
 
@@ -209,8 +205,14 @@ impl I2pClient {
 
     /// Start the embedded router and wait for SOCKS readiness
     pub async fn start(self) -> Result<()> {
-        if !cfg!(any(target_os = "windows", target_os = "macos", target_os = "linux")) {
-            return Err(Error::Network("I2P is only supported on desktop".to_string()));
+        if !cfg!(any(
+            target_os = "windows",
+            target_os = "macos",
+            target_os = "linux"
+        )) {
+            return Err(Error::Network(
+                "I2P is only supported on desktop".to_string(),
+            ));
         }
 
         let _guard = self.start_lock.clone().lock_owned().await;
@@ -254,7 +256,11 @@ impl I2pClient {
         );
 
         let data_dir = prepare_data_dir(&config)?;
-        *self.ephemeral_dir.lock().await = if config.ephemeral { Some(data_dir.clone()) } else { None };
+        *self.ephemeral_dir.lock().await = if config.ephemeral {
+            Some(data_dir.clone())
+        } else {
+            None
+        };
 
         let binary = if let Some(path) = config.binary_path.clone() {
             if path.is_file() {

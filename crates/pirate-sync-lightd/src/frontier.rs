@@ -15,7 +15,7 @@ use zcash_primitives::{
 use crate::{bridge_tree_codec, Error, Result};
 
 /// Sapling note commitment tree depth (same as in Zcash/Pirate).
-pub const SAPLING_TREE_DEPTH: u8 = NOTE_COMMITMENT_TREE_DEPTH as u8;
+pub const SAPLING_TREE_DEPTH: u8 = NOTE_COMMITMENT_TREE_DEPTH;
 /// Maximum number of checkpoints to retain for the Sapling witness tree.
 pub const MAX_CHECKPOINTS: usize = 100;
 
@@ -69,14 +69,16 @@ impl SaplingFrontier {
 
     /// Get the current tree position (number of leaves - 1, or None if empty).
     pub fn position(&self) -> Option<u64> {
-        self.inner.current_position().map(|pos| u64::from(pos))
+        self.inner.current_position().map(u64::from)
     }
 
     /// Apply a note commitment to the frontier.
     pub fn apply_note_commitment(&mut self, cmu: [u8; 32]) -> Result<()> {
         let commitment = commitment_from_cmu_bytes(cmu)?;
         if !self.inner.append(commitment) {
-            return Err(Error::Sync("Sapling note commitment tree is full".to_string()));
+            return Err(Error::Sync(
+                "Sapling note commitment tree is full".to_string(),
+            ));
         }
         Ok(())
     }
@@ -84,11 +86,7 @@ impl SaplingFrontier {
     /// Apply a note commitment and return the new leaf position.
     pub fn apply_note_commitment_with_position(&mut self, cmu: [u8; 32]) -> Result<u64> {
         self.apply_note_commitment(cmu)?;
-        let position = self
-            .inner
-            .current_position()
-            .map(u64::from)
-            .unwrap_or(0);
+        let position = self.inner.current_position().map(u64::from).unwrap_or(0);
         Ok(position)
     }
 
@@ -107,7 +105,10 @@ impl SaplingFrontier {
         }
 
         let auth_path = self.inner.witness(pos, 0).map_err(|e| {
-            Error::Sync(format!("Failed to compute Sapling witness for {}: {:?}", position, e))
+            Error::Sync(format!(
+                "Failed to compute Sapling witness for {}: {:?}",
+                position, e
+            ))
         })?;
 
         let merkle_path = MerklePath::from_parts(auth_path, pos)
@@ -137,11 +138,15 @@ impl SaplingFrontier {
     /// Deserialize frontier from bytes.
     pub fn deserialize(bytes: &[u8]) -> Result<Self> {
         if bytes.starts_with(&SAPLING_BRIDGETREE_MAGIC) {
-            let tree = bridge_tree_codec::deserialize_bridge_tree(&bytes[SAPLING_BRIDGETREE_MAGIC.len()..])?;
+            let tree = bridge_tree_codec::deserialize_bridge_tree(
+                &bytes[SAPLING_BRIDGETREE_MAGIC.len()..],
+            )?;
             return Ok(Self { inner: tree });
         }
         if bytes.starts_with(b"SBT1") {
-            return Err(Error::Sync("Unsupported Sapling frontier snapshot version".to_string()));
+            return Err(Error::Sync(
+                "Unsupported Sapling frontier snapshot version".to_string(),
+            ));
         }
 
         Self::read_from_legacy(&mut &bytes[..])
@@ -260,10 +265,10 @@ impl FrontierSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bls12_381::Scalar;
+    use jubjub::Fr;
 
     fn valid_cmu(seed: u64) -> [u8; 32] {
-        Scalar::from(seed + 1).to_repr()
+        Fr::from(seed + 1).to_bytes()
     }
 
     #[test]

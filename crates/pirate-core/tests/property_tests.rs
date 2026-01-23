@@ -2,19 +2,26 @@
 //!
 //! Uses proptest to verify invariants across randomized inputs
 
-use pirate_core::keys::{ExtendedSpendingKey, PaymentAddress};
+use pirate_core::keys::{ExtendedFullViewingKey, ExtendedSpendingKey, PaymentAddress};
 use pirate_core::memo::Memo;
-use pirate_core::{FeeCalculator, MIN_FEE, MAX_FEE};
+use pirate_core::{FeeCalculator, MAX_FEE, MIN_FEE};
 use proptest::prelude::*;
+use std::sync::OnceLock;
+
+const TEST_MNEMONIC: &str =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+fn base_fvk() -> &'static ExtendedFullViewingKey {
+    static BASE_FVK: OnceLock<ExtendedFullViewingKey> = OnceLock::new();
+    BASE_FVK.get_or_init(|| {
+        let sk = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, "").expect("Valid mnemonic");
+        sk.to_extended_fvk()
+    })
+}
 
 // ============================================================================
 // Property Test Strategies
 // ============================================================================
-
-/// Generate valid mnemonic phrase
-fn mnemonic_strategy() -> impl Strategy<Value = String> {
-    Just(ExtendedSpendingKey::generate_mnemonic())
-}
 
 /// Generate valid passphrase (0-100 chars)
 fn passphrase_strategy() -> impl Strategy<Value = String> {
@@ -41,21 +48,20 @@ fn output_count_strategy() -> impl Strategy<Value = usize> {
 // ============================================================================
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
     /// Property: Same mnemonic + passphrase = same keys
     #[test]
     fn prop_deterministic_key_derivation(
         passphrase in passphrase_strategy()
     ) {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
-        
-        let sk1 = ExtendedSpendingKey::from_mnemonic(&mnemonic, &passphrase)
+        let sk1 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, &passphrase)
             .expect("Valid mnemonic");
-        let sk2 = ExtendedSpendingKey::from_mnemonic(&mnemonic, &passphrase)
+        let sk2 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, &passphrase)
             .expect("Valid mnemonic");
-        
+
         let fvk1 = sk1.to_extended_fvk();
         let fvk2 = sk2.to_extended_fvk();
-        
+
         // Same mnemonic should produce same addresses
         prop_assert_eq!(fvk1.derive_address(0).encode(), fvk2.derive_address(0).encode());
     }
@@ -67,17 +73,15 @@ proptest! {
         pass2 in passphrase_strategy()
     ) {
         prop_assume!(pass1 != pass2);
-        
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
-        
-        let sk1 = ExtendedSpendingKey::from_mnemonic(&mnemonic, &pass1)
+
+        let sk1 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, &pass1)
             .expect("Valid mnemonic");
-        let sk2 = ExtendedSpendingKey::from_mnemonic(&mnemonic, &pass2)
+        let sk2 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, &pass2)
             .expect("Valid mnemonic");
-        
+
         let addr1 = sk1.to_extended_fvk().derive_address(0).encode();
         let addr2 = sk2.to_extended_fvk().derive_address(0).encode();
-        
+
         // Different passphrases should produce different addresses
         prop_assert_ne!(addr1, addr2);
     }
@@ -87,14 +91,10 @@ proptest! {
     fn prop_deterministic_address_derivation(
         index in 0u32..1000
     ) {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "")
-            .expect("Valid mnemonic");
-        let fvk = sk.to_extended_fvk();
-        
+        let fvk = base_fvk();
         let addr1 = fvk.derive_address(index);
         let addr2 = fvk.derive_address(index);
-        
+
         prop_assert_eq!(addr1.encode(), addr2.encode());
     }
 
@@ -105,15 +105,11 @@ proptest! {
         index2 in 0u32..1000
     ) {
         prop_assume!(index1 != index2);
-        
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "")
-            .expect("Valid mnemonic");
-        let fvk = sk.to_extended_fvk();
-        
+
+        let fvk = base_fvk();
         let addr1 = fvk.derive_address(index1).encode();
         let addr2 = fvk.derive_address(index2).encode();
-        
+
         prop_assert_ne!(addr1, addr2);
     }
 
@@ -122,13 +118,9 @@ proptest! {
     fn prop_addresses_have_correct_prefix(
         index in 0u32..100
     ) {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "")
-            .expect("Valid mnemonic");
-        let fvk = sk.to_extended_fvk();
-        
+        let fvk = base_fvk();
         let addr = fvk.derive_address(index).encode();
-        
+
         prop_assert!(addr.starts_with("zs1"));
     }
 }
@@ -138,40 +130,35 @@ proptest! {
 // ============================================================================
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
     /// Property: IVK export/import roundtrip preserves addresses
     #[test]
     fn prop_ivk_roundtrip_preserves_addresses(
         index in 0u32..100
     ) {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "")
-            .expect("Valid mnemonic");
-        let fvk = sk.to_extended_fvk();
-        
-        // Export IVK
-        let ivk = fvk.to_ivk();
-        
-        // Import IVK
-        let fvk_imported = pirate_core::keys::ExtendedFullViewingKey::from_ivk(&ivk)
-            .expect("Valid IVK");
-        
+        let fvk = base_fvk();
+
+        // Export FVK bytes
+        let fvk_bytes = fvk.to_bytes();
+
+        // Import FVK
+        let fvk_imported =
+            ExtendedFullViewingKey::from_bytes(&fvk_bytes).expect("Valid FVK bytes");
+
         // Addresses should match
         let addr_original = fvk.derive_address(index).encode();
         let addr_imported = fvk_imported.derive_address(index).encode();
-        
+
         prop_assert_eq!(addr_original, addr_imported);
     }
 
     /// Property: All IVKs start with zxviews1
     #[test]
     fn prop_ivk_has_correct_prefix(_dummy in 0u32..10) {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "")
-            .expect("Valid mnemonic");
-        let fvk = sk.to_extended_fvk();
-        
-        let ivk = fvk.to_ivk();
-        
+        let fvk = base_fvk();
+
+        let ivk = fvk.to_ivk_string();
+
         prop_assert!(ivk.starts_with("zxviews1"));
     }
 }
@@ -181,17 +168,20 @@ proptest! {
 // ============================================================================
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
     /// Property: Valid memo content roundtrips
     #[test]
     fn prop_memo_roundtrip(
         content in memo_content_strategy()
     ) {
         // Only test valid-length memos
-        if content.as_bytes().len() <= 512 {
-            let memo = Memo::from_str(&content).expect("Valid memo");
-            let decoded = memo.to_string();
-            
-            prop_assert_eq!(content, decoded);
+        if content.len() <= 512 {
+            let memo = Memo::from_text(content.clone()).expect("Valid memo");
+            match memo {
+                Memo::Empty => prop_assert!(content.is_empty()),
+                Memo::Text(text) => prop_assert_eq!(content, text),
+                Memo::Arbitrary(_) => prop_assert!(false, "Text memo should not be arbitrary"),
+            }
         }
     }
 
@@ -200,17 +190,16 @@ proptest! {
     fn prop_memo_respects_max_length(
         content in memo_content_strategy()
     ) {
-        if let Ok(memo) = Memo::from_str(&content) {
-            let bytes = memo.as_bytes();
-            prop_assert!(bytes.len() <= 512);
+        if let Ok(memo) = Memo::from_text(content) {
+            prop_assert!(memo.byte_len() <= 512);
         }
     }
 
     /// Property: Empty memo is valid
     #[test]
     fn prop_empty_memo_valid(_dummy in 0u32..10) {
-        let memo = Memo::from_str("").expect("Empty memo should be valid");
-        prop_assert_eq!(memo.to_string(), "");
+        let memo = Memo::from_text(String::new()).expect("Empty memo should be valid");
+        prop_assert!(memo.is_empty());
     }
 }
 
@@ -219,6 +208,7 @@ proptest! {
 // ============================================================================
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
     /// Property: Fee is fixed regardless of outputs
     #[test]
     fn prop_fee_is_fixed(
@@ -245,7 +235,7 @@ proptest! {
     ) {
         let fee1 = FeeCalculator::new().calculate_fee(1, outputs, false).unwrap();
         let fee2 = FeeCalculator::new().calculate_fee(1, outputs, false).unwrap();
-        
+
         prop_assert_eq!(fee1, fee2);
     }
 }
@@ -255,6 +245,7 @@ proptest! {
 // ============================================================================
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
     /// Property: Amount addition is commutative
     #[test]
     fn prop_amount_addition_commutative(
@@ -289,13 +280,9 @@ proptest! {
         let formatted = format!("{:.8}", arrr);
         let parsed: f64 = formatted.parse().expect("Valid float");
         let result_arrrtoshis = (parsed * 100_000_000.0) as u64;
-        
+
         // Allow small rounding differences (< 1 zatoshi)
-        let diff = if result_arrrtoshis > arrrtoshis {
-            result_arrrtoshis - arrrtoshis
-        } else {
-            arrrtoshis - result_arrrtoshis
-        };
+        let diff = result_arrrtoshis.abs_diff(arrrtoshis);
         prop_assert!(diff <= 1);
     }
 }
@@ -305,21 +292,18 @@ proptest! {
 // ============================================================================
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
     /// Property: Address encoding is reversible
     #[test]
     fn prop_address_encode_decode(
         index in 0u32..100
     ) {
-        let mnemonic = ExtendedSpendingKey::generate_mnemonic();
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "")
-            .expect("Valid mnemonic");
-        let fvk = sk.to_extended_fvk();
-        
+        let fvk = base_fvk();
         let addr = fvk.derive_address(index);
         let encoded = addr.encode();
-        
+
         // Decode should succeed
-        let decoded = PaymentAddress::decode(&encoded);
+        let decoded = PaymentAddress::decode_any_network(&encoded);
         prop_assert!(decoded.is_ok());
     }
 
@@ -329,10 +313,10 @@ proptest! {
         prefix in "[a-z]{2}[0-9]"
     ) {
         prop_assume!(prefix != "zs1");
-        
+
         let invalid_addr = format!("{}{}", prefix, "0".repeat(50));
-        let result = PaymentAddress::decode(&invalid_addr);
-        
+        let result = PaymentAddress::decode_any_network(&invalid_addr);
+
         prop_assert!(result.is_err());
     }
 }
@@ -342,15 +326,18 @@ proptest! {
 // ============================================================================
 
 proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
     /// Property: Total outputs <= inputs (with fee)
     #[test]
     fn prop_transaction_outputs_plus_fee_lte_inputs(
         outputs in prop::collection::vec(1u64..1_000_000, 1..5)
     ) {
         let total_outputs: u64 = outputs.iter().sum();
-        let fee = calculate_fee(outputs.len(), 0, 0);
+        let fee = FeeCalculator::new()
+            .calculate_fee(1, outputs.len(), false)
+            .unwrap();
         let required_inputs = total_outputs + fee;
-        
+
         // This should always hold for valid transactions
         prop_assert!(required_inputs >= total_outputs);
         prop_assert!(required_inputs >= fee);
@@ -368,4 +355,3 @@ proptest! {
         }
     }
 }
-

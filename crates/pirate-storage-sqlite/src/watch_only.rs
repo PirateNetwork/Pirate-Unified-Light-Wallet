@@ -10,9 +10,9 @@
 //! - See outgoing transactions (unless they were to self)
 //! - Export seed phrase (doesn't have one)
 
+use crate::screenshot_guard::{ProtectionReason, ScreenshotGuard};
+use crate::secure_clipboard::{ClipboardDataType, SecureClipboard};
 use crate::{Error, Result};
-use crate::secure_clipboard::{SecureClipboard, ClipboardDataType};
-use crate::screenshot_guard::{ScreenshotGuard, ProtectionReason};
 use zeroize::Zeroizing;
 
 /// Watch-only wallet capabilities
@@ -125,12 +125,16 @@ impl IvkImportRequest {
         }
 
         if self.name.len() > 50 {
-            return Err(Error::Validation("Wallet name too long (max 50 chars)".to_string()));
+            return Err(Error::Validation(
+                "Wallet name too long (max 50 chars)".to_string(),
+            ));
         }
 
         // Validate birthday height
         if self.birthday_height == 0 {
-            return Err(Error::Validation("Birthday height must be greater than 0".to_string()));
+            return Err(Error::Validation(
+                "Birthday height must be greater than 0".to_string(),
+            ));
         }
 
         Ok(())
@@ -195,7 +199,7 @@ impl WatchOnlyManager {
     }
 
     /// Export viewing key from full wallet
-    /// 
+    ///
     /// This requires the wallet to be unlocked and not watch-only.
     pub fn export_ivk(&self, wallet_id: &str, ivk: String) -> Result<IvkExportResult> {
         // Enable screenshot protection during export
@@ -209,7 +213,8 @@ impl WatchOnlyManager {
     /// Copy viewing key to clipboard with auto-clear
     pub fn copy_ivk_to_clipboard(&self, result: &IvkExportResult) -> Zeroizing<String> {
         let ivk_string = result.as_clipboard_string();
-        self.clipboard.prepare_copy_sensitive(&ivk_string, ClipboardDataType::ViewingKey)
+        self.clipboard
+            .prepare_copy_sensitive(&ivk_string, ClipboardDataType::ViewingKey)
     }
 
     /// Import viewing key to create watch-only wallet
@@ -293,22 +298,21 @@ impl WatchOnlyBanner {
 /// Messages for watch-only UI
 pub mod messages {
     /// Main info message
-    pub const WATCH_ONLY_INFO: &str = 
+    pub const WATCH_ONLY_INFO: &str =
         "This is a watch-only wallet. You can view your incoming balance \
          and generate addresses, but you cannot spend funds.";
 
     /// Import instructions
-    pub const IMPORT_INSTRUCTIONS: &str = 
-        "Enter the viewing key exported from another wallet. \
+    pub const IMPORT_INSTRUCTIONS: &str = "Enter the viewing key exported from another wallet. \
          This creates a view-only copy that cannot spend funds.";
 
     /// Export warning
-    pub const EXPORT_WARNING: &str = 
+    pub const EXPORT_WARNING: &str =
         "Anyone with this viewing key can see your incoming transactions and balance. \
          Only share it with services or devices you trust.";
 
     /// Birthday height explanation
-    pub const BIRTHDAY_EXPLANATION: &str = 
+    pub const BIRTHDAY_EXPLANATION: &str =
         "The birthday height is the block when this wallet was first created. \
          Scanning will start from this height to find your transactions.";
 
@@ -346,37 +350,24 @@ mod tests {
         assert!(valid.validate().is_ok());
 
         // Empty viewing key
-        let empty_ivk = IvkImportRequest::new(
-            "Test".to_string(),
-            "".to_string(),
-            1000,
-        );
+        let empty_ivk = IvkImportRequest::new("Test".to_string(), "".to_string(), 1000);
         assert!(empty_ivk.validate().is_err());
 
         // Empty name
-        let empty_name = IvkImportRequest::new(
-            "".to_string(),
-            "zxviews-test-key".to_string(),
-            1000,
-        );
+        let empty_name =
+            IvkImportRequest::new("".to_string(), "zxviews-test-key".to_string(), 1000);
         assert!(empty_name.validate().is_err());
 
         // Zero birthday
-        let zero_birthday = IvkImportRequest::new(
-            "Test".to_string(),
-            "zxviews-test-key".to_string(),
-            0,
-        );
+        let zero_birthday =
+            IvkImportRequest::new("Test".to_string(), "zxviews-test-key".to_string(), 0);
         assert!(zero_birthday.validate().is_err());
     }
 
     #[test]
     fn test_ivk_export_result() {
-        let result = IvkExportResult::new(
-            "test_ivk_123".to_string(),
-            "wallet_456".to_string(),
-        );
-        
+        let result = IvkExportResult::new("test_ivk_123".to_string(), "wallet_456".to_string());
+
         assert_eq!(result.ivk(), "test_ivk_123");
         assert_eq!(result.wallet_id, "wallet_456");
     }
@@ -408,4 +399,3 @@ mod tests {
         assert!(!caps.can_spend);
     }
 }
-

@@ -2,21 +2,19 @@
 //!
 //! Ensures all wallet traffic is tunneled through Tor/SOCKS5.
 
-use crate::{
-    Result, Error, TorClient, TorConfig, I2pClient, I2pConfig, DnsResolver, DnsConfig,
-};
 use crate::debug_log::log_debug_event;
+use crate::{DnsConfig, DnsResolver, Error, I2pClient, I2pConfig, Result, TorClient, TorConfig};
+use http::Uri;
+use hyper_util::rt::TokioIo;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
-use tracing::{info, warn, error, debug};
-use http::Uri;
-use hyper_util::rt::TokioIo;
 use tokio_socks::tcp::Socks5Stream;
-use tower::service_fn;
 use tonic::transport::{Channel, Endpoint};
+use tower::service_fn;
+use tracing::{debug, error, info, warn};
 
 /// Transport mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,16 +122,15 @@ impl TransportManager {
     /// Create new transport manager
     pub async fn new(config: TransportConfig) -> Result<Self> {
         info!("Creating transport manager: mode={:?}", config.mode);
-        let socks5_summary = config.socks5.as_ref().map(|socks5| {
-            let has_auth = socks5.username.as_ref().map_or(false, |u| !u.is_empty())
-                || socks5.password.as_ref().map_or(false, |p| !p.is_empty());
-            format!(
-                "proxy={}:{} auth={}",
-                socks5.host,
-                socks5.port,
-                has_auth
-            )
-        }).unwrap_or_else(|| "none".to_string());
+        let socks5_summary = config
+            .socks5
+            .as_ref()
+            .map(|socks5| {
+                let has_auth = socks5.username.as_ref().is_some_and(|u| !u.is_empty())
+                    || socks5.password.as_ref().is_some_and(|p| !p.is_empty());
+                format!("proxy={}:{} auth={}", socks5.host, socks5.port, has_auth)
+            })
+            .unwrap_or_else(|| "none".to_string());
         log_debug_event(
             "transport.rs:TransportManager::new",
             "transport_manager_new",
@@ -150,7 +147,7 @@ impl TransportManager {
         let tor_client = if config.mode == TransportMode::Tor && config.tor.enabled {
             info!("Initializing embedded Tor client...");
             let client = TorClient::new(config.tor.clone())?;
-            
+
             // Bootstrap in background
             let client_clone = client.clone();
             tokio::spawn(async move {
@@ -158,7 +155,7 @@ impl TransportManager {
                     error!("Tor bootstrap failed: {}", e);
                 }
             });
-            
+
             Some(client)
         } else {
             None
@@ -212,16 +209,15 @@ impl TransportManager {
         }
 
         info!("Updating transport config: mode={:?}", config.mode);
-        let socks5_summary = config.socks5.as_ref().map(|socks5| {
-            let has_auth = socks5.username.as_ref().map_or(false, |u| !u.is_empty())
-                || socks5.password.as_ref().map_or(false, |p| !p.is_empty());
-            format!(
-                "proxy={}:{} auth={}",
-                socks5.host,
-                socks5.port,
-                has_auth
-            )
-        }).unwrap_or_else(|| "none".to_string());
+        let socks5_summary = config
+            .socks5
+            .as_ref()
+            .map(|socks5| {
+                let has_auth = socks5.username.as_ref().is_some_and(|u| !u.is_empty())
+                    || socks5.password.as_ref().is_some_and(|p| !p.is_empty());
+                format!("proxy={}:{} auth={}", socks5.host, socks5.port, has_auth)
+            })
+            .unwrap_or_else(|| "none".to_string());
         log_debug_event(
             "transport.rs:TransportManager::update_config",
             "transport_update_config",
@@ -267,7 +263,10 @@ impl TransportManager {
         }
 
         // Update DNS resolver
-        self.dns_resolver.lock().await.set_config(config.dns_config.clone());
+        self.dns_resolver
+            .lock()
+            .await
+            .set_config(config.dns_config.clone());
 
         // Update config
         *self.config.lock().await = config;
@@ -279,8 +278,8 @@ impl TransportManager {
     pub async fn create_http_client(&self) -> Result<reqwest::Client> {
         let config = { self.config.lock().await.clone() };
 
-        let mut client_builder = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(60));
+        let mut client_builder =
+            reqwest::Client::builder().timeout(std::time::Duration::from_secs(60));
 
         match config.mode {
             TransportMode::Tor => {
@@ -316,10 +315,11 @@ impl TransportManager {
                 if let Some(ref socks5) = config.socks5 {
                     let proxy_url = socks5.proxy_url();
                     debug!("Creating HTTP client with SOCKS5 proxy: {}", proxy_url);
-                    
-                    let proxy = reqwest::Proxy::all(&proxy_url)
-                        .map_err(|e| Error::Network(format!("Failed to create SOCKS5 proxy: {}", e)))?;
-                    
+
+                    let proxy = reqwest::Proxy::all(&proxy_url).map_err(|e| {
+                        Error::Network(format!("Failed to create SOCKS5 proxy: {}", e))
+                    })?;
+
                     client_builder = client_builder.proxy(proxy);
                 } else {
                     return Err(Error::Network("SOCKS5 config not provided".to_string()));
@@ -367,13 +367,15 @@ impl TransportManager {
             async move {
                 match mode {
                     TransportMode::Tor => {
-                        let tor = tor_client
-                            .ok_or_else(|| Error::Network("Tor client not initialized".to_string()))?;
+                        let tor = tor_client.ok_or_else(|| {
+                            Error::Network("Tor client not initialized".to_string())
+                        })?;
                         connect_via_tor(tor, uri).await
                     }
                     TransportMode::I2p => {
-                        let i2p = i2p_client
-                            .ok_or_else(|| Error::Network("I2P router not initialized".to_string()))?;
+                        let i2p = i2p_client.ok_or_else(|| {
+                            Error::Network("I2P router not initialized".to_string())
+                        })?;
                         connect_via_i2p(i2p, uri).await
                     }
                     TransportMode::Socks5 => {
@@ -465,14 +467,11 @@ impl TransportManager {
 
         match tor.clone().fetch_exit_ip().await {
             Ok(ip) => {
-                let changed = before_ip.as_ref().map_or(true, |before| before != &ip);
+                let changed = before_ip.as_ref() != Some(&ip);
                 log_debug_event(
                     "transport.rs:TransportManager::rotate_tor_exit",
                     "tor_exit_ip_after",
-                    &format!(
-                        "ip={} changed={} source=checkip.amazonaws.com",
-                        ip, changed
-                    ),
+                    &format!("ip={} changed={} source=checkip.amazonaws.com", ip, changed),
                 );
             }
             Err(e) => {
@@ -530,12 +529,7 @@ async fn connect_direct(
         "connect_direct_start",
         &format!(
             "host={} port={} dns_provider={} dns_tunnel={} mode={:?} leak_guard={}",
-            host,
-            port,
-            dns_provider,
-            dns_config.tunnel_dns,
-            mode,
-            leak_guard
+            host, port, dns_provider, dns_config.tunnel_dns, mode, leak_guard
         ),
     );
     if leak_guard {
@@ -593,18 +587,14 @@ async fn connect_direct(
 async fn connect_via_socks5(socks5: Socks5Config, uri: Uri) -> Result<ConnectorStream> {
     let (host, port) = uri_host_port(&uri)?;
     let proxy_addr = (socks5.host.as_str(), socks5.port);
-    let has_auth = socks5.username.as_ref().map_or(false, |u| !u.is_empty())
-        || socks5.password.as_ref().map_or(false, |p| !p.is_empty());
+    let has_auth = socks5.username.as_ref().is_some_and(|u| !u.is_empty())
+        || socks5.password.as_ref().is_some_and(|p| !p.is_empty());
     log_debug_event(
         "transport.rs:connect_via_socks5",
         "connect_socks5_start",
         &format!(
             "target={}:{} proxy={}:{} auth={}",
-            host,
-            port,
-            socks5.host,
-            socks5.port,
-            has_auth
+            host, port, socks5.host, socks5.port, has_auth
         ),
     );
 
@@ -624,11 +614,7 @@ async fn connect_via_socks5(socks5: Socks5Config, uri: Uri) -> Result<ConnectorS
         "connect_socks5_ok",
         &format!(
             "target={}:{} proxy={}:{} auth={}",
-            host,
-            port,
-            socks5.host,
-            socks5.port,
-            has_auth
+            host, port, socks5.host, socks5.port, has_auth
         ),
     );
     Ok(TokioIo::new(Box::new(stream)))
@@ -707,7 +693,10 @@ mod tests {
             username: Some("user".to_string()),
             password: Some("pass".to_string()),
         };
-        assert_eq!(config_auth.proxy_url(), "socks5h://user:pass@proxy.example.com:1080");
+        assert_eq!(
+            config_auth.proxy_url(),
+            "socks5h://user:pass@proxy.example.com:1080"
+        );
     }
 
     #[tokio::test]
@@ -716,7 +705,7 @@ mod tests {
             mode: TransportMode::Direct, // Avoid Tor bootstrap in test
             ..Default::default()
         };
-        
+
         let manager = TransportManager::new(config).await.unwrap();
         assert_eq!(manager.mode().await, TransportMode::Direct);
     }

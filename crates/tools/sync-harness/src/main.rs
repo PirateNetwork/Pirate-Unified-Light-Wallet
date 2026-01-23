@@ -8,7 +8,7 @@
 
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
-use pirate_sync_lightd::{SyncEngine, SyncConfig};
+use pirate_sync_lightd::{SyncConfig, SyncEngine};
 use std::time::Duration;
 use tracing::{info, warn};
 
@@ -191,12 +191,7 @@ async fn run_full_sync(endpoint: String, birthday: u32, target: Option<u64>) -> 
     }
 }
 
-async fn run_benchmark(
-    endpoint: String,
-    start: u64,
-    blocks: u64,
-    runs: u32,
-) -> anyhow::Result<()> {
+async fn run_benchmark(endpoint: String, start: u64, blocks: u64, runs: u32) -> anyhow::Result<()> {
     info!("Starting benchmark: {} blocks, {} runs", blocks, runs);
 
     let mut total_duration = Duration::ZERO;
@@ -280,7 +275,10 @@ async fn run_interrupt_test(
     // This exercises the "interrupt then resume" user flow end-to-end.
     let checkpoint_height = progress_handle.read().await.last_checkpoint();
     if let Some(h) = checkpoint_height {
-        info!("✅ Interrupted. Resuming from last checkpoint at height {}", h);
+        info!(
+            "✅ Interrupted. Resuming from last checkpoint at height {}",
+            h
+        );
 
         let mut resumed = SyncEngine::new(endpoint, birthday);
         // Start again from checkpoint (inclusive). The sync engine is expected to be idempotent on already-processed heights.
@@ -315,8 +313,9 @@ async fn run_rollback_test(
 
     engine.sync_range(birthday as u64, Some(target)).await?;
 
-    info!("✅ Rollback test complete. Checkpoints created every {} blocks.", checkpoint_interval);
-
+    info!(
+        "✅ Rollback test complete. Checkpoints created every {} blocks.",
+        checkpoint_interval
+    );
     Ok(())
 }
-

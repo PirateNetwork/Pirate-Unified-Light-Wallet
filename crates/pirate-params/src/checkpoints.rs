@@ -35,31 +35,36 @@ impl CheckpointList {
         Self::new(vec![
             Checkpoint {
                 height: 152_855,
-                hash: "0000000342920d7a94e5eaa6cc37a8ae0595de131e1a4c071abbd8f7c6b32f3e".to_string(),
+                hash: "0000000342920d7a94e5eaa6cc37a8ae0595de131e1a4c071abbd8f7c6b32f3e"
+                    .to_string(),
                 timestamp: 1558542803,
                 sapling_tree_size: 0,
             },
             Checkpoint {
                 height: 1_000_000,
-                hash: "00000000e1c0c526d7e12e2e2c080b89c3f0e9b12af4d8f8a8f8a8f8a8f8a8f8".to_string(),
+                hash: "00000000e1c0c526d7e12e2e2c080b89c3f0e9b12af4d8f8a8f8a8f8a8f8a8f8"
+                    .to_string(),
                 timestamp: 1609459200,
                 sapling_tree_size: 500_000,
             },
             Checkpoint {
                 height: 2_000_000,
-                hash: "00000000a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8".to_string(),
+                hash: "00000000a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8"
+                    .to_string(),
                 timestamp: 1640995200,
                 sapling_tree_size: 1_500_000,
             },
             Checkpoint {
                 height: 3_000_000,
-                hash: "00000000b8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8".to_string(),
+                hash: "00000000b8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8"
+                    .to_string(),
                 timestamp: 1672531200,
                 sapling_tree_size: 2_800_000,
             },
             Checkpoint {
                 height: 3_800_000,
-                hash: "00000000c8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8".to_string(),
+                hash: "00000000c8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8a8f8"
+                    .to_string(),
                 timestamp: 1704067200,
                 sapling_tree_size: 3_900_000,
             },
@@ -68,14 +73,12 @@ impl CheckpointList {
 
     /// Get testnet checkpoints
     pub fn testnet() -> Self {
-        Self::new(vec![
-            Checkpoint {
-                height: 1,
-                hash: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-                timestamp: 1296688602,
-                sapling_tree_size: 0,
-            },
-        ])
+        Self::new(vec![Checkpoint {
+            height: 1,
+            hash: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            timestamp: 1296688602,
+            sapling_tree_size: 0,
+        }])
     }
 
     /// Sort checkpoints by height
@@ -122,7 +125,7 @@ mod tests {
         let checkpoints = CheckpointList::mainnet();
         assert!(!checkpoints.is_empty());
         assert!(checkpoints.len() >= 5);
-        
+
         let latest = checkpoints.latest().unwrap();
         assert!(latest.height >= 3_800_000);
     }
@@ -130,11 +133,11 @@ mod tests {
     #[test]
     fn test_checkpoint_at_height() {
         let checkpoints = CheckpointList::mainnet();
-        
+
         // Should return Sapling activation checkpoint
         let cp = checkpoints.checkpoint_at_height(200_000).unwrap();
         assert_eq!(cp.height, 152_855);
-        
+
         // Should return later checkpoint
         let cp = checkpoints.checkpoint_at_height(2_500_000).unwrap();
         assert_eq!(cp.height, 2_000_000);
@@ -147,4 +150,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-

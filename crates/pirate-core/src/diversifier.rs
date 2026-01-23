@@ -13,7 +13,7 @@ pub const MAX_DIVERSIFIER_INDEX: u32 = u32::MAX;
 pub const DEFAULT_GAP_LIMIT: u32 = 20;
 
 /// Diversifier index for Sapling address derivation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DiversifierIndex(u32);
 
 impl DiversifierIndex {
@@ -60,12 +60,6 @@ impl DiversifierIndex {
     /// Deserialize from bytes (little-endian)
     pub fn from_bytes(bytes: [u8; 4]) -> Self {
         Self(u32::from_le_bytes(bytes))
-    }
-}
-
-impl Default for DiversifierIndex {
-    fn default() -> Self {
-        Self(0)
     }
 }
 
@@ -152,9 +146,10 @@ impl AddressUsage {
 }
 
 /// Policy for address rotation
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum RotationPolicy {
     /// Always use fresh address (maximum privacy)
+    #[default]
     AlwaysFresh,
     /// Reuse current address until it receives funds
     ReuseUntilReceived,
@@ -164,15 +159,8 @@ pub enum RotationPolicy {
     Manual,
 }
 
-impl Default for RotationPolicy {
-    fn default() -> Self {
-        // Default to maximum privacy
-        RotationPolicy::AlwaysFresh
-    }
-}
-
 /// Diversifier rotation service
-/// 
+///
 /// Manages address derivation with diversifier rotation to prevent address reuse.
 /// Tracks usage of each address and provides fresh addresses by default.
 pub struct DiversifierRotationService {
@@ -344,7 +332,8 @@ impl DiversifierRotationService {
     /// Force advance to specific index
     pub fn advance_to(&self, index: DiversifierIndex) {
         self.current_index.store(index.as_u32(), Ordering::SeqCst);
-        self.highest_used.fetch_max(index.as_u32(), Ordering::SeqCst);
+        self.highest_used
+            .fetch_max(index.as_u32(), Ordering::SeqCst);
     }
 
     /// Reset to beginning (dangerous, only for testing/recovery)
@@ -550,4 +539,3 @@ mod tests {
         assert_eq!(restored.current_index().as_u32(), 5);
     }
 }
-

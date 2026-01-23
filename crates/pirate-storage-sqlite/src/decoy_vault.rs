@@ -11,18 +11,13 @@ use rusqlite::params;
 use std::sync::Arc;
 
 /// Decoy vault state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum VaultMode {
     /// Normal wallet mode (real data)
+    #[default]
     Real,
     /// Decoy mode (empty vault)
     Decoy,
-}
-
-impl Default for VaultMode {
-    fn default() -> Self {
-        VaultMode::Real
-    }
 }
 
 /// Decoy vault configuration stored in DB
@@ -105,7 +100,7 @@ impl DecoyVaultManager {
         config.panic_pin_hash = Some(panic_pin_hash);
         config.panic_pin_salt = Some(salt);
         config.created_at = chrono::Utc::now().timestamp();
-        
+
         tracing::info!("Decoy vault enabled");
         Ok(())
     }
@@ -116,10 +111,10 @@ impl DecoyVaultManager {
         config.enabled = false;
         config.panic_pin_hash = None;
         config.panic_pin_salt = None;
-        
+
         // Reset to real mode
         *self.mode.write().unwrap() = VaultMode::Real;
-        
+
         tracing::info!("Decoy vault disabled");
         Ok(())
     }
@@ -136,10 +131,7 @@ impl DecoyVaultManager {
         config.activation_count = config.activation_count.saturating_add(1);
 
         // Log activation (for user's later review if needed)
-        tracing::warn!(
-            "Decoy vault activated (count: {})",
-            config.activation_count
-        );
+        tracing::warn!("Decoy vault activated (count: {})", config.activation_count);
 
         Ok(())
     }
@@ -154,7 +146,7 @@ impl DecoyVaultManager {
     /// Check panic PIN against stored hash
     pub fn verify_panic_pin(&self, pin: &str) -> Result<bool> {
         let config = self.config.read().unwrap();
-        
+
         if !config.enabled {
             return Ok(false);
         }
@@ -327,20 +319,22 @@ mod tests {
     #[test]
     fn test_enable_disable() {
         let manager = DecoyVaultManager::new();
-        
+
         // Enable
-        manager.enable("test_hash".to_string(), vec![1, 2, 3, 4]).unwrap();
+        manager
+            .enable("test_hash".to_string(), vec![1, 2, 3, 4])
+            .unwrap();
         assert!(manager.config().enabled);
-        
+
         // Activate
         manager.activate_decoy().unwrap();
         assert!(manager.is_decoy_mode());
         assert_eq!(manager.config().activation_count, 1);
-        
+
         // Deactivate
         manager.deactivate_decoy();
         assert!(!manager.is_decoy_mode());
-        
+
         // Disable
         manager.disable().unwrap();
         assert!(!manager.config().enabled);
@@ -361,4 +355,3 @@ mod tests {
         assert_eq!(manager.decoy_name(), "My Empty Wallet");
     }
 }
-

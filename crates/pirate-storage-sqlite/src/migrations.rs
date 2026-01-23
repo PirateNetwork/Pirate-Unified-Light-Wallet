@@ -8,8 +8,12 @@ const SCHEMA_VERSION: i32 = 18;
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
     let current_version = get_schema_version(conn)?;
-    
-    tracing::debug!("Running migrations: current_version={}, target_version={}", current_version, SCHEMA_VERSION);
+
+    tracing::debug!(
+        "Running migrations: current_version={}, target_version={}",
+        current_version,
+        SCHEMA_VERSION
+    );
 
     if current_version < 1 {
         migrate_v1(conn)?;
@@ -86,9 +90,12 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     if final_version != SCHEMA_VERSION {
         set_schema_version(conn, SCHEMA_VERSION)?;
     } else {
-        tracing::debug!("Schema version already at target {}, skipping set_schema_version", SCHEMA_VERSION);
+        tracing::debug!(
+            "Schema version already at target {}, skipping set_schema_version",
+            SCHEMA_VERSION
+        );
     }
-    
+
     Ok(())
 }
 
@@ -110,7 +117,7 @@ fn set_schema_version(conn: &Connection, version: i32) -> Result<()> {
         "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)",
         [],
     )?;
-    
+
     // Use INSERT OR IGNORE to safely handle case where version already exists
     // This is idempotent and prevents UNIQUE constraint errors
     match conn.execute(
@@ -127,14 +134,19 @@ fn set_schema_version(conn: &Connection, version: i32) -> Result<()> {
         }
         Err(e) => {
             // If INSERT OR IGNORE fails for some reason, try to check if it exists
-            let exists: bool = conn.query_row(
-                "SELECT EXISTS(SELECT 1 FROM schema_version WHERE version = ?1)",
-                [version],
-                |row| row.get(0),
-            ).unwrap_or(false);
-            
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM schema_version WHERE version = ?1)",
+                    [version],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
             if exists {
-                tracing::debug!("Schema version {} already exists (verified after insert failure)", version);
+                tracing::debug!(
+                    "Schema version {} already exists (verified after insert failure)",
+                    version
+                );
                 Ok(())
             } else {
                 Err(e.into())
@@ -690,5 +702,3 @@ fn migrate_v18(conn: &Connection) -> Result<()> {
 
     Ok(())
 }
-
-

@@ -2,10 +2,14 @@
 
 [advisories]
 # Fail on any vulnerability
-ignore = []
+ignore = [
+    # RUSTSEC-2023-0071 affects rsa via Arti; no fixed upgrade is available yet.
+    "RUSTSEC-2023-0071",
+]
 
 [database]
 # Update advisory database before each audit
 fetch = true
 url = "https://github.com/RustSec/advisory-db.git"
+stale = false
 

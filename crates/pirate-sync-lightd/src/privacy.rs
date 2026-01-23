@@ -12,9 +12,7 @@ use tokio::sync::RwLock;
 #[derive(Debug, Clone)]
 pub enum TunnelConfig {
     /// Tor via Arti
-    Tor {
-        socks_port: u16,
-    },
+    Tor { socks_port: u16 },
     /// SOCKS5 proxy
     Socks5 {
         host: String,
@@ -58,14 +56,10 @@ impl TunnelManager {
     /// Verify tunnel is active and working
     pub async fn verify_tunnel(&self) -> Result<()> {
         let config = self.get_config().await;
-        
+
         match config {
-            TunnelConfig::Tor { socks_port } => {
-                self.verify_tor(socks_port).await
-            }
-            TunnelConfig::Socks5 { host, port, .. } => {
-                self.verify_socks5(&host, port).await
-            }
+            TunnelConfig::Tor { socks_port } => self.verify_tor(socks_port).await,
+            TunnelConfig::Socks5 { host, port, .. } => self.verify_socks5(&host, port).await,
             TunnelConfig::Direct => {
                 tracing::warn!("Direct connection mode - privacy not guaranteed");
                 Ok(())
@@ -111,42 +105,44 @@ impl TunnelManager {
     /// Get HTTP client configured for current tunnel
     pub async fn create_http_client(&self) -> Result<reqwest::Client> {
         let config = self.get_config().await;
-        
-        let client_builder = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(60));
-        
+
+        let client_builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(60));
+
         let client = match config {
             TunnelConfig::Tor { socks_port } => {
                 let proxy = reqwest::Proxy::all(format!("socks5://127.0.0.1:{}", socks_port))
                     .map_err(|e| Error::Network(format!("Failed to create Tor proxy: {}", e)))?;
-                
+
                 client_builder
                     .proxy(proxy)
                     .build()
                     .map_err(|e| Error::Network(format!("Failed to create HTTP client: {}", e)))?
             }
-            TunnelConfig::Socks5 { host, port, username, password } => {
+            TunnelConfig::Socks5 {
+                host,
+                port,
+                username,
+                password,
+            } => {
                 let proxy_url = if let (Some(user), Some(pass)) = (username, password) {
                     format!("socks5://{}:{}@{}:{}", user, pass, host, port)
                 } else {
                     format!("socks5://{}:{}", host, port)
                 };
-                
+
                 let proxy = reqwest::Proxy::all(proxy_url)
                     .map_err(|e| Error::Network(format!("Failed to create SOCKS5 proxy: {}", e)))?;
-                
+
                 client_builder
                     .proxy(proxy)
                     .build()
                     .map_err(|e| Error::Network(format!("Failed to create HTTP client: {}", e)))?
             }
-            TunnelConfig::Direct => {
-                client_builder
-                    .build()
-                    .map_err(|e| Error::Network(format!("Failed to create HTTP client: {}", e)))?
-            }
+            TunnelConfig::Direct => client_builder
+                .build()
+                .map_err(|e| Error::Network(format!("Failed to create HTTP client: {}", e)))?,
         };
-        
+
         Ok(client)
     }
 
@@ -158,7 +154,7 @@ impl TunnelManager {
 }
 
 /// Background sync tunnel guard
-/// 
+///
 /// Ensures background sync operations always use the configured tunnel
 pub struct BackgroundSyncTunnelGuard {
     tunnel_manager: Arc<TunnelManager>,
@@ -177,7 +173,7 @@ impl BackgroundSyncTunnelGuard {
     {
         // Verify tunnel before executing
         self.tunnel_manager.verify_tunnel().await?;
-        
+
         // Execute operation
         operation.await
     }
@@ -186,7 +182,7 @@ impl BackgroundSyncTunnelGuard {
     pub async fn log_tunnel_status(&self) {
         let config = self.tunnel_manager.get_config().await;
         let is_privacy = self.tunnel_manager.is_privacy_preserving().await;
-        
+
         tracing::info!(
             "Background sync tunnel status: {:?}, privacy_preserving={}",
             config,
@@ -213,13 +209,15 @@ mod tests {
     #[tokio::test]
     async fn test_tunnel_manager() {
         let manager = TunnelManager::new(TunnelConfig::Direct);
-        
+
         // Verify is callable
         let _ = manager.verify_tunnel().await;
-        
+
         // Update config
-        manager.set_config(TunnelConfig::Tor { socks_port: 9050 }).await;
-        
+        manager
+            .set_config(TunnelConfig::Tor { socks_port: 9050 })
+            .await;
+
         let config = manager.get_config().await;
         match config {
             TunnelConfig::Tor { socks_port } => {
@@ -233,8 +231,10 @@ mod tests {
     async fn test_privacy_check() {
         let manager = TunnelManager::new(TunnelConfig::Direct);
         assert!(!manager.is_privacy_preserving().await);
-        
-        manager.set_config(TunnelConfig::Tor { socks_port: 9050 }).await;
+
+        manager
+            .set_config(TunnelConfig::Tor { socks_port: 9050 })
+            .await;
         assert!(manager.is_privacy_preserving().await);
     }
 }

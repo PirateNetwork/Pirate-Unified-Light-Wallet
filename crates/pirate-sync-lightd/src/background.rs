@@ -5,7 +5,7 @@
 use crate::{Result, SyncEngine};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
 const MIN_DEPTH: u64 = 10;
 
@@ -61,8 +61,8 @@ pub struct BackgroundSyncConfig {
 impl Default for BackgroundSyncConfig {
     fn default() -> Self {
         Self {
-            max_duration_secs: 60, // 1 minute max per background task
-            max_blocks: 10_000, // Normal max blocks
+            max_duration_secs: 60,  // 1 minute max per background task
+            max_blocks: 10_000,     // Normal max blocks
             max_blocks_spam: 2_500, // Reduced max during spam (prevents timeouts)
             compact_interval_mins: 15,
             deep_interval_hours: 24,
@@ -96,7 +96,7 @@ impl BackgroundSyncOrchestrator {
     /// Execute background sync
     pub async fn execute_sync(&self, mode: BackgroundSyncMode) -> Result<BackgroundSyncResult> {
         let start_time = std::time::Instant::now();
-        
+
         info!(
             "Starting background sync: mode={:?}, max_duration={}s, max_blocks={}",
             mode, self.config.max_duration_secs, self.config.max_blocks
@@ -112,7 +112,7 @@ impl BackgroundSyncOrchestrator {
 
         // Determine sync range
         let target_height = self.calculate_target_height(start_height, mode).await?;
-        
+
         if target_height <= start_height {
             info!("Already synced to latest height: {}", start_height);
             return Ok(BackgroundSyncResult {
@@ -129,15 +129,16 @@ impl BackgroundSyncOrchestrator {
 
         // Execute sync with timeout
         let blocks_to_sync = target_height - start_height;
-        debug!("Syncing blocks {} to {} ({} blocks)", start_height, target_height, blocks_to_sync);
+        debug!(
+            "Syncing blocks {} to {} ({} blocks)",
+            start_height, target_height, blocks_to_sync
+        );
 
         let sync_result = match mode {
             BackgroundSyncMode::Compact => {
                 self.execute_compact_sync(start_height, target_height).await
             }
-            BackgroundSyncMode::Deep => {
-                self.execute_deep_sync(start_height, target_height).await
-            }
+            BackgroundSyncMode::Deep => self.execute_deep_sync(start_height, target_height).await,
         };
 
         let duration_secs = start_time.elapsed().as_secs();
@@ -168,7 +169,7 @@ impl BackgroundSyncOrchestrator {
             }
             Err(e) => {
                 error!("Background sync failed: {:?}", e);
-                
+
                 // Return partial result with error
                 Ok(BackgroundSyncResult {
                     mode,
@@ -187,7 +188,7 @@ impl BackgroundSyncOrchestrator {
     /// Execute compact sync (quick, frequent)
     async fn execute_compact_sync(&self, start: u64, target: u64) -> Result<(u64, u32)> {
         let mut engine = self.sync_engine.clone().lock_owned().await;
-        
+
         // Check if we're in a spam period by checking recent sync performance
         // If recent batches were heavy, reduce max_blocks to prevent timeouts
         let max_blocks = {
@@ -196,35 +197,38 @@ impl BackgroundSyncOrchestrator {
             // If average batch time is very high (>5s per batch), likely spam period
             // Reduce max_blocks to prevent timeout
             if perf_snap.avg_batch_ms > 5000 && perf_snap.blocks_processed > 0 {
-                debug!("Spam period detected (avg batch {}ms), reducing max_blocks from {} to {}", 
-                    perf_snap.avg_batch_ms, 
-                    self.config.max_blocks,
-                    self.config.max_blocks_spam
+                debug!(
+                    "Spam period detected (avg batch {}ms), reducing max_blocks from {} to {}",
+                    perf_snap.avg_batch_ms, self.config.max_blocks, self.config.max_blocks_spam
                 );
                 self.config.max_blocks_spam
             } else {
                 self.config.max_blocks
             }
         };
-        
+
         // Limit to max blocks (spam-aware)
         let effective_target = std::cmp::min(target, start + max_blocks);
-        
+
         // Sync with timeout
         let timeout = tokio::time::Duration::from_secs(self.config.max_duration_secs);
-        
-        match tokio::time::timeout(timeout, engine.sync_range(start, Some(effective_target))).await {
+
+        match tokio::time::timeout(timeout, engine.sync_range(start, Some(effective_target))).await
+        {
             Ok(result) => {
                 result?;
-                
+
                 let new_txs = engine
                     .count_transactions_since_height(start, effective_target)?
                     .unwrap_or(0);
                 Ok((effective_target, new_txs))
             }
             Err(_) => {
-                warn!("Compact sync timed out after {}s", self.config.max_duration_secs);
-                
+                warn!(
+                    "Compact sync timed out after {}s",
+                    self.config.max_duration_secs
+                );
+
                 // Return partial progress
                 let progress = engine.progress();
                 let progress_guard = progress.read().await;
@@ -236,34 +240,34 @@ impl BackgroundSyncOrchestrator {
     /// Execute deep sync (thorough, less frequent)
     async fn execute_deep_sync(&self, start: u64, target: u64) -> Result<(u64, u32)> {
         let mut engine = self.sync_engine.clone().lock_owned().await;
-        
+
         // Check if we're in a spam period (same logic as compact sync)
         let max_blocks = {
             let perf = engine.perf_counters();
             let perf_snap = perf.snapshot();
             // If average batch time is very high (>5s per batch), likely spam period
             if perf_snap.avg_batch_ms > 5000 && perf_snap.blocks_processed > 0 {
-                debug!("Spam period detected (avg batch {}ms), reducing max_blocks from {} to {}", 
-                    perf_snap.avg_batch_ms, 
-                    self.config.max_blocks,
-                    self.config.max_blocks_spam
+                debug!(
+                    "Spam period detected (avg batch {}ms), reducing max_blocks from {} to {}",
+                    perf_snap.avg_batch_ms, self.config.max_blocks, self.config.max_blocks_spam
                 );
                 self.config.max_blocks_spam
             } else {
                 self.config.max_blocks
             }
         };
-        
+
         // Limit to max blocks (spam-aware) even for deep sync
         let effective_target = std::cmp::min(target, start + max_blocks);
-        
+
         // Deep sync can take longer, but still respect max duration
         let timeout = tokio::time::Duration::from_secs(self.config.max_duration_secs * 2);
-        
-        match tokio::time::timeout(timeout, engine.sync_range(start, Some(effective_target))).await {
+
+        match tokio::time::timeout(timeout, engine.sync_range(start, Some(effective_target))).await
+        {
             Ok(result) => {
                 result?;
-                
+
                 let new_txs = engine
                     .count_transactions_since_height(start, effective_target)?
                     .unwrap_or(0);
@@ -271,7 +275,7 @@ impl BackgroundSyncOrchestrator {
             }
             Err(_) => {
                 warn!("Deep sync timed out after {}s", timeout.as_secs());
-                
+
                 let progress = engine.progress();
                 let progress_guard = progress.read().await;
                 Ok((progress_guard.current_height(), 0))
@@ -280,11 +284,15 @@ impl BackgroundSyncOrchestrator {
     }
 
     /// Calculate target height for sync
-    async fn calculate_target_height(&self, _current: u64, _mode: BackgroundSyncMode) -> Result<u64> {
+    async fn calculate_target_height(
+        &self,
+        _current: u64,
+        _mode: BackgroundSyncMode,
+    ) -> Result<u64> {
         let engine = self.sync_engine.clone().lock_owned().await;
         let progress = engine.progress();
         let progress_guard = progress.read().await;
-        
+
         // For both modes, sync to network height
         Ok(progress_guard.target_height())
     }
@@ -294,7 +302,7 @@ impl BackgroundSyncOrchestrator {
         let engine = self.sync_engine.clone().lock_owned().await;
         let progress = engine.progress();
         let progress_guard = progress.read().await;
-        
+
         // Sync needed if we're behind
         Ok(progress_guard.current_height() < progress_guard.target_height())
     }
@@ -332,15 +340,15 @@ mod tests {
     fn test_recommend_sync_mode() {
         let config = BackgroundSyncConfig::default();
         let engine = Arc::new(Mutex::new(SyncEngine::new("http://test".to_string(), 0)));
-        
+
         let orchestrator = BackgroundSyncOrchestrator::new(engine, config);
-        
+
         // Recent sync -> Compact
         assert_eq!(
             orchestrator.recommend_sync_mode(10),
             BackgroundSyncMode::Compact
         );
-        
+
         // Old sync -> Deep
         assert_eq!(
             orchestrator.recommend_sync_mode(24 * 60),

@@ -2,11 +2,11 @@
 //!
 //! Provides embedded Tor client for privacy-preserving network access.
 
-use crate::{Error, Result};
 use crate::debug_log::log_debug_event;
-use arti_client::config::{BridgeConfigBuilder, CfgPath, TorClientConfigBuilder};
+use crate::{Error, Result};
 use arti_client::config::pt::TransportConfigBuilder;
-use arti_client::{BootstrapBehavior, TorClient as ArtiClient, StreamPrefs};
+use arti_client::config::{BridgeConfigBuilder, CfgPath, TorClientConfigBuilder};
+use arti_client::{BootstrapBehavior, StreamPrefs, TorClient as ArtiClient};
 use directories::ProjectDirs;
 use futures_util::StreamExt;
 use http_body_util::{BodyExt, Empty};
@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::{oneshot, Mutex};
 use tor_rtcompat::{BlockOn, PreferredRuntime};
 use tracing::{info, warn};
 
@@ -146,8 +146,19 @@ fn tor_browser_candidates(file_name: &str) -> Vec<PathBuf> {
     for var in browser_path_vars {
         if let Ok(value) = env::var(var) {
             let base = PathBuf::from(value);
-            candidates.push(base.join("Browser").join("TorBrowser").join("Tor").join("PluggableTransports").join(file_name));
-            candidates.push(base.join("TorBrowser").join("Tor").join("PluggableTransports").join(file_name));
+            candidates.push(
+                base.join("Browser")
+                    .join("TorBrowser")
+                    .join("Tor")
+                    .join("PluggableTransports")
+                    .join(file_name),
+            );
+            candidates.push(
+                base.join("TorBrowser")
+                    .join("Tor")
+                    .join("PluggableTransports")
+                    .join(file_name),
+            );
             candidates.push(base.join("Tor").join("PluggableTransports").join(file_name));
         }
     }
@@ -155,15 +166,30 @@ fn tor_browser_candidates(file_name: &str) -> Vec<PathBuf> {
     #[cfg(windows)]
     {
         if let Ok(local) = env::var("LOCALAPPDATA") {
-            let base = PathBuf::from(local).join("Tor Browser").join("Browser").join("TorBrowser").join("Tor").join("PluggableTransports");
+            let base = PathBuf::from(local)
+                .join("Tor Browser")
+                .join("Browser")
+                .join("TorBrowser")
+                .join("Tor")
+                .join("PluggableTransports");
             candidates.push(base.join(file_name));
         }
         if let Ok(program) = env::var("PROGRAMFILES") {
-            let base = PathBuf::from(program).join("Tor Browser").join("Browser").join("TorBrowser").join("Tor").join("PluggableTransports");
+            let base = PathBuf::from(program)
+                .join("Tor Browser")
+                .join("Browser")
+                .join("TorBrowser")
+                .join("Tor")
+                .join("PluggableTransports");
             candidates.push(base.join(file_name));
         }
         if let Ok(program_x86) = env::var("PROGRAMFILES(X86)") {
-            let base = PathBuf::from(program_x86).join("Tor Browser").join("Browser").join("TorBrowser").join("Tor").join("PluggableTransports");
+            let base = PathBuf::from(program_x86)
+                .join("Tor Browser")
+                .join("Browser")
+                .join("TorBrowser")
+                .join("Tor")
+                .join("PluggableTransports");
             candidates.push(base.join(file_name));
         }
     }
@@ -393,7 +419,10 @@ impl TorClient {
                     return Ok(());
                 }
                 Err(e) => {
-                    warn!("Tor bootstrap attempt failed (bridges={}): {}", use_bridges, e);
+                    warn!(
+                        "Tor bootstrap attempt failed (bridges={}): {}",
+                        use_bridges, e
+                    );
                 }
             }
         }
@@ -402,17 +431,17 @@ impl TorClient {
     }
 
     /// Get bootstrap status
-    pub async fn status(self) -> TorStatus {
+    pub async fn status(&self) -> TorStatus {
         self.status.lock().await.clone()
     }
 
     /// Check if Tor is ready
-    pub async fn is_ready(self) -> bool {
+    pub async fn is_ready(&self) -> bool {
         matches!(*self.status.lock().await, TorStatus::Ready)
     }
 
     /// Connect to a target host/port using Tor
-    pub async fn connect_stream(self, host: &str, port: u16) -> Result<arti_client::DataStream> {
+    pub async fn connect_stream(&self, host: &str, port: u16) -> Result<arti_client::DataStream> {
         let timeout = self.config.lock().await.bootstrap_timeout;
         let connect_timeout = self.config.lock().await.connect_timeout;
         self.clone().bootstrap().await?;
@@ -426,20 +455,21 @@ impl TorClient {
             .ok_or_else(|| Error::Tor("Tor client not initialized".to_string()))?;
         let prefs = { self.stream_prefs.lock().await.clone() };
         let target = format!("{}:{}", host, port);
-        let stream = tokio::time::timeout(connect_timeout, client.connect_with_prefs(target, &prefs))
-            .await
-            .map_err(|_| {
-                Error::Tor(format!(
-                    "Tor connect timed out to {}:{} (port may be blocked by Tor exits)",
-                    host, port
-                ))
-            })?
-            .map_err(|e| Error::Tor(format!("Tor connect failed: {}", e)))?;
+        let stream =
+            tokio::time::timeout(connect_timeout, client.connect_with_prefs(target, &prefs))
+                .await
+                .map_err(|_| {
+                    Error::Tor(format!(
+                        "Tor connect timed out to {}:{} (port may be blocked by Tor exits)",
+                        host, port
+                    ))
+                })?
+                .map_err(|e| Error::Tor(format!("Tor connect failed: {}", e)))?;
         Ok(stream)
     }
 
     /// Rotate exit circuits by isolating future streams.
-    pub async fn rotate_exit(self) {
+    pub async fn rotate_exit(&self) {
         let mut prefs = StreamPrefs::new();
         prefs.new_isolation_group();
         *self.stream_prefs.lock().await = prefs;
@@ -585,11 +615,22 @@ impl TorClient {
                             .config(arti_config)
                             .bootstrap_behavior(BootstrapBehavior::Manual)
                             .create_unbootstrapped()
-                            .map_err(|e| Error::Tor(format!("Failed to create Tor client: {}", e)))?;
+                            .map_err(|e| {
+                                Error::Tor(format!("Failed to create Tor client: {}", e))
+                            })?;
 
-                        spawn_status_watcher(status.clone(), &client, generation, active_generation.clone());
+                        spawn_status_watcher(
+                            status.clone(),
+                            &client,
+                            generation,
+                            active_generation.clone(),
+                        );
 
-                        match tokio::time::timeout(config.bootstrap_timeout, client.clone().bootstrap()).await
+                        match tokio::time::timeout(
+                            config.bootstrap_timeout,
+                            client.clone().bootstrap(),
+                        )
+                        .await
                         {
                             Ok(Ok(())) => Ok(client),
                             Ok(Err(e)) => Err(Error::Tor(format!("Tor bootstrap failed: {}", e))),
@@ -660,7 +701,6 @@ impl TorClient {
             }
         }
     }
-
 }
 
 fn spawn_status_watcher(
@@ -731,13 +771,17 @@ impl TorClient {
     }
 }
 
-fn build_arti_config(config: &TorConfig, use_bridges: bool) -> Result<arti_client::TorClientConfig> {
+fn build_arti_config(
+    config: &TorConfig,
+    use_bridges: bool,
+) -> Result<arti_client::TorClientConfig> {
     std::fs::create_dir_all(&config.state_dir)
         .map_err(|e| Error::Tor(format!("Failed to create Tor state dir: {}", e)))?;
     std::fs::create_dir_all(&config.cache_dir)
         .map_err(|e| Error::Tor(format!("Failed to create Tor cache dir: {}", e)))?;
 
-    let mut builder = TorClientConfigBuilder::from_directories(&config.state_dir, &config.cache_dir);
+    let mut builder =
+        TorClientConfigBuilder::from_directories(&config.state_dir, &config.cache_dir);
 
     if use_bridges {
         let bridges = config
@@ -757,7 +801,9 @@ fn apply_bridge_config(
     bridges: &TorBridgeConfig,
 ) -> Result<()> {
     if bridges.bridge_lines.is_empty() {
-        return Err(Error::Tor("Bridge mode selected but no bridges provided".to_string()));
+        return Err(Error::Tor(
+            "Bridge mode selected but no bridges provided".to_string(),
+        ));
     }
 
     #[cfg(any(target_os = "android", target_os = "ios"))]

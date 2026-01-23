@@ -8,22 +8,17 @@
 //! - pirate/src/zcash/Note.cpp (SaplingNotePlaintext::decrypt)
 //! - pirate/src/zcash/NoteEncryption.cpp (AttemptSaplingEncDecryption, KDF_Sapling)
 
-use zcash_primitives::{
-    transaction::Transaction,
-    sapling::{
-        note_encryption::sapling_ka_agree,
-    },
-};
-use zcash_primitives::consensus::BranchId;
-use group::GroupEncoding;
-use jubjub::{ExtendedPoint, Scalar};
+use crate::Error;
+use blake2b_simd::Params;
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
     ChaCha20Poly1305, Key, Nonce,
 };
-use blake2b_simd::Params;
-use crate::Error;
+use group::GroupEncoding;
+use jubjub::{ExtendedPoint, Scalar};
 use std::convert::TryInto;
+use zcash_primitives::consensus::BranchId;
+use zcash_primitives::{sapling::note_encryption::sapling_ka_agree, transaction::Transaction};
 
 /// Decrypted full note with memo
 pub struct DecryptedFullNote {
@@ -48,7 +43,7 @@ fn kdf_sapling(dhsecret: &[u8; 32], epk: &[u8; 32]) -> Key {
     hasher.update(dhsecret);
     hasher.update(epk);
     let k = hasher.finalize();
-    
+
     // Convert to ChaCha20Poly1305 key
     let mut key_bytes = [0u8; 32];
     key_bytes.copy_from_slice(k.as_bytes());
@@ -68,7 +63,7 @@ fn kdf_sapling(dhsecret: &[u8; 32], epk: &[u8; 32]) -> Key {
 /// * `output_index` - Index of the Sapling output to decrypt
 /// * `ivk_bytes` - Incoming viewing key bytes (32 bytes)
 /// * `cmu` - Optional note commitment (from compact block, for validation)
-///           If None, will use cmu from transaction output
+///   If None, will use cmu from transaction output
 ///
 /// # Returns
 /// Decrypted note with memo, or None if decryption fails
@@ -84,7 +79,8 @@ pub fn decrypt_memo_from_raw_tx_with_ivk_bytes(
         .map_err(|e| Error::Sync(format!("Failed to parse transaction: {}", e)))?;
 
     // Get Sapling bundle
-    let sapling_bundle = tx.sapling_bundle()
+    let sapling_bundle = tx
+        .sapling_bundle()
         .ok_or_else(|| Error::Sync("Transaction has no Sapling bundle".to_string()))?;
 
     // Get outputs
@@ -114,7 +110,9 @@ pub fn decrypt_memo_from_raw_tx_with_ivk_bytes(
 
     // Get ephemeral key from output
     let epk_bytes = output.ephemeral_key();
-    let epk_array: [u8; 32] = epk_bytes.as_ref().try_into()
+    let epk_array: [u8; 32] = epk_bytes
+        .as_ref()
+        .try_into()
         .map_err(|_| Error::Sync("Invalid ephemeral key length".to_string()))?;
     let epk = match ExtendedPoint::from_bytes(&epk_array).into() {
         Some(p) => p,
@@ -122,30 +120,33 @@ pub fn decrypt_memo_from_raw_tx_with_ivk_bytes(
             return Err(Error::Sync("Invalid ephemeral key".to_string()));
         }
     };
-    
+
     // Get cmu from output
     let note_commitment = output.cmu();
-    
+
     // Validate against provided cmu if given
     if let Some(expected_cmu) = cmu {
         let cmu_bytes = note_commitment.to_bytes();
         if cmu_bytes.as_ref() != expected_cmu {
-            tracing::debug!("CMU mismatch: expected {}, got {}", 
-                hex::encode(expected_cmu), hex::encode(cmu_bytes.as_ref()));
+            tracing::debug!(
+                "CMU mismatch: expected {}, got {}",
+                hex::encode(expected_cmu),
+                hex::encode(cmu_bytes.as_ref())
+            );
         }
     }
 
     // Step 1: Key agreement (librustzcash_sapling_ka_agree).
     let ka = sapling_ka_agree(&ivk_scalar, &epk);
     let ka_bytes = ka.to_bytes();
-    
+
     // Step 2: Derive symmetric key using KDF_Sapling
     let key = kdf_sapling(&ka_bytes, &epk_array);
-    
+
     // Step 3: Decrypt using ChaCha20Poly1305 with nonce=0
     let cipher = ChaCha20Poly1305::new(&key);
     let nonce = Nonce::from_slice(&[0u8; 12]); // Nonce is zero (12 bytes)
-    
+
     let plaintext = match cipher.decrypt(nonce, enc_ciphertext.as_ref()) {
         Ok(pt) => pt,
         Err(_) => {
@@ -153,40 +154,40 @@ pub fn decrypt_memo_from_raw_tx_with_ivk_bytes(
             return Ok(None);
         }
     };
-    
+
     // Step 4: Deserialize plaintext
     // Format: [leadbyte (1)] [diversifier (11)] [value (8)] [rseed (32)] [memo (512)]
     if plaintext.len() < 564 {
         return Ok(None);
     }
-    
+
     let mut offset = 0;
-    
+
     // Leadbyte (1 byte)
     let _leadbyte = plaintext[offset];
     offset += 1;
-    
+
     // Diversifier (11 bytes)
     let mut diversifier = [0u8; 11];
     diversifier.copy_from_slice(&plaintext[offset..offset + 11]);
     offset += 11;
-    
+
     // Value (8 bytes, little-endian)
     let mut value_bytes = [0u8; 8];
     value_bytes.copy_from_slice(&plaintext[offset..offset + 8]);
     let value = u64::from_le_bytes(value_bytes);
     offset += 8;
-    
+
     // Rseed (32 bytes) - not needed for memo extraction
     offset += 32;
-    
+
     // Memo (512 bytes)
     let memo = plaintext[offset..offset + 512].to_vec();
-    
+
     // Verify note commitment matches (optional validation)
     // This would require computing cmu from diversifier, value, rseed
     // Skip plaintext consistency check; upstream validation already covers it.
-    
+
     Ok(Some(DecryptedFullNote {
         value,
         diversifier,
@@ -209,10 +210,7 @@ pub fn decode_memo(memo: &[u8]) -> Option<String> {
     }
 
     // Trim trailing nulls
-    let trimmed: Vec<u8> = memo.iter()
-        .copied()
-        .take_while(|&b| b != 0)
-        .collect();
+    let trimmed: Vec<u8> = memo.iter().copied().take_while(|&b| b != 0).collect();
 
     if trimmed.is_empty() {
         return None;

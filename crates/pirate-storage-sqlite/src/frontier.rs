@@ -42,8 +42,10 @@ impl<'a> FrontierStorage<'a> {
         let created_at = chrono::Utc::now().to_rfc3339();
 
         // Encrypt frontier before storage
-        let encrypted_frontier = self.db.master_key().encrypt(frontier_bytes)
-            .map_err(|e| crate::Error::Encryption(format!("Failed to encrypt frontier: {}", e)))?;
+        let encrypted_frontier =
+            self.db.master_key().encrypt(frontier_bytes).map_err(|e| {
+                crate::Error::Encryption(format!("Failed to encrypt frontier: {}", e))
+            })?;
 
         self.db.conn().execute(
             r#"
@@ -75,7 +77,10 @@ impl<'a> FrontierStorage<'a> {
             params![height, encrypted_frontier_bytes, created_at, app_version],
         )?;
 
-        tracing::debug!("Saved encrypted frontier snapshot at height {} (in transaction)", height);
+        tracing::debug!(
+            "Saved encrypted frontier snapshot at height {} (in transaction)",
+            height
+        );
         Ok(())
     }
 
@@ -104,10 +109,18 @@ impl<'a> FrontierStorage<'a> {
 
         if let Some((height, encrypted_frontier)) = &result {
             // Decrypt frontier
-            let frontier = self.db.master_key().decrypt(encrypted_frontier)
-                .map_err(|e| crate::Error::Encryption(format!("Failed to decrypt frontier: {}", e)))?;
-            
-            tracing::debug!("Loaded and decrypted frontier snapshot from height {}", height);
+            let frontier = self
+                .db
+                .master_key()
+                .decrypt(encrypted_frontier)
+                .map_err(|e| {
+                    crate::Error::Encryption(format!("Failed to decrypt frontier: {}", e))
+                })?;
+
+            tracing::debug!(
+                "Loaded and decrypted frontier snapshot from height {}",
+                height
+            );
             Ok(Some((*height, frontier)))
         } else {
             Ok(None)
@@ -137,9 +150,14 @@ impl<'a> FrontierStorage<'a> {
 
         if let Some((height, encrypted_frontier, created_at, app_version)) = result {
             // Decrypt frontier
-            let frontier = self.db.master_key().decrypt(&encrypted_frontier)
-                .map_err(|e| crate::Error::Encryption(format!("Failed to decrypt frontier: {}", e)))?;
-            
+            let frontier = self
+                .db
+                .master_key()
+                .decrypt(&encrypted_frontier)
+                .map_err(|e| {
+                    crate::Error::Encryption(format!("Failed to decrypt frontier: {}", e))
+                })?;
+
             Ok(Some(FrontierSnapshotRow {
                 height,
                 frontier,
@@ -167,8 +185,9 @@ impl<'a> FrontierStorage<'a> {
             .optional()?;
 
         if let Some(encrypted) = result {
-            let frontier = self.db.master_key().decrypt(&encrypted)
-                .map_err(|e| crate::Error::Encryption(format!("Failed to decrypt frontier: {}", e)))?;
+            let frontier = self.db.master_key().decrypt(&encrypted).map_err(|e| {
+                crate::Error::Encryption(format!("Failed to decrypt frontier: {}", e))
+            })?;
             Ok(Some(frontier))
         } else {
             Ok(None)
@@ -200,8 +219,13 @@ impl<'a> FrontierStorage<'a> {
             .optional()?;
 
         if let Some((h, encrypted_frontier)) = result {
-            let frontier = self.db.master_key().decrypt(&encrypted_frontier)
-                .map_err(|e| crate::Error::Encryption(format!("Failed to decrypt frontier: {}", e)))?;
+            let frontier = self
+                .db
+                .master_key()
+                .decrypt(&encrypted_frontier)
+                .map_err(|e| {
+                    crate::Error::Encryption(format!("Failed to decrypt frontier: {}", e))
+                })?;
             Ok(Some((h, frontier)))
         } else {
             Ok(None)
@@ -212,13 +236,17 @@ impl<'a> FrontierStorage<'a> {
     ///
     /// Useful during rollback to remove invalidated snapshots.
     pub fn delete_snapshots_above(&self, height: u32) -> Result<usize> {
-        let count = self.db.conn().execute(
-            "DELETE FROM frontier_snapshots WHERE height > ?1",
-            [height],
-        )?;
+        let count = self
+            .db
+            .conn()
+            .execute("DELETE FROM frontier_snapshots WHERE height > ?1", [height])?;
 
         if count > 0 {
-            tracing::info!("Deleted {} frontier snapshots above height {}", count, height);
+            tracing::info!(
+                "Deleted {} frontier snapshots above height {}",
+                count,
+                height
+            );
         }
 
         Ok(count)
@@ -226,13 +254,14 @@ impl<'a> FrontierStorage<'a> {
 
     /// Delete snapshots above height within a transaction
     pub fn delete_snapshots_above_tx(tx: &Transaction<'_>, height: u32) -> Result<usize> {
-        let count = tx.execute(
-            "DELETE FROM frontier_snapshots WHERE height > ?1",
-            [height],
-        )?;
+        let count = tx.execute("DELETE FROM frontier_snapshots WHERE height > ?1", [height])?;
 
         if count > 0 {
-            tracing::info!("Deleted {} frontier snapshots above height {} (in transaction)", count, height);
+            tracing::info!(
+                "Deleted {} frontier snapshots above height {} (in transaction)",
+                count,
+                height
+            );
         }
 
         Ok(count)
@@ -254,11 +283,12 @@ impl<'a> FrontierStorage<'a> {
 
     /// Count total snapshots
     pub fn count_snapshots(&self) -> Result<u64> {
-        let count: u64 = self.db.conn().query_row(
-            "SELECT COUNT(*) FROM frontier_snapshots",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: u64 =
+            self.db
+                .conn()
+                .query_row("SELECT COUNT(*) FROM frontier_snapshots", [], |row| {
+                    row.get(0)
+                })?;
 
         Ok(count)
     }
@@ -278,7 +308,11 @@ impl<'a> FrontierStorage<'a> {
         )?;
 
         if count > 0 {
-            tracing::info!("Pruned {} old frontier snapshots, kept {}", count, keep_count);
+            tracing::info!(
+                "Pruned {} old frontier snapshots, kept {}",
+                count,
+                keep_count
+            );
         }
 
         Ok(count)
@@ -292,7 +326,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     fn test_db() -> Database {
-        use crate::security::{MasterKey, EncryptionAlgorithm};
+        use crate::security::{EncryptionAlgorithm, MasterKey};
         let file = NamedTempFile::new().unwrap();
         let salt = crate::security::generate_salt();
         let key = EncryptionKey::from_passphrase("test", &salt).unwrap();
@@ -306,7 +340,9 @@ mod tests {
         let storage = FrontierStorage::new(&db);
 
         let frontier_bytes = vec![1, 2, 3, 4, 5];
-        storage.save_frontier_snapshot(100, &frontier_bytes, "1.0.0").unwrap();
+        storage
+            .save_frontier_snapshot(100, &frontier_bytes, "1.0.0")
+            .unwrap();
 
         let result = storage.load_last_snapshot().unwrap();
         assert!(result.is_some());
@@ -390,7 +426,9 @@ mod tests {
         let storage = FrontierStorage::new(&db);
 
         for i in 1..=10 {
-            storage.save_frontier_snapshot(i * 100, &[i as u8], "1.0.0").unwrap();
+            storage
+                .save_frontier_snapshot(i * 100, &[i as u8], "1.0.0")
+                .unwrap();
         }
 
         assert_eq!(storage.count_snapshots().unwrap(), 10);
@@ -401,4 +439,3 @@ mod tests {
         assert_eq!(heights, vec![800, 900, 1000]);
     }
 }
-

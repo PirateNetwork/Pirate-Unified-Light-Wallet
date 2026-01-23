@@ -2,10 +2,10 @@
 //!
 //! Provides MITM protection through certificate pinning.
 
-use crate::{Result, Error};
+use crate::{Error, Result};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
-use tracing::{info, warn, debug};
+use tracing::{debug, info, warn};
 
 /// Certificate pin (SHA256 fingerprint of SPKI)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,14 +64,11 @@ impl TlsPinning {
     /// Add certificate pin for a host
     pub fn add_pin(&mut self, pin: CertificatePin) -> Result<()> {
         pin.validate()?;
-        
+
         info!("Adding TLS pin for {}: {}", pin.host, pin.description);
-        
-        self.pins
-            .entry(pin.host.clone())
-            .or_insert_with(Vec::new)
-            .push(pin);
-        
+
+        self.pins.entry(pin.host.clone()).or_default().push(pin);
+
         Ok(())
     }
 
@@ -93,10 +90,10 @@ impl TlsPinning {
     pub fn verify(&self, host: &str, cert_spki_sha256: &str) -> Result<()> {
         if let Some(pins) = self.pins.get(host) {
             debug!("Verifying {} pins for {}", pins.len(), host);
-            
+
             // Check if any pin matches
             let matches = pins.iter().any(|pin| pin.spki_sha256 == cert_spki_sha256);
-            
+
             if !matches {
                 let error_msg = format!(
                     "Certificate pin mismatch for {}! Expected one of {:?}, got {}",
@@ -104,7 +101,7 @@ impl TlsPinning {
                     pins.iter().map(|p| &p.spki_sha256).collect::<Vec<_>>(),
                     cert_spki_sha256
                 );
-                
+
                 if self.enforce {
                     return Err(Error::Tls(error_msg));
                 } else {
@@ -116,23 +113,23 @@ impl TlsPinning {
         } else {
             debug!("No pins configured for {}", host);
         }
-        
+
         Ok(())
     }
 
     /// Load default pins for known services
-    /// 
+    ///
     /// NOTE: Currently disabled because lightwalletd servers use gRPC/HTTP2
     /// and don't present certificates in a way that can be easily extracted.
     /// TLS connections still work, but certificate pinning is disabled.
-    /// 
+    ///
     /// When proper certificates become available, add them here.
     pub fn load_defaults(&mut self) -> Result<()> {
         info!("TLS pinning disabled - lightwalletd servers use gRPC/HTTP2 without extractable certificates");
-        
+
         // TLS pinning is currently disabled because:
         // 1. Servers use gRPC/HTTP2 which doesn't expose certificates to browsers
-        // 2. Certificates are not in Certificate Transparency logs  
+        // 2. Certificates are not in Certificate Transparency logs
         // 3. OpenSSL s_client cannot extract certificates from gRPC endpoints
         //
         // TLS connections still work - we just don't pin certificates.
@@ -144,11 +141,9 @@ impl TlsPinning {
 
     /// Export pins for backup
     pub fn export(&self) -> Result<String> {
-        let all_pins: Vec<&CertificatePin> = self.pins
-            .values()
-            .flat_map(|pins| pins.iter())
-            .collect();
-        
+        let all_pins: Vec<&CertificatePin> =
+            self.pins.values().flat_map(|pins| pins.iter()).collect();
+
         serde_json::to_string_pretty(&all_pins)
             .map_err(|e| Error::Tls(format!("Failed to export pins: {}", e)))
     }
@@ -157,11 +152,11 @@ impl TlsPinning {
     pub fn import(&mut self, json: &str) -> Result<()> {
         let pins: Vec<CertificatePin> = serde_json::from_str(json)
             .map_err(|e| Error::Tls(format!("Failed to parse pins: {}", e)))?;
-        
+
         for pin in pins {
             self.add_pin(pin)?;
         }
-        
+
         Ok(())
     }
 
@@ -209,41 +204,43 @@ mod tests {
     #[test]
     fn test_tls_pinning_add_verify() {
         let mut pinning = TlsPinning::new(true);
-        
+
         let pin = CertificatePin::new(
             "test.com".to_string(),
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
             "Test".to_string(),
         );
-        
+
         pinning.add_pin(pin.clone()).unwrap();
-        
+
         // Verify with correct pin
         assert!(pinning.verify("test.com", &pin.spki_sha256).is_ok());
-        
+
         // Verify with wrong pin (should fail with enforcement)
-        assert!(pinning.verify("test.com", "WRONG_PIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").is_err());
+        assert!(pinning
+            .verify("test.com", "WRONG_PIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+            .is_err());
     }
 
     #[test]
     fn test_tls_pinning_export_import() {
         let mut pinning = TlsPinning::new(true);
-        
+
         let pin = CertificatePin::new(
             "test.com".to_string(),
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
             "Test".to_string(),
         );
-        
+
         pinning.add_pin(pin.clone()).unwrap();
-        
+
         // Export
         let exported = pinning.export().unwrap();
-        
+
         // Import into new instance
         let mut pinning2 = TlsPinning::new(true);
         pinning2.import(&exported).unwrap();
-        
+
         // Verify
         assert!(pinning2.verify("test.com", &pin.spki_sha256).is_ok());
     }
@@ -251,22 +248,26 @@ mod tests {
     #[test]
     fn test_enforcement_mode() {
         let mut pinning = TlsPinning::new(false); // Not enforced
-        
+
         let pin = CertificatePin::new(
             "test.com".to_string(),
             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string(),
             "Test".to_string(),
         );
-        
+
         pinning.add_pin(pin).unwrap();
-        
+
         // Wrong pin should succeed when not enforced
-        assert!(pinning.verify("test.com", "WRONG_PIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").is_ok());
-        
+        assert!(pinning
+            .verify("test.com", "WRONG_PIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+            .is_ok());
+
         // Enable enforcement
         pinning.set_enforce(true);
-        
+
         // Now should fail
-        assert!(pinning.verify("test.com", "WRONG_PIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").is_err());
+        assert!(pinning
+            .verify("test.com", "WRONG_PIN_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+            .is_err());
     }
 }

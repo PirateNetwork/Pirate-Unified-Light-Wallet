@@ -223,11 +223,16 @@ pub struct TreeState {
 
 /// Generated-equivalent client for CompactTxStreamer service.
 pub mod compact_tx_streamer_client {
-    #![allow(unused_variables, dead_code, clippy::wildcard_imports, clippy::let_unit_value)]
-    
+    #![allow(
+        unused_variables,
+        dead_code,
+        clippy::wildcard_imports,
+        clippy::let_unit_value
+    )]
+
     use super::*;
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
 
     /// CompactTxStreamer gRPC client.
     ///
@@ -499,23 +504,29 @@ mod tests {
             header: vec![0u8; 32],
             vtx: vec![],
         };
-        
+
         let encoded = block.encode_to_vec();
         let decoded = CompactBlock::decode(&encoded[..]).unwrap();
-        
+
         assert_eq!(block, decoded);
     }
 
     #[test]
     fn test_block_range_encoding() {
         let range = BlockRange {
-            start: Some(BlockId { height: 1000, hash: vec![] }),
-            end: Some(BlockId { height: 2000, hash: vec![] }),
+            start: Some(BlockId {
+                height: 1000,
+                hash: vec![],
+            }),
+            end: Some(BlockId {
+                height: 2000,
+                hash: vec![],
+            }),
         };
-        
+
         let encoded = range.encode_to_vec();
         let decoded = BlockRange::decode(&encoded[..]).unwrap();
-        
+
         assert_eq!(range, decoded);
     }
 
@@ -537,10 +548,10 @@ mod tests {
             zcashd_build: "v4.0.0".to_string(),
             zcashd_subversion: "pirate".to_string(),
         };
-        
+
         let encoded = info.encode_to_vec();
         let decoded = LightdInfo::decode(&encoded[..]).unwrap();
-        
+
         assert_eq!(info, decoded);
     }
 }

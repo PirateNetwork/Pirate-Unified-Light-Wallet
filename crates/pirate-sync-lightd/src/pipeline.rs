@@ -81,7 +81,8 @@ impl PerfCounters {
     pub fn record_batch(&self, blocks: u64, notes: u64, commitments: u64, duration_ms: u64) {
         self.blocks_processed.fetch_add(blocks, Ordering::Relaxed);
         self.notes_decrypted.fetch_add(notes, Ordering::Relaxed);
-        self.commitments_applied.fetch_add(commitments, Ordering::Relaxed);
+        self.commitments_applied
+            .fetch_add(commitments, Ordering::Relaxed);
         self.last_batch_ms.store(duration_ms, Ordering::Relaxed);
         self.total_time_ms.fetch_add(duration_ms, Ordering::Relaxed);
         self.batches_processed.fetch_add(1, Ordering::Relaxed);
@@ -221,8 +222,9 @@ impl DecryptedNote {
             orchard_rseed: None,
         }
     }
-    
+
     /// Create new Orchard decrypted note
+    #[allow(clippy::too_many_arguments)]
     pub fn new_orchard(
         height: u64,
         tx_index: usize,
@@ -259,19 +261,19 @@ impl DecryptedNote {
             orchard_rseed: None,
         }
     }
-    
+
     /// Set transaction hash and ID
     pub fn set_tx_hash(&mut self, tx_hash: Vec<u8>) {
         self.tx_hash = tx_hash.clone();
         self.txid = tx_hash;
     }
-    
+
     /// Set memo bytes (encrypted memo)
     pub fn set_memo_bytes(&mut self, memo_bytes: Vec<u8>) {
         self.encrypted_memo = memo_bytes;
         self.memo_cache = None; // Clear cache when memo is updated
     }
-    
+
     /// Get memo bytes (for compatibility with sync.rs)
     pub fn memo_bytes(&self) -> Option<&[u8]> {
         if self.encrypted_memo.is_empty() {
@@ -316,11 +318,7 @@ fn decode_memo(memo_bytes: &[u8]) -> Option<String> {
         return None;
     }
 
-    let trimmed: Vec<u8> = memo_bytes
-        .iter()
-        .copied()
-        .take_while(|&b| b != 0)
-        .collect();
+    let trimmed: Vec<u8> = memo_bytes.iter().copied().take_while(|&b| b != 0).collect();
 
     if trimmed.is_empty() {
         return None;
@@ -527,7 +525,7 @@ impl SyncPipeline {
             batch_count += 1;
 
             // Mini-checkpoint every N batches
-            if batch_count % self.config.mini_checkpoint_interval == 0 {
+            if batch_count.is_multiple_of(self.config.mini_checkpoint_interval) {
                 self.create_mini_checkpoint(batch_end_height as u32).await?;
                 last_checkpoint_height = batch_end_height;
             }
@@ -548,7 +546,8 @@ impl SyncPipeline {
 
         // Final checkpoint
         if current_height > last_checkpoint_height + 1 {
-            self.create_mini_checkpoint((current_height - 1) as u32).await?;
+            self.create_mini_checkpoint((current_height - 1) as u32)
+                .await?;
         }
 
         let total_duration = pipeline_start.elapsed();
@@ -672,8 +671,6 @@ fn process_block_trial_decrypt(
     Ok((notes, commitments))
 }
 
-
-
 /// Pipeline execution result
 #[derive(Debug)]
 pub struct PipelineResult {
@@ -738,15 +735,7 @@ mod tests {
 
     #[test]
     fn test_lazy_memo_empty() {
-        let mut note = DecryptedNote::new(
-            1000,
-            0,
-            0,
-            100_000_000,
-            [0u8; 32],
-            [0u8; 32],
-            vec![],
-        );
+        let mut note = DecryptedNote::new(1000, 0, 0, 100_000_000, [0u8; 32], [0u8; 32], vec![]);
 
         assert_eq!(note.memo(), None);
     }
@@ -778,4 +767,3 @@ mod tests {
         assert!(pipeline.is_cancelled().await);
     }
 }
-

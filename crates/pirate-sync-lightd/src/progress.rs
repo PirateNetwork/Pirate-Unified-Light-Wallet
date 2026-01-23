@@ -1,7 +1,7 @@
 //! Sync progress tracking with ETA calculation and performance counters
 
-use std::sync::Arc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Sync stage
@@ -138,9 +138,10 @@ impl SyncProgress {
 
             if blocks_synced > 0 && elapsed > 0.0 {
                 inner.blocks_per_second = blocks_synced as f64 / elapsed;
-                
+
                 if inner.blocks_per_second > 0.0 {
-                    inner.eta_seconds = Some((blocks_remaining as f64 / inner.blocks_per_second) as u64);
+                    inner.eta_seconds =
+                        Some((blocks_remaining as f64 / inner.blocks_per_second) as u64);
                 }
             }
 
@@ -160,10 +161,10 @@ impl SyncProgress {
         if inner.target_height <= inner.start_height {
             return 0.0;
         }
-        
+
         let total = inner.target_height - inner.start_height;
         let done = inner.current_height.saturating_sub(inner.start_height);
-        
+
         (done as f64 / total as f64) * 100.0
     }
 
@@ -272,7 +273,7 @@ impl SyncProgress {
     /// Get summary string
     pub fn summary(&self) -> String {
         let inner = self.inner.read();
-        
+
         let progress_pct = if inner.target_height > 0 {
             (inner.current_height as f64 / inner.target_height as f64) * 100.0
         } else {
@@ -318,10 +319,10 @@ mod tests {
         let progress = SyncProgress::new();
         progress.set_target(100);
         progress.set_current(50);
-        
+
         // Need to set start height for accurate percentage
         progress.start();
-        
+
         assert!(progress.percentage() >= 0.0 && progress.percentage() <= 100.0);
     }
 
@@ -331,7 +332,7 @@ mod tests {
         assert_eq!(SyncStage::Notes.name(), "Scanning Notes");
         assert_eq!(SyncStage::Witness.name(), "Building Witnesses");
         assert_eq!(SyncStage::Verify.name(), "Synching Chain");
-        assert_eq!(SyncStage::Complete.name(), "Complete");
+        assert_eq!(SyncStage::Complete.name(), "Synced");
     }
 
     #[test]
@@ -339,9 +340,9 @@ mod tests {
         let progress = SyncProgress::new();
         progress.set_target(100);
         progress.set_current(0);
-        
+
         assert!(!progress.is_complete());
-        
+
         progress.complete();
         assert!(progress.is_complete());
         assert_eq!(progress.stage(), SyncStage::Complete);
@@ -353,11 +354,9 @@ mod tests {
         progress.set_target(1000);
         progress.set_current(500);
         progress.start();
-        
+
         let summary = progress.summary();
         assert!(summary.contains("500"));
         assert!(summary.contains("1000"));
     }
 }
-
-

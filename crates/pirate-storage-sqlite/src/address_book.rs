@@ -13,10 +13,11 @@ pub const MAX_LABEL_LENGTH: usize = 100;
 pub const MAX_NOTES_LENGTH: usize = 500;
 
 /// Color tag for address book entries
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum ColorTag {
     /// No color (default)
+    #[default]
     None = 0,
     /// Red
     Red = 1,
@@ -60,15 +61,15 @@ impl ColorTag {
     /// Get hex color code
     pub fn hex_color(&self) -> &'static str {
         match self {
-            ColorTag::None => "#6B7280",    // Gray-500
-            ColorTag::Red => "#EF4444",     // Red-500
-            ColorTag::Orange => "#F97316",  // Orange-500
-            ColorTag::Yellow => "#EAB308",  // Yellow-500
-            ColorTag::Green => "#22C55E",   // Green-500
-            ColorTag::Blue => "#3B82F6",    // Blue-500
-            ColorTag::Purple => "#8B5CF6",  // Purple-500
-            ColorTag::Pink => "#EC4899",    // Pink-500
-            ColorTag::Gray => "#6B7280",    // Gray-500
+            ColorTag::None => "#6B7280",   // Gray-500
+            ColorTag::Red => "#EF4444",    // Red-500
+            ColorTag::Orange => "#F97316", // Orange-500
+            ColorTag::Yellow => "#EAB308", // Yellow-500
+            ColorTag::Green => "#22C55E",  // Green-500
+            ColorTag::Blue => "#3B82F6",   // Blue-500
+            ColorTag::Purple => "#8B5CF6", // Purple-500
+            ColorTag::Pink => "#EC4899",   // Pink-500
+            ColorTag::Gray => "#6B7280",   // Gray-500
         }
     }
 
@@ -100,12 +101,6 @@ impl ColorTag {
             ColorTag::Pink,
             ColorTag::Gray,
         ]
-    }
-}
-
-impl Default for ColorTag {
-    fn default() -> Self {
-        ColorTag::None
     }
 }
 
@@ -365,7 +360,11 @@ impl AddressBookStorage {
     }
 
     /// Get entry by ID
-    pub fn get_by_id(conn: &Connection, wallet_id: &str, id: i64) -> Result<Option<AddressBookEntry>> {
+    pub fn get_by_id(
+        conn: &Connection,
+        wallet_id: &str,
+        id: i64,
+    ) -> Result<Option<AddressBookEntry>> {
         let entry = conn
             .query_row(
                 r#"
@@ -375,7 +374,7 @@ impl AddressBookStorage {
                 WHERE id = ?1 AND wallet_id = ?2
                 "#,
                 params![id, wallet_id],
-                |row| Self::row_to_entry(row),
+                Self::row_to_entry,
             )
             .optional()?;
 
@@ -397,7 +396,7 @@ impl AddressBookStorage {
                 WHERE wallet_id = ?1 AND address = ?2
                 "#,
                 params![wallet_id, address],
-                |row| Self::row_to_entry(row),
+                Self::row_to_entry,
             )
             .optional()?;
 
@@ -434,7 +433,7 @@ impl AddressBookStorage {
         )?;
 
         let entries = stmt
-            .query_map(params![wallet_id], |row| Self::row_to_entry(row))?
+            .query_map(params![wallet_id], Self::row_to_entry)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         Ok(entries)
@@ -453,7 +452,7 @@ impl AddressBookStorage {
         )?;
 
         let entries = stmt
-            .query_map(params![wallet_id], |row| Self::row_to_entry(row))?
+            .query_map(params![wallet_id], Self::row_to_entry)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         Ok(entries)
@@ -592,7 +591,7 @@ impl AddressBookStorage {
         )?;
 
         let entries = stmt
-            .query_map(params![wallet_id, limit], |row| Self::row_to_entry(row))?
+            .query_map(params![wallet_id, limit], Self::row_to_entry)?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         Ok(entries)
@@ -793,8 +792,8 @@ mod tests {
         let label = AddressBookStorage::get_label_for_address(&conn, wallet_id, address).unwrap();
         assert_eq!(label, Some("Alice".to_string()));
 
-        let unknown = AddressBookStorage::get_label_for_address(&conn, wallet_id, "zs1unknown")
-            .unwrap();
+        let unknown =
+            AddressBookStorage::get_label_for_address(&conn, wallet_id, "zs1unknown").unwrap();
         assert!(unknown.is_none());
     }
 
@@ -828,4 +827,3 @@ mod tests {
         assert!(AddressBookStorage::insert(&conn, &entry).is_err());
     }
 }
-

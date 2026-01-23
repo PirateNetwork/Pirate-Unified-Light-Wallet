@@ -8,7 +8,7 @@ on:
 
 env:
   RUST_VERSION: "1.90.0"
-  FLUTTER_VERSION: "3.24.3"
+  FLUTTER_VERSION: "3.30.0"
   FRB_CODEGEN_VERSION: "2.11.1"
   JAVA_VERSION: "21"
   COCOAPODS_VERSION: "1.16.2"
@@ -55,6 +55,14 @@ jobs:
 
       - name: Install flutter_rust_bridge_codegen
         run: cargo install flutter_rust_bridge_codegen --locked --version ${{ env.FRB_CODEGEN_VERSION }}
+
+      - name: Prepare Flutter Dart toolchain
+        run: |
+          cd app
+          flutter pub get --enforce-lockfile
+          cd ..
+          mkdir -p .dart_tool
+          cp app/.dart_tool/package_config.json .dart_tool/package_config.json
 
       - name: Generate flutter_rust_bridge bindings
         run: |

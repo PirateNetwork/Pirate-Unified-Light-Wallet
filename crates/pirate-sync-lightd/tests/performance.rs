@@ -9,7 +9,7 @@ async fn test_sync_performance_small_range() {
     let mut engine = SyncEngine::new("https://lightd.pirate.black:443".to_string(), 4_000_000);
 
     let start = Instant::now();
-    let result = engine.sync_range(4_000_000, 4_001_000).await;
+    let result = engine.sync_range(4_000_000, Some(4_001_000)).await;
     let elapsed = start.elapsed();
 
     assert!(result.is_ok(), "Sync should succeed");
@@ -42,7 +42,7 @@ async fn test_sync_performance_with_parallelism() {
     );
 
     let start = Instant::now();
-    let result = engine.sync_range(4_000_000, 4_005_000).await;
+    let result = engine.sync_range(4_000_000, Some(4_005_000)).await;
     let elapsed = start.elapsed();
 
     assert!(result.is_ok());
@@ -67,7 +67,7 @@ async fn test_checkpoint_overhead() {
     );
 
     let start = Instant::now();
-    let result = engine_frequent.sync_range(4_000_000, 4_010_000).await;
+    let result = engine_frequent.sync_range(4_000_000, Some(4_010_000)).await;
     let elapsed_frequent = start.elapsed();
 
     assert!(result.is_ok());
@@ -85,7 +85,9 @@ async fn test_checkpoint_overhead() {
     );
 
     let start = Instant::now();
-    let result = engine_infrequent.sync_range(4_000_000, 4_010_000).await;
+    let result = engine_infrequent
+        .sync_range(4_000_000, Some(4_010_000))
+        .await;
     let elapsed_infrequent = start.elapsed();
 
     assert!(result.is_ok());
@@ -121,7 +123,7 @@ async fn test_batch_size_optimization() {
         );
 
         let start = Instant::now();
-        let result = engine.sync_range(4_000_000, 4_005_000).await;
+        let result = engine.sync_range(4_000_000, Some(4_005_000)).await;
         let elapsed = start.elapsed();
 
         assert!(result.is_ok());
@@ -129,10 +131,7 @@ async fn test_batch_size_optimization() {
         let blocks_per_sec = 5_000.0 / elapsed.as_secs_f64();
         results.push((batch_size, blocks_per_sec));
 
-        println!(
-            "Batch size {}: {:.1} blocks/s",
-            batch_size, blocks_per_sec
-        );
+        println!("Batch size {}: {:.1} blocks/s", batch_size, blocks_per_sec);
     }
 
     // Find optimal batch size
@@ -141,7 +140,10 @@ async fn test_batch_size_optimization() {
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
         .unwrap();
 
-    println!("Optimal batch size: {} ({:.1} blocks/s)", optimal.0, optimal.1);
+    println!(
+        "Optimal batch size: {} ({:.1} blocks/s)",
+        optimal.0, optimal.1
+    );
 }
 
 #[tokio::test]
@@ -160,7 +162,7 @@ async fn test_lazy_memo_performance() {
     );
 
     let start = Instant::now();
-    let result = engine_lazy.sync_range(4_000_000, 4_005_000).await;
+    let result = engine_lazy.sync_range(4_000_000, Some(4_005_000)).await;
     let elapsed_lazy = start.elapsed();
 
     assert!(result.is_ok());
@@ -178,7 +180,7 @@ async fn test_lazy_memo_performance() {
     );
 
     let start = Instant::now();
-    let result = engine_eager.sync_range(4_000_000, 4_005_000).await;
+    let result = engine_eager.sync_range(4_000_000, Some(4_005_000)).await;
     let elapsed_eager = start.elapsed();
 
     assert!(result.is_ok());
@@ -201,7 +203,7 @@ async fn test_progress_overhead() {
     let progress = engine.progress();
 
     let start = Instant::now();
-    let result = engine.sync_range(4_000_000, 4_010_000).await;
+    let result = engine.sync_range(4_000_000, Some(4_010_000)).await;
     let elapsed = start.elapsed();
 
     assert!(result.is_ok());
@@ -220,4 +222,3 @@ async fn test_progress_overhead() {
         "Progress tracking overhead too high"
     );
 }
-

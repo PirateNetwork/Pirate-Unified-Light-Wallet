@@ -1,0 +1,13 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1c1038c5d8966f8c65e09cac24dd79220e9911da34a5f774f5806be9c4ed9c55 # shrinks to index = 0
+cc 3fb95f977c289091225fe555ee64fa1ef142fb18e4524f94f4ed1e250ad15b9b # shrinks to index = 0
+cc 7fa4ddd8d3388caf5cccf2db06148517ec261777c5c9543d023d5da6b5a98faf # shrinks to _dummy = 0
+cc 917ccd3165f4d7fbd7d3a9a27d225c170b92a343a66bb2da138f9c82a1b73ece # shrinks to index = 0
+cc c0b66e2c6314ff8022530e9427e81ee685824b043e55abd05a516589413b2973 # shrinks to passphrase = ""
+cc 8d7a7990715244f46dc37cf63a04a8ee7a130f35e2d5844fb30aec8c87d0ad32 # shrinks to index1 = 0, index2 = 1
+cc a6e56d8497486ac2eef5580bc61bae5de9d29efa510784ce5cfae4d601cfb5d3 # shrinks to index = 0

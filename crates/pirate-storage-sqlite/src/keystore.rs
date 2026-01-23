@@ -1,12 +1,13 @@
-//! Platform keystore integration for secure key sealing
+//! Platform keystore integration for secure key sealing.
 //!
-//! Provides unified interface to platform-specific secure storage:
-//! - Android: Keystore with StrongBox detection
-//! - iOS/macOS: Keychain with Secure Enclave
-//! - Windows: DPAPI (Data Protection API)
-//! - Linux: libsecret (GNOME Keyring / KDE Wallet)
+//! This module defines the Rust-side interface for OS keystore access. In the
+//! Flutter app, the actual keystore operations are implemented in the platform
+//! runners and injected via FFI, so the Rust core does not depend on native
+//! keystore APIs by default.
 //!
-//! All operations are designed to be FFI-friendly for Flutter integration.
+//! The platform-specific shims below are placeholders and are only compiled
+//! when the `native-keystore` feature is enabled. This keeps the core usable
+//! for non-GUI or multi-frontend setups that handle secrets outside of Rust.
 
 use crate::{EncryptionAlgorithm, Error, MasterKey, Result, SealedKey};
 use parking_lot::RwLock;
@@ -61,19 +62,19 @@ impl Platform {
     pub fn current() -> Self {
         #[cfg(target_os = "android")]
         return Platform::Android;
-        
+
         #[cfg(target_os = "ios")]
         return Platform::Ios;
-        
+
         #[cfg(target_os = "macos")]
         return Platform::MacOs;
-        
+
         #[cfg(target_os = "windows")]
         return Platform::Windows;
-        
+
         #[cfg(target_os = "linux")]
         return Platform::Linux;
-        
+
         #[cfg(not(any(
             target_os = "android",
             target_os = "ios",
@@ -146,36 +147,36 @@ pub fn platform_keystore() -> Option<Arc<dyn PlatformKeystore>> {
 }
 
 /// Platform keystore abstraction
-/// 
+///
 /// This trait defines the interface for platform-specific keystore operations.
 /// FFI implementations will bridge to native platform code via Flutter.
 pub trait PlatformKeystore: Send + Sync {
     /// Get platform capabilities
     fn capabilities(&self) -> KeystoreCapabilities;
-    
+
     /// Seal (encrypt) a master key using platform keystore
-    /// 
+    ///
     /// On Android: Uses Android Keystore (StrongBox if available)
     /// On iOS/macOS: Uses Keychain with Secure Enclave if available
     /// On Windows: Uses DPAPI
     /// On Linux: Uses libsecret
     fn seal_key(&self, key: &MasterKey, key_id: &str) -> Result<SealedKey>;
-    
+
     /// Unseal (decrypt) a master key
     fn unseal_key(&self, sealed: &SealedKey) -> KeystoreResult<MasterKey>;
-    
+
     /// Unseal with biometric authentication
     fn unseal_key_biometric(&self, sealed: &SealedKey) -> KeystoreResult<MasterKey>;
-    
+
     /// Delete a sealed key from keystore
     fn delete_key(&self, key_id: &str) -> Result<()>;
-    
+
     /// Check if biometric authentication is available
     fn has_biometrics(&self) -> bool;
-    
+
     /// Get available biometric type
     fn biometric_type(&self) -> BiometricType;
-    
+
     /// Authenticate with biometrics (returns true if successful)
     fn authenticate_biometric(&self, reason: &str) -> KeystoreResult<bool>;
 }
@@ -198,7 +199,7 @@ impl MockKeystore {
             },
         }
     }
-    
+
     /// Create with custom capabilities (for testing)
     pub fn with_capabilities(capabilities: KeystoreCapabilities) -> Self {
         Self { capabilities }
@@ -215,7 +216,7 @@ impl PlatformKeystore for MockKeystore {
     fn capabilities(&self) -> KeystoreCapabilities {
         self.capabilities.clone()
     }
-    
+
     fn seal_key(&self, key: &MasterKey, key_id: &str) -> Result<SealedKey> {
         // Mock: Just wrap the key with a simple XOR "encryption"
         // In production, this would call platform-specific APIs via FFI
@@ -224,14 +225,14 @@ impl PlatformKeystore for MockKeystore {
         for byte in &mut encrypted {
             *byte ^= xor_key;
         }
-        
+
         Ok(SealedKey::new(
             encrypted,
             key_id.to_string(),
             EncryptionAlgorithm::ChaCha20Poly1305,
         ))
     }
-    
+
     fn unseal_key(&self, sealed: &SealedKey) -> KeystoreResult<MasterKey> {
         // Mock: Reverse the XOR
         let mut decrypted = sealed.encrypted_key.clone();
@@ -239,29 +240,29 @@ impl PlatformKeystore for MockKeystore {
         for byte in &mut decrypted {
             *byte ^= xor_key;
         }
-        
+
         match MasterKey::from_bytes(&decrypted, sealed.algorithm) {
             Ok(key) => KeystoreResult::Success(key),
             Err(e) => KeystoreResult::Error(e),
         }
     }
-    
+
     fn unseal_key_biometric(&self, sealed: &SealedKey) -> KeystoreResult<MasterKey> {
         if !self.has_biometrics() {
             return KeystoreResult::NotAvailable;
         }
         self.unseal_key(sealed)
     }
-    
+
     fn delete_key(&self, _key_id: &str) -> Result<()> {
         // Mock: No-op
         Ok(())
     }
-    
+
     fn has_biometrics(&self) -> bool {
         self.capabilities.has_biometrics
     }
-    
+
     fn biometric_type(&self) -> BiometricType {
         if self.capabilities.has_biometrics {
             BiometricType::Fingerprint
@@ -269,7 +270,7 @@ impl PlatformKeystore for MockKeystore {
             BiometricType::None
         }
     }
-    
+
     fn authenticate_biometric(&self, _reason: &str) -> KeystoreResult<bool> {
         if !self.has_biometrics() {
             return KeystoreResult::NotAvailable;
@@ -280,30 +281,30 @@ impl PlatformKeystore for MockKeystore {
 }
 
 // =============================================================================
-// Platform-specific shims (FFI bridge points)
+// Platform-specific shims (optional native-keystore implementations)
 // =============================================================================
 
 /// Android Keystore shim
-/// 
+///
 /// In production, this calls into Kotlin/Java via FFI to use:
 /// - android.security.keystore.KeyGenParameterSpec
 /// - android.security.keystore.KeyProperties
 /// - javax.crypto.Cipher
-/// 
+///
 /// StrongBox is preferred when available (Pixel 3+, Samsung flagships, etc.)
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", feature = "native-keystore"))]
 pub mod android {
     use super::*;
-    
+
     /// Keystore alias prefix
     pub const KEYSTORE_ALIAS_PREFIX: &str = "pirate_wallet_";
-    
+
     /// Check if StrongBox is available
     pub fn has_strongbox() -> bool {
         // FFI call to Kotlin: PackageManager.hasSystemFeature(FEATURE_STRONGBOX_KEYSTORE)
         false // Placeholder
     }
-    
+
     /// Generate key in Android Keystore
     pub fn generate_keystore_key(alias: &str, require_biometric: bool) -> Result<()> {
         // FFI call to generate AES-256-GCM key in Keystore
@@ -316,48 +317,51 @@ pub mod android {
         let _ = (alias, require_biometric);
         Ok(())
     }
-    
+
     /// Encrypt with Android Keystore
     pub fn encrypt_with_keystore(alias: &str, plaintext: &[u8]) -> Result<Vec<u8>> {
         // FFI call to encrypt using Keystore key
         let _ = (alias, plaintext);
-        Err(Error::Encryption("Android Keystore FFI not implemented".into()))
+        Err(Error::Encryption(
+            "Android Keystore FFI not implemented".into(),
+        ))
     }
-    
+
     /// Decrypt with Android Keystore
     pub fn decrypt_with_keystore(alias: &str, ciphertext: &[u8]) -> Result<Vec<u8>> {
         // FFI call to decrypt using Keystore key
         let _ = (alias, ciphertext);
-        Err(Error::Encryption("Android Keystore FFI not implemented".into()))
+        Err(Error::Encryption(
+            "Android Keystore FFI not implemented".into(),
+        ))
     }
 }
 
 /// iOS/macOS Keychain shim
-/// 
+///
 /// In production, this calls into Swift/Objective-C via FFI to use:
 /// - Security framework (SecItemAdd, SecItemCopyMatching, etc.)
 /// - Secure Enclave for key protection
 /// - kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
-#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[cfg(all(
+    any(target_os = "ios", target_os = "macos"),
+    feature = "native-keystore"
+))]
 pub mod apple {
     use super::*;
-    
+
     /// Keychain service name
     pub const KEYCHAIN_SERVICE: &str = "com.pirate.wallet";
-    
+
     /// Check if Secure Enclave is available
     pub fn has_secure_enclave() -> bool {
         // FFI call to Swift: SecureEnclave.isAvailable
         // Available on: iPhone 5s+, iPad Air+, Mac with T1/T2/M1+
         false // Placeholder
     }
-    
+
     /// Store key in Keychain
-    pub fn store_in_keychain(
-        key_id: &str,
-        data: &[u8],
-        require_biometric: bool,
-    ) -> Result<()> {
+    pub fn store_in_keychain(key_id: &str, data: &[u8], require_biometric: bool) -> Result<()> {
         // FFI call to SecItemAdd with:
         // - kSecClass: kSecClassGenericPassword
         // - kSecAttrService: KEYCHAIN_SERVICE
@@ -368,14 +372,14 @@ pub mod apple {
         let _ = (key_id, data, require_biometric);
         Ok(())
     }
-    
+
     /// Retrieve key from Keychain
     pub fn retrieve_from_keychain(key_id: &str) -> Result<Vec<u8>> {
         // FFI call to SecItemCopyMatching
         let _ = key_id;
         Err(Error::Encryption("Keychain FFI not implemented".into()))
     }
-    
+
     /// Delete key from Keychain
     pub fn delete_from_keychain(key_id: &str) -> Result<()> {
         // FFI call to SecItemDelete
@@ -385,14 +389,14 @@ pub mod apple {
 }
 
 /// Windows DPAPI shim
-/// 
+///
 /// In production, this uses win32 crate to call:
 /// - CryptProtectData / CryptUnprotectData
 /// - Optional: NCrypt for TPM-backed keys
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "native-keystore"))]
 pub mod windows {
     use super::*;
-    
+
     /// Protect data using DPAPI
     pub fn protect_data(plaintext: &[u8]) -> Result<Vec<u8>> {
         // FFI call to CryptProtectData
@@ -401,14 +405,14 @@ pub mod windows {
         let _ = plaintext;
         Err(Error::Encryption("DPAPI FFI not implemented".into()))
     }
-    
+
     /// Unprotect data using DPAPI
     pub fn unprotect_data(ciphertext: &[u8]) -> Result<Vec<u8>> {
         // FFI call to CryptUnprotectData
         let _ = ciphertext;
         Err(Error::Encryption("DPAPI FFI not implemented".into()))
     }
-    
+
     /// Check if TPM is available for hardware-backed protection
     pub fn has_tpm() -> bool {
         // Check TPM 2.0 availability
@@ -417,18 +421,18 @@ pub mod windows {
 }
 
 /// Linux libsecret shim
-/// 
+///
 /// In production, this uses libsecret-1 to interface with:
 /// - GNOME Keyring
 /// - KDE Wallet
 /// - Other Secret Service implementations
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "native-keystore"))]
 pub mod linux {
     use super::*;
-    
+
     /// Secret Service collection
     pub const SECRET_COLLECTION: &str = "pirate_wallet";
-    
+
     /// Store secret using libsecret
     pub fn store_secret(key_id: &str, data: &[u8]) -> Result<()> {
         // FFI call to secret_password_store_sync
@@ -437,14 +441,14 @@ pub mod linux {
         let _ = (key_id, data);
         Ok(())
     }
-    
+
     /// Retrieve secret using libsecret
     pub fn retrieve_secret(key_id: &str) -> Result<Vec<u8>> {
         // FFI call to secret_password_lookup_sync
         let _ = key_id;
         Err(Error::Encryption("libsecret FFI not implemented".into()))
     }
-    
+
     /// Delete secret
     pub fn delete_secret(key_id: &str) -> Result<()> {
         // FFI call to secret_password_clear_sync
@@ -458,7 +462,7 @@ pub mod linux {
 // =============================================================================
 
 /// Keystore manager for FFI integration
-/// 
+///
 /// This struct is designed to be instantiated from Flutter with platform-specific
 /// callbacks for actual keystore operations.
 pub struct KeystoreManager {
@@ -474,17 +478,17 @@ impl KeystoreManager {
             algorithm: EncryptionAlgorithm::ChaCha20Poly1305,
         }
     }
-    
+
     /// Get key ID for master key
     pub fn master_key_id(&self) -> String {
         format!("{}_master", self.key_id_prefix)
     }
-    
+
     /// Get key ID for biometric key
     pub fn biometric_key_id(&self) -> String {
         format!("{}_biometric", self.key_id_prefix)
     }
-    
+
     /// Seal master key (to be called with platform keystore from FFI)
     pub fn seal_master_key(&self, key: &MasterKey) -> SealedKey {
         // This creates a SealedKey structure that will be passed to
@@ -495,14 +499,10 @@ impl KeystoreManager {
             self.algorithm,
         )
     }
-    
+
     /// Create sealed key from platform-encrypted bytes
     pub fn create_sealed_key(&self, encrypted_bytes: Vec<u8>) -> SealedKey {
-        SealedKey::new(
-            encrypted_bytes,
-            self.master_key_id(),
-            self.algorithm,
-        )
+        SealedKey::new(encrypted_bytes, self.master_key_id(), self.algorithm)
     }
 }
 
@@ -560,10 +560,10 @@ pub struct BiometricManager {
 impl BiometricManager {
     /// Maximum failed attempts before lockout
     pub const MAX_FAILED_ATTEMPTS: u32 = 5;
-    
+
     /// Lockout duration in seconds
     pub const LOCKOUT_DURATION_SECS: u64 = 30;
-    
+
     /// Create new biometric manager
     pub fn new() -> Self {
         Self {
@@ -573,7 +573,7 @@ impl BiometricManager {
             last_auth_time: None,
         }
     }
-    
+
     /// Configure biometric unlock
     pub fn configure(&mut self, config: BiometricConfig) {
         let enabled = config.enabled;
@@ -584,24 +584,24 @@ impl BiometricManager {
             self.state = BiometricState::Disabled;
         }
     }
-    
+
     /// Get current state
     pub fn state(&self) -> BiometricState {
         self.state
     }
-    
+
     /// Check if biometric is ready for use
     pub fn is_ready(&self) -> bool {
         self.state == BiometricState::Ready
     }
-    
+
     /// Record successful authentication
     pub fn record_success(&mut self) {
         self.failed_attempts = 0;
         self.last_auth_time = Some(std::time::Instant::now());
         self.state = BiometricState::Ready;
     }
-    
+
     /// Record failed authentication
     pub fn record_failure(&mut self) {
         self.failed_attempts += 1;
@@ -609,7 +609,7 @@ impl BiometricManager {
             self.state = BiometricState::LockedOut;
         }
     }
-    
+
     /// Check if session is still valid (within timeout)
     pub fn is_session_valid(&self) -> bool {
         if let Some(last_auth) = self.last_auth_time {
@@ -618,12 +618,12 @@ impl BiometricManager {
             false
         }
     }
-    
+
     /// Check if locked out
     pub fn is_locked_out(&self) -> bool {
         self.state == BiometricState::LockedOut
     }
-    
+
     /// Reset lockout (after timeout or manual reset)
     pub fn reset_lockout(&mut self) {
         self.failed_attempts = 0;
@@ -631,7 +631,7 @@ impl BiometricManager {
             self.state = BiometricState::Ready;
         }
     }
-    
+
     /// Disable biometric unlock
     pub fn disable(&mut self) {
         self.state = BiometricState::Disabled;
@@ -648,7 +648,7 @@ impl Default for BiometricManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_platform_detection() {
         let platform = Platform::current();
@@ -663,30 +663,30 @@ mod tests {
                 | Platform::Unknown
         ));
     }
-    
+
     #[test]
     fn test_mock_keystore_seal_unseal() {
         let keystore = MockKeystore::new();
         let master_key = MasterKey::generate(EncryptionAlgorithm::ChaCha20Poly1305);
-        
+
         let sealed = keystore.seal_key(&master_key, "test_key").unwrap();
         assert_eq!(sealed.key_id, "test_key");
-        
+
         if let KeystoreResult::Success(unsealed) = keystore.unseal_key(&sealed) {
             assert_eq!(unsealed.as_bytes(), master_key.as_bytes());
         } else {
             panic!("Failed to unseal key");
         }
     }
-    
+
     #[test]
     fn test_keystore_manager() {
         let manager = KeystoreManager::new("wallet_123");
-        
+
         assert!(manager.master_key_id().contains("wallet_123"));
         assert!(manager.biometric_key_id().contains("biometric"));
     }
-    
+
     #[test]
     fn test_biometric_manager_lockout() {
         let mut manager = BiometricManager::new();
@@ -694,21 +694,21 @@ mod tests {
             enabled: true,
             ..Default::default()
         });
-        
+
         assert!(manager.is_ready());
-        
+
         // Record failures until lockout
         for _ in 0..BiometricManager::MAX_FAILED_ATTEMPTS {
             manager.record_failure();
         }
-        
+
         assert!(manager.is_locked_out());
-        
+
         // Reset
         manager.reset_lockout();
         assert!(manager.is_ready());
     }
-    
+
     #[test]
     fn test_biometric_session_timeout() {
         let mut manager = BiometricManager::new();
@@ -717,14 +717,14 @@ mod tests {
             timeout_seconds: 0, // Immediate timeout for testing
             ..Default::default()
         });
-        
+
         manager.record_success();
-        
+
         // Session should be invalid immediately with 0 timeout
         std::thread::sleep(std::time::Duration::from_millis(10));
         assert!(!manager.is_session_valid());
     }
-    
+
     #[test]
     fn test_sealed_key_roundtrip() {
         let sealed = SealedKey::new(
@@ -732,12 +732,11 @@ mod tests {
             "test_key_id".to_string(),
             EncryptionAlgorithm::AesGcm,
         );
-        
+
         let serialized = sealed.serialize();
         let deserialized = SealedKey::deserialize(&serialized).unwrap();
-        
+
         assert_eq!(deserialized.encrypted_key, sealed.encrypted_key);
         assert_eq!(deserialized.key_id, sealed.key_id);
     }
 }
-

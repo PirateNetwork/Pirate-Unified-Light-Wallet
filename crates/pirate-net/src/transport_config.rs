@@ -2,8 +2,15 @@
 //!
 //! Provides encrypted storage for transport settings.
 
-use crate::{TransportMode, Socks5Config, DnsProvider, CertificatePin};
-use serde::{Serialize, Deserialize};
+use crate::{CertificatePin, DnsProvider, Socks5Config, TransportMode};
+use argon2::{Algorithm, Argon2, ParamsBuilder, Version};
+use base64::engine::general_purpose::STANDARD as Base64Standard;
+use base64::Engine;
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::ChaCha20Poly1305;
+use rand::{rngs::OsRng, RngCore};
+use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 /// Persistent transport configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,6 +28,21 @@ pub struct StoredTransportConfig {
     pub dns: DnsSettings,
     /// TLS pinning settings
     pub tls_pinning: TlsPinningSettings,
+}
+
+const TRANSPORT_CONFIG_VERSION: u8 = 1;
+const ARGON2_M_COST: u32 = 65_536;
+const ARGON2_T_COST: u32 = 3;
+const ARGON2_P_COST: u32 = 4;
+const SALT_LEN: usize = 32;
+const NONCE_LEN: usize = 12;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct EncryptedTransportConfig {
+    version: u8,
+    salt_b64: String,
+    nonce_b64: String,
+    ciphertext_b64: String,
 }
 
 impl Default for StoredTransportConfig {
@@ -246,20 +268,20 @@ impl TransportConfigStorage {
     }
 
     /// Load configuration from encrypted storage
-    pub fn load(&mut self, encrypted_json: &str, _passphrase: &str) -> crate::Result<()> {
-        // TODO: Decrypt with passphrase
-        // For now, just parse JSON
+    pub fn load(&mut self, encrypted_json: &str, passphrase: &str) -> crate::Result<()> {
+        if let Ok(encrypted) = serde_json::from_str::<EncryptedTransportConfig>(encrypted_json) {
+            self.config = decrypt_config(encrypted, passphrase)?;
+            return Ok(());
+        }
+
         self.config = serde_json::from_str(encrypted_json)
             .map_err(|e| crate::Error::Network(format!("Failed to parse config: {}", e)))?;
         Ok(())
     }
 
     /// Save configuration to encrypted storage
-    pub fn save(&self, _passphrase: &str) -> crate::Result<String> {
-        // TODO: Encrypt with passphrase
-        // For now, just serialize
-        serde_json::to_string_pretty(&self.config)
-            .map_err(|e| crate::Error::Network(format!("Failed to serialize config: {}", e)))
+    pub fn save(&self, passphrase: &str) -> crate::Result<String> {
+        encrypt_config(&self.config, passphrase)
     }
 
     /// Get current configuration
@@ -279,6 +301,102 @@ impl Default for TransportConfigStorage {
     }
 }
 
+fn encrypt_config(config: &StoredTransportConfig, passphrase: &str) -> crate::Result<String> {
+    let plaintext = serde_json::to_vec(config)
+        .map_err(|e| crate::Error::Network(format!("Failed to serialize config: {}", e)))?;
+
+    let mut salt = [0u8; SALT_LEN];
+    OsRng.fill_bytes(&mut salt);
+    let key = derive_key(passphrase, &salt)?;
+
+    let mut nonce_bytes = [0u8; NONCE_LEN];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    let nonce = chacha20poly1305::Nonce::from_slice(&nonce_bytes);
+
+    let cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(key.as_ref()));
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_ref())
+        .map_err(|e| crate::Error::Network(format!("Failed to encrypt config: {}", e)))?;
+
+    let envelope = EncryptedTransportConfig {
+        version: TRANSPORT_CONFIG_VERSION,
+        salt_b64: Base64Standard.encode(salt),
+        nonce_b64: Base64Standard.encode(nonce_bytes),
+        ciphertext_b64: Base64Standard.encode(ciphertext),
+    };
+
+    serde_json::to_string_pretty(&envelope)
+        .map_err(|e| crate::Error::Network(format!("Failed to serialize encrypted config: {}", e)))
+}
+
+fn decrypt_config(
+    encrypted: EncryptedTransportConfig,
+    passphrase: &str,
+) -> crate::Result<StoredTransportConfig> {
+    if encrypted.version != TRANSPORT_CONFIG_VERSION {
+        return Err(crate::Error::Network(format!(
+            "Unsupported transport config version: {}",
+            encrypted.version
+        )));
+    }
+
+    let salt = decode_b64("salt", &encrypted.salt_b64)?;
+    let nonce_bytes = decode_b64("nonce", &encrypted.nonce_b64)?;
+    let ciphertext = decode_b64("ciphertext", &encrypted.ciphertext_b64)?;
+
+    if salt.len() != SALT_LEN {
+        return Err(crate::Error::Network(format!(
+            "Invalid salt length: {}",
+            salt.len()
+        )));
+    }
+
+    if nonce_bytes.len() != NONCE_LEN {
+        return Err(crate::Error::Network(format!(
+            "Invalid nonce length: {}",
+            nonce_bytes.len()
+        )));
+    }
+
+    let key = derive_key(passphrase, &salt)?;
+    let nonce = chacha20poly1305::Nonce::from_slice(&nonce_bytes);
+    let cipher = ChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(key.as_ref()));
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext.as_ref())
+        .map_err(|e| crate::Error::Network(format!("Failed to decrypt config: {}", e)))?;
+
+    serde_json::from_slice(&plaintext)
+        .map_err(|e| crate::Error::Network(format!("Failed to parse config: {}", e)))
+}
+
+fn derive_key(passphrase: &str, salt: &[u8]) -> crate::Result<Zeroizing<[u8; 32]>> {
+    if salt.len() < 16 {
+        return Err(crate::Error::Network("Salt too short".to_string()));
+    }
+
+    let params = ParamsBuilder::new()
+        .m_cost(ARGON2_M_COST)
+        .t_cost(ARGON2_T_COST)
+        .p_cost(ARGON2_P_COST)
+        .output_len(32)
+        .build()
+        .map_err(|e| crate::Error::Network(format!("Argon2 params error: {}", e)))?;
+
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut key = Zeroizing::new([0u8; 32]);
+    argon2
+        .hash_password_into(passphrase.as_bytes(), salt, &mut *key)
+        .map_err(|e| crate::Error::Network(format!("Key derivation failed: {}", e)))?;
+
+    Ok(key)
+}
+
+fn decode_b64(label: &str, value: &str) -> crate::Result<Vec<u8>> {
+    Base64Standard
+        .decode(value.as_bytes())
+        .map_err(|e| crate::Error::Network(format!("Invalid {} base64: {}", label, e)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,7 +406,7 @@ mod tests {
         let config = StoredTransportConfig::default();
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: StoredTransportConfig = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.mode, StoredTransportMode::Tor);
     }
 
@@ -296,11 +414,31 @@ mod tests {
     fn test_config_storage() {
         let storage = TransportConfigStorage::new();
         let json = storage.save("test_pass").unwrap();
-        
+        assert!(json.contains("\"ciphertext_b64\""));
+
         let mut storage2 = TransportConfigStorage::new();
         storage2.load(&json, "test_pass").unwrap();
-        
+
         assert_eq!(storage2.get().mode, StoredTransportMode::Tor);
     }
-}
 
+    #[test]
+    fn test_config_storage_wrong_passphrase() {
+        let storage = TransportConfigStorage::new();
+        let json = storage.save("test_pass").unwrap();
+
+        let mut storage2 = TransportConfigStorage::new();
+        assert!(storage2.load(&json, "wrong_pass").is_err());
+    }
+
+    #[test]
+    fn test_config_storage_plaintext_fallback() {
+        let config = StoredTransportConfig::default();
+        let json = serde_json::to_string_pretty(&config).unwrap();
+
+        let mut storage = TransportConfigStorage::new();
+        storage.load(&json, "test_pass").unwrap();
+
+        assert_eq!(storage.get().mode, StoredTransportMode::Tor);
+    }
+}

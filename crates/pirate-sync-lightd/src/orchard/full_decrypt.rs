@@ -4,18 +4,18 @@
 //! References node Orchard full decryption logic.
 //! - pirate/src/rust/src/orchard_actions.rs (try_orchard_decrypt_action_ivk)
 
+use crate::Error;
+use hex;
 use orchard::{
     keys::{IncomingViewingKey, PreparedIncomingViewingKey},
     note_encryption::OrchardDomain,
     primitives::redpallas::{Signature, SpendAuth},
     Action as OrchardAction,
 };
-use zcash_note_encryption::try_note_decryption;
-use zcash_primitives::transaction::Transaction;
-use zcash_primitives::consensus::BranchId;
-use crate::Error;
-use hex;
 use tracing;
+use zcash_note_encryption::try_note_decryption;
+use zcash_primitives::consensus::BranchId;
+use zcash_primitives::transaction::Transaction;
 
 /// Decrypted Orchard note with memo
 pub struct DecryptedOrchardFullNote {
@@ -51,32 +51,32 @@ pub fn decrypt_orchard_action_with_ivk_bytes(
         return Err(Error::Sync("Invalid Orchard IVK bytes".to_string()));
     }
     let ivk = ivk_ct.unwrap();
-    
+
     let prepared_ivk = PreparedIncomingViewingKey::new(&ivk);
-    
+
     // Create the Orchard domain for this action.
     let domain = OrchardDomain::for_action(action);
-    
+
     // Use zcash_note_encryption::try_note_decryption.
     // Full node signature: try_note_decryption(&domain, &prepared_ivk, action)
     match try_note_decryption(&domain, &prepared_ivk, action) {
         Some((note, payment_address, memo_bytes)) => {
             // Extract value
             let value = note.value().inner();
-            
+
             // Extract address (43 bytes)
             let address = payment_address.to_raw_address_bytes();
-            
+
             // Extract memo (512 bytes)
             let mut memo = [0u8; 512];
             memo.copy_from_slice(&memo_bytes[..512]);
-            
+
             // Extract rho (32 bytes)
             let rho = note.rho().to_bytes();
-            
+
             // Extract rseed (32 bytes)
             let rseed = *note.rseed().as_bytes();
-            
+
             Ok(Some(DecryptedOrchardFullNote {
                 value,
                 address,
@@ -99,7 +99,7 @@ pub fn decrypt_orchard_action_with_ivk_bytes(
 /// * `action_index` - Index of the Orchard action to decrypt
 /// * `ivk_bytes` - Incoming viewing key bytes (64 bytes for Orchard)
 /// * `cmx` - Optional note commitment (from compact block, for validation)
-///           If None, will use cmx from transaction action
+///   If None, will use cmx from transaction action
 ///
 /// # Returns
 /// Decrypted note with memo and address, or None if decryption fails
@@ -115,7 +115,8 @@ pub fn decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
         .map_err(|e| Error::Sync(format!("Failed to parse transaction: {}", e)))?;
 
     // Get Orchard bundle
-    let orchard_bundle = tx.orchard_bundle()
+    let orchard_bundle = tx
+        .orchard_bundle()
         .ok_or_else(|| Error::Sync("Transaction has no Orchard bundle".to_string()))?;
 
     // Get actions from the bundle

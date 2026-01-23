@@ -20,4 +20,3 @@ pub enum Error {
 
 /// Result type
 pub type Result<T> = std::result::Result<T, Error>;
-

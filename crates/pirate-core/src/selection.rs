@@ -3,10 +3,8 @@
 //! Implements various selection strategies: first-fit, smallest-first, largest-first.
 
 use crate::{Error, Result};
-use zcash_primitives::{
-    sapling::{Diversifier, Note, Node},
-};
 use incrementalmerkletree::MerklePath;
+use zcash_primitives::sapling::{Diversifier, Node, Note};
 
 /// Note type discriminator
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +35,8 @@ pub struct SelectableNote {
     /// Eligible for auto-consolidation (unlabeled/untagged address)
     pub auto_consolidation_eligible: bool,
     /// Optional merkle path for spends (Sapling)
-    pub merkle_path: Option<MerklePath<Node, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>>,
+    pub merkle_path:
+        Option<MerklePath<Node, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>>,
     /// Optional diversifier used to derive the address (Sapling)
     pub diversifier: Option<Diversifier>,
     /// Optional full Sapling note
@@ -54,7 +53,13 @@ pub struct SelectableNote {
 
 impl SelectableNote {
     /// Create new selectable Sapling note
-    pub fn new(value: u64, commitment: Vec<u8>, height: u64, txid: Vec<u8>, output_index: u32) -> Self {
+    pub fn new(
+        value: u64,
+        commitment: Vec<u8>,
+        height: u64,
+        txid: Vec<u8>,
+        output_index: u32,
+    ) -> Self {
         Self {
             note_type: NoteType::Sapling,
             value,
@@ -178,7 +183,7 @@ impl NoteSelector {
     }
 
     /// Select notes to cover target amount plus fee
-    /// 
+    ///
     /// Takes ownership of available_notes because SelectableNote can't be cloned
     /// (Orchard MerklePath doesn't implement Clone)
     pub fn select_notes(
@@ -335,10 +340,7 @@ impl NoteSelector {
     }
 
     /// Check if notes are sufficient without selecting
-    pub fn check_sufficient(
-        available_notes: &[SelectableNote],
-        required_amount: u64,
-    ) -> bool {
+    pub fn check_sufficient(available_notes: &[SelectableNote], required_amount: u64) -> bool {
         let total: u64 = available_notes.iter().map(|n| n.value).sum();
         total >= required_amount
     }
@@ -349,7 +351,7 @@ impl NoteSelector {
     }
 
     /// Optimize selection (try multiple strategies, pick best)
-    /// 
+    ///
     /// Note: Since SelectableNote can't be cloned (Orchard MerklePath doesn't implement Clone),
     /// this function takes ownership and can only try one strategy. For now, it uses SmallestFirst
     /// which is typically best for privacy. If you need to try multiple strategies, you'll need
@@ -390,7 +392,7 @@ mod tests {
         let notes = create_test_notes();
         let selector = NoteSelector::new(SelectionStrategy::SmallestFirst);
 
-        let result = selector.select_notes(&notes, 300_000, 10_000).unwrap();
+        let result = selector.select_notes(notes, 300_000, 10_000).unwrap();
 
         // Should select smallest notes first: 100k + 250k + 500k = 850k
         // Required: 310k, so actually 100k + 250k = 350k should be enough
@@ -403,7 +405,7 @@ mod tests {
         let notes = create_test_notes();
         let selector = NoteSelector::new(SelectionStrategy::LargestFirst);
 
-        let result = selector.select_notes(&notes, 300_000, 10_000).unwrap();
+        let result = selector.select_notes(notes, 300_000, 10_000).unwrap();
 
         // Should select largest note first: 1M
         assert_eq!(result.notes.len(), 1);
@@ -415,7 +417,7 @@ mod tests {
         let notes = create_test_notes();
         let selector = NoteSelector::new(SelectionStrategy::FirstFit);
 
-        let result = selector.select_notes(&notes, 5_000_000, 10_000);
+        let result = selector.select_notes(notes, 5_000_000, 10_000);
         assert!(result.is_err());
     }
 
@@ -437,12 +439,13 @@ mod tests {
     #[test]
     fn test_optimize_selection() {
         let notes = create_test_notes();
+        let note_count = notes.len();
 
-        let result = NoteSelector::optimize_selection(&notes, 300_000, 10_000).unwrap();
+        let result = NoteSelector::optimize_selection(notes, 300_000, 10_000).unwrap();
 
         // Should find a good selection
         assert!(result.total_value >= 310_000);
-        assert!(result.notes.len() <= notes.len());
+        assert!(result.notes.len() <= note_count);
     }
 
     #[test]
@@ -450,7 +453,7 @@ mod tests {
         let notes = vec![SelectableNote::new(100_000, vec![1], 1000, vec![1], 0)];
         let selector = NoteSelector::new(SelectionStrategy::FirstFit);
 
-        let result = selector.select_notes(&notes, 90_000, 10_000).unwrap();
+        let result = selector.select_notes(notes, 90_000, 10_000).unwrap();
 
         assert_eq!(result.total_value, 100_000);
         assert_eq!(result.change, 0); // Exact match

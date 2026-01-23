@@ -8,25 +8,20 @@
 
 use crate::proto_types as proto;
 use crate::{Error, Result};
+use once_cell::sync::Lazy;
+use pirate_net::{
+    DnsConfig as NetDnsConfig, I2pConfig as NetI2pConfig, Socks5Config as NetSocks5Config,
+    TorBridgeConfig, TorBridgeTransport, TorConfig as NetTorConfig,
+    TransportConfig as NetTransportConfig, TransportManager as NetTransportManager,
+    TransportMode as NetTransportMode,
+};
+use rand::Rng;
 use std::env;
+use std::io::Write;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::io::Write;
-use once_cell::sync::Lazy;
-use pirate_net::{
-    TransportManager as NetTransportManager,
-    TransportConfig as NetTransportConfig,
-    TransportMode as NetTransportMode,
-    Socks5Config as NetSocks5Config,
-    TorConfig as NetTorConfig,
-    TorBridgeConfig,
-    TorBridgeTransport,
-    I2pConfig as NetI2pConfig,
-    DnsConfig as NetDnsConfig,
-};
-use rand::Rng;
 use tokio::sync::{Mutex, RwLock};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tracing::{debug, error, info, warn};
@@ -113,14 +108,15 @@ impl GlobalTransportState {
             guard.as_ref().map(Arc::clone)
         };
         if let Some(manager) = existing {
-            manager
-                .update_config(config)
-                .await
-                .map_err(map_net_error)?;
+            manager.update_config(config).await.map_err(map_net_error)?;
             return Ok(manager);
         }
 
-        let created = Arc::new(NetTransportManager::new(config.clone()).await.map_err(map_net_error)?);
+        let created = Arc::new(
+            NetTransportManager::new(config.clone())
+                .await
+                .map_err(map_net_error)?,
+        );
         let existing = {
             let mut guard = self.manager.write().await;
             if let Some(manager) = guard.as_ref() {
@@ -132,10 +128,7 @@ impl GlobalTransportState {
         };
 
         if let Some(manager) = existing {
-            manager
-                .update_config(config)
-                .await
-                .map_err(map_net_error)?;
+            manager.update_config(config).await.map_err(map_net_error)?;
             Ok(manager)
         } else {
             Ok(created)
@@ -170,12 +163,14 @@ static GLOBAL_TRANSPORT: Lazy<GlobalTransportState> = Lazy::new(|| GlobalTranspo
 static TOR_CONFIG_OVERRIDE: Lazy<std::sync::RwLock<Option<NetTorConfig>>> =
     Lazy::new(|| std::sync::RwLock::new(None));
 
+/// Override the embedded Tor configuration for this process.
 pub fn set_tor_config_override(config: NetTorConfig) {
     if let Ok(mut guard) = TOR_CONFIG_OVERRIDE.write() {
         *guard = Some(config);
     }
 }
 
+/// Clear any previously configured Tor override.
 pub fn clear_tor_config_override() {
     if let Ok(mut guard) = TOR_CONFIG_OVERRIDE.write() {
         *guard = None;
@@ -308,8 +303,9 @@ fn build_transport_config_from_mode(
     };
 
     let socks5 = if net_mode == NetTransportMode::Socks5 {
-        let url = socks5_url
-            .ok_or_else(|| Error::Connection("SOCKS5 URL required for SOCKS5 transport".to_string()))?;
+        let url = socks5_url.ok_or_else(|| {
+            Error::Connection("SOCKS5 URL required for SOCKS5 transport".to_string())
+        })?;
         Some(parse_socks5_url(url)?)
     } else {
         None
@@ -447,9 +443,13 @@ fn tor_config_from_env_raw() -> NetTorConfig {
             custom => TorBridgeTransport::Custom(custom.to_string()),
         };
 
-        let transport_path = env::var("PIRATE_TOR_BRIDGE_PATH")
-            .ok()
-            .and_then(|path| if path.trim().is_empty() { None } else { Some(PathBuf::from(path)) });
+        let transport_path = env::var("PIRATE_TOR_BRIDGE_PATH").ok().and_then(|path| {
+            if path.trim().is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(path))
+            }
+        });
 
         config.bridges = Some(TorBridgeConfig {
             transport,
@@ -470,6 +470,7 @@ fn tor_config_from_env() -> NetTorConfig {
     tor_config_from_env_raw()
 }
 
+/// Update bridge configuration for the embedded Tor client.
 pub fn set_tor_bridge_settings(
     use_bridges: bool,
     fallback_to_bridges: bool,
@@ -500,16 +501,14 @@ pub fn set_tor_bridge_settings(
                 "" => TorBridgeTransport::Snowflake,
                 custom => TorBridgeTransport::Custom(custom.to_string()),
             };
-            let path = transport_path
-                .as_ref()
-                .and_then(|value| {
-                    let trimmed = value.trim();
-                    if trimmed.is_empty() {
-                        None
-                    } else {
-                        Some(PathBuf::from(trimmed))
-                    }
-                });
+            let path = transport_path.as_ref().and_then(|value| {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(trimmed))
+                }
+            });
 
             config.use_bridges = use_bridges;
             config.fallback_to_bridges = fallback_to_bridges;
@@ -579,7 +578,7 @@ fn parse_bool_env(value: &str) -> bool {
 
 fn split_list_env(value: &str) -> Vec<String> {
     value
-        .split(|c| c == ',' || c == ';' || c == '\n' || c == '\r')
+        .split([',', ';', '\n', '\r'])
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
@@ -691,13 +690,21 @@ impl From<proto::CompactBlock> for CompactBlock {
 impl From<CompactBlock> for proto::CompactBlock {
     fn from(block: CompactBlock) -> Self {
         Self {
-            proto_version: if block.proto_version == 0 { 1 } else { block.proto_version },
+            proto_version: if block.proto_version == 0 {
+                1
+            } else {
+                block.proto_version
+            },
             height: block.height,
             hash: block.hash,
             prev_hash: block.prev_hash,
             time: block.time,
             header: block.header,
-            vtx: block.transactions.into_iter().map(proto::CompactTx::from).collect(),
+            vtx: block
+                .transactions
+                .into_iter()
+                .map(proto::CompactTx::from)
+                .collect(),
         }
     }
 }
@@ -728,9 +735,21 @@ impl From<proto::CompactTx> for CompactTx {
             index: Some(pb.index),
             hash: pb.hash,
             fee: Some(pb.fee),
-            spends: pb.spends.into_iter().map(CompactSaplingSpend::from).collect(),
-            outputs: pb.outputs.into_iter().map(CompactSaplingOutput::from).collect(),
-            actions: pb.actions.into_iter().map(CompactOrchardAction::from).collect(),
+            spends: pb
+                .spends
+                .into_iter()
+                .map(CompactSaplingSpend::from)
+                .collect(),
+            outputs: pb
+                .outputs
+                .into_iter()
+                .map(CompactSaplingOutput::from)
+                .collect(),
+            actions: pb
+                .actions
+                .into_iter()
+                .map(CompactOrchardAction::from)
+                .collect(),
         }
     }
 }
@@ -741,9 +760,21 @@ impl From<CompactTx> for proto::CompactTx {
             index: tx.index.unwrap_or(0),
             hash: tx.hash,
             fee: tx.fee.unwrap_or(0),
-            spends: tx.spends.into_iter().map(proto::CompactSaplingSpend::from).collect(),
-            outputs: tx.outputs.into_iter().map(proto::CompactSaplingOutput::from).collect(),
-            actions: tx.actions.into_iter().map(proto::CompactOrchardAction::from).collect(),
+            spends: tx
+                .spends
+                .into_iter()
+                .map(proto::CompactSaplingSpend::from)
+                .collect(),
+            outputs: tx
+                .outputs
+                .into_iter()
+                .map(proto::CompactSaplingOutput::from)
+                .collect(),
+            actions: tx
+                .actions
+                .into_iter()
+                .map(proto::CompactOrchardAction::from)
+                .collect(),
         }
     }
 }
@@ -820,7 +851,7 @@ impl From<proto::CompactOrchardAction> for CompactOrchardAction {
             cmx: pb.cmx,
             ephemeral_key: pb.ephemeral_key,
             enc_ciphertext: pb.ciphertext, // Proto field is "ciphertext", we call it enc_ciphertext internally
-            out_ciphertext: Vec::new(), // Not in server's compact format, only in full format
+            out_ciphertext: Vec::new(),    // Not in server's compact format, only in full format
         }
     }
 }
@@ -979,7 +1010,10 @@ impl LightClient {
     /// Check if client is connected
     pub fn is_connected(&self) -> bool {
         // Channel exists (actual connectivity tested on RPC call)
-        self.channel.try_lock().map(|g| g.is_some()).unwrap_or(false)
+        self.channel
+            .try_lock()
+            .map(|g| g.is_some())
+            .unwrap_or(false)
     }
 
     /// Connect to lightwalletd server with retry
@@ -1028,14 +1062,32 @@ impl LightClient {
 
     async fn try_connect(&self) -> Result<Channel> {
         let endpoint_url = &self.config.endpoint;
-        debug!("Connecting to {} via {:?}", endpoint_url, self.config.transport);
+        debug!(
+            "Connecting to {} via {:?}",
+            endpoint_url, self.config.transport
+        );
 
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:448","message":"try_connect entry","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","server_name":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#, 
-                id, ts, endpoint_url, self.config.tls.enabled, self.config.transport, self.config.tls.server_name);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:448","message":"try_connect entry","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","server_name":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#,
+                id,
+                ts,
+                endpoint_url,
+                self.config.tls.enabled,
+                self.config.transport,
+                self.config.tls.server_name
+            );
         }
         // #endregion
 
@@ -1045,21 +1097,34 @@ impl LightClient {
             Ok(ep) => ep,
             Err(e) => {
                 error!("Failed to parse endpoint URL '{}': {}", endpoint_url, e);
-                return Err(Error::Connection(format!("Invalid endpoint URL format '{}': {}. Expected format: https://host:port", endpoint_url, e)));
+                return Err(Error::Connection(format!(
+                    "Invalid endpoint URL format '{}': {}. Expected format: https://host:port",
+                    endpoint_url, e
+                )));
             }
         };
-        
+
         endpoint = endpoint
             .connect_timeout(self.config.connect_timeout)
             .timeout(self.config.request_timeout);
 
         // Configure TLS if enabled
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:467","message":"TLS check","data":{{"tls_enabled":{},"endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#, 
-                id, ts, self.config.tls.enabled, endpoint_url);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:467","message":"TLS check","data":{{"tls_enabled":{},"endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+                id, ts, self.config.tls.enabled, endpoint_url
+            );
         }
         // #endregion
         if self.config.tls.enabled {
@@ -1075,7 +1140,10 @@ impl LightClient {
                     debug!("Extracted hostname for TLS SNI: {}", host);
                     tls_config = tls_config.domain_name(host);
                 } else {
-                    warn!("Could not extract hostname from endpoint '{}' for TLS SNI", endpoint_url);
+                    warn!(
+                        "Could not extract hostname from endpoint '{}' for TLS SNI",
+                        endpoint_url
+                    );
                     // Try to continue without explicit domain name (tonic might handle it)
                 }
             }
@@ -1087,11 +1155,13 @@ impl LightClient {
                 debug!("SPKI pin configured, will verify after connection");
             }
 
-            endpoint = endpoint.tls_config(tls_config)
-                .map_err(|e| {
-                    error!("Failed to configure TLS for endpoint '{}': {}", endpoint_url, e);
-                    Error::Connection(format!("TLS configuration failed: {}", e))
-                })?;
+            endpoint = endpoint.tls_config(tls_config).map_err(|e| {
+                error!(
+                    "Failed to configure TLS for endpoint '{}': {}",
+                    endpoint_url, e
+                );
+                Error::Connection(format!("TLS configuration failed: {}", e))
+            })?;
         }
 
         if self.config.transport == TransportMode::Direct {
@@ -1154,7 +1224,8 @@ impl LightClient {
 
     async fn get_client(&self) -> Result<CompactTxStreamerClient<Channel>> {
         let guard = self.channel.lock().await;
-        let channel = guard.as_ref()
+        let channel = guard
+            .as_ref()
             .ok_or_else(|| Error::Connection("Not connected".to_string()))?
             .clone();
         Ok(CompactTxStreamerClient::new(channel))
@@ -1165,35 +1236,63 @@ impl LightClient {
     /// Returns the current blockchain tip height.
     pub async fn get_latest_block(&self) -> Result<u64> {
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:564","message":"get_latest_block entry","data":{{"endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#, 
-                id, ts, self.config.endpoint);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:564","message":"get_latest_block entry","data":{{"endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                id, ts, self.config.endpoint
+            );
         }
         // #endregion
-        let result = self.with_retry(|| async {
-            let mut client = self.get_client().await?;
-            
-            let request = tonic::Request::new(ChainSpec {
-                network: String::new(), // Empty for default network
-            });
+        let result = self
+            .with_retry(|| async {
+                let mut client = self.get_client().await?;
 
-            let response = client.get_latest_block(request).await?;
-            let block_id = response.into_inner();
-            
-            debug!("Latest block: height={}, hash={}", 
-                block_id.height, 
-                hex::encode(&block_id.hash));
-            
-            Ok(block_id.height)
-        }).await;
+                let request = tonic::Request::new(ChainSpec {
+                    network: String::new(), // Empty for default network
+                });
+
+                let response = client.get_latest_block(request).await?;
+                let block_id = response.into_inner();
+
+                debug!(
+                    "Latest block: height={}, hash={}",
+                    block_id.height,
+                    hex::encode(&block_id.hash)
+                );
+
+                Ok(block_id.height)
+            })
+            .await;
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(debug_log_path()) {
-            let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(file, r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:580","message":"get_latest_block result","data":{{"success":{},"height":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#, 
-                id, ts, result.is_ok(), result.as_ref().ok().copied().unwrap_or(0), result.as_ref().err());
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:580","message":"get_latest_block result","data":{{"success":{},"height":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                id,
+                ts,
+                result.is_ok(),
+                result.as_ref().ok().copied().unwrap_or(0),
+                result.as_ref().err()
+            );
         }
         // #endregion
         result
@@ -1294,7 +1393,9 @@ impl LightClient {
 
         while current <= end {
             let batch_end = std::cmp::min(current + batch_size, end + 1);
-            let blocks = self.get_compact_block_range(current as u32..batch_end as u32).await?;
+            let blocks = self
+                .get_compact_block_range(current as u32..batch_end as u32)
+                .await?;
 
             debug!(
                 "Fetched batch {}-{} ({} blocks)",
@@ -1313,13 +1414,10 @@ impl LightClient {
     /// Stream blocks in a range (legacy API, uses u64 for compatibility)
     ///
     /// This is a compatibility wrapper around `get_compact_block_range`.
-    pub async fn stream_blocks(
-        &self,
-        start: u64,
-        end: u64,
-    ) -> Result<Vec<CompactBlock>> {
+    pub async fn stream_blocks(&self, start: u64, end: u64) -> Result<Vec<CompactBlock>> {
         // Convert to inclusive range with u32
-        self.get_compact_block_range(start as u32..(end + 1) as u32).await
+        self.get_compact_block_range(start as u32..(end + 1) as u32)
+            .await
     }
 
     /// Broadcast a raw transaction to the network
@@ -1353,9 +1451,10 @@ impl LightClient {
             // Compute txid from raw transaction
             let txid = compute_txid(&raw_tx);
             info!("Transaction broadcast successful: {}", txid);
-            
+
             Ok(txid)
-        }).await
+        })
+        .await
     }
 
     /// Get full transaction by hash (for memo decryption)
@@ -1370,13 +1469,17 @@ impl LightClient {
     /// # Returns
     /// Raw transaction bytes containing full shielded outputs
     pub async fn get_transaction(&self, tx_hash: &[u8; 32]) -> Result<Vec<u8>> {
-        debug!("Fetching full transaction for memo decryption: {}", hex::encode(tx_hash));
+        debug!(
+            "Fetching full transaction for memo decryption: {}",
+            hex::encode(tx_hash)
+        );
 
         self.get_transaction_by_filter(TxFilter {
             block: None, // Not used when hash is specified
-            index: 0,   // Not used when hash is specified
+            index: 0,    // Not used when hash is specified
             hash: tx_hash.to_vec(),
-        }).await
+        })
+        .await
     }
 
     /// Get full transaction by hash with block/index fallback.
@@ -1397,14 +1500,16 @@ impl LightClient {
                         index,
                         err
                     );
-                    return self.get_transaction_by_filter(TxFilter {
-                        block: Some(BlockId {
-                            height,
+                    return self
+                        .get_transaction_by_filter(TxFilter {
+                            block: Some(BlockId {
+                                height,
+                                hash: Vec::new(),
+                            }),
+                            index,
                             hash: Vec::new(),
-                        }),
-                        index,
-                        hash: Vec::new(),
-                    }).await;
+                        })
+                        .await;
                 }
                 Err(err)
             }
@@ -1421,19 +1526,21 @@ impl LightClient {
 
             debug!("Received full transaction ({} bytes)", raw_tx.data.len());
             Ok(raw_tx.data)
-        }).await
+        })
+        .await
     }
 
     /// Get lightwalletd server information
     pub async fn get_lightd_info(&self) -> Result<LightdInfo> {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
-            
+
             let request = tonic::Request::new(Empty {});
             let response = client.get_lightd_info(request).await?;
-            
+
             Ok(LightdInfo::from(response.into_inner()))
-        }).await
+        })
+        .await
     }
 
     /// Get tree state (Sapling and Orchard anchors) at a specific block height
@@ -1450,23 +1557,25 @@ impl LightClient {
     pub async fn get_tree_state(&self, height: u64) -> Result<TreeState> {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
-            
+
             let mut request = tonic::Request::new(BlockId {
                 height,
                 hash: Vec::new(),
             });
             request.set_timeout(self.config.request_timeout);
-            
+
             let response = client.get_tree_state(request).await?;
             let tree_state = response.into_inner();
-            
-            debug!("Tree state at height {}: network={}, hash={}, saplingTree={}, orchardTree={}", 
+
+            debug!(
+                "Tree state at height {}: network={}, hash={}, saplingTree={}, orchardTree={}",
                 tree_state.height,
                 tree_state.network,
                 tree_state.hash,
                 tree_state.sapling_tree,
-                tree_state.orchard_tree);
-            
+                tree_state.orchard_tree
+            );
+
             Ok(TreeState {
                 network: tree_state.network,
                 height: tree_state.height,
@@ -1476,7 +1585,8 @@ impl LightClient {
                 sapling_frontier: tree_state.sapling_frontier,
                 orchard_tree: tree_state.orchard_tree,
             })
-        }).await
+        })
+        .await
     }
 
     /// Get tree state with bridge tree support (improved long-range sync performance)
@@ -1494,23 +1604,25 @@ impl LightClient {
     pub async fn get_bridge_tree_state(&self, height: u64) -> Result<TreeState> {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
-            
+
             let mut request = tonic::Request::new(BlockId {
                 height,
                 hash: Vec::new(),
             });
             request.set_timeout(self.config.request_timeout);
-            
+
             let response = client.get_bridge_tree_state(request).await?;
             let tree_state = response.into_inner();
-            
-            debug!("Bridge tree state at height {}: network={}, hash={}, saplingTree={}, orchardTree={}", 
+
+            debug!(
+                "Bridge tree state at height {}: network={}, hash={}, saplingTree={}, orchardTree={}",
                 tree_state.height,
                 tree_state.network,
                 tree_state.hash,
                 tree_state.sapling_tree,
-                tree_state.orchard_tree);
-            
+                tree_state.orchard_tree
+            );
+
             Ok(TreeState {
                 network: tree_state.network,
                 height: tree_state.height,
@@ -1537,26 +1649,30 @@ impl LightClient {
     pub async fn get_lite_wallet_block_group(&self, start_height: u64) -> Result<u64> {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
-            
+
             let request = tonic::Request::new(BlockId {
                 height: start_height,
                 hash: Vec::new(),
             });
-            
+
             let response = client.get_lite_wallet_block_group(request).await?;
             let block_id = response.into_inner();
-            
-            debug!("Block group for start height {}: end height={}", start_height, block_id.height);
-            
+
+            debug!(
+                "Block group for start height {}: end height={}",
+                start_height, block_id.height
+            );
+
             Ok(block_id.height)
-        }).await
+        })
+        .await
     }
 
     /// Get a single block by height
     pub async fn get_block(&self, height: u32) -> Result<CompactBlock> {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
-            
+
             let request = tonic::Request::new(BlockId {
                 height: height as u64,
                 hash: Vec::new(),
@@ -1564,7 +1680,8 @@ impl LightClient {
 
             let response = client.get_block(request).await?;
             Ok(CompactBlock::from(response.into_inner()))
-        }).await
+        })
+        .await
     }
 
     /// Execute operation with retry logic
@@ -1622,25 +1739,22 @@ fn extract_host(url: &str) -> Option<String> {
         .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))
         .unwrap_or(url);
-    
-    without_proto
-        .split(':')
-        .next()
-        .map(|s| s.to_string())
+
+    without_proto.split(':').next().map(|s| s.to_string())
 }
 
 /// Compute transaction ID from raw transaction bytes
 fn compute_txid(raw_tx: &[u8]) -> String {
     // Pirate/Zcash txid is double SHA256 of the tx, reversed
     use sha2::{Digest, Sha256};
-    
+
     let hash1 = Sha256::digest(raw_tx);
     let hash2 = Sha256::digest(hash1);
-    
+
     // Reverse bytes for display
     let mut txid_bytes: [u8; 32] = hash2.into();
     txid_bytes.reverse();
-    
+
     hex::encode(txid_bytes)
 }
 
@@ -1687,12 +1801,13 @@ mod tests {
 
     #[test]
     fn test_socks5_config() {
-        let config = LightClientConfig::with_socks5(
-            "https://lightd:9067",
-            "socks5://127.0.0.1:9050"
-        );
+        let config =
+            LightClientConfig::with_socks5("https://lightd:9067", "socks5://127.0.0.1:9050");
         assert_eq!(config.transport, TransportMode::Socks5);
-        assert_eq!(config.socks5_url, Some("socks5://127.0.0.1:9050".to_string()));
+        assert_eq!(
+            config.socks5_url,
+            Some("socks5://127.0.0.1:9050".to_string())
+        );
     }
 
     #[test]
@@ -1781,14 +1896,17 @@ mod integration_tests {
     async fn test_live_get_latest_block() {
         let config = LightClientConfig::direct(DEFAULT_LIGHTD_URL);
         let client = LightClient::with_config(config);
-        
+
         client.connect().await.expect("Failed to connect");
-        
-        let height = client.get_latest_block().await.expect("Failed to get latest block");
-        
+
+        let height = client
+            .get_latest_block()
+            .await
+            .expect("Failed to get latest block");
+
         // Pirate Chain mainnet should be well past block 1M
         assert!(height > 1_000_000, "Block height {} seems too low", height);
-        
+
         println!("Latest block height: {}", height);
     }
 
@@ -1798,27 +1916,36 @@ mod integration_tests {
     async fn test_live_get_block_range() {
         let config = LightClientConfig::direct(DEFAULT_LIGHTD_URL);
         let client = LightClient::with_config(config);
-        
+
         client.connect().await.expect("Failed to connect");
-        
+
         // Get latest block first
-        let latest = client.get_latest_block().await.expect("Failed to get latest block");
-        
+        let latest = client
+            .get_latest_block()
+            .await
+            .expect("Failed to get latest block");
+
         // Request last 10 blocks
-        let start = latest.saturating_sub(10);
-        let end = latest;
-        
-        let blocks = client.get_compact_block_range(start..end).await
+        let start = latest.saturating_sub(10) as u32;
+        let end = latest as u32;
+
+        let blocks = client
+            .get_compact_block_range(start..end)
+            .await
             .expect("Failed to get block range");
-        
+
         assert!(!blocks.is_empty(), "Should receive at least one block");
-        assert_eq!(blocks.len(), (end - start) as usize, "Should receive requested blocks");
-        
+        assert_eq!(
+            blocks.len(),
+            (end - start) as usize,
+            "Should receive requested blocks"
+        );
+
         // Verify blocks are in order
         for (i, block) in blocks.iter().enumerate() {
             assert_eq!(block.height, (start as u64) + i as u64);
         }
-        
+
         println!("Received {} blocks from {}..{}", blocks.len(), start, end);
     }
 
@@ -1828,16 +1955,19 @@ mod integration_tests {
     async fn test_live_get_lightd_info() {
         let config = LightClientConfig::direct(DEFAULT_LIGHTD_URL);
         let client = LightClient::with_config(config);
-        
+
         client.connect().await.expect("Failed to connect");
-        
-        let info = client.get_lightd_info().await.expect("Failed to get server info");
-        
+
+        let info = client
+            .get_lightd_info()
+            .await
+            .expect("Failed to get server info");
+
         println!("Server: {} v{}", info.vendor, info.version);
         println!("Chain: {}", info.chain_name);
         println!("Block height: {}", info.block_height);
         println!("Sapling activation: {}", info.sapling_activation_height);
-        
+
         assert!(!info.version.is_empty());
         assert!(info.block_height > 0);
     }
@@ -1871,25 +2001,23 @@ mod mock_tests {
         let batch_size = 10u64;
         let start = 1000u64;
         let end = 1035u64;
-        
+
         let mut all_blocks = Vec::new();
         let mut current = start;
-        
+
         while current <= end {
             let batch_end = std::cmp::min(current + batch_size, end + 1);
-            
+
             // Simulate fetching a batch
-            let batch: Vec<CompactBlock> = (current..batch_end)
-                .map(mock_compact_block)
-                .collect();
-            
+            let batch: Vec<CompactBlock> = (current..batch_end).map(mock_compact_block).collect();
+
             all_blocks.extend(batch);
             current = batch_end;
         }
-        
+
         // Verify we got all blocks
         assert_eq!(all_blocks.len(), (end - start + 1) as usize);
-        
+
         // Verify ordering
         for (i, block) in all_blocks.iter().enumerate() {
             assert_eq!(block.height, start + i as u64);
@@ -1902,12 +2030,12 @@ mod mock_tests {
         // Batch size exactly divides range
         let blocks: Vec<CompactBlock> = (0..20).map(mock_compact_block).collect();
         assert_eq!(blocks.len(), 20);
-        
+
         // Single block range
         let single: Vec<CompactBlock> = (100..101).map(mock_compact_block).collect();
         assert_eq!(single.len(), 1);
         assert_eq!(single[0].height, 100);
-        
+
         // Empty range
         let empty: Vec<CompactBlock> = (100..100).map(mock_compact_block).collect();
         assert!(empty.is_empty());
@@ -1923,26 +2051,22 @@ mod mock_tests {
             prev_hash: vec![9, 9, 9, 9],
             time: 1700000000,
             header: vec![7, 7, 7, 7],
-            vtx: vec![
-                proto::CompactTx {
-                    index: 0,
-                    hash: vec![5, 6, 7, 8],
-                    fee: 1000,
-                    spends: vec![proto::CompactSaplingSpend { nf: vec![0u8; 32] }],
-                    outputs: vec![
-                        proto::CompactSaplingOutput {
-                            cmu: vec![0u8; 32],
-                            ephemeral_key: vec![0u8; 32],
-                            ciphertext: vec![0u8; 52],
-                        },
-                    ],
-                    actions: vec![],
-                },
-            ],
+            vtx: vec![proto::CompactTx {
+                index: 0,
+                hash: vec![5, 6, 7, 8],
+                fee: 1000,
+                spends: vec![proto::CompactSaplingSpend { nf: vec![0u8; 32] }],
+                outputs: vec![proto::CompactSaplingOutput {
+                    cmu: vec![0u8; 32],
+                    ephemeral_key: vec![0u8; 32],
+                    ciphertext: vec![0u8; 52],
+                }],
+                actions: vec![],
+            }],
         };
 
         let block = CompactBlock::from(proto_block);
-        
+
         assert_eq!(block.proto_version, 1);
         assert_eq!(block.height, 12345);
         assert_eq!(block.hash, vec![1, 2, 3, 4]);
