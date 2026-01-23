@@ -32,6 +32,14 @@ function Convert-ToUnixPath($Path) {
     return ($Path -replace '\\', '/')
 }
 
+function Clear-OpenSslEnv() {
+    foreach ($var in @("OPENSSL_DIR", "OPENSSL_ROOT_DIR", "OPENSSL_LIB_DIR", "OPENSSL_INCLUDE_DIR", "OPENSSL_NO_VENDOR")) {
+        if (Test-Path "Env:$var") {
+            Remove-Item "Env:$var"
+        }
+    }
+}
+
 # Get project root (script is in root, so use script directory)
 $PROJECT_ROOT = $PSScriptRoot
 $CRATES_DIR = Join-Path $PROJECT_ROOT "crates"
@@ -126,6 +134,7 @@ if ($Windows -or $All) {
 # Build Android libraries
 if ($Android -or $All) {
     Write-ColorOutput "Blue" "Building Rust libraries for Android (PowerShell)..."
+    Clear-OpenSslEnv
 
     # Ensure MSYS2 tools are on PATH for perl/make
     $msysBin = "C:\\msys64\\usr\\bin"

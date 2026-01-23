@@ -398,7 +398,7 @@ class DecoyData {
         spendable: true,
         hasSapling: true,
         hasOrchard: true,
-        birthdayHeight: 3_700_000,
+        birthdayHeight: 3700000,
         createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
       ),
     ];

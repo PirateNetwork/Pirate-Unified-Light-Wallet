@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,6 +35,11 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   final ScrollController _scrollController = ScrollController();
   _AddressSort _addressSort = _AddressSort.newest;
   String _addressQuery = '';
+  Timer? _searchDebounce;
+  List<AddressInfo>? _lastAddressSource;
+  _AddressSort? _lastSort;
+  String? _lastQuery;
+  List<AddressInfo> _sortedCache = const [];
 
   @override
   void initState() {
@@ -58,6 +65,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     _amountController.dispose();
     _memoController.dispose();
     _searchController.dispose();
+    _searchDebounce?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -71,9 +79,12 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   void _handleSearchChanged() {
     final next = _searchController.text;
     if (next == _addressQuery) return;
-    if (mounted) {
-      setState(() => _addressQuery = next);
-    }
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        setState(() => _addressQuery = next);
+      }
+    });
   }
 
   String _buildPirateUri({
@@ -762,6 +773,11 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
 
   List<AddressInfo> _sortedAddresses(List<AddressInfo> addresses) {
     final query = _addressQuery.trim().toLowerCase();
+    if (identical(addresses, _lastAddressSource) &&
+        _lastSort == _addressSort &&
+        _lastQuery == query) {
+      return _sortedCache;
+    }
     final filtered = query.isEmpty
         ? addresses
         : addresses.where((address) {
@@ -784,6 +800,10 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
         sorted.sort((a, b) => a.balance.compareTo(b.balance));
         break;
     }
+    _lastAddressSource = addresses;
+    _lastSort = _addressSort;
+    _lastQuery = query;
+    _sortedCache = sorted;
     return sorted;
   }
 
@@ -807,4 +827,3 @@ enum _AddressSort {
   balanceHigh,
   balanceLow,
 }
-

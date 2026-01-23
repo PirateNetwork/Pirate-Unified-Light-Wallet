@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -51,10 +53,12 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   final TextEditingController _searchController = TextEditingController();
   ActivityFilter _filter = ActivityFilter.all;
   String _query = '';
+  Timer? _searchDebounce;
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
@@ -99,6 +103,15 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     return DateTime.fromMillisecondsSinceEpoch(timestampValue * 1000);
   }
 
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) {
+        setState(() => _query = value);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final transactionsAsync = ref.watch(transactionsProvider);
@@ -123,7 +136,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                 hint: 'Search activity',
                 prefixIcon: const Icon(Icons.search),
                 textInputAction: TextInputAction.search,
-                onChanged: (value) => setState(() => _query = value),
+                onChanged: _onSearchChanged,
               );
             }
             if (index == 1) {

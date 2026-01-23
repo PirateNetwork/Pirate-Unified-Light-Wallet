@@ -60,7 +60,7 @@ class PirateWalletApp extends ConsumerStatefulWidget {
 }
 
 class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
-    with WindowListener {
+    with WindowListener, WidgetsBindingObserver {
   bool _closing = false;
 
   bool get _isDesktop =>
@@ -69,6 +69,8 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    FfiBridge.setAppActive(true);
     if (_isDesktop) {
       windowManager.addListener(this);
       windowManager.setPreventClose(true);
@@ -83,10 +85,36 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (_isDesktop) {
       windowManager.removeListener(this);
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    FfiBridge.setAppActive(state == AppLifecycleState.resumed);
+  }
+
+  @override
+  void onWindowFocus() {
+    FfiBridge.setAppActive(true);
+  }
+
+  @override
+  void onWindowBlur() {
+    FfiBridge.setAppActive(false);
+  }
+
+  @override
+  void onWindowMinimize() {
+    FfiBridge.setAppActive(false);
+  }
+
+  @override
+  void onWindowRestore() {
+    FfiBridge.setAppActive(true);
   }
 
   Future<void> _shutdownTransports() async {

@@ -457,20 +457,20 @@ class _HomeTransactionsSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final transactionsAsync = ref.watch(transactionsProvider);
-    final syncStatusAsync = ref.watch(syncProgressStreamProvider);
+    final isSyncing = ref.watch(
+      syncProgressStreamProvider.select(
+        (value) => value.maybeWhen(
+          data: (status) => status?.isSyncing ?? false,
+          orElse: () => false,
+        ),
+      ),
+    );
 
     final transactions = transactionsAsync.when(
       data: (txs) => txs,
       loading: () => <TxInfo>[],
       error: (_, __) => <TxInfo>[],
     );
-
-    final syncStatus = syncStatusAsync.when(
-      data: (status) => status,
-      loading: () => null,
-      error: (_, __) => null,
-    );
-    final isSyncing = syncStatus?.isSyncing ?? false;
 
     if (transactions.isEmpty) {
       return SliverToBoxAdapter(
@@ -517,6 +517,7 @@ class _HomeTransactionsSection extends ConsumerWidget {
             if (index >= itemCount) return null;
             final tx = transactions[index];
             return _TransactionItemWithLabel(
+              key: ValueKey(tx.txid),
               tx: tx,
               onTap: () => context.push('/transaction/${tx.txid}'),
             );
@@ -749,6 +750,7 @@ class _TransactionItemWithLabel extends ConsumerWidget {
   final VoidCallback? onTap;
 
   const _TransactionItemWithLabel({
+    super.key,
     required this.tx,
     this.onTap,
   });

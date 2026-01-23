@@ -796,6 +796,22 @@ fn build_arti_config(
         .map_err(|e| Error::Tor(format!("Tor config build failed: {}", e)))
 }
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn apply_bridge_config(
+    _builder: &mut TorClientConfigBuilder,
+    bridges: &TorBridgeConfig,
+) -> Result<()> {
+    log_debug_event(
+        "tor.rs:apply_bridge_config",
+        "tor_pt_unsupported",
+        &format!("transport={:?}", bridges.transport),
+    );
+    Err(Error::Tor(
+        "Bridge transports are not supported on mobile builds".to_string(),
+    ))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn apply_bridge_config(
     builder: &mut TorClientConfigBuilder,
     bridges: &TorBridgeConfig,
@@ -803,18 +819,6 @@ fn apply_bridge_config(
     if bridges.bridge_lines.is_empty() {
         return Err(Error::Tor(
             "Bridge mode selected but no bridges provided".to_string(),
-        ));
-    }
-
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
-        log_debug_event(
-            "tor.rs:apply_bridge_config",
-            "tor_pt_unsupported",
-            &format!("transport={:?}", bridges.transport),
-        );
-        return Err(Error::Tor(
-            "Bridge transports are not supported on mobile builds".to_string(),
         ));
     }
 

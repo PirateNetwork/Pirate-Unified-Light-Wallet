@@ -354,9 +354,16 @@ class LightdEndpointConfig {
 class FfiBridge {
   /// Cached active wallet ID (updated when switching wallets)
   static WalletId? _activeWalletId;
+  static bool _appIsActive = true;
 
   /// Default mainnet birthday height (from pirate_params)
   static const int defaultBirthdayHeight = 3800000;
+
+  static void setAppActive(bool isActive) {
+    _appIsActive = isActive;
+  }
+
+  static bool get appIsActive => _appIsActive;
 
   // ============================================================================
   // WALLET LIFECYCLE - FFI Implementation
@@ -1470,6 +1477,10 @@ class FfiBridge {
 
     while (true) {
       try {
+        if (!_appIsActive) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          continue;
+        }
         final tunnelMode = await getTunnel();
         final tunnelReady = await _isTunnelReadyForSync(tunnelMode);
 
@@ -1591,6 +1602,10 @@ class FfiBridge {
 
     while (true) {
       try {
+        if (!_appIsActive) {
+          await Future<void>.delayed(const Duration(seconds: 3));
+          continue;
+        }
         // Check if sync is running to adjust poll interval
         final isSyncing = await isSyncRunning(id);
         final pollInterval = isSyncing
@@ -1636,6 +1651,10 @@ class FfiBridge {
   static Stream<Balance> balanceStream(WalletId id) async* {
     if (kUseFrbBindings) {
       while (true) {
+        if (!_appIsActive) {
+          await Future<void>.delayed(const Duration(seconds: 5));
+          continue;
+        }
         yield await getBalance(id);
         await Future<void>.delayed(const Duration(seconds: 5));
       }

@@ -6,7 +6,7 @@ import 'package:timeago/timeago.dart' as timeago;
 
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart'
-    show AddressBalanceInfo, AddressBookColorTag, KeyGroupInfo, KeyTypeInfo;
+    show AddressBalanceInfo, KeyGroupInfo, KeyTypeInfo;
 import '../../core/security/biometric_auth.dart';
 import '../../core/security/decoy_data.dart';
 import '../../core/security/screenshot_protection.dart';
@@ -69,7 +69,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
           keyId: key.id,
           addressId: 1,
           createdAt: entry.createdAt.millisecondsSinceEpoch ~/ 1000,
-          colorTag: AddressBookColorTag.none,
+          colorTag: GeneratedAddressBookColorTag.none,
           diversifierIndex: entry.index,
         ),
       ];

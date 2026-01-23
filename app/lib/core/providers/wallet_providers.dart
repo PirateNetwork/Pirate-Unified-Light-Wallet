@@ -250,7 +250,7 @@ final balanceStreamProvider = StreamProvider<Balance?>((ref) async* {
     return;
   }
 
-  yield* FfiBridge.balanceStream(walletId);
+  yield* FfiBridge.balanceStream(walletId).distinct();
 });
 
 // ============================================================================
@@ -310,7 +310,12 @@ final syncProgressStreamProvider = StreamProvider<SyncStatus?>((ref) async* {
   }
 
   final isDecoy = ref.watch(decoyModeProvider);
+  SyncStatus? lastStatus;
   await for (final status in FfiBridge.syncProgressStream(walletId)) {
+    if (lastStatus != null && status == lastStatus) {
+      continue;
+    }
+    lastStatus = status;
     if (!isDecoy && status.targetHeight > BigInt.zero) {
       unawaited(SyncStatusCache.update(status.targetHeight.toInt()));
     }
@@ -413,7 +418,9 @@ final transactionStreamProvider = StreamProvider<TxInfo?>((ref) async* {
     return;
   }
 
-  yield* FfiBridge.transactionStream(walletId);
+  yield* FfiBridge.transactionStream(walletId).distinct(
+        (prev, next) => prev.txid == next.txid,
+      );
 });
 
 /// Watch for new transactions and refresh dependent providers.

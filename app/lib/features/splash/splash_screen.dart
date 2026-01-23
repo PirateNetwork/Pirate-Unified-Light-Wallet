@@ -6,33 +6,52 @@ import '../../core/providers/rust_init_provider.dart';
 import '../../core/providers/wallet_providers.dart';
 
 /// Splash/Loading screen shown while determining initial route
-class SplashScreen extends ConsumerWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final rustInit = ref.watch(rustInitProvider);
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
+}
 
-    // Watch walletsExistProvider to determine when to navigate
-    final walletsExist = ref.watch(walletsExistProvider);
-    final appUnlocked = ref.watch(appUnlockedProvider);
+class _SplashScreenState extends ConsumerState<SplashScreen> {
+  bool _navigated = false;
 
-    // Navigate once we know the state
+  void _maybeNavigate({
+    required AsyncValue<void> rustInit,
+    required AsyncValue<bool> walletsExist,
+    required bool appUnlocked,
+  }) {
+    if (_navigated) return;
     if (rustInit.hasValue && walletsExist.hasValue) {
+      _navigated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         if (walletsExist.value == true) {
-          // Wallets exist
           if (appUnlocked) {
             context.go('/home');
           } else {
             context.go('/unlock');
           }
         } else {
-          // No wallets - go to onboarding
           context.go('/onboarding/welcome');
         }
       });
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rustInit = ref.watch(rustInitProvider);
+
+    // Watch walletsExistProvider to determine when to navigate
+    final walletsExist = ref.watch(walletsExistProvider);
+    final appUnlocked = ref.watch(appUnlockedProvider);
+
+    _maybeNavigate(
+      rustInit: rustInit,
+      walletsExist: walletsExist,
+      appUnlocked: appUnlocked,
+    );
 
     final initError = rustInit.hasError ? rustInit.error.toString() : null;
 
