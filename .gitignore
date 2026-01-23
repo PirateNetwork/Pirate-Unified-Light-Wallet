@@ -76,6 +76,8 @@ coverage/
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
 **/android/key.properties
+app/android/key.properties
+app/android/keystore/
 *.jks
 *.keystore
 

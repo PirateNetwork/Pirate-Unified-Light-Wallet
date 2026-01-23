@@ -5,6 +5,14 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+def hasKeystore = false
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    hasKeystore = true
+}
+
 dependencies {
     implementation "androidx.work:work-runtime-ktx:2.9.1"
     implementation "androidx.core:core-ktx:1.13.1"
@@ -39,16 +47,30 @@ android {
         }
     }
 
-    buildTypes {
-        release {
-            // Leave unsigned for reproducible builds; sign in scripts/build-android.sh if needed.
-        }
-    }
-    
     // Flutter Rust Bridge: Copy native libraries
     sourceSets {
         main {
             jniLibs.srcDirs = ['src/main/jniLibs', '../../crates/pirate-ffi-frb/target']
+        }
+    }
+
+    signingConfigs {
+        if (hasKeystore) {
+            release {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile keystoreProperties['storeFile'] ? rootProject.file(keystoreProperties['storeFile']) : null
+                storePassword keystoreProperties['storePassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Leave unsigned unless key.properties is provided locally.
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
