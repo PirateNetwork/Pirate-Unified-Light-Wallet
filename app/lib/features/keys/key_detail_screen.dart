@@ -6,8 +6,9 @@ import 'package:timeago/timeago.dart' as timeago;
 
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart'
-    show AddressBalanceInfo, KeyGroupInfo, KeyTypeInfo;
+    show AddressBalanceInfo, AddressBookColorTag, KeyGroupInfo, KeyTypeInfo;
 import '../../core/security/biometric_auth.dart';
+import '../../core/security/decoy_data.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../design/tokens/colors.dart';
@@ -52,6 +53,29 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
   }
 
   Future<_KeyDetailData> _fetchDetail(WalletId walletId) async {
+    final isDecoy = ref.read(decoyModeProvider);
+    if (isDecoy) {
+      final key = DecoyData.keyGroups().firstWhere(
+        (item) => item.id == widget.keyId,
+        orElse: () => DecoyData.keyGroups().first,
+      );
+      final entry = DecoyData.currentAddress();
+      final addresses = [
+        AddressBalanceInfo(
+          address: entry.address,
+          balance: BigInt.zero,
+          spendable: BigInt.zero,
+          pending: BigInt.zero,
+          keyId: key.id,
+          addressId: 1,
+          createdAt: entry.createdAt.millisecondsSinceEpoch ~/ 1000,
+          colorTag: AddressBookColorTag.none,
+          diversifierIndex: entry.index,
+        ),
+      ];
+      return _KeyDetailData(key: key, addresses: addresses);
+    }
+
     final keys = await FfiBridge.listKeyGroups(walletId);
     final key = keys.firstWhere(
       (k) => k.id == widget.keyId,
@@ -77,6 +101,12 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
   }) async {
     final walletId = _walletId;
     if (walletId == null) return;
+    final isDecoy = ref.read(decoyModeProvider);
+    if (isDecoy) {
+      DecoyData.generateNextAddress();
+      await _refresh();
+      return;
+    }
     setState(() {
       _isGenerating = true;
       _error = null;
@@ -98,6 +128,9 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
   }
 
   Future<bool> _authorizeKeyExport() async {
+    if (ref.read(decoyModeProvider)) {
+      return true;
+    }
     final biometricsEnabled = ref.read(biometricsEnabledProvider);
     bool biometricAvailable = false;
     try {
@@ -230,10 +263,13 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     final authorized = await _authorizeKeyExport();
     if (!authorized) return;
     try {
-      final export = await FfiBridge.exportKeyGroupKeys(
-        walletId: walletId,
-        keyId: key.id,
-      );
+      final isDecoy = ref.read(decoyModeProvider);
+      final export = isDecoy
+          ? DecoyData.exportKeyGroup(key.id.toInt())
+          : await FfiBridge.exportKeyGroupKeys(
+              walletId: walletId,
+              keyId: key.id,
+            );
       if (!mounted) return;
 
       final sections = <Widget?>[

@@ -301,6 +301,12 @@ impl AppPassphrase {
             )));
         }
 
+        if passphrase.chars().eq(passphrase.chars().rev()) {
+            return Err(Error::Security(
+                "Passphrase cannot read the same forwards and backwards".to_string(),
+            ));
+        }
+
         let strength = Self::evaluate_strength(passphrase);
         if !strength.is_acceptable() {
             return Err(Error::Security(
@@ -636,6 +642,9 @@ mod tests {
         assert!(AppPassphrase::validate("short").is_err());
         assert!(AppPassphrase::validate("12345678901").is_err()); // 11 chars
         assert!(AppPassphrase::validate("password12").is_err()); // 10 chars
+
+        // Palindromes should be rejected
+        assert!(AppPassphrase::validate("abccbaabccba").is_err());
 
         // 12+ chars passes (variety not strictly required at minimum length)
         assert!(AppPassphrase::validate("abcdefghijkl").is_ok()); // 12 chars, Good

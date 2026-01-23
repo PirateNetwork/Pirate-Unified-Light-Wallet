@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../core/security/decoy_data.dart';
 import '../../core/security/clipboard_manager.dart';
 import '../../design/tokens/colors.dart';
 
@@ -118,6 +119,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   WalletId? _walletId;
   bool _initialized = false;
   ReceiveState? _lastState;
+  bool _isDecoy = false;
   
   /// Track if current address was shared (copied/shared)
   bool _currentAddressShared = false;
@@ -130,10 +132,12 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       
       // Watch active wallet provider
       final walletId = ref.watch(activeWalletProvider);
+      final isDecoy = ref.watch(decoyModeProvider);
       
       // Handle wallet changes - reset initialization when wallet changes
-      if (walletId != _walletId) {
+      if (walletId != _walletId || isDecoy != _isDecoy) {
         _walletId = walletId;
+        _isDecoy = isDecoy;
         _initialized = false;
         _lastState = null;
         
@@ -225,6 +229,20 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
 
     try {
       final walletId = _requireWallet();
+      final isDecoy = ref.read(decoyModeProvider);
+
+      if (isDecoy) {
+        final entry = DecoyData.currentAddress();
+        _currentAddressShared = false;
+        state = state.copyWith(
+          currentAddress: entry.address,
+          isLoading: false,
+          addressWasShared: false,
+          diversifierIndex: entry.index,
+        );
+        _lastState = state;
+        return;
+      }
 
       // Get current receive address from FFI
       final address = await FfiBridge.currentReceiveAddress(walletId);
@@ -257,10 +275,25 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
 
     try {
       final walletId = _requireWallet();
-      
+      final isDecoy = ref.read(decoyModeProvider);
+
       // Mark old address as used in history before rotating
       if (state.currentAddress != null) {
         _markAddressAsShared(state.currentAddress!);
+      }
+
+      if (isDecoy) {
+        final entry = DecoyData.generateNextAddress();
+        _currentAddressShared = false;
+        state = state.copyWith(
+          currentAddress: entry.address,
+          isLoading: false,
+          addressWasShared: false,
+          diversifierIndex: entry.index,
+        );
+        await _loadAddressHistory(currentAddressOverride: entry.address);
+        _lastState = state;
+        return;
       }
 
       // Get NEXT receive address from FFI (diversifier rotation)
@@ -450,6 +483,31 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
     try {
       final walletId = _walletId;
       if (walletId == null) return;
+      final isDecoy = ref.read(decoyModeProvider);
+
+      if (isDecoy) {
+        final currentEntry = DecoyData.currentAddress();
+        final currentAddress = currentAddressOverride ?? currentEntry.address;
+        final history = DecoyData.addressHistory()
+            .map((entry) => AddressInfo(
+                  address: entry.address,
+                  createdAt: entry.createdAt,
+                  isActive: entry.address == currentAddress,
+                  diversifierIndex: entry.index,
+                  wasShared: true,
+                  balance: BigInt.zero,
+                  spendable: BigInt.zero,
+                  pending: BigInt.zero,
+                ))
+            .toList();
+
+        state = state.copyWith(
+          addressHistory: history,
+          currentAddress: currentAddress,
+        );
+        _lastState = state;
+        return;
+      }
 
       // Get address balances from FFI
       final addresses = await FfiBridge.listAddressBalances(walletId);

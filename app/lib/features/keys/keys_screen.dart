@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../core/security/decoy_data.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
@@ -28,18 +29,26 @@ class KeyManagementScreen extends ConsumerStatefulWidget {
 class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   WalletId? _walletId;
   Future<List<KeyGroupInfo>>? _loadFuture;
+  bool _isDecoy = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final walletId = ref.read(activeWalletProvider);
-    _setWallet(walletId);
+    final isDecoy = ref.read(decoyModeProvider);
+    _setWallet(walletId, isDecoy);
   }
 
-  void _setWallet(WalletId? walletId) {
-    if (_walletId == walletId) return;
+  void _setWallet(WalletId? walletId, bool isDecoy) {
+    if (_walletId == walletId && _isDecoy == isDecoy) return;
     _walletId = walletId;
-    _loadFuture = walletId == null ? null : _fetchKeys(walletId);
+    _isDecoy = isDecoy;
+    if (walletId == null) {
+      _loadFuture = null;
+      return;
+    }
+    _loadFuture =
+        isDecoy ? Future.value(DecoyData.keyGroups()) : _fetchKeys(walletId);
   }
 
   Future<List<KeyGroupInfo>> _fetchKeys(WalletId walletId) {
@@ -65,6 +74,37 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   }
 
   Future<void> _exportViewingKeys() async {
+    if (_isDecoy) {
+      final sections = <Widget>[
+        _buildViewingKeySection(
+          'Sapling viewing key',
+          DecoyData.saplingViewingKey(),
+        ),
+        _buildViewingKeySection(
+          'Orchard viewing key',
+          DecoyData.orchardViewingKey(),
+        ),
+      ];
+      final protection = ScreenshotProtection.protect();
+      try {
+        await PDialog.show<void>(
+          context: context,
+          title: 'Viewing keys',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: sections,
+          ),
+          actions: const [
+            PDialogAction(label: 'Close'),
+          ],
+        );
+      } finally {
+        protection.dispose();
+      }
+      return;
+    }
+
     final walletId = _walletId;
     if (walletId == null) return;
     String? saplingKey;
@@ -286,7 +326,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     }
   }
 
-  Widget _buildViewingKeyCard() {
+  Widget _buildViewingKeyCard({required bool isDecoy}) {
     return PCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -308,7 +348,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 child: const Text('Export viewing key'),
               ),
               PButton(
-                onPressed: _showImportViewingKeyDialog,
+                onPressed: isDecoy ? null : _showImportViewingKeyDialog,
                 variant: PButtonVariant.secondary,
                 child: const Text('Import viewing key'),
               ),
@@ -322,7 +362,8 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   @override
   Widget build(BuildContext context) {
     final walletId = ref.watch(activeWalletProvider);
-    _setWallet(walletId);
+    final isDecoy = ref.watch(decoyModeProvider);
+    _setWallet(walletId, isDecoy);
 
     return PScaffold(
       appBar: PAppBar(
@@ -334,7 +375,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
           IconButton(
             tooltip: 'Import spending key',
             icon: const Icon(Icons.add),
-            onPressed: walletId == null
+            onPressed: walletId == null || isDecoy
                 ? null
                 : () => context.push('/settings/keys/import'),
           ),
@@ -361,7 +402,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                       MediaQuery.of(context).size.width,
                     ),
                     children: [
-                      _buildViewingKeyCard(),
+                      _buildViewingKeyCard(isDecoy: isDecoy),
                       if (keys.isEmpty) ...[
                         SizedBox(height: PSpacing.lg),
                         _buildNoKeysCard(),

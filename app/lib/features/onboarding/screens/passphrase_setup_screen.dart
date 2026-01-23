@@ -129,7 +129,14 @@ class _PassphraseSetupScreenState
     return _passphraseController.text.isNotEmpty &&
            _confirmController.text.isNotEmpty &&
            _passwordsMatch &&
-           _strength.index >= PassphraseStrength.good.index;
+           _strength.index >= PassphraseStrength.good.index &&
+           !_isPalindrome(_passphraseController.text);
+  }
+
+  bool _isPalindrome(String value) {
+    if (value.isEmpty) return false;
+    final reversed = value.split('').reversed.join();
+    return value == reversed;
   }
 
   Future<void> _proceed() async {
@@ -374,6 +381,7 @@ class _RequirementsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reversed = passphrase.split('').reversed.join();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -403,6 +411,10 @@ class _RequirementsList extends StatelessWidget {
         _RequirementItem(
           text: 'Symbol',
           met: RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(passphrase),
+        ),
+        _RequirementItem(
+          text: 'Not the same backwards',
+          met: passphrase.isNotEmpty && passphrase != reversed,
         ),
       ],
     );
@@ -493,4 +505,3 @@ class _ProgressIndicator extends StatelessWidget {
     );
   }
 }
-

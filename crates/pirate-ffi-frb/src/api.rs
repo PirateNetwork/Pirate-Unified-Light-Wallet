@@ -79,8 +79,11 @@ lazy_static::lazy_static! {
 
 static REGISTRY_LOADED: AtomicBool = AtomicBool::new(false);
 const REGISTRY_APP_PASSPHRASE_KEY: &str = "app_passphrase_hash";
+const REGISTRY_DURESS_PASSPHRASE_HASH_KEY: &str = "duress_passphrase_hash";
+const REGISTRY_DURESS_USE_REVERSE_KEY: &str = "duress_passphrase_use_reverse";
 const REGISTRY_TUNNEL_MODE_KEY: &str = "tunnel_mode";
 const REGISTRY_TUNNEL_SOCKS5_URL_KEY: &str = "tunnel_socks5_url";
+const DECOY_WALLET_ID: &str = "decoy_wallet";
 
 fn debug_log_path() -> PathBuf {
     let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
@@ -385,6 +388,10 @@ pub fn wallet_registry_exists() -> Result<bool> {
 /// Returns empty list if database can't be opened (e.g., passphrase not set)
 /// NOTE: This will CREATE the database file if it doesn't exist (via open_wallet_registry)
 pub fn list_wallets() -> Result<Vec<WalletMeta>> {
+    if is_decoy_mode_active() {
+        ensure_decoy_wallet_state();
+        return Ok(WALLETS.read().clone());
+    }
     // Try to load registry, but don't fail if it can't be opened
     // This allows checking if wallets exist before unlock
     match ensure_wallet_registry_loaded() {
@@ -407,6 +414,10 @@ pub fn list_wallets() -> Result<Vec<WalletMeta>> {
 
 /// Switch active wallet
 pub fn switch_wallet(wallet_id: WalletId) -> Result<()> {
+    if is_decoy_mode_active() {
+        ensure_decoy_wallet_state();
+        return Ok(());
+    }
     ensure_wallet_registry_loaded()?;
     let wallets = WALLETS.read();
     if !wallets.iter().any(|w| w.id == wallet_id) {
@@ -1015,6 +1026,11 @@ pub fn unlock_app(passphrase: String) -> Result<()> {
         return Err(anyhow!("Invalid passphrase"));
     }
 
+    {
+        let vault = DECOY_VAULT.read();
+        vault.deactivate_decoy();
+    }
+
     // Cache passphrase in memory for wallet decryption
     passphrase_store::set_passphrase(passphrase);
 
@@ -1333,6 +1349,12 @@ pub fn change_app_passphrase(current_passphrase: String, new_passphrase: String)
         return Err(anyhow!("Failed to update passphrase hash: {}", e));
     }
 
+    if let Err(e) = refresh_duress_reverse_hash(&registry_db, &new_passphrase) {
+        tracing::warn!("Failed to refresh duress passphrase: {}", e);
+        let _ = set_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY, None);
+        let _ = set_registry_setting(&registry_db, REGISTRY_DURESS_USE_REVERSE_KEY, None);
+    }
+
     let registry_key_path = wallet_registry_key_path()?;
     let _ = force_store_sealed_db_key(
         &new_registry_key,
@@ -1491,6 +1513,9 @@ fn touch_wallet_last_synced(db: &Database, wallet_id: &str) -> Result<()> {
 }
 
 fn ensure_wallet_registry_loaded() -> Result<()> {
+    if is_decoy_mode_active() {
+        return Ok(());
+    }
     if REGISTRY_LOADED.load(Ordering::SeqCst) {
         return Ok(());
     }
@@ -1557,6 +1582,9 @@ fn load_wallet_registry_state(db: &Database) -> Result<()> {
 }
 
 fn get_wallet_meta(wallet_id: &str) -> Result<WalletMeta> {
+    if is_decoy_mode_active() {
+        return Ok(decoy_wallet_meta());
+    }
     ensure_wallet_registry_loaded()?;
     let wallets = WALLETS.read();
     wallets
@@ -1753,6 +1781,10 @@ fn ensure_primary_account_key(
 
 /// Get active wallet ID
 pub fn get_active_wallet() -> Result<Option<WalletId>> {
+    if is_decoy_mode_active() {
+        ensure_decoy_wallet_state();
+        return Ok(Some(DECOY_WALLET_ID.to_string()));
+    }
     ensure_wallet_registry_loaded()?;
     if ACTIVE_WALLET.read().is_none() {
         if let Some(first) = WALLETS.read().first() {
@@ -1927,6 +1959,9 @@ fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
 /// If no address exists, generates and stores the first address (index 0).
 /// Call `next_receive_address` to rotate to a new unlinkable address.
 pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
+    if is_decoy_mode_active() {
+        return Ok(String::new());
+    }
     tracing::info!("Getting current receive address for wallet {}", wallet_id);
 
     // Open encrypted wallet DB
@@ -2014,6 +2049,9 @@ pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
 /// Address type (Sapling or Orchard) is determined by network and current block height.
 /// Previous addresses remain valid for receiving funds.
 pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
+    if is_decoy_mode_active() {
+        return Ok(String::new());
+    }
     tracing::info!("Generating next receive address for wallet {}", wallet_id);
 
     // Determine if we should generate Orchard addresses
@@ -2083,6 +2121,7 @@ pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
 
 /// Label an address for address book
 pub fn label_address(wallet_id: WalletId, addr: String, label: String) -> Result<()> {
+    ensure_not_decoy("Label address")?;
     // Open encrypted wallet DB
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
 
@@ -2110,6 +2149,7 @@ pub fn set_address_color_tag(
     addr: String,
     color_tag: AddressBookColorTag,
 ) -> Result<()> {
+    ensure_not_decoy("Update address color")?;
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
 
     let secret = repo
@@ -2125,6 +2165,9 @@ pub fn set_address_color_tag(
 
 /// Get all addresses for wallet with labels
 pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
+    if is_decoy_mode_active() {
+        return Ok(Vec::new());
+    }
     // Open encrypted wallet DB
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
 
@@ -2157,6 +2200,9 @@ pub fn list_address_balances(
     wallet_id: WalletId,
     key_id: Option<i64>,
 ) -> Result<Vec<AddressBalanceInfo>> {
+    if is_decoy_mode_active() {
+        return Ok(Vec::new());
+    }
     let (db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
@@ -2932,6 +2978,9 @@ pub fn export_key_group_keys(wallet_id: WalletId, key_id: i64) -> Result<KeyExpo
 
 /// List addresses for a specific key group.
 pub fn list_addresses_for_key(wallet_id: WalletId, key_id: i64) -> Result<Vec<KeyAddressInfo>> {
+    if is_decoy_mode_active() {
+        return Ok(Vec::new());
+    }
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
@@ -3480,6 +3529,7 @@ pub fn build_tx(
     outputs: Vec<Output>,
     fee_opt: Option<u64>,
 ) -> Result<PendingTx> {
+    ensure_not_decoy("Build transaction")?;
     build_tx_internal(wallet_id, outputs, fee_opt, None, None)
 }
 
@@ -3490,6 +3540,7 @@ pub fn build_tx_for_key(
     outputs: Vec<Output>,
     fee_opt: Option<u64>,
 ) -> Result<PendingTx> {
+    ensure_not_decoy("Build transaction")?;
     build_tx_internal(wallet_id, outputs, fee_opt, Some(vec![key_id]), None)
 }
 
@@ -3501,6 +3552,7 @@ pub fn build_tx_filtered(
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<PendingTx> {
+    ensure_not_decoy("Build transaction")?;
     build_tx_internal(
         wallet_id,
         outputs,
@@ -4261,11 +4313,13 @@ fn sign_tx_internal(
 
 /// Sign pending transaction (all spendable notes in the wallet)
 pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
+    ensure_not_decoy("Sign transaction")?;
     sign_tx_internal(wallet_id, pending, None, None)
 }
 
 /// Sign pending transaction using notes from a specific key group
 pub fn sign_tx_for_key(wallet_id: WalletId, pending: PendingTx, key_id: i64) -> Result<SignedTx> {
+    ensure_not_decoy("Sign transaction")?;
     sign_tx_internal(wallet_id, pending, Some(vec![key_id]), None)
 }
 
@@ -4276,6 +4330,7 @@ pub fn sign_tx_filtered(
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<SignedTx> {
+    ensure_not_decoy("Sign transaction")?;
     sign_tx_internal(wallet_id, pending, key_ids_filter, address_ids_filter)
 }
 
@@ -4284,6 +4339,7 @@ pub fn sign_tx_filtered(
 /// Sends transaction via lightwalletd gRPC SendTransaction.
 /// Returns TxId on success, or error with details.
 pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
+    ensure_not_decoy("Broadcast transaction")?;
     run_on_runtime(move || broadcast_tx_inner(signed)).await
 }
 
@@ -4604,6 +4660,7 @@ impl Default for SyncSession {
 
 /// Start sync for a wallet
 pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
+    ensure_not_decoy("Sync")?;
     tracing::info!("Starting sync for wallet {} in mode {:?}", wallet_id, mode);
     log_orchard_address_samples(&wallet_id);
     // #region agent log
@@ -4938,6 +4995,19 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
 
 /// Get sync status for a wallet with full performance metrics
 pub fn sync_status(wallet_id: WalletId) -> Result<SyncStatus> {
+    if is_decoy_mode_active() {
+        return Ok(SyncStatus {
+            local_height: 0,
+            target_height: 0,
+            percent: 0.0,
+            eta: None,
+            stage: SyncStage::Headers,
+            last_checkpoint: None,
+            blocks_per_second: 0.0,
+            notes_decrypted: 0,
+            last_batch_ms: 0,
+        });
+    }
     let wallet_id_for_panic = wallet_id.clone();
     let result = std::panic::catch_unwind(|| sync_status_inner(wallet_id));
     match result {
@@ -5383,6 +5453,9 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
 
 /// Get last checkpoint info for diagnostics
 pub fn get_last_checkpoint(wallet_id: WalletId) -> Result<Option<CheckpointInfo>> {
+    if is_decoy_mode_active() {
+        return Ok(None);
+    }
     let sessions = SYNC_SESSIONS.read();
 
     // Try to get checkpoint height from sync session
@@ -5459,6 +5532,7 @@ async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: std::time::Duration) 
 
 /// Rescan wallet from specific height
 pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
+    ensure_not_decoy("Rescan")?;
     tracing::info!(
         "Rescanning wallet {} from height {}",
         wallet_id,
@@ -6111,6 +6185,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
 
 /// Cancel ongoing sync for a wallet
 pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
+    ensure_not_decoy("Cancel sync")?;
     // Clone the session arc while holding the lock, then drop the lock unconditionally
     let session_arc_opt = {
         let sessions = SYNC_SESSIONS.read();
@@ -6190,6 +6265,9 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
 
 /// Check if sync is running for a wallet
 pub fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
+    if is_decoy_mode_active() {
+        return Ok(false);
+    }
     let sessions = SYNC_SESSIONS.read();
 
     if let Some(session_arc) = sessions.get(&wallet_id) {
@@ -7272,6 +7350,13 @@ pub async fn rotate_tor_exit() -> Result<()> {
 /// - pending: Unconfirmed unspent notes
 /// - total: spendable + pending
 pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
+    if is_decoy_mode_active() {
+        return Ok(Balance {
+            total: 0,
+            spendable: 0,
+            pending: 0,
+        });
+    }
     tracing::info!("Getting balance for wallet {}", wallet_id);
 
     // Open encrypted wallet DB
@@ -7401,6 +7486,9 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
 /// Returns transaction history from the database, aggregated by transaction ID.
 /// Transactions are sorted by height descending (newest first).
 pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<TxInfo>> {
+    if is_decoy_mode_active() {
+        return Ok(Vec::new());
+    }
     tracing::info!(
         "Listing transactions for wallet {} (limit: {:?})",
         wallet_id,
@@ -7863,6 +7951,94 @@ lazy_static::lazy_static! {
         Arc::new(RwLock::new(WatchOnlyManager::new()));
 }
 
+fn is_decoy_mode_active() -> bool {
+    let vault = DECOY_VAULT.read();
+    vault.is_decoy_mode()
+}
+
+fn decoy_wallet_meta() -> WalletMeta {
+    let vault = DECOY_VAULT.read();
+    let network = Network::mainnet();
+    WalletMeta {
+        id: DECOY_WALLET_ID.to_string(),
+        name: vault.decoy_name(),
+        created_at: chrono::Utc::now().timestamp(),
+        watch_only: false,
+        birthday_height: network.default_birthday_height,
+        network_type: Some(network.name.to_string()),
+    }
+}
+
+fn ensure_decoy_wallet_state() {
+    let meta = decoy_wallet_meta();
+    *WALLETS.write() = vec![meta.clone()];
+    *ACTIVE_WALLET.write() = Some(meta.id);
+}
+
+fn reverse_passphrase(passphrase: &str) -> String {
+    passphrase.chars().rev().collect()
+}
+
+fn ensure_not_decoy(operation: &str) -> Result<()> {
+    if is_decoy_mode_active() {
+        return Err(anyhow!("{} is unavailable in decoy mode", operation));
+    }
+    Ok(())
+}
+
+fn validate_custom_duress_passphrase(passphrase: &str) -> Result<()> {
+    const SYMBOLS: &str = "!@#$%^&*(),.?\":{}|<>";
+
+    AppPassphrase::validate(passphrase)?;
+
+    if !passphrase.chars().any(|c| c.is_ascii_lowercase()) {
+        return Err(anyhow!(
+            "Duress passphrase must include a lowercase letter"
+        ));
+    }
+    if !passphrase.chars().any(|c| c.is_ascii_uppercase()) {
+        return Err(anyhow!(
+            "Duress passphrase must include an uppercase letter"
+        ));
+    }
+    if !passphrase.chars().any(|c| c.is_ascii_digit()) {
+        return Err(anyhow!("Duress passphrase must include a number"));
+    }
+    if !passphrase.chars().any(|c| SYMBOLS.contains(c)) {
+        return Err(anyhow!(
+            "Duress passphrase must include a symbol (e.g. !@#$)"
+        ));
+    }
+
+    Ok(())
+}
+
+fn refresh_duress_reverse_hash(registry_db: &Database, new_passphrase: &str) -> Result<()> {
+    let use_reverse = get_registry_setting(registry_db, REGISTRY_DURESS_USE_REVERSE_KEY)?
+        .map(|value| value == "true")
+        .unwrap_or(false);
+
+    if !use_reverse {
+        return Ok(());
+    }
+
+    if new_passphrase.chars().eq(new_passphrase.chars().rev()) {
+        set_registry_setting(registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY, None)?;
+        set_registry_setting(registry_db, REGISTRY_DURESS_USE_REVERSE_KEY, None)?;
+        return Ok(());
+    }
+
+    let duress_passphrase = reverse_passphrase(new_passphrase);
+    let duress_hash = AppPassphrase::hash(&duress_passphrase)
+        .map_err(|e| anyhow!("Failed to hash duress passphrase: {}", e))?;
+    set_registry_setting(
+        registry_db,
+        REGISTRY_DURESS_PASSPHRASE_HASH_KEY,
+        Some(duress_hash.hash_string()),
+    )?;
+    Ok(())
+}
+
 // ============================================================================
 // Panic PIN / Decoy Vault
 // ============================================================================
@@ -7943,6 +8119,123 @@ pub fn clear_panic_pin() -> Result<()> {
     Ok(())
 }
 
+/// Set duress passphrase for decoy vault
+/// Returns the Argon2id hash for secure storage on the client side.
+pub fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result<String> {
+    let app_passphrase = passphrase_store::get_passphrase()
+        .map_err(|e| anyhow!("App is locked: {}", e))?;
+    let app_passphrase = app_passphrase.as_str();
+
+    let custom_trimmed = custom_passphrase
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let use_reverse = custom_trimmed.is_none();
+    let duress_passphrase = if let Some(value) = custom_trimmed {
+        validate_custom_duress_passphrase(&value)?;
+        value
+    } else {
+        if app_passphrase.chars().eq(app_passphrase.chars().rev()) {
+            return Err(anyhow!(
+                "Passphrase reads the same forwards and backwards; set a custom duress passphrase"
+            ));
+        }
+        reverse_passphrase(app_passphrase)
+    };
+
+    if duress_passphrase == app_passphrase {
+        return Err(anyhow!(
+            "Duress passphrase must be different from your app passphrase"
+        ));
+    }
+
+    let duress_hash = AppPassphrase::hash(&duress_passphrase)
+        .map_err(|e| anyhow!("Failed to hash duress passphrase: {}", e))?;
+
+    let registry_db = open_wallet_registry()?;
+    set_registry_setting(
+        &registry_db,
+        REGISTRY_DURESS_PASSPHRASE_HASH_KEY,
+        Some(duress_hash.hash_string()),
+    )?;
+    set_registry_setting(
+        &registry_db,
+        REGISTRY_DURESS_USE_REVERSE_KEY,
+        Some(if use_reverse { "true" } else { "false" }),
+    )?;
+
+    let vault = DECOY_VAULT.read();
+    let salt = generate_salt().to_vec();
+    vault
+        .enable(duress_hash.hash_string().to_string(), salt)
+        .map_err(|e| anyhow!("Failed to enable decoy vault: {}", e))?;
+
+    tracing::info!("Duress passphrase configured");
+    Ok(duress_hash.hash_string().to_string())
+}
+
+/// Check if a duress passphrase is configured
+pub fn has_duress_passphrase() -> Result<bool> {
+    if !wallet_registry_path()?.exists() {
+        return Ok(false);
+    }
+    let registry_db = open_wallet_registry()?;
+    Ok(get_registry_setting(
+        &registry_db,
+        REGISTRY_DURESS_PASSPHRASE_HASH_KEY,
+    )?
+    .is_some())
+}
+
+/// Get the stored duress passphrase hash (for client-side secure storage sync)
+pub fn get_duress_passphrase_hash() -> Result<Option<String>> {
+    if !wallet_registry_path()?.exists() {
+        return Ok(None);
+    }
+    let registry_db = open_wallet_registry()?;
+    get_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY)
+}
+
+/// Clear duress passphrase configuration
+pub fn clear_duress_passphrase() -> Result<()> {
+    if wallet_registry_path()?.exists() {
+        let registry_db = open_wallet_registry()?;
+        set_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY, None)?;
+        set_registry_setting(&registry_db, REGISTRY_DURESS_USE_REVERSE_KEY, None)?;
+    }
+
+    let vault = DECOY_VAULT.read();
+    vault
+        .disable()
+        .map_err(|e| anyhow!("Failed to disable decoy vault: {}", e))?;
+    tracing::info!("Duress passphrase cleared");
+    Ok(())
+}
+
+/// Verify duress passphrase (activates decoy mode if correct)
+pub fn verify_duress_passphrase(passphrase: String, hash: String) -> Result<bool> {
+    let verifier = AppPassphrase::from_hash(hash.clone());
+    let is_match = verifier
+        .verify(&passphrase)
+        .map_err(|e| anyhow!("Failed to verify duress passphrase: {}", e))?;
+
+    if is_match {
+        let vault = DECOY_VAULT.read();
+        if !vault.config().enabled {
+            let salt = generate_salt().to_vec();
+            let _ = vault.enable(hash, salt);
+        }
+        vault
+            .activate_decoy()
+            .map_err(|e| anyhow!("Failed to activate decoy: {}", e))?;
+        ensure_decoy_wallet_state();
+        tracing::warn!("Decoy vault activated via duress passphrase");
+    }
+
+    Ok(is_match)
+}
+
 /// Set decoy wallet name
 pub fn set_decoy_wallet_name(name: String) -> Result<()> {
     let vault = DECOY_VAULT.read();
@@ -7964,6 +8257,7 @@ pub fn exit_decoy_mode() -> Result<()> {
 
 /// Start seed export flow (step 1: show warning)
 pub fn start_seed_export(wallet_id: WalletId) -> Result<String> {
+    ensure_not_decoy("Seed export")?;
     let wallet = get_wallet_meta(&wallet_id)?;
 
     if wallet.watch_only {
@@ -7979,6 +8273,7 @@ pub fn start_seed_export(wallet_id: WalletId) -> Result<String> {
 
 /// Acknowledge seed export warning (step 2)
 pub fn acknowledge_seed_warning() -> Result<String> {
+    ensure_not_decoy("Seed export")?;
     let manager = SEED_EXPORT.write();
     let state = manager
         .acknowledge_warning()
@@ -7989,6 +8284,7 @@ pub fn acknowledge_seed_warning() -> Result<String> {
 
 /// Complete biometric step (step 3)
 pub fn complete_seed_biometric(success: bool) -> Result<String> {
+    ensure_not_decoy("Seed export")?;
     let manager = SEED_EXPORT.write();
     let state = manager
         .complete_biometric(success)
@@ -7999,6 +8295,7 @@ pub fn complete_seed_biometric(success: bool) -> Result<String> {
 
 /// Skip biometric (when not available)
 pub fn skip_seed_biometric() -> Result<String> {
+    ensure_not_decoy("Seed export")?;
     let manager = SEED_EXPORT.write();
     let state = manager
         .skip_biometric()
@@ -8015,6 +8312,7 @@ pub fn skip_seed_biometric() -> Result<String> {
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
 pub fn export_seed_with_passphrase(wallet_id: WalletId, passphrase: String) -> Result<Vec<String>> {
+    ensure_not_decoy("Seed export")?;
     let manager = SEED_EXPORT.read();
 
     // Verify flow state
@@ -8079,6 +8377,7 @@ pub fn export_seed_with_passphrase(wallet_id: WalletId, passphrase: String) -> R
 
 /// Export seed using cached app passphrase (after biometric approval).
 pub fn export_seed_with_cached_passphrase(wallet_id: WalletId) -> Result<Vec<String>> {
+    ensure_not_decoy("Seed export")?;
     let passphrase = app_passphrase()?;
     export_seed_with_passphrase(wallet_id, passphrase)
 }
@@ -8294,6 +8593,9 @@ pub fn get_sync_logs(
     wallet_id: WalletId,
     limit: Option<u32>,
 ) -> Result<Vec<crate::models::SyncLogEntryFfi>> {
+    if is_decoy_mode_active() {
+        return Ok(Vec::new());
+    }
     let limit = limit.unwrap_or(200);
 
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;

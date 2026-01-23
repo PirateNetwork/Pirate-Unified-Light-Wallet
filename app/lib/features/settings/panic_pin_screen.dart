@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/security/duress_passphrase_store.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../ui/atoms/p_button.dart';
+import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_dialog.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 
-/// Panic PIN Setup Screen
+/// Duress passphrase setup screen (formerly panic PIN).
 class PanicPinScreen extends ConsumerStatefulWidget {
   const PanicPinScreen({super.key});
 
@@ -20,38 +22,52 @@ class PanicPinScreen extends ConsumerStatefulWidget {
 }
 
 class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
-  static const int _minPinLength = 4;
-  static const int _maxPinLength = 8;
-  static const String _backspaceKey = 'BACKSPACE';
-
-  String _enteredPin = '';
-  String _confirmPin = '';
-  bool _isConfirming = false;
-  bool _hasExistingPin = false;
+  final _customController = TextEditingController();
+  final _confirmController = TextEditingController();
+  bool _useCustom = false;
+  bool _showSetup = false;
+  bool _hasExisting = false;
   bool _isLoading = true;
+  bool _isSaving = false;
+  bool _obscureCustom = true;
+  bool _obscureConfirm = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _checkExistingPin();
+    _checkExisting();
   }
 
-  Future<void> _checkExistingPin() async {
+  @override
+  void dispose() {
+    _customController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _checkExisting() async {
     try {
-      final hasPin = await FfiBridge.hasPanicPin();
+      final hasConfigured = await FfiBridge.hasDuressPassphrase();
+      final hasStored = await DuressPassphraseStore.exists();
       if (mounted) {
         setState(() {
-          _hasExistingPin = hasPin;
+          _hasExisting = hasConfigured && hasStored;
+          _showSetup = !_hasExisting;
           _isLoading = false;
+          if (hasConfigured && !hasStored) {
+            _error =
+                'Duress passphrase needs reconfiguration on this device.';
+          }
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _hasExistingPin = false;
+          _hasExisting = false;
+          _showSetup = true;
           _isLoading = false;
-          _error = 'Failed to check panic PIN: $e';
+          _error = 'Failed to check duress passphrase: $e';
         });
       }
     }
@@ -61,9 +77,9 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return PScaffold(
-        title: 'Panic PIN',
+        title: 'Duress Passphrase',
         appBar: const PAppBar(
-          title: 'Panic PIN',
+          title: 'Duress Passphrase',
           subtitle: 'Preparing decoy vault access',
         ),
         body: const Center(child: CircularProgressIndicator()),
@@ -71,21 +87,21 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
     }
 
     return PScaffold(
-      title: 'Panic PIN',
+      title: 'Duress Passphrase',
       appBar: const PAppBar(
-        title: 'Panic PIN',
+        title: 'Duress Passphrase',
         subtitle: 'Configure decoy vault access',
         showBackButton: true,
       ),
       body: SafeArea(
-        child: _hasExistingPin ? _buildManageView() : _buildSetupView(),
+        child: (_showSetup || !_hasExisting)
+            ? _buildSetupView()
+            : _buildManageView(),
       ),
     );
   }
 
   Widget _buildSetupView() {
-    final pin = _isConfirming ? _confirmPin : _enteredPin;
-
     return SingleChildScrollView(
       padding: PSpacing.screenPadding(
         MediaQuery.of(context).size.width,
@@ -101,52 +117,84 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
           ),
           const SizedBox(height: PSpacing.xl),
           Text(
-            _isConfirming ? 'Confirm Panic PIN' : 'Set Panic PIN',
+            'Set duress passphrase',
             style: PTypography.heading2(color: AppColors.textPrimary),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: PSpacing.md),
           Text(
-            _isConfirming
-                ? 'Re-enter your PIN to confirm.'
-                : 'Enter a 4-8 digit PIN that opens a decoy wallet.',
+            'If forced to unlock your wallet, enter the duress passphrase to open an empty wallet.',
             style: PTypography.bodyMedium(color: AppColors.textSecondary),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: PSpacing.xxl),
           _buildInfoCard(),
-          const SizedBox(height: PSpacing.xxl),
-          _buildPinDisplay(pin),
-          const SizedBox(height: PSpacing.xl),
-          _buildNumPad(),
-          if (!_isConfirming && _enteredPin.length >= _minPinLength) ...[
-            const SizedBox(height: PSpacing.lg),
-            PButton(
-              onPressed: () {
-                setState(() {
-                  _isConfirming = true;
-                  _confirmPin = '';
-                  _error = null;
-                });
-              },
-              text: 'Continue',
-              fullWidth: true,
+          const SizedBox(height: PSpacing.lg),
+          SwitchListTile(
+            title: Text(
+              'Use a custom duress passphrase',
+              style: PTypography.bodyLarge(color: AppColors.textPrimary),
             ),
-          ],
-          if (_isConfirming) ...[
+            subtitle: Text(
+              'If off, your duress passphrase is your passphrase reversed.',
+              style: PTypography.bodySmall(color: AppColors.textSecondary),
+            ),
+            value: _useCustom,
+            onChanged: (value) {
+              setState(() {
+                _useCustom = value;
+                _error = null;
+                if (!value) {
+                  _customController.clear();
+                  _confirmController.clear();
+                }
+              });
+            },
+          ),
+          if (_useCustom) ...[
             const SizedBox(height: PSpacing.md),
-            PTextButton(
-              label: 'Start over',
-              variant: PTextButtonVariant.subtle,
-              fullWidth: true,
-              onPressed: () {
-                setState(() {
-                  _isConfirming = false;
-                  _enteredPin = '';
-                  _confirmPin = '';
-                  _error = null;
-                });
-              },
+            PInput(
+              controller: _customController,
+              label: 'Custom duress passphrase',
+              hint: 'Enter a duress passphrase',
+              obscureText: _obscureCustom,
+              autocorrect: false,
+              enableSuggestions: false,
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscureCustom
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  color: AppColors.textSecondary,
+                ),
+                onPressed: () {
+                  setState(() => _obscureCustom = !_obscureCustom);
+                },
+              ),
+            ),
+            const SizedBox(height: PSpacing.md),
+            PInput(
+              controller: _confirmController,
+              label: 'Confirm duress passphrase',
+              hint: 'Re-enter to confirm',
+              obscureText: _obscureConfirm,
+              autocorrect: false,
+              enableSuggestions: false,
+              errorText: _confirmController.text.isNotEmpty &&
+                      _confirmController.text != _customController.text
+                  ? 'Passphrases do not match'
+                  : null,
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscureConfirm
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  color: AppColors.textSecondary,
+                ),
+                onPressed: () {
+                  setState(() => _obscureConfirm = !_obscureConfirm);
+                },
+              ),
             ),
           ],
           if (_error != null) ...[
@@ -163,6 +211,27 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
                 style: PTypography.bodyMedium(color: AppColors.error),
                 textAlign: TextAlign.center,
               ),
+            ),
+          ],
+          const SizedBox(height: PSpacing.xl),
+          PButton(
+            onPressed: _isSaving ? null : _saveDuressPassphrase,
+            text: _isSaving ? 'Saving...' : 'Enable duress passphrase',
+            fullWidth: true,
+            isLoading: _isSaving,
+          ),
+          if (_hasExisting) ...[
+            const SizedBox(height: PSpacing.md),
+            PTextButton(
+              label: 'Cancel',
+              variant: PTextButtonVariant.subtle,
+              fullWidth: true,
+              onPressed: () {
+                setState(() {
+                  _showSetup = false;
+                  _error = null;
+                });
+              },
             ),
           ],
         ],
@@ -195,14 +264,14 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Panic PIN configured',
+                        'Duress passphrase configured',
                         style: PTypography.bodyLarge(
                           color: AppColors.textPrimary,
                         ).copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: PSpacing.xs),
                       Text(
-                        'Your panic PIN opens the decoy wallet.',
+                        'Entering it opens a decoy wallet.',
                         style: PTypography.bodyMedium(
                           color: AppColors.textSecondary,
                         ),
@@ -217,10 +286,21 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
           _buildInfoCard(),
           const Spacer(),
           PButton(
-            onPressed: _removePanicPin,
+            onPressed: () {
+              setState(() {
+                _showSetup = true;
+                _error = null;
+              });
+            },
+            text: 'Update duress passphrase',
+            fullWidth: true,
+          ),
+          const SizedBox(height: PSpacing.md),
+          PButton(
+            onPressed: _removeDuressPassphrase,
             icon: const Icon(Icons.delete_outline),
             variant: PButtonVariant.danger,
-            text: 'Remove Panic PIN',
+            text: 'Remove duress passphrase',
           ),
         ],
       ),
@@ -251,10 +331,10 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
             ],
           ),
           const SizedBox(height: PSpacing.md),
-          _buildInfoItem('Opens a decoy wallet with fake data.'),
-          _buildInfoItem('Protects your main wallet in emergencies.'),
-          _buildInfoItem('Different from your app password.'),
-          _buildInfoItem('Keep this PIN completely secret.'),
+          _buildInfoItem('Opens a decoy wallet with empty data.'),
+          _buildInfoItem('Default is your passphrase reversed.'),
+          _buildInfoItem('Use a custom passphrase if you prefer.'),
+          _buildInfoItem('Close and reopen to return to the real wallet.'),
         ],
       ),
     );
@@ -278,155 +358,88 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
     );
   }
 
-  Widget _buildPinDisplay(String pin) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(
-        _maxPinLength,
-        (index) => Container(
-          width: 38,
-          height: 38,
-          margin: const EdgeInsets.symmetric(horizontal: 6),
-          decoration: BoxDecoration(
-            color: index < pin.length
-                ? AppColors.gradientAStart
-                : AppColors.backgroundSurface,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: index < pin.length
-                  ? AppColors.gradientAEnd
-                  : AppColors.borderDefault,
-              width: index < pin.length ? 2 : 1,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Future<void> _saveDuressPassphrase() async {
+    if (_isSaving) return;
 
-  Widget _buildNumPad() {
-    return Column(
-      children: [
-        _buildNumPadRow(['1', '2', '3']),
-        const SizedBox(height: PSpacing.md),
-        _buildNumPadRow(['4', '5', '6']),
-        const SizedBox(height: PSpacing.md),
-        _buildNumPadRow(['7', '8', '9']),
-        const SizedBox(height: PSpacing.md),
-        _buildNumPadRow(['', '0', _backspaceKey]),
-      ],
-    );
-  }
-
-  Widget _buildNumPadRow(List<String> numbers) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: numbers.map((num) {
-        if (num.isEmpty) return const SizedBox(width: 80, height: 80);
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: PSpacing.sm),
-          child: InkWell(
-            onTap: () => _onNumPadTap(num),
-            borderRadius: BorderRadius.circular(40),
-            child: Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.backgroundSurface,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.borderStrong, width: 1),
-              ),
-              child: Center(
-                child: num == _backspaceKey
-                    ? Icon(
-                        Icons.backspace_outlined,
-                        color: AppColors.textPrimary,
-                        size: 24,
-                      )
-                    : Text(
-                        num,
-                        style: PTypography.heading3(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  void _onNumPadTap(String value) {
-    setState(() => _error = null);
-
-    if (value == _backspaceKey) {
-      if (_isConfirming) {
-        if (_confirmPin.isNotEmpty) {
-          setState(() {
-            _confirmPin = _confirmPin.substring(0, _confirmPin.length - 1);
-          });
-        }
-      } else {
-        if (_enteredPin.isNotEmpty) {
-          setState(() {
-            _enteredPin = _enteredPin.substring(0, _enteredPin.length - 1);
-          });
-        }
+    if (_useCustom) {
+      final custom = _customController.text.trim();
+      final confirm = _confirmController.text.trim();
+      if (custom.isEmpty) {
+        setState(() => _error = 'Enter a custom duress passphrase.');
+        return;
       }
-      return;
-    }
-
-    if (_isConfirming) {
-      if (_confirmPin.length < _maxPinLength) {
-        setState(() => _confirmPin += value);
-        if (_confirmPin.length >= _minPinLength) {
-          _checkConfirmation();
-        }
+      if (custom != confirm) {
+        setState(() => _error = 'Passphrases do not match.');
+        return;
       }
-      return;
+      final validationError = _validateCustomPassphrase(custom);
+      if (validationError != null) {
+        setState(() => _error = validationError);
+        return;
+      }
     }
 
-    if (_enteredPin.length < _maxPinLength) {
-      setState(() => _enteredPin += value);
-    }
-  }
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
 
-  Future<void> _checkConfirmation() async {
-    if (_confirmPin.length >= _minPinLength && _confirmPin == _enteredPin) {
-      await _savePanicPin();
-    } else if (_confirmPin.length >= _enteredPin.length) {
-      setState(() {
-        _error = 'PINs do not match';
-        _confirmPin = '';
-      });
-    }
-  }
-
-  Future<void> _savePanicPin() async {
     try {
-      await FfiBridge.setPanicPin(_enteredPin);
-
+      final hash = await FfiBridge.setDuressPassphrase(
+        customPassphrase: _useCustom ? _customController.text.trim() : null,
+      );
+      await DuressPassphraseStore.store(hash);
       if (mounted) {
-        setState(() => _hasExistingPin = true);
+        setState(() {
+          _hasExisting = true;
+          _showSetup = false;
+          _useCustom = false;
+          _customController.clear();
+          _confirmController.clear();
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Panic PIN configured'),
+            content: const Text('Duress passphrase configured'),
             backgroundColor: AppColors.success,
           ),
         );
-        Navigator.pop(context);
       }
     } catch (e) {
-      setState(() => _error = 'Failed to save PIN: $e');
+      setState(() => _error = 'Failed to save duress passphrase: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
-  Future<void> _removePanicPin() async {
+  String? _validateCustomPassphrase(String value) {
+    if (value.length < 12) {
+      return 'Duress passphrase must be at least 12 characters.';
+    }
+    if (!RegExp(r'[a-z]').hasMatch(value)) {
+      return 'Include a lowercase letter.';
+    }
+    if (!RegExp(r'[A-Z]').hasMatch(value)) {
+      return 'Include an uppercase letter.';
+    }
+    if (!RegExp(r'[0-9]').hasMatch(value)) {
+      return 'Include a number.';
+    }
+    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(value)) {
+      return 'Include a symbol like !@#\$%.';
+    }
+    final reversed = value.split('').reversed.join();
+    if (value == reversed) {
+      return 'Passphrase cannot read the same forwards and backwards.';
+    }
+    return null;
+  }
+
+  Future<void> _removeDuressPassphrase() async {
     final confirmed = await PDialog.show<bool>(
       context: context,
-      title: 'Remove panic PIN?',
+      title: 'Remove duress passphrase?',
       content: Text(
         'This disables the decoy wallet shortcut on this device.',
         style: PTypography.bodyMedium(color: AppColors.textSecondary),
@@ -446,20 +459,22 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
 
     if (confirmed == true) {
       try {
-        await FfiBridge.clearPanicPin();
-
-        setState(() => _hasExistingPin = false);
-
+        await FfiBridge.clearDuressPassphrase();
+        await DuressPassphraseStore.clear();
+        setState(() {
+          _hasExisting = false;
+          _showSetup = true;
+        });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Panic PIN removed'),
+              content: const Text('Duress passphrase removed'),
               backgroundColor: AppColors.warning,
             ),
           );
         }
       } catch (e) {
-        setState(() => _error = 'Failed to remove PIN: $e');
+        setState(() => _error = 'Failed to remove duress passphrase: $e');
       }
     }
   }

@@ -1481,6 +1481,9 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__change_app_passphrase_with_cached(
           port_, new_passphrase);
 
+  void wire__crate__api__clear_duress_passphrase(NativePortType port_) =>
+      wasmModule.wire__crate__api__clear_duress_passphrase(port_);
+
   void wire__crate__api__clear_panic_pin(NativePortType port_) =>
       wasmModule.wire__crate__api__clear_panic_pin(port_);
 
@@ -1610,6 +1613,9 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__get_checkpoint_details(
           port_, _wallet_id, height);
 
+  void wire__crate__api__get_duress_passphrase_hash(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_duress_passphrase_hash(port_);
+
   void wire__crate__api__get_fee_info(NativePortType port_) =>
       wasmModule.wire__crate__api__get_fee_info(port_);
 
@@ -1679,6 +1685,9 @@ class RustLibWire implements BaseWire {
 
   void wire__crate__api__has_app_passphrase(NativePortType port_) =>
       wasmModule.wire__crate__api__has_app_passphrase(port_);
+
+  void wire__crate__api__has_duress_passphrase(NativePortType port_) =>
+      wasmModule.wire__crate__api__has_duress_passphrase(port_);
 
   void wire__crate__api__has_panic_pin(NativePortType port_) =>
       wasmModule.wire__crate__api__has_panic_pin(port_);
@@ -1810,6 +1819,11 @@ class RustLibWire implements BaseWire {
           NativePortType port_, String name) =>
       wasmModule.wire__crate__api__set_decoy_wallet_name(port_, name);
 
+  void wire__crate__api__set_duress_passphrase(
+          NativePortType port_, String? custom_passphrase) =>
+      wasmModule.wire__crate__api__set_duress_passphrase(
+          port_, custom_passphrase);
+
   void wire__crate__api__set_lightd_endpoint(NativePortType port_,
           String wallet_id, String url, String? tls_pin_opt) =>
       wasmModule.wire__crate__api__set_lightd_endpoint(
@@ -1916,6 +1930,11 @@ class RustLibWire implements BaseWire {
           NativePortType port_, String passphrase) =>
       wasmModule.wire__crate__api__verify_app_passphrase(port_, passphrase);
 
+  void wire__crate__api__verify_duress_passphrase(
+          NativePortType port_, String passphrase, String hash) =>
+      wasmModule.wire__crate__api__verify_duress_passphrase(
+          port_, passphrase, hash);
+
   void wire__crate__api__verify_panic_pin(NativePortType port_, String pin) =>
       wasmModule.wire__crate__api__verify_panic_pin(port_, pin);
 
@@ -1987,6 +2006,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void wire__crate__api__change_app_passphrase_with_cached(
       NativePortType port_, String new_passphrase);
+
+  external void wire__crate__api__clear_duress_passphrase(NativePortType port_);
 
   external void wire__crate__api__clear_panic_pin(NativePortType port_);
 
@@ -2077,6 +2098,9 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__get_checkpoint_details(
       NativePortType port_, String _wallet_id, int height);
 
+  external void wire__crate__api__get_duress_passphrase_hash(
+      NativePortType port_);
+
   external void wire__crate__api__get_fee_info(NativePortType port_);
 
   external void wire__crate__api__get_ivk_clipboard_remaining(
@@ -2126,6 +2150,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
       NativePortType port_, String wallet_id);
 
   external void wire__crate__api__has_app_passphrase(NativePortType port_);
+
+  external void wire__crate__api__has_duress_passphrase(NativePortType port_);
 
   external void wire__crate__api__has_panic_pin(NativePortType port_);
 
@@ -2220,6 +2246,9 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__set_decoy_wallet_name(
       NativePortType port_, String name);
 
+  external void wire__crate__api__set_duress_passphrase(
+      NativePortType port_, String? custom_passphrase);
+
   external void wire__crate__api__set_lightd_endpoint(
       NativePortType port_, String wallet_id, String url, String? tls_pin_opt);
 
@@ -2297,6 +2326,9 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void wire__crate__api__verify_app_passphrase(
       NativePortType port_, String passphrase);
+
+  external void wire__crate__api__verify_duress_passphrase(
+      NativePortType port_, String passphrase, String hash);
 
   external void wire__crate__api__verify_panic_pin(
       NativePortType port_, String pin);

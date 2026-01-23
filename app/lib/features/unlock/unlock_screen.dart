@@ -67,14 +67,23 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
     try {
       final unlockApp = ref.read(unlockAppProvider);
       await unlockApp(_passphraseController.text);
-      final biometricsEnabled = await _resolveBiometricsEnabled();
-      if (biometricsEnabled) {
-        final hasWrapped = await PassphraseCache.exists();
-        if (!hasWrapped) {
-          try {
-            await PassphraseCache.store(_passphraseController.text);
-          } catch (_) {
-            // Ignore; biometric wrap can be retried later.
+      final isDecoy = await FfiBridge.isDecoyMode();
+      if (isDecoy) {
+        try {
+          await PassphraseCache.clear();
+        } catch (_) {
+          // Ignore; best-effort clear.
+        }
+      } else {
+        final biometricsEnabled = await _resolveBiometricsEnabled();
+        if (biometricsEnabled) {
+          final hasWrapped = await PassphraseCache.exists();
+          if (!hasWrapped) {
+            try {
+              await PassphraseCache.store(_passphraseController.text);
+            } catch (_) {
+              // Ignore; biometric wrap can be retried later.
+            }
           }
         }
       }
@@ -308,4 +317,3 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
     );
   }
 }
-

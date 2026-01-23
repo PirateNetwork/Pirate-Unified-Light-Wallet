@@ -20,7 +20,14 @@ import '../../ui/organisms/balance_hero.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../ui/organisms/p_sliver_header.dart';
 import '../../core/ffi/generated/models.dart'
-    show TxInfo, TunnelMode, TunnelMode_Tor, TunnelMode_I2p, TunnelMode_Socks5;
+    show
+        SyncStage,
+        SyncStatus,
+        TunnelMode,
+        TunnelMode_I2p,
+        TunnelMode_Socks5,
+        TunnelMode_Tor,
+        TxInfo;
 import '../../core/providers/wallet_providers.dart';
 import '../settings/providers/transport_providers.dart';
 import '../address_book/providers/address_book_provider.dart';
@@ -164,6 +171,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+SyncStatus _buildDecoySyncStatus(int height) {
+  final safeHeight = height > 0 ? height : 1;
+  final blockHeight = BigInt.from(safeHeight);
+  return SyncStatus(
+    localHeight: blockHeight,
+    targetHeight: blockHeight,
+    percent: 100.0,
+    eta: null,
+    stage: SyncStage.verify,
+    lastCheckpoint: null,
+    blocksPerSecond: 0.0,
+    notesDecrypted: BigInt.zero,
+    lastBatchMs: BigInt.zero,
+  );
+}
+
 class _HomeHeader extends ConsumerWidget {
   const _HomeHeader({
     required this.padding,
@@ -185,6 +208,11 @@ class _HomeHeader extends ConsumerWidget {
     final torStatus = ref.watch(torStatusProvider);
     final transportConfig = ref.watch(transportConfigProvider);
     final endpointConfigAsync = ref.watch(lightdEndpointConfigProvider);
+    final isDecoy = ref.watch(decoyModeProvider);
+    final decoyHeight = ref.watch(decoySyncHeightProvider).maybeWhen(
+          data: (height) => height,
+          orElse: () => 0,
+        );
 
     final syncStatus = syncStatusAsync.when(
       data: (status) => status,
@@ -192,6 +220,8 @@ class _HomeHeader extends ConsumerWidget {
       error: (_, __) => null,
     );
 
+    final decoySyncStatus =
+        isDecoy ? _buildDecoySyncStatus(decoyHeight) : null;
     final endpointConfig = endpointConfigAsync.value;
     final i2pEndpoint = transportConfig.i2pEndpoint.trim();
     final i2pEndpointReady =
@@ -202,27 +232,33 @@ class _HomeHeader extends ConsumerWidget {
     final tunnelReady =
         (!(tunnelMode is TunnelMode_Tor) || torStatus.isReady) &&
             i2pEndpointReady;
-    final tunnelError =
-        (tunnelMode is TunnelMode_Tor && torStatus.status == 'error') ||
-            (tunnelMode is TunnelMode_I2p && !i2pEndpointReady);
+    final tunnelError = !isDecoy &&
+        ((tunnelMode is TunnelMode_Tor && torStatus.status == 'error') ||
+            (tunnelMode is TunnelMode_I2p && !i2pEndpointReady));
 
     final hasEndpoint = endpointConfig != null || endpointConfigAsync.hasValue;
-    final effectiveHasEndpoint =
-        tunnelMode is TunnelMode_I2p ? i2pEndpointReady : hasEndpoint;
-    final tunnelBlocked = usesPrivacyTunnel && !tunnelReady;
-    final displaySyncStatus = tunnelBlocked ? null : syncStatus;
+    final effectiveHasEndpoint = isDecoy
+        ? true
+        : (tunnelMode is TunnelMode_I2p ? i2pEndpointReady : hasEndpoint);
+    final tunnelBlocked = !isDecoy && usesPrivacyTunnel && !tunnelReady;
+    final displaySyncStatus =
+        isDecoy ? decoySyncStatus : (tunnelBlocked ? null : syncStatus);
     final hasStatus = displaySyncStatus != null &&
         (displaySyncStatus!.targetHeight > BigInt.zero ||
             displaySyncStatus.localHeight > BigInt.zero);
-    final privacyStatus = !effectiveHasEndpoint
-        ? PrivacyStatus.offline
-        : tunnelBlocked
-            ? (tunnelError ? PrivacyStatus.offline : PrivacyStatus.connecting)
-            : !hasStatus
-                ? PrivacyStatus.connecting
-                : usesPrivacyTunnel
-                    ? PrivacyStatus.private
-                    : PrivacyStatus.limited;
+    final privacyStatus = isDecoy
+        ? (usesPrivacyTunnel ? PrivacyStatus.private : PrivacyStatus.limited)
+        : !effectiveHasEndpoint
+            ? PrivacyStatus.offline
+            : tunnelBlocked
+                ? (tunnelError
+                    ? PrivacyStatus.offline
+                    : PrivacyStatus.connecting)
+                : !hasStatus
+                    ? PrivacyStatus.connecting
+                    : usesPrivacyTunnel
+                        ? PrivacyStatus.private
+                        : PrivacyStatus.limited;
 
     final currentHeight = displaySyncStatus?.localHeight ?? BigInt.zero;
     final targetHeight = displaySyncStatus?.targetHeight ?? BigInt.zero;
@@ -338,6 +374,11 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
     final tunnelMode = ref.watch(tunnelModeProvider);
     final torStatus = ref.watch(torStatusProvider);
     final transportConfig = ref.watch(transportConfigProvider);
+    final isDecoy = ref.watch(decoyModeProvider);
+    final decoyHeight = ref.watch(decoySyncHeightProvider).maybeWhen(
+          data: (height) => height,
+          orElse: () => 0,
+        );
     final reduceMotion = MediaQuery.of(context).disableAnimations;
 
     final syncStatus = syncStatusAsync.when(
@@ -346,6 +387,8 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
       error: (_, __) => null,
     );
 
+    final decoySyncStatus =
+        isDecoy ? _buildDecoySyncStatus(decoyHeight) : null;
     final i2pEndpoint = transportConfig.i2pEndpoint.trim();
     final i2pEndpointReady =
         !(tunnelMode is TunnelMode_I2p) || i2pEndpoint.isNotEmpty;
@@ -355,9 +398,10 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
     final tunnelReady =
         (!(tunnelMode is TunnelMode_Tor) || torStatus.isReady) &&
             i2pEndpointReady;
-    final tunnelBlocked = usesPrivacyTunnel && !tunnelReady;
+    final tunnelBlocked = !isDecoy && usesPrivacyTunnel && !tunnelReady;
 
-    final displaySyncStatus = tunnelBlocked ? null : syncStatus;
+    final displaySyncStatus =
+        isDecoy ? decoySyncStatus : (tunnelBlocked ? null : syncStatus);
     final currentHeight = displaySyncStatus?.localHeight ?? BigInt.zero;
     final targetHeight = displaySyncStatus?.targetHeight ?? BigInt.zero;
     final heightLag =

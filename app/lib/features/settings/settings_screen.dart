@@ -76,7 +76,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
             PListTile(
               leading: Icon(Icons.emergency, color: AppColors.warning),
-              title: 'Panic PIN',
+              title: 'Duress passphrase',
               subtitle: 'Decoy wallet access',
               onTap: () => context.push('/settings/panic-pin'),
               trailing: const Icon(Icons.chevron_right),

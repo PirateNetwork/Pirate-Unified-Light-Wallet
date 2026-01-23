@@ -11,6 +11,8 @@ import '../../design/tokens/typography.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../core/security/biometric_auth.dart';
+import '../../core/security/decoy_data.dart';
+import '../../core/providers/wallet_providers.dart';
 import 'dart:async';
 
 /// Provider for clipboard countdown timer
@@ -55,7 +57,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   void dispose() {
     _passphraseController.dispose();
     _clipboardTimer?.cancel();
-    if (_exportStarted) {
+    if (_exportStarted && !_isDecoyMode()) {
       FfiBridge.cancelSeedExport();
     }
     _enableScreenshots();
@@ -231,6 +233,11 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     });
 
     try {
+      if (_isDecoyMode()) {
+        _exportStarted = true;
+        setState(() => _step1Complete = true);
+        return;
+      }
       if (!_exportStarted) {
         await FfiBridge.startSeedExport(widget.walletId);
         _exportStarted = true;
@@ -505,6 +512,16 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     });
 
     try {
+      if (_isDecoyMode()) {
+        _disableScreenshots();
+        setState(() {
+          _mnemonic = DecoyData.mnemonic();
+          _step2Complete = true;
+          _step3Complete = true;
+          _seedRevealed = true;
+        });
+        return;
+      }
       final available = await BiometricAuth.isAvailable();
       if (!available) {
         setState(() => _error = 'Biometrics are not available on this device.');
@@ -550,6 +567,10 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     });
 
     try {
+      if (_isDecoyMode()) {
+        setState(() => _step2Complete = true);
+        return;
+      }
       await FfiBridge.skipSeedBiometric();
       setState(() => _step2Complete = true);
     } catch (e) {
@@ -573,6 +594,17 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     });
 
     try {
+      if (_isDecoyMode()) {
+        final mnemonic = DecoyData.mnemonic();
+        _disableScreenshots();
+        setState(() {
+          _mnemonic = mnemonic;
+          _step3Complete = true;
+          _seedRevealed = true;
+        });
+        _passphraseController.clear();
+        return;
+      }
       final words = await FfiBridge.exportSeedWithPassphrase(
         widget.walletId,
         _passphraseController.text,
@@ -656,7 +688,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
     if (confirmed == true) {
       await _clearClipboard();
-      if (_exportStarted) {
+      if (_exportStarted && !_isDecoyMode()) {
         await FfiBridge.cancelSeedExport();
         _exportStarted = false;
       }
@@ -695,7 +727,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
     if (confirmed == true) {
       await _clearClipboard();
-      if (_exportStarted) {
+      if (_exportStarted && !_isDecoyMode()) {
         await FfiBridge.cancelSeedExport();
         _exportStarted = false;
       }
@@ -712,5 +744,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   void _enableScreenshots() {
     _screenProtection?.dispose();
     _screenProtection = null;
+  }
+
+  bool _isDecoyMode() {
+    return ref.read(decoyModeProvider);
   }
 }

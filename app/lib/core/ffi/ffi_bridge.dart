@@ -1727,12 +1727,57 @@ class FfiBridge {
   }
 
   // ============================================================================
-  // PANIC PIN / DECOY VAULT
+  // DURESS PASSPHRASE / DECOY VAULT
   // ============================================================================
   //
   // Mirrors Rust: crates/pirate-storage-sqlite/src/decoy_vault.rs
   // @see Rust: pirate-ffi-frb/src/api.rs::set_panic_pin, verify_panic_pin, etc.
   // ============================================================================
+
+  /// Set duress passphrase for decoy vault.
+  /// Returns the Argon2id hash for secure storage.
+  static Future<String> setDuressPassphrase({String? customPassphrase}) async {
+    if (kUseFrbBindings) {
+      return await api.setDuressPassphrase(customPassphrase: customPassphrase);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Check if a duress passphrase is configured.
+  static Future<bool> hasDuressPassphrase() async {
+    if (kUseFrbBindings) {
+      return await api.hasDuressPassphrase();
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Fetch the stored duress passphrase hash from the registry (if any).
+  static Future<String?> getDuressPassphraseHash() async {
+    if (kUseFrbBindings) {
+      return await api.getDuressPassphraseHash();
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Verify duress passphrase and activate decoy mode if correct.
+  static Future<bool> verifyDuressPassphrase({
+    required String passphrase,
+    required String hash,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.verifyDuressPassphrase(passphrase: passphrase, hash: hash);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  /// Clear duress passphrase configuration.
+  static Future<void> clearDuressPassphrase() async {
+    if (kUseFrbBindings) {
+      await api.clearDuressPassphrase();
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
 
   /// Set panic PIN for decoy vault
   /// PIN is hashed with Argon2id before storage

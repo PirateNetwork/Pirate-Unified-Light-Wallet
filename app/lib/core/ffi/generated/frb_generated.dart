@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1087210657;
+  int get rustContentHash => 109145824;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -138,6 +138,8 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiChangeAppPassphraseWithCached(
       {required String newPassphrase});
+
+  Future<void> crateApiClearDuressPassphrase();
 
   Future<void> crateApiClearPanicPin();
 
@@ -216,6 +218,8 @@ abstract class RustLibApi extends BaseApi {
   Future<CheckpointInfo?> crateApiGetCheckpointDetails(
       {required String walletId, required int height});
 
+  Future<String?> crateApiGetDuressPassphraseHash();
+
   Future<FeeInfo> crateApiGetFeeInfo();
 
   Future<BigInt?> crateApiGetIvkClipboardRemaining();
@@ -260,6 +264,8 @@ abstract class RustLibApi extends BaseApi {
       {required String walletId});
 
   Future<bool> crateApiHasAppPassphrase();
+
+  Future<bool> crateApiHasDuressPassphrase();
 
   Future<bool> crateApiHasPanicPin();
 
@@ -351,6 +357,8 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiSetDecoyWalletName({required String name});
 
+  Future<String> crateApiSetDuressPassphrase({String? customPassphrase});
+
   Future<void> crateApiSetLightdEndpoint(
       {required String walletId, required String url, String? tlsPinOpt});
 
@@ -420,6 +428,9 @@ abstract class RustLibApi extends BaseApi {
   Future<bool> crateApiValidateMnemonic({required String mnemonic});
 
   Future<bool> crateApiVerifyAppPassphrase({required String passphrase});
+
+  Future<bool> crateApiVerifyDuressPassphrase(
+      {required String passphrase, required String hash});
 
   Future<bool> crateApiVerifyPanicPin({required String pin});
 
@@ -841,6 +852,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "change_app_passphrase_with_cached",
         argNames: ["newPassphrase"],
+      );
+
+  @override
+  Future<void> crateApiClearDuressPassphrase() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        return wire.wire__crate__api__clear_duress_passphrase(port_);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_unit,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiClearDuressPassphraseConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiClearDuressPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "clear_duress_passphrase",
+        argNames: [],
       );
 
   @override
@@ -1574,6 +1607,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String?> crateApiGetDuressPassphraseHash() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        return wire.wire__crate__api__get_duress_passphrase_hash(port_);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_opt_String,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiGetDuressPassphraseHashConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiGetDuressPassphraseHashConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_duress_passphrase_hash",
+        argNames: [],
+      );
+
+  @override
   Future<FeeInfo> crateApiGetFeeInfo() {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -1999,6 +2054,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiHasAppPassphraseConstMeta => const TaskConstMeta(
         debugName: "has_app_passphrase",
+        argNames: [],
+      );
+
+  @override
+  Future<bool> crateApiHasDuressPassphrase() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        return wire.wire__crate__api__has_duress_passphrase(port_);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_bool,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiHasDuressPassphraseConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiHasDuressPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "has_duress_passphrase",
         argNames: [],
       );
 
@@ -2753,6 +2830,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiSetDuressPassphrase({String? customPassphrase}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_opt_String(customPassphrase);
+        return wire.wire__crate__api__set_duress_passphrase(port_, arg0);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_String,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiSetDuressPassphraseConstMeta,
+      argValues: [customPassphrase],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSetDuressPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_duress_passphrase",
+        argNames: ["customPassphrase"],
+      );
+
+  @override
   Future<void> crateApiSetLightdEndpoint(
       {required String walletId, required String url, String? tlsPinOpt}) {
     return handler.executeNormal(NormalTask(
@@ -3313,6 +3413,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "verify_app_passphrase",
         argNames: ["passphrase"],
+      );
+
+  @override
+  Future<bool> crateApiVerifyDuressPassphrase(
+      {required String passphrase, required String hash}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        var arg0 = cst_encode_String(passphrase);
+        var arg1 = cst_encode_String(hash);
+        return wire.wire__crate__api__verify_duress_passphrase(
+            port_, arg0, arg1);
+      },
+      codec: DcoCodec(
+        decodeSuccessData: dco_decode_bool,
+        decodeErrorData: dco_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiVerifyDuressPassphraseConstMeta,
+      argValues: [passphrase, hash],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiVerifyDuressPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "verify_duress_passphrase",
+        argNames: ["passphrase", "hash"],
       );
 
   @override

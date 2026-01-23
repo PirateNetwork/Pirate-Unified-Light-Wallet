@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1087210657;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 109145824;
 
 // Section: executor
 
@@ -458,6 +458,27 @@ fn wire__crate__api__change_app_passphrase_with_cached_impl(
                     (move || {
                         let output_ok =
                             crate::api::change_app_passphrase_with_cached(api_new_passphrase)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__clear_duress_passphrase_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "clear_duress_passphrase",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::clear_duress_passphrase()?;
                         Ok(output_ok)
                     })(),
                 )
@@ -1217,6 +1238,27 @@ fn wire__crate__api__get_checkpoint_details_impl(
         },
     )
 }
+fn wire__crate__api__get_duress_passphrase_hash_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_duress_passphrase_hash",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::get_duress_passphrase_hash()?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__get_fee_info_impl(port_: flutter_rust_bridge::for_generated::MessagePort) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -1631,6 +1673,27 @@ fn wire__crate__api__has_app_passphrase_impl(
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok = crate::api::has_app_passphrase()?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__has_duress_passphrase_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "has_duress_passphrase",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::has_duress_passphrase()?;
                         Ok(output_ok)
                     })(),
                 )
@@ -2407,6 +2470,29 @@ fn wire__crate__api__set_decoy_wallet_name_impl(
         },
     )
 }
+fn wire__crate__api__set_duress_passphrase_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    custom_passphrase: impl CstDecode<Option<String>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_duress_passphrase",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_custom_passphrase = custom_passphrase.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::set_duress_passphrase(api_custom_passphrase)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__set_lightd_endpoint_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -2982,6 +3068,32 @@ fn wire__crate__api__verify_app_passphrase_impl(
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok = crate::api::verify_app_passphrase(api_passphrase)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__verify_duress_passphrase_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    passphrase: impl CstDecode<String>,
+    hash: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "verify_duress_passphrase",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_passphrase = passphrase.cst_decode();
+            let api_hash = hash.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::verify_duress_passphrase(api_passphrase, api_hash)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -6637,6 +6749,11 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__clear_duress_passphrase(port_: i64) {
+        wire__crate__api__clear_duress_passphrase_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__clear_panic_pin(port_: i64) {
         wire__crate__api__clear_panic_pin_impl(port_)
     }
@@ -6886,6 +7003,13 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_duress_passphrase_hash(
+        port_: i64,
+    ) {
+        wire__crate__api__get_duress_passphrase_hash_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_fee_info(port_: i64) {
         wire__crate__api__get_fee_info_impl(port_)
     }
@@ -7017,6 +7141,11 @@ mod io {
     #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__has_app_passphrase(port_: i64) {
         wire__crate__api__has_app_passphrase_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__has_duress_passphrase(port_: i64) {
+        wire__crate__api__has_duress_passphrase_impl(port_)
     }
 
     #[unsafe(no_mangle)]
@@ -7283,6 +7412,14 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_duress_passphrase(
+        port_: i64,
+        custom_passphrase: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__set_duress_passphrase_impl(port_, custom_passphrase)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_lightd_endpoint(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
@@ -7493,6 +7630,15 @@ mod io {
         passphrase: *mut wire_cst_list_prim_u_8_strict,
     ) {
         wire__crate__api__verify_app_passphrase_impl(port_, passphrase)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__verify_duress_passphrase(
+        port_: i64,
+        passphrase: *mut wire_cst_list_prim_u_8_strict,
+        hash: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__verify_duress_passphrase_impl(port_, passphrase, hash)
     }
 
     #[unsafe(no_mangle)]
@@ -9171,6 +9317,13 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__clear_duress_passphrase(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__clear_duress_passphrase_impl(port_)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__clear_panic_pin(
         port_: flutter_rust_bridge::for_generated::MessagePort,
     ) {
@@ -9428,6 +9581,13 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__get_duress_passphrase_hash(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__get_duress_passphrase_hash_impl(port_)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__get_fee_info(port_: flutter_rust_bridge::for_generated::MessagePort) {
         wire__crate__api__get_fee_info_impl(port_)
     }
@@ -9571,6 +9731,13 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
     ) {
         wire__crate__api__has_app_passphrase_impl(port_)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__has_duress_passphrase(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__has_duress_passphrase_impl(port_)
     }
 
     #[wasm_bindgen]
@@ -9841,6 +10008,14 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__set_duress_passphrase(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        custom_passphrase: Option<String>,
+    ) {
+        wire__crate__api__set_duress_passphrase_impl(port_, custom_passphrase)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__set_lightd_endpoint(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
@@ -10055,6 +10230,15 @@ mod web {
         passphrase: String,
     ) {
         wire__crate__api__verify_app_passphrase_impl(port_, passphrase)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__verify_duress_passphrase(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        passphrase: String,
+        hash: String,
+    ) {
+        wire__crate__api__verify_duress_passphrase_impl(port_, passphrase, hash)
     }
 
     #[wasm_bindgen]

@@ -1887,6 +1887,18 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__change_app_passphrase_with_cachedPtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
 
+  void wire__crate__api__clear_duress_passphrase(int port_) {
+    return _wire__crate__api__clear_duress_passphrase(port_);
+  }
+
+  late final _wire__crate__api__clear_duress_passphrasePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+    'frbgen_pirate_wallet_wire__crate__api__clear_duress_passphrase',
+  );
+  late final _wire__crate__api__clear_duress_passphrase =
+      _wire__crate__api__clear_duress_passphrasePtr
+          .asFunction<void Function(int)>();
+
   void wire__crate__api__clear_panic_pin(int port_) {
     return _wire__crate__api__clear_panic_pin(port_);
   }
@@ -2480,6 +2492,18 @@ class RustLibWire implements BaseWire {
           void Function(
               int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, int)>();
 
+  void wire__crate__api__get_duress_passphrase_hash(int port_) {
+    return _wire__crate__api__get_duress_passphrase_hash(port_);
+  }
+
+  late final _wire__crate__api__get_duress_passphrase_hashPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+    'frbgen_pirate_wallet_wire__crate__api__get_duress_passphrase_hash',
+  );
+  late final _wire__crate__api__get_duress_passphrase_hash =
+      _wire__crate__api__get_duress_passphrase_hashPtr
+          .asFunction<void Function(int)>();
+
   void wire__crate__api__get_fee_info(int port_) {
     return _wire__crate__api__get_fee_info(port_);
   }
@@ -2778,6 +2802,18 @@ class RustLibWire implements BaseWire {
   );
   late final _wire__crate__api__has_app_passphrase =
       _wire__crate__api__has_app_passphrasePtr.asFunction<void Function(int)>();
+
+  void wire__crate__api__has_duress_passphrase(int port_) {
+    return _wire__crate__api__has_duress_passphrase(port_);
+  }
+
+  late final _wire__crate__api__has_duress_passphrasePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+    'frbgen_pirate_wallet_wire__crate__api__has_duress_passphrase',
+  );
+  late final _wire__crate__api__has_duress_passphrase =
+      _wire__crate__api__has_duress_passphrasePtr
+          .asFunction<void Function(int)>();
 
   void wire__crate__api__has_panic_pin(int port_) {
     return _wire__crate__api__has_panic_pin(port_);
@@ -3412,6 +3448,23 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__set_decoy_wallet_namePtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
 
+  void wire__crate__api__set_duress_passphrase(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> custom_passphrase,
+  ) {
+    return _wire__crate__api__set_duress_passphrase(port_, custom_passphrase);
+  }
+
+  late final _wire__crate__api__set_duress_passphrasePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>>('frbgen_pirate_wallet_wire__crate__api__set_duress_passphrase');
+  late final _wire__crate__api__set_duress_passphrase =
+      _wire__crate__api__set_duress_passphrasePtr.asFunction<
+          void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
+
   void wire__crate__api__set_lightd_endpoint(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -3905,6 +3958,30 @@ class RustLibWire implements BaseWire {
   late final _wire__crate__api__verify_app_passphrase =
       _wire__crate__api__verify_app_passphrasePtr.asFunction<
           void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)>();
+
+  void wire__crate__api__verify_duress_passphrase(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> passphrase,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> hash,
+  ) {
+    return _wire__crate__api__verify_duress_passphrase(port_, passphrase, hash);
+  }
+
+  late final _wire__crate__api__verify_duress_passphrasePtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Void Function(
+                ffi.Int64,
+                ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+                ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              )>>(
+      'frbgen_pirate_wallet_wire__crate__api__verify_duress_passphrase');
+  late final _wire__crate__api__verify_duress_passphrase =
+      _wire__crate__api__verify_duress_passphrasePtr.asFunction<
+          void Function(
+            int,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )>();
 
   void wire__crate__api__verify_panic_pin(
     int port_,

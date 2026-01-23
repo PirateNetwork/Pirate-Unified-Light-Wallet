@@ -8,6 +8,8 @@ import '../ffi/ffi_bridge.dart';
 import '../ffi/generated/models.dart' hide SyncLogEntryFfi;
 import '../ffi/generated/api.dart' as api;
 import 'rust_init_provider.dart';
+import '../security/duress_passphrase_store.dart';
+import '../sync/sync_status_cache.dart';
 
 // ============================================================================
 // Session & Active Wallet
@@ -307,7 +309,17 @@ final syncProgressStreamProvider = StreamProvider<SyncStatus?>((ref) async* {
     return;
   }
 
-  yield* FfiBridge.syncProgressStream(walletId);
+  final isDecoy = ref.watch(decoyModeProvider);
+  await for (final status in FfiBridge.syncProgressStream(walletId)) {
+    if (!isDecoy && status.targetHeight > BigInt.zero) {
+      unawaited(SyncStatusCache.update(status.targetHeight.toInt()));
+    }
+    yield status;
+  }
+});
+
+final decoySyncHeightProvider = FutureProvider<int>((ref) async {
+  return SyncStatusCache.read();
 });
 
 /// Start sync
@@ -647,16 +659,45 @@ class AppUnlockedNotifier extends Notifier<bool> {
   }
 }
 
+final decoyModeProvider =
+    NotifierProvider<DecoyModeNotifier, bool>(DecoyModeNotifier.new);
+
+class DecoyModeNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void setDecoyMode(bool isDecoy) {
+    state = isDecoy;
+  }
+}
+
 /// Verify and unlock app with passphrase
 final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
   return (String passphrase) async {
     final isValid = await FfiBridge.verifyAppPassphrase(passphrase);
-    if (!isValid) {
-      throw Exception('Invalid passphrase');
+    if (isValid) {
+      await FfiBridge.unlockApp(passphrase);
+      ref.read(decoyModeProvider.notifier).setDecoyMode(false);
+      ref.read(appUnlockedProvider.notifier).setUnlocked(true);
+      // Refresh wallet list after unlock
+      ref.invalidate(activeWalletProvider);
+      return;
     }
-    await FfiBridge.unlockApp(passphrase);
-    ref.read(appUnlockedProvider.notifier).setUnlocked(true);
-    // Refresh wallet list after unlock
-    ref.invalidate(activeWalletProvider);
+
+    final duressHash = await DuressPassphraseStore.read();
+    if (duressHash != null && duressHash.isNotEmpty) {
+      final isDuress = await FfiBridge.verifyDuressPassphrase(
+        passphrase: passphrase,
+        hash: duressHash,
+      );
+      if (isDuress) {
+        ref.read(decoyModeProvider.notifier).setDecoyMode(true);
+        ref.read(appUnlockedProvider.notifier).setUnlocked(true);
+        ref.invalidate(activeWalletProvider);
+        return;
+      }
+    }
+
+    throw Exception('Invalid passphrase');
   };
 });

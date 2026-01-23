@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/security/biometric_auth.dart';
+import '../../../core/security/duress_passphrase_store.dart';
 import '../../../core/security/passphrase_cache.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../design/tokens/colors.dart';
@@ -103,11 +104,18 @@ class _PassphraseChangeScreenState
 
   bool _meetsRequirements(String password) {
     if (password.length < 12) return false;
+    if (_isPalindrome(password)) return false;
     if (!RegExp(r'[A-Z]').hasMatch(password)) return false;
     if (!RegExp(r'[a-z]').hasMatch(password)) return false;
     if (!RegExp(r'[0-9]').hasMatch(password)) return false;
     if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) return false;
     return true;
+  }
+
+  bool _isPalindrome(String value) {
+    if (value.isEmpty) return false;
+    final reversed = value.split('').reversed.join();
+    return value == reversed;
   }
 
   Color _strengthColor() {
@@ -233,6 +241,17 @@ class _PassphraseChangeScreenState
 
       if (ref.read(biometricsEnabledProvider)) {
         await PassphraseCache.store(_newController.text);
+      }
+
+      try {
+        final duressHash = await FfiBridge.getDuressPassphraseHash();
+        if (duressHash == null || duressHash.isEmpty) {
+          await DuressPassphraseStore.clear();
+        } else {
+          await DuressPassphraseStore.store(duressHash);
+        }
+      } catch (_) {
+        // Ignore; duress passphrase can be reconfigured if needed.
       }
 
       if (mounted) {
