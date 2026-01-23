@@ -25,7 +25,7 @@ class CurrencyScreen extends ConsumerWidget {
         showBackButton: true,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           children: CurrencyPreference.values.map((preference) {
             return Padding(

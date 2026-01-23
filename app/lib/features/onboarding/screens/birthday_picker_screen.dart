@@ -204,6 +204,8 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
   Widget build(BuildContext context) {
     final onboardingState = ref.watch(onboardingControllerProvider);
     final isRestore = onboardingState.mode == OnboardingMode.import;
+    final gutter = AppSpacing.responsiveGutter(MediaQuery.of(context).size.width);
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     final selectedHeight = _selectedHeight;
     final tip = _latestHeight;
     final blocksToScan = (selectedHeight != null && tip != null)
@@ -222,7 +224,12 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              AppSpacing.lg,
+              gutter,
+              AppSpacing.lg,
+            ),
             child: _ProgressIndicator(
               currentStep: isRestore ? 3 : 5,
               totalSteps: isRestore ? 4 : 6,
@@ -230,7 +237,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
           ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              padding: EdgeInsets.fromLTRB(gutter, 0, gutter, viewInsets),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -375,10 +382,10 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                   PCard(
                     child: Padding(
                       padding: const EdgeInsets.all(AppSpacing.md),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isNarrow = constraints.maxWidth < 360;
+                          final startBlock = Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
@@ -396,9 +403,10 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                                 ),
                               ),
                             ],
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          );
+                          final blocksScan = Column(
+                            crossAxisAlignment:
+                                isNarrow ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                             children: [
                               Text(
                                 'Blocks to scan',
@@ -415,8 +423,25 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                                 ),
                               ),
                             ],
-                          ),
-                        ],
+                          );
+                          if (isNarrow) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                startBlock,
+                                const SizedBox(height: AppSpacing.md),
+                                blocksScan,
+                              ],
+                            );
+                          }
+                          return Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              startBlock,
+                              blocksScan,
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),

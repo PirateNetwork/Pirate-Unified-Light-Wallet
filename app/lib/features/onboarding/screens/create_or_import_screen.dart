@@ -33,7 +33,10 @@ class CreateOrImportScreen extends ConsumerWidget {
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
+          padding: AppSpacing.screenPadding(
+            MediaQuery.of(context).size.width,
+            vertical: AppSpacing.xl,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

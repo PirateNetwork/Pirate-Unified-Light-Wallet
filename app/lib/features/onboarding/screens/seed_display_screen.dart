@@ -98,7 +98,10 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(AppSpacing.xl),
+              padding: AppSpacing.screenPadding(
+                MediaQuery.of(context).size.width,
+                vertical: AppSpacing.xl,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

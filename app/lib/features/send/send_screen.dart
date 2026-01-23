@@ -482,6 +482,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final gutter = PSpacing.responsiveGutter(screenWidth);
             void commitSelection() {
               final selectedAddresses = _addressBalances
                   .where((addr) => pendingAddressIds.contains(addr.addressId))
@@ -529,7 +531,12 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
             return SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
+                padding: EdgeInsets.fromLTRB(
+                  gutter,
+                  AppSpacing.lg,
+                  gutter,
+                  AppSpacing.lg,
+                ),
                 child: FutureBuilder<void>(
                   future: loadFuture,
                   builder: (context, snapshot) {
@@ -558,24 +565,52 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                           )
                         else
                           Flexible(
-                            child: ListView(
-                              shrinkWrap: true,
-                              children: [
-                                _buildSpendOption(
-                                  context,
-                                  title: 'Auto (all keys)',
-                                  subtitle:
-                                      'Let the wallet choose notes automatically.',
-                                  selected: pendingKey == null &&
-                                      pendingAddressIds.isEmpty,
-                                  onTap: selectAuto,
-                                ),
-                                if (_selectableKeys.isNotEmpty) ...[
-                                  const SizedBox(height: AppSpacing.md),
-                                  Text('Keys',
-                                      style: AppTypography.labelMedium),
-                                  const SizedBox(height: AppSpacing.xs),
-                                  ..._selectableKeys.map((key) {
+                            child: ListView.builder(
+                              itemCount: () {
+                                final keyCount = _selectableKeys.length;
+                                final addressCount = _addressBalances.length;
+                                var count = 1;
+                                if (keyCount > 0) {
+                                  count += 3 + keyCount;
+                                }
+                                if (addressCount > 0) {
+                                  count += 3 + addressCount;
+                                }
+                                return count;
+                              }(),
+                              itemBuilder: (context, index) {
+                                var cursor = 0;
+                                if (index == cursor) {
+                                  return _buildSpendOption(
+                                    context,
+                                    title: 'Auto (all keys)',
+                                    subtitle:
+                                        'Let the wallet choose notes automatically.',
+                                    selected: pendingKey == null &&
+                                        pendingAddressIds.isEmpty,
+                                    onTap: selectAuto,
+                                  );
+                                }
+                                cursor += 1;
+
+                                if (_selectableKeys.isNotEmpty) {
+                                  if (index == cursor) {
+                                    return const SizedBox(height: AppSpacing.md);
+                                  }
+                                  cursor += 1;
+                                  if (index == cursor) {
+                                    return Text('Keys',
+                                        style: AppTypography.labelMedium);
+                                  }
+                                  cursor += 1;
+                                  if (index == cursor) {
+                                    return const SizedBox(height: AppSpacing.xs);
+                                  }
+                                  cursor += 1;
+                                  final keyIndex = index - cursor;
+                                  if (keyIndex >= 0 &&
+                                      keyIndex < _selectableKeys.length) {
+                                    final key = _selectableKeys[keyIndex];
                                     final balance =
                                         _formatArrr(_spendableForKey(key.id));
                                     return _buildSpendOption(
@@ -586,14 +621,28 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                           pendingAddressIds.isEmpty,
                                       onTap: () => selectKey(key),
                                     );
-                                  }),
-                                ],
-                                if (_addressBalances.isNotEmpty) ...[
-                                  const SizedBox(height: AppSpacing.md),
-                                  Text('Addresses',
-                                      style: AppTypography.labelMedium),
-                                  const SizedBox(height: AppSpacing.xs),
-                                  ..._addressBalances.map((address) {
+                                  }
+                                  cursor += _selectableKeys.length;
+                                }
+
+                                if (_addressBalances.isNotEmpty) {
+                                  if (index == cursor) {
+                                    return const SizedBox(height: AppSpacing.md);
+                                  }
+                                  cursor += 1;
+                                  if (index == cursor) {
+                                    return Text('Addresses',
+                                        style: AppTypography.labelMedium);
+                                  }
+                                  cursor += 1;
+                                  if (index == cursor) {
+                                    return const SizedBox(height: AppSpacing.xs);
+                                  }
+                                  cursor += 1;
+                                  final addressIndex = index - cursor;
+                                  if (addressIndex >= 0 &&
+                                      addressIndex < _addressBalances.length) {
+                                    final address = _addressBalances[addressIndex];
                                     final name = address.label ??
                                         _truncateAddress(address.address);
                                     final balance =
@@ -608,9 +657,11 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                       selected: selected,
                                       onTap: () => toggleAddress(address),
                                     );
-                                  }),
-                                ],
-                              ],
+                                  }
+                                }
+
+                                return const SizedBox.shrink();
+                              },
                             ),
                           ),
                         const SizedBox(height: AppSpacing.md),
@@ -730,9 +781,16 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Selected', style: AppTypography.caption),
+                    Expanded(
+                      child: Text(
+                        'Selected',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.caption,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
                     Text(
                       _formatFeeArrrtoshis(pendingFee),
                       style: AppTypography.mono.copyWith(fontSize: 12),
@@ -749,9 +807,15 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                   inactiveColor: AppColors.borderSubtle,
                 ),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Low', style: AppTypography.caption),
+                    Expanded(
+                      child: Text(
+                        'Low',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.caption,
+                      ),
+                    ),
                     Text('High', style: AppTypography.caption),
                   ],
                 ),
@@ -1685,9 +1749,16 @@ class _RecipientsStep extends StatelessWidget {
             children: [
               // Fee preview
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Available:', style: AppTypography.caption),
+                  Expanded(
+                    child: Text(
+                      'Available:',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.caption,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
                   Text(
                     '${availableBalance.toStringAsFixed(8)} ARRR',
                     style: AppTypography.mono.copyWith(fontSize: 12),
@@ -1696,28 +1767,32 @@ class _RecipientsStep extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.xs),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Network fee', style: AppTypography.caption),
-                      Text(
-                        feePreset.label,
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.textSecondary,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Network fee', style: AppTypography.caption),
+                        Text(
+                          feePreset.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                  const SizedBox(width: AppSpacing.sm),
+                  Wrap(
+                    spacing: AppSpacing.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       Text(
                         '${calculatedFee.toStringAsFixed(8)} ARRR',
                         style: AppTypography.mono.copyWith(fontSize: 12),
                       ),
-                      const SizedBox(width: AppSpacing.xs),
                       PTextButton(
                         label: 'Edit',
                         compact: true,
@@ -1730,14 +1805,18 @@ class _RecipientsStep extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.xs),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Total:',
-                    style: AppTypography.caption.copyWith(
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      'Total:',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.caption.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: AppSpacing.sm),
                   Text(
                     '${total.toStringAsFixed(8)} ARRR',
                     style: AppTypography.mono.copyWith(
@@ -2125,9 +2204,15 @@ class _ReviewStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final grandTotal = totalAmount + fee;
+    final gutter = PSpacing.responsiveGutter(MediaQuery.of(context).size.width);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: EdgeInsets.fromLTRB(
+        gutter,
+        AppSpacing.lg,
+        gutter,
+        AppSpacing.lg,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2256,27 +2341,49 @@ class _ReviewStep extends StatelessWidget {
               child: Column(
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Inputs', style: AppTypography.caption),
-                      Text('${pendingTx!.numInputs}',
-                          style: AppTypography.caption),
+                      Expanded(
+                        child: Text(
+                          'Inputs',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.caption,
+                        ),
+                      ),
+                      Text(
+                        '${pendingTx!.numInputs}',
+                        style: AppTypography.caption,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Outputs', style: AppTypography.caption),
-                      Text('${outputs.length + (change > 0 ? 1 : 0)}',
-                          style: AppTypography.caption),
+                      Expanded(
+                        child: Text(
+                          'Outputs',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.caption,
+                        ),
+                      ),
+                      Text(
+                        '${outputs.length + (change > 0 ? 1 : 0)}',
+                        style: AppTypography.caption,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Expiry', style: AppTypography.caption),
+                      Expanded(
+                        child: Text(
+                          'Expiry',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.caption,
+                        ),
+                      ),
                       Text('~30 min', style: AppTypography.caption),
                     ],
                   ),
@@ -2366,19 +2473,28 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: AppTypography.body.copyWith(
-            color: AppColors.textSecondary,
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.body.copyWith(
+              color: AppColors.textSecondary,
+            ),
           ),
         ),
-        Text(
-          value,
-          style: AppTypography.mono.copyWith(
-            color: valueColor ?? AppColors.textPrimary,
-            fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: AppTypography.mono.copyWith(
+              color: valueColor ?? AppColors.textPrimary,
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
         ),
       ],
@@ -2396,7 +2512,10 @@ class _SendingStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: AppSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: AppSpacing.xl,
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -2449,7 +2568,10 @@ class _ErrorStep extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: AppSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: AppSpacing.xl,
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

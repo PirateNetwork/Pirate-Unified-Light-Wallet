@@ -294,6 +294,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final padding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
     final walletId = ref.watch(activeWalletProvider);
     _setWallet(walletId);
 
@@ -326,7 +327,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                 return CustomScrollView(
                   slivers: [
                     SliverPadding(
-                      padding: EdgeInsets.all(PSpacing.lg),
+                      padding: padding,
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
                           _KeySummaryCard(keyInfo: key),
@@ -453,7 +454,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
   Widget _buildEmptyWallet() {
     return Center(
       child: Padding(
-        padding: EdgeInsets.all(PSpacing.lg),
+        padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Text(
           'No active wallet.',
           style: PTypography.bodyMedium(),
@@ -465,7 +466,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
   Widget _buildError(String message) {
     return Center(
       child: Padding(
-        padding: EdgeInsets.all(PSpacing.lg),
+        padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

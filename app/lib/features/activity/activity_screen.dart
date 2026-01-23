@@ -102,45 +102,64 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   @override
   Widget build(BuildContext context) {
     final transactionsAsync = ref.watch(transactionsProvider);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final gutter = PSpacing.responsiveGutter(screenWidth);
 
     final content = transactionsAsync.when(
       data: (txs) {
         final filtered = _applyFilters(txs);
+        const headerCount = 4;
+        final bodyCount = filtered.isEmpty ? 1 : filtered.length;
+        final itemCount = headerCount + bodyCount;
 
-        return ListView(
-          padding: const EdgeInsets.all(PSpacing.lg),
-          children: [
-            PInput(
-              controller: _searchController,
-              label: 'Search',
-              hint: 'Search activity',
-              prefixIcon: const Icon(Icons.search),
-              textInputAction: TextInputAction.search,
-              onChanged: (value) => setState(() => _query = value),
-            ),
-            const SizedBox(height: PSpacing.md),
-            _FilterChips(
-              selected: _filter,
-              onSelected: (filter) => setState(() => _filter = filter),
-            ),
-            const SizedBox(height: PSpacing.lg),
-            if (filtered.isEmpty) const _ActivityEmptyState(),
-            if (filtered.isNotEmpty)
-              ...filtered.map(
-                (tx) => Padding(
-                  padding: const EdgeInsets.only(bottom: PSpacing.md),
-                  child: TransactionRowV2(
-                    isReceived: tx.amount >= 0,
-                    isConfirmed: tx.confirmed,
-                    amountText:
-                        '${tx.amount >= 0 ? '+' : '-'}${(tx.amount.abs() / 100000000.0).toStringAsFixed(4)} ARRR',
-                    timestamp: _convertPlatformInt64ToDateTime(tx.timestamp),
-                    memo: tx.memo,
-                    onTap: () => context.push('/transaction/${tx.txid}'),
-                  ),
-                ),
+        return ListView.builder(
+          padding: EdgeInsets.fromLTRB(gutter, PSpacing.lg, gutter, PSpacing.lg),
+          itemCount: itemCount,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return PInput(
+                controller: _searchController,
+                label: 'Search',
+                hint: 'Search activity',
+                prefixIcon: const Icon(Icons.search),
+                textInputAction: TextInputAction.search,
+                onChanged: (value) => setState(() => _query = value),
+              );
+            }
+            if (index == 1) {
+              return const SizedBox(height: PSpacing.md);
+            }
+            if (index == 2) {
+              return _FilterChips(
+                selected: _filter,
+                onSelected: (filter) => setState(() => _filter = filter),
+              );
+            }
+            if (index == 3) {
+              return const SizedBox(height: PSpacing.lg);
+            }
+            if (filtered.isEmpty) {
+              return const _ActivityEmptyState();
+            }
+
+            final txIndex = index - headerCount;
+            if (txIndex < 0 || txIndex >= filtered.length) {
+              return const SizedBox.shrink();
+            }
+            final tx = filtered[txIndex];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: PSpacing.md),
+              child: TransactionRowV2(
+                isReceived: tx.amount >= 0,
+                isConfirmed: tx.confirmed,
+                amountText:
+                    '${tx.amount >= 0 ? '+' : '-'}${(tx.amount.abs() / 100000000.0).toStringAsFixed(4)} ARRR',
+                timestamp: _convertPlatformInt64ToDateTime(tx.timestamp),
+                memo: tx.memo,
+                onTap: () => context.push('/transaction/${tx.txid}'),
               ),
-          ],
+            );
+          },
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -249,7 +268,10 @@ class _ActivityEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(PSpacing.xl),
+        padding: PSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: PSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -279,7 +301,10 @@ class _ActivityErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(PSpacing.xl),
+        padding: PSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: PSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

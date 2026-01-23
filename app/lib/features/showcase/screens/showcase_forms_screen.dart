@@ -28,7 +28,7 @@ class _ShowcaseFormsScreenState extends State<ShowcaseFormsScreen> {
     return PScaffold(
       title: 'Forms Showcase',
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(PSpacing.lg),
+        padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

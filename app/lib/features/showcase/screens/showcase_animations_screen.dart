@@ -17,7 +17,7 @@ class ShowcaseAnimationsScreen extends StatelessWidget {
     return PScaffold(
       title: 'Animations Showcase',
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(PSpacing.lg),
+        padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

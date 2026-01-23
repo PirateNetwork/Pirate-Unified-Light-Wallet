@@ -15,7 +15,7 @@ class ShowcaseHomeScreen extends StatelessWidget {
     return PScaffold(
       title: 'Design System Showcase',
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(PSpacing.lg),
+        padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

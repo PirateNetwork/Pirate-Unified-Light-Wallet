@@ -743,6 +743,24 @@ class AppSpacing {
   static const double lg = PSpacing.lg;
   static const double xl = PSpacing.xl;
   static const double xxl = PSpacing.xxl;
+
+  static double responsiveGutter(double screenWidth) =>
+      PSpacing.responsiveGutter(screenWidth);
+
+  static double responsivePadding(double screenWidth) =>
+      PSpacing.responsivePadding(screenWidth);
+
+  static EdgeInsets screenPadding(
+    double screenWidth, {
+    double vertical = PSpacing.lg,
+  }) =>
+      PSpacing.screenPadding(screenWidth, vertical: vertical);
+
+  static bool isMobile(double screenWidth) => PSpacing.isMobile(screenWidth);
+
+  static bool isTablet(double screenWidth) => PSpacing.isTablet(screenWidth);
+
+  static bool isDesktop(double screenWidth) => PSpacing.isDesktop(screenWidth);
 }
 
 /// App theme alias

@@ -27,7 +27,10 @@ class PScaffold extends StatelessWidget {
   final Widget? bottomNavigationBar;
   final bool useSafeArea;
 
-  bool get _isDesktop => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+  bool get _isTest => Platform.environment.containsKey('FLUTTER_TEST');
+
+  bool get _isDesktop =>
+      (Platform.isWindows || Platform.isMacOS || Platform.isLinux) && !_isTest;
 
   @override
   Widget build(BuildContext context) {

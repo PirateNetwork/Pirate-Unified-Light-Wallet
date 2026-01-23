@@ -261,7 +261,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
   Widget _buildWarningStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -402,7 +402,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
   Widget _buildBiometricStep() {
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -465,7 +465,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
   Widget _buildPassphraseStep() {
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -553,7 +553,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     }
     
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

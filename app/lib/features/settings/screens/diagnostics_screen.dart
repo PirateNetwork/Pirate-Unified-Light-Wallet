@@ -467,16 +467,21 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
           ),
           const SizedBox(height: AppSpacing.sm),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Height: ${_formatHeight(status.localHeight.toInt())}',
-                style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+              Expanded(
+                child: Text(
+                  'Height: ${_formatHeight(status.localHeight.toInt())}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.caption
+                      .copyWith(color: AppColors.textSecondary),
+                ),
               ),
               if (status.eta != null && !isComplete)
                 Text(
                   'ETA: ${status.etaFormatted}',
-                  style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+                  style: AppTypography.caption
+                      .copyWith(color: AppColors.textSecondary),
                 ),
             ],
           ),
@@ -915,11 +920,15 @@ class _LogEntryTile extends StatelessWidget {
           const SizedBox(width: 8),
 
           // Module
-          Text(
-            '[${log.module}]',
-            style: AppTypography.code.copyWith(
-              color: AppColors.gradientAStart,
-              fontSize: 10,
+          Flexible(
+            child: Text(
+              '[${log.module}]',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.code.copyWith(
+                color: AppColors.gradientAStart,
+                fontSize: 10,
+              ),
             ),
           ),
           const SizedBox(width: 8),

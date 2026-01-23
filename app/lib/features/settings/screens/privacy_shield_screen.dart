@@ -65,6 +65,11 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   @override
   Widget build(BuildContext context) {
     final transportConfig = ref.watch(transportConfigProvider);
+    final basePadding =
+        PirateSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final padding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     final transportMode = transportConfig.mode;
     final dnsProvider = transportConfig.dnsProvider;
     final socks5Config = transportConfig.socks5Config;
@@ -100,7 +105,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         subtitle: 'Network & tunneling',
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: padding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1005,13 +1010,17 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           vertical: PirateSpacing.sm,
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? AppColors.accentPrimary : AppColors.textPrimary,
-                fontSize: 14,
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color:
+                      isSelected ? AppColors.accentPrimary : AppColors.textPrimary,
+                  fontSize: 14,
+                ),
               ),
             ),
             if (isSelected)
@@ -1270,9 +1279,13 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           children: [
             Icon(Icons.check_circle, color: Colors.green, size: 28),
             const SizedBox(width: 12),
-            Text(
-              'Connection Successful',
-              style: TextStyle(color: AppColors.textPrimary),
+            Expanded(
+              child: Text(
+                'Connection Successful',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
             ),
           ],
         ),
@@ -1499,9 +1512,13 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           children: [
             Icon(Icons.error_outline, color: Colors.orange, size: 28),
             const SizedBox(width: 12),
-            Text(
-              'Error',
-              style: TextStyle(color: AppColors.textPrimary),
+            Expanded(
+              child: Text(
+                'Error',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
             ),
           ],
         ),
@@ -1523,21 +1540,30 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor ?? AppColors.textPrimary,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
+          const SizedBox(width: PirateSpacing.sm),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: valueColor ?? AppColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

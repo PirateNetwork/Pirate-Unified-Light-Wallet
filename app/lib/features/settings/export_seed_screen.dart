@@ -92,8 +92,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   Widget _centeredStep(Widget child, {bool allowScroll = true}) {
     const maxWidth = 560.0;
     return LayoutBuilder(builder: (context, constraints) {
-      final padding = PirateSpacing.xxl;
-      final minHeight = (constraints.maxHeight - (padding * 2))
+      final gutter = PirateSpacing.responsiveGutter(constraints.maxWidth);
+      const verticalPadding = PirateSpacing.xl;
+      final minHeight = (constraints.maxHeight - (verticalPadding * 2))
           .clamp(0.0, double.infinity);
       final centeredChild = ConstrainedBox(
         constraints: BoxConstraints(
@@ -106,7 +107,12 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
         return Center(child: centeredChild);
       }
       return SingleChildScrollView(
-        padding: EdgeInsets.all(padding),
+        padding: EdgeInsets.fromLTRB(
+          gutter,
+          verticalPadding,
+          gutter,
+          verticalPadding,
+        ),
         child: Center(child: centeredChild),
       );
     });
@@ -370,11 +376,14 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Recovery phrase',
-                style: PirateTypography.h3.copyWith(color: Colors.white),
+              Expanded(
+                child: Text(
+                  'Recovery phrase',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PirateTypography.h3.copyWith(color: Colors.white),
+                ),
               ),
               IconButton(
                 icon: Icon(Icons.close, color: Colors.white),
@@ -415,9 +424,13 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                 children: [
                   Icon(Icons.timer, color: Colors.orange, size: 20),
                   SizedBox(width: PirateSpacing.sm),
-                  Text(
-                    'Clipboard clears in ${countdown}s',
-                    style: PirateTypography.body.copyWith(color: Colors.orange),
+                  Expanded(
+                    child: Text(
+                      'Clipboard clears in ${countdown}s',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: PirateTypography.body.copyWith(color: Colors.orange),
+                    ),
                   ),
                 ],
               ),

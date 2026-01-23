@@ -26,59 +26,170 @@ import '../settings/providers/transport_providers.dart';
 import '../address_book/providers/address_book_provider.dart';
 
 /// Home screen
-class HomeScreen extends ConsumerStatefulWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.useScaffold = true});
 
   final bool useScaffold;
 
   @override
-  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _syncAnimationController;
+class _HomeScreenState extends State<HomeScreen> {
   bool _hideBalance = false;
 
   @override
-  void initState() {
-    super.initState();
-    _syncAnimationController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final screenWidth = mediaQuery.size.width;
+    final gutter = PSpacing.responsiveGutter(screenWidth);
+    final headerVerticalPadding =
+        PSpacing.isDesktop(screenWidth) ? PSpacing.lg : PSpacing.md;
+    final headerExtent = PSpacing.isMobile(screenWidth)
+        ? 260.0
+        : PSpacing.isTablet(screenWidth)
+            ? 300.0
+            : 320.0;
+    final enableBackdropBlur =
+        !mediaQuery.disableAnimations && !PSpacing.isMobile(screenWidth);
+
+    final content = CustomScrollView(
+      slivers: [
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: PSliverHeaderDelegate(
+            maxExtentHeight: headerExtent,
+            minExtentHeight: headerExtent,
+            builder: (context, shrinkOffset, overlapsContent) {
+              return _HomeHeader(
+                padding: EdgeInsets.fromLTRB(
+                  gutter,
+                  headerVerticalPadding,
+                  gutter,
+                  headerVerticalPadding,
+                ),
+                enableBackdropBlur: enableBackdropBlur,
+                hideBalance: _hideBalance,
+                onToggleVisibility: () {
+                  setState(() {
+                    _hideBalance = !_hideBalance;
+                  });
+                },
+              );
+            },
+          ),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            gutter,
+            PSpacing.md,
+            gutter,
+            PSpacing.md,
+          ),
+          sliver: const SliverToBoxAdapter(
+            child: _HomeSyncIndicator(),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              PSpacing.md,
+              gutter,
+              PSpacing.md,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _QuickActionButton(
+                    icon: Icons.arrow_upward,
+                    label: 'Send',
+                    color: AppColors.accentPrimary,
+                    onTap: () => context.push('/send'),
+                  ),
+                ),
+                const SizedBox(width: PSpacing.md),
+                Expanded(
+                  child: _QuickActionButton(
+                    icon: Icons.arrow_downward,
+                    label: 'Receive',
+                    color: AppColors.accentSecondary,
+                    onTap: () => context.push('/receive'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              PSpacing.xl,
+              gutter,
+              PSpacing.md,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Recent activity',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PTypography.heading3().copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                PTextButton(
+                  label: 'View all',
+                  onPressed: () => context.push('/activity'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        _HomeTransactionsSection(gutter: gutter),
+      ],
+    );
+
+    if (!widget.useScaffold) {
+      return content;
+    }
+
+    return PScaffold(
+      title: 'Wallet Home',
+      body: content,
     );
   }
+}
+
+class _HomeHeader extends ConsumerWidget {
+  const _HomeHeader({
+    required this.padding,
+    required this.enableBackdropBlur,
+    required this.hideBalance,
+    required this.onToggleVisibility,
+  });
+
+  final EdgeInsets padding;
+  final bool enableBackdropBlur;
+  final bool hideBalance;
+  final VoidCallback onToggleVisibility;
 
   @override
-  void dispose() {
-    _syncAnimationController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Watch real providers
+  Widget build(BuildContext context, WidgetRef ref) {
     final syncStatusAsync = ref.watch(syncProgressStreamProvider);
-    final isSyncRunningAsync = ref.watch(isSyncRunningProvider);
     final balanceAsync = ref.watch(balanceStreamProvider);
-    final transactionsAsync = ref.watch(transactionsProvider);
     final tunnelMode = ref.watch(tunnelModeProvider);
     final torStatus = ref.watch(torStatusProvider);
     final transportConfig = ref.watch(transportConfigProvider);
     final endpointConfigAsync = ref.watch(lightdEndpointConfigProvider);
-    
-    // Get sync status
+
     final syncStatus = syncStatusAsync.when(
       data: (status) => status,
       loading: () => null,
       error: (_, __) => null,
-    );
-    
-    // Check if sync is running (even when caught up, sync monitors for new blocks)
-    final isSyncRunning = isSyncRunningAsync.when(
-      data: (running) => running,
-      loading: () => false,
-      error: (_, __) => false,
     );
 
     final endpointConfig = endpointConfigAsync.value;
@@ -90,14 +201,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         (tunnelMode is TunnelMode_Socks5);
     final tunnelReady =
         (!(tunnelMode is TunnelMode_Tor) || torStatus.isReady) &&
-        i2pEndpointReady;
+            i2pEndpointReady;
     final tunnelError =
         (tunnelMode is TunnelMode_Tor && torStatus.status == 'error') ||
-        (tunnelMode is TunnelMode_I2p && !i2pEndpointReady);
+            (tunnelMode is TunnelMode_I2p && !i2pEndpointReady);
 
-    // Determine privacy status: only show offline if endpoint is not set or if there's a real connection error
-    // If endpoint is set and test connection works, don't show offline just because sync hasn't started
-    // Don't show "Connecting" when sync is complete and monitoring - use sync status to determine
     final hasEndpoint = endpointConfig != null || endpointConfigAsync.hasValue;
     final effectiveHasEndpoint =
         tunnelMode is TunnelMode_I2p ? i2pEndpointReady : hasEndpoint;
@@ -105,7 +213,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final displaySyncStatus = tunnelBlocked ? null : syncStatus;
     final hasStatus = displaySyncStatus != null &&
         (displaySyncStatus!.targetHeight > BigInt.zero ||
-            displaySyncStatus!.localHeight > BigInt.zero);
+            displaySyncStatus.localHeight > BigInt.zero);
     final privacyStatus = !effectiveHasEndpoint
         ? PrivacyStatus.offline
         : tunnelBlocked
@@ -115,8 +223,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 : usesPrivacyTunnel
                     ? PrivacyStatus.private
                     : PrivacyStatus.limited;
-    
-    final syncProgress = (displaySyncStatus?.percent ?? 0.0) / 100.0;
+
     final currentHeight = displaySyncStatus?.localHeight ?? BigInt.zero;
     final targetHeight = displaySyncStatus?.targetHeight ?? BigInt.zero;
     final heightLag =
@@ -128,19 +235,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         !tunnelBlocked && !isNearTip && (displaySyncStatus?.isSyncing ?? false);
     final isComplete = !tunnelBlocked &&
         (isNearTip || (displaySyncStatus?.isComplete ?? false));
-    // Show progress bar when actively syncing OR when monitoring (sync running but caught up)
-    final showProgress =
-        !tunnelBlocked && (isSyncing || (isComplete && isSyncRunning));
-    
-    // Control animation based on sync state
-    // Keep animation going when syncing OR when monitoring (caught up but sync is still active)
-    if (isSyncing && !_syncAnimationController.isAnimating) {
-      _syncAnimationController.repeat();
-    } else if (!isSyncing && _syncAnimationController.isAnimating) {
-      _syncAnimationController.stop();
-    }
-    
-    // Get balance
+
     final balanceData = balanceAsync.when(
       data: (b) => b,
       loading: () => null,
@@ -159,211 +254,232 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     } else if (pendingBalance > BigInt.zero) {
       balanceHelper = 'Pending: ${pendingArrr.toStringAsFixed(8)} ARRR';
     }
-    
-    // Get transactions
+
+    final headerSurface = Container(
+      decoration: BoxDecoration(
+        color: AppColors.backgroundBase.withValues(alpha: 0.85),
+      ),
+      child: SafeArea(
+        bottom: true,
+        child: Padding(
+          padding: padding,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const WalletSwitcherButton(),
+                  const Spacer(),
+                  PrivacyStatusChip(
+                    status: privacyStatus,
+                    compact: true,
+                    onTap: () => context.push('/settings/privacy-shield'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: PSpacing.md),
+              BalanceHero(
+                balanceText: '${balanceArrr.toStringAsFixed(8)} ARRR',
+                helperText: balanceHelper,
+                isHidden: hideBalance,
+                onToggleVisibility: onToggleVisibility,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final headerContent = enableBackdropBlur
+        ? BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: headerSurface,
+          )
+        : headerSurface;
+
+    return RepaintBoundary(
+      child: ClipRect(
+        child: headerContent,
+      ),
+    );
+  }
+}
+
+class _HomeSyncIndicator extends ConsumerStatefulWidget {
+  const _HomeSyncIndicator();
+
+  @override
+  ConsumerState<_HomeSyncIndicator> createState() => _HomeSyncIndicatorState();
+}
+
+class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _syncAnimationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  @override
+  void dispose() {
+    _syncAnimationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final syncStatusAsync = ref.watch(syncProgressStreamProvider);
+    final tunnelMode = ref.watch(tunnelModeProvider);
+    final torStatus = ref.watch(torStatusProvider);
+    final transportConfig = ref.watch(transportConfigProvider);
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+
+    final syncStatus = syncStatusAsync.when(
+      data: (status) => status,
+      loading: () => null,
+      error: (_, __) => null,
+    );
+
+    final i2pEndpoint = transportConfig.i2pEndpoint.trim();
+    final i2pEndpointReady =
+        !(tunnelMode is TunnelMode_I2p) || i2pEndpoint.isNotEmpty;
+    final usesPrivacyTunnel = (tunnelMode is TunnelMode_Tor) ||
+        (tunnelMode is TunnelMode_I2p) ||
+        (tunnelMode is TunnelMode_Socks5);
+    final tunnelReady =
+        (!(tunnelMode is TunnelMode_Tor) || torStatus.isReady) &&
+            i2pEndpointReady;
+    final tunnelBlocked = usesPrivacyTunnel && !tunnelReady;
+
+    final displaySyncStatus = tunnelBlocked ? null : syncStatus;
+    final currentHeight = displaySyncStatus?.localHeight ?? BigInt.zero;
+    final targetHeight = displaySyncStatus?.targetHeight ?? BigInt.zero;
+    final heightLag =
+        targetHeight > currentHeight ? targetHeight - currentHeight : BigInt.zero;
+    const syncLagThreshold = 10;
+    final isNearTip =
+        targetHeight > BigInt.zero && heightLag <= BigInt.from(syncLagThreshold);
+    final isSyncing =
+        !tunnelBlocked && !isNearTip && (displaySyncStatus?.isSyncing ?? false);
+    final isComplete = !tunnelBlocked &&
+        (isNearTip || (displaySyncStatus?.isComplete ?? false));
+
+    if (reduceMotion) {
+      if (_syncAnimationController.isAnimating) {
+        _syncAnimationController.stop();
+      }
+    } else if (isSyncing && !_syncAnimationController.isAnimating) {
+      _syncAnimationController.repeat();
+    } else if (!isSyncing && _syncAnimationController.isAnimating) {
+      _syncAnimationController.stop();
+    }
+
+    final syncProgress = (displaySyncStatus?.percent ?? 0.0) / 100.0;
+    final stage = isComplete
+        ? 'Synced'
+        : displaySyncStatus?.stageName ??
+            (displaySyncStatus != null ? 'Syncing' : 'Not synced');
+    final eta = isComplete
+        ? null
+        : displaySyncStatus?.etaFormatted ?? (isSyncing ? 'Calculating...' : null);
+
+    return RepaintBoundary(
+      child: _SyncIndicator(
+        progress: syncProgress,
+        currentHeight: currentHeight.toInt(),
+        targetHeight: targetHeight.toInt(),
+        stage: stage,
+        eta: eta,
+        blocksPerSecond: displaySyncStatus?.blocksPerSecond ?? 0.0,
+        animation: _syncAnimationController,
+        isSyncing: isSyncing,
+        isComplete: isComplete,
+      ),
+    );
+  }
+}
+
+class _HomeTransactionsSection extends ConsumerWidget {
+  const _HomeTransactionsSection({required this.gutter});
+
+  final double gutter;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final transactionsAsync = ref.watch(transactionsProvider);
+    final syncStatusAsync = ref.watch(syncProgressStreamProvider);
+
     final transactions = transactionsAsync.when(
       data: (txs) => txs,
       loading: () => <TxInfo>[],
       error: (_, __) => <TxInfo>[],
     );
-    
-    final content = CustomScrollView(
-        slivers: [
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: PSliverHeaderDelegate(
-              maxExtentHeight: 320,
-              minExtentHeight: 320, // Keep header fully visible, don't collapse
-              builder: (context, shrinkOffset, overlapsContent) {
-                return ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundBase.withValues(alpha: 0.85),
-                      ),
-                      child: SafeArea(
-                        bottom: true,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            PSpacing.lg,
-                            PSpacing.lg,
-                            PSpacing.lg,
-                            PSpacing.lg,
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const WalletSwitcherButton(),
-                                  const Spacer(),
-                                  PrivacyStatusChip(
-                                    status: privacyStatus,
-                                    compact: true,
-                                    onTap: () => context.push('/settings/privacy-shield'),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: PSpacing.md),
-                              BalanceHero(
-                                balanceText:
-                                    '${balanceArrr.toStringAsFixed(8)} ARRR',
-                                helperText: balanceHelper,
-                                isHidden: _hideBalance,
-                                onToggleVisibility: () {
-                                  setState(() {
-                                    _hideBalance = !_hideBalance;
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
 
-          // Sync indicator (always visible to show sync status)
-          // Add small top padding to prevent overlap with pinned header
-          SliverPadding(
-            padding: EdgeInsets.only(
-              top: PSpacing.md, // Small spacing to prevent overlap
-              left: PSpacing.lg,
-              right: PSpacing.lg,
-              bottom: PSpacing.md,
-            ),
-            sliver: SliverToBoxAdapter(
-              child: _SyncIndicator(
-                progress: syncProgress,
-                currentHeight: currentHeight.toInt(),
-                targetHeight: targetHeight.toInt(),
-                stage: isComplete
-                    ? 'Synced'
-                    : displaySyncStatus?.stageName ??
-                        (displaySyncStatus != null ? 'Syncing' : 'Not synced'),
-                eta: isComplete
-                    ? null
-                    : displaySyncStatus?.etaFormatted ??
-                        (isSyncing ? 'Calculating...' : null),
-                blocksPerSecond:
-                    displaySyncStatus?.blocksPerSecond ?? 0.0,
-                animation: _syncAnimationController,
-                isSyncing: isSyncing,
-                isComplete: isComplete,
-              ),
-            ),
-          ),
+    final syncStatus = syncStatusAsync.when(
+      data: (status) => status,
+      loading: () => null,
+      error: (_, __) => null,
+    );
+    final isSyncing = syncStatus?.isSyncing ?? false;
 
-          // Quick actions
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(PSpacing.lg),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _QuickActionButton(
-                      icon: Icons.arrow_upward,
-                      label: 'Send',
-                      color: AppColors.accentPrimary,
-                      onTap: () => context.push('/send'),
-                    ),
-                  ),
-                  const SizedBox(width: PSpacing.md),
-                  Expanded(
-                    child: _QuickActionButton(
-                      icon: Icons.arrow_downward,
-                      label: 'Receive',
-                      color: AppColors.accentSecondary,
-                      onTap: () => context.push('/receive'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+    if (transactions.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            gutter,
+            PSpacing.xl,
+            gutter,
+            PSpacing.xl,
           ),
-
-          // Recent transactions header
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  PSpacing.lg,
-                PSpacing.xl,
-                PSpacing.lg,
-                PSpacing.md,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Recent activity',
-                    style: PTypography.heading3().copyWith(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  PTextButton(
-                    label: 'View all',
-                    onPressed: () => context.push('/activity'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Recent transactions list (from real data)
-          if (transactions.isEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(PSpacing.xl),
-                child: Center(
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.history,
-                        size: 48,
-                        color: AppColors.textSecondary.withValues(alpha: 0.5),
-                      ),
-                      const SizedBox(height: PSpacing.md),
-                      Text(
-                        isSyncing ? 'Syncing activity...' : 'No activity yet.',
-                        style: PTypography.bodyMedium().copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
+          child: Center(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.history,
+                  size: 48,
+                  color: AppColors.textSecondary.withValues(alpha: 0.5),
+                ),
+                const SizedBox(height: PSpacing.md),
+                Text(
+                  isSyncing ? 'Syncing activity...' : 'No activity yet.',
+                  style: PTypography.bodyMedium().copyWith(
+                    color: AppColors.textSecondary,
                   ),
                 ),
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  if (index >= transactions.length) return null;
-                  final tx = transactions[index];
-                  return _TransactionItemWithLabel(
-                    tx: tx,
-                    onTap: () => context.push('/transaction/${tx.txid}'),
-                  );
-                },
-                childCount: transactions.length.clamp(0, 10),
-              ),
+              ],
             ),
-        ],
+          ),
+        ),
       );
-
-    if (!widget.useScaffold) {
-      return content;
     }
 
-    return PScaffold(
-      title: 'Wallet Home',
-      body: content,
+    final itemCount = transactions.length > 10 ? 10 : transactions.length;
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(
+        gutter,
+        0,
+        gutter,
+        PSpacing.lg,
+      ),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            if (index >= itemCount) return null;
+            final tx = transactions[index];
+            return _TransactionItemWithLabel(
+              tx: tx,
+              onTap: () => context.push('/transaction/${tx.txid}'),
+            );
+          },
+          childCount: itemCount,
+        ),
+      ),
     );
   }
 }
@@ -479,18 +595,21 @@ color: AppColors.textSecondary,
             ],
             const SizedBox(height: PSpacing.sm),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  (targetHeight.toInt() > 0 && currentHeight.toInt() > 0)
-                      ? 'Block ${currentHeight.toString()} / ${targetHeight.toString()}'
-                      : (currentHeight.toInt() > 0)
-                          ? 'Block ${currentHeight.toString()}'
-                          : (targetHeight.toInt() > 0)
-                              ? 'Block 0 / ${targetHeight.toString()}'
-                              : 'Block 0',
-                  style: PTypography.caption().copyWith(
-                    color: AppColors.textSecondary,
+                Expanded(
+                  child: Text(
+                    (targetHeight.toInt() > 0 && currentHeight.toInt() > 0)
+                        ? 'Block ${currentHeight.toString()} / ${targetHeight.toString()}'
+                        : (currentHeight.toInt() > 0)
+                            ? 'Block ${currentHeight.toString()}'
+                            : (targetHeight.toInt() > 0)
+                                ? 'Block 0 / ${targetHeight.toString()}'
+                                : 'Block 0',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: PTypography.caption().copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
                 if (eta != null)

@@ -102,6 +102,10 @@ class _ImportSpendingKeyScreenState
 
   @override
   Widget build(BuildContext context) {
+    final basePadding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final contentPadding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     return PScaffold(
       appBar: const PAppBar(
         title: 'Import spending key',
@@ -110,7 +114,7 @@ class _ImportSpendingKeyScreenState
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(PSpacing.lg),
+        padding: contentPadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

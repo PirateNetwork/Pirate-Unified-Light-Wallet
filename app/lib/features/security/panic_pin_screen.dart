@@ -152,7 +152,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
         subtitle: 'Configure your decoy vault shortcut',
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

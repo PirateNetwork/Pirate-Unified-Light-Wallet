@@ -183,6 +183,10 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   Widget build(BuildContext context) {
     final endpointConfigAsync = ref.watch(lightdEndpointConfigProvider);
     final isNarrow = MediaQuery.of(context).size.width < 360;
+    final basePadding = AppSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final contentPadding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     
     return PScaffold(
       title: 'Node Configuration',
@@ -206,7 +210,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: contentPadding,
         child: Form(
           key: _formKey,
           child: Column(
@@ -464,14 +468,16 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
           
           const SizedBox(height: AppSpacing.sm),
           
-          Row(
+          Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Icon(
                 config.useTls ? Icons.lock : Icons.lock_open,
                 color: config.useTls ? AppColors.success : AppColors.warning,
                 size: 16,
               ),
-              const SizedBox(width: AppSpacing.xs),
               Text(
                 config.useTls ? 'TLS Enabled' : 'TLS Disabled',
                 style: AppTypography.bodySmall.copyWith(
@@ -485,7 +491,6 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                   color: AppColors.accentPrimary,
                   size: 16,
                 ),
-                const SizedBox(width: AppSpacing.xs),
                 Text(
                   'Certificate Pinned',
                   style: AppTypography.bodySmall.copyWith(

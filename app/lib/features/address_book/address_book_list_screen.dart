@@ -296,7 +296,10 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
     
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: AppSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: AppSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -355,7 +358,10 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
   Widget _buildErrorState(String error, String walletId) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: AppSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: AppSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

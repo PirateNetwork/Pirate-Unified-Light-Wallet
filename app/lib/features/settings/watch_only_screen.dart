@@ -93,8 +93,15 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
 
   @override
   Widget build(BuildContext context) {
+    final basePadding = PirateSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+      vertical: PirateSpacing.lg,
+    );
+    final padding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     return SingleChildScrollView(
-      padding: EdgeInsets.all(PirateSpacing.xxl),
+      padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -177,11 +184,15 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
             children: [
               Icon(Icons.info, color: Colors.blue, size: 24),
               SizedBox(width: PirateSpacing.sm),
-              Text(
-                'About viewing keys',
-                style: PirateTypography.bodyLarge.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
+              Expanded(
+                child: Text(
+                  'About viewing keys',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: PirateTypography.bodyLarge.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -305,8 +316,15 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
 
   @override
   Widget build(BuildContext context) {
+    final basePadding = PirateSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+      vertical: PirateSpacing.lg,
+    );
+    final padding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     return SingleChildScrollView(
-      padding: EdgeInsets.all(PirateSpacing.xxl),
+      padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -225,8 +225,13 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
   }
 
   Widget _buildExportTab(bool isWatchOnly) {
+    final basePadding =
+        AppSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final padding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -365,8 +370,13 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
   }
 
   Widget _buildImportTab() {
+    final basePadding =
+        AppSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final padding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

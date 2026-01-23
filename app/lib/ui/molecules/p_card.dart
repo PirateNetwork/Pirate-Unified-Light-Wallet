@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
@@ -28,31 +29,44 @@ class _PCardState extends State<PCard> {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final isDesktop = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux);
+    final enableHover = isDesktop && widget.onTap != null && !reduceMotion;
+    final isHovered = enableHover && _isHovered;
+
+    final decoration = BoxDecoration(
+      color: widget.backgroundColor ??
+          (widget.elevated
+              ? AppColors.backgroundElevated
+              : AppColors.backgroundSurface),
+      borderRadius: BorderRadius.circular(PSpacing.radiusCard),
+      border: Border.all(
+        color: isHovered ? AppColors.borderStrong : AppColors.borderSubtle,
+        width: 1.0,
+      ),
+      boxShadow: isHovered
+          ? [
+              BoxShadow(
+                color: AppColors.shadow,
+                blurRadius: 16.0,
+                offset: const Offset(0, 8),
+              ),
+            ]
+          : null,
+    );
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      cursor: widget.onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor:
+          widget.onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          color: widget.backgroundColor ?? (widget.elevated ? AppColors.backgroundElevated : AppColors.backgroundSurface),
-          borderRadius: BorderRadius.circular(PSpacing.radiusCard),
-          border: Border.all(
-            color: _isHovered && widget.onTap != null
-                ? AppColors.borderStrong
-                : AppColors.borderSubtle,
-            width: 1.0,
-          ),
-          boxShadow: _isHovered && widget.onTap != null
-              ? [
-                  BoxShadow(
-                    color: AppColors.shadow,
-                    blurRadius: 16.0,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-              : null,
-        ),
+        duration:
+            reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
+        decoration: decoration,
         child: Material(
           color: Colors.transparent,
           child: InkWell(

@@ -131,6 +131,13 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final basePadding = AppSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+      vertical: AppSpacing.xl,
+    );
+    final contentPadding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     return PScaffold(
       title: 'Import Viewing Key',
       appBar: PAppBar(
@@ -139,7 +146,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
         onBack: () => context.pop(),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: contentPadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

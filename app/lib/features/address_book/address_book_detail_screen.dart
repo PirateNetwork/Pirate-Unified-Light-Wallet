@@ -107,6 +107,9 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
 
   @override
   Widget build(BuildContext context) {
+    final gutter = AppSpacing.responsiveGutter(MediaQuery.of(context).size.width);
+    final sectionPadding =
+        AppSpacing.screenPadding(MediaQuery.of(context).size.width);
     return PScaffold(
       title: _entry.label,
       body: CustomScrollView(
@@ -125,8 +128,8 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
                     bottom: false,
                     child: Padding(
                       padding: EdgeInsets.only(
-                        left: AppSpacing.lg,
-                        right: AppSpacing.lg,
+                        left: gutter,
+                        right: gutter,
                         top: AppSpacing.md,
                         bottom: AppSpacing.md,
                       ),
@@ -181,7 +184,7 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
+              padding: sectionPadding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -479,18 +482,27 @@ class _MetadataRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: AppTypography.caption.copyWith(
-            color: AppColors.textMuted,
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textMuted,
+            ),
           ),
         ),
-        Text(
-          value,
-          style: AppTypography.caption.copyWith(
-            color: AppColors.textSecondary,
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textSecondary,
+            ),
           ),
         ),
       ],

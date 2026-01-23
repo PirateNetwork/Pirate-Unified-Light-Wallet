@@ -141,6 +141,8 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final gutter = AppSpacing.responsiveGutter(MediaQuery.of(context).size.width);
+    final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     return PScaffold(
       title: 'Import Seed',
       appBar: PAppBar(
@@ -160,13 +162,18 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
         children: [
           // Progress indicator
           Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              AppSpacing.lg,
+              gutter,
+              AppSpacing.lg,
+            ),
             child: _ProgressIndicator(currentStep: 2, totalSteps: 5),
           ),
 
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              padding: EdgeInsets.symmetric(horizontal: gutter),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -322,7 +329,12 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
 
           // Continue button
           Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              AppSpacing.lg,
+              gutter,
+              AppSpacing.lg + viewInsets,
+            ),
             child: PButton(
               text: _isValidating ? 'Validating...' : 'Continue',
               onPressed: _isComplete && !_isValidating

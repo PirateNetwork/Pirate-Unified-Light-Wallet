@@ -140,6 +140,13 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final basePadding = AppSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+      vertical: AppSpacing.xl,
+    );
+    final contentPadding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     return PScaffold(
       title: 'Confirm Seed',
       appBar: const PAppBar(
@@ -148,7 +155,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
         showBackButton: true,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: contentPadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

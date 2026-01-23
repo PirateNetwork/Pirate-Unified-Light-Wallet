@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart';
+
 /// Design tokens for spacing - 4/8px scale system
 ///
 /// Follows a consistent 4px/8px scale for all spacing values
@@ -250,6 +252,15 @@ class PSpacing {
   /// Returns true if screen is desktop size
   static bool isDesktop(double screenWidth) {
     return screenWidth >= breakpointDesktop;
+  }
+
+  /// Returns standard screen padding with responsive gutters.
+  static EdgeInsets screenPadding(
+    double screenWidth, {
+    double vertical = lg,
+  }) {
+    final gutter = responsiveGutter(screenWidth);
+    return EdgeInsets.fromLTRB(gutter, vertical, gutter, vertical);
   }
 }
 

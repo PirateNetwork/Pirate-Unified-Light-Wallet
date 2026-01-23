@@ -161,6 +161,13 @@ class _PassphraseSetupScreenState
 
   @override
   Widget build(BuildContext context) {
+    final basePadding = AppSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+      vertical: AppSpacing.xl,
+    );
+    final contentPadding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     return PScaffold(
       title: 'Set a passphrase',
       appBar: const PAppBar(
@@ -169,7 +176,7 @@ class _PassphraseSetupScreenState
         showBackButton: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: contentPadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

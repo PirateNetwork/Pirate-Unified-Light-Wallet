@@ -196,7 +196,7 @@ class _PayContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(PSpacing.lg),
+      padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth >= 720;

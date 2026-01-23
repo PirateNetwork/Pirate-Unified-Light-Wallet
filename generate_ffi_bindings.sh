@@ -19,16 +19,31 @@ PROJECT_ROOT="$SCRIPT_DIR"
 cd "$PROJECT_ROOT"
 
 # Set up Flutter path
-FLUTTER_PATH="${FLUTTER_PATH:-/mnt/c/src/flutter/bin}"
-if [ ! -f "$FLUTTER_PATH/flutter" ]; then
-    # Try alternative location
-    FLUTTER_PATH="/mnt/c/Users/${USER}/flutter_windows_3.24.3-stable/flutter/bin"
+if [ -n "${FLUTTER_PATH:-}" ] && [ -x "$FLUTTER_PATH/flutter" ]; then
+    : # Use provided FLUTTER_PATH
+elif command -v flutter &> /dev/null; then
+    FLUTTER_PATH="$(dirname "$(command -v flutter)")"
+else
+    shopt -s nullglob
+    for candidate in \
+        "/mnt/c/src/flutter/bin" \
+        "/mnt/c/Users/${USER}/flutter/bin" \
+        /mnt/c/Users/${USER}/flutter_windows_*_stable/flutter/bin
+    do
+        if [ -x "$candidate/flutter" ]; then
+            FLUTTER_PATH="$candidate"
+            break
+        fi
+    done
+    shopt -u nullglob
 fi
 
-if [ ! -f "$FLUTTER_PATH/flutter" ]; then
-    echo -e "${RED}❌ Flutter not found at expected paths${NC}"
+if [ -z "${FLUTTER_PATH:-}" ] || [ ! -x "$FLUTTER_PATH/flutter" ]; then
+    echo -e "${RED}ERROR: Flutter not found at expected paths${NC}"
     echo "   Tried: /mnt/c/src/flutter/bin/flutter"
-    echo "   Tried: /mnt/c/Users/${USER}/flutter_windows_3.24.3-stable/flutter/bin/flutter"
+    echo "   Tried: /mnt/c/Users/${USER}/flutter/bin/flutter"
+    echo "   Tried: /mnt/c/Users/${USER}/flutter_windows_*_stable/flutter/bin/flutter"
+    echo "   Or set FLUTTER_PATH to the Flutter bin directory"
     exit 1
 fi
 
@@ -137,6 +152,7 @@ else
 fi
 
 echo -e "${GREEN}✅ Done!${NC}"
+
 
 
 

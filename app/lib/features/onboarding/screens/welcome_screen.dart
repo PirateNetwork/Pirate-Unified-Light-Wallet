@@ -21,7 +21,10 @@ class WelcomeScreen extends ConsumerWidget {
     return PScaffold(
       title: 'Pirate Unified Wallet',
       body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: AppSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: AppSpacing.xl,
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,

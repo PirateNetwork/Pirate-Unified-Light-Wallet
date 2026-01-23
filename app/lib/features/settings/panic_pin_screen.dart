@@ -87,7 +87,10 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
     final pin = _isConfirming ? _confirmPin : _enteredPin;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(PSpacing.xxl),
+      padding: PSpacing.screenPadding(
+        MediaQuery.of(context).size.width,
+        vertical: PSpacing.xl,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -169,7 +172,10 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
 
   Widget _buildManageView() {
     return Padding(
-      padding: const EdgeInsets.all(PSpacing.xxl),
+      padding: PSpacing.screenPadding(
+        MediaQuery.of(context).size.width,
+        vertical: PSpacing.xl,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

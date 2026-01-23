@@ -262,6 +262,13 @@ class _PassphraseChangeScreenState
       orElse: () => false,
     );
     final showBiometric = biometricsEnabled && biometricAvailable;
+    final basePadding = AppSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+      vertical: AppSpacing.xl,
+    );
+    final contentPadding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
 
     return PScaffold(
       title: 'Change passphrase',
@@ -271,7 +278,7 @@ class _PassphraseChangeScreenState
         showBackButton: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: contentPadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

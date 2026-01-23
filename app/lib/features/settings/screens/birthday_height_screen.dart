@@ -244,6 +244,10 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
     final blocksToScan = (selectedHeight != null && tip != null)
         ? (tip - selectedHeight).clamp(0, tip)
         : null;
+    final basePadding = AppSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final contentPadding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
 
     return PScaffold(
       title: 'Birthday Height',
@@ -253,7 +257,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
         showBackButton: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: contentPadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -389,10 +393,10 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
             PCard(
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.md),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isNarrow = constraints.maxWidth < 360;
+                    final startBlock = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
@@ -410,9 +414,10 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                           ),
                         ),
                       ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    );
+                    final blocksScan = Column(
+                      crossAxisAlignment:
+                          isNarrow ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                       children: [
                         Text(
                           'Blocks to scan',
@@ -429,8 +434,25 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                           ),
                         ),
                       ],
-                    ),
-                  ],
+                    );
+                    if (isNarrow) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          startBlock,
+                          const SizedBox(height: AppSpacing.md),
+                          blocksScan,
+                        ],
+                      );
+                    }
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        startBlock,
+                        blocksScan,
+                      ],
+                    );
+                  },
                 ),
               ),
             ),

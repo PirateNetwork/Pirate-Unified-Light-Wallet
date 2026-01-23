@@ -270,6 +270,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
     final hasFilters = state.searchQuery.isNotEmpty ||
         state.filterColor != null ||
         state.showFavoritesOnly;
+    final gutter = AppSpacing.responsiveGutter(MediaQuery.of(context).size.width);
 
     return PScaffold(
       title: 'Address Book',
@@ -291,7 +292,12 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
         children: [
           // Search bar
           Padding(
-            padding: const EdgeInsets.all(AppSpacing.lg),
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              AppSpacing.lg,
+              gutter,
+              AppSpacing.md,
+            ),
             child: PInput(
               controller: _searchController,
               hint: 'Search addresses...',
@@ -538,7 +544,10 @@ class EmptyAddressBookState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxl),
+        padding: AppSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: AppSpacing.xl,
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -985,8 +994,9 @@ class AddressDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final padding = AppSpacing.screenPadding(MediaQuery.of(context).size.width);
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: padding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1207,19 +1217,23 @@ class FilterSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final padding = AppSpacing.screenPadding(MediaQuery.of(context).size.width);
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
+      padding: padding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Filters',
-                style: AppTypography.h3.copyWith(
-                  color: AppColors.textPrimary,
+              Expanded(
+                child: Text(
+                  'Filters',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.h3.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
               PTextButton(

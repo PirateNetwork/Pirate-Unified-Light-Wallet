@@ -104,6 +104,8 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       final state = ref.watch(receiveViewModelProvider);
       final viewModel = ref.read(receiveViewModelProvider.notifier);
       
+      final screenWidth = MediaQuery.of(context).size.width;
+      final gutter = PSpacing.responsiveGutter(screenWidth);
       final amountText = _amountController.text.trim();
       final memoText = _memoController.text.trim();
       final hasRequestData = amountText.isNotEmpty || memoText.isNotEmpty;
@@ -132,7 +134,12 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                 slivers: [
           // Content
           SliverPadding(
-            padding: EdgeInsets.all(PSpacing.lg),
+            padding: EdgeInsets.fromLTRB(
+              gutter,
+              PSpacing.lg,
+              gutter,
+              PSpacing.lg,
+            ),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 // Always show at least one state - ensure we never have an empty list
@@ -477,9 +484,9 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
           ),
             SliverPadding(
               padding: EdgeInsets.fromLTRB(
-                PSpacing.lg,
+                gutter,
                 0,
-                PSpacing.lg,
+                gutter,
                 PSpacing.lg,
               ),
               sliver: AddressHistorySliver(
@@ -498,9 +505,9 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
-                    PSpacing.lg,
+                    gutter,
                     0,
-                    PSpacing.lg,
+                    gutter,
                     PSpacing.lg,
                   ),
                   child: Center(
@@ -528,7 +535,10 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
               debugPrint('Stack trace: $stackTrace');
               return Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(PSpacing.xl),
+                  padding: PSpacing.screenPadding(
+                    MediaQuery.of(context).size.width,
+                    vertical: PSpacing.xl,
+                  ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -572,7 +582,10 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       return PScaffold(
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(PSpacing.xl),
+            padding: PSpacing.screenPadding(
+              MediaQuery.of(context).size.width,
+              vertical: PSpacing.xl,
+            ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [

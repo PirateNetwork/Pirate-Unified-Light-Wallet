@@ -1,10 +1,13 @@
 /// Wallet providers using Riverpod + FFI
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../background/background_sync_handler.dart';
 import '../ffi/ffi_bridge.dart';
 import '../ffi/generated/models.dart' hide SyncLogEntryFfi;
 import '../ffi/generated/api.dart' as api;
+import 'rust_init_provider.dart';
 
 // ============================================================================
 // Session & Active Wallet
@@ -26,12 +29,12 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
 
   Future<void> _loadActiveWallet() async {
     final walletId = await FfiBridge.getActiveWallet();
+    state = walletId;
     if (walletId != null) {
       BackgroundSyncHandler.instance.updateActiveWallet(walletId);
       // Auto-start sync when loading active wallet on app startup
-      await _startWalletSessions(walletId);
+      unawaited(_startWalletSessions(walletId));
     }
-    state = walletId;
   }
 
   Future<void> setActiveWallet(WalletId id) async {
@@ -597,6 +600,7 @@ final parseAmountProvider = Provider<Future<int> Function(String)>((ref) {
 /// Only tries to list wallets if the file exists (to avoid creating the database).
 /// This allows checking wallet existence before the app is unlocked.
 final walletsExistProvider = FutureProvider<bool>((ref) async {
+  await ref.watch(rustInitProvider.future);
   try {
     // First, check if the database file exists (doesn't create it)
     final fileExists = await FfiBridge.walletRegistryExists();

@@ -220,6 +220,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final padding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
     return PScaffold(
       appBar: const PAppBar(
         title: 'Consolidate balances',
@@ -230,7 +231,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: EdgeInsets.all(PSpacing.lg),
+              padding: padding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -457,10 +458,25 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
     return Padding(
       padding: EdgeInsets.only(bottom: PSpacing.xs),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: PTypography.bodySmall(color: AppColors.textSecondary)),
-          Text(value, style: PTypography.bodyMedium()),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PTypography.bodySmall(color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(width: PSpacing.sm),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: PTypography.bodyMedium(),
+            ),
+          ),
         ],
       ),
     );

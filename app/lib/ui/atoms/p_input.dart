@@ -107,6 +107,7 @@ class _PInputState extends State<PInput> {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -119,7 +120,8 @@ class _PInputState extends State<PInput> {
           SizedBox(height: PSpacing.xs),
         ],
         AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration:
+              reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(PSpacing.radiusInput),
             boxShadow: _isFocused

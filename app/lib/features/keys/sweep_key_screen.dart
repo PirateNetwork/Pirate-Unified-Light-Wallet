@@ -218,6 +218,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final padding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
     return PScaffold(
       appBar: const PAppBar(
         title: 'Sweep balance',
@@ -228,7 +229,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: EdgeInsets.all(PSpacing.lg),
+              padding: padding,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -393,9 +394,17 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
               });
             }
 
+            final gutter =
+                PSpacing.responsiveGutter(MediaQuery.of(context).size.width);
+
             return SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(PSpacing.lg),
+                padding: EdgeInsets.fromLTRB(
+                  gutter,
+                  PSpacing.lg,
+                  gutter,
+                  PSpacing.lg,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -403,20 +412,45 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                     Text('Sweep from', style: PTypography.heading3()),
                     const SizedBox(height: PSpacing.md),
                     Flexible(
-                      child: ListView(
-                        shrinkWrap: true,
-                        children: [
-                          _buildSweepOption(
-                            title: 'All addresses',
-                            subtitle: 'Sweep every spendable note.',
-                            selected: pendingIds.isEmpty,
-                            onTap: () => setModalState(() => pendingIds.clear()),
-                          ),
-                          if (_addresses.isNotEmpty) ...[
-                            const SizedBox(height: PSpacing.md),
-                            Text('Addresses', style: PTypography.labelMedium()),
-                            const SizedBox(height: PSpacing.xs),
-                            ..._addresses.map((address) {
+                      child: ListView.builder(
+                        itemCount: () {
+                          var count = 1;
+                          if (_addresses.isNotEmpty) {
+                            count += 3 + _addresses.length;
+                          }
+                          return count;
+                        }(),
+                        itemBuilder: (context, index) {
+                          var cursor = 0;
+                          if (index == cursor) {
+                            return _buildSweepOption(
+                              title: 'All addresses',
+                              subtitle: 'Sweep every spendable note.',
+                              selected: pendingIds.isEmpty,
+                              onTap: () =>
+                                  setModalState(() => pendingIds.clear()),
+                            );
+                          }
+                          cursor += 1;
+
+                          if (_addresses.isNotEmpty) {
+                            if (index == cursor) {
+                              return const SizedBox(height: PSpacing.md);
+                            }
+                            cursor += 1;
+                            if (index == cursor) {
+                              return Text('Addresses',
+                                  style: PTypography.labelMedium());
+                            }
+                            cursor += 1;
+                            if (index == cursor) {
+                              return const SizedBox(height: PSpacing.xs);
+                            }
+                            cursor += 1;
+                            final addressIndex = index - cursor;
+                            if (addressIndex >= 0 &&
+                                addressIndex < _addresses.length) {
+                              final address = _addresses[addressIndex];
                               final name =
                                   address.label ?? _truncate(address.address);
                               final balance = _formatArrr(address.spendable);
@@ -429,9 +463,11 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                                 selected: selected,
                                 onTap: () => toggleAddress(address),
                               );
-                            }),
-                          ],
-                        ],
+                            }
+                          }
+
+                          return const SizedBox.shrink();
+                        },
                       ),
                     ),
                     const SizedBox(height: PSpacing.md),
@@ -600,10 +636,25 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
     return Padding(
       padding: EdgeInsets.only(bottom: PSpacing.xs),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: PTypography.bodySmall(color: AppColors.textSecondary)),
-          Text(value, style: PTypography.bodyMedium()),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PTypography.bodySmall(color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(width: PSpacing.sm),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: PTypography.bodyMedium(),
+            ),
+          ),
         ],
       ),
     );

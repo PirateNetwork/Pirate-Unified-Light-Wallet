@@ -43,6 +43,10 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   bool _isOnboardingRoute(BuildContext context) {
+    final router = GoRouter.maybeOf(context);
+    if (router == null) {
+      return false;
+    }
     final location = GoRouterState.of(context).uri.path;
     return location.startsWith('/onboarding');
   }

@@ -107,6 +107,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
 
   @override
   Widget build(BuildContext context) {
+    final padding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
     final tx = widget.tx;
     final isReceived = tx.amount >= 0;
     final amountArrr = _formatArrr(tx.amount.abs());
@@ -123,7 +124,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
     final timestampValue = '$dateText at $timeText ($relativeText)';
 
     return ListView(
-      padding: const EdgeInsets.all(PSpacing.lg),
+      padding: padding,
       children: [
         PCard(
           child: Padding(
@@ -309,15 +310,24 @@ class _DetailRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: PTypography.bodySmall(color: AppColors.textSecondary),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: PTypography.bodySmall(color: AppColors.textSecondary),
+          ),
         ),
-        Text(
-          value,
-          style: PTypography.bodySmall(color: AppColors.textPrimary),
+        const SizedBox(width: PSpacing.sm),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: PTypography.bodySmall(color: AppColors.textPrimary),
+          ),
         ),
       ],
     );
@@ -401,7 +411,10 @@ class _TransactionMissing extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(PSpacing.xl),
+        padding: PSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: PSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -437,7 +450,10 @@ class _TransactionError extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(PSpacing.xl),
+        padding: PSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: PSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

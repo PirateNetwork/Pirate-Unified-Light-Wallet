@@ -141,9 +141,14 @@ class _AddressLabel extends StatelessWidget {
         borderRadius: BorderRadius.circular(PSpacing.radiusSM),
         border: Border.all(color: AppColors.selectedBorder),
       ),
-      child: Text(
-        text,
-        style: PTypography.labelSmall(color: AppColors.focusRing),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 140),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: PTypography.labelSmall(color: AppColors.focusRing),
+        ),
       ),
     );
   }

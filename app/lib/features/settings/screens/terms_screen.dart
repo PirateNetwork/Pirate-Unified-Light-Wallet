@@ -21,7 +21,7 @@ class TermsScreen extends StatelessWidget {
         showBackButton: true,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: PCard(
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.lg),

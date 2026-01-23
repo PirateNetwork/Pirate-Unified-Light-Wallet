@@ -107,7 +107,10 @@ class _OnboardingBiometricsScreenState
         showBackButton: true,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: AppSpacing.screenPadding(
+          MediaQuery.of(context).size.width,
+          vertical: AppSpacing.xl,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

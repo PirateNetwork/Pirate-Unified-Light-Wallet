@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,32 +7,15 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/ffi/ffi_bridge.dart';
-import 'core/ffi/generated/frb_generated.dart';
 import 'design/theme.dart';
 import 'design/tokens/colors.dart';
 import 'features/settings/providers/preferences_providers.dart';
 import 'features/settings/providers/transport_providers.dart';
 import 'routes/app_router.dart';
+import 'core/providers/rust_init_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize Flutter Rust Bridge with timeout
-  try {
-    debugPrint('Initializing Rust library...');
-    await RustLib.init().timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {
-        throw TimeoutException('Rust library initialization timed out after 10 seconds');
-      },
-    );
-    debugPrint('✅ Rust library initialized successfully');
-  } catch (e, stackTrace) {
-    debugPrint('❌ Failed to initialize Rust library: $e');
-    debugPrint('Stack trace: $stackTrace');
-    // For now, continue - the app might work with mock mode or fail gracefully
-    // In production, you might want to show an error screen
-  }
 
   // Desktop window setup
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -90,6 +73,12 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
       windowManager.addListener(this);
       windowManager.setPreventClose(true);
     }
+
+    ref.listen<AsyncValue<void>>(rustInitProvider, (_, next) {
+      if (next.hasValue) {
+        unawaited(ref.read(transportConfigProvider.notifier).refresh());
+      }
+    });
   }
 
   @override
@@ -111,16 +100,15 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
   void onWindowClose() async {
     if (_closing) return;
     _closing = true;
-    await _shutdownTransports();
-    await windowManager.destroy();
+    unawaited(windowManager.hide());
+    unawaited(_shutdownTransports());
+    unawaited(windowManager.destroy());
   }
 
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeModeSetting = ref.watch(appThemeModeProvider);
-    // Trigger transport config load early so tunnel bootstrap can start pre-unlock.
-    ref.watch(transportConfigProvider);
     
     // Determine brightness based on theme mode
     // For system mode, we'll sync in the builder after MaterialApp is built
@@ -166,3 +154,4 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     );
   }
 }
+

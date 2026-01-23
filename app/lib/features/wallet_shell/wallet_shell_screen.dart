@@ -30,6 +30,7 @@ class WalletShellScreen extends ConsumerStatefulWidget {
 class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
   @override
   Widget build(BuildContext context) {
+    final padding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
     final activeWallet = ref.watch(activeWalletProvider);
     final balanceAsync = ref.watch(balanceStreamProvider);
     final syncStatusAsync = ref.watch(syncStatusProvider);
@@ -38,7 +39,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     return PScaffold(
       title: 'Pirate Wallet',
       body: ListView(
-        padding: const EdgeInsets.all(PSpacing.lg),
+        padding: padding,
         children: [
           // Session Info
           PCard(
@@ -273,22 +274,31 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: PSpacing.xs),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.7),
-                ),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.7),
+                  ),
+            ),
           ),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+          const SizedBox(width: PSpacing.sm),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
           ),
         ],
       ),

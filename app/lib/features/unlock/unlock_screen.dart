@@ -176,6 +176,13 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final basePadding = AppSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+      vertical: AppSpacing.xl,
+    );
+    final contentPadding = basePadding.copyWith(
+      bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+    );
     return PScaffold(
       title: 'Unlock Wallet',
       appBar: const PAppBar(
@@ -185,7 +192,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
         centerTitle: true,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+        padding: contentPadding,
         child: Form(
           key: _formKey,
           child: Column(

@@ -26,7 +26,7 @@ class ThemeScreen extends ConsumerWidget {
         centerTitle: true,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           children: [
             _ThemeOption(

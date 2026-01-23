@@ -351,7 +351,9 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 return RefreshIndicator(
                   onRefresh: () async => _refresh(),
                   child: ListView(
-                    padding: EdgeInsets.all(PSpacing.lg),
+                    padding: PSpacing.screenPadding(
+                      MediaQuery.of(context).size.width,
+                    ),
                     children: [
                       _buildViewingKeyCard(),
                       if (keys.isEmpty) ...[
@@ -380,7 +382,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   Widget _buildEmptyWallet() {
     return Center(
       child: Padding(
-        padding: EdgeInsets.all(PSpacing.lg),
+        padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Text(
           'No active wallet.',
           style: PTypography.bodyMedium(),
@@ -392,7 +394,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   Widget _buildError(String message) {
     return Center(
       child: Padding(
-        padding: EdgeInsets.all(PSpacing.lg),
+        padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

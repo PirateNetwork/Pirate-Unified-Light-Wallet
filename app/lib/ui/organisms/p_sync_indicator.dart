@@ -143,6 +143,7 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
   late Animation<double> _pulseAnimation;
   final List<_Particle> _particles = [];
   final math.Random _random = math.Random();
+  bool _reduceMotion = false;
 
   @override
   void initState() {
@@ -151,7 +152,7 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
-    )..repeat(reverse: true);
+    );
 
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
@@ -160,10 +161,40 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
     _particleController = AnimationController(
       duration: const Duration(milliseconds: 50),
       vsync: this,
-    )..repeat();
+    );
 
     _particleController.addListener(_updateParticles);
     _initParticles();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.of(context).disableAnimations;
+    _syncAnimationState();
+  }
+
+  @override
+  void didUpdateWidget(covariant PSyncIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncAnimationState();
+  }
+
+  void _syncAnimationState() {
+    final shouldPulse = !_reduceMotion && widget.status.isSyncing;
+    if (shouldPulse && !_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    } else if (!shouldPulse && _pulseController.isAnimating) {
+      _pulseController.stop();
+    }
+
+    final shouldParticles =
+        !_reduceMotion && widget.status.isSyncing && widget.showParticles;
+    if (shouldParticles && !_particleController.isAnimating) {
+      _particleController.repeat();
+    } else if (!shouldParticles && _particleController.isAnimating) {
+      _particleController.stop();
+    }
   }
 
   @override

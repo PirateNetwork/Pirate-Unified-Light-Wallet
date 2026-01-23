@@ -47,6 +47,7 @@ class _PGradientButtonState extends State<PGradientButton>
   bool _isHovered = false;
   bool _isPressed = false;
   bool _isFocused = false;
+  bool _reduceMotion = false;
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _glowAnimation;
@@ -77,16 +78,19 @@ class _PGradientButtonState extends State<PGradientButton>
   void _handleTapDown(TapDownDetails details) {
     if (!_isEnabled) return;
     setState(() => _isPressed = true);
+    if (_reduceMotion) return;
     _animationController.forward();
   }
 
   void _handleTapUp(TapUpDetails details) {
     setState(() => _isPressed = false);
+    if (_reduceMotion) return;
     _animationController.reverse();
   }
 
   void _handleTapCancel() {
     setState(() => _isPressed = false);
+    if (_reduceMotion) return;
     _animationController.reverse();
   }
 
@@ -99,6 +103,7 @@ class _PGradientButtonState extends State<PGradientButton>
 
   @override
   Widget build(BuildContext context) {
+    _reduceMotion = MediaQuery.of(context).disableAnimations;
     return Semantics(
       label: widget.semanticLabel ?? widget.text,
       button: true,
@@ -115,28 +120,31 @@ class _PGradientButtonState extends State<PGradientButton>
             onTapUp: _handleTapUp,
             onTapCancel: _handleTapCancel,
             onTap: _handleTap,
-            child: AnimatedBuilder(
-              animation: _animationController,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _scaleAnimation.value,
-                  child: _buildButton(),
-                );
-              },
-            ),
+            child: _reduceMotion
+                ? _buildButton(reduceMotion: true)
+                : AnimatedBuilder(
+                    animation: _animationController,
+                    builder: (context, child) {
+                      return Transform.scale(
+                        scale: _scaleAnimation.value,
+                        child: _buildButton(reduceMotion: false),
+                      );
+                    },
+                  ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildButton() {
+  Widget _buildButton({required bool reduceMotion}) {
     final double height = widget.size.height;
     final EdgeInsets padding = widget.size.padding;
     final TextStyle textStyle = widget.size.textStyle;
+    final showShadow = _isEnabled && (_isHovered || _isPressed) && !reduceMotion;
 
     return AnimatedContainer(
-      duration: DeepSpaceDurations.fast,
+      duration: reduceMotion ? Duration.zero : DeepSpaceDurations.fast,
       curve: DeepSpaceCurves.standard,
       width: widget.fullWidth ? double.infinity : null,
       height: height,
@@ -154,7 +162,7 @@ class _PGradientButtonState extends State<PGradientButton>
                 width: DeepSpaceA11y.focusRingWidth,
               )
             : null,
-        boxShadow: _isEnabled && (_isHovered || _isPressed)
+        boxShadow: showShadow
             ? [
                 BoxShadow(
                   color: AppColors.glow.withValues(alpha: _isPressed ? 0.6 : 0.4),
