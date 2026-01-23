@@ -18,6 +18,7 @@ import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/p_dialog.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/security/screenshot_protection.dart';
 
 /// Export seed state
 enum ExportSeedState {
@@ -74,6 +75,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   bool _isLoading = false;
   bool _obscurePassphrase = true;
   String? _error;
+  ScreenProtection? _screenProtection;
 
   @override
   void initState() {
@@ -99,13 +101,13 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   }
 
   void _enableScreenshotProtection() {
-    // Platform channel to enable FLAG_SECURE on Android
-    // and secure text field trick on iOS
-    debugPrint('[ExportSeed] Screenshot protection enabled');
+    if (_screenProtection != null) return;
+    _screenProtection = ScreenshotProtection.protect();
   }
 
   void _disableScreenshotProtection() {
-    debugPrint('[ExportSeed] Screenshot protection disabled');
+    _screenProtection?.dispose();
+    _screenProtection = null;
   }
 
   Future<void> _acknowledgeWarning() async {
@@ -742,4 +744,3 @@ class _WarningItem extends StatelessWidget {
     );
   }
 }
-

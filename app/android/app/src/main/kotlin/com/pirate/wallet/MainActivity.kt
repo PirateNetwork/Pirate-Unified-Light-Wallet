@@ -8,6 +8,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.system.Os
+import android.view.WindowManager
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -25,6 +26,7 @@ class MainActivity: FlutterFragmentActivity() {
     
     private val CHANNEL = "com.pirate.wallet/background"
     private val KEYSTORE_CHANNEL = "com.pirate.wallet/keystore"
+    private val SECURITY_CHANNEL = "com.pirate.wallet/security"
     private val PREFS_NAME = "pirate_keystore_v1"
     private val PREFS_BIOMETRICS_ENABLED = "biometrics_enabled_v1"
     private val STORE_KEY_ALIAS = "pirate_wallet_store_key_v1"
@@ -137,6 +139,25 @@ class MainActivity: FlutterFragmentActivity() {
                 }
             } catch (e: Exception) {
                 result.error("KEYSTORE_ERROR", e.message, null)
+            }
+        }
+
+        // Set up method channel for screenshot protection
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SECURITY_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "enableScreenshotProtection" -> {
+                    runOnUiThread {
+                        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                    result.success(true)
+                }
+                "disableScreenshotProtection" -> {
+                    runOnUiThread {
+                        window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                    result.success(true)
+                }
+                else -> result.notImplemented()
             }
         }
     }

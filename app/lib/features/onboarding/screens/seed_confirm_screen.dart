@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../design/tokens/colors.dart';
 import '../../../ui/atoms/p_button.dart';
@@ -28,10 +29,12 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
   List<int> _selectedIndices = [];
   bool _isVerifying = false;
   String? _error;
+  ScreenProtection? _screenProtection;
 
   @override
   void initState() {
     super.initState();
+    _disableScreenshots();
     _selectRandomWords();
     // Add listeners to update button state when text changes
     for (final controller in _wordControllers) {
@@ -45,7 +48,18 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
       controller.removeListener(_onTextChanged);
       controller.dispose();
     }
+    _enableScreenshots();
     super.dispose();
+  }
+
+  void _disableScreenshots() {
+    if (_screenProtection != null) return;
+    _screenProtection = ScreenshotProtection.protect();
+  }
+
+  void _enableScreenshots() {
+    _screenProtection?.dispose();
+    _screenProtection = null;
   }
 
   void _onTextChanged() {
@@ -238,4 +252,3 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
     );
   }
 }
-

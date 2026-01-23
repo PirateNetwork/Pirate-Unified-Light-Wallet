@@ -15,6 +15,7 @@ import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/security/screenshot_protection.dart';
 import '../onboarding_flow.dart';
 
 /// Seed import screen for wallet restoration
@@ -31,6 +32,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
       List.generate(24, (_) => TextEditingController());
   final List<FocusNode> _focusNodes =
       List.generate(24, (_) => FocusNode());
+  ScreenProtection? _screenProtection;
 
   bool _isValidating = false;
   String? _validationError;
@@ -39,6 +41,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
   @override
   void initState() {
     super.initState();
+    _disableScreenshots();
     // Add listeners to update button state when text changes
     for (final controller in _wordControllers) {
       controller.addListener(_onTextChanged);
@@ -54,7 +57,18 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
     for (final node in _focusNodes) {
       node.dispose();
     }
+    _enableScreenshots();
     super.dispose();
+  }
+
+  void _disableScreenshots() {
+    if (_screenProtection != null) return;
+    _screenProtection = ScreenshotProtection.protect();
+  }
+
+  void _enableScreenshots() {
+    _screenProtection?.dispose();
+    _screenProtection = null;
   }
 
   void _onTextChanged() {
@@ -516,4 +530,3 @@ class _ProgressIndicator extends StatelessWidget {
     );
   }
 }
-

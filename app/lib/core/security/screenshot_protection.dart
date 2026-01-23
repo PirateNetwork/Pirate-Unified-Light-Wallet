@@ -17,13 +17,20 @@ class ScreenshotProtection {
     if (_isProtected) return;
 
     try {
-      if (Platform.isAndroid || Platform.isIOS) {
-        await _channel.invokeMethod('enableScreenshotProtection');
-        _isProtected = true;
+      if (Platform.isAndroid ||
+          Platform.isIOS ||
+          Platform.isMacOS ||
+          Platform.isWindows ||
+          Platform.isLinux) {
+        final enabled =
+            await _channel.invokeMethod('enableScreenshotProtection');
+        _isProtected = enabled == true;
       }
     } on PlatformException catch (e) {
       // Platform doesn't support or failed
       print('Screenshot protection failed: ${e.message}');
+    } on MissingPluginException catch (_) {
+      // Platform channel not implemented on this platform
     }
   }
 
@@ -32,12 +39,18 @@ class ScreenshotProtection {
     if (!_isProtected) return;
 
     try {
-      if (Platform.isAndroid || Platform.isIOS) {
+      if (Platform.isAndroid ||
+          Platform.isIOS ||
+          Platform.isMacOS ||
+          Platform.isWindows ||
+          Platform.isLinux) {
         await _channel.invokeMethod('disableScreenshotProtection');
         _isProtected = false;
       }
     } on PlatformException catch (e) {
       print('Failed to disable screenshot protection: ${e.message}');
+    } on MissingPluginException catch (_) {
+      // Platform channel not implemented on this platform
     }
   }
 

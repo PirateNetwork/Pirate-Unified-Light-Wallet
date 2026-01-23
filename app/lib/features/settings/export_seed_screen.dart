@@ -9,6 +9,7 @@ import '../../design/compat.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/security/screenshot_protection.dart';
 import '../../core/security/biometric_auth.dart';
 import 'dart:async';
 
@@ -48,6 +49,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   String? _error;
   Timer? _clipboardTimer;
   bool _biometricPrompted = false;
+  ScreenProtection? _screenProtection;
 
   @override
   void dispose() {
@@ -56,6 +58,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     if (_exportStarted) {
       FfiBridge.cancelSeedExport();
     }
+    _enableScreenshots();
     super.dispose();
   }
 
@@ -519,6 +522,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
             await FfiBridge.exportSeedWithCachedPassphrase(widget.walletId);
         final mnemonic = words.join(' ');
 
+        _disableScreenshots();
         setState(() {
           _mnemonic = mnemonic;
           _step2Complete = true;
@@ -575,6 +579,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       );
       final mnemonic = words.join(' ');
 
+      _disableScreenshots();
       setState(() {
         _mnemonic = mnemonic;
         _step3Complete = true;
@@ -700,13 +705,12 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   }
 
   void _disableScreenshots() {
-    // Platform-specific screenshot blocking
-    // Android: WindowManager.LayoutParams.FLAG_SECURE
-    // iOS: Not directly possible, but we show full-screen warning
-    // Implementation via method channel in production
+    if (_screenProtection != null) return;
+    _screenProtection = ScreenshotProtection.protect();
   }
 
   void _enableScreenshots() {
-    // Re-enable screenshots on exit
+    _screenProtection?.dispose();
+    _screenProtection = null;
   }
 }

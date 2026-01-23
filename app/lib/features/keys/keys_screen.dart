@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../core/security/screenshot_protection.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -91,18 +92,23 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
       return;
     }
 
-    await PDialog.show<void>(
-      context: context,
-      title: 'Viewing keys',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: sections,
-      ),
-      actions: const [
-        PDialogAction(label: 'Close'),
-      ],
-    );
+    final protection = ScreenshotProtection.protect();
+    try {
+      await PDialog.show<void>(
+        context: context,
+        title: 'Viewing keys',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: sections,
+        ),
+        actions: const [
+          PDialogAction(label: 'Close'),
+        ],
+      );
+    } finally {
+      protection.dispose();
+    }
   }
 
   Widget _buildViewingKeySection(String label, String value) {

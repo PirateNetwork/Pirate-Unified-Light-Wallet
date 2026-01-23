@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../core/security/screenshot_protection.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -38,6 +39,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
   bool _isExporting = false;
   String? _exportedIvk;
   int? _clipboardTimer;
+  ScreenProtection? _screenProtection;
   
   // Import state
   final _nameController = TextEditingController();
@@ -66,7 +68,18 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
     _nameController.dispose();
     _ivkController.dispose();
     _birthdayController.dispose();
+    _enableScreenshots();
     super.dispose();
+  }
+
+  void _disableScreenshots() {
+    if (_screenProtection != null) return;
+    _screenProtection = ScreenshotProtection.protect();
+  }
+
+  void _enableScreenshots() {
+    _screenProtection?.dispose();
+    _screenProtection = null;
   }
 
   Future<void> _exportIvk() async {
@@ -74,6 +87,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
       _isExporting = true;
       _exportedIvk = null;
     });
+    _enableScreenshots();
 
     try {
       final walletId = ref.read(activeWalletProvider);
@@ -86,6 +100,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
       setState(() {
         _exportedIvk = ivk;
       });
+      _disableScreenshots();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -215,6 +230,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
 
   void _resetExportState() {
     if (!mounted) return;
+    _enableScreenshots();
     setState(() {
       _isExporting = false;
       _exportedIvk = null;
@@ -519,4 +535,3 @@ class WatchOnlyBannerWidget extends StatelessWidget {
     );
   }
 }
-

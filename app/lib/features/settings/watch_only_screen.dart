@@ -11,6 +11,7 @@ import '../../design/tokens/typography.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/security/screenshot_protection.dart';
 
 /// Watch-Only Wallet Management Screen
 class WatchOnlyScreen extends ConsumerStatefulWidget {
@@ -90,6 +91,23 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
   String? _ivk;
   bool _isLoading = false;
   String? _error;
+  ScreenProtection? _screenProtection;
+
+  @override
+  void dispose() {
+    _enableScreenshots();
+    super.dispose();
+  }
+
+  void _disableScreenshots() {
+    if (_screenProtection != null) return;
+    _screenProtection = ScreenshotProtection.protect();
+  }
+
+  void _enableScreenshots() {
+    _screenProtection?.dispose();
+    _screenProtection = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +162,10 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
             SizedBox(height: PirateSpacing.md),
             PTextButton(
               label: 'Clear',
-              onPressed: () => setState(() => _ivk = null),
+              onPressed: () {
+                _enableScreenshots();
+                setState(() => _ivk = null);
+              },
               variant: PTextButtonVariant.subtle,
             ),
           ],
@@ -268,6 +289,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
 
       final ivk = await FfiBridge.exportIvkSecure(walletId);
       setState(() => _ivk = ivk);
+      _disableScreenshots();
     } catch (e) {
       setState(() => _error = 'Failed to export viewing key: ${e.toString()}');
     } finally {
@@ -487,4 +509,3 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
     }
   }
 }
-

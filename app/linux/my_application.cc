@@ -13,12 +13,14 @@ struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
   FlMethodChannel* keystore_channel;
+  FlMethodChannel* security_channel;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
 namespace {
 const char kKeystoreChannelName[] = "com.pirate.wallet/keystore";
+const char kSecurityChannelName[] = "com.pirate.wallet/security";
 const char kMasterKeyId[] = "pirate_wallet_master_key";
 
 const SecretSchema kPirateKeystoreSchema = {
@@ -224,6 +226,23 @@ static void keystore_method_call_handler(FlMethodChannel* channel,
 
   fl_method_call_respond(method_call, response, nullptr);
 }
+
+static void security_method_call_handler(FlMethodChannel* channel,
+                                         FlMethodCall* method_call,
+                                         gpointer user_data) {
+  const gchar* method = fl_method_call_get_name(method_call);
+
+  g_autoptr(FlMethodResponse) response = nullptr;
+  if (strcmp(method, "enableScreenshotProtection") == 0 ||
+      strcmp(method, "disableScreenshotProtection") == 0) {
+    response = FL_METHOD_RESPONSE(
+        fl_method_success_response_new(fl_value_new_bool(false)));
+  } else {
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+
+  fl_method_call_respond(method_call, response, nullptr);
+}
 }  // namespace
 
 // Implements GApplication::activate.
@@ -280,6 +299,12 @@ static void my_application_activate(GApplication* application) {
                                             keystore_method_call_handler, self,
                                             nullptr);
 
+  self->security_channel = fl_method_channel_new(
+      messenger, kSecurityChannelName, FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(self->security_channel,
+                                            security_method_call_handler, self,
+                                            nullptr);
+
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
@@ -324,6 +349,7 @@ static void my_application_shutdown(GApplication* application) {
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
   g_clear_object(&self->keystore_channel);
+  g_clear_object(&self->security_channel);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }
@@ -338,6 +364,7 @@ static void my_application_class_init(MyApplicationClass* klass) {
 
 static void my_application_init(MyApplication* self) {
   self->keystore_channel = nullptr;
+  self->security_channel = nullptr;
 }
 
 MyApplication* my_application_new() {

@@ -17,7 +17,25 @@
 
 namespace {
 constexpr char kKeystoreChannelName[] = "com.pirate.wallet/keystore";
+constexpr char kSecurityChannelName[] = "com.pirate.wallet/security";
 constexpr wchar_t kDpapiDescription[] = L"Pirate Wallet Key";
+
+#ifndef WDA_EXCLUDEFROMCAPTURE
+#define WDA_EXCLUDEFROMCAPTURE 0x00000011
+#endif
+
+bool SetCaptureProtection(HWND hwnd, bool enable) {
+  if (hwnd == nullptr) {
+    return false;
+  }
+  if (enable) {
+    if (::SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)) {
+      return true;
+    }
+    return ::SetWindowDisplayAffinity(hwnd, WDA_MONITOR) != 0;
+  }
+  return ::SetWindowDisplayAffinity(hwnd, WDA_NONE) != 0;
+}
 
 std::filesystem::path GetKeystoreDir() {
   DWORD length = GetEnvironmentVariableW(L"APPDATA", nullptr, 0);
@@ -332,6 +350,27 @@ bool FlutterWindow::OnCreate() {
           return;
         }
 
+        result->NotImplemented();
+      });
+
+  security_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), kSecurityChannelName,
+          &flutter::StandardMethodCodec::GetInstance());
+
+  security_channel_->SetMethodCallHandler(
+      [this](const auto& call, auto result) {
+        const auto& method = call.method_name();
+        if (method == "enableScreenshotProtection") {
+          const bool ok = SetCaptureProtection(GetHandle(), true);
+          result->Success(flutter::EncodableValue(ok));
+          return;
+        }
+        if (method == "disableScreenshotProtection") {
+          const bool ok = SetCaptureProtection(GetHandle(), false);
+          result->Success(flutter::EncodableValue(ok));
+          return;
+        }
         result->NotImplemented();
       });
 

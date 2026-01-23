@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../design/tokens/colors.dart';
 import '../../../ui/atoms/p_button.dart';
@@ -25,11 +26,18 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
   bool _seedRevealed = false;
   String? _mnemonic;
   bool _isLoading = false;
+  ScreenProtection? _screenProtection;
 
   @override
   void initState() {
     super.initState();
     _loadMnemonic();
+  }
+
+  @override
+  void dispose() {
+    _enableScreenshots();
+    super.dispose();
   }
 
   Future<void> _loadMnemonic() async {
@@ -76,13 +84,25 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
   }
 
   void _revealSeed() {
+    _disableScreenshots();
     setState(() => _seedRevealed = true);
   }
 
   void _proceed() {
     if (!_seedRevealed) return;
+    _enableScreenshots();
     ref.read(onboardingControllerProvider.notifier).nextStep();
     context.push('/onboarding/seed-confirm');
+  }
+
+  void _disableScreenshots() {
+    if (_screenProtection != null) return;
+    _screenProtection = ScreenshotProtection.protect();
+  }
+
+  void _enableScreenshots() {
+    _screenProtection?.dispose();
+    _screenProtection = null;
   }
 
   @override
@@ -291,4 +311,3 @@ class _SeedGrid extends StatelessWidget {
     );
   }
 }
-

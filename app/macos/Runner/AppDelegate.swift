@@ -7,6 +7,7 @@ import LocalAuthentication
 class AppDelegate: FlutterAppDelegate {
   private let keystoreService = "com.pirate.wallet.keystore"
   private let masterKeyAccount = "pirate_wallet_master_key"
+  private var securityChannel: FlutterMethodChannel?
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
     if let controller = mainFlutterWindow?.contentViewController as? FlutterViewController {
@@ -17,6 +18,29 @@ class AppDelegate: FlutterAppDelegate {
       channel.setMethodCallHandler { [weak self] call, result in
         guard let self = self else { return }
         self.handleKeystoreCall(call: call, result: result)
+      }
+
+      let security = FlutterMethodChannel(
+        name: "com.pirate.wallet/security",
+        binaryMessenger: controller.engine.binaryMessenger
+      )
+      securityChannel = security
+      security.setMethodCallHandler { [weak self] call, result in
+        guard let self = self else { return }
+        switch call.method {
+        case "enableScreenshotProtection":
+          DispatchQueue.main.async {
+            self.mainFlutterWindow?.sharingType = .none
+            result(true)
+          }
+        case "disableScreenshotProtection":
+          DispatchQueue.main.async {
+            self.mainFlutterWindow?.sharingType = .readOnly
+            result(true)
+          }
+        default:
+          result(FlutterMethodNotImplemented)
+        }
       }
     }
 

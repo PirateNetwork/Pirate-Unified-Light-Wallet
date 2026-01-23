@@ -8,6 +8,7 @@ import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart'
     show AddressBalanceInfo, KeyGroupInfo, KeyTypeInfo;
 import '../../core/security/biometric_auth.dart';
+import '../../core/security/screenshot_protection.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
@@ -246,18 +247,23 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
         throw StateError('No exportable keys for this key group.');
       }
 
-      await PDialog.show<void>(
-        context: context,
-        title: 'Export keys',
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: sections,
-        ),
-        actions: const [
-          PDialogAction(label: 'Close'),
-        ],
-      );
+      final protection = ScreenshotProtection.protect();
+      try {
+        await PDialog.show<void>(
+          context: context,
+          title: 'Export keys',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: sections,
+          ),
+          actions: const [
+            PDialogAction(label: 'Close'),
+          ],
+        );
+      } finally {
+        protection.dispose();
+      }
     } catch (e) {
       setState(() => _error = 'Failed to export keys: ${e.toString()}');
     }
