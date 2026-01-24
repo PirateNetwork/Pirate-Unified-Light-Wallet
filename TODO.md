@@ -3,16 +3,16 @@ TODO
 
 High priority
 -------------
-- Fix overlapping/overflowing text in mobile UI.
-- Integrate Panic PIN.
-- Fix github action checks
+- Fix github action checks.
+- Performance optimization.
 
 Medium
 ------
 - Test background sync on real device.
-- Fully implement screenshot protection.
+- Test I2P once endpoint is available.
 - Add support for .pirate Unstoppable Domains (UI/UX plan).
 - UI/UX polish.
+- Look at a potential merchant mode.
 
 Low priority
 ------------
@@ -21,15 +21,14 @@ Low priority
 - Comprehensive testing suite.
 - Nix reproducible builds.
 - Documentation.
-- Performance optimization.
 - Edge case handling.
 - MM2 integration (talk to CIPI).
-- Add USD price API + UI.
+- Add USD price API + UI. (Look at a potential toggle in settings to allow users to disable all api calls)
 - Add TOS.
 - Register a Co for app store publishing.
-- Tor light server.
 - Talk to Flexa.
 - Talk to card providers.
 - Explore alt packaging/publishing (F-Droid, APT for Linux).
-- Decide with team on an app name + logo/icon
-- Add support for offline signing (without hardware wallet)
+- Decide with team on an app name + logo/icon.
+- Add support for offline signing (without hardware wallet).
+- Add auto completion for seed words similar to Exodus wallet
