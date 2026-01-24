@@ -103,7 +103,7 @@ Reproducible Packaging Notes
 Reproducible Toolchain Pins
 ---------------------------
 - Rust: `1.90.0` (see `rust-toolchain.toml`)
-- Flutter: `3.24.3` (stable)
+- Flutter: `3.30.0` (stable)
 - Java: `21`
 - Gradle: `8.11.1` (see `app/android/gradle/wrapper/gradle-wrapper.properties`)
 - Android build-tools: `34.0.0` (apksigner)
