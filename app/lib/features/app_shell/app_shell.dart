@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/typography.dart';
+import '../../ui/molecules/wallet_switcher.dart';
+import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_nav.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../pay/pay_screen.dart';
@@ -96,6 +98,7 @@ class AppShell extends ConsumerWidget {
       context: context,
       backgroundColor: Colors.transparent,
       useSafeArea: true,
+      isScrollControlled: true,
       builder: (sheetContext) {
         return PaySheet(
           onSend: () {
@@ -119,6 +122,33 @@ class AppShell extends ConsumerWidget {
     );
   }
 
+  PAppBar? _desktopAppBarFor(String path) {
+    if (!_isDesktop) {
+      return null;
+    }
+    if (path.startsWith('/pay')) {
+      return const PAppBar(
+        title: 'Pay',
+        subtitle: 'Send, receive, buy, or spend in a few taps.',
+        actions: [WalletSwitcherButton(compact: true)],
+      );
+    }
+    if (path.startsWith('/activity')) {
+      return const PAppBar(
+        title: 'Activity',
+        actions: [WalletSwitcherButton(compact: true)],
+      );
+    }
+    if (path.startsWith('/settings')) {
+      return const PAppBar(
+        title: 'Settings',
+        subtitle: 'Security and privacy controls.',
+        actions: [WalletSwitcherButton(compact: true)],
+      );
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(transactionWatcherProvider);
@@ -132,6 +162,7 @@ class AppShell extends ConsumerWidget {
     );
 
     final content = SafeArea(top: false, child: child);
+    final desktopAppBar = _desktopAppBarFor(location);
     final body = _isDesktop
         ? Row(
             children: [
@@ -147,11 +178,21 @@ class AppShell extends ConsumerWidget {
                   child: nav,
                 ),
               ),
-              Expanded(child: content),
+              Expanded(
+                child: Column(
+                  children: [
+                    if (desktopAppBar != null)
+                      SizedBox(
+                        height: desktopAppBar.preferredSize.height,
+                        child: desktopAppBar,
+                      ),
+                    Expanded(child: content),
+                  ],
+                ),
+              ),
             ],
           )
         : content;
-
     return PScaffold(
       title: 'Pirate Wallet',
       useSafeArea: false,

@@ -407,8 +407,71 @@ final transactionsProvider = FutureProvider<List<TxInfo>>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return [];
 
-  return FfiBridge.listTransactions(walletId);
+  final transactions = await FfiBridge.listTransactions(walletId);
+  _prefetchRecentMemos(ref, walletId, transactions);
+  return transactions;
 });
+
+const int _memoPrefetchLimit = 20;
+final Set<String> _memoPrefetchInFlight = <String>{};
+final Set<String> _memoPrefetchComplete = <String>{};
+
+String _memoPrefetchKey(WalletId walletId, String txid) {
+  return '$walletId:$txid';
+}
+
+void _prefetchRecentMemos(
+  Ref ref,
+  WalletId walletId,
+  List<TxInfo> transactions,
+) {
+  final candidates = transactions
+      .where((tx) => tx.memo == null || tx.memo!.isEmpty)
+      .take(_memoPrefetchLimit)
+      .toList();
+  if (candidates.isEmpty) {
+    return;
+  }
+
+  final pending = <String>[];
+  for (final tx in candidates) {
+    final key = _memoPrefetchKey(walletId, tx.txid);
+    if (_memoPrefetchComplete.contains(key) ||
+        _memoPrefetchInFlight.contains(key)) {
+      continue;
+    }
+    _memoPrefetchInFlight.add(key);
+    pending.add(tx.txid);
+  }
+  if (pending.isEmpty) {
+    return;
+  }
+
+  // Best-effort memo prefetch so memo badges can show without opening details.
+  unawaited(() async {
+    var memoFetched = false;
+    for (final txid in pending) {
+      final key = _memoPrefetchKey(walletId, txid);
+      try {
+        final memo = await FfiBridge.fetchTransactionMemo(
+          walletId: walletId,
+          txid: txid,
+        );
+        _memoPrefetchComplete.add(key);
+        if (memo != null && memo.isNotEmpty) {
+          memoFetched = true;
+        }
+      } catch (_) {
+        // Ignore failures; memo can still be fetched when opening details.
+      } finally {
+        _memoPrefetchInFlight.remove(key);
+      }
+    }
+    if (memoFetched) {
+      ref.invalidate(transactionsProvider);
+    }
+  }());
+}
 
 /// Transaction stream (new transactions)
 final transactionStreamProvider = StreamProvider<TxInfo?>((ref) async* {

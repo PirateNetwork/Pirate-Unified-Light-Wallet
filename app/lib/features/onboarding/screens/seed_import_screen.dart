@@ -110,8 +110,19 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
 
       // Store mnemonic in onboarding state
       ref.read(onboardingControllerProvider.notifier).setMnemonic(_mnemonic);
+
+      final hasPassphrase = await FfiBridge.hasAppPassphrase();
+      if (!hasPassphrase) {
+        if (mounted) {
+          context.push('/onboarding/passphrase');
+        }
+        return;
+      }
+
+      // Skip passphrase setup if one already exists.
       ref.read(onboardingControllerProvider.notifier).nextStep();
-      
+      ref.read(onboardingControllerProvider.notifier).nextStep();
+
       if (mounted) {
         context.push('/onboarding/birthday');
       }

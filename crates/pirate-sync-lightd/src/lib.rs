@@ -28,7 +28,8 @@ pub use background::{
 };
 pub use background_logger::{BackgroundSyncEvent, BackgroundSyncLogger};
 pub use client::{
-    bootstrap_transport, i2p_status, rotate_tor_exit, shutdown_transport, tor_status,
+    bootstrap_transport, fetch_spki_pin, i2p_status, rotate_tor_exit, shutdown_transport,
+    tor_status,
     BroadcastResult, CompactBlock, CompactBlockData, CompactOrchardAction, CompactOutput,
     CompactSaplingOutput, CompactSaplingSpend, CompactTx, LightClient, LightClientConfig,
     LightdInfo, RetryConfig, TlsConfig, TransactionStatus, TransportMode, TreeState,

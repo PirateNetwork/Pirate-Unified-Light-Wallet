@@ -61,9 +61,19 @@ class PScaffold extends StatelessWidget {
       );
     }
 
+    PreferredSizeWidget? resolvedAppBar = appBar;
+    if (appBar != null) {
+      final topPadding = MediaQuery.of(context).padding.top;
+      final height = appBar!.preferredSize.height + topPadding;
+      resolvedAppBar = PreferredSize(
+        preferredSize: Size.fromHeight(height),
+        child: appBar!,
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.backgroundBase,
-      appBar: appBar,
+      appBar: resolvedAppBar,
       body: content,
       drawer: drawer,
       floatingActionButton: floatingActionButton,
@@ -188,4 +198,3 @@ class _WindowButtonState extends State<_WindowButton> {
     );
   }
 }
-

@@ -49,14 +49,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;
+    final textScale = mediaQuery.textScaleFactor;
     final gutter = PSpacing.responsiveGutter(screenWidth);
     final headerVerticalPadding =
         PSpacing.isDesktop(screenWidth) ? PSpacing.lg : PSpacing.md;
-    final headerExtent = PSpacing.isMobile(screenWidth)
-        ? 260.0
+    final baseHeaderExtent = PSpacing.isMobile(screenWidth)
+        ? 280.0
         : PSpacing.isTablet(screenWidth)
             ? 300.0
             : 320.0;
+    final extraHeaderHeight = textScale > 1.0 ? (textScale - 1.0) * 32.0 : 0.0;
+    final headerExtent =
+        baseHeaderExtent + mediaQuery.padding.top + extraHeaderHeight;
     final enableBackdropBlur =
         !mediaQuery.disableAnimations && !PSpacing.isMobile(screenWidth);
 

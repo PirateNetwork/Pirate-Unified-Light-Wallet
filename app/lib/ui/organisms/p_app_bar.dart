@@ -39,7 +39,11 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     if (showBackButton != null) {
       return showBackButton!;
     }
-    return Navigator.of(context).canPop();
+    final navigator = Navigator.maybeOf(context);
+    if (navigator == null) {
+      return false;
+    }
+    return navigator.canPop();
   }
 
   bool _isOnboardingRoute(BuildContext context) {
@@ -47,14 +51,20 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     if (router == null) {
       return false;
     }
-    final location = GoRouterState.of(context).uri.path;
-    return location.startsWith('/onboarding');
+    try {
+      final location = GoRouterState.of(context).uri.path;
+      return location.startsWith('/onboarding');
+    } catch (_) {
+      return false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
     final isNarrow = MediaQuery.of(context).size.width < 360;
+    final isMobile = PSpacing.isMobile(MediaQuery.of(context).size.width);
+    final verticalPadding = isMobile ? PSpacing.sm : PSpacing.md;
     final resolvedLeading =
         leading ?? (_shouldShowBack(context) ? _buildBackButton(context) : null);
     
@@ -94,11 +104,13 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
 
     final titleStyle = PTypography.heading4(color: AppColors.textPrimary).copyWith(
-      fontSize: isNarrow ? 18 : null,
+      fontSize: isMobile ? 20 : (isNarrow ? 18 : null),
     );
     final subtitleStyle = PTypography.bodySmall(color: AppColors.textSecondary).copyWith(
-      fontSize: isNarrow ? 12 : null,
+      fontSize: isMobile ? 12 : (isNarrow ? 12 : null),
     );
+    final titleMaxLines = isMobile ? 2 : (isNarrow ? 2 : 1);
+    final subtitleMaxLines = isMobile ? 2 : 2;
 
     final titleColumn = Column(
       crossAxisAlignment:
@@ -109,7 +121,7 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
           title,
           style: titleStyle,
           textAlign: centerTitle ? TextAlign.center : TextAlign.left,
-          maxLines: isNarrow ? 2 : 1,
+          maxLines: titleMaxLines,
           overflow: TextOverflow.ellipsis,
         ),
         if (subtitle != null) ...[
@@ -118,12 +130,26 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
             subtitle!,
             style: subtitleStyle,
             textAlign: centerTitle ? TextAlign.center : TextAlign.left,
-            maxLines: isNarrow ? 2 : 2,
+            maxLines: subtitleMaxLines,
             overflow: TextOverflow.ellipsis,
           ),
         ],
       ],
     );
+
+    final trailing = effectiveActions.isNotEmpty
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: effectiveActions
+                .map(
+                  (action) => Padding(
+                    padding: const EdgeInsets.only(left: PSpacing.sm),
+                    child: action,
+                  ),
+                )
+                .toList(),
+          )
+        : null;
 
     return Material(
       color: Colors.transparent,
@@ -131,32 +157,17 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
         width: double.infinity,
         decoration: decoration,
         padding: EdgeInsets.only(
-          top: topPadding + PSpacing.md,
-          bottom: PSpacing.md,
+          top: topPadding + verticalPadding,
+          bottom: verticalPadding,
           left: PSpacing.lg,
           right: PSpacing.lg,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (resolvedLeading != null) ...[
-              resolvedLeading,
-              const SizedBox(width: PSpacing.md),
-            ],
-            Expanded(child: titleColumn),
-            if (effectiveActions.isNotEmpty)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: effectiveActions
-                    .map(
-                      (action) => Padding(
-                        padding: const EdgeInsets.only(left: PSpacing.sm),
-                        child: action,
-                      ),
-                    )
-                    .toList(),
-              ),
-          ],
+        child: NavigationToolbar(
+          leading: resolvedLeading,
+          middle: titleColumn,
+          trailing: trailing,
+          centerMiddle: centerTitle,
+          middleSpacing: centerTitle ? PSpacing.sm : PSpacing.md,
         ),
       ),
     );
@@ -171,4 +182,3 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 }
-

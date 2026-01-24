@@ -3,14 +3,17 @@
 //! Ensures all wallet traffic is tunneled through Tor/SOCKS5.
 
 use crate::debug_log::log_debug_event;
+use crate::lightwalletd_pins::extract_spki_from_cert_der;
 use crate::{DnsConfig, DnsResolver, Error, I2pClient, I2pConfig, Result, TorClient, TorConfig};
 use http::Uri;
 use hyper_util::rt::TokioIo;
+use native_tls::TlsConnector as NativeTlsConnector;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio_native_tls::TlsConnector;
 use tokio_socks::tcp::Socks5Stream;
 use tonic::transport::{Channel, Endpoint};
 use tower::service_fn;
@@ -395,6 +398,57 @@ impl TransportManager {
             .map_err(|e| Error::Network(format!("gRPC connection failed: {}", e)))
     }
 
+    /// Open a raw stream using the configured transport mode.
+    async fn open_stream(&self, host: &str, port: u16) -> Result<BoxedStream> {
+        let config = { self.config.lock().await.clone() };
+        let tor_client = { self.tor_client.lock().await.clone() };
+        let i2p_client = { self.i2p_client.lock().await.clone() };
+
+        match config.mode {
+            TransportMode::Tor => {
+                let tor = tor_client
+                    .ok_or_else(|| Error::Network("Tor client not initialized".to_string()))?;
+                connect_tor_stream(tor, host, port).await
+            }
+            TransportMode::I2p => {
+                let i2p = i2p_client
+                    .ok_or_else(|| Error::Network("I2P router not initialized".to_string()))?;
+                connect_i2p_stream(i2p, host, port).await
+            }
+            TransportMode::Socks5 => {
+                let socks5 = config
+                    .socks5
+                    .ok_or_else(|| Error::Network("SOCKS5 config not provided".to_string()))?;
+                connect_socks5_stream(socks5, host, port).await
+            }
+            TransportMode::Direct => connect_direct_stream(config.dns_config, host, port).await,
+        }
+    }
+
+    /// Fetch the SPKI pin from the server using the configured transport.
+    pub async fn fetch_spki_pin(&self, host: &str, port: u16, server_name: &str) -> Result<String> {
+        let stream = self.open_stream(host, port).await?;
+        let connector = NativeTlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true)
+            .build()
+            .map_err(|e| Error::Tls(format!("TLS connector build failed: {}", e)))?;
+        let connector = TlsConnector::from(connector);
+        let stream = connector
+            .connect(server_name, stream)
+            .await
+            .map_err(|e| Error::Tls(format!("TLS handshake failed: {}", e)))?;
+        let cert = stream
+            .get_ref()
+            .peer_certificate()
+            .map_err(|e| Error::Tls(format!("TLS peer certificate error: {}", e)))?
+            .ok_or_else(|| Error::Tls("No peer certificate presented".to_string()))?;
+        let der = cert
+            .to_der()
+            .map_err(|e| Error::Tls(format!("Failed to read DER certificate: {}", e)))?;
+        extract_spki_from_cert_der(&der)
+    }
+
     /// Resolve hostname via configured DNS
     pub async fn resolve_host(&self, hostname: &str) -> Result<Vec<std::net::IpAddr>> {
         let resolver = { self.dns_resolver.lock().await.clone() };
@@ -584,6 +638,39 @@ async fn connect_direct(
     Err(error)
 }
 
+async fn connect_direct_stream(
+    mut dns_config: DnsConfig,
+    host: &str,
+    port: u16,
+) -> Result<BoxedStream> {
+    if let Ok(ip) = host.parse() {
+        let addr = SocketAddr::new(ip, port);
+        let stream = TcpStream::connect(addr).await?;
+        return Ok(Box::new(stream));
+    }
+
+    dns_config.tunnel_dns = false;
+    dns_config.socks_proxy = None;
+    let resolver = DnsResolver::new(dns_config);
+    let addrs = resolver.resolve(host).await?;
+    let mut last_err = None;
+
+    for ip in addrs {
+        let addr = SocketAddr::new(ip, port);
+        match TcpStream::connect(addr).await {
+            Ok(stream) => {
+                return Ok(Box::new(stream));
+            }
+            Err(e) => last_err = Some(e),
+        }
+    }
+
+    Err(Error::Connection(format!(
+        "Direct connection to {}:{} failed: {:?}",
+        host, port, last_err
+    )))
+}
+
 async fn connect_via_socks5(socks5: Socks5Config, uri: Uri) -> Result<ConnectorStream> {
     let (host, port) = uri_host_port(&uri)?;
     let proxy_addr = (socks5.host.as_str(), socks5.port);
@@ -620,6 +707,25 @@ async fn connect_via_socks5(socks5: Socks5Config, uri: Uri) -> Result<ConnectorS
     Ok(TokioIo::new(Box::new(stream)))
 }
 
+async fn connect_socks5_stream(
+    socks5: Socks5Config,
+    host: &str,
+    port: u16,
+) -> Result<BoxedStream> {
+    let proxy_addr = (socks5.host.as_str(), socks5.port);
+    let stream = match (socks5.username.as_ref(), socks5.password.as_ref()) {
+        (Some(user), Some(pass)) => {
+            Socks5Stream::connect_with_password(proxy_addr, (host, port), user, pass)
+                .await
+                .map_err(|e| Error::Network(format!("SOCKS5 connect failed: {}", e)))?
+        }
+        _ => Socks5Stream::connect(proxy_addr, (host, port))
+            .await
+            .map_err(|e| Error::Network(format!("SOCKS5 connect failed: {}", e)))?,
+    };
+    Ok(Box::new(stream))
+}
+
 async fn connect_via_tor(tor: TorClient, uri: Uri) -> Result<ConnectorStream> {
     let (host, port) = uri_host_port(&uri)?;
     let status = tor.clone().status().await;
@@ -648,6 +754,11 @@ async fn connect_via_tor(tor: TorClient, uri: Uri) -> Result<ConnectorStream> {
     }
 }
 
+async fn connect_tor_stream(tor: TorClient, host: &str, port: u16) -> Result<BoxedStream> {
+    let stream = tor.connect_stream(host, port).await?;
+    Ok(Box::new(stream))
+}
+
 async fn connect_via_i2p(i2p: I2pClient, uri: Uri) -> Result<ConnectorStream> {
     let status = i2p.clone().status().await;
     log_debug_event(
@@ -663,6 +774,12 @@ async fn connect_via_i2p(i2p: I2pClient, uri: Uri) -> Result<ConnectorStream> {
         &format!("proxy={}:{} auth=false", proxy.host, proxy.port),
     );
     connect_via_socks5(proxy, uri).await
+}
+
+async fn connect_i2p_stream(i2p: I2pClient, host: &str, port: u16) -> Result<BoxedStream> {
+    i2p.clone().start().await?;
+    let proxy = i2p.clone().proxy_config().await;
+    connect_socks5_stream(proxy, host, port).await
 }
 
 #[cfg(test)]

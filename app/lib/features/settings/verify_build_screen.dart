@@ -8,8 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../ui/atoms/p_button.dart';
-import '../../design/theme.dart';
-import '../../design/compat.dart';
+import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../ui/organisms/p_app_bar.dart';
@@ -426,20 +425,20 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
   Color _statusColor(ReleaseVerificationStatus status) {
     switch (status) {
       case ReleaseVerificationStatus.match:
-        return Colors.green;
+        return AppColors.success;
       case ReleaseVerificationStatus.mismatch:
-        return Colors.red;
+        return AppColors.error;
       case ReleaseVerificationStatus.checking:
-        return Colors.orange;
+        return AppColors.warning;
       case ReleaseVerificationStatus.error:
-        return Colors.red;
+        return AppColors.error;
       case ReleaseVerificationStatus.noRelease:
       case ReleaseVerificationStatus.noChecksums:
       case ReleaseVerificationStatus.noMatchingChecksum:
       case ReleaseVerificationStatus.noLocalArtifact:
-        return Colors.amber;
+        return AppColors.warning;
       case ReleaseVerificationStatus.idle:
-        return Colors.grey;
+        return AppColors.textTertiary;
     }
   }
 
@@ -482,47 +481,45 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         subtitle: 'Release verification and reproducible build steps',
         showBackButton: true,
       ),
-      body: Container(
-        color: Colors.black,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: PirateSpacing.screenPadding(
-                  MediaQuery.of(context).size.width,
-                  vertical: PirateSpacing.xl,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHeader(),
-                    SizedBox(height: PirateSpacing.xl),
-                    _buildReleaseVerificationCard(),
-                    if (_error != null) ...[
-                      SizedBox(height: PirateSpacing.lg),
-                      Container(
-                        padding: EdgeInsets.all(PirateSpacing.md),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.1),
-                          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _error!,
-                          style: PirateTypography.body.copyWith(color: Colors.red[300]),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                    SizedBox(height: PirateSpacing.xl),
-                    _buildBuildInfoCard(),
-                    SizedBox(height: PirateSpacing.xl),
-                    _buildVerificationSteps(),
-                    SizedBox(height: PirateSpacing.xl),
-                    _buildResourceLinks(),
-                  ],
-                ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: PSpacing.screenPadding(
+                MediaQuery.of(context).size.width,
+                vertical: PSpacing.xl,
               ),
-      ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildHeader(),
+                  SizedBox(height: PSpacing.xl),
+                  _buildReleaseVerificationCard(),
+                  if (_error != null) ...[
+                    SizedBox(height: PSpacing.lg),
+                    Container(
+                      padding: EdgeInsets.all(PSpacing.md),
+                      decoration: BoxDecoration(
+                        color: AppColors.errorBackground,
+                        border: Border.all(color: AppColors.errorBorder),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _error!,
+                        style:
+                            PTypography.bodyMedium(color: AppColors.error),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                  SizedBox(height: PSpacing.xl),
+                  _buildBuildInfoCard(),
+                  SizedBox(height: PSpacing.xl),
+                  _buildVerificationSteps(),
+                  SizedBox(height: PSpacing.xl),
+                  _buildResourceLinks(),
+                ],
+              ),
+            ),
     );
   }
 
@@ -533,26 +530,26 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.1),
+            color: AppColors.successBackground,
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.green.withValues(alpha: 0.3), width: 2),
+            border: Border.all(color: AppColors.successBorder, width: 2),
           ),
           child: Icon(
             Icons.verified_user,
             size: 40,
-            color: Colors.green,
+            color: AppColors.success,
           ),
         ),
-        SizedBox(height: PirateSpacing.lg),
+        SizedBox(height: PSpacing.lg),
         Text(
           'Reproducible Builds',
-          style: PirateTypography.h2.copyWith(color: Colors.white),
+          style: PTypography.heading2(color: AppColors.textPrimary),
           textAlign: TextAlign.center,
         ),
-        SizedBox(height: PirateSpacing.md),
+        SizedBox(height: PSpacing.md),
         Text(
           'Verify that this app matches our official source code',
-          style: PirateTypography.body.copyWith(color: Colors.grey[400]),
+          style: PTypography.bodyMedium(color: AppColors.textSecondary),
           textAlign: TextAlign.center,
         ),
       ],
@@ -565,11 +562,11 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     final statusBackground = statusColor.withValues(alpha: 0.15);
 
     return Container(
-      padding: EdgeInsets.all(PirateSpacing.lg),
+      padding: EdgeInsets.all(PSpacing.lg),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: AppColors.backgroundSurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[800]!),
+        border: Border.all(color: AppColors.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -579,16 +576,15 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
               Expanded(
                 child: Text(
                   'Official Release Verification',
-                  style: PirateTypography.bodyLarge.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: PTypography.bodyLarge(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
               Container(
                 padding: EdgeInsets.symmetric(
-                  horizontal: PirateSpacing.sm,
-                  vertical: PirateSpacing.xs,
+                  horizontal: PSpacing.sm,
+                  vertical: PSpacing.xs,
                 ),
                 decoration: BoxDecoration(
                   color: statusBackground,
@@ -597,28 +593,27 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                 ),
                 child: Text(
                   statusLabel,
-                  style: PirateTypography.bodySmall.copyWith(
+                  style: PTypography.bodySmall(
                     color: statusColor,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  ).copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
-          SizedBox(height: PirateSpacing.sm),
+          SizedBox(height: PSpacing.sm),
           Text(
             'Checks the latest GitHub release for published hashes and compares them to this build.',
-            style: PirateTypography.bodySmall.copyWith(color: Colors.grey[500]),
+            style: PTypography.bodySmall(color: AppColors.textSecondary),
           ),
           if (_verificationStatus == ReleaseVerificationStatus.checking) ...[
-            SizedBox(height: PirateSpacing.md),
+            SizedBox(height: PSpacing.md),
             LinearProgressIndicator(
               minHeight: 2,
-              color: PirateTheme.accentColor,
-              backgroundColor: Colors.grey[800],
+              color: AppColors.accentPrimary,
+              backgroundColor: AppColors.backgroundPanel,
             ),
           ],
-          SizedBox(height: PirateSpacing.lg),
+          SizedBox(height: PSpacing.lg),
           _buildVerificationRow('Release', _releaseTag ?? 'Not found'),
           if (_releaseUrl != null)
             _buildVerificationRow(
@@ -672,15 +667,15 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
               _formatTimestamp(_lastCheckedAt!),
             ),
           if (_verificationMessage != null) ...[
-            SizedBox(height: PirateSpacing.md),
+            SizedBox(height: PSpacing.md),
             Text(
               _verificationMessage!,
-              style: PirateTypography.bodySmall.copyWith(
+              style: PTypography.bodySmall(
                 color: statusColor.withValues(alpha: 0.9),
               ),
             ),
           ],
-          SizedBox(height: PirateSpacing.lg),
+          SizedBox(height: PSpacing.lg),
           Row(
             children: [
               Expanded(
@@ -697,7 +692,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                 ),
               ),
               if (_localHash != null) ...[
-                SizedBox(width: PirateSpacing.md),
+                SizedBox(width: PSpacing.md),
                 Expanded(
                   child: PButton(
                     onPressed: () => _copyToClipboard(_localHash!),
@@ -710,12 +705,10 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
             ],
           ),
           if (_signatureAssetName != null) ...[
-            SizedBox(height: PirateSpacing.md),
+            SizedBox(height: PSpacing.md),
             Text(
               'Signature verification in-app requires the release signing key and will be enabled once official signing is published.',
-              style: PirateTypography.bodySmall.copyWith(
-                color: Colors.grey[500],
-              ),
+              style: PTypography.bodySmall(color: AppColors.textSecondary),
             ),
           ],
         ],
@@ -732,7 +725,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final labelWidth = screenWidth < 360 ? 90.0 : 120.0;
     return Padding(
-      padding: EdgeInsets.only(bottom: PirateSpacing.sm),
+      padding: EdgeInsets.only(bottom: PSpacing.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -742,21 +735,20 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
               label,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: PirateTypography.bodySmall.copyWith(color: Colors.grey[500]),
+              style: PTypography.bodySmall(color: AppColors.textSecondary),
             ),
           ),
           Expanded(
             child: SelectableText(
               value,
-              style: PirateTypography.bodySmall.copyWith(
-                color: Colors.white,
-                fontFamily: monospace ? 'monospace' : null,
-              ),
+              style: PTypography.bodySmall(
+                color: AppColors.textPrimary,
+              ).copyWith(fontFamily: monospace ? 'monospace' : null),
             ),
           ),
           if (copyable)
             IconButton(
-              icon: Icon(Icons.copy, size: 16, color: Colors.grey[500]),
+              icon: Icon(Icons.copy, size: 16, color: AppColors.textTertiary),
               padding: EdgeInsets.zero,
               constraints: BoxConstraints(),
               onPressed: () => _copyToClipboard(value),
@@ -769,37 +761,36 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
   Widget _buildBuildInfoCard() {
     if (_buildInfo == null) {
       return Container(
-        padding: EdgeInsets.all(PirateSpacing.lg),
+        padding: EdgeInsets.all(PSpacing.lg),
         decoration: BoxDecoration(
-          color: Colors.grey[900],
+          color: AppColors.backgroundSurface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey[800]!),
+          border: Border.all(color: AppColors.borderSubtle),
         ),
         child: Text(
           'Build information unavailable.',
-          style: PirateTypography.body.copyWith(color: Colors.grey[400]),
+          style: PTypography.bodyMedium(color: AppColors.textSecondary),
         ),
       );
     }
 
     return Container(
-      padding: EdgeInsets.all(PirateSpacing.lg),
+      padding: EdgeInsets.all(PSpacing.lg),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: AppColors.backgroundSurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[800]!),
+        border: Border.all(color: AppColors.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Build Information',
-            style: PirateTypography.bodyLarge.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-            ),
+            style: PTypography.bodyLarge(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w600),
           ),
-          SizedBox(height: PirateSpacing.md),
+          SizedBox(height: PSpacing.md),
           _buildInfoRow('Version', _buildInfo!['version']!),
           _buildInfoRow('Git Commit', _buildInfo!['gitCommit']!, copyable: true),
           _buildInfoRow('Build Date', _buildInfo!['buildDate']!),
@@ -814,7 +805,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final labelWidth = screenWidth < 360 ? 72.0 : 100.0;
     return Padding(
-      padding: EdgeInsets.only(bottom: PirateSpacing.sm),
+      padding: EdgeInsets.only(bottom: PSpacing.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -824,21 +815,20 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
               label,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: PirateTypography.bodySmall.copyWith(color: Colors.grey[500]),
+              style: PTypography.bodySmall(color: AppColors.textSecondary),
             ),
           ),
           Expanded(
             child: SelectableText(
               value,
-              style: PirateTypography.bodySmall.copyWith(
-                color: Colors.white,
-                fontFamily: 'monospace',
-              ),
+              style: PTypography.bodySmall(
+                color: AppColors.textPrimary,
+              ).copyWith(fontFamily: 'monospace'),
             ),
           ),
           if (copyable)
             IconButton(
-              icon: Icon(Icons.copy, size: 16, color: Colors.grey[500]),
+              icon: Icon(Icons.copy, size: 16, color: AppColors.textTertiary),
               padding: EdgeInsets.zero,
               constraints: BoxConstraints(),
               onPressed: () => _copyToClipboard(value),
@@ -854,17 +844,16 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       children: [
         Text(
           'Verification Steps',
-          style: PirateTypography.h4.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
+          style: PTypography.heading4(
+            color: AppColors.textPrimary,
           ),
         ),
-        SizedBox(height: PirateSpacing.md),
+        SizedBox(height: PSpacing.md),
         Text(
           'Use these steps to verify against the published release or reproduce locally:',
-          style: PirateTypography.body.copyWith(color: Colors.grey[400]),
+          style: PTypography.bodyMedium(color: AppColors.textSecondary),
         ),
-        SizedBox(height: PirateSpacing.lg),
+        SizedBox(height: PSpacing.lg),
         _buildStep(
           number: 1,
           title: 'Download Release + Checksums',
@@ -907,7 +896,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     required String code,
   }) {
     return Container(
-      margin: EdgeInsets.only(bottom: PirateSpacing.lg),
+      margin: EdgeInsets.only(bottom: PSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -917,33 +906,31 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: PirateTheme.accentColor.withValues(alpha: 0.2),
+                  color: AppColors.accentPrimary.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
-                  border: Border.all(color: PirateTheme.accentColor, width: 2),
+                  border: Border.all(color: AppColors.accentPrimary, width: 2),
                 ),
                 child: Center(
                   child: Text(
                     '$number',
-                    style: PirateTypography.body.copyWith(
-                      color: PirateTheme.accentColor,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: PTypography.bodyMedium(
+                      color: AppColors.accentPrimary,
+                    ).copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
-              SizedBox(width: PirateSpacing.md),
+              SizedBox(width: PSpacing.md),
               Expanded(
                 child: Text(
                   title,
-                  style: PirateTypography.bodyLarge.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: PTypography.bodyLarge(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
-          SizedBox(height: PirateSpacing.sm),
+          SizedBox(height: PSpacing.sm),
           Padding(
             padding: EdgeInsets.only(left: 44),
             child: Column(
@@ -951,29 +938,28 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
               children: [
                 Text(
                   description,
-                  style: PirateTypography.body.copyWith(color: Colors.grey[400]),
+                  style: PTypography.bodyMedium(color: AppColors.textSecondary),
                 ),
-                SizedBox(height: PirateSpacing.md),
+                SizedBox(height: PSpacing.md),
                 Container(
-                  padding: EdgeInsets.all(PirateSpacing.md),
+                  padding: EdgeInsets.all(PSpacing.md),
                   decoration: BoxDecoration(
-                    color: Colors.grey[900],
+                    color: AppColors.backgroundPanel,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[800]!),
+                    border: Border.all(color: AppColors.borderSubtle),
                   ),
                   child: Row(
                     children: [
                       Expanded(
                         child: SelectableText(
                           code,
-                          style: PirateTypography.bodySmall.copyWith(
-                            color: Colors.green[300],
-                            fontFamily: 'monospace',
-                          ),
+                          style: PTypography.bodySmall(
+                            color: AppColors.success,
+                          ).copyWith(fontFamily: 'monospace'),
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.copy, size: 18, color: Colors.grey[500]),
+                        icon: Icon(Icons.copy, size: 18, color: AppColors.textTertiary),
                         onPressed: () => _copyToClipboard(code),
                       ),
                     ],
@@ -993,26 +979,23 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       children: [
         Text(
           'Resources',
-          style: PirateTypography.h4.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
+          style: PTypography.heading4(color: AppColors.textPrimary),
         ),
-        SizedBox(height: PirateSpacing.md),
+        SizedBox(height: PSpacing.md),
         _buildLinkCard(
           icon: Icons.article,
           title: 'Verification Guide',
           description: 'Complete documentation on reproducible builds',
           url: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/main/docs/verify-build.md',
         ),
-        SizedBox(height: PirateSpacing.sm),
+        SizedBox(height: PSpacing.sm),
         _buildLinkCard(
           icon: Icons.code,
           title: 'Source Code',
           description: 'View the full source code on GitHub',
           url: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet',
         ),
-        SizedBox(height: PirateSpacing.sm),
+        SizedBox(height: PSpacing.sm),
         _buildLinkCard(
           icon: Icons.security,
           title: 'Security Practices',
@@ -1034,37 +1017,36 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       onLongPress: () => _copyToClipboard(url),
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: EdgeInsets.all(PirateSpacing.md),
+        padding: EdgeInsets.all(PSpacing.md),
         decoration: BoxDecoration(
-          color: Colors.grey[900],
+          color: AppColors.backgroundSurface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[800]!),
+          border: Border.all(color: AppColors.borderSubtle),
         ),
         child: Row(
           children: [
-            Icon(icon, color: PirateTheme.accentColor, size: 24),
-            SizedBox(width: PirateSpacing.md),
+            Icon(icon, color: AppColors.accentPrimary, size: 24),
+            SizedBox(width: PSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: PirateTypography.body.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: PTypography.bodyMedium(
+                      color: AppColors.textPrimary,
+                    ).copyWith(fontWeight: FontWeight.w500),
                   ),
                   Text(
                     description,
-                    style: PirateTypography.bodySmall.copyWith(
-                      color: Colors.grey[500],
+                    style: PTypography.bodySmall(
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.open_in_new, color: Colors.grey[600], size: 18),
+            Icon(Icons.open_in_new, color: AppColors.textTertiary, size: 18),
           ],
         ),
       ),
@@ -1122,7 +1104,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Copied to clipboard'),
-          backgroundColor: Colors.green[700],
+          backgroundColor: AppColors.success,
           duration: Duration(seconds: 1),
         ),
       );
@@ -1136,7 +1118,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Invalid link'),
-            backgroundColor: Colors.red[700],
+            backgroundColor: AppColors.error,
             duration: Duration(seconds: 2),
           ),
         );

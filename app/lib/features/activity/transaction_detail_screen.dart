@@ -91,7 +91,12 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
     _memoFuture = FfiBridge.fetchTransactionMemo(
       walletId: walletId,
       txid: widget.tx.txid,
-    );
+    ).then((memo) {
+      if (mounted && memo != null && memo.isNotEmpty) {
+        ref.invalidate(transactionsProvider);
+      }
+      return memo;
+    });
   }
 
   /// Convert PlatformInt64 timestamp to DateTime

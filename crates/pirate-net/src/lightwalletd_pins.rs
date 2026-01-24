@@ -201,7 +201,7 @@ pub async fn extract_spki_from_server(host: &str, port: u16) -> Result<String> {
     extract_spki_from_cert_der(&der)
 }
 
-fn extract_spki_from_cert_der(cert_der: &[u8]) -> Result<String> {
+pub(crate) fn extract_spki_from_cert_der(cert_der: &[u8]) -> Result<String> {
     let cert = CertificateDer::from(cert_der.to_vec());
     let end_entity = EndEntityCert::try_from(&cert)
         .map_err(|e| crate::Error::Tls(format!("Certificate parse failed: {:?}", e)))?;

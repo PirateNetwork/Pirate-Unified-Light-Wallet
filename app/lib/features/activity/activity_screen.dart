@@ -114,8 +114,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
     final transactionsAsync = ref.watch(transactionsProvider);
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = size.width;
     final gutter = PSpacing.responsiveGutter(screenWidth);
 
     final content = transactionsAsync.when(
@@ -179,24 +180,34 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       error: (error, _) => _ActivityErrorState(message: error.toString()),
     );
 
+    final isMobile = PSpacing.isMobile(screenWidth);
+    final isDesktop = PSpacing.isDesktop(screenWidth);
+    final appBarActions =
+        isMobile ? null : const [WalletSwitcherButton(compact: true)];
+
     if (!widget.useScaffold) {
-      return Column(
-        children: [
-          const PAppBar(
-            title: 'Activity',
-            actions: [WalletSwitcherButton(compact: true)],
-          ),
-          Expanded(child: content),
-        ],
+      if (isDesktop) {
+        return content;
+      }
+      return PScaffold(
+        title: 'Activity',
+        useSafeArea: false,
+        appBar: PAppBar(
+          title: 'Activity',
+          actions: appBarActions,
+        ),
+        body: content,
       );
     }
 
     return PScaffold(
       title: 'Activity',
-      appBar: const PAppBar(
-        title: 'Activity',
-        actions: [WalletSwitcherButton(compact: true)],
-      ),
+      appBar: isDesktop
+          ? null
+          : PAppBar(
+              title: 'Activity',
+              actions: appBarActions,
+            ),
       body: content,
     );
   }

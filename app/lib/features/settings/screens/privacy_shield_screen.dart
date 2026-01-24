@@ -24,7 +24,6 @@ import '../providers/transport_providers.dart';
 /// - Transport mode (Tor/SOCKS5/Direct)
 /// - SOCKS5 proxy settings
 /// - DNS resolver
-/// - TLS certificate pins (SPKI)
 /// - Test node connection
 class PrivacyShieldScreen extends ConsumerStatefulWidget {
   const PrivacyShieldScreen({Key? key}) : super(key: key);
@@ -34,7 +33,6 @@ class PrivacyShieldScreen extends ConsumerStatefulWidget {
 }
 
 class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
-  final _spkiPinController = TextEditingController();
   final _torBridgeLinesController = TextEditingController();
   final _torTransportPathController = TextEditingController();
   final _i2pEndpointController = TextEditingController();
@@ -55,7 +53,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
   @override
   void dispose() {
-    _spkiPinController.dispose();
     _torBridgeLinesController.dispose();
     _torTransportPathController.dispose();
     _i2pEndpointController.dispose();
@@ -73,18 +70,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     final transportMode = transportConfig.mode;
     final dnsProvider = transportConfig.dnsProvider;
     final socks5Config = transportConfig.socks5Config;
-    final tlsPins = transportConfig.tlsPins;
     final torBridgeConfig = transportConfig.torBridge;
-    final endpointConfig = ref.watch(lightdEndpointConfigProvider);
-
-    // Initialize SPKI pin from current config
-    final currentPin = endpointConfig.maybeWhen(
-      data: (config) => config.tlsPin,
-      orElse: () => null,
-    );
-    if (_spkiPinController.text.isEmpty && currentPin != null) {
-      _spkiPinController.text = currentPin;
-    }
     if (!_torBridgeFieldsInitialized) {
       _useTorBridges = torBridgeConfig.useBridges;
       _fallbackToTorBridges = torBridgeConfig.fallbackToBridges;
@@ -155,13 +141,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             _buildSectionTitle('DNS Resolver'),
             const SizedBox(height: 8),
             _buildDnsSelector(context, ref, dnsProvider),
-
-            const SizedBox(height: PirateSpacing.lg),
-
-            // TLS Certificate Pinning with SPKI input
-            _buildSectionTitle('TLS Certificate Pinning'),
-            const SizedBox(height: PirateSpacing.sm),
-            _buildTlsPinningWithInput(context, ref, tlsPins),
 
             const SizedBox(height: PirateSpacing.xl),
 
@@ -1031,204 +1010,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     );
   }
 
-  Widget _buildTlsPinningWithInput(
-    BuildContext context,
-    WidgetRef ref,
-    List<Map<String, String>> pins,
-  ) {
-    return PCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Certificate pinning prevents man-in-the-middle attacks by verifying the server\'s public key hash (SPKI).',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: PirateSpacing.md),
-          
-          // SPKI Pin Input Field
-          TextField(
-            controller: _spkiPinController,
-            decoration: InputDecoration(
-              labelText: 'SPKI Pin (Base64 SHA-256)',
-              labelStyle: TextStyle(color: AppColors.textSecondary),
-              hintText: 'sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
-              hintStyle: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.5)),
-              filled: true,
-              fillColor: AppColors.backgroundSurface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: AppColors.borderDefault),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: AppColors.borderDefault),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: AppColors.accentPrimary, width: 2),
-              ),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.content_paste, color: AppColors.textSecondary),
-                    onPressed: () async {
-                      final data = await Clipboard.getData(Clipboard.kTextPlain);
-                      if (data?.text != null) {
-                        setState(() {
-                          _spkiPinController.text = data!.text!.trim();
-                        });
-                      }
-                    },
-                    tooltip: 'Paste from clipboard',
-                  ),
-                  if (_spkiPinController.text.isNotEmpty)
-                    IconButton(
-                      icon: Icon(Icons.clear, color: AppColors.textSecondary),
-                      onPressed: () {
-                        setState(() {
-                          _spkiPinController.clear();
-                        });
-                      },
-                      tooltip: 'Clear',
-                    ),
-                ],
-              ),
-            ),
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-              fontSize: 12,
-            ),
-            maxLines: 2,
-            onChanged: (value) {
-              setState(() {});
-            },
-          ),
-          
-          const SizedBox(height: PirateSpacing.sm),
-          
-          Text(
-            'Format: sha256/<base64-hash> or just the base64 hash (44 characters)',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 11,
-            ),
-          ),
-          
-          const SizedBox(height: PirateSpacing.md),
-          
-          // How to get SPKI pin
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: Text(
-              'How to get the SPKI pin',
-              style: TextStyle(
-                color: AppColors.accentPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            children: [
-              Container(
-                padding: EdgeInsets.all(PirateSpacing.sm),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Run this command to extract the SPKI pin:',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: PirateSpacing.xs),
-                    Container(
-                      padding: EdgeInsets.all(PirateSpacing.sm),
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundBase,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: SelectableText(
-                        'openssl s_client -connect lightd1.piratechain.com:9067 2>/dev/null | \\\n'
-                        '  openssl x509 -pubkey -noout | \\\n'
-                        '  openssl pkey -pubin -outform DER | \\\n'
-                        '  openssl dgst -sha256 -binary | \\\n'
-                        '  openssl enc -base64',
-                        style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontFamily: 'monospace',
-                          fontSize: 10,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: PirateSpacing.md),
-          
-          // Existing pins
-          if (pins.isNotEmpty) ...[
-            Text(
-              'Configured Pins:',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: PirateSpacing.xs),
-            ...pins.map((pin) => _buildPinItem(pin)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPinItem(Map<String, String> pin) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: PirateSpacing.sm),
-      child: Row(
-        children: [
-          Icon(Icons.verified_user, color: AppColors.accentPrimary, size: 16),
-          const SizedBox(width: PirateSpacing.xs),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  pin['host'] ?? '',
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  pin['description'] ?? '',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Future<void> _testNodeConnection(BuildContext context, WidgetRef ref) async {
     setState(() {
@@ -1239,14 +1020,13 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       // Get current endpoint
       final endpointConfig = await ref.read(lightdEndpointConfigProvider.future);
       final url = endpointConfig.url;
-      final tlsPin = _spkiPinController.text.trim().isEmpty 
-          ? null 
-          : _spkiPinController.text.trim();
+      final tlsPin = endpointConfig.tlsPin?.trim();
+      final normalizedPin = tlsPin == null || tlsPin.isEmpty ? null : tlsPin;
 
       // Test the node connection
       final result = await FfiBridge.testNode(
         url: url,
-        tlsPin: tlsPin,
+        tlsPin: normalizedPin,
       );
 
       if (!mounted) return;

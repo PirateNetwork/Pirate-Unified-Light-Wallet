@@ -4,10 +4,13 @@
 
 use crate::debug_log::log_debug_event;
 use crate::{Error, Result};
+use arti_client::config::TorClientConfigBuilder;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use arti_client::config::pt::TransportConfigBuilder;
-use arti_client::config::{BridgeConfigBuilder, CfgPath, TorClientConfigBuilder};
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use arti_client::config::{BridgeConfigBuilder, CfgPath};
 use arti_client::{BootstrapBehavior, StreamPrefs, TorClient as ArtiClient};
-use directories::ProjectDirs;
+use directories::{BaseDirs, ProjectDirs};
 use futures_util::StreamExt;
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
@@ -16,7 +19,7 @@ use hyper::header;
 use hyper::Request;
 use hyper_util::rt::TokioIo;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -104,13 +107,76 @@ impl Default for TorConfig {
     }
 }
 
+fn tor_base_candidates() -> Vec<PathBuf> {
+    let mut bases = Vec::new();
+
+    if let Some(dirs) = ProjectDirs::from("com", "Pirate", "PirateWallet") {
+        bases.push(dirs.data_local_dir().join("tor"));
+    }
+    if let Some(base) = BaseDirs::new() {
+        let candidate = base.data_local_dir().join("PirateWallet").join("tor");
+        if !bases.iter().any(|path| path == &candidate) {
+            bases.push(candidate);
+        }
+    }
+    if let Ok(home) = env::var("HOME") {
+        if !home.trim().is_empty() {
+            let candidate = PathBuf::from(home).join(".pirate_wallet").join("tor");
+            if !bases.iter().any(|path| path == &candidate) {
+                bases.push(candidate);
+            }
+        }
+    }
+
+    bases.push(env::temp_dir().join("pirate_wallet").join("tor"));
+    bases
+}
+
 fn default_tor_dirs() -> (PathBuf, PathBuf) {
-    let base = ProjectDirs::from("com", "Pirate", "PirateWallet")
-        .map(|dirs| dirs.data_local_dir().join("tor"))
-        .unwrap_or_else(|| PathBuf::from("tor_data"));
+    let base = tor_base_candidates()
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| env::temp_dir().join("pirate_wallet").join("tor"));
     (base.join("state"), base.join("cache"))
 }
 
+fn ensure_tor_dirs(state_dir: &Path, cache_dir: &Path) -> Result<(PathBuf, PathBuf)> {
+    if std::fs::create_dir_all(state_dir).is_ok()
+        && std::fs::create_dir_all(cache_dir).is_ok()
+    {
+        return Ok((state_dir.to_path_buf(), cache_dir.to_path_buf()));
+    }
+
+    let mut last_err: Option<std::io::Error> = None;
+    for base in tor_base_candidates() {
+        let state = base.join("state");
+        let cache = base.join("cache");
+        match (std::fs::create_dir_all(&state), std::fs::create_dir_all(&cache)) {
+            (Ok(_), Ok(_)) => {
+                log_debug_event(
+                    "tor.rs:ensure_tor_dirs",
+                    "tor_dir_fallback",
+                    &format!(
+                        "state_dir={} cache_dir={}",
+                        state.display(),
+                        cache.display()
+                    ),
+                );
+                return Ok((state, cache));
+            }
+            (Err(err), _) | (_, Err(err)) => last_err = Some(err),
+        }
+    }
+
+    Err(Error::Tor(format!(
+        "Failed to create Tor state dir: {}",
+        last_err
+            .map(|err| err.to_string())
+            .unwrap_or_else(|| "unknown error".to_string())
+    )))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn transport_binary_filenames(name: &str) -> Vec<String> {
     let mut names = Vec::new();
     if cfg!(windows) {
@@ -128,6 +194,7 @@ fn transport_binary_filenames(name: &str) -> Vec<String> {
     names
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn find_on_path(file_name: &str) -> Option<PathBuf> {
     let path_var = env::var_os("PATH")?;
     for path in env::split_paths(&path_var) {
@@ -139,6 +206,7 @@ fn find_on_path(file_name: &str) -> Option<PathBuf> {
     None
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn tor_browser_candidates(file_name: &str) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
 
@@ -256,6 +324,7 @@ fn tor_browser_candidates(file_name: &str) -> Vec<PathBuf> {
     candidates
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn bundled_transport_candidates(file_name: &str) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     let exe = match env::current_exe() {
@@ -279,6 +348,7 @@ fn bundled_transport_candidates(file_name: &str) -> Vec<PathBuf> {
     candidates
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn find_transport_binary(name: &str) -> Option<PathBuf> {
     let explicit_vars = ["PIRATE_TOR_PT_PATH", "TOR_PT_PATH"];
     for var in explicit_vars {
@@ -775,13 +845,9 @@ fn build_arti_config(
     config: &TorConfig,
     use_bridges: bool,
 ) -> Result<arti_client::TorClientConfig> {
-    std::fs::create_dir_all(&config.state_dir)
-        .map_err(|e| Error::Tor(format!("Failed to create Tor state dir: {}", e)))?;
-    std::fs::create_dir_all(&config.cache_dir)
-        .map_err(|e| Error::Tor(format!("Failed to create Tor cache dir: {}", e)))?;
+    let (state_dir, cache_dir) = ensure_tor_dirs(&config.state_dir, &config.cache_dir)?;
 
-    let mut builder =
-        TorClientConfigBuilder::from_directories(&config.state_dir, &config.cache_dir);
+    let mut builder = TorClientConfigBuilder::from_directories(&state_dir, &cache_dir);
 
     if use_bridges {
         let bridges = config

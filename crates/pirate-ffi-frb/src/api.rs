@@ -8734,6 +8734,37 @@ async fn test_node_inner(
         None
     };
 
+    let actual_pin = if tls_enabled {
+        let server_name = tls_server_name.clone().unwrap_or_else(|| host.clone());
+        match pirate_sync_lightd::fetch_spki_pin(
+            &host,
+            port,
+            Some(server_name),
+            transport,
+            socks5_url.clone(),
+        )
+        .await
+        {
+            Ok(pin) => Some(pin),
+            Err(e) => {
+                tracing::warn!("test_node: Failed to extract SPKI pin: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let tls_pin_matched = match (tls_pin.as_deref(), actual_pin.as_deref()) {
+        (Some(expected), Some(actual)) => {
+            let expected = expected.strip_prefix("sha256/").unwrap_or(expected);
+            let actual = actual.strip_prefix("sha256/").unwrap_or(actual);
+            Some(expected == actual)
+        }
+        (Some(_), None) => None,
+        _ => None,
+    };
+
     let config = LightClientConfig {
         endpoint: endpoint.clone(),
         transport,
@@ -8782,15 +8813,6 @@ async fn test_node_inner(
                         }
                     };
 
-                    // Check TLS pin if provided
-                    let tls_pin_matched = if tls_pin.is_some() {
-                        // Note: TLS pin verification happens during connection
-                        // For now, we assume it matched if connection succeeded
-                        Some(true)
-                    } else {
-                        None
-                    };
-
                     let response_time = start_time.elapsed().as_millis() as u64;
 
                     Ok(crate::models::NodeTestResult {
@@ -8800,7 +8822,7 @@ async fn test_node_inner(
                         tls_enabled,
                         tls_pin_matched,
                         expected_pin: tls_pin,
-                        actual_pin: None, // Would need to extract from TLS handshake
+                        actual_pin,
                         error_message: None,
                         response_time_ms: response_time,
                         server_version,
@@ -8822,9 +8844,9 @@ async fn test_node_inner(
                         latest_block_height: None,
                         transport_mode: format!("{:?}", transport),
                         tls_enabled,
-                        tls_pin_matched: None,
+                        tls_pin_matched,
                         expected_pin: tls_pin,
-                        actual_pin: None,
+                        actual_pin,
                         error_message: Some(format!(
                             "Failed to get latest block: {}",
                             cleaned_error
@@ -8880,9 +8902,9 @@ async fn test_node_inner(
                 latest_block_height: None, // No block height retrieved because connection failed
                 transport_mode: format!("{:?}", transport),
                 tls_enabled,
-                tls_pin_matched: None,
+                tls_pin_matched,
                 expected_pin: tls_pin,
-                actual_pin: None,
+                actual_pin,
                 error_message: Some(final_error),
                 response_time_ms: response_time,
                 server_version: None,

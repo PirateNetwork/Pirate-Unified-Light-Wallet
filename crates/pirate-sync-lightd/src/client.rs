@@ -640,6 +640,23 @@ pub async fn rotate_tor_exit() -> Result<()> {
     Ok(())
 }
 
+/// Fetch the TLS SPKI pin from a lightwalletd endpoint using the configured transport.
+pub async fn fetch_spki_pin(
+    host: &str,
+    port: u16,
+    server_name: Option<String>,
+    mode: TransportMode,
+    socks5_url: Option<String>,
+) -> Result<String> {
+    let config = build_transport_config_from_mode(mode, socks5_url.as_deref())?;
+    let manager = GLOBAL_TRANSPORT.get_or_init(config).await?;
+    let server_name = server_name.unwrap_or_else(|| host.to_string());
+    manager
+        .fetch_spki_pin(host, port, &server_name)
+        .await
+        .map_err(map_net_error)
+}
+
 /// Get current I2P status if transport manager is initialized.
 pub async fn i2p_status() -> Option<pirate_net::I2pStatus> {
     let manager = GLOBAL_TRANSPORT.get().await?;

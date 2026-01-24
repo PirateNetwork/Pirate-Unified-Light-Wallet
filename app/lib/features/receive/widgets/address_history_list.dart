@@ -183,187 +183,243 @@ class _AddressHistoryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PCard(
-      onTap: onOpen,
-      backgroundColor: address.isActive
-          ? AppColors.selectedBackground
-          : AppColors.backgroundSurface,
-      child: Padding(
-        padding: EdgeInsets.all(PSpacing.md),
-        child: Row(
-          children: [
-            // Address Icon
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 380;
+        final actionButtons = [
+          IconButton(
+            onPressed: onColorTag,
+            icon: Icon(
+              Icons.palette_outlined,
+              size: isCompact ? 18 : 20,
+            ),
+            tooltip: 'Color tag',
+            visualDensity: VisualDensity.compact,
+            style: IconButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(32, 32),
+            ),
+          ),
+          IconButton(
+            onPressed: onLabel,
+            icon: Icon(
+              address.label != null ? Icons.edit : Icons.label_outline,
+              size: isCompact ? 18 : 20,
+            ),
+            tooltip: 'Label address',
+            visualDensity: VisualDensity.compact,
+            style: IconButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(32, 32),
+            ),
+          ),
+          IconButton(
+            onPressed: onCopy,
+            icon: Icon(
+              Icons.copy,
+              size: isCompact ? 18 : 20,
+            ),
+            tooltip: 'Copy address',
+            visualDensity: VisualDensity.compact,
+            style: IconButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(32, 32),
+            ),
+          ),
+        ];
+
+        final statusBadges = <Widget>[];
+        if (address.isActive) {
+          statusBadges.add(
             Container(
-              width: 40,
-              height: 40,
+              padding: const EdgeInsets.symmetric(
+                horizontal: PSpacing.xs,
+                vertical: 2,
+              ),
               decoration: BoxDecoration(
-                color: address.isActive
-                    ? AppColors.focusRing
-                    : _resolveColorTag(address),
+                color: AppColors.successBackground,
                 borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+                border: Border.all(color: AppColors.successBorder),
               ),
-              child: Icon(
-                address.isActive ? Icons.check_circle : Icons.shield_outlined,
-                color: AppColors.textOnAccent,
-                size: 20,
-              ),
-            ),
-
-            SizedBox(width: PSpacing.md),
-
-            // Address Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Label or truncated address
-                  Text(
-                    address.label ?? _truncateAddress(address.address),
-                    style: PTypography.bodyMedium().copyWith(
-                      fontWeight: FontWeight.w600,
-                      color:
-                          address.isActive ? AppColors.focusRing : AppColors.textPrimary,
-                    ),
-                  ),
-
-                  SizedBox(height: PSpacing.xs),
-
-                  // Timestamp and status badges
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 12,
-                        color: AppColors.textTertiary,
-                      ),
-                      SizedBox(width: PSpacing.xs),
-                      Text(
-                        _formatTimestamp(address.createdAt),
-                        style: PTypography.bodySmall().copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      if (address.isActive) ...[
-                        SizedBox(width: PSpacing.sm),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: PSpacing.xs,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.successBackground,
-                            borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-                            border: Border.all(color: AppColors.successBorder),
-                          ),
-                          child: Text(
-                            'Active',
-                            style: PTypography.labelSmall(
-                              color: AppColors.success,
-                            ),
-                          ),
-                        ),
-                      ],
-                      if (address.wasShared && !address.isActive) ...[
-                        SizedBox(width: PSpacing.sm),
-                        Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: PSpacing.xs,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.backgroundPanel,
-                            borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-                            border: Border.all(color: AppColors.borderSubtle),
-                          ),
-                          child: Text(
-                            'Shared',
-                            style: PTypography.labelSmall(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  SizedBox(height: PSpacing.xs),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.account_balance_wallet_outlined,
-                        size: 12,
-                        color: AppColors.textTertiary,
-                      ),
-                      SizedBox(width: PSpacing.xs),
-                      Text(
-                        'Balance ${_formatArrr(address.balance)}',
-                        style: PTypography.bodySmall().copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      if (address.pending > BigInt.zero) ...[
-                        SizedBox(width: PSpacing.sm),
-                        Text(
-                          'Pending ${_formatArrr(address.pending)}',
-                          style: PTypography.bodySmall().copyWith(
-                            color: AppColors.warning,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  
-                  // Show label if present (below truncated address)
-                  if (address.label != null && address.label!.isNotEmpty)
-                    Padding(
-                      padding: EdgeInsets.only(top: PSpacing.xs),
-                      child: Text(
-                        address.truncatedAddress,
-                        style: PTypography.codeSmall(
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                    ),
-                ],
+              child: Text(
+                'Active',
+                style: PTypography.labelSmall(
+                  color: AppColors.success,
+                ),
               ),
             ),
+          );
+        }
+        if (address.wasShared && !address.isActive) {
+          statusBadges.add(
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: PSpacing.xs,
+                vertical: 2,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundPanel,
+                borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: Text(
+                'Shared',
+                style: PTypography.labelSmall(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          );
+        }
 
-            // Actions
-            Row(
-              mainAxisSize: MainAxisSize.min,
+        return PCard(
+          onTap: onOpen,
+          backgroundColor: address.isActive
+              ? AppColors.selectedBackground
+              : AppColors.backgroundSurface,
+          child: Padding(
+            padding: EdgeInsets.all(PSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                IconButton(
-                  onPressed: onColorTag,
-                  icon: const Icon(Icons.palette_outlined, size: 20),
-                  tooltip: 'Color tag',
-                  style: IconButton.styleFrom(
-                    foregroundColor: AppColors.textSecondary,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Address Icon
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: address.isActive
+                            ? AppColors.focusRing
+                            : _resolveColorTag(address),
+                        borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+                      ),
+                      child: Icon(
+                        address.isActive
+                            ? Icons.check_circle
+                            : Icons.shield_outlined,
+                        color: AppColors.textOnAccent,
+                        size: 20,
+                      ),
+                    ),
+                    SizedBox(width: PSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Label or truncated address
+                          Text(
+                            address.label ?? _truncateAddress(address.address),
+                            maxLines: isCompact ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: PTypography.bodyMedium().copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: address.isActive
+                                  ? AppColors.focusRing
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: PSpacing.xs),
+                          Wrap(
+                            spacing: PSpacing.sm,
+                            runSpacing: PSpacing.xs,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.access_time,
+                                    size: 12,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                  SizedBox(width: PSpacing.xs),
+                                  Text(
+                                    _formatTimestamp(address.createdAt),
+                                    style: PTypography.bodySmall().copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              ...statusBadges,
+                            ],
+                          ),
+                          SizedBox(height: PSpacing.xs),
+                          Wrap(
+                            spacing: PSpacing.sm,
+                            runSpacing: PSpacing.xs,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.account_balance_wallet_outlined,
+                                    size: 12,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                  SizedBox(width: PSpacing.xs),
+                                  Text(
+                                    'Balance ${_formatArrr(address.balance)}',
+                                    style: PTypography.bodySmall().copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (address.pending > BigInt.zero)
+                                Text(
+                                  'Pending ${_formatArrr(address.pending)}',
+                                  style: PTypography.bodySmall().copyWith(
+                                    color: AppColors.warning,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (address.label != null &&
+                              address.label!.isNotEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(top: PSpacing.xs),
+                              child: Text(
+                                address.truncatedAddress,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: PTypography.codeSmall(
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (!isCompact)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: actionButtons,
+                      ),
+                  ],
                 ),
-                IconButton(
-                  onPressed: onLabel,
-                  icon: Icon(
-                    address.label != null ? Icons.edit : Icons.label_outline,
-                    size: 20,
+                if (isCompact) ...[
+                  SizedBox(height: PSpacing.sm),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      spacing: PSpacing.xs,
+                      runSpacing: PSpacing.xs,
+                      children: actionButtons,
+                    ),
                   ),
-                  tooltip: 'Label address',
-                  style: IconButton.styleFrom(
-                    foregroundColor: AppColors.textSecondary,
-                  ),
-                ),
-                IconButton(
-                  onPressed: onCopy,
-                  icon: const Icon(Icons.copy, size: 20),
-                  tooltip: 'Copy address',
-                  style: IconButton.styleFrom(
-                    foregroundColor: AppColors.textSecondary,
-                  ),
-                ),
+                ],
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

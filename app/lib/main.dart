@@ -1,5 +1,7 @@
-﻿import 'dart:async';
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/ffi/ffi_bridge.dart';
+import 'core/desktop/single_instance.dart';
 import 'design/theme.dart';
 import 'design/tokens/colors.dart';
 import 'features/settings/providers/preferences_providers.dart';
@@ -14,8 +17,19 @@ import 'features/settings/providers/transport_providers.dart';
 import 'routes/app_router.dart';
 import 'core/providers/rust_init_provider.dart';
 
+SingleInstanceLock? _singleInstanceLock;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _installFlutterErrorLogging();
+
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    _singleInstanceLock = await SingleInstanceLock.acquire();
+    if (_singleInstanceLock == null) {
+      stderr.writeln('Pirate Wallet is already running.');
+      exit(0);
+    }
+  }
 
   // Desktop window setup
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -52,6 +66,40 @@ void main() async {
   );
 }
 
+void _installFlutterErrorLogging() {
+  Future<void> writeLog(String message, StackTrace? stack) async {
+    try {
+      final baseDir = Directory.current.path;
+      final logPath = Platform.environment['PIRATE_DEBUG_LOG_PATH'] ??
+          '$baseDir${Platform.pathSeparator}.cursor${Platform.pathSeparator}debug.log';
+      final logFile = File(logPath);
+      await logFile.parent.create(recursive: true);
+      final payload = jsonEncode({
+        'id': 'log_flutter_error',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'message': message,
+        'stack': stack?.toString(),
+      });
+      await logFile.writeAsString(
+        '$payload\n',
+        mode: FileMode.append,
+        flush: true,
+      );
+    } catch (_) {
+      // Ignore logging failures.
+    }
+  }
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    unawaited(writeLog(details.exceptionAsString(), details.stack));
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    unawaited(writeLog(error.toString(), stack));
+    return true;
+  };
+}
 class PirateWalletApp extends ConsumerStatefulWidget {
   const PirateWalletApp({super.key});
 
@@ -88,6 +136,10 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     WidgetsBinding.instance.removeObserver(this);
     if (_isDesktop) {
       windowManager.removeListener(this);
+    }
+    final release = _singleInstanceLock?.release();
+    if (release != null) {
+      unawaited(release);
     }
     super.dispose();
   }
@@ -130,6 +182,10 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     _closing = true;
     unawaited(windowManager.hide());
     unawaited(_shutdownTransports());
+    final release = _singleInstanceLock?.release();
+    if (release != null) {
+      unawaited(release);
+    }
     unawaited(windowManager.destroy());
   }
 
@@ -182,4 +238,6 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     );
   }
 }
+
+
 

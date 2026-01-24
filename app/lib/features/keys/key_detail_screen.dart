@@ -288,10 +288,17 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
         await PDialog.show<void>(
           context: context,
           title: 'Export keys',
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: sections,
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.6,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: sections,
+              ),
+            ),
           ),
           actions: const [
             PDialogAction(label: 'Close'),
@@ -436,60 +443,101 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     final canGenerateSapling = key.hasSapling;
     final canGenerateOrchard = key.hasOrchard;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: PSpacing.sm,
-          runSpacing: PSpacing.sm,
-          children: [
-            if (canGenerateSapling)
-              PButton(
-                onPressed: _isGenerating
-                    ? null
-                    : () => _generateAddress(useOrchard: false),
-                variant: PButtonVariant.secondary,
-                child: const Text('New Sapling address'),
-              ),
-            if (canGenerateOrchard)
-              PButton(
-                onPressed: _isGenerating
-                    ? null
-                    : () => _generateAddress(useOrchard: true),
-                variant: PButtonVariant.secondary,
-                child: const Text('New Orchard address'),
-              ),
-          ],
+    final actions = <_ActionItem>[
+      if (canGenerateSapling)
+        _ActionItem(
+          label: 'New Sapling address',
+          variant: PButtonVariant.secondary,
+          onPressed:
+              _isGenerating ? null : () => _generateAddress(useOrchard: false),
         ),
-        SizedBox(height: PSpacing.sm),
-        Wrap(
-          spacing: PSpacing.sm,
-          runSpacing: PSpacing.sm,
-          children: [
-            if (key.spendable)
-              PButton(
-                onPressed: () => context.push(
-                  '/settings/keys/consolidate?keyId=${key.id}',
-                ),
-                variant: PButtonVariant.secondary,
-                child: const Text('Consolidate balances'),
-              ),
-            if (key.spendable)
-              PButton(
-                onPressed: () => context.push(
-                  '/settings/keys/sweep?keyId=${key.id}',
-                ),
-                variant: PButtonVariant.primary,
-                child: const Text('Sweep balance'),
-              ),
-            PButton(
-              onPressed: () => _exportKeys(key),
-              variant: PButtonVariant.secondary,
-              child: const Text('Export keys'),
+      if (canGenerateOrchard)
+        _ActionItem(
+          label: 'New Orchard address',
+          variant: PButtonVariant.secondary,
+          onPressed:
+              _isGenerating ? null : () => _generateAddress(useOrchard: true),
+        ),
+      if (key.spendable)
+        _ActionItem(
+          label: 'Consolidate balances',
+          variant: PButtonVariant.secondary,
+          onPressed: () => context.push(
+            '/settings/keys/consolidate?keyId=${key.id}',
+          ),
+        ),
+      if (key.spendable)
+        _ActionItem(
+          label: 'Sweep balance',
+          variant: PButtonVariant.primary,
+          onPressed: () => context.push(
+            '/settings/keys/sweep?keyId=${key.id}',
+          ),
+        ),
+      _ActionItem(
+        label: 'Export keys',
+        variant: PButtonVariant.secondary,
+        onPressed: () => _exportKeys(key),
+      ),
+    ];
+
+    return _buildActionGrid(context, actions);
+  }
+
+  Widget _buildActionGrid(BuildContext context, List<_ActionItem> actions) {
+    if (actions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final columns = width >= 900
+            ? 3
+            : width >= 600
+                ? 2
+                : 1;
+        final spacing = PSpacing.sm;
+        final rows = <Widget>[];
+
+        for (var i = 0; i < actions.length; i += columns) {
+          var end = i + columns;
+          if (end > actions.length) {
+            end = actions.length;
+          }
+          final rowItems = actions.sublist(i, end);
+
+          rows.add(
+            Row(
+              children: [
+                for (var columnIndex = 0; columnIndex < columns; columnIndex++)
+                  ...[
+                    if (columnIndex > 0) SizedBox(width: spacing),
+                    Expanded(
+                      child: columnIndex < rowItems.length
+                          ? PButton(
+                              onPressed: rowItems[columnIndex].onPressed,
+                              variant: rowItems[columnIndex].variant,
+                              fullWidth: true,
+                              child: Text(rowItems[columnIndex].label),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+              ],
             ),
-          ],
-        ),
-      ],
+          );
+
+          if (i + columns < actions.length) {
+            rows.add(SizedBox(height: spacing));
+          }
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: rows,
+        );
+      },
     );
   }
 
@@ -534,6 +582,18 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
   Future<void> _copyAddress(AddressBalanceInfo address) async {
     await Clipboard.setData(ClipboardData(text: address.address));
   }
+}
+
+class _ActionItem {
+  const _ActionItem({
+    required this.label,
+    required this.variant,
+    required this.onPressed,
+  });
+
+  final String label;
+  final PButtonVariant variant;
+  final VoidCallback? onPressed;
 }
 
 class _KeySummaryCard extends StatelessWidget {

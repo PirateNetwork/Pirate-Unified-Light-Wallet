@@ -41,10 +41,16 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final size = MediaQuery.of(context).size;
+    final screenWidth = size.width;
+    final isMobile = AppSpacing.isMobile(screenWidth);
+    final isDesktop = AppSpacing.isDesktop(screenWidth);
     final content = ListView(
+      padding: EdgeInsets.zero,
       children: [
         _SettingsSection(
           title: 'Security',
+          topPadding: isMobile ? AppSpacing.lg : AppSpacing.xl,
           children: [
             Consumer(
               builder: (context, ref, _) {
@@ -289,26 +295,34 @@ class SettingsScreen extends ConsumerWidget {
       ],
     );
 
+    final appBarActions =
+        isMobile ? null : const [WalletSwitcherButton(compact: true)];
+
     if (!useScaffold) {
-      return Column(
-        children: [
-          const PAppBar(
-            title: 'Settings',
-            subtitle: 'Security and privacy controls.',
-            actions: [WalletSwitcherButton(compact: true)],
-          ),
-          Expanded(child: content),
-        ],
+      if (isDesktop) {
+        return content;
+      }
+      return PScaffold(
+        title: 'Settings',
+        useSafeArea: false,
+        appBar: PAppBar(
+          title: 'Settings',
+          subtitle: 'Security and privacy controls.',
+          actions: appBarActions,
+        ),
+        body: content,
       );
     }
 
     return PScaffold(
       title: 'Settings',
-      appBar: const PAppBar(
-        title: 'Settings',
-        subtitle: 'Security and privacy controls.',
-        actions: [WalletSwitcherButton(compact: true)],
-      ),
+      appBar: isDesktop
+          ? null
+          : PAppBar(
+              title: 'Settings',
+              subtitle: 'Security and privacy controls.',
+              actions: appBarActions,
+            ),
       body: content,
     );
   }
@@ -485,10 +499,12 @@ class SettingsScreen extends ConsumerWidget {
 class _SettingsSection extends StatelessWidget {
   final String title;
   final List<Widget> children;
+  final double? topPadding;
 
   const _SettingsSection({
     required this.title,
     required this.children,
+    this.topPadding,
   });
 
   @override
@@ -497,9 +513,9 @@ class _SettingsSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(
+          padding: EdgeInsets.fromLTRB(
             AppSpacing.lg,
-            AppSpacing.xl,
+            topPadding ?? AppSpacing.xl,
             AppSpacing.lg,
             AppSpacing.md,
           ),

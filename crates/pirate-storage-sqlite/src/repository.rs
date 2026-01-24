@@ -1978,7 +1978,7 @@ impl<'a> Repository<'a> {
                     timestamp,
                     amount: -outgoing_amount,
                     fee,
-                    memo: None,
+                    memo: memo.clone(),
                 });
                 transactions.push(TransactionRecord {
                     txid,

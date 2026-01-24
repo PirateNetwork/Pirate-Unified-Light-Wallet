@@ -96,17 +96,12 @@ class TransactionRowV2 extends StatelessWidget {
                           color: AppColors.textSecondary,
                         ),
                       ),
+                      if (memo != null && memo!.isNotEmpty) ...[
+                        const SizedBox(width: PSpacing.sm),
+                        const _MemoIndicator(),
+                      ],
                     ],
                   ),
-                  if (memo != null && memo!.isNotEmpty) ...[
-                    const SizedBox(height: PSpacing.xs),
-                    Text(
-                      memo!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: PTypography.bodySmall(color: AppColors.textTertiary),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -119,6 +114,31 @@ class TransactionRowV2 extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MemoIndicator extends StatelessWidget {
+  const _MemoIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: PSpacing.xs,
+        vertical: PSpacing.xxs,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.selectedBackground,
+        borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+        border: Border.all(color: AppColors.selectedBorder),
+      ),
+      child: Text(
+        'Has memo',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: PTypography.labelSmall(color: AppColors.textSecondary),
       ),
     );
   }

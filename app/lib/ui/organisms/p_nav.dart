@@ -90,25 +90,30 @@ class PNav extends StatelessWidget {
         ),
         padding: const EdgeInsets.symmetric(horizontal: PSpacing.md, vertical: PSpacing.sm),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             ...left.map(
-              (dest) => _NavItem(
-                destination: dest,
-                isSelected: destinations.indexOf(dest) == currentIndex,
-                onTap: () => onDestinationSelected(destinations.indexOf(dest)),
+              (dest) => Expanded(
+                child: _NavItem(
+                  destination: dest,
+                  isSelected: destinations.indexOf(dest) == currentIndex,
+                  onTap: () => onDestinationSelected(destinations.indexOf(dest)),
+                ),
               ),
             ),
-            _PayAction(
-              icon: payDest.selectedIcon ?? payDest.icon,
-              label: payDest.label,
-              onTap: onPayTap!,
+            Expanded(
+              child: _PayAction(
+                icon: payDest.selectedIcon ?? payDest.icon,
+                label: payDest.label,
+                onTap: onPayTap!,
+              ),
             ),
             ...right.map(
-              (dest) => _NavItem(
-                destination: dest,
-                isSelected: destinations.indexOf(dest) == currentIndex,
-                onTap: () => onDestinationSelected(destinations.indexOf(dest)),
+              (dest) => Expanded(
+                child: _NavItem(
+                  destination: dest,
+                  isSelected: destinations.indexOf(dest) == currentIndex,
+                  onTap: () => onDestinationSelected(destinations.indexOf(dest)),
+                ),
               ),
             ),
           ],
@@ -146,23 +151,21 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isSelected ? AppColors.focusRing : AppColors.textSecondary;
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: PSpacing.xs),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(destination.icon, color: color, size: PSpacing.iconMD),
-              const SizedBox(height: PSpacing.xxs),
-              Text(
-                destination.label,
-                style: PTypography.labelSmall(color: color),
-              ),
-            ],
-          ),
+    return InkWell(
+      borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: PSpacing.xs),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(destination.icon, color: color, size: PSpacing.iconMD),
+            const SizedBox(height: PSpacing.xxs),
+            Text(
+              destination.label,
+              style: PTypography.labelSmall(color: color),
+            ),
+          ],
         ),
       ),
     );

@@ -116,6 +116,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       final viewModel = ref.read(receiveViewModelProvider.notifier);
       
       final screenWidth = MediaQuery.of(context).size.width;
+      final isMobile = PSpacing.isMobile(screenWidth);
       final gutter = PSpacing.responsiveGutter(screenWidth);
       final amountText = _amountController.text.trim();
       final memoText = _memoController.text.trim();
@@ -130,10 +131,10 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       final addressHistory = _sortedAddresses(state.addressHistory);
 
       return PScaffold(
-        appBar: const PAppBar(
+        appBar: PAppBar(
           title: 'Receive',
           subtitle: 'Share a QR code to get paid.',
-          actions: [WalletSwitcherButton(compact: true)],
+          actions: isMobile ? null : const [WalletSwitcherButton(compact: true)],
           showBackButton: true,
           centerTitle: true,
         ),

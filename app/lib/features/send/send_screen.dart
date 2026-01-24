@@ -1541,6 +1541,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         : _currentStep == SendStep.sending
             ? 'Sending'
             : 'Send';
+    final isMobile = PSpacing.isMobile(MediaQuery.of(context).size.width);
 
     return PScaffold(
       title: 'Send',
@@ -1559,7 +1560,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
               tooltip: 'Add recipient',
               onPressed: _addOutput,
             ),
-          const WalletSwitcherButton(compact: true),
+          if (!isMobile) const WalletSwitcherButton(compact: true),
         ],
       ),
       body: _buildStepContent(),
