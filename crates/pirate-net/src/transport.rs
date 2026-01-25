@@ -707,11 +707,7 @@ async fn connect_via_socks5(socks5: Socks5Config, uri: Uri) -> Result<ConnectorS
     Ok(TokioIo::new(Box::new(stream)))
 }
 
-async fn connect_socks5_stream(
-    socks5: Socks5Config,
-    host: &str,
-    port: u16,
-) -> Result<BoxedStream> {
+async fn connect_socks5_stream(socks5: Socks5Config, host: &str, port: u16) -> Result<BoxedStream> {
     let proxy_addr = (socks5.host.as_str(), socks5.port);
     let stream = match (socks5.username.as_ref(), socks5.password.as_ref()) {
         (Some(user), Some(pass)) => {

@@ -4,9 +4,9 @@
 
 use crate::debug_log::log_debug_event;
 use crate::{Error, Result};
-use arti_client::config::TorClientConfigBuilder;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use arti_client::config::pt::TransportConfigBuilder;
+use arti_client::config::TorClientConfigBuilder;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use arti_client::config::{BridgeConfigBuilder, CfgPath};
 use arti_client::{BootstrapBehavior, StreamPrefs, TorClient as ArtiClient};
@@ -141,9 +141,7 @@ fn default_tor_dirs() -> (PathBuf, PathBuf) {
 }
 
 fn ensure_tor_dirs(state_dir: &Path, cache_dir: &Path) -> Result<(PathBuf, PathBuf)> {
-    if std::fs::create_dir_all(state_dir).is_ok()
-        && std::fs::create_dir_all(cache_dir).is_ok()
-    {
+    if std::fs::create_dir_all(state_dir).is_ok() && std::fs::create_dir_all(cache_dir).is_ok() {
         return Ok((state_dir.to_path_buf(), cache_dir.to_path_buf()));
     }
 
@@ -151,7 +149,10 @@ fn ensure_tor_dirs(state_dir: &Path, cache_dir: &Path) -> Result<(PathBuf, PathB
     for base in tor_base_candidates() {
         let state = base.join("state");
         let cache = base.join("cache");
-        match (std::fs::create_dir_all(&state), std::fs::create_dir_all(&cache)) {
+        match (
+            std::fs::create_dir_all(&state),
+            std::fs::create_dir_all(&cache),
+        ) {
             (Ok(_), Ok(_)) => {
                 log_debug_event(
                     "tor.rs:ensure_tor_dirs",

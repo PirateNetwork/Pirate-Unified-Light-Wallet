@@ -7,9 +7,9 @@ use base64::engine::general_purpose::STANDARD as Base64Standard;
 use base64::Engine;
 use native_tls::TlsConnector as NativeTlsConnector;
 use rustls_pki_types::CertificateDer;
-use webpki::EndEntityCert;
 use sha2::{Digest, Sha256};
 use tokio_native_tls::TlsConnector;
+use webpki::EndEntityCert;
 
 /// Known Pirate Chain lightwalletd servers
 pub struct LightwalletdPins;
@@ -233,9 +233,7 @@ fn pem_to_der(pem: &str) -> Result<Vec<u8>> {
     }
 
     if b64.is_empty() {
-        return Err(crate::Error::Tls(
-            "No PEM certificate found".to_string(),
-        ));
+        return Err(crate::Error::Tls("No PEM certificate found".to_string()));
     }
 
     Base64Standard

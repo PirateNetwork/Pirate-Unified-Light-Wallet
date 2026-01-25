@@ -94,7 +94,6 @@ enum AddressBookColorTag {
   purple,
   pink,
   gray,
-  ;
 }
 
 /// Address book entry for FFI
@@ -515,7 +514,6 @@ enum KeyTypeInfo {
 
   /// Imported viewing key
   importedViewing,
-  ;
 }
 
 /// Network information
@@ -649,11 +647,7 @@ class Output {
   /// Optional memo (max 512 bytes UTF-8)
   final String? memo;
 
-  const Output({
-    required this.addr,
-    required this.amount,
-    this.memo,
-  });
+  const Output({required this.addr, required this.amount, this.memo});
 
   @override
   int get hashCode => addr.hashCode ^ amount.hashCode ^ memo.hashCode;
@@ -748,11 +742,7 @@ class SignedTx {
   /// Transaction size in bytes
   final BigInt size;
 
-  const SignedTx({
-    required this.txid,
-    required this.raw,
-    required this.size,
-  });
+  const SignedTx({required this.txid, required this.raw, required this.size});
 
   @override
   int get hashCode => txid.hashCode ^ raw.hashCode ^ size.hashCode;
@@ -810,7 +800,6 @@ enum SyncMode {
 
   /// Deep scan (trial decrypt all notes)
   deep,
-  ;
 }
 
 /// Sync stage
@@ -826,7 +815,6 @@ enum SyncStage {
 
   /// Verifying chain
   verify,
-  ;
 }
 
 /// Sync status with full performance metrics

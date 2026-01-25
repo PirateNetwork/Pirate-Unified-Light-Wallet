@@ -1,6 +1,6 @@
 rust_input: crate::api
 rust_root: .
-dart_output: ../../app/flutter/lib/ffi/bridge_generated.dart
+dart_output: ../../app/lib/core/ffi/generated
 rust_output: src/bridge_generated.rs
 c_output: ios/bridge_generated.h
 duplicated_c_output:

@@ -1,7 +1,6 @@
 // Lightweight shim that routes the app's FFI calls to the generated
 // flutter_rust_bridge bindings. All generated code lives under
-// `app/flutter/lib/ffi/bridge_generated.dart` and is re-exported via
-// `app/lib/ffi/bridge_generated.dart`.
+// `app/lib/core/ffi/generated`.
 
 library ffi_bridge;
 
@@ -76,8 +75,8 @@ typedef FeeInfo = api.FeeInfo;
 /// cd app && flutter pub get && flutter run
 /// ```
 ///
-/// After codegen, the generated code in `app/flutter/lib/ffi/bridge_generated.dart`
-/// (see `crates/pirate-ffi-frb/api.toml`) should replace the stub implementations
+/// After codegen, the generated code in `app/lib/core/ffi/generated`
+/// (see `flutter_rust_bridge.yaml`) should replace the stub implementations
 /// in this file.
 ///
 /// @see crates/pirate-ffi-frb/src/api.rs for Rust implementation

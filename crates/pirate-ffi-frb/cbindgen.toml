@@ -1,0 +1,6 @@
+# cbindgen configuration for pirate-ffi-frb
+#
+# This only informs cbindgen how to handle cfgs it sees during header generation.
+
+[defines]
+"target_family = \"wasm\"" = "FRB_WASM"

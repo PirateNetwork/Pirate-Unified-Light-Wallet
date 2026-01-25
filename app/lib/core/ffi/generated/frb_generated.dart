@@ -36,12 +36,8 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
   /// Initialize flutter_rust_bridge in mock mode.
   /// No libraries for FFI are loaded.
-  static void initMock({
-    required RustLibApi api,
-  }) {
-    instance.initMockImpl(
-      api: api,
-    );
+  static void initMock({required RustLibApi api}) {
+    instance.initMockImpl(api: api);
   }
 
   /// Dispose flutter_rust_bridge
@@ -73,24 +69,27 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
-    stem: 'pirate_ffi_frb',
-    ioDirectory: '../crates/pirate-ffi-frb/target/release/',
-    webPrefix: 'pkg/',
-  );
+        stem: 'pirate_ffi_frb',
+        ioDirectory: '../crates/pirate-ffi-frb/target/release/',
+        webPrefix: 'pkg/',
+      );
 }
 
 abstract class RustLibApi extends BaseApi {
   Future<String> crateApiAcknowledgeSeedWarning();
 
-  Future<AddressBookEntryFfi> crateApiAddAddressBookEntry(
-      {required String walletId,
-      required String address,
-      required String label,
-      String? notes,
-      required AddressBookColorTag colorTag});
+  Future<AddressBookEntryFfi> crateApiAddAddressBookEntry({
+    required String walletId,
+    required String address,
+    required String label,
+    String? notes,
+    required AddressBookColorTag colorTag,
+  });
 
-  Future<bool> crateApiAddressExistsInBook(
-      {required String walletId, required String address});
+  Future<bool> crateApiAddressExistsInBook({
+    required String walletId,
+    required String address,
+  });
 
   Future<bool> crateApiAreSeedScreenshotsBlocked();
 
@@ -98,46 +97,54 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiBroadcastTx({required SignedTx signed});
 
-  Future<PendingTx> crateApiBuildConsolidationTx(
-      {required String walletId,
-      required PlatformInt64 keyId,
-      required String targetAddress,
-      BigInt? feeOpt});
+  Future<PendingTx> crateApiBuildConsolidationTx({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required String targetAddress,
+    BigInt? feeOpt,
+  });
 
-  Future<PendingTx> crateApiBuildSweepTx(
-      {required String walletId,
-      required String targetAddress,
-      BigInt? feeOpt,
-      Int64List? keyIdsFilter,
-      Int64List? addressIdsFilter});
+  Future<PendingTx> crateApiBuildSweepTx({
+    required String walletId,
+    required String targetAddress,
+    BigInt? feeOpt,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  });
 
-  Future<PendingTx> crateApiBuildTx(
-      {required String walletId,
-      required List<Output> outputs,
-      BigInt? feeOpt});
+  Future<PendingTx> crateApiBuildTx({
+    required String walletId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+  });
 
-  Future<PendingTx> crateApiBuildTxFiltered(
-      {required String walletId,
-      required List<Output> outputs,
-      BigInt? feeOpt,
-      Int64List? keyIdsFilter,
-      Int64List? addressIdsFilter});
+  Future<PendingTx> crateApiBuildTxFiltered({
+    required String walletId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  });
 
-  Future<PendingTx> crateApiBuildTxForKey(
-      {required String walletId,
-      required PlatformInt64 keyId,
-      required List<Output> outputs,
-      BigInt? feeOpt});
+  Future<PendingTx> crateApiBuildTxForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+  });
 
   Future<void> crateApiCancelSeedExport();
 
   Future<void> crateApiCancelSync({required String walletId});
 
-  Future<void> crateApiChangeAppPassphrase(
-      {required String currentPassphrase, required String newPassphrase});
+  Future<void> crateApiChangeAppPassphrase({
+    required String currentPassphrase,
+    required String newPassphrase,
+  });
 
-  Future<void> crateApiChangeAppPassphraseWithCached(
-      {required String newPassphrase});
+  Future<void> crateApiChangeAppPassphraseWithCached({
+    required String newPassphrase,
+  });
 
   Future<void> crateApiClearDuressPassphrase();
 
@@ -145,18 +152,26 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiCompleteSeedBiometric({required bool success});
 
-  Future<String> crateApiCreateWallet(
-      {required String name, int? entropyLen, int? birthdayOpt});
+  Future<String> crateApiCreateWallet({
+    required String name,
+    int? entropyLen,
+    int? birthdayOpt,
+  });
 
   Future<String> crateApiCurrentReceiveAddress({required String walletId});
 
-  Future<void> crateApiDeleteAddressBookEntry(
-      {required String walletId, required PlatformInt64 id});
+  Future<void> crateApiDeleteAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+  });
 
   Future<void> crateApiDeleteWallet({required String walletId});
 
-  Future<BigInt> crateApiEstimateFee(
-      {required BigInt numOutputs, required bool hasMemo, String? feePolicy});
+  Future<BigInt> crateApiEstimateFee({
+    required BigInt numOutputs,
+    required bool hasMemo,
+    String? feePolicy,
+  });
 
   Future<void> crateApiExitDecoyMode();
 
@@ -164,8 +179,10 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiExportIvkSecure({required String walletId});
 
-  Future<KeyExportInfo> crateApiExportKeyGroupKeys(
-      {required String walletId, required PlatformInt64 keyId});
+  Future<KeyExportInfo> crateApiExportKeyGroupKeys({
+    required String walletId,
+    required PlatformInt64 keyId,
+  });
 
   Future<String> crateApiExportOrchardIvk({required String walletId});
 
@@ -173,21 +190,28 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiExportSeed({required String walletId});
 
-  Future<List<String>> crateApiExportSeedWithCachedPassphrase(
-      {required String walletId});
+  Future<List<String>> crateApiExportSeedWithCachedPassphrase({
+    required String walletId,
+  });
 
-  Future<List<String>> crateApiExportSeedWithPassphrase(
-      {required String walletId, required String passphrase});
+  Future<List<String>> crateApiExportSeedWithPassphrase({
+    required String walletId,
+    required String passphrase,
+  });
 
-  Future<String?> crateApiFetchTransactionMemo(
-      {required String walletId, required String txid, int? outputIndex});
+  Future<String?> crateApiFetchTransactionMemo({
+    required String walletId,
+    required String txid,
+    int? outputIndex,
+  });
 
   Future<String> crateApiFormatAmount({required BigInt arrrtoshis});
 
-  Future<String> crateApiGenerateAddressForKey(
-      {required String walletId,
-      required PlatformInt64 keyId,
-      required bool useOrchard});
+  Future<String> crateApiGenerateAddressForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required bool useOrchard,
+  });
 
   Future<String> crateApiGenerateMnemonic({int? wordCount});
 
@@ -195,17 +219,23 @@ abstract class RustLibApi extends BaseApi {
 
   Future<int> crateApiGetAddressBookCount({required String walletId});
 
-  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntry(
-      {required String walletId, required PlatformInt64 id});
+  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+  });
 
-  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntryByAddress(
-      {required String walletId, required String address});
+  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntryByAddress({
+    required String walletId,
+    required String address,
+  });
 
-  Future<List<AddressBookEntryFfi>> crateApiGetAddressBookFavorites(
-      {required String walletId});
+  Future<List<AddressBookEntryFfi>> crateApiGetAddressBookFavorites({
+    required String walletId,
+  });
 
-  Future<int> crateApiGetAutoConsolidationCandidateCount(
-      {required String walletId});
+  Future<int> crateApiGetAutoConsolidationCandidateCount({
+    required String walletId,
+  });
 
   Future<bool> crateApiGetAutoConsolidationEnabled({required String walletId});
 
@@ -215,8 +245,10 @@ abstract class RustLibApi extends BaseApi {
 
   Future<BuildInfo> crateApiGetBuildInfo();
 
-  Future<CheckpointInfo?> crateApiGetCheckpointDetails(
-      {required String walletId, required int height});
+  Future<CheckpointInfo?> crateApiGetCheckpointDetails({
+    required String walletId,
+    required int height,
+  });
 
   Future<String?> crateApiGetDuressPassphraseHash();
 
@@ -224,23 +256,30 @@ abstract class RustLibApi extends BaseApi {
 
   Future<BigInt?> crateApiGetIvkClipboardRemaining();
 
-  Future<String?> crateApiGetLabelForAddress(
-      {required String walletId, required String address});
+  Future<String?> crateApiGetLabelForAddress({
+    required String walletId,
+    required String address,
+  });
 
   Future<CheckpointInfo?> crateApiGetLastCheckpoint({required String walletId});
 
   Future<String> crateApiGetLightdEndpoint({required String walletId});
 
-  Future<LightdEndpoint> crateApiGetLightdEndpointConfig(
-      {required String walletId});
+  Future<LightdEndpoint> crateApiGetLightdEndpointConfig({
+    required String walletId,
+  });
 
   Future<NetworkInfo> crateApiGetNetworkInfo();
 
-  Future<List<AddressBookEntryFfi>> crateApiGetRecentlyUsedAddresses(
-      {required String walletId, required int limit});
+  Future<List<AddressBookEntryFfi>> crateApiGetRecentlyUsedAddresses({
+    required String walletId,
+    required int limit,
+  });
 
-  Future<String> crateApiGetRecommendedBackgroundSyncMode(
-      {required String walletId, required int minutesSinceLast});
+  Future<String> crateApiGetRecommendedBackgroundSyncMode({
+    required String walletId,
+    required int minutesSinceLast,
+  });
 
   Future<BigInt?> crateApiGetSeedClipboardRemaining();
 
@@ -248,8 +287,10 @@ abstract class RustLibApi extends BaseApi {
 
   Future<SeedExportWarnings> crateApiGetSeedExportWarnings();
 
-  Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs(
-      {required String walletId, int? limit});
+  Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs({
+    required String walletId,
+    int? limit,
+  });
 
   Future<String> crateApiGetTorStatus();
 
@@ -257,11 +298,13 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiGetVaultMode();
 
-  Future<WatchOnlyBannerInfo?> crateApiGetWatchOnlyBanner(
-      {required String walletId});
+  Future<WatchOnlyBannerInfo?> crateApiGetWatchOnlyBanner({
+    required String walletId,
+  });
 
-  Future<WatchOnlyCapabilitiesInfo> crateApiGetWatchOnlyCapabilities(
-      {required String walletId});
+  Future<WatchOnlyCapabilitiesInfo> crateApiGetWatchOnlyCapabilities({
+    required String walletId,
+  });
 
   Future<bool> crateApiHasAppPassphrase();
 
@@ -269,21 +312,26 @@ abstract class RustLibApi extends BaseApi {
 
   Future<bool> crateApiHasPanicPin();
 
-  Future<String> crateApiImportIvk(
-      {required String name,
-      String? saplingIvk,
-      String? orchardIvk,
-      required int birthday});
+  Future<String> crateApiImportIvk({
+    required String name,
+    String? saplingIvk,
+    String? orchardIvk,
+    required int birthday,
+  });
 
-  Future<String> crateApiImportIvkAsWatchOnly(
-      {required String name, required String ivk, required int birthdayHeight});
+  Future<String> crateApiImportIvkAsWatchOnly({
+    required String name,
+    required String ivk,
+    required int birthdayHeight,
+  });
 
-  Future<PlatformInt64> crateApiImportSpendingKey(
-      {required String walletId,
-      String? saplingKey,
-      String? orchardKey,
-      String? label,
-      required int birthdayHeight});
+  Future<PlatformInt64> crateApiImportSpendingKey({
+    required String walletId,
+    String? saplingKey,
+    String? orchardKey,
+    String? label,
+    required int birthdayHeight,
+  });
 
   Future<bool> crateApiIsBackgroundSyncNeeded({required String walletId});
 
@@ -291,146 +339,191 @@ abstract class RustLibApi extends BaseApi {
 
   Future<bool> crateApiIsSyncRunning({required String walletId});
 
-  Future<void> crateApiLabelAddress(
-      {required String walletId, required String addr, required String label});
+  Future<void> crateApiLabelAddress({
+    required String walletId,
+    required String addr,
+    required String label,
+  });
 
   Future<LightdEndpoint> crateApiLightdEndpointDefault();
 
-  Future<String> crateApiLightdEndpointDisplayString(
-      {required LightdEndpoint that});
+  Future<String> crateApiLightdEndpointDisplayString({
+    required LightdEndpoint that,
+  });
 
   Future<String> crateApiLightdEndpointUrl({required LightdEndpoint that});
 
-  Future<List<AddressBalanceInfo>> crateApiListAddressBalances(
-      {required String walletId, PlatformInt64? keyId});
+  Future<List<AddressBalanceInfo>> crateApiListAddressBalances({
+    required String walletId,
+    PlatformInt64? keyId,
+  });
 
-  Future<List<AddressBookEntryFfi>> crateApiListAddressBook(
-      {required String walletId});
+  Future<List<AddressBookEntryFfi>> crateApiListAddressBook({
+    required String walletId,
+  });
 
   Future<List<AddressInfo>> crateApiListAddresses({required String walletId});
 
-  Future<List<KeyAddressInfo>> crateApiListAddressesForKey(
-      {required String walletId, required PlatformInt64 keyId});
+  Future<List<KeyAddressInfo>> crateApiListAddressesForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+  });
 
   Future<List<KeyGroupInfo>> crateApiListKeyGroups({required String walletId});
 
-  Future<List<TxInfo>> crateApiListTransactions(
-      {required String walletId, int? limit});
+  Future<List<TxInfo>> crateApiListTransactions({
+    required String walletId,
+    int? limit,
+  });
 
   Future<List<WalletMeta>> crateApiListWallets();
 
-  Future<void> crateApiMarkAddressUsed(
-      {required String walletId, required String address});
+  Future<void> crateApiMarkAddressUsed({
+    required String walletId,
+    required String address,
+  });
 
   Future<String> crateApiNextReceiveAddress({required String walletId});
 
   Future<BigInt> crateApiParseAmount({required String arrr});
 
-  Future<void> crateApiRenameWallet(
-      {required String walletId, required String newName});
+  Future<void> crateApiRenameWallet({
+    required String walletId,
+    required String newName,
+  });
 
-  Future<void> crateApiRescan(
-      {required String walletId, required int fromHeight});
+  Future<void> crateApiRescan({
+    required String walletId,
+    required int fromHeight,
+  });
 
   Future<void> crateApiResealDbKeysForBiometrics();
 
-  Future<String> crateApiRestoreWallet(
-      {required String name,
-      required String mnemonic,
-      String? passphraseOpt,
-      int? birthdayOpt});
+  Future<String> crateApiRestoreWallet({
+    required String name,
+    required String mnemonic,
+    String? passphraseOpt,
+    int? birthdayOpt,
+  });
 
   Future<void> crateApiRotateTorExit();
 
-  Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook(
-      {required String walletId, required String query});
+  Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook({
+    required String walletId,
+    required String query,
+  });
 
-  Future<void> crateApiSetAddressColorTag(
-      {required String walletId,
-      required String addr,
-      required AddressBookColorTag colorTag});
+  Future<void> crateApiSetAddressColorTag({
+    required String walletId,
+    required String addr,
+    required AddressBookColorTag colorTag,
+  });
 
   Future<void> crateApiSetAppPassphrase({required String passphrase});
 
-  Future<void> crateApiSetAutoConsolidationEnabled(
-      {required String walletId, required bool enabled});
+  Future<void> crateApiSetAutoConsolidationEnabled({
+    required String walletId,
+    required bool enabled,
+  });
 
   Future<void> crateApiSetDecoyWalletName({required String name});
 
   Future<String> crateApiSetDuressPassphrase({String? customPassphrase});
 
-  Future<void> crateApiSetLightdEndpoint(
-      {required String walletId, required String url, String? tlsPinOpt});
+  Future<void> crateApiSetLightdEndpoint({
+    required String walletId,
+    required String url,
+    String? tlsPinOpt,
+  });
 
   Future<void> crateApiSetPanicPin({required String pin});
 
-  Future<void> crateApiSetTorBridgeSettings(
-      {required bool useBridges,
-      required bool fallbackToBridges,
-      required String transport,
-      required List<String> bridgeLines,
-      String? transportPath});
+  Future<void> crateApiSetTorBridgeSettings({
+    required bool useBridges,
+    required bool fallbackToBridges,
+    required String transport,
+    required List<String> bridgeLines,
+    String? transportPath,
+  });
 
   Future<void> crateApiSetTunnel({required TunnelMode mode});
 
-  Future<void> crateApiSetWalletBirthdayHeight(
-      {required String walletId, required int birthdayHeight});
+  Future<void> crateApiSetWalletBirthdayHeight({
+    required String walletId,
+    required int birthdayHeight,
+  });
 
   Future<void> crateApiShutdownTransport();
 
-  Future<SignedTx> crateApiSignTx(
-      {required String walletId, required PendingTx pending});
+  Future<SignedTx> crateApiSignTx({
+    required String walletId,
+    required PendingTx pending,
+  });
 
-  Future<SignedTx> crateApiSignTxFiltered(
-      {required String walletId,
-      required PendingTx pending,
-      Int64List? keyIdsFilter,
-      Int64List? addressIdsFilter});
+  Future<SignedTx> crateApiSignTxFiltered({
+    required String walletId,
+    required PendingTx pending,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  });
 
-  Future<SignedTx> crateApiSignTxForKey(
-      {required String walletId,
-      required PendingTx pending,
-      required PlatformInt64 keyId});
+  Future<SignedTx> crateApiSignTxForKey({
+    required String walletId,
+    required PendingTx pending,
+    required PlatformInt64 keyId,
+  });
 
   Future<String> crateApiSkipSeedBiometric();
 
-  Future<BackgroundSyncResult> crateApiStartBackgroundSync(
-      {required String walletId, String? mode});
+  Future<BackgroundSyncResult> crateApiStartBackgroundSync({
+    required String walletId,
+    String? mode,
+  });
 
-  Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin(
-      {String? mode});
+  Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin({
+    String? mode,
+  });
 
   Future<String> crateApiStartSeedExport({required String walletId});
 
-  Future<void> crateApiStartSync(
-      {required String walletId, required SyncMode mode});
+  Future<void> crateApiStartSync({
+    required String walletId,
+    required SyncMode mode,
+  });
 
   Future<void> crateApiSwitchWallet({required String walletId});
 
   Future<SyncStatus> crateApiSyncStatus({required String walletId});
 
-  Future<NodeTestResult> crateApiTestNode(
-      {required String url, String? tlsPin});
+  Future<NodeTestResult> crateApiTestNode({
+    required String url,
+    String? tlsPin,
+  });
 
-  Future<bool> crateApiToggleAddressBookFavorite(
-      {required String walletId, required PlatformInt64 id});
+  Future<bool> crateApiToggleAddressBookFavorite({
+    required String walletId,
+    required PlatformInt64 id,
+  });
 
   Future<void> crateApiUnlockApp({required String passphrase});
 
-  Future<AddressBookEntryFfi> crateApiUpdateAddressBookEntry(
-      {required String walletId,
-      required PlatformInt64 id,
-      String? label,
-      String? notes,
-      AddressBookColorTag? colorTag,
-      bool? isFavorite});
+  Future<AddressBookEntryFfi> crateApiUpdateAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+    String? label,
+    String? notes,
+    AddressBookColorTag? colorTag,
+    bool? isFavorite,
+  });
 
   Future<bool> crateApiValidateMnemonic({required String mnemonic});
 
   Future<bool> crateApiVerifyAppPassphrase({required String passphrase});
 
-  Future<bool> crateApiVerifyDuressPassphrase(
-      {required String passphrase, required String hash});
+  Future<bool> crateApiVerifyDuressPassphrase({
+    required String passphrase,
+    required String hash,
+  });
 
   Future<bool> crateApiVerifyPanicPin({required String pin});
 
@@ -447,51 +540,59 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<String> crateApiAcknowledgeSeedWarning() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__acknowledge_seed_warning(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__acknowledge_seed_warning(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiAcknowledgeSeedWarningConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiAcknowledgeSeedWarningConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiAcknowledgeSeedWarningConstMeta =>
-      const TaskConstMeta(
-        debugName: "acknowledge_seed_warning",
-        argNames: [],
-      );
+      const TaskConstMeta(debugName: "acknowledge_seed_warning", argNames: []);
 
   @override
-  Future<AddressBookEntryFfi> crateApiAddAddressBookEntry(
-      {required String walletId,
-      required String address,
-      required String label,
-      String? notes,
-      required AddressBookColorTag colorTag}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(address);
-        var arg2 = cst_encode_String(label);
-        var arg3 = cst_encode_opt_String(notes);
-        var arg4 = cst_encode_address_book_color_tag(colorTag);
-        return wire.wire__crate__api__add_address_book_entry(
-            port_, arg0, arg1, arg2, arg3, arg4);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_address_book_entry_ffi,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<AddressBookEntryFfi> crateApiAddAddressBookEntry({
+    required String walletId,
+    required String address,
+    required String label,
+    String? notes,
+    required AddressBookColorTag colorTag,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          var arg2 = cst_encode_String(label);
+          var arg3 = cst_encode_opt_String(notes);
+          var arg4 = cst_encode_address_book_color_tag(colorTag);
+          return wire.wire__crate__api__add_address_book_entry(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_address_book_entry_ffi,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiAddAddressBookEntryConstMeta,
+        argValues: [walletId, address, label, notes, colorTag],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiAddAddressBookEntryConstMeta,
-      argValues: [walletId, address, label, notes, colorTag],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiAddAddressBookEntryConstMeta =>
@@ -501,22 +602,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<bool> crateApiAddressExistsInBook(
-      {required String walletId, required String address}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(address);
-        return wire.wire__crate__api__address_exists_in_book(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<bool> crateApiAddressExistsInBook({
+    required String walletId,
+    required String address,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          return wire.wire__crate__api__address_exists_in_book(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiAddressExistsInBookConstMeta,
+        argValues: [walletId, address],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiAddressExistsInBookConstMeta,
-      argValues: [walletId, address],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiAddressExistsInBookConstMeta =>
@@ -527,18 +636,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<bool> crateApiAreSeedScreenshotsBlocked() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__are_seed_screenshots_blocked(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__are_seed_screenshots_blocked(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiAreSeedScreenshotsBlockedConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiAreSeedScreenshotsBlockedConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiAreSeedScreenshotsBlockedConstMeta =>
@@ -549,71 +660,79 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<void> crateApiBootstrapTunnel({required TunnelMode mode}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_box_autoadd_tunnel_mode(mode);
-        return wire.wire__crate__api__bootstrap_tunnel(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_tunnel_mode(mode);
+          return wire.wire__crate__api__bootstrap_tunnel(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBootstrapTunnelConstMeta,
+        argValues: [mode],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiBootstrapTunnelConstMeta,
-      argValues: [mode],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiBootstrapTunnelConstMeta => const TaskConstMeta(
-        debugName: "bootstrap_tunnel",
-        argNames: ["mode"],
-      );
+  TaskConstMeta get kCrateApiBootstrapTunnelConstMeta =>
+      const TaskConstMeta(debugName: "bootstrap_tunnel", argNames: ["mode"]);
 
   @override
   Future<String> crateApiBroadcastTx({required SignedTx signed}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_box_autoadd_signed_tx(signed);
-        return wire.wire__crate__api__broadcast_tx(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_signed_tx(signed);
+          return wire.wire__crate__api__broadcast_tx(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBroadcastTxConstMeta,
+        argValues: [signed],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiBroadcastTxConstMeta,
-      argValues: [signed],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiBroadcastTxConstMeta => const TaskConstMeta(
-        debugName: "broadcast_tx",
-        argNames: ["signed"],
-      );
+  TaskConstMeta get kCrateApiBroadcastTxConstMeta =>
+      const TaskConstMeta(debugName: "broadcast_tx", argNames: ["signed"]);
 
   @override
-  Future<PendingTx> crateApiBuildConsolidationTx(
-      {required String walletId,
-      required PlatformInt64 keyId,
-      required String targetAddress,
-      BigInt? feeOpt}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_i_64(keyId);
-        var arg2 = cst_encode_String(targetAddress);
-        var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-        return wire.wire__crate__api__build_consolidation_tx(
-            port_, arg0, arg1, arg2, arg3);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_pending_tx,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<PendingTx> crateApiBuildConsolidationTx({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required String targetAddress,
+    BigInt? feeOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          var arg2 = cst_encode_String(targetAddress);
+          var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          return wire.wire__crate__api__build_consolidation_tx(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_pending_tx,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBuildConsolidationTxConstMeta,
+        argValues: [walletId, keyId, targetAddress, feeOpt],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiBuildConsolidationTxConstMeta,
-      argValues: [walletId, keyId, targetAddress, feeOpt],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiBuildConsolidationTxConstMeta =>
@@ -623,204 +742,241 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PendingTx> crateApiBuildSweepTx(
-      {required String walletId,
-      required String targetAddress,
-      BigInt? feeOpt,
-      Int64List? keyIdsFilter,
-      Int64List? addressIdsFilter}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(targetAddress);
-        var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-        var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
-        var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
-        return wire.wire__crate__api__build_sweep_tx(
-            port_, arg0, arg1, arg2, arg3, arg4);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_pending_tx,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<PendingTx> crateApiBuildSweepTx({
+    required String walletId,
+    required String targetAddress,
+    BigInt? feeOpt,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(targetAddress);
+          var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
+          var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
+          return wire.wire__crate__api__build_sweep_tx(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_pending_tx,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBuildSweepTxConstMeta,
+        argValues: [
+          walletId,
+          targetAddress,
+          feeOpt,
+          keyIdsFilter,
+          addressIdsFilter,
+        ],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiBuildSweepTxConstMeta,
-      argValues: [
-        walletId,
-        targetAddress,
-        feeOpt,
-        keyIdsFilter,
-        addressIdsFilter
-      ],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiBuildSweepTxConstMeta => const TaskConstMeta(
-        debugName: "build_sweep_tx",
-        argNames: [
-          "walletId",
-          "targetAddress",
-          "feeOpt",
-          "keyIdsFilter",
-          "addressIdsFilter"
-        ],
-      );
+    debugName: "build_sweep_tx",
+    argNames: [
+      "walletId",
+      "targetAddress",
+      "feeOpt",
+      "keyIdsFilter",
+      "addressIdsFilter",
+    ],
+  );
 
   @override
-  Future<PendingTx> crateApiBuildTx(
-      {required String walletId,
-      required List<Output> outputs,
-      BigInt? feeOpt}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_list_output(outputs);
-        var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-        return wire.wire__crate__api__build_tx(port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_pending_tx,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<PendingTx> crateApiBuildTx({
+    required String walletId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_list_output(outputs);
+          var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          return wire.wire__crate__api__build_tx(port_, arg0, arg1, arg2);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_pending_tx,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBuildTxConstMeta,
+        argValues: [walletId, outputs, feeOpt],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiBuildTxConstMeta,
-      argValues: [walletId, outputs, feeOpt],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiBuildTxConstMeta => const TaskConstMeta(
-        debugName: "build_tx",
-        argNames: ["walletId", "outputs", "feeOpt"],
-      );
+    debugName: "build_tx",
+    argNames: ["walletId", "outputs", "feeOpt"],
+  );
 
   @override
-  Future<PendingTx> crateApiBuildTxFiltered(
-      {required String walletId,
-      required List<Output> outputs,
-      BigInt? feeOpt,
-      Int64List? keyIdsFilter,
-      Int64List? addressIdsFilter}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_list_output(outputs);
-        var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-        var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
-        var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
-        return wire.wire__crate__api__build_tx_filtered(
-            port_, arg0, arg1, arg2, arg3, arg4);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_pending_tx,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<PendingTx> crateApiBuildTxFiltered({
+    required String walletId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_list_output(outputs);
+          var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
+          var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
+          return wire.wire__crate__api__build_tx_filtered(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_pending_tx,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBuildTxFilteredConstMeta,
+        argValues: [walletId, outputs, feeOpt, keyIdsFilter, addressIdsFilter],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiBuildTxFilteredConstMeta,
-      argValues: [walletId, outputs, feeOpt, keyIdsFilter, addressIdsFilter],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiBuildTxFilteredConstMeta => const TaskConstMeta(
-        debugName: "build_tx_filtered",
-        argNames: [
-          "walletId",
-          "outputs",
-          "feeOpt",
-          "keyIdsFilter",
-          "addressIdsFilter"
-        ],
-      );
+    debugName: "build_tx_filtered",
+    argNames: [
+      "walletId",
+      "outputs",
+      "feeOpt",
+      "keyIdsFilter",
+      "addressIdsFilter",
+    ],
+  );
 
   @override
-  Future<PendingTx> crateApiBuildTxForKey(
-      {required String walletId,
-      required PlatformInt64 keyId,
-      required List<Output> outputs,
-      BigInt? feeOpt}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_i_64(keyId);
-        var arg2 = cst_encode_list_output(outputs);
-        var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-        return wire.wire__crate__api__build_tx_for_key(
-            port_, arg0, arg1, arg2, arg3);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_pending_tx,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<PendingTx> crateApiBuildTxForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          var arg2 = cst_encode_list_output(outputs);
+          var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          return wire.wire__crate__api__build_tx_for_key(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_pending_tx,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiBuildTxForKeyConstMeta,
+        argValues: [walletId, keyId, outputs, feeOpt],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiBuildTxForKeyConstMeta,
-      argValues: [walletId, keyId, outputs, feeOpt],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiBuildTxForKeyConstMeta => const TaskConstMeta(
-        debugName: "build_tx_for_key",
-        argNames: ["walletId", "keyId", "outputs", "feeOpt"],
-      );
+    debugName: "build_tx_for_key",
+    argNames: ["walletId", "keyId", "outputs", "feeOpt"],
+  );
 
   @override
   Future<void> crateApiCancelSeedExport() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__cancel_seed_export(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__cancel_seed_export(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiCancelSeedExportConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiCancelSeedExportConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiCancelSeedExportConstMeta => const TaskConstMeta(
-        debugName: "cancel_seed_export",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiCancelSeedExportConstMeta =>
+      const TaskConstMeta(debugName: "cancel_seed_export", argNames: []);
 
   @override
   Future<void> crateApiCancelSync({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__cancel_sync(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__cancel_sync(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiCancelSyncConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiCancelSyncConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiCancelSyncConstMeta => const TaskConstMeta(
-        debugName: "cancel_sync",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiCancelSyncConstMeta =>
+      const TaskConstMeta(debugName: "cancel_sync", argNames: ["walletId"]);
 
   @override
-  Future<void> crateApiChangeAppPassphrase(
-      {required String currentPassphrase, required String newPassphrase}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(currentPassphrase);
-        var arg1 = cst_encode_String(newPassphrase);
-        return wire.wire__crate__api__change_app_passphrase(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiChangeAppPassphrase({
+    required String currentPassphrase,
+    required String newPassphrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(currentPassphrase);
+          var arg1 = cst_encode_String(newPassphrase);
+          return wire.wire__crate__api__change_app_passphrase(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiChangeAppPassphraseConstMeta,
+        argValues: [currentPassphrase, newPassphrase],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiChangeAppPassphraseConstMeta,
-      argValues: [currentPassphrase, newPassphrase],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiChangeAppPassphraseConstMeta =>
@@ -830,22 +986,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<void> crateApiChangeAppPassphraseWithCached(
-      {required String newPassphrase}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(newPassphrase);
-        return wire.wire__crate__api__change_app_passphrase_with_cached(
-            port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiChangeAppPassphraseWithCached({
+    required String newPassphrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(newPassphrase);
+          return wire.wire__crate__api__change_app_passphrase_with_cached(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiChangeAppPassphraseWithCachedConstMeta,
+        argValues: [newPassphrase],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiChangeAppPassphraseWithCachedConstMeta,
-      argValues: [newPassphrase],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiChangeAppPassphraseWithCachedConstMeta =>
@@ -856,62 +1017,63 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<void> crateApiClearDuressPassphrase() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__clear_duress_passphrase(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__clear_duress_passphrase(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClearDuressPassphraseConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiClearDuressPassphraseConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiClearDuressPassphraseConstMeta =>
-      const TaskConstMeta(
-        debugName: "clear_duress_passphrase",
-        argNames: [],
-      );
+      const TaskConstMeta(debugName: "clear_duress_passphrase", argNames: []);
 
   @override
   Future<void> crateApiClearPanicPin() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__clear_panic_pin(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__clear_panic_pin(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClearPanicPinConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiClearPanicPinConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiClearPanicPinConstMeta => const TaskConstMeta(
-        debugName: "clear_panic_pin",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiClearPanicPinConstMeta =>
+      const TaskConstMeta(debugName: "clear_panic_pin", argNames: []);
 
   @override
   Future<String> crateApiCompleteSeedBiometric({required bool success}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_bool(success);
-        return wire.wire__crate__api__complete_seed_biometric(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_bool(success);
+          return wire.wire__crate__api__complete_seed_biometric(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiCompleteSeedBiometricConstMeta,
+        argValues: [success],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiCompleteSeedBiometricConstMeta,
-      argValues: [success],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiCompleteSeedBiometricConstMeta =>
@@ -921,45 +1083,52 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiCreateWallet(
-      {required String name, int? entropyLen, int? birthdayOpt}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(name);
-        var arg1 = cst_encode_opt_box_autoadd_u_32(entropyLen);
-        var arg2 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
-        return wire.wire__crate__api__create_wallet(port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<String> crateApiCreateWallet({
+    required String name,
+    int? entropyLen,
+    int? birthdayOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          var arg1 = cst_encode_opt_box_autoadd_u_32(entropyLen);
+          var arg2 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
+          return wire.wire__crate__api__create_wallet(port_, arg0, arg1, arg2);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiCreateWalletConstMeta,
+        argValues: [name, entropyLen, birthdayOpt],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiCreateWalletConstMeta,
-      argValues: [name, entropyLen, birthdayOpt],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiCreateWalletConstMeta => const TaskConstMeta(
-        debugName: "create_wallet",
-        argNames: ["name", "entropyLen", "birthdayOpt"],
-      );
+    debugName: "create_wallet",
+    argNames: ["name", "entropyLen", "birthdayOpt"],
+  );
 
   @override
   Future<String> crateApiCurrentReceiveAddress({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__current_receive_address(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__current_receive_address(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiCurrentReceiveAddressConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiCurrentReceiveAddressConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiCurrentReceiveAddressConstMeta =>
@@ -969,23 +1138,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<void> crateApiDeleteAddressBookEntry(
-      {required String walletId, required PlatformInt64 id}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_i_64(id);
-        return wire.wire__crate__api__delete_address_book_entry(
-            port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiDeleteAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(id);
+          return wire.wire__crate__api__delete_address_book_entry(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiDeleteAddressBookEntryConstMeta,
+        argValues: [walletId, id],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiDeleteAddressBookEntryConstMeta,
-      argValues: [walletId, id],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiDeleteAddressBookEntryConstMeta =>
@@ -996,177 +1172,196 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<void> crateApiDeleteWallet({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__delete_wallet(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__delete_wallet(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiDeleteWalletConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiDeleteWalletConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiDeleteWalletConstMeta => const TaskConstMeta(
-        debugName: "delete_wallet",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiDeleteWalletConstMeta =>
+      const TaskConstMeta(debugName: "delete_wallet", argNames: ["walletId"]);
 
   @override
-  Future<BigInt> crateApiEstimateFee(
-      {required BigInt numOutputs, required bool hasMemo, String? feePolicy}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_usize(numOutputs);
-        var arg1 = cst_encode_bool(hasMemo);
-        var arg2 = cst_encode_opt_String(feePolicy);
-        return wire.wire__crate__api__estimate_fee(port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_u_64,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<BigInt> crateApiEstimateFee({
+    required BigInt numOutputs,
+    required bool hasMemo,
+    String? feePolicy,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_usize(numOutputs);
+          var arg1 = cst_encode_bool(hasMemo);
+          var arg2 = cst_encode_opt_String(feePolicy);
+          return wire.wire__crate__api__estimate_fee(port_, arg0, arg1, arg2);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_u_64,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiEstimateFeeConstMeta,
+        argValues: [numOutputs, hasMemo, feePolicy],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiEstimateFeeConstMeta,
-      argValues: [numOutputs, hasMemo, feePolicy],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiEstimateFeeConstMeta => const TaskConstMeta(
-        debugName: "estimate_fee",
-        argNames: ["numOutputs", "hasMemo", "feePolicy"],
-      );
+    debugName: "estimate_fee",
+    argNames: ["numOutputs", "hasMemo", "feePolicy"],
+  );
 
   @override
   Future<void> crateApiExitDecoyMode() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__exit_decoy_mode(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__exit_decoy_mode(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExitDecoyModeConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiExitDecoyModeConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiExitDecoyModeConstMeta => const TaskConstMeta(
-        debugName: "exit_decoy_mode",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiExitDecoyModeConstMeta =>
+      const TaskConstMeta(debugName: "exit_decoy_mode", argNames: []);
 
   @override
   Future<String> crateApiExportIvk({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__export_ivk(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_ivk(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportIvkConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiExportIvkConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiExportIvkConstMeta => const TaskConstMeta(
-        debugName: "export_ivk",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiExportIvkConstMeta =>
+      const TaskConstMeta(debugName: "export_ivk", argNames: ["walletId"]);
 
   @override
   Future<String> crateApiExportIvkSecure({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__export_ivk_secure(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_ivk_secure(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportIvkSecureConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiExportIvkSecureConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiExportIvkSecureConstMeta => const TaskConstMeta(
-        debugName: "export_ivk_secure",
-        argNames: ["walletId"],
-      );
+    debugName: "export_ivk_secure",
+    argNames: ["walletId"],
+  );
 
   @override
-  Future<KeyExportInfo> crateApiExportKeyGroupKeys(
-      {required String walletId, required PlatformInt64 keyId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_i_64(keyId);
-        return wire.wire__crate__api__export_key_group_keys(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_key_export_info,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<KeyExportInfo> crateApiExportKeyGroupKeys({
+    required String walletId,
+    required PlatformInt64 keyId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          return wire.wire__crate__api__export_key_group_keys(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_key_export_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportKeyGroupKeysConstMeta,
+        argValues: [walletId, keyId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiExportKeyGroupKeysConstMeta,
-      argValues: [walletId, keyId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiExportKeyGroupKeysConstMeta => const TaskConstMeta(
-        debugName: "export_key_group_keys",
-        argNames: ["walletId", "keyId"],
-      );
+    debugName: "export_key_group_keys",
+    argNames: ["walletId", "keyId"],
+  );
 
   @override
   Future<String> crateApiExportOrchardIvk({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__export_orchard_ivk(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_orchard_ivk(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportOrchardIvkConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiExportOrchardIvkConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiExportOrchardIvkConstMeta => const TaskConstMeta(
-        debugName: "export_orchard_ivk",
-        argNames: ["walletId"],
-      );
+    debugName: "export_orchard_ivk",
+    argNames: ["walletId"],
+  );
 
   @override
   Future<String> crateApiExportOrchardViewingKey({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__export_orchard_viewing_key(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_orchard_viewing_key(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportOrchardViewingKeyConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiExportOrchardViewingKeyConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiExportOrchardViewingKeyConstMeta =>
@@ -1177,43 +1372,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<String> crateApiExportSeed({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__export_seed(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_seed(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportSeedConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiExportSeedConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiExportSeedConstMeta => const TaskConstMeta(
-        debugName: "export_seed",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiExportSeedConstMeta =>
+      const TaskConstMeta(debugName: "export_seed", argNames: ["walletId"]);
 
   @override
-  Future<List<String>> crateApiExportSeedWithCachedPassphrase(
-      {required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__export_seed_with_cached_passphrase(
-            port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<String>> crateApiExportSeedWithCachedPassphrase({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_seed_with_cached_passphrase(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportSeedWithCachedPassphraseConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiExportSeedWithCachedPassphraseConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiExportSeedWithCachedPassphraseConstMeta =>
@@ -1223,23 +1423,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<List<String>> crateApiExportSeedWithPassphrase(
-      {required String walletId, required String passphrase}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(passphrase);
-        return wire.wire__crate__api__export_seed_with_passphrase(
-            port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<String>> crateApiExportSeedWithPassphrase({
+    required String walletId,
+    required String passphrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(passphrase);
+          return wire.wire__crate__api__export_seed_with_passphrase(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportSeedWithPassphraseConstMeta,
+        argValues: [walletId, passphrase],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiExportSeedWithPassphraseConstMeta,
-      argValues: [walletId, passphrase],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiExportSeedWithPassphraseConstMeta =>
@@ -1249,24 +1456,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String?> crateApiFetchTransactionMemo(
-      {required String walletId, required String txid, int? outputIndex}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(txid);
-        var arg2 = cst_encode_opt_box_autoadd_u_32(outputIndex);
-        return wire.wire__crate__api__fetch_transaction_memo(
-            port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<String?> crateApiFetchTransactionMemo({
+    required String walletId,
+    required String txid,
+    int? outputIndex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(txid);
+          var arg2 = cst_encode_opt_box_autoadd_u_32(outputIndex);
+          return wire.wire__crate__api__fetch_transaction_memo(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiFetchTransactionMemoConstMeta,
+        argValues: [walletId, txid, outputIndex],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiFetchTransactionMemoConstMeta,
-      argValues: [walletId, txid, outputIndex],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiFetchTransactionMemoConstMeta =>
@@ -1277,47 +1493,54 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<String> crateApiFormatAmount({required BigInt arrrtoshis}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_u_64(arrrtoshis);
-        return wire.wire__crate__api__format_amount(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_u_64(arrrtoshis);
+          return wire.wire__crate__api__format_amount(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiFormatAmountConstMeta,
+        argValues: [arrrtoshis],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiFormatAmountConstMeta,
-      argValues: [arrrtoshis],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiFormatAmountConstMeta => const TaskConstMeta(
-        debugName: "format_amount",
-        argNames: ["arrrtoshis"],
-      );
+  TaskConstMeta get kCrateApiFormatAmountConstMeta =>
+      const TaskConstMeta(debugName: "format_amount", argNames: ["arrrtoshis"]);
 
   @override
-  Future<String> crateApiGenerateAddressForKey(
-      {required String walletId,
-      required PlatformInt64 keyId,
-      required bool useOrchard}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_i_64(keyId);
-        var arg2 = cst_encode_bool(useOrchard);
-        return wire.wire__crate__api__generate_address_for_key(
-            port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<String> crateApiGenerateAddressForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required bool useOrchard,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          var arg2 = cst_encode_bool(useOrchard);
+          return wire.wire__crate__api__generate_address_for_key(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGenerateAddressForKeyConstMeta,
+        argValues: [walletId, keyId, useOrchard],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGenerateAddressForKeyConstMeta,
-      argValues: [walletId, keyId, useOrchard],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGenerateAddressForKeyConstMeta =>
@@ -1328,62 +1551,66 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<String> crateApiGenerateMnemonic({int? wordCount}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_opt_box_autoadd_u_32(wordCount);
-        return wire.wire__crate__api__generate_mnemonic(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_opt_box_autoadd_u_32(wordCount);
+          return wire.wire__crate__api__generate_mnemonic(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGenerateMnemonicConstMeta,
+        argValues: [wordCount],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGenerateMnemonicConstMeta,
-      argValues: [wordCount],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGenerateMnemonicConstMeta => const TaskConstMeta(
-        debugName: "generate_mnemonic",
-        argNames: ["wordCount"],
-      );
+    debugName: "generate_mnemonic",
+    argNames: ["wordCount"],
+  );
 
   @override
   Future<String?> crateApiGetActiveWallet() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_active_wallet(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_active_wallet(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetActiveWalletConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetActiveWalletConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiGetActiveWalletConstMeta => const TaskConstMeta(
-        debugName: "get_active_wallet",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiGetActiveWalletConstMeta =>
+      const TaskConstMeta(debugName: "get_active_wallet", argNames: []);
 
   @override
   Future<int> crateApiGetAddressBookCount({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_address_book_count(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_u_32,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_address_book_count(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_u_32,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetAddressBookCountConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetAddressBookCountConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetAddressBookCountConstMeta =>
@@ -1393,22 +1620,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntry(
-      {required String walletId, required PlatformInt64 id}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_i_64(id);
-        return wire.wire__crate__api__get_address_book_entry(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_box_autoadd_address_book_entry_ffi,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(id);
+          return wire.wire__crate__api__get_address_book_entry(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_box_autoadd_address_book_entry_ffi,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetAddressBookEntryConstMeta,
+        argValues: [walletId, id],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetAddressBookEntryConstMeta,
-      argValues: [walletId, id],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetAddressBookEntryConstMeta =>
@@ -1418,23 +1653,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntryByAddress(
-      {required String walletId, required String address}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(address);
-        return wire.wire__crate__api__get_address_book_entry_by_address(
-            port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_box_autoadd_address_book_entry_ffi,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntryByAddress({
+    required String walletId,
+    required String address,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          return wire.wire__crate__api__get_address_book_entry_by_address(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_box_autoadd_address_book_entry_ffi,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetAddressBookEntryByAddressConstMeta,
+        argValues: [walletId, address],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetAddressBookEntryByAddressConstMeta,
-      argValues: [walletId, address],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetAddressBookEntryByAddressConstMeta =>
@@ -1444,21 +1686,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<List<AddressBookEntryFfi>> crateApiGetAddressBookFavorites(
-      {required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_address_book_favorites(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_address_book_entry_ffi,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<AddressBookEntryFfi>> crateApiGetAddressBookFavorites({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_address_book_favorites(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_address_book_entry_ffi,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetAddressBookFavoritesConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetAddressBookFavoritesConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetAddressBookFavoritesConstMeta =>
@@ -1468,22 +1713,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<int> crateApiGetAutoConsolidationCandidateCount(
-      {required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_auto_consolidation_candidate_count(
-            port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_u_32,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<int> crateApiGetAutoConsolidationCandidateCount({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_auto_consolidation_candidate_count(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_u_32,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetAutoConsolidationCandidateCountConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetAutoConsolidationCandidateCountConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetAutoConsolidationCandidateCountConstMeta =>
@@ -1494,20 +1744,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<bool> crateApiGetAutoConsolidationEnabled({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_auto_consolidation_enabled(
-            port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_auto_consolidation_enabled(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetAutoConsolidationEnabledConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetAutoConsolidationEnabledConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetAutoConsolidationEnabledConstMeta =>
@@ -1518,18 +1772,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<int> crateApiGetAutoConsolidationThreshold() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_auto_consolidation_threshold(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_u_32,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_auto_consolidation_threshold(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_u_32,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetAutoConsolidationThresholdConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetAutoConsolidationThresholdConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetAutoConsolidationThresholdConstMeta =>
@@ -1540,64 +1796,72 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<Balance> crateApiGetBalance({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_balance(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_balance,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_balance(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_balance,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetBalanceConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetBalanceConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiGetBalanceConstMeta => const TaskConstMeta(
-        debugName: "get_balance",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiGetBalanceConstMeta =>
+      const TaskConstMeta(debugName: "get_balance", argNames: ["walletId"]);
 
   @override
   Future<BuildInfo> crateApiGetBuildInfo() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_build_info(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_build_info,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_build_info(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_build_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetBuildInfoConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetBuildInfoConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiGetBuildInfoConstMeta => const TaskConstMeta(
-        debugName: "get_build_info",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiGetBuildInfoConstMeta =>
+      const TaskConstMeta(debugName: "get_build_info", argNames: []);
 
   @override
-  Future<CheckpointInfo?> crateApiGetCheckpointDetails(
-      {required String walletId, required int height}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_u_32(height);
-        return wire.wire__crate__api__get_checkpoint_details(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_box_autoadd_checkpoint_info,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<CheckpointInfo?> crateApiGetCheckpointDetails({
+    required String walletId,
+    required int height,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(height);
+          return wire.wire__crate__api__get_checkpoint_details(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_box_autoadd_checkpoint_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetCheckpointDetailsConstMeta,
+        argValues: [walletId, height],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetCheckpointDetailsConstMeta,
-      argValues: [walletId, height],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetCheckpointDetailsConstMeta =>
@@ -1608,18 +1872,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<String?> crateApiGetDuressPassphraseHash() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_duress_passphrase_hash(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_duress_passphrase_hash(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetDuressPassphraseHashConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetDuressPassphraseHashConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetDuressPassphraseHashConstMeta =>
@@ -1630,39 +1896,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<FeeInfo> crateApiGetFeeInfo() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_fee_info(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_fee_info,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_fee_info(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_fee_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetFeeInfoConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetFeeInfoConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiGetFeeInfoConstMeta => const TaskConstMeta(
-        debugName: "get_fee_info",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiGetFeeInfoConstMeta =>
+      const TaskConstMeta(debugName: "get_fee_info", argNames: []);
 
   @override
   Future<BigInt?> crateApiGetIvkClipboardRemaining() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_ivk_clipboard_remaining(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_box_autoadd_u_64,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_ivk_clipboard_remaining(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_box_autoadd_u_64,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetIvkClipboardRemainingConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetIvkClipboardRemainingConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetIvkClipboardRemainingConstMeta =>
@@ -1672,90 +1940,106 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String?> crateApiGetLabelForAddress(
-      {required String walletId, required String address}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(address);
-        return wire.wire__crate__api__get_label_for_address(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<String?> crateApiGetLabelForAddress({
+    required String walletId,
+    required String address,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          return wire.wire__crate__api__get_label_for_address(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetLabelForAddressConstMeta,
+        argValues: [walletId, address],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetLabelForAddressConstMeta,
-      argValues: [walletId, address],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetLabelForAddressConstMeta => const TaskConstMeta(
-        debugName: "get_label_for_address",
-        argNames: ["walletId", "address"],
-      );
+    debugName: "get_label_for_address",
+    argNames: ["walletId", "address"],
+  );
 
   @override
-  Future<CheckpointInfo?> crateApiGetLastCheckpoint(
-      {required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_last_checkpoint(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_box_autoadd_checkpoint_info,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<CheckpointInfo?> crateApiGetLastCheckpoint({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_last_checkpoint(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_box_autoadd_checkpoint_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetLastCheckpointConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetLastCheckpointConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetLastCheckpointConstMeta => const TaskConstMeta(
-        debugName: "get_last_checkpoint",
-        argNames: ["walletId"],
-      );
+    debugName: "get_last_checkpoint",
+    argNames: ["walletId"],
+  );
 
   @override
   Future<String> crateApiGetLightdEndpoint({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_lightd_endpoint(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_lightd_endpoint(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetLightdEndpointConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetLightdEndpointConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetLightdEndpointConstMeta => const TaskConstMeta(
-        debugName: "get_lightd_endpoint",
-        argNames: ["walletId"],
-      );
+    debugName: "get_lightd_endpoint",
+    argNames: ["walletId"],
+  );
 
   @override
-  Future<LightdEndpoint> crateApiGetLightdEndpointConfig(
-      {required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_lightd_endpoint_config(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_lightd_endpoint,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<LightdEndpoint> crateApiGetLightdEndpointConfig({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_lightd_endpoint_config(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_lightd_endpoint,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetLightdEndpointConfigConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetLightdEndpointConfigConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetLightdEndpointConfigConstMeta =>
@@ -1766,43 +2050,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<NetworkInfo> crateApiGetNetworkInfo() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_network_info(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_network_info,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_network_info(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_network_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetNetworkInfoConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetNetworkInfoConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiGetNetworkInfoConstMeta => const TaskConstMeta(
-        debugName: "get_network_info",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiGetNetworkInfoConstMeta =>
+      const TaskConstMeta(debugName: "get_network_info", argNames: []);
 
   @override
-  Future<List<AddressBookEntryFfi>> crateApiGetRecentlyUsedAddresses(
-      {required String walletId, required int limit}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_u_32(limit);
-        return wire.wire__crate__api__get_recently_used_addresses(
-            port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_address_book_entry_ffi,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<AddressBookEntryFfi>> crateApiGetRecentlyUsedAddresses({
+    required String walletId,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(limit);
+          return wire.wire__crate__api__get_recently_used_addresses(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_address_book_entry_ffi,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetRecentlyUsedAddressesConstMeta,
+        argValues: [walletId, limit],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetRecentlyUsedAddressesConstMeta,
-      argValues: [walletId, limit],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetRecentlyUsedAddressesConstMeta =>
@@ -1812,23 +2103,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiGetRecommendedBackgroundSyncMode(
-      {required String walletId, required int minutesSinceLast}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_u_32(minutesSinceLast);
-        return wire.wire__crate__api__get_recommended_background_sync_mode(
-            port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<String> crateApiGetRecommendedBackgroundSyncMode({
+    required String walletId,
+    required int minutesSinceLast,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(minutesSinceLast);
+          return wire.wire__crate__api__get_recommended_background_sync_mode(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetRecommendedBackgroundSyncModeConstMeta,
+        argValues: [walletId, minutesSinceLast],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetRecommendedBackgroundSyncModeConstMeta,
-      argValues: [walletId, minutesSinceLast],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetRecommendedBackgroundSyncModeConstMeta =>
@@ -1839,18 +2137,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<BigInt?> crateApiGetSeedClipboardRemaining() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_seed_clipboard_remaining(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_box_autoadd_u_64,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_seed_clipboard_remaining(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_box_autoadd_u_64,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetSeedClipboardRemainingConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetSeedClipboardRemainingConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetSeedClipboardRemainingConstMeta =>
@@ -1861,173 +2161,185 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<String> crateApiGetSeedExportState() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_seed_export_state(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_seed_export_state(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetSeedExportStateConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetSeedExportStateConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiGetSeedExportStateConstMeta => const TaskConstMeta(
-        debugName: "get_seed_export_state",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiGetSeedExportStateConstMeta =>
+      const TaskConstMeta(debugName: "get_seed_export_state", argNames: []);
 
   @override
   Future<SeedExportWarnings> crateApiGetSeedExportWarnings() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_seed_export_warnings(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_seed_export_warnings,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_seed_export_warnings(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_seed_export_warnings,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetSeedExportWarningsConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetSeedExportWarningsConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetSeedExportWarningsConstMeta =>
-      const TaskConstMeta(
-        debugName: "get_seed_export_warnings",
-        argNames: [],
-      );
+      const TaskConstMeta(debugName: "get_seed_export_warnings", argNames: []);
 
   @override
-  Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs(
-      {required String walletId, int? limit}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_opt_box_autoadd_u_32(limit);
-        return wire.wire__crate__api__get_sync_logs(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_sync_log_entry_ffi,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs({
+    required String walletId,
+    int? limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_box_autoadd_u_32(limit);
+          return wire.wire__crate__api__get_sync_logs(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_sync_log_entry_ffi,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetSyncLogsConstMeta,
+        argValues: [walletId, limit],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetSyncLogsConstMeta,
-      argValues: [walletId, limit],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetSyncLogsConstMeta => const TaskConstMeta(
-        debugName: "get_sync_logs",
-        argNames: ["walletId", "limit"],
-      );
+    debugName: "get_sync_logs",
+    argNames: ["walletId", "limit"],
+  );
 
   @override
   Future<String> crateApiGetTorStatus() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_tor_status(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_tor_status(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetTorStatusConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetTorStatusConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiGetTorStatusConstMeta => const TaskConstMeta(
-        debugName: "get_tor_status",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiGetTorStatusConstMeta =>
+      const TaskConstMeta(debugName: "get_tor_status", argNames: []);
 
   @override
   Future<TunnelMode> crateApiGetTunnel() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_tunnel(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_tunnel_mode,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_tunnel(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_tunnel_mode,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetTunnelConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetTunnelConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiGetTunnelConstMeta => const TaskConstMeta(
-        debugName: "get_tunnel",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiGetTunnelConstMeta =>
+      const TaskConstMeta(debugName: "get_tunnel", argNames: []);
 
   @override
   Future<String> crateApiGetVaultMode() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__get_vault_mode(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_vault_mode(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetVaultModeConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetVaultModeConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiGetVaultModeConstMeta => const TaskConstMeta(
-        debugName: "get_vault_mode",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiGetVaultModeConstMeta =>
+      const TaskConstMeta(debugName: "get_vault_mode", argNames: []);
 
   @override
-  Future<WatchOnlyBannerInfo?> crateApiGetWatchOnlyBanner(
-      {required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_watch_only_banner(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_opt_box_autoadd_watch_only_banner_info,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<WatchOnlyBannerInfo?> crateApiGetWatchOnlyBanner({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_watch_only_banner(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_opt_box_autoadd_watch_only_banner_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetWatchOnlyBannerConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetWatchOnlyBannerConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetWatchOnlyBannerConstMeta => const TaskConstMeta(
-        debugName: "get_watch_only_banner",
-        argNames: ["walletId"],
-      );
+    debugName: "get_watch_only_banner",
+    argNames: ["walletId"],
+  );
 
   @override
-  Future<WatchOnlyCapabilitiesInfo> crateApiGetWatchOnlyCapabilities(
-      {required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__get_watch_only_capabilities(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_watch_only_capabilities_info,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<WatchOnlyCapabilitiesInfo> crateApiGetWatchOnlyCapabilities({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_watch_only_capabilities(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_watch_only_capabilities_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetWatchOnlyCapabilitiesConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiGetWatchOnlyCapabilitiesConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiGetWatchOnlyCapabilitiesConstMeta =>
@@ -2038,118 +2350,133 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<bool> crateApiHasAppPassphrase() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__has_app_passphrase(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__has_app_passphrase(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiHasAppPassphraseConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiHasAppPassphraseConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiHasAppPassphraseConstMeta => const TaskConstMeta(
-        debugName: "has_app_passphrase",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiHasAppPassphraseConstMeta =>
+      const TaskConstMeta(debugName: "has_app_passphrase", argNames: []);
 
   @override
   Future<bool> crateApiHasDuressPassphrase() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__has_duress_passphrase(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__has_duress_passphrase(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiHasDuressPassphraseConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiHasDuressPassphraseConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiHasDuressPassphraseConstMeta =>
-      const TaskConstMeta(
-        debugName: "has_duress_passphrase",
-        argNames: [],
-      );
+      const TaskConstMeta(debugName: "has_duress_passphrase", argNames: []);
 
   @override
   Future<bool> crateApiHasPanicPin() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__has_panic_pin(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__has_panic_pin(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiHasPanicPinConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiHasPanicPinConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiHasPanicPinConstMeta => const TaskConstMeta(
-        debugName: "has_panic_pin",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiHasPanicPinConstMeta =>
+      const TaskConstMeta(debugName: "has_panic_pin", argNames: []);
 
   @override
-  Future<String> crateApiImportIvk(
-      {required String name,
-      String? saplingIvk,
-      String? orchardIvk,
-      required int birthday}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(name);
-        var arg1 = cst_encode_opt_String(saplingIvk);
-        var arg2 = cst_encode_opt_String(orchardIvk);
-        var arg3 = cst_encode_u_32(birthday);
-        return wire.wire__crate__api__import_ivk(port_, arg0, arg1, arg2, arg3);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<String> crateApiImportIvk({
+    required String name,
+    String? saplingIvk,
+    String? orchardIvk,
+    required int birthday,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          var arg1 = cst_encode_opt_String(saplingIvk);
+          var arg2 = cst_encode_opt_String(orchardIvk);
+          var arg3 = cst_encode_u_32(birthday);
+          return wire.wire__crate__api__import_ivk(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiImportIvkConstMeta,
+        argValues: [name, saplingIvk, orchardIvk, birthday],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiImportIvkConstMeta,
-      argValues: [name, saplingIvk, orchardIvk, birthday],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiImportIvkConstMeta => const TaskConstMeta(
-        debugName: "import_ivk",
-        argNames: ["name", "saplingIvk", "orchardIvk", "birthday"],
-      );
+    debugName: "import_ivk",
+    argNames: ["name", "saplingIvk", "orchardIvk", "birthday"],
+  );
 
   @override
-  Future<String> crateApiImportIvkAsWatchOnly(
-      {required String name,
-      required String ivk,
-      required int birthdayHeight}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(name);
-        var arg1 = cst_encode_String(ivk);
-        var arg2 = cst_encode_u_32(birthdayHeight);
-        return wire.wire__crate__api__import_ivk_as_watch_only(
-            port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<String> crateApiImportIvkAsWatchOnly({
+    required String name,
+    required String ivk,
+    required int birthdayHeight,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          var arg1 = cst_encode_String(ivk);
+          var arg2 = cst_encode_u_32(birthdayHeight);
+          return wire.wire__crate__api__import_ivk_as_watch_only(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiImportIvkAsWatchOnlyConstMeta,
+        argValues: [name, ivk, birthdayHeight],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiImportIvkAsWatchOnlyConstMeta,
-      argValues: [name, ivk, birthdayHeight],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiImportIvkAsWatchOnlyConstMeta =>
@@ -2159,58 +2486,69 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<PlatformInt64> crateApiImportSpendingKey(
-      {required String walletId,
-      String? saplingKey,
-      String? orchardKey,
-      String? label,
-      required int birthdayHeight}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_opt_String(saplingKey);
-        var arg2 = cst_encode_opt_String(orchardKey);
-        var arg3 = cst_encode_opt_String(label);
-        var arg4 = cst_encode_u_32(birthdayHeight);
-        return wire.wire__crate__api__import_spending_key(
-            port_, arg0, arg1, arg2, arg3, arg4);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_i_64,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<PlatformInt64> crateApiImportSpendingKey({
+    required String walletId,
+    String? saplingKey,
+    String? orchardKey,
+    String? label,
+    required int birthdayHeight,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_String(saplingKey);
+          var arg2 = cst_encode_opt_String(orchardKey);
+          var arg3 = cst_encode_opt_String(label);
+          var arg4 = cst_encode_u_32(birthdayHeight);
+          return wire.wire__crate__api__import_spending_key(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_i_64,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiImportSpendingKeyConstMeta,
+        argValues: [walletId, saplingKey, orchardKey, label, birthdayHeight],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiImportSpendingKeyConstMeta,
-      argValues: [walletId, saplingKey, orchardKey, label, birthdayHeight],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiImportSpendingKeyConstMeta => const TaskConstMeta(
-        debugName: "import_spending_key",
-        argNames: [
-          "walletId",
-          "saplingKey",
-          "orchardKey",
-          "label",
-          "birthdayHeight"
-        ],
-      );
+    debugName: "import_spending_key",
+    argNames: [
+      "walletId",
+      "saplingKey",
+      "orchardKey",
+      "label",
+      "birthdayHeight",
+    ],
+  );
 
   @override
   Future<bool> crateApiIsBackgroundSyncNeeded({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__is_background_sync_needed(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__is_background_sync_needed(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiIsBackgroundSyncNeededConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiIsBackgroundSyncNeededConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiIsBackgroundSyncNeededConstMeta =>
@@ -2221,111 +2559,120 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<bool> crateApiIsDecoyMode() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__is_decoy_mode(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__is_decoy_mode(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiIsDecoyModeConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiIsDecoyModeConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiIsDecoyModeConstMeta => const TaskConstMeta(
-        debugName: "is_decoy_mode",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiIsDecoyModeConstMeta =>
+      const TaskConstMeta(debugName: "is_decoy_mode", argNames: []);
 
   @override
   Future<bool> crateApiIsSyncRunning({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__is_sync_running(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__is_sync_running(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiIsSyncRunningConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiIsSyncRunningConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiIsSyncRunningConstMeta => const TaskConstMeta(
-        debugName: "is_sync_running",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiIsSyncRunningConstMeta =>
+      const TaskConstMeta(debugName: "is_sync_running", argNames: ["walletId"]);
 
   @override
-  Future<void> crateApiLabelAddress(
-      {required String walletId, required String addr, required String label}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(addr);
-        var arg2 = cst_encode_String(label);
-        return wire.wire__crate__api__label_address(port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiLabelAddress({
+    required String walletId,
+    required String addr,
+    required String label,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(addr);
+          var arg2 = cst_encode_String(label);
+          return wire.wire__crate__api__label_address(port_, arg0, arg1, arg2);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiLabelAddressConstMeta,
+        argValues: [walletId, addr, label],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiLabelAddressConstMeta,
-      argValues: [walletId, addr, label],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiLabelAddressConstMeta => const TaskConstMeta(
-        debugName: "label_address",
-        argNames: ["walletId", "addr", "label"],
-      );
+    debugName: "label_address",
+    argNames: ["walletId", "addr", "label"],
+  );
 
   @override
   Future<LightdEndpoint> crateApiLightdEndpointDefault() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__lightd_endpoint_default(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_lightd_endpoint,
-        decodeErrorData: null,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__lightd_endpoint_default(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_lightd_endpoint,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLightdEndpointDefaultConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiLightdEndpointDefaultConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiLightdEndpointDefaultConstMeta =>
-      const TaskConstMeta(
-        debugName: "lightd_endpoint_default",
-        argNames: [],
-      );
+      const TaskConstMeta(debugName: "lightd_endpoint_default", argNames: []);
 
   @override
-  Future<String> crateApiLightdEndpointDisplayString(
-      {required LightdEndpoint that}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_box_autoadd_lightd_endpoint(that);
-        return wire.wire__crate__api__lightd_endpoint_display_string(
-            port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: null,
+  Future<String> crateApiLightdEndpointDisplayString({
+    required LightdEndpoint that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_lightd_endpoint(that);
+          return wire.wire__crate__api__lightd_endpoint_display_string(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLightdEndpointDisplayStringConstMeta,
+        argValues: [that],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiLightdEndpointDisplayStringConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiLightdEndpointDisplayStringConstMeta =>
@@ -2336,43 +2683,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<String> crateApiLightdEndpointUrl({required LightdEndpoint that}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_box_autoadd_lightd_endpoint(that);
-        return wire.wire__crate__api__lightd_endpoint_url(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: null,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_lightd_endpoint(that);
+          return wire.wire__crate__api__lightd_endpoint_url(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiLightdEndpointUrlConstMeta,
+        argValues: [that],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiLightdEndpointUrlConstMeta,
-      argValues: [that],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiLightdEndpointUrlConstMeta => const TaskConstMeta(
-        debugName: "lightd_endpoint_url",
-        argNames: ["that"],
-      );
+  TaskConstMeta get kCrateApiLightdEndpointUrlConstMeta =>
+      const TaskConstMeta(debugName: "lightd_endpoint_url", argNames: ["that"]);
 
   @override
-  Future<List<AddressBalanceInfo>> crateApiListAddressBalances(
-      {required String walletId, PlatformInt64? keyId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_opt_box_autoadd_i_64(keyId);
-        return wire.wire__crate__api__list_address_balances(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_address_balance_info,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<AddressBalanceInfo>> crateApiListAddressBalances({
+    required String walletId,
+    PlatformInt64? keyId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_box_autoadd_i_64(keyId);
+          return wire.wire__crate__api__list_address_balances(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_address_balance_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiListAddressBalancesConstMeta,
+        argValues: [walletId, keyId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiListAddressBalancesConstMeta,
-      argValues: [walletId, keyId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiListAddressBalancesConstMeta =>
@@ -2382,67 +2737,78 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<List<AddressBookEntryFfi>> crateApiListAddressBook(
-      {required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__list_address_book(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_address_book_entry_ffi,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<AddressBookEntryFfi>> crateApiListAddressBook({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__list_address_book(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_address_book_entry_ffi,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiListAddressBookConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiListAddressBookConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiListAddressBookConstMeta => const TaskConstMeta(
-        debugName: "list_address_book",
-        argNames: ["walletId"],
-      );
+    debugName: "list_address_book",
+    argNames: ["walletId"],
+  );
 
   @override
   Future<List<AddressInfo>> crateApiListAddresses({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__list_addresses(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_address_info,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__list_addresses(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_address_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiListAddressesConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiListAddressesConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiListAddressesConstMeta => const TaskConstMeta(
-        debugName: "list_addresses",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiListAddressesConstMeta =>
+      const TaskConstMeta(debugName: "list_addresses", argNames: ["walletId"]);
 
   @override
-  Future<List<KeyAddressInfo>> crateApiListAddressesForKey(
-      {required String walletId, required PlatformInt64 keyId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_i_64(keyId);
-        return wire.wire__crate__api__list_addresses_for_key(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_key_address_info,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<KeyAddressInfo>> crateApiListAddressesForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          return wire.wire__crate__api__list_addresses_for_key(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_key_address_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiListAddressesForKeyConstMeta,
+        argValues: [walletId, keyId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiListAddressesForKeyConstMeta,
-      argValues: [walletId, keyId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiListAddressesForKeyConstMeta =>
@@ -2453,201 +2819,221 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<List<KeyGroupInfo>> crateApiListKeyGroups({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__list_key_groups(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_key_group_info,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__list_key_groups(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_key_group_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiListKeyGroupsConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiListKeyGroupsConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiListKeyGroupsConstMeta => const TaskConstMeta(
-        debugName: "list_key_groups",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiListKeyGroupsConstMeta =>
+      const TaskConstMeta(debugName: "list_key_groups", argNames: ["walletId"]);
 
   @override
-  Future<List<TxInfo>> crateApiListTransactions(
-      {required String walletId, int? limit}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_opt_box_autoadd_u_32(limit);
-        return wire.wire__crate__api__list_transactions(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_tx_info,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<TxInfo>> crateApiListTransactions({
+    required String walletId,
+    int? limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_box_autoadd_u_32(limit);
+          return wire.wire__crate__api__list_transactions(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_tx_info,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiListTransactionsConstMeta,
+        argValues: [walletId, limit],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiListTransactionsConstMeta,
-      argValues: [walletId, limit],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiListTransactionsConstMeta => const TaskConstMeta(
-        debugName: "list_transactions",
-        argNames: ["walletId", "limit"],
-      );
+    debugName: "list_transactions",
+    argNames: ["walletId", "limit"],
+  );
 
   @override
   Future<List<WalletMeta>> crateApiListWallets() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__list_wallets(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_wallet_meta,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__list_wallets(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_wallet_meta,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiListWalletsConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiListWalletsConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiListWalletsConstMeta => const TaskConstMeta(
-        debugName: "list_wallets",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiListWalletsConstMeta =>
+      const TaskConstMeta(debugName: "list_wallets", argNames: []);
 
   @override
-  Future<void> crateApiMarkAddressUsed(
-      {required String walletId, required String address}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(address);
-        return wire.wire__crate__api__mark_address_used(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiMarkAddressUsed({
+    required String walletId,
+    required String address,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          return wire.wire__crate__api__mark_address_used(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMarkAddressUsedConstMeta,
+        argValues: [walletId, address],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiMarkAddressUsedConstMeta,
-      argValues: [walletId, address],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiMarkAddressUsedConstMeta => const TaskConstMeta(
-        debugName: "mark_address_used",
-        argNames: ["walletId", "address"],
-      );
+    debugName: "mark_address_used",
+    argNames: ["walletId", "address"],
+  );
 
   @override
   Future<String> crateApiNextReceiveAddress({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__next_receive_address(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__next_receive_address(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiNextReceiveAddressConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiNextReceiveAddressConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiNextReceiveAddressConstMeta => const TaskConstMeta(
-        debugName: "next_receive_address",
-        argNames: ["walletId"],
-      );
+    debugName: "next_receive_address",
+    argNames: ["walletId"],
+  );
 
   @override
   Future<BigInt> crateApiParseAmount({required String arrr}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(arrr);
-        return wire.wire__crate__api__parse_amount(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_u_64,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(arrr);
+          return wire.wire__crate__api__parse_amount(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_u_64,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiParseAmountConstMeta,
+        argValues: [arrr],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiParseAmountConstMeta,
-      argValues: [arrr],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiParseAmountConstMeta => const TaskConstMeta(
-        debugName: "parse_amount",
-        argNames: ["arrr"],
-      );
+  TaskConstMeta get kCrateApiParseAmountConstMeta =>
+      const TaskConstMeta(debugName: "parse_amount", argNames: ["arrr"]);
 
   @override
-  Future<void> crateApiRenameWallet(
-      {required String walletId, required String newName}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(newName);
-        return wire.wire__crate__api__rename_wallet(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiRenameWallet({
+    required String walletId,
+    required String newName,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(newName);
+          return wire.wire__crate__api__rename_wallet(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiRenameWalletConstMeta,
+        argValues: [walletId, newName],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiRenameWalletConstMeta,
-      argValues: [walletId, newName],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiRenameWalletConstMeta => const TaskConstMeta(
-        debugName: "rename_wallet",
-        argNames: ["walletId", "newName"],
-      );
+    debugName: "rename_wallet",
+    argNames: ["walletId", "newName"],
+  );
 
   @override
-  Future<void> crateApiRescan(
-      {required String walletId, required int fromHeight}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_u_32(fromHeight);
-        return wire.wire__crate__api__rescan(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiRescan({
+    required String walletId,
+    required int fromHeight,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(fromHeight);
+          return wire.wire__crate__api__rescan(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiRescanConstMeta,
+        argValues: [walletId, fromHeight],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiRescanConstMeta,
-      argValues: [walletId, fromHeight],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiRescanConstMeta => const TaskConstMeta(
-        debugName: "rescan",
-        argNames: ["walletId", "fromHeight"],
-      );
+    debugName: "rescan",
+    argNames: ["walletId", "fromHeight"],
+  );
 
   @override
   Future<void> crateApiResealDbKeysForBiometrics() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__reseal_db_keys_for_biometrics(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__reseal_db_keys_for_biometrics(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiResealDbKeysForBiometricsConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiResealDbKeysForBiometricsConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiResealDbKeysForBiometricsConstMeta =>
@@ -2657,148 +3043,176 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiRestoreWallet(
-      {required String name,
-      required String mnemonic,
-      String? passphraseOpt,
-      int? birthdayOpt}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(name);
-        var arg1 = cst_encode_String(mnemonic);
-        var arg2 = cst_encode_opt_String(passphraseOpt);
-        var arg3 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
-        return wire.wire__crate__api__restore_wallet(
-            port_, arg0, arg1, arg2, arg3);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<String> crateApiRestoreWallet({
+    required String name,
+    required String mnemonic,
+    String? passphraseOpt,
+    int? birthdayOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          var arg1 = cst_encode_String(mnemonic);
+          var arg2 = cst_encode_opt_String(passphraseOpt);
+          var arg3 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
+          return wire.wire__crate__api__restore_wallet(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiRestoreWalletConstMeta,
+        argValues: [name, mnemonic, passphraseOpt, birthdayOpt],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiRestoreWalletConstMeta,
-      argValues: [name, mnemonic, passphraseOpt, birthdayOpt],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiRestoreWalletConstMeta => const TaskConstMeta(
-        debugName: "restore_wallet",
-        argNames: ["name", "mnemonic", "passphraseOpt", "birthdayOpt"],
-      );
+    debugName: "restore_wallet",
+    argNames: ["name", "mnemonic", "passphraseOpt", "birthdayOpt"],
+  );
 
   @override
   Future<void> crateApiRotateTorExit() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__rotate_tor_exit(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__rotate_tor_exit(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiRotateTorExitConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiRotateTorExitConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiRotateTorExitConstMeta => const TaskConstMeta(
-        debugName: "rotate_tor_exit",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiRotateTorExitConstMeta =>
+      const TaskConstMeta(debugName: "rotate_tor_exit", argNames: []);
 
   @override
-  Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook(
-      {required String walletId, required String query}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(query);
-        return wire.wire__crate__api__search_address_book(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_list_address_book_entry_ffi,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook({
+    required String walletId,
+    required String query,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(query);
+          return wire.wire__crate__api__search_address_book(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_address_book_entry_ffi,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSearchAddressBookConstMeta,
+        argValues: [walletId, query],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSearchAddressBookConstMeta,
-      argValues: [walletId, query],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSearchAddressBookConstMeta => const TaskConstMeta(
-        debugName: "search_address_book",
-        argNames: ["walletId", "query"],
-      );
+    debugName: "search_address_book",
+    argNames: ["walletId", "query"],
+  );
 
   @override
-  Future<void> crateApiSetAddressColorTag(
-      {required String walletId,
-      required String addr,
-      required AddressBookColorTag colorTag}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(addr);
-        var arg2 = cst_encode_address_book_color_tag(colorTag);
-        return wire.wire__crate__api__set_address_color_tag(
-            port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiSetAddressColorTag({
+    required String walletId,
+    required String addr,
+    required AddressBookColorTag colorTag,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(addr);
+          var arg2 = cst_encode_address_book_color_tag(colorTag);
+          return wire.wire__crate__api__set_address_color_tag(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetAddressColorTagConstMeta,
+        argValues: [walletId, addr, colorTag],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetAddressColorTagConstMeta,
-      argValues: [walletId, addr, colorTag],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSetAddressColorTagConstMeta => const TaskConstMeta(
-        debugName: "set_address_color_tag",
-        argNames: ["walletId", "addr", "colorTag"],
-      );
+    debugName: "set_address_color_tag",
+    argNames: ["walletId", "addr", "colorTag"],
+  );
 
   @override
   Future<void> crateApiSetAppPassphrase({required String passphrase}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(passphrase);
-        return wire.wire__crate__api__set_app_passphrase(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(passphrase);
+          return wire.wire__crate__api__set_app_passphrase(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetAppPassphraseConstMeta,
+        argValues: [passphrase],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetAppPassphraseConstMeta,
-      argValues: [passphrase],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSetAppPassphraseConstMeta => const TaskConstMeta(
-        debugName: "set_app_passphrase",
-        argNames: ["passphrase"],
-      );
+    debugName: "set_app_passphrase",
+    argNames: ["passphrase"],
+  );
 
   @override
-  Future<void> crateApiSetAutoConsolidationEnabled(
-      {required String walletId, required bool enabled}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_bool(enabled);
-        return wire.wire__crate__api__set_auto_consolidation_enabled(
-            port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiSetAutoConsolidationEnabled({
+    required String walletId,
+    required bool enabled,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_bool(enabled);
+          return wire.wire__crate__api__set_auto_consolidation_enabled(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetAutoConsolidationEnabledConstMeta,
+        argValues: [walletId, enabled],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetAutoConsolidationEnabledConstMeta,
-      argValues: [walletId, enabled],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSetAutoConsolidationEnabledConstMeta =>
@@ -2809,41 +3223,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<void> crateApiSetDecoyWalletName({required String name}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(name);
-        return wire.wire__crate__api__set_decoy_wallet_name(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          return wire.wire__crate__api__set_decoy_wallet_name(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetDecoyWalletNameConstMeta,
+        argValues: [name],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetDecoyWalletNameConstMeta,
-      argValues: [name],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSetDecoyWalletNameConstMeta => const TaskConstMeta(
-        debugName: "set_decoy_wallet_name",
-        argNames: ["name"],
-      );
+    debugName: "set_decoy_wallet_name",
+    argNames: ["name"],
+  );
 
   @override
   Future<String> crateApiSetDuressPassphrase({String? customPassphrase}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_opt_String(customPassphrase);
-        return wire.wire__crate__api__set_duress_passphrase(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_opt_String(customPassphrase);
+          return wire.wire__crate__api__set_duress_passphrase(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetDuressPassphraseConstMeta,
+        argValues: [customPassphrase],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetDuressPassphraseConstMeta,
-      argValues: [customPassphrase],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSetDuressPassphraseConstMeta =>
@@ -2853,84 +3271,102 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<void> crateApiSetLightdEndpoint(
-      {required String walletId, required String url, String? tlsPinOpt}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_String(url);
-        var arg2 = cst_encode_opt_String(tlsPinOpt);
-        return wire.wire__crate__api__set_lightd_endpoint(
-            port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiSetLightdEndpoint({
+    required String walletId,
+    required String url,
+    String? tlsPinOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(url);
+          var arg2 = cst_encode_opt_String(tlsPinOpt);
+          return wire.wire__crate__api__set_lightd_endpoint(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetLightdEndpointConstMeta,
+        argValues: [walletId, url, tlsPinOpt],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetLightdEndpointConstMeta,
-      argValues: [walletId, url, tlsPinOpt],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSetLightdEndpointConstMeta => const TaskConstMeta(
-        debugName: "set_lightd_endpoint",
-        argNames: ["walletId", "url", "tlsPinOpt"],
-      );
+    debugName: "set_lightd_endpoint",
+    argNames: ["walletId", "url", "tlsPinOpt"],
+  );
 
   @override
   Future<void> crateApiSetPanicPin({required String pin}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(pin);
-        return wire.wire__crate__api__set_panic_pin(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(pin);
+          return wire.wire__crate__api__set_panic_pin(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetPanicPinConstMeta,
+        argValues: [pin],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetPanicPinConstMeta,
-      argValues: [pin],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiSetPanicPinConstMeta => const TaskConstMeta(
-        debugName: "set_panic_pin",
-        argNames: ["pin"],
-      );
+  TaskConstMeta get kCrateApiSetPanicPinConstMeta =>
+      const TaskConstMeta(debugName: "set_panic_pin", argNames: ["pin"]);
 
   @override
-  Future<void> crateApiSetTorBridgeSettings(
-      {required bool useBridges,
-      required bool fallbackToBridges,
-      required String transport,
-      required List<String> bridgeLines,
-      String? transportPath}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_bool(useBridges);
-        var arg1 = cst_encode_bool(fallbackToBridges);
-        var arg2 = cst_encode_String(transport);
-        var arg3 = cst_encode_list_String(bridgeLines);
-        var arg4 = cst_encode_opt_String(transportPath);
-        return wire.wire__crate__api__set_tor_bridge_settings(
-            port_, arg0, arg1, arg2, arg3, arg4);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiSetTorBridgeSettings({
+    required bool useBridges,
+    required bool fallbackToBridges,
+    required String transport,
+    required List<String> bridgeLines,
+    String? transportPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_bool(useBridges);
+          var arg1 = cst_encode_bool(fallbackToBridges);
+          var arg2 = cst_encode_String(transport);
+          var arg3 = cst_encode_list_String(bridgeLines);
+          var arg4 = cst_encode_opt_String(transportPath);
+          return wire.wire__crate__api__set_tor_bridge_settings(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetTorBridgeSettingsConstMeta,
+        argValues: [
+          useBridges,
+          fallbackToBridges,
+          transport,
+          bridgeLines,
+          transportPath,
+        ],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetTorBridgeSettingsConstMeta,
-      argValues: [
-        useBridges,
-        fallbackToBridges,
-        transport,
-        bridgeLines,
-        transportPath
-      ],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSetTorBridgeSettingsConstMeta =>
@@ -2941,50 +3377,57 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           "fallbackToBridges",
           "transport",
           "bridgeLines",
-          "transportPath"
+          "transportPath",
         ],
       );
 
   @override
   Future<void> crateApiSetTunnel({required TunnelMode mode}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_box_autoadd_tunnel_mode(mode);
-        return wire.wire__crate__api__set_tunnel(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_tunnel_mode(mode);
+          return wire.wire__crate__api__set_tunnel(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetTunnelConstMeta,
+        argValues: [mode],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetTunnelConstMeta,
-      argValues: [mode],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiSetTunnelConstMeta => const TaskConstMeta(
-        debugName: "set_tunnel",
-        argNames: ["mode"],
-      );
+  TaskConstMeta get kCrateApiSetTunnelConstMeta =>
+      const TaskConstMeta(debugName: "set_tunnel", argNames: ["mode"]);
 
   @override
-  Future<void> crateApiSetWalletBirthdayHeight(
-      {required String walletId, required int birthdayHeight}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_u_32(birthdayHeight);
-        return wire.wire__crate__api__set_wallet_birthday_height(
-            port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiSetWalletBirthdayHeight({
+    required String walletId,
+    required int birthdayHeight,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(birthdayHeight);
+          return wire.wire__crate__api__set_wallet_birthday_height(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetWalletBirthdayHeightConstMeta,
+        argValues: [walletId, birthdayHeight],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSetWalletBirthdayHeightConstMeta,
-      argValues: [walletId, birthdayHeight],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSetWalletBirthdayHeightConstMeta =>
@@ -2995,144 +3438,172 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<void> crateApiShutdownTransport() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__shutdown_transport(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__shutdown_transport(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiShutdownTransportConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiShutdownTransportConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiShutdownTransportConstMeta => const TaskConstMeta(
-        debugName: "shutdown_transport",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiShutdownTransportConstMeta =>
+      const TaskConstMeta(debugName: "shutdown_transport", argNames: []);
 
   @override
-  Future<SignedTx> crateApiSignTx(
-      {required String walletId, required PendingTx pending}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_box_autoadd_pending_tx(pending);
-        return wire.wire__crate__api__sign_tx(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_signed_tx,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<SignedTx> crateApiSignTx({
+    required String walletId,
+    required PendingTx pending,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_box_autoadd_pending_tx(pending);
+          return wire.wire__crate__api__sign_tx(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_signed_tx,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSignTxConstMeta,
+        argValues: [walletId, pending],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSignTxConstMeta,
-      argValues: [walletId, pending],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSignTxConstMeta => const TaskConstMeta(
-        debugName: "sign_tx",
-        argNames: ["walletId", "pending"],
-      );
+    debugName: "sign_tx",
+    argNames: ["walletId", "pending"],
+  );
 
   @override
-  Future<SignedTx> crateApiSignTxFiltered(
-      {required String walletId,
-      required PendingTx pending,
-      Int64List? keyIdsFilter,
-      Int64List? addressIdsFilter}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_box_autoadd_pending_tx(pending);
-        var arg2 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
-        var arg3 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
-        return wire.wire__crate__api__sign_tx_filtered(
-            port_, arg0, arg1, arg2, arg3);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_signed_tx,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<SignedTx> crateApiSignTxFiltered({
+    required String walletId,
+    required PendingTx pending,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_box_autoadd_pending_tx(pending);
+          var arg2 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
+          var arg3 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
+          return wire.wire__crate__api__sign_tx_filtered(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_signed_tx,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSignTxFilteredConstMeta,
+        argValues: [walletId, pending, keyIdsFilter, addressIdsFilter],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSignTxFilteredConstMeta,
-      argValues: [walletId, pending, keyIdsFilter, addressIdsFilter],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSignTxFilteredConstMeta => const TaskConstMeta(
-        debugName: "sign_tx_filtered",
-        argNames: ["walletId", "pending", "keyIdsFilter", "addressIdsFilter"],
-      );
+    debugName: "sign_tx_filtered",
+    argNames: ["walletId", "pending", "keyIdsFilter", "addressIdsFilter"],
+  );
 
   @override
-  Future<SignedTx> crateApiSignTxForKey(
-      {required String walletId,
-      required PendingTx pending,
-      required PlatformInt64 keyId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_box_autoadd_pending_tx(pending);
-        var arg2 = cst_encode_i_64(keyId);
-        return wire.wire__crate__api__sign_tx_for_key(port_, arg0, arg1, arg2);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_signed_tx,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<SignedTx> crateApiSignTxForKey({
+    required String walletId,
+    required PendingTx pending,
+    required PlatformInt64 keyId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_box_autoadd_pending_tx(pending);
+          var arg2 = cst_encode_i_64(keyId);
+          return wire.wire__crate__api__sign_tx_for_key(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_signed_tx,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSignTxForKeyConstMeta,
+        argValues: [walletId, pending, keyId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSignTxForKeyConstMeta,
-      argValues: [walletId, pending, keyId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiSignTxForKeyConstMeta => const TaskConstMeta(
-        debugName: "sign_tx_for_key",
-        argNames: ["walletId", "pending", "keyId"],
-      );
+    debugName: "sign_tx_for_key",
+    argNames: ["walletId", "pending", "keyId"],
+  );
 
   @override
   Future<String> crateApiSkipSeedBiometric() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__skip_seed_biometric(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__skip_seed_biometric(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSkipSeedBiometricConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSkipSeedBiometricConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiSkipSeedBiometricConstMeta => const TaskConstMeta(
-        debugName: "skip_seed_biometric",
-        argNames: [],
-      );
+  TaskConstMeta get kCrateApiSkipSeedBiometricConstMeta =>
+      const TaskConstMeta(debugName: "skip_seed_biometric", argNames: []);
 
   @override
-  Future<BackgroundSyncResult> crateApiStartBackgroundSync(
-      {required String walletId, String? mode}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_opt_String(mode);
-        return wire.wire__crate__api__start_background_sync(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_background_sync_result,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<BackgroundSyncResult> crateApiStartBackgroundSync({
+    required String walletId,
+    String? mode,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_String(mode);
+          return wire.wire__crate__api__start_background_sync(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_background_sync_result,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiStartBackgroundSyncConstMeta,
+        argValues: [walletId, mode],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiStartBackgroundSyncConstMeta,
-      argValues: [walletId, mode],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiStartBackgroundSyncConstMeta =>
@@ -3142,22 +3613,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin(
-      {String? mode}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_opt_String(mode);
-        return wire.wire__crate__api__start_background_sync_round_robin(
-            port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_wallet_background_sync_result,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin({
+    String? mode,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_opt_String(mode);
+          return wire.wire__crate__api__start_background_sync_round_robin(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_wallet_background_sync_result,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiStartBackgroundSyncRoundRobinConstMeta,
+        argValues: [mode],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiStartBackgroundSyncRoundRobinConstMeta,
-      argValues: [mode],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiStartBackgroundSyncRoundRobinConstMeta =>
@@ -3168,136 +3644,151 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<String> crateApiStartSeedExport({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__start_seed_export(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_String,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__start_seed_export(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiStartSeedExportConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiStartSeedExportConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiStartSeedExportConstMeta => const TaskConstMeta(
-        debugName: "start_seed_export",
-        argNames: ["walletId"],
-      );
+    debugName: "start_seed_export",
+    argNames: ["walletId"],
+  );
 
   @override
-  Future<void> crateApiStartSync(
-      {required String walletId, required SyncMode mode}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_sync_mode(mode);
-        return wire.wire__crate__api__start_sync(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<void> crateApiStartSync({
+    required String walletId,
+    required SyncMode mode,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_sync_mode(mode);
+          return wire.wire__crate__api__start_sync(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiStartSyncConstMeta,
+        argValues: [walletId, mode],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiStartSyncConstMeta,
-      argValues: [walletId, mode],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiStartSyncConstMeta => const TaskConstMeta(
-        debugName: "start_sync",
-        argNames: ["walletId", "mode"],
-      );
+    debugName: "start_sync",
+    argNames: ["walletId", "mode"],
+  );
 
   @override
   Future<void> crateApiSwitchWallet({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__switch_wallet(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__switch_wallet(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSwitchWalletConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSwitchWalletConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiSwitchWalletConstMeta => const TaskConstMeta(
-        debugName: "switch_wallet",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiSwitchWalletConstMeta =>
+      const TaskConstMeta(debugName: "switch_wallet", argNames: ["walletId"]);
 
   @override
   Future<SyncStatus> crateApiSyncStatus({required String walletId}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        return wire.wire__crate__api__sync_status(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_sync_status,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__sync_status(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_sync_status,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSyncStatusConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiSyncStatusConstMeta,
-      argValues: [walletId],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiSyncStatusConstMeta => const TaskConstMeta(
-        debugName: "sync_status",
-        argNames: ["walletId"],
-      );
+  TaskConstMeta get kCrateApiSyncStatusConstMeta =>
+      const TaskConstMeta(debugName: "sync_status", argNames: ["walletId"]);
 
   @override
-  Future<NodeTestResult> crateApiTestNode(
-      {required String url, String? tlsPin}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(url);
-        var arg1 = cst_encode_opt_String(tlsPin);
-        return wire.wire__crate__api__test_node(port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_node_test_result,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<NodeTestResult> crateApiTestNode({
+    required String url,
+    String? tlsPin,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(url);
+          var arg1 = cst_encode_opt_String(tlsPin);
+          return wire.wire__crate__api__test_node(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_node_test_result,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiTestNodeConstMeta,
+        argValues: [url, tlsPin],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiTestNodeConstMeta,
-      argValues: [url, tlsPin],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiTestNodeConstMeta => const TaskConstMeta(
-        debugName: "test_node",
-        argNames: ["url", "tlsPin"],
-      );
+  TaskConstMeta get kCrateApiTestNodeConstMeta =>
+      const TaskConstMeta(debugName: "test_node", argNames: ["url", "tlsPin"]);
 
   @override
-  Future<bool> crateApiToggleAddressBookFavorite(
-      {required String walletId, required PlatformInt64 id}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_i_64(id);
-        return wire.wire__crate__api__toggle_address_book_favorite(
-            port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<bool> crateApiToggleAddressBookFavorite({
+    required String walletId,
+    required PlatformInt64 id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(id);
+          return wire.wire__crate__api__toggle_address_book_favorite(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiToggleAddressBookFavoriteConstMeta,
+        argValues: [walletId, id],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiToggleAddressBookFavoriteConstMeta,
-      argValues: [walletId, id],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiToggleAddressBookFavoriteConstMeta =>
@@ -3308,53 +3799,65 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<void> crateApiUnlockApp({required String passphrase}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(passphrase);
-        return wire.wire__crate__api__unlock_app(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_unit,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(passphrase);
+          return wire.wire__crate__api__unlock_app(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiUnlockAppConstMeta,
+        argValues: [passphrase],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiUnlockAppConstMeta,
-      argValues: [passphrase],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiUnlockAppConstMeta => const TaskConstMeta(
-        debugName: "unlock_app",
-        argNames: ["passphrase"],
-      );
+  TaskConstMeta get kCrateApiUnlockAppConstMeta =>
+      const TaskConstMeta(debugName: "unlock_app", argNames: ["passphrase"]);
 
   @override
-  Future<AddressBookEntryFfi> crateApiUpdateAddressBookEntry(
-      {required String walletId,
-      required PlatformInt64 id,
-      String? label,
-      String? notes,
-      AddressBookColorTag? colorTag,
-      bool? isFavorite}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(walletId);
-        var arg1 = cst_encode_i_64(id);
-        var arg2 = cst_encode_opt_String(label);
-        var arg3 = cst_encode_opt_String(notes);
-        var arg4 = cst_encode_opt_box_autoadd_address_book_color_tag(colorTag);
-        var arg5 = cst_encode_opt_box_autoadd_bool(isFavorite);
-        return wire.wire__crate__api__update_address_book_entry(
-            port_, arg0, arg1, arg2, arg3, arg4, arg5);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_address_book_entry_ffi,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<AddressBookEntryFfi> crateApiUpdateAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+    String? label,
+    String? notes,
+    AddressBookColorTag? colorTag,
+    bool? isFavorite,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(id);
+          var arg2 = cst_encode_opt_String(label);
+          var arg3 = cst_encode_opt_String(notes);
+          var arg4 = cst_encode_opt_box_autoadd_address_book_color_tag(
+            colorTag,
+          );
+          var arg5 = cst_encode_opt_box_autoadd_bool(isFavorite);
+          return wire.wire__crate__api__update_address_book_entry(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+            arg5,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_address_book_entry_ffi,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiUpdateAddressBookEntryConstMeta,
+        argValues: [walletId, id, label, notes, colorTag, isFavorite],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiUpdateAddressBookEntryConstMeta,
-      argValues: [walletId, id, label, notes, colorTag, isFavorite],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiUpdateAddressBookEntryConstMeta =>
@@ -3366,47 +3869,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           "label",
           "notes",
           "colorTag",
-          "isFavorite"
+          "isFavorite",
         ],
       );
 
   @override
   Future<bool> crateApiValidateMnemonic({required String mnemonic}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(mnemonic);
-        return wire.wire__crate__api__validate_mnemonic(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(mnemonic);
+          return wire.wire__crate__api__validate_mnemonic(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiValidateMnemonicConstMeta,
+        argValues: [mnemonic],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiValidateMnemonicConstMeta,
-      argValues: [mnemonic],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiValidateMnemonicConstMeta => const TaskConstMeta(
-        debugName: "validate_mnemonic",
-        argNames: ["mnemonic"],
-      );
+    debugName: "validate_mnemonic",
+    argNames: ["mnemonic"],
+  );
 
   @override
   Future<bool> crateApiVerifyAppPassphrase({required String passphrase}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(passphrase);
-        return wire.wire__crate__api__verify_app_passphrase(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(passphrase);
+          return wire.wire__crate__api__verify_app_passphrase(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiVerifyAppPassphraseConstMeta,
+        argValues: [passphrase],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiVerifyAppPassphraseConstMeta,
-      argValues: [passphrase],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiVerifyAppPassphraseConstMeta =>
@@ -3416,23 +3923,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<bool> crateApiVerifyDuressPassphrase(
-      {required String passphrase, required String hash}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(passphrase);
-        var arg1 = cst_encode_String(hash);
-        return wire.wire__crate__api__verify_duress_passphrase(
-            port_, arg0, arg1);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+  Future<bool> crateApiVerifyDuressPassphrase({
+    required String passphrase,
+    required String hash,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(passphrase);
+          var arg1 = cst_encode_String(hash);
+          return wire.wire__crate__api__verify_duress_passphrase(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiVerifyDuressPassphraseConstMeta,
+        argValues: [passphrase, hash],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiVerifyDuressPassphraseConstMeta,
-      argValues: [passphrase, hash],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiVerifyDuressPassphraseConstMeta =>
@@ -3443,47 +3957,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @override
   Future<bool> crateApiVerifyPanicPin({required String pin}) {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        var arg0 = cst_encode_String(pin);
-        return wire.wire__crate__api__verify_panic_pin(port_, arg0);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(pin);
+          return wire.wire__crate__api__verify_panic_pin(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiVerifyPanicPinConstMeta,
+        argValues: [pin],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiVerifyPanicPinConstMeta,
-      argValues: [pin],
-      apiImpl: this,
-    ));
+    );
   }
 
-  TaskConstMeta get kCrateApiVerifyPanicPinConstMeta => const TaskConstMeta(
-        debugName: "verify_panic_pin",
-        argNames: ["pin"],
-      );
+  TaskConstMeta get kCrateApiVerifyPanicPinConstMeta =>
+      const TaskConstMeta(debugName: "verify_panic_pin", argNames: ["pin"]);
 
   @override
   Future<bool> crateApiWalletRegistryExists() {
-    return handler.executeNormal(NormalTask(
-      callFfi: (port_) {
-        return wire.wire__crate__api__wallet_registry_exists(port_);
-      },
-      codec: DcoCodec(
-        decodeSuccessData: dco_decode_bool,
-        decodeErrorData: dco_decode_AnyhowException,
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__wallet_registry_exists(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiWalletRegistryExistsConstMeta,
+        argValues: [],
+        apiImpl: this,
       ),
-      constMeta: kCrateApiWalletRegistryExistsConstMeta,
-      argValues: [],
-      apiImpl: this,
-    ));
+    );
   }
 
   TaskConstMeta get kCrateApiWalletRegistryExistsConstMeta =>
-      const TaskConstMeta(
-        debugName: "wallet_registry_exists",
-        argNames: [],
-      );
+      const TaskConstMeta(debugName: "wallet_registry_exists", argNames: []);
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
@@ -3598,14 +4111,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_address_book_color_tag(raw);
   }
 
   @protected
   AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_address_book_entry_ffi(raw);
   }
@@ -3666,7 +4181,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_watch_only_banner_info(raw);
   }
@@ -3815,7 +4331,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>)
         .map(dco_decode_address_book_entry_ffi)
@@ -3919,7 +4436,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null
         ? null
@@ -3928,7 +4446,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null
         ? null
@@ -3967,7 +4486,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null
         ? null
@@ -4093,9 +4613,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case 1:
         return TunnelMode_I2p();
       case 2:
-        return TunnelMode_Socks5(
-          url: dco_decode_String(raw[1]),
-        );
+        return TunnelMode_Socks5(url: dco_decode_String(raw[1]));
       case 3:
         return TunnelMode_Direct();
       default:
@@ -4158,7 +4676,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
     if (arr.length != 9)
@@ -4208,7 +4727,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(
-      dynamic raw) {
+    dynamic raw,
+  ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
     if (arr.length != 6)
@@ -4239,7 +4759,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   AddressBalanceInfo sse_decode_address_balance_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_address = sse_decode_String(deserializer);
     var var_balance = sse_decode_u_64(deserializer);
@@ -4252,21 +4773,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_colorTag = sse_decode_address_book_color_tag(deserializer);
     var var_diversifierIndex = sse_decode_u_32(deserializer);
     return AddressBalanceInfo(
-        address: var_address,
-        balance: var_balance,
-        spendable: var_spendable,
-        pending: var_pending,
-        keyId: var_keyId,
-        addressId: var_addressId,
-        label: var_label,
-        createdAt: var_createdAt,
-        colorTag: var_colorTag,
-        diversifierIndex: var_diversifierIndex);
+      address: var_address,
+      balance: var_balance,
+      spendable: var_spendable,
+      pending: var_pending,
+      keyId: var_keyId,
+      addressId: var_addressId,
+      label: var_label,
+      createdAt: var_createdAt,
+      colorTag: var_colorTag,
+      diversifierIndex: var_diversifierIndex,
+    );
   }
 
   @protected
   AddressBookColorTag sse_decode_address_book_color_tag(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
     return AddressBookColorTag.values[inner];
@@ -4274,7 +4797,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   AddressBookEntryFfi sse_decode_address_book_entry_ffi(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_id = sse_decode_i_64(deserializer);
     var var_walletId = sse_decode_String(deserializer);
@@ -4288,17 +4812,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_lastUsedAt = sse_decode_opt_box_autoadd_i_64(deserializer);
     var var_useCount = sse_decode_u_32(deserializer);
     return AddressBookEntryFfi(
-        id: var_id,
-        walletId: var_walletId,
-        address: var_address,
-        label: var_label,
-        notes: var_notes,
-        colorTag: var_colorTag,
-        isFavorite: var_isFavorite,
-        createdAt: var_createdAt,
-        updatedAt: var_updatedAt,
-        lastUsedAt: var_lastUsedAt,
-        useCount: var_useCount);
+      id: var_id,
+      walletId: var_walletId,
+      address: var_address,
+      label: var_label,
+      notes: var_notes,
+      colorTag: var_colorTag,
+      isFavorite: var_isFavorite,
+      createdAt: var_createdAt,
+      updatedAt: var_updatedAt,
+      lastUsedAt: var_lastUsedAt,
+      useCount: var_useCount,
+    );
   }
 
   @protected
@@ -4310,16 +4835,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_createdAt = sse_decode_i_64(deserializer);
     var var_colorTag = sse_decode_address_book_color_tag(deserializer);
     return AddressInfo(
-        address: var_address,
-        diversifierIndex: var_diversifierIndex,
-        label: var_label,
-        createdAt: var_createdAt,
-        colorTag: var_colorTag);
+      address: var_address,
+      diversifierIndex: var_diversifierIndex,
+      label: var_label,
+      createdAt: var_createdAt,
+      colorTag: var_colorTag,
+    );
   }
 
   @protected
   BackgroundSyncResult sse_decode_background_sync_result(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_mode = sse_decode_String(deserializer);
     var var_blocksSynced = sse_decode_u_64(deserializer);
@@ -4330,14 +4857,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_newBalance = sse_decode_opt_box_autoadd_u_64(deserializer);
     var var_newTransactions = sse_decode_u_32(deserializer);
     return BackgroundSyncResult(
-        mode: var_mode,
-        blocksSynced: var_blocksSynced,
-        startHeight: var_startHeight,
-        endHeight: var_endHeight,
-        durationSecs: var_durationSecs,
-        errors: var_errors,
-        newBalance: var_newBalance,
-        newTransactions: var_newTransactions);
+      mode: var_mode,
+      blocksSynced: var_blocksSynced,
+      startHeight: var_startHeight,
+      endHeight: var_endHeight,
+      durationSecs: var_durationSecs,
+      errors: var_errors,
+      newBalance: var_newBalance,
+      newTransactions: var_newTransactions,
+    );
   }
 
   @protected
@@ -4347,7 +4875,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_spendable = sse_decode_u_64(deserializer);
     var var_pending = sse_decode_u_64(deserializer);
     return Balance(
-        total: var_total, spendable: var_spendable, pending: var_pending);
+      total: var_total,
+      spendable: var_spendable,
+      pending: var_pending,
+    );
   }
 
   @protected
@@ -4358,14 +4889,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_address_book_color_tag(deserializer));
   }
 
   @protected
   AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_address_book_entry_ffi(deserializer));
   }
@@ -4378,7 +4911,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   CheckpointInfo sse_decode_box_autoadd_checkpoint_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_checkpoint_info(deserializer));
   }
@@ -4391,7 +4925,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_lightd_endpoint(deserializer));
   }
@@ -4428,7 +4963,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_watch_only_banner_info(deserializer));
   }
@@ -4442,11 +4978,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_rustVersion = sse_decode_String(deserializer);
     var var_targetTriple = sse_decode_String(deserializer);
     return BuildInfo(
-        version: var_version,
-        gitCommit: var_gitCommit,
-        buildDate: var_buildDate,
-        rustVersion: var_rustVersion,
-        targetTriple: var_targetTriple);
+      version: var_version,
+      gitCommit: var_gitCommit,
+      buildDate: var_buildDate,
+      rustVersion: var_rustVersion,
+      targetTriple: var_targetTriple,
+    );
   }
 
   @protected
@@ -4472,11 +5009,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_feePerOutput = sse_decode_u_64(deserializer);
     var var_memoFeeMultiplier = sse_decode_f_64(deserializer);
     return FeeInfo(
-        defaultFee: var_defaultFee,
-        minFee: var_minFee,
-        maxFee: var_maxFee,
-        feePerOutput: var_feePerOutput,
-        memoFeeMultiplier: var_memoFeeMultiplier);
+      defaultFee: var_defaultFee,
+      minFee: var_minFee,
+      maxFee: var_maxFee,
+      feePerOutput: var_feePerOutput,
+      memoFeeMultiplier: var_memoFeeMultiplier,
+    );
   }
 
   @protected
@@ -4501,12 +5039,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_createdAt = sse_decode_i_64(deserializer);
     var var_colorTag = sse_decode_address_book_color_tag(deserializer);
     return KeyAddressInfo(
-        keyId: var_keyId,
-        address: var_address,
-        diversifierIndex: var_diversifierIndex,
-        label: var_label,
-        createdAt: var_createdAt,
-        colorTag: var_colorTag);
+      keyId: var_keyId,
+      address: var_address,
+      diversifierIndex: var_diversifierIndex,
+      label: var_label,
+      createdAt: var_createdAt,
+      colorTag: var_colorTag,
+    );
   }
 
   @protected
@@ -4518,11 +5057,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_saplingSpendingKey = sse_decode_opt_String(deserializer);
     var var_orchardSpendingKey = sse_decode_opt_String(deserializer);
     return KeyExportInfo(
-        keyId: var_keyId,
-        saplingViewingKey: var_saplingViewingKey,
-        orchardViewingKey: var_orchardViewingKey,
-        saplingSpendingKey: var_saplingSpendingKey,
-        orchardSpendingKey: var_orchardSpendingKey);
+      keyId: var_keyId,
+      saplingViewingKey: var_saplingViewingKey,
+      orchardViewingKey: var_orchardViewingKey,
+      saplingSpendingKey: var_saplingSpendingKey,
+      orchardSpendingKey: var_orchardSpendingKey,
+    );
   }
 
   @protected
@@ -4537,14 +5077,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_birthdayHeight = sse_decode_i_64(deserializer);
     var var_createdAt = sse_decode_i_64(deserializer);
     return KeyGroupInfo(
-        id: var_id,
-        label: var_label,
-        keyType: var_keyType,
-        spendable: var_spendable,
-        hasSapling: var_hasSapling,
-        hasOrchard: var_hasOrchard,
-        birthdayHeight: var_birthdayHeight,
-        createdAt: var_createdAt);
+      id: var_id,
+      label: var_label,
+      keyType: var_keyType,
+      spendable: var_spendable,
+      hasSapling: var_hasSapling,
+      hasOrchard: var_hasOrchard,
+      birthdayHeight: var_birthdayHeight,
+      createdAt: var_createdAt,
+    );
   }
 
   @protected
@@ -4563,11 +5104,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_tlsPin = sse_decode_opt_String(deserializer);
     var var_label = sse_decode_opt_String(deserializer);
     return LightdEndpoint(
-        host: var_host,
-        port: var_port,
-        useTls: var_useTls,
-        tlsPin: var_tlsPin,
-        label: var_label);
+      host: var_host,
+      port: var_port,
+      useTls: var_useTls,
+      tlsPin: var_tlsPin,
+      label: var_label,
+    );
   }
 
   @protected
@@ -4584,7 +5126,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   List<AddressBalanceInfo> sse_decode_list_address_balance_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var len_ = sse_decode_i_32(deserializer);
@@ -4597,7 +5140,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var len_ = sse_decode_i_32(deserializer);
@@ -4622,7 +5166,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   List<KeyAddressInfo> sse_decode_list_key_address_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var len_ = sse_decode_i_32(deserializer);
@@ -4635,7 +5180,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   List<KeyGroupInfo> sse_decode_list_key_group_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var len_ = sse_decode_i_32(deserializer);
@@ -4674,7 +5220,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     var len_ = sse_decode_i_32(deserializer);
@@ -4717,10 +5264,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_rpcPort = sse_decode_u_16(deserializer);
     var var_defaultBirthday = sse_decode_u_32(deserializer);
     return NetworkInfo(
-        name: var_name,
-        coinType: var_coinType,
-        rpcPort: var_rpcPort,
-        defaultBirthday: var_defaultBirthday);
+      name: var_name,
+      coinType: var_coinType,
+      rpcPort: var_rpcPort,
+      defaultBirthday: var_defaultBirthday,
+    );
   }
 
   @protected
@@ -4738,17 +5286,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_serverVersion = sse_decode_opt_String(deserializer);
     var var_chainName = sse_decode_opt_String(deserializer);
     return NodeTestResult(
-        success: var_success,
-        latestBlockHeight: var_latestBlockHeight,
-        transportMode: var_transportMode,
-        tlsEnabled: var_tlsEnabled,
-        tlsPinMatched: var_tlsPinMatched,
-        expectedPin: var_expectedPin,
-        actualPin: var_actualPin,
-        errorMessage: var_errorMessage,
-        responseTimeMs: var_responseTimeMs,
-        serverVersion: var_serverVersion,
-        chainName: var_chainName);
+      success: var_success,
+      latestBlockHeight: var_latestBlockHeight,
+      transportMode: var_transportMode,
+      tlsEnabled: var_tlsEnabled,
+      tlsPinMatched: var_tlsPinMatched,
+      expectedPin: var_expectedPin,
+      actualPin: var_actualPin,
+      errorMessage: var_errorMessage,
+      responseTimeMs: var_responseTimeMs,
+      serverVersion: var_serverVersion,
+      chainName: var_chainName,
+    );
   }
 
   @protected
@@ -4764,7 +5313,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
@@ -4776,7 +5326,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
@@ -4799,7 +5350,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
@@ -4844,7 +5396,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
@@ -4856,7 +5409,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   Int64List? sse_decode_opt_list_prim_i_64_strict(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     if (sse_decode_bool(deserializer)) {
@@ -4888,30 +5442,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_expiryHeight = sse_decode_u_32(deserializer);
     var var_createdAt = sse_decode_i_64(deserializer);
     return PendingTx(
-        id: var_id,
-        outputs: var_outputs,
-        totalAmount: var_totalAmount,
-        fee: var_fee,
-        change: var_change,
-        inputTotal: var_inputTotal,
-        numInputs: var_numInputs,
-        expiryHeight: var_expiryHeight,
-        createdAt: var_createdAt);
+      id: var_id,
+      outputs: var_outputs,
+      totalAmount: var_totalAmount,
+      fee: var_fee,
+      change: var_change,
+      inputTotal: var_inputTotal,
+      numInputs: var_numInputs,
+      expiryHeight: var_expiryHeight,
+      createdAt: var_createdAt,
+    );
   }
 
   @protected
   SeedExportWarnings sse_decode_seed_export_warnings(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_primary = sse_decode_String(deserializer);
     var var_secondary = sse_decode_String(deserializer);
     var var_backupInstructions = sse_decode_String(deserializer);
     var var_clipboardWarning = sse_decode_String(deserializer);
     return SeedExportWarnings(
-        primary: var_primary,
-        secondary: var_secondary,
-        backupInstructions: var_backupInstructions,
-        clipboardWarning: var_clipboardWarning);
+      primary: var_primary,
+      secondary: var_secondary,
+      backupInstructions: var_backupInstructions,
+      clipboardWarning: var_clipboardWarning,
+    );
   }
 
   @protected
@@ -4931,10 +5488,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_module = sse_decode_String(deserializer);
     var var_message = sse_decode_String(deserializer);
     return SyncLogEntryFfi(
-        timestamp: var_timestamp,
-        level: var_level,
-        module: var_module,
-        message: var_message);
+      timestamp: var_timestamp,
+      level: var_level,
+      module: var_module,
+      message: var_message,
+    );
   }
 
   @protected
@@ -4964,15 +5522,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_notesDecrypted = sse_decode_u_64(deserializer);
     var var_lastBatchMs = sse_decode_u_64(deserializer);
     return SyncStatus(
-        localHeight: var_localHeight,
-        targetHeight: var_targetHeight,
-        percent: var_percent,
-        eta: var_eta,
-        stage: var_stage,
-        lastCheckpoint: var_lastCheckpoint,
-        blocksPerSecond: var_blocksPerSecond,
-        notesDecrypted: var_notesDecrypted,
-        lastBatchMs: var_lastBatchMs);
+      localHeight: var_localHeight,
+      targetHeight: var_targetHeight,
+      percent: var_percent,
+      eta: var_eta,
+      stage: var_stage,
+      lastCheckpoint: var_lastCheckpoint,
+      blocksPerSecond: var_blocksPerSecond,
+      notesDecrypted: var_notesDecrypted,
+      lastBatchMs: var_lastBatchMs,
+    );
   }
 
   @protected
@@ -5006,13 +5565,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_memo = sse_decode_opt_String(deserializer);
     var var_confirmed = sse_decode_bool(deserializer);
     return TxInfo(
-        txid: var_txid,
-        height: var_height,
-        timestamp: var_timestamp,
-        amount: var_amount,
-        fee: var_fee,
-        memo: var_memo,
-        confirmed: var_confirmed);
+      txid: var_txid,
+      height: var_height,
+      timestamp: var_timestamp,
+      amount: var_amount,
+      fee: var_fee,
+      memo: var_memo,
+      confirmed: var_confirmed,
+    );
   }
 
   @protected
@@ -5052,7 +5612,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_walletId = sse_decode_String(deserializer);
     var var_mode = sse_decode_String(deserializer);
@@ -5064,15 +5625,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_newBalance = sse_decode_opt_box_autoadd_u_64(deserializer);
     var var_newTransactions = sse_decode_u_32(deserializer);
     return WalletBackgroundSyncResult(
-        walletId: var_walletId,
-        mode: var_mode,
-        blocksSynced: var_blocksSynced,
-        startHeight: var_startHeight,
-        endHeight: var_endHeight,
-        durationSecs: var_durationSecs,
-        errors: var_errors,
-        newBalance: var_newBalance,
-        newTransactions: var_newTransactions);
+      walletId: var_walletId,
+      mode: var_mode,
+      blocksSynced: var_blocksSynced,
+      startHeight: var_startHeight,
+      endHeight: var_endHeight,
+      durationSecs: var_durationSecs,
+      errors: var_errors,
+      newBalance: var_newBalance,
+      newTransactions: var_newTransactions,
+    );
   }
 
   @protected
@@ -5085,32 +5647,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_birthdayHeight = sse_decode_u_32(deserializer);
     var var_networkType = sse_decode_opt_String(deserializer);
     return WalletMeta(
-        id: var_id,
-        name: var_name,
-        createdAt: var_createdAt,
-        watchOnly: var_watchOnly,
-        birthdayHeight: var_birthdayHeight,
-        networkType: var_networkType);
+      id: var_id,
+      name: var_name,
+      createdAt: var_createdAt,
+      watchOnly: var_watchOnly,
+      birthdayHeight: var_birthdayHeight,
+      networkType: var_networkType,
+    );
   }
 
   @protected
   WatchOnlyBannerInfo sse_decode_watch_only_banner_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_bannerType = sse_decode_String(deserializer);
     var var_title = sse_decode_String(deserializer);
     var var_subtitle = sse_decode_String(deserializer);
     var var_icon = sse_decode_String(deserializer);
     return WatchOnlyBannerInfo(
-        bannerType: var_bannerType,
-        title: var_title,
-        subtitle: var_subtitle,
-        icon: var_icon);
+      bannerType: var_bannerType,
+      title: var_title,
+      subtitle: var_subtitle,
+      icon: var_icon,
+    );
   }
 
   @protected
   WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(
-      SseDeserializer deserializer) {
+    SseDeserializer deserializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_canViewIncoming = sse_decode_bool(deserializer);
     var var_canViewOutgoing = sse_decode_bool(deserializer);
@@ -5119,12 +5685,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_canGenerateAddresses = sse_decode_bool(deserializer);
     var var_isWatchOnly = sse_decode_bool(deserializer);
     return WatchOnlyCapabilitiesInfo(
-        canViewIncoming: var_canViewIncoming,
-        canViewOutgoing: var_canViewOutgoing,
-        canSpend: var_canSpend,
-        canExportSeed: var_canExportSeed,
-        canGenerateAddresses: var_canGenerateAddresses,
-        isWatchOnly: var_isWatchOnly);
+      canViewIncoming: var_canViewIncoming,
+      canViewOutgoing: var_canViewOutgoing,
+      canSpend: var_canSpend,
+      canExportSeed: var_canExportSeed,
+      canGenerateAddresses: var_canGenerateAddresses,
+      isWatchOnly: var_isWatchOnly,
+    );
   }
 
   @protected
@@ -5195,7 +5762,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_AnyhowException(
-      AnyhowException self, SseSerializer serializer) {
+    AnyhowException self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.message, serializer);
   }
@@ -5208,7 +5777,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_address_balance_info(
-      AddressBalanceInfo self, SseSerializer serializer) {
+    AddressBalanceInfo self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.address, serializer);
     sse_encode_u_64(self.balance, serializer);
@@ -5224,14 +5795,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_address_book_color_tag(
-      AddressBookColorTag self, SseSerializer serializer) {
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
   }
 
   @protected
   void sse_encode_address_book_entry_ffi(
-      AddressBookEntryFfi self, SseSerializer serializer) {
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_64(self.id, serializer);
     sse_encode_String(self.walletId, serializer);
@@ -5258,7 +5833,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_background_sync_result(
-      BackgroundSyncResult self, SseSerializer serializer) {
+    BackgroundSyncResult self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.mode, serializer);
     sse_encode_u_64(self.blocksSynced, serializer);
@@ -5286,14 +5863,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_box_autoadd_address_book_color_tag(
-      AddressBookColorTag self, SseSerializer serializer) {
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_address_book_color_tag(self, serializer);
   }
 
   @protected
   void sse_encode_box_autoadd_address_book_entry_ffi(
-      AddressBookEntryFfi self, SseSerializer serializer) {
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_address_book_entry_ffi(self, serializer);
   }
@@ -5306,42 +5887,54 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_box_autoadd_checkpoint_info(
-      CheckpointInfo self, SseSerializer serializer) {
+    CheckpointInfo self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_checkpoint_info(self, serializer);
   }
 
   @protected
   void sse_encode_box_autoadd_i_64(
-      PlatformInt64 self, SseSerializer serializer) {
+    PlatformInt64 self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_64(self, serializer);
   }
 
   @protected
   void sse_encode_box_autoadd_lightd_endpoint(
-      LightdEndpoint self, SseSerializer serializer) {
+    LightdEndpoint self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_lightd_endpoint(self, serializer);
   }
 
   @protected
   void sse_encode_box_autoadd_pending_tx(
-      PendingTx self, SseSerializer serializer) {
+    PendingTx self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_pending_tx(self, serializer);
   }
 
   @protected
   void sse_encode_box_autoadd_signed_tx(
-      SignedTx self, SseSerializer serializer) {
+    SignedTx self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_signed_tx(self, serializer);
   }
 
   @protected
   void sse_encode_box_autoadd_tunnel_mode(
-      TunnelMode self, SseSerializer serializer) {
+    TunnelMode self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_tunnel_mode(self, serializer);
   }
@@ -5360,7 +5953,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_box_autoadd_watch_only_banner_info(
-      WatchOnlyBannerInfo self, SseSerializer serializer) {
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_watch_only_banner_info(self, serializer);
   }
@@ -5377,7 +5972,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_checkpoint_info(
-      CheckpointInfo self, SseSerializer serializer) {
+    CheckpointInfo self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self.height, serializer);
     sse_encode_i_64(self.timestamp, serializer);
@@ -5413,7 +6010,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_key_address_info(
-      KeyAddressInfo self, SseSerializer serializer) {
+    KeyAddressInfo self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_64(self.keyId, serializer);
     sse_encode_String(self.address, serializer);
@@ -5425,7 +6024,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_key_export_info(
-      KeyExportInfo self, SseSerializer serializer) {
+    KeyExportInfo self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_64(self.keyId, serializer);
     sse_encode_opt_String(self.saplingViewingKey, serializer);
@@ -5455,7 +6056,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_lightd_endpoint(
-      LightdEndpoint self, SseSerializer serializer) {
+    LightdEndpoint self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.host, serializer);
     sse_encode_u_16(self.port, serializer);
@@ -5475,7 +6078,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_address_balance_info(
-      List<AddressBalanceInfo> self, SseSerializer serializer) {
+    List<AddressBalanceInfo> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -5485,7 +6090,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_address_book_entry_ffi(
-      List<AddressBookEntryFfi> self, SseSerializer serializer) {
+    List<AddressBookEntryFfi> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -5495,7 +6102,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_address_info(
-      List<AddressInfo> self, SseSerializer serializer) {
+    List<AddressInfo> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -5505,7 +6114,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_key_address_info(
-      List<KeyAddressInfo> self, SseSerializer serializer) {
+    List<KeyAddressInfo> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -5515,7 +6126,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_key_group_info(
-      List<KeyGroupInfo> self, SseSerializer serializer) {
+    List<KeyGroupInfo> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -5534,7 +6147,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_prim_i_64_strict(
-      Int64List self, SseSerializer serializer) {
+    Int64List self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putInt64List(self);
@@ -5542,7 +6157,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_prim_u_8_strict(
-      Uint8List self, SseSerializer serializer) {
+    Uint8List self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
@@ -5550,7 +6167,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_sync_log_entry_ffi(
-      List<SyncLogEntryFfi> self, SseSerializer serializer) {
+    List<SyncLogEntryFfi> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -5569,7 +6188,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_list_wallet_meta(
-      List<WalletMeta> self, SseSerializer serializer) {
+    List<WalletMeta> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
@@ -5588,7 +6209,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_node_test_result(
-      NodeTestResult self, SseSerializer serializer) {
+    NodeTestResult self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.success, serializer);
     sse_encode_opt_box_autoadd_u_64(self.latestBlockHeight, serializer);
@@ -5615,7 +6238,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_opt_box_autoadd_address_book_color_tag(
-      AddressBookColorTag? self, SseSerializer serializer) {
+    AddressBookColorTag? self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
@@ -5626,7 +6251,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_opt_box_autoadd_address_book_entry_ffi(
-      AddressBookEntryFfi? self, SseSerializer serializer) {
+    AddressBookEntryFfi? self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
@@ -5647,7 +6274,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_opt_box_autoadd_checkpoint_info(
-      CheckpointInfo? self, SseSerializer serializer) {
+    CheckpointInfo? self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
@@ -5658,7 +6287,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_opt_box_autoadd_i_64(
-      PlatformInt64? self, SseSerializer serializer) {
+    PlatformInt64? self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
@@ -5689,7 +6320,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_opt_box_autoadd_watch_only_banner_info(
-      WatchOnlyBannerInfo? self, SseSerializer serializer) {
+    WatchOnlyBannerInfo? self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
@@ -5700,7 +6333,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_opt_list_prim_i_64_strict(
-      Int64List? self, SseSerializer serializer) {
+    Int64List? self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
     sse_encode_bool(self != null, serializer);
@@ -5733,7 +6368,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_seed_export_warnings(
-      SeedExportWarnings self, SseSerializer serializer) {
+    SeedExportWarnings self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.primary, serializer);
     sse_encode_String(self.secondary, serializer);
@@ -5751,7 +6388,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_sync_log_entry_ffi(
-      SyncLogEntryFfi self, SseSerializer serializer) {
+    SyncLogEntryFfi self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_64(self.timestamp, serializer);
     sse_encode_String(self.level, serializer);
@@ -5850,7 +6489,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_wallet_background_sync_result(
-      WalletBackgroundSyncResult self, SseSerializer serializer) {
+    WalletBackgroundSyncResult self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.walletId, serializer);
     sse_encode_String(self.mode, serializer);
@@ -5876,7 +6517,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_watch_only_banner_info(
-      WatchOnlyBannerInfo self, SseSerializer serializer) {
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.bannerType, serializer);
     sse_encode_String(self.title, serializer);
@@ -5886,7 +6529,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   @protected
   void sse_encode_watch_only_capabilities_info(
-      WatchOnlyCapabilitiesInfo self, SseSerializer serializer) {
+    WatchOnlyCapabilitiesInfo self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.canViewIncoming, serializer);
     sse_encode_bool(self.canViewOutgoing, serializer);

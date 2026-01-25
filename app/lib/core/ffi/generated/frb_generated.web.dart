@@ -50,11 +50,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(
-      dynamic raw);
+    dynamic raw,
+  );
 
   @protected
   AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(
-      dynamic raw);
+    dynamic raw,
+  );
 
   @protected
   bool dco_decode_box_autoadd_bool(dynamic raw);
@@ -85,7 +87,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(
-      dynamic raw);
+    dynamic raw,
+  );
 
   @protected
   BuildInfo dco_decode_build_info(dynamic raw);
@@ -167,11 +170,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(
-      dynamic raw);
+    dynamic raw,
+  );
 
   @protected
   AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(
-      dynamic raw);
+    dynamic raw,
+  );
 
   @protected
   bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
@@ -190,7 +195,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(
-      dynamic raw);
+    dynamic raw,
+  );
 
   @protected
   Int64List? dco_decode_opt_list_prim_i_64_strict(dynamic raw);
@@ -245,7 +251,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(
-      dynamic raw);
+    dynamic raw,
+  );
 
   @protected
   WalletMeta dco_decode_wallet_meta(dynamic raw);
@@ -255,7 +262,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(
-      dynamic raw);
+    dynamic raw,
+  );
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
@@ -265,22 +273,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AddressBalanceInfo sse_decode_address_balance_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   AddressBookColorTag sse_decode_address_book_color_tag(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   AddressBookEntryFfi sse_decode_address_book_entry_ffi(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   AddressInfo sse_decode_address_info(SseDeserializer deserializer);
 
   @protected
   BackgroundSyncResult sse_decode_background_sync_result(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   Balance sse_decode_balance(SseDeserializer deserializer);
@@ -290,25 +302,29 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
   CheckpointInfo sse_decode_box_autoadd_checkpoint_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
   LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   PendingTx sse_decode_box_autoadd_pending_tx(SseDeserializer deserializer);
@@ -327,7 +343,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   BuildInfo sse_decode_build_info(SseDeserializer deserializer);
@@ -367,22 +384,26 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<AddressBalanceInfo> sse_decode_list_address_balance_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
 
   @protected
   List<KeyAddressInfo> sse_decode_list_key_address_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<KeyGroupInfo> sse_decode_list_key_group_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<Output> sse_decode_list_output(SseDeserializer deserializer);
@@ -395,7 +416,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<TxInfo> sse_decode_list_tx_info(SseDeserializer deserializer);
@@ -414,18 +436,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
 
   @protected
   CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
@@ -438,7 +463,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   Int64List? sse_decode_opt_list_prim_i_64_strict(SseDeserializer deserializer);
@@ -451,7 +477,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SeedExportWarnings sse_decode_seed_export_warnings(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   SignedTx sse_decode_signed_tx(SseDeserializer deserializer);
@@ -494,18 +521,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   WalletMeta sse_decode_wallet_meta(SseDeserializer deserializer);
 
   @protected
   WatchOnlyBannerInfo sse_decode_watch_only_banner_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(
-      SseDeserializer deserializer);
+    SseDeserializer deserializer,
+  );
 
   @protected
   String cst_encode_AnyhowException(AnyhowException raw) {
@@ -532,7 +562,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_opt_String(raw.label),
       cst_encode_i_64(raw.createdAt),
       cst_encode_address_book_color_tag(raw.colorTag),
-      cst_encode_u_32(raw.diversifierIndex)
+      cst_encode_u_32(raw.diversifierIndex),
     ].jsify()!;
   }
 
@@ -550,7 +580,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_i_64(raw.createdAt),
       cst_encode_i_64(raw.updatedAt),
       cst_encode_opt_box_autoadd_i_64(raw.lastUsedAt),
-      cst_encode_u_32(raw.useCount)
+      cst_encode_u_32(raw.useCount),
     ].jsify()!;
   }
 
@@ -562,7 +592,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_u_32(raw.diversifierIndex),
       cst_encode_opt_String(raw.label),
       cst_encode_i_64(raw.createdAt),
-      cst_encode_address_book_color_tag(raw.colorTag)
+      cst_encode_address_book_color_tag(raw.colorTag),
     ].jsify()!;
   }
 
@@ -577,7 +607,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_u_64(raw.durationSecs),
       cst_encode_list_String(raw.errors),
       cst_encode_opt_box_autoadd_u_64(raw.newBalance),
-      cst_encode_u_32(raw.newTransactions)
+      cst_encode_u_32(raw.newTransactions),
     ].jsify()!;
   }
 
@@ -587,7 +617,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     return [
       cst_encode_u_64(raw.total),
       cst_encode_u_64(raw.spendable),
-      cst_encode_u_64(raw.pending)
+      cst_encode_u_64(raw.pending),
     ].jsify()!;
   }
 
@@ -671,15 +701,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_String(raw.gitCommit),
       cst_encode_String(raw.buildDate),
       cst_encode_String(raw.rustVersion),
-      cst_encode_String(raw.targetTriple)
+      cst_encode_String(raw.targetTriple),
     ].jsify()!;
   }
 
   @protected
   JSAny cst_encode_checkpoint_info(CheckpointInfo raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
-    return [cst_encode_u_32(raw.height), cst_encode_i_64(raw.timestamp)]
-        .jsify()!;
+    return [
+      cst_encode_u_32(raw.height),
+      cst_encode_i_64(raw.timestamp),
+    ].jsify()!;
   }
 
   @protected
@@ -690,7 +722,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_u_64(raw.minFee),
       cst_encode_u_64(raw.maxFee),
       cst_encode_u_64(raw.feePerOutput),
-      cst_encode_f_64(raw.memoFeeMultiplier)
+      cst_encode_f_64(raw.memoFeeMultiplier),
     ].jsify()!;
   }
 
@@ -709,7 +741,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_u_32(raw.diversifierIndex),
       cst_encode_opt_String(raw.label),
       cst_encode_i_64(raw.createdAt),
-      cst_encode_address_book_color_tag(raw.colorTag)
+      cst_encode_address_book_color_tag(raw.colorTag),
     ].jsify()!;
   }
 
@@ -721,7 +753,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_opt_String(raw.saplingViewingKey),
       cst_encode_opt_String(raw.orchardViewingKey),
       cst_encode_opt_String(raw.saplingSpendingKey),
-      cst_encode_opt_String(raw.orchardSpendingKey)
+      cst_encode_opt_String(raw.orchardSpendingKey),
     ].jsify()!;
   }
 
@@ -736,7 +768,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_bool(raw.hasSapling),
       cst_encode_bool(raw.hasOrchard),
       cst_encode_i_64(raw.birthdayHeight),
-      cst_encode_i_64(raw.createdAt)
+      cst_encode_i_64(raw.createdAt),
     ].jsify()!;
   }
 
@@ -748,7 +780,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_u_16(raw.port),
       cst_encode_bool(raw.useTls),
       cst_encode_opt_String(raw.tlsPin),
-      cst_encode_opt_String(raw.label)
+      cst_encode_opt_String(raw.label),
     ].jsify()!;
   }
 
@@ -831,7 +863,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_String(raw.name),
       cst_encode_u_32(raw.coinType),
       cst_encode_u_16(raw.rpcPort),
-      cst_encode_u_32(raw.defaultBirthday)
+      cst_encode_u_32(raw.defaultBirthday),
     ].jsify()!;
   }
 
@@ -849,7 +881,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_opt_String(raw.errorMessage),
       cst_encode_u_64(raw.responseTimeMs),
       cst_encode_opt_String(raw.serverVersion),
-      cst_encode_opt_String(raw.chainName)
+      cst_encode_opt_String(raw.chainName),
     ].jsify()!;
   }
 
@@ -861,7 +893,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int? cst_encode_opt_box_autoadd_address_book_color_tag(
-      AddressBookColorTag? raw) {
+    AddressBookColorTag? raw,
+  ) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw == null
         ? null
@@ -870,7 +903,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   JSAny? cst_encode_opt_box_autoadd_address_book_entry_ffi(
-      AddressBookEntryFfi? raw) {
+    AddressBookEntryFfi? raw,
+  ) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw == null
         ? null
@@ -909,7 +943,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   JSAny? cst_encode_opt_box_autoadd_watch_only_banner_info(
-      WatchOnlyBannerInfo? raw) {
+    WatchOnlyBannerInfo? raw,
+  ) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw == null
         ? null
@@ -928,7 +963,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     return [
       cst_encode_String(raw.addr),
       cst_encode_u_64(raw.amount),
-      cst_encode_opt_String(raw.memo)
+      cst_encode_opt_String(raw.memo),
     ].jsify()!;
   }
 
@@ -944,7 +979,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_u_64(raw.inputTotal),
       cst_encode_u_32(raw.numInputs),
       cst_encode_u_32(raw.expiryHeight),
-      cst_encode_i_64(raw.createdAt)
+      cst_encode_i_64(raw.createdAt),
     ].jsify()!;
   }
 
@@ -955,7 +990,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_String(raw.primary),
       cst_encode_String(raw.secondary),
       cst_encode_String(raw.backupInstructions),
-      cst_encode_String(raw.clipboardWarning)
+      cst_encode_String(raw.clipboardWarning),
     ].jsify()!;
   }
 
@@ -965,7 +1000,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     return [
       cst_encode_String(raw.txid),
       cst_encode_list_prim_u_8_strict(raw.raw),
-      cst_encode_usize(raw.size)
+      cst_encode_usize(raw.size),
     ].jsify()!;
   }
 
@@ -976,7 +1011,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_i_64(raw.timestamp),
       cst_encode_String(raw.level),
       cst_encode_String(raw.module),
-      cst_encode_String(raw.message)
+      cst_encode_String(raw.message),
     ].jsify()!;
   }
 
@@ -992,7 +1027,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_opt_box_autoadd_u_64(raw.lastCheckpoint),
       cst_encode_f_64(raw.blocksPerSecond),
       cst_encode_u_64(raw.notesDecrypted),
-      cst_encode_u_64(raw.lastBatchMs)
+      cst_encode_u_64(raw.lastBatchMs),
     ].jsify()!;
   }
 
@@ -1025,7 +1060,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_i_64(raw.amount),
       cst_encode_u_64(raw.fee),
       cst_encode_opt_String(raw.memo),
-      cst_encode_bool(raw.confirmed)
+      cst_encode_bool(raw.confirmed),
     ].jsify()!;
   }
 
@@ -1043,7 +1078,8 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   JSAny cst_encode_wallet_background_sync_result(
-      WalletBackgroundSyncResult raw) {
+    WalletBackgroundSyncResult raw,
+  ) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return [
       cst_encode_String(raw.walletId),
@@ -1054,7 +1090,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_u_64(raw.durationSecs),
       cst_encode_list_String(raw.errors),
       cst_encode_opt_box_autoadd_u_64(raw.newBalance),
-      cst_encode_u_32(raw.newTransactions)
+      cst_encode_u_32(raw.newTransactions),
     ].jsify()!;
   }
 
@@ -1067,7 +1103,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_i_64(raw.createdAt),
       cst_encode_bool(raw.watchOnly),
       cst_encode_u_32(raw.birthdayHeight),
-      cst_encode_opt_String(raw.networkType)
+      cst_encode_opt_String(raw.networkType),
     ].jsify()!;
   }
 
@@ -1078,7 +1114,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_String(raw.bannerType),
       cst_encode_String(raw.title),
       cst_encode_String(raw.subtitle),
-      cst_encode_String(raw.icon)
+      cst_encode_String(raw.icon),
     ].jsify()!;
   }
 
@@ -1091,7 +1127,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_bool(raw.canSpend),
       cst_encode_bool(raw.canExportSeed),
       cst_encode_bool(raw.canGenerateAddresses),
-      cst_encode_bool(raw.isWatchOnly)
+      cst_encode_bool(raw.isWatchOnly),
     ].jsify()!;
   }
 
@@ -1130,29 +1166,39 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_AnyhowException(
-      AnyhowException self, SseSerializer serializer);
+    AnyhowException self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer);
 
   @protected
   void sse_encode_address_balance_info(
-      AddressBalanceInfo self, SseSerializer serializer);
+    AddressBalanceInfo self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_address_book_color_tag(
-      AddressBookColorTag self, SseSerializer serializer);
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_address_book_entry_ffi(
-      AddressBookEntryFfi self, SseSerializer serializer);
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_address_info(AddressInfo self, SseSerializer serializer);
 
   @protected
   void sse_encode_background_sync_result(
-      BackgroundSyncResult self, SseSerializer serializer);
+    BackgroundSyncResult self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_balance(Balance self, SseSerializer serializer);
@@ -1162,38 +1208,54 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_address_book_color_tag(
-      AddressBookColorTag self, SseSerializer serializer);
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_address_book_entry_ffi(
-      AddressBookEntryFfi self, SseSerializer serializer);
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
 
   @protected
   void sse_encode_box_autoadd_checkpoint_info(
-      CheckpointInfo self, SseSerializer serializer);
+    CheckpointInfo self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_i_64(
-      PlatformInt64 self, SseSerializer serializer);
+    PlatformInt64 self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_lightd_endpoint(
-      LightdEndpoint self, SseSerializer serializer);
+    LightdEndpoint self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_pending_tx(
-      PendingTx self, SseSerializer serializer);
+    PendingTx self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_signed_tx(
-      SignedTx self, SseSerializer serializer);
+    SignedTx self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_tunnel_mode(
-      TunnelMode self, SseSerializer serializer);
+    TunnelMode self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
@@ -1203,14 +1265,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_watch_only_banner_info(
-      WatchOnlyBannerInfo self, SseSerializer serializer);
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_build_info(BuildInfo self, SseSerializer serializer);
 
   @protected
   void sse_encode_checkpoint_info(
-      CheckpointInfo self, SseSerializer serializer);
+    CheckpointInfo self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
@@ -1226,7 +1292,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_key_address_info(
-      KeyAddressInfo self, SseSerializer serializer);
+    KeyAddressInfo self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_key_export_info(KeyExportInfo self, SseSerializer serializer);
@@ -1239,81 +1307,111 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_lightd_endpoint(
-      LightdEndpoint self, SseSerializer serializer);
+    LightdEndpoint self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_address_balance_info(
-      List<AddressBalanceInfo> self, SseSerializer serializer);
+    List<AddressBalanceInfo> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_address_book_entry_ffi(
-      List<AddressBookEntryFfi> self, SseSerializer serializer);
+    List<AddressBookEntryFfi> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_address_info(
-      List<AddressInfo> self, SseSerializer serializer);
+    List<AddressInfo> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_key_address_info(
-      List<KeyAddressInfo> self, SseSerializer serializer);
+    List<KeyAddressInfo> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_key_group_info(
-      List<KeyGroupInfo> self, SseSerializer serializer);
+    List<KeyGroupInfo> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_output(List<Output> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_i_64_strict(
-      Int64List self, SseSerializer serializer);
+    Int64List self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_strict(
-      Uint8List self, SseSerializer serializer);
+    Uint8List self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_sync_log_entry_ffi(
-      List<SyncLogEntryFfi> self, SseSerializer serializer);
+    List<SyncLogEntryFfi> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_tx_info(List<TxInfo> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_wallet_meta(
-      List<WalletMeta> self, SseSerializer serializer);
+    List<WalletMeta> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_network_info(NetworkInfo self, SseSerializer serializer);
 
   @protected
   void sse_encode_node_test_result(
-      NodeTestResult self, SseSerializer serializer);
+    NodeTestResult self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_address_book_color_tag(
-      AddressBookColorTag? self, SseSerializer serializer);
+    AddressBookColorTag? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_address_book_entry_ffi(
-      AddressBookEntryFfi? self, SseSerializer serializer);
+    AddressBookEntryFfi? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_checkpoint_info(
-      CheckpointInfo? self, SseSerializer serializer);
+    CheckpointInfo? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_i_64(
-      PlatformInt64? self, SseSerializer serializer);
+    PlatformInt64? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
@@ -1323,11 +1421,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_watch_only_banner_info(
-      WatchOnlyBannerInfo? self, SseSerializer serializer);
+    WatchOnlyBannerInfo? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_opt_list_prim_i_64_strict(
-      Int64List? self, SseSerializer serializer);
+    Int64List? self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_output(Output self, SseSerializer serializer);
@@ -1337,14 +1439,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_seed_export_warnings(
-      SeedExportWarnings self, SseSerializer serializer);
+    SeedExportWarnings self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_signed_tx(SignedTx self, SseSerializer serializer);
 
   @protected
   void sse_encode_sync_log_entry_ffi(
-      SyncLogEntryFfi self, SseSerializer serializer);
+    SyncLogEntryFfi self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_sync_mode(SyncMode self, SseSerializer serializer);
@@ -1381,18 +1487,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_wallet_background_sync_result(
-      WalletBackgroundSyncResult self, SseSerializer serializer);
+    WalletBackgroundSyncResult self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_wallet_meta(WalletMeta self, SseSerializer serializer);
 
   @protected
   void sse_encode_watch_only_banner_info(
-      WatchOnlyBannerInfo self, SseSerializer serializer);
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_watch_only_capabilities_info(
-      WatchOnlyCapabilitiesInfo self, SseSerializer serializer);
+    WatchOnlyCapabilitiesInfo self,
+    SseSerializer serializer,
+  );
 }
 
 // Section: wire_class
@@ -1404,19 +1516,30 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__acknowledge_seed_warning(port_);
 
   void wire__crate__api__add_address_book_entry(
-          NativePortType port_,
-          String wallet_id,
-          String address,
-          String label,
-          String? notes,
-          int color_tag) =>
-      wasmModule.wire__crate__api__add_address_book_entry(
-          port_, wallet_id, address, label, notes, color_tag);
+    NativePortType port_,
+    String wallet_id,
+    String address,
+    String label,
+    String? notes,
+    int color_tag,
+  ) => wasmModule.wire__crate__api__add_address_book_entry(
+    port_,
+    wallet_id,
+    address,
+    label,
+    notes,
+    color_tag,
+  );
 
   void wire__crate__api__address_exists_in_book(
-          NativePortType port_, String wallet_id, String address) =>
-      wasmModule.wire__crate__api__address_exists_in_book(
-          port_, wallet_id, address);
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  ) => wasmModule.wire__crate__api__address_exists_in_book(
+    port_,
+    wallet_id,
+    address,
+  );
 
   void wire__crate__api__are_seed_screenshots_blocked(NativePortType port_) =>
       wasmModule.wire__crate__api__are_seed_screenshots_blocked(port_);
@@ -1428,42 +1551,72 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__broadcast_tx(port_, signed);
 
   void wire__crate__api__build_consolidation_tx(
-          NativePortType port_,
-          String wallet_id,
-          JSAny key_id,
-          String target_address,
-          JSAny? fee_opt) =>
-      wasmModule.wire__crate__api__build_consolidation_tx(
-          port_, wallet_id, key_id, target_address, fee_opt);
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    String target_address,
+    JSAny? fee_opt,
+  ) => wasmModule.wire__crate__api__build_consolidation_tx(
+    port_,
+    wallet_id,
+    key_id,
+    target_address,
+    fee_opt,
+  );
 
   void wire__crate__api__build_sweep_tx(
-          NativePortType port_,
-          String wallet_id,
-          String target_address,
-          JSAny? fee_opt,
-          JSAny? key_ids_filter,
-          JSAny? address_ids_filter) =>
-      wasmModule.wire__crate__api__build_sweep_tx(port_, wallet_id,
-          target_address, fee_opt, key_ids_filter, address_ids_filter);
+    NativePortType port_,
+    String wallet_id,
+    String target_address,
+    JSAny? fee_opt,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  ) => wasmModule.wire__crate__api__build_sweep_tx(
+    port_,
+    wallet_id,
+    target_address,
+    fee_opt,
+    key_ids_filter,
+    address_ids_filter,
+  );
 
-  void wire__crate__api__build_tx(NativePortType port_, String wallet_id,
-          JSAny outputs, JSAny? fee_opt) =>
+  void wire__crate__api__build_tx(
+    NativePortType port_,
+    String wallet_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+  ) =>
       wasmModule.wire__crate__api__build_tx(port_, wallet_id, outputs, fee_opt);
 
   void wire__crate__api__build_tx_filtered(
-          NativePortType port_,
-          String wallet_id,
-          JSAny outputs,
-          JSAny? fee_opt,
-          JSAny? key_ids_filter,
-          JSAny? address_ids_filter) =>
-      wasmModule.wire__crate__api__build_tx_filtered(port_, wallet_id, outputs,
-          fee_opt, key_ids_filter, address_ids_filter);
+    NativePortType port_,
+    String wallet_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  ) => wasmModule.wire__crate__api__build_tx_filtered(
+    port_,
+    wallet_id,
+    outputs,
+    fee_opt,
+    key_ids_filter,
+    address_ids_filter,
+  );
 
-  void wire__crate__api__build_tx_for_key(NativePortType port_,
-          String wallet_id, JSAny key_id, JSAny outputs, JSAny? fee_opt) =>
-      wasmModule.wire__crate__api__build_tx_for_key(
-          port_, wallet_id, key_id, outputs, fee_opt);
+  void wire__crate__api__build_tx_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+  ) => wasmModule.wire__crate__api__build_tx_for_key(
+    port_,
+    wallet_id,
+    key_id,
+    outputs,
+    fee_opt,
+  );
 
   void wire__crate__api__cancel_seed_export(NativePortType port_) =>
       wasmModule.wire__crate__api__cancel_seed_export(port_);
@@ -1471,15 +1624,23 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__cancel_sync(NativePortType port_, String wallet_id) =>
       wasmModule.wire__crate__api__cancel_sync(port_, wallet_id);
 
-  void wire__crate__api__change_app_passphrase(NativePortType port_,
-          String current_passphrase, String new_passphrase) =>
-      wasmModule.wire__crate__api__change_app_passphrase(
-          port_, current_passphrase, new_passphrase);
+  void wire__crate__api__change_app_passphrase(
+    NativePortType port_,
+    String current_passphrase,
+    String new_passphrase,
+  ) => wasmModule.wire__crate__api__change_app_passphrase(
+    port_,
+    current_passphrase,
+    new_passphrase,
+  );
 
   void wire__crate__api__change_app_passphrase_with_cached(
-          NativePortType port_, String new_passphrase) =>
-      wasmModule.wire__crate__api__change_app_passphrase_with_cached(
-          port_, new_passphrase);
+    NativePortType port_,
+    String new_passphrase,
+  ) => wasmModule.wire__crate__api__change_app_passphrase_with_cached(
+    port_,
+    new_passphrase,
+  );
 
   void wire__crate__api__clear_duress_passphrase(NativePortType port_) =>
       wasmModule.wire__crate__api__clear_duress_passphrase(port_);
@@ -1488,31 +1649,53 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__clear_panic_pin(port_);
 
   void wire__crate__api__complete_seed_biometric(
-          NativePortType port_, bool success) =>
-      wasmModule.wire__crate__api__complete_seed_biometric(port_, success);
+    NativePortType port_,
+    bool success,
+  ) => wasmModule.wire__crate__api__complete_seed_biometric(port_, success);
 
-  void wire__crate__api__create_wallet(NativePortType port_, String name,
-          int? _entropy_len, int? birthday_opt) =>
-      wasmModule.wire__crate__api__create_wallet(
-          port_, name, _entropy_len, birthday_opt);
+  void wire__crate__api__create_wallet(
+    NativePortType port_,
+    String name,
+    int? _entropy_len,
+    int? birthday_opt,
+  ) => wasmModule.wire__crate__api__create_wallet(
+    port_,
+    name,
+    _entropy_len,
+    birthday_opt,
+  );
 
   void wire__crate__api__current_receive_address(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__current_receive_address(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__current_receive_address(port_, wallet_id);
 
   void wire__crate__api__delete_address_book_entry(
-          NativePortType port_, String wallet_id, JSAny id) =>
-      wasmModule.wire__crate__api__delete_address_book_entry(
-          port_, wallet_id, id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  ) => wasmModule.wire__crate__api__delete_address_book_entry(
+    port_,
+    wallet_id,
+    id,
+  );
 
   void wire__crate__api__delete_wallet(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__delete_wallet(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__delete_wallet(port_, wallet_id);
 
-  void wire__crate__api__estimate_fee(NativePortType port_, JSAny num_outputs,
-          bool has_memo, String? fee_policy) =>
-      wasmModule.wire__crate__api__estimate_fee(
-          port_, num_outputs, has_memo, fee_policy);
+  void wire__crate__api__estimate_fee(
+    NativePortType port_,
+    JSAny num_outputs,
+    bool has_memo,
+    String? fee_policy,
+  ) => wasmModule.wire__crate__api__estimate_fee(
+    port_,
+    num_outputs,
+    has_memo,
+    fee_policy,
+  );
 
   void wire__crate__api__exit_decoy_mode(NativePortType port_) =>
       wasmModule.wire__crate__api__exit_decoy_mode(port_);
@@ -1521,86 +1704,136 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__export_ivk(port_, wallet_id);
 
   void wire__crate__api__export_ivk_secure(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__export_ivk_secure(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__export_ivk_secure(port_, wallet_id);
 
   void wire__crate__api__export_key_group_keys(
-          NativePortType port_, String wallet_id, JSAny key_id) =>
-      wasmModule.wire__crate__api__export_key_group_keys(
-          port_, wallet_id, key_id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+  ) => wasmModule.wire__crate__api__export_key_group_keys(
+    port_,
+    wallet_id,
+    key_id,
+  );
 
   void wire__crate__api__export_orchard_ivk(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__export_orchard_ivk(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__export_orchard_ivk(port_, wallet_id);
 
   void wire__crate__api__export_orchard_viewing_key(
-          NativePortType port_, String wallet_id) =>
+    NativePortType port_,
+    String wallet_id,
+  ) =>
       wasmModule.wire__crate__api__export_orchard_viewing_key(port_, wallet_id);
 
   void wire__crate__api__export_seed(NativePortType port_, String wallet_id) =>
       wasmModule.wire__crate__api__export_seed(port_, wallet_id);
 
   void wire__crate__api__export_seed_with_cached_passphrase(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__export_seed_with_cached_passphrase(
-          port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__export_seed_with_cached_passphrase(
+    port_,
+    wallet_id,
+  );
 
   void wire__crate__api__export_seed_with_passphrase(
-          NativePortType port_, String wallet_id, String passphrase) =>
-      wasmModule.wire__crate__api__export_seed_with_passphrase(
-          port_, wallet_id, passphrase);
+    NativePortType port_,
+    String wallet_id,
+    String passphrase,
+  ) => wasmModule.wire__crate__api__export_seed_with_passphrase(
+    port_,
+    wallet_id,
+    passphrase,
+  );
 
-  void wire__crate__api__fetch_transaction_memo(NativePortType port_,
-          String wallet_id, String txid, int? output_index) =>
-      wasmModule.wire__crate__api__fetch_transaction_memo(
-          port_, wallet_id, txid, output_index);
+  void wire__crate__api__fetch_transaction_memo(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+    int? output_index,
+  ) => wasmModule.wire__crate__api__fetch_transaction_memo(
+    port_,
+    wallet_id,
+    txid,
+    output_index,
+  );
 
   void wire__crate__api__format_amount(
-          NativePortType port_, JSAny arrrtoshis) =>
-      wasmModule.wire__crate__api__format_amount(port_, arrrtoshis);
+    NativePortType port_,
+    JSAny arrrtoshis,
+  ) => wasmModule.wire__crate__api__format_amount(port_, arrrtoshis);
 
-  void wire__crate__api__generate_address_for_key(NativePortType port_,
-          String wallet_id, JSAny key_id, bool use_orchard) =>
-      wasmModule.wire__crate__api__generate_address_for_key(
-          port_, wallet_id, key_id, use_orchard);
+  void wire__crate__api__generate_address_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    bool use_orchard,
+  ) => wasmModule.wire__crate__api__generate_address_for_key(
+    port_,
+    wallet_id,
+    key_id,
+    use_orchard,
+  );
 
   void wire__crate__api__generate_mnemonic(
-          NativePortType port_, int? word_count) =>
-      wasmModule.wire__crate__api__generate_mnemonic(port_, word_count);
+    NativePortType port_,
+    int? word_count,
+  ) => wasmModule.wire__crate__api__generate_mnemonic(port_, word_count);
 
   void wire__crate__api__get_active_wallet(NativePortType port_) =>
       wasmModule.wire__crate__api__get_active_wallet(port_);
 
   void wire__crate__api__get_address_book_count(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__get_address_book_count(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_address_book_count(port_, wallet_id);
 
   void wire__crate__api__get_address_book_entry(
-          NativePortType port_, String wallet_id, JSAny id) =>
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  ) =>
       wasmModule.wire__crate__api__get_address_book_entry(port_, wallet_id, id);
 
   void wire__crate__api__get_address_book_entry_by_address(
-          NativePortType port_, String wallet_id, String address) =>
-      wasmModule.wire__crate__api__get_address_book_entry_by_address(
-          port_, wallet_id, address);
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  ) => wasmModule.wire__crate__api__get_address_book_entry_by_address(
+    port_,
+    wallet_id,
+    address,
+  );
 
   void wire__crate__api__get_address_book_favorites(
-          NativePortType port_, String wallet_id) =>
+    NativePortType port_,
+    String wallet_id,
+  ) =>
       wasmModule.wire__crate__api__get_address_book_favorites(port_, wallet_id);
 
   void wire__crate__api__get_auto_consolidation_candidate_count(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__get_auto_consolidation_candidate_count(
-          port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_auto_consolidation_candidate_count(
+    port_,
+    wallet_id,
+  );
 
   void wire__crate__api__get_auto_consolidation_enabled(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__get_auto_consolidation_enabled(
-          port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_auto_consolidation_enabled(
+    port_,
+    wallet_id,
+  );
 
   void wire__crate__api__get_auto_consolidation_threshold(
-          NativePortType port_) =>
-      wasmModule.wire__crate__api__get_auto_consolidation_threshold(port_);
+    NativePortType port_,
+  ) => wasmModule.wire__crate__api__get_auto_consolidation_threshold(port_);
 
   void wire__crate__api__get_balance(NativePortType port_, String wallet_id) =>
       wasmModule.wire__crate__api__get_balance(port_, wallet_id);
@@ -1609,9 +1842,14 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__get_build_info(port_);
 
   void wire__crate__api__get_checkpoint_details(
-          NativePortType port_, String _wallet_id, int height) =>
-      wasmModule.wire__crate__api__get_checkpoint_details(
-          port_, _wallet_id, height);
+    NativePortType port_,
+    String _wallet_id,
+    int height,
+  ) => wasmModule.wire__crate__api__get_checkpoint_details(
+    port_,
+    _wallet_id,
+    height,
+  );
 
   void wire__crate__api__get_duress_passphrase_hash(NativePortType port_) =>
       wasmModule.wire__crate__api__get_duress_passphrase_hash(port_);
@@ -1623,34 +1861,53 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__get_ivk_clipboard_remaining(port_);
 
   void wire__crate__api__get_label_for_address(
-          NativePortType port_, String wallet_id, String address) =>
-      wasmModule.wire__crate__api__get_label_for_address(
-          port_, wallet_id, address);
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  ) => wasmModule.wire__crate__api__get_label_for_address(
+    port_,
+    wallet_id,
+    address,
+  );
 
   void wire__crate__api__get_last_checkpoint(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__get_last_checkpoint(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_last_checkpoint(port_, wallet_id);
 
   void wire__crate__api__get_lightd_endpoint(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__get_lightd_endpoint(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_lightd_endpoint(port_, wallet_id);
 
   void wire__crate__api__get_lightd_endpoint_config(
-          NativePortType port_, String wallet_id) =>
+    NativePortType port_,
+    String wallet_id,
+  ) =>
       wasmModule.wire__crate__api__get_lightd_endpoint_config(port_, wallet_id);
 
   void wire__crate__api__get_network_info(NativePortType port_) =>
       wasmModule.wire__crate__api__get_network_info(port_);
 
   void wire__crate__api__get_recently_used_addresses(
-          NativePortType port_, String wallet_id, int limit) =>
-      wasmModule.wire__crate__api__get_recently_used_addresses(
-          port_, wallet_id, limit);
+    NativePortType port_,
+    String wallet_id,
+    int limit,
+  ) => wasmModule.wire__crate__api__get_recently_used_addresses(
+    port_,
+    wallet_id,
+    limit,
+  );
 
   void wire__crate__api__get_recommended_background_sync_mode(
-          NativePortType port_, String _wallet_id, int minutes_since_last) =>
-      wasmModule.wire__crate__api__get_recommended_background_sync_mode(
-          port_, _wallet_id, minutes_since_last);
+    NativePortType port_,
+    String _wallet_id,
+    int minutes_since_last,
+  ) => wasmModule.wire__crate__api__get_recommended_background_sync_mode(
+    port_,
+    _wallet_id,
+    minutes_since_last,
+  );
 
   void wire__crate__api__get_seed_clipboard_remaining(NativePortType port_) =>
       wasmModule.wire__crate__api__get_seed_clipboard_remaining(port_);
@@ -1662,8 +1919,10 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__get_seed_export_warnings(port_);
 
   void wire__crate__api__get_sync_logs(
-          NativePortType port_, String wallet_id, int? limit) =>
-      wasmModule.wire__crate__api__get_sync_logs(port_, wallet_id, limit);
+    NativePortType port_,
+    String wallet_id,
+    int? limit,
+  ) => wasmModule.wire__crate__api__get_sync_logs(port_, wallet_id, limit);
 
   void wire__crate__api__get_tor_status(NativePortType port_) =>
       wasmModule.wire__crate__api__get_tor_status(port_);
@@ -1675,13 +1934,17 @@ class RustLibWire implements BaseWire {
       wasmModule.wire__crate__api__get_vault_mode(port_);
 
   void wire__crate__api__get_watch_only_banner(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__get_watch_only_banner(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_watch_only_banner(port_, wallet_id);
 
   void wire__crate__api__get_watch_only_capabilities(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__get_watch_only_capabilities(
-          port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_watch_only_capabilities(
+    port_,
+    wallet_id,
+  );
 
   void wire__crate__api__has_app_passphrase(NativePortType port_) =>
       wasmModule.wire__crate__api__has_app_passphrase(port_);
@@ -1692,248 +1955,395 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__has_panic_pin(NativePortType port_) =>
       wasmModule.wire__crate__api__has_panic_pin(port_);
 
-  void wire__crate__api__import_ivk(NativePortType port_, String name,
-          String? sapling_ivk, String? orchard_ivk, int birthday) =>
-      wasmModule.wire__crate__api__import_ivk(
-          port_, name, sapling_ivk, orchard_ivk, birthday);
+  void wire__crate__api__import_ivk(
+    NativePortType port_,
+    String name,
+    String? sapling_ivk,
+    String? orchard_ivk,
+    int birthday,
+  ) => wasmModule.wire__crate__api__import_ivk(
+    port_,
+    name,
+    sapling_ivk,
+    orchard_ivk,
+    birthday,
+  );
 
   void wire__crate__api__import_ivk_as_watch_only(
-          NativePortType port_, String name, String ivk, int birthday_height) =>
-      wasmModule.wire__crate__api__import_ivk_as_watch_only(
-          port_, name, ivk, birthday_height);
+    NativePortType port_,
+    String name,
+    String ivk,
+    int birthday_height,
+  ) => wasmModule.wire__crate__api__import_ivk_as_watch_only(
+    port_,
+    name,
+    ivk,
+    birthday_height,
+  );
 
   void wire__crate__api__import_spending_key(
-          NativePortType port_,
-          String wallet_id,
-          String? sapling_key,
-          String? orchard_key,
-          String? label,
-          int birthday_height) =>
-      wasmModule.wire__crate__api__import_spending_key(
-          port_, wallet_id, sapling_key, orchard_key, label, birthday_height);
+    NativePortType port_,
+    String wallet_id,
+    String? sapling_key,
+    String? orchard_key,
+    String? label,
+    int birthday_height,
+  ) => wasmModule.wire__crate__api__import_spending_key(
+    port_,
+    wallet_id,
+    sapling_key,
+    orchard_key,
+    label,
+    birthday_height,
+  );
 
   void wire__crate__api__is_background_sync_needed(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__is_background_sync_needed(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__is_background_sync_needed(port_, wallet_id);
 
   void wire__crate__api__is_decoy_mode(NativePortType port_) =>
       wasmModule.wire__crate__api__is_decoy_mode(port_);
 
   void wire__crate__api__is_sync_running(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__is_sync_running(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__is_sync_running(port_, wallet_id);
 
   void wire__crate__api__label_address(
-          NativePortType port_, String wallet_id, String addr, String label) =>
+    NativePortType port_,
+    String wallet_id,
+    String addr,
+    String label,
+  ) =>
       wasmModule.wire__crate__api__label_address(port_, wallet_id, addr, label);
 
   void wire__crate__api__lightd_endpoint_default(NativePortType port_) =>
       wasmModule.wire__crate__api__lightd_endpoint_default(port_);
 
   void wire__crate__api__lightd_endpoint_display_string(
-          NativePortType port_, JSAny that) =>
-      wasmModule.wire__crate__api__lightd_endpoint_display_string(port_, that);
+    NativePortType port_,
+    JSAny that,
+  ) => wasmModule.wire__crate__api__lightd_endpoint_display_string(port_, that);
 
   void wire__crate__api__lightd_endpoint_url(
-          NativePortType port_, JSAny that) =>
-      wasmModule.wire__crate__api__lightd_endpoint_url(port_, that);
+    NativePortType port_,
+    JSAny that,
+  ) => wasmModule.wire__crate__api__lightd_endpoint_url(port_, that);
 
   void wire__crate__api__list_address_balances(
-          NativePortType port_, String wallet_id, JSAny? key_id) =>
-      wasmModule.wire__crate__api__list_address_balances(
-          port_, wallet_id, key_id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny? key_id,
+  ) => wasmModule.wire__crate__api__list_address_balances(
+    port_,
+    wallet_id,
+    key_id,
+  );
 
   void wire__crate__api__list_address_book(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__list_address_book(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__list_address_book(port_, wallet_id);
 
   void wire__crate__api__list_addresses(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__list_addresses(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__list_addresses(port_, wallet_id);
 
   void wire__crate__api__list_addresses_for_key(
-          NativePortType port_, String wallet_id, JSAny key_id) =>
-      wasmModule.wire__crate__api__list_addresses_for_key(
-          port_, wallet_id, key_id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+  ) => wasmModule.wire__crate__api__list_addresses_for_key(
+    port_,
+    wallet_id,
+    key_id,
+  );
 
   void wire__crate__api__list_key_groups(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__list_key_groups(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__list_key_groups(port_, wallet_id);
 
   void wire__crate__api__list_transactions(
-          NativePortType port_, String wallet_id, int? limit) =>
-      wasmModule.wire__crate__api__list_transactions(port_, wallet_id, limit);
+    NativePortType port_,
+    String wallet_id,
+    int? limit,
+  ) => wasmModule.wire__crate__api__list_transactions(port_, wallet_id, limit);
 
   void wire__crate__api__list_wallets(NativePortType port_) =>
       wasmModule.wire__crate__api__list_wallets(port_);
 
   void wire__crate__api__mark_address_used(
-          NativePortType port_, String wallet_id, String address) =>
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  ) =>
       wasmModule.wire__crate__api__mark_address_used(port_, wallet_id, address);
 
   void wire__crate__api__next_receive_address(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__next_receive_address(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__next_receive_address(port_, wallet_id);
 
   void wire__crate__api__parse_amount(NativePortType port_, String arrr) =>
       wasmModule.wire__crate__api__parse_amount(port_, arrr);
 
   void wire__crate__api__rename_wallet(
-          NativePortType port_, String wallet_id, String new_name) =>
-      wasmModule.wire__crate__api__rename_wallet(port_, wallet_id, new_name);
+    NativePortType port_,
+    String wallet_id,
+    String new_name,
+  ) => wasmModule.wire__crate__api__rename_wallet(port_, wallet_id, new_name);
 
   void wire__crate__api__rescan(
-          NativePortType port_, String wallet_id, int from_height) =>
-      wasmModule.wire__crate__api__rescan(port_, wallet_id, from_height);
+    NativePortType port_,
+    String wallet_id,
+    int from_height,
+  ) => wasmModule.wire__crate__api__rescan(port_, wallet_id, from_height);
 
   void wire__crate__api__reseal_db_keys_for_biometrics(NativePortType port_) =>
       wasmModule.wire__crate__api__reseal_db_keys_for_biometrics(port_);
 
-  void wire__crate__api__restore_wallet(NativePortType port_, String name,
-          String mnemonic, String? passphrase_opt, int? birthday_opt) =>
-      wasmModule.wire__crate__api__restore_wallet(
-          port_, name, mnemonic, passphrase_opt, birthday_opt);
+  void wire__crate__api__restore_wallet(
+    NativePortType port_,
+    String name,
+    String mnemonic,
+    String? passphrase_opt,
+    int? birthday_opt,
+  ) => wasmModule.wire__crate__api__restore_wallet(
+    port_,
+    name,
+    mnemonic,
+    passphrase_opt,
+    birthday_opt,
+  );
 
   void wire__crate__api__rotate_tor_exit(NativePortType port_) =>
       wasmModule.wire__crate__api__rotate_tor_exit(port_);
 
   void wire__crate__api__search_address_book(
-          NativePortType port_, String wallet_id, String query) =>
+    NativePortType port_,
+    String wallet_id,
+    String query,
+  ) =>
       wasmModule.wire__crate__api__search_address_book(port_, wallet_id, query);
 
   void wire__crate__api__set_address_color_tag(
-          NativePortType port_, String wallet_id, String addr, int color_tag) =>
-      wasmModule.wire__crate__api__set_address_color_tag(
-          port_, wallet_id, addr, color_tag);
+    NativePortType port_,
+    String wallet_id,
+    String addr,
+    int color_tag,
+  ) => wasmModule.wire__crate__api__set_address_color_tag(
+    port_,
+    wallet_id,
+    addr,
+    color_tag,
+  );
 
   void wire__crate__api__set_app_passphrase(
-          NativePortType port_, String passphrase) =>
-      wasmModule.wire__crate__api__set_app_passphrase(port_, passphrase);
+    NativePortType port_,
+    String passphrase,
+  ) => wasmModule.wire__crate__api__set_app_passphrase(port_, passphrase);
 
   void wire__crate__api__set_auto_consolidation_enabled(
-          NativePortType port_, String wallet_id, bool enabled) =>
-      wasmModule.wire__crate__api__set_auto_consolidation_enabled(
-          port_, wallet_id, enabled);
+    NativePortType port_,
+    String wallet_id,
+    bool enabled,
+  ) => wasmModule.wire__crate__api__set_auto_consolidation_enabled(
+    port_,
+    wallet_id,
+    enabled,
+  );
 
   void wire__crate__api__set_decoy_wallet_name(
-          NativePortType port_, String name) =>
-      wasmModule.wire__crate__api__set_decoy_wallet_name(port_, name);
+    NativePortType port_,
+    String name,
+  ) => wasmModule.wire__crate__api__set_decoy_wallet_name(port_, name);
 
   void wire__crate__api__set_duress_passphrase(
-          NativePortType port_, String? custom_passphrase) =>
-      wasmModule.wire__crate__api__set_duress_passphrase(
-          port_, custom_passphrase);
+    NativePortType port_,
+    String? custom_passphrase,
+  ) => wasmModule.wire__crate__api__set_duress_passphrase(
+    port_,
+    custom_passphrase,
+  );
 
-  void wire__crate__api__set_lightd_endpoint(NativePortType port_,
-          String wallet_id, String url, String? tls_pin_opt) =>
-      wasmModule.wire__crate__api__set_lightd_endpoint(
-          port_, wallet_id, url, tls_pin_opt);
+  void wire__crate__api__set_lightd_endpoint(
+    NativePortType port_,
+    String wallet_id,
+    String url,
+    String? tls_pin_opt,
+  ) => wasmModule.wire__crate__api__set_lightd_endpoint(
+    port_,
+    wallet_id,
+    url,
+    tls_pin_opt,
+  );
 
   void wire__crate__api__set_panic_pin(NativePortType port_, String pin) =>
       wasmModule.wire__crate__api__set_panic_pin(port_, pin);
 
   void wire__crate__api__set_tor_bridge_settings(
-          NativePortType port_,
-          bool use_bridges,
-          bool fallback_to_bridges,
-          String transport,
-          JSAny bridge_lines,
-          String? transport_path) =>
-      wasmModule.wire__crate__api__set_tor_bridge_settings(port_, use_bridges,
-          fallback_to_bridges, transport, bridge_lines, transport_path);
+    NativePortType port_,
+    bool use_bridges,
+    bool fallback_to_bridges,
+    String transport,
+    JSAny bridge_lines,
+    String? transport_path,
+  ) => wasmModule.wire__crate__api__set_tor_bridge_settings(
+    port_,
+    use_bridges,
+    fallback_to_bridges,
+    transport,
+    bridge_lines,
+    transport_path,
+  );
 
   void wire__crate__api__set_tunnel(NativePortType port_, JSAny mode) =>
       wasmModule.wire__crate__api__set_tunnel(port_, mode);
 
   void wire__crate__api__set_wallet_birthday_height(
-          NativePortType port_, String wallet_id, int birthday_height) =>
-      wasmModule.wire__crate__api__set_wallet_birthday_height(
-          port_, wallet_id, birthday_height);
+    NativePortType port_,
+    String wallet_id,
+    int birthday_height,
+  ) => wasmModule.wire__crate__api__set_wallet_birthday_height(
+    port_,
+    wallet_id,
+    birthday_height,
+  );
 
   void wire__crate__api__shutdown_transport(NativePortType port_) =>
       wasmModule.wire__crate__api__shutdown_transport(port_);
 
   void wire__crate__api__sign_tx(
-          NativePortType port_, String wallet_id, JSAny pending) =>
-      wasmModule.wire__crate__api__sign_tx(port_, wallet_id, pending);
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+  ) => wasmModule.wire__crate__api__sign_tx(port_, wallet_id, pending);
 
   void wire__crate__api__sign_tx_filtered(
-          NativePortType port_,
-          String wallet_id,
-          JSAny pending,
-          JSAny? key_ids_filter,
-          JSAny? address_ids_filter) =>
-      wasmModule.wire__crate__api__sign_tx_filtered(
-          port_, wallet_id, pending, key_ids_filter, address_ids_filter);
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  ) => wasmModule.wire__crate__api__sign_tx_filtered(
+    port_,
+    wallet_id,
+    pending,
+    key_ids_filter,
+    address_ids_filter,
+  );
 
-  void wire__crate__api__sign_tx_for_key(NativePortType port_, String wallet_id,
-          JSAny pending, JSAny key_id) =>
-      wasmModule.wire__crate__api__sign_tx_for_key(
-          port_, wallet_id, pending, key_id);
+  void wire__crate__api__sign_tx_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+    JSAny key_id,
+  ) => wasmModule.wire__crate__api__sign_tx_for_key(
+    port_,
+    wallet_id,
+    pending,
+    key_id,
+  );
 
   void wire__crate__api__skip_seed_biometric(NativePortType port_) =>
       wasmModule.wire__crate__api__skip_seed_biometric(port_);
 
   void wire__crate__api__start_background_sync(
-          NativePortType port_, String wallet_id, String? mode) =>
-      wasmModule.wire__crate__api__start_background_sync(
-          port_, wallet_id, mode);
+    NativePortType port_,
+    String wallet_id,
+    String? mode,
+  ) => wasmModule.wire__crate__api__start_background_sync(
+    port_,
+    wallet_id,
+    mode,
+  );
 
   void wire__crate__api__start_background_sync_round_robin(
-          NativePortType port_, String? mode) =>
-      wasmModule.wire__crate__api__start_background_sync_round_robin(
-          port_, mode);
+    NativePortType port_,
+    String? mode,
+  ) => wasmModule.wire__crate__api__start_background_sync_round_robin(
+    port_,
+    mode,
+  );
 
   void wire__crate__api__start_seed_export(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__start_seed_export(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__start_seed_export(port_, wallet_id);
 
   void wire__crate__api__start_sync(
-          NativePortType port_, String wallet_id, int mode) =>
-      wasmModule.wire__crate__api__start_sync(port_, wallet_id, mode);
+    NativePortType port_,
+    String wallet_id,
+    int mode,
+  ) => wasmModule.wire__crate__api__start_sync(port_, wallet_id, mode);
 
   void wire__crate__api__switch_wallet(
-          NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__switch_wallet(port_, wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__switch_wallet(port_, wallet_id);
 
   void wire__crate__api__sync_status(NativePortType port_, String wallet_id) =>
       wasmModule.wire__crate__api__sync_status(port_, wallet_id);
 
   void wire__crate__api__test_node(
-          NativePortType port_, String url, String? tls_pin) =>
-      wasmModule.wire__crate__api__test_node(port_, url, tls_pin);
+    NativePortType port_,
+    String url,
+    String? tls_pin,
+  ) => wasmModule.wire__crate__api__test_node(port_, url, tls_pin);
 
   void wire__crate__api__toggle_address_book_favorite(
-          NativePortType port_, String wallet_id, JSAny id) =>
-      wasmModule.wire__crate__api__toggle_address_book_favorite(
-          port_, wallet_id, id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  ) => wasmModule.wire__crate__api__toggle_address_book_favorite(
+    port_,
+    wallet_id,
+    id,
+  );
 
   void wire__crate__api__unlock_app(NativePortType port_, String passphrase) =>
       wasmModule.wire__crate__api__unlock_app(port_, passphrase);
 
   void wire__crate__api__update_address_book_entry(
-          NativePortType port_,
-          String wallet_id,
-          JSAny id,
-          String? label,
-          String? notes,
-          int? color_tag,
-          bool? is_favorite) =>
-      wasmModule.wire__crate__api__update_address_book_entry(
-          port_, wallet_id, id, label, notes, color_tag, is_favorite);
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+    String? label,
+    String? notes,
+    int? color_tag,
+    bool? is_favorite,
+  ) => wasmModule.wire__crate__api__update_address_book_entry(
+    port_,
+    wallet_id,
+    id,
+    label,
+    notes,
+    color_tag,
+    is_favorite,
+  );
 
   void wire__crate__api__validate_mnemonic(
-          NativePortType port_, String mnemonic) =>
-      wasmModule.wire__crate__api__validate_mnemonic(port_, mnemonic);
+    NativePortType port_,
+    String mnemonic,
+  ) => wasmModule.wire__crate__api__validate_mnemonic(port_, mnemonic);
 
   void wire__crate__api__verify_app_passphrase(
-          NativePortType port_, String passphrase) =>
-      wasmModule.wire__crate__api__verify_app_passphrase(port_, passphrase);
+    NativePortType port_,
+    String passphrase,
+  ) => wasmModule.wire__crate__api__verify_app_passphrase(port_, passphrase);
 
   void wire__crate__api__verify_duress_passphrase(
-          NativePortType port_, String passphrase, String hash) =>
-      wasmModule.wire__crate__api__verify_duress_passphrase(
-          port_, passphrase, hash);
+    NativePortType port_,
+    String passphrase,
+    String hash,
+  ) => wasmModule.wire__crate__api__verify_duress_passphrase(
+    port_,
+    passphrase,
+    hash,
+  );
 
   void wire__crate__api__verify_panic_pin(NativePortType port_, String pin) =>
       wasmModule.wire__crate__api__verify_panic_pin(port_, pin);
@@ -1949,193 +2359,315 @@ external RustLibWasmModule get wasmModule;
 @anonymous
 extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__acknowledge_seed_warning(
-      NativePortType port_);
+    NativePortType port_,
+  );
 
   external void wire__crate__api__add_address_book_entry(
-      NativePortType port_,
-      String wallet_id,
-      String address,
-      String label,
-      String? notes,
-      int color_tag);
+    NativePortType port_,
+    String wallet_id,
+    String address,
+    String label,
+    String? notes,
+    int color_tag,
+  );
 
   external void wire__crate__api__address_exists_in_book(
-      NativePortType port_, String wallet_id, String address);
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  );
 
   external void wire__crate__api__are_seed_screenshots_blocked(
-      NativePortType port_);
+    NativePortType port_,
+  );
 
   external void wire__crate__api__bootstrap_tunnel(
-      NativePortType port_, JSAny mode);
+    NativePortType port_,
+    JSAny mode,
+  );
 
   external void wire__crate__api__broadcast_tx(
-      NativePortType port_, JSAny signed);
+    NativePortType port_,
+    JSAny signed,
+  );
 
-  external void wire__crate__api__build_consolidation_tx(NativePortType port_,
-      String wallet_id, JSAny key_id, String target_address, JSAny? fee_opt);
+  external void wire__crate__api__build_consolidation_tx(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    String target_address,
+    JSAny? fee_opt,
+  );
 
   external void wire__crate__api__build_sweep_tx(
-      NativePortType port_,
-      String wallet_id,
-      String target_address,
-      JSAny? fee_opt,
-      JSAny? key_ids_filter,
-      JSAny? address_ids_filter);
+    NativePortType port_,
+    String wallet_id,
+    String target_address,
+    JSAny? fee_opt,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  );
 
   external void wire__crate__api__build_tx(
-      NativePortType port_, String wallet_id, JSAny outputs, JSAny? fee_opt);
+    NativePortType port_,
+    String wallet_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+  );
 
   external void wire__crate__api__build_tx_filtered(
-      NativePortType port_,
-      String wallet_id,
-      JSAny outputs,
-      JSAny? fee_opt,
-      JSAny? key_ids_filter,
-      JSAny? address_ids_filter);
+    NativePortType port_,
+    String wallet_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  );
 
-  external void wire__crate__api__build_tx_for_key(NativePortType port_,
-      String wallet_id, JSAny key_id, JSAny outputs, JSAny? fee_opt);
+  external void wire__crate__api__build_tx_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+  );
 
   external void wire__crate__api__cancel_seed_export(NativePortType port_);
 
   external void wire__crate__api__cancel_sync(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__change_app_passphrase(
-      NativePortType port_, String current_passphrase, String new_passphrase);
+    NativePortType port_,
+    String current_passphrase,
+    String new_passphrase,
+  );
 
   external void wire__crate__api__change_app_passphrase_with_cached(
-      NativePortType port_, String new_passphrase);
+    NativePortType port_,
+    String new_passphrase,
+  );
 
   external void wire__crate__api__clear_duress_passphrase(NativePortType port_);
 
   external void wire__crate__api__clear_panic_pin(NativePortType port_);
 
   external void wire__crate__api__complete_seed_biometric(
-      NativePortType port_, bool success);
+    NativePortType port_,
+    bool success,
+  );
 
   external void wire__crate__api__create_wallet(
-      NativePortType port_, String name, int? _entropy_len, int? birthday_opt);
+    NativePortType port_,
+    String name,
+    int? _entropy_len,
+    int? birthday_opt,
+  );
 
   external void wire__crate__api__current_receive_address(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__delete_address_book_entry(
-      NativePortType port_, String wallet_id, JSAny id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  );
 
   external void wire__crate__api__delete_wallet(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
-  external void wire__crate__api__estimate_fee(NativePortType port_,
-      JSAny num_outputs, bool has_memo, String? fee_policy);
+  external void wire__crate__api__estimate_fee(
+    NativePortType port_,
+    JSAny num_outputs,
+    bool has_memo,
+    String? fee_policy,
+  );
 
   external void wire__crate__api__exit_decoy_mode(NativePortType port_);
 
   external void wire__crate__api__export_ivk(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__export_ivk_secure(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__export_key_group_keys(
-      NativePortType port_, String wallet_id, JSAny key_id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+  );
 
   external void wire__crate__api__export_orchard_ivk(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__export_orchard_viewing_key(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__export_seed(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__export_seed_with_cached_passphrase(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__export_seed_with_passphrase(
-      NativePortType port_, String wallet_id, String passphrase);
+    NativePortType port_,
+    String wallet_id,
+    String passphrase,
+  );
 
   external void wire__crate__api__fetch_transaction_memo(
-      NativePortType port_, String wallet_id, String txid, int? output_index);
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+    int? output_index,
+  );
 
   external void wire__crate__api__format_amount(
-      NativePortType port_, JSAny arrrtoshis);
+    NativePortType port_,
+    JSAny arrrtoshis,
+  );
 
   external void wire__crate__api__generate_address_for_key(
-      NativePortType port_, String wallet_id, JSAny key_id, bool use_orchard);
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    bool use_orchard,
+  );
 
   external void wire__crate__api__generate_mnemonic(
-      NativePortType port_, int? word_count);
+    NativePortType port_,
+    int? word_count,
+  );
 
   external void wire__crate__api__get_active_wallet(NativePortType port_);
 
   external void wire__crate__api__get_address_book_count(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__get_address_book_entry(
-      NativePortType port_, String wallet_id, JSAny id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  );
 
   external void wire__crate__api__get_address_book_entry_by_address(
-      NativePortType port_, String wallet_id, String address);
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  );
 
   external void wire__crate__api__get_address_book_favorites(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__get_auto_consolidation_candidate_count(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__get_auto_consolidation_enabled(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__get_auto_consolidation_threshold(
-      NativePortType port_);
+    NativePortType port_,
+  );
 
   external void wire__crate__api__get_balance(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__get_build_info(NativePortType port_);
 
   external void wire__crate__api__get_checkpoint_details(
-      NativePortType port_, String _wallet_id, int height);
+    NativePortType port_,
+    String _wallet_id,
+    int height,
+  );
 
   external void wire__crate__api__get_duress_passphrase_hash(
-      NativePortType port_);
+    NativePortType port_,
+  );
 
   external void wire__crate__api__get_fee_info(NativePortType port_);
 
   external void wire__crate__api__get_ivk_clipboard_remaining(
-      NativePortType port_);
+    NativePortType port_,
+  );
 
   external void wire__crate__api__get_label_for_address(
-      NativePortType port_, String wallet_id, String address);
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  );
 
   external void wire__crate__api__get_last_checkpoint(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__get_lightd_endpoint(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__get_lightd_endpoint_config(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__get_network_info(NativePortType port_);
 
   external void wire__crate__api__get_recently_used_addresses(
-      NativePortType port_, String wallet_id, int limit);
+    NativePortType port_,
+    String wallet_id,
+    int limit,
+  );
 
   external void wire__crate__api__get_recommended_background_sync_mode(
-      NativePortType port_, String _wallet_id, int minutes_since_last);
+    NativePortType port_,
+    String _wallet_id,
+    int minutes_since_last,
+  );
 
   external void wire__crate__api__get_seed_clipboard_remaining(
-      NativePortType port_);
+    NativePortType port_,
+  );
 
   external void wire__crate__api__get_seed_export_state(NativePortType port_);
 
   external void wire__crate__api__get_seed_export_warnings(
-      NativePortType port_);
+    NativePortType port_,
+  );
 
   external void wire__crate__api__get_sync_logs(
-      NativePortType port_, String wallet_id, int? limit);
+    NativePortType port_,
+    String wallet_id,
+    int? limit,
+  );
 
   external void wire__crate__api__get_tor_status(NativePortType port_);
 
@@ -2144,10 +2676,14 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__get_vault_mode(NativePortType port_);
 
   external void wire__crate__api__get_watch_only_banner(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__get_watch_only_capabilities(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__has_app_passphrase(NativePortType port_);
 
@@ -2155,183 +2691,305 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void wire__crate__api__has_panic_pin(NativePortType port_);
 
-  external void wire__crate__api__import_ivk(NativePortType port_, String name,
-      String? sapling_ivk, String? orchard_ivk, int birthday);
+  external void wire__crate__api__import_ivk(
+    NativePortType port_,
+    String name,
+    String? sapling_ivk,
+    String? orchard_ivk,
+    int birthday,
+  );
 
   external void wire__crate__api__import_ivk_as_watch_only(
-      NativePortType port_, String name, String ivk, int birthday_height);
+    NativePortType port_,
+    String name,
+    String ivk,
+    int birthday_height,
+  );
 
   external void wire__crate__api__import_spending_key(
-      NativePortType port_,
-      String wallet_id,
-      String? sapling_key,
-      String? orchard_key,
-      String? label,
-      int birthday_height);
+    NativePortType port_,
+    String wallet_id,
+    String? sapling_key,
+    String? orchard_key,
+    String? label,
+    int birthday_height,
+  );
 
   external void wire__crate__api__is_background_sync_needed(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__is_decoy_mode(NativePortType port_);
 
   external void wire__crate__api__is_sync_running(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__label_address(
-      NativePortType port_, String wallet_id, String addr, String label);
+    NativePortType port_,
+    String wallet_id,
+    String addr,
+    String label,
+  );
 
   external void wire__crate__api__lightd_endpoint_default(NativePortType port_);
 
   external void wire__crate__api__lightd_endpoint_display_string(
-      NativePortType port_, JSAny that);
+    NativePortType port_,
+    JSAny that,
+  );
 
   external void wire__crate__api__lightd_endpoint_url(
-      NativePortType port_, JSAny that);
+    NativePortType port_,
+    JSAny that,
+  );
 
   external void wire__crate__api__list_address_balances(
-      NativePortType port_, String wallet_id, JSAny? key_id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny? key_id,
+  );
 
   external void wire__crate__api__list_address_book(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__list_addresses(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__list_addresses_for_key(
-      NativePortType port_, String wallet_id, JSAny key_id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+  );
 
   external void wire__crate__api__list_key_groups(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__list_transactions(
-      NativePortType port_, String wallet_id, int? limit);
+    NativePortType port_,
+    String wallet_id,
+    int? limit,
+  );
 
   external void wire__crate__api__list_wallets(NativePortType port_);
 
   external void wire__crate__api__mark_address_used(
-      NativePortType port_, String wallet_id, String address);
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  );
 
   external void wire__crate__api__next_receive_address(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__parse_amount(
-      NativePortType port_, String arrr);
+    NativePortType port_,
+    String arrr,
+  );
 
   external void wire__crate__api__rename_wallet(
-      NativePortType port_, String wallet_id, String new_name);
+    NativePortType port_,
+    String wallet_id,
+    String new_name,
+  );
 
   external void wire__crate__api__rescan(
-      NativePortType port_, String wallet_id, int from_height);
+    NativePortType port_,
+    String wallet_id,
+    int from_height,
+  );
 
   external void wire__crate__api__reseal_db_keys_for_biometrics(
-      NativePortType port_);
+    NativePortType port_,
+  );
 
-  external void wire__crate__api__restore_wallet(NativePortType port_,
-      String name, String mnemonic, String? passphrase_opt, int? birthday_opt);
+  external void wire__crate__api__restore_wallet(
+    NativePortType port_,
+    String name,
+    String mnemonic,
+    String? passphrase_opt,
+    int? birthday_opt,
+  );
 
   external void wire__crate__api__rotate_tor_exit(NativePortType port_);
 
   external void wire__crate__api__search_address_book(
-      NativePortType port_, String wallet_id, String query);
+    NativePortType port_,
+    String wallet_id,
+    String query,
+  );
 
   external void wire__crate__api__set_address_color_tag(
-      NativePortType port_, String wallet_id, String addr, int color_tag);
+    NativePortType port_,
+    String wallet_id,
+    String addr,
+    int color_tag,
+  );
 
   external void wire__crate__api__set_app_passphrase(
-      NativePortType port_, String passphrase);
+    NativePortType port_,
+    String passphrase,
+  );
 
   external void wire__crate__api__set_auto_consolidation_enabled(
-      NativePortType port_, String wallet_id, bool enabled);
+    NativePortType port_,
+    String wallet_id,
+    bool enabled,
+  );
 
   external void wire__crate__api__set_decoy_wallet_name(
-      NativePortType port_, String name);
+    NativePortType port_,
+    String name,
+  );
 
   external void wire__crate__api__set_duress_passphrase(
-      NativePortType port_, String? custom_passphrase);
+    NativePortType port_,
+    String? custom_passphrase,
+  );
 
   external void wire__crate__api__set_lightd_endpoint(
-      NativePortType port_, String wallet_id, String url, String? tls_pin_opt);
+    NativePortType port_,
+    String wallet_id,
+    String url,
+    String? tls_pin_opt,
+  );
 
   external void wire__crate__api__set_panic_pin(
-      NativePortType port_, String pin);
+    NativePortType port_,
+    String pin,
+  );
 
   external void wire__crate__api__set_tor_bridge_settings(
-      NativePortType port_,
-      bool use_bridges,
-      bool fallback_to_bridges,
-      String transport,
-      JSAny bridge_lines,
-      String? transport_path);
+    NativePortType port_,
+    bool use_bridges,
+    bool fallback_to_bridges,
+    String transport,
+    JSAny bridge_lines,
+    String? transport_path,
+  );
 
   external void wire__crate__api__set_tunnel(NativePortType port_, JSAny mode);
 
   external void wire__crate__api__set_wallet_birthday_height(
-      NativePortType port_, String wallet_id, int birthday_height);
+    NativePortType port_,
+    String wallet_id,
+    int birthday_height,
+  );
 
   external void wire__crate__api__shutdown_transport(NativePortType port_);
 
   external void wire__crate__api__sign_tx(
-      NativePortType port_, String wallet_id, JSAny pending);
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+  );
 
   external void wire__crate__api__sign_tx_filtered(
-      NativePortType port_,
-      String wallet_id,
-      JSAny pending,
-      JSAny? key_ids_filter,
-      JSAny? address_ids_filter);
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  );
 
   external void wire__crate__api__sign_tx_for_key(
-      NativePortType port_, String wallet_id, JSAny pending, JSAny key_id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+    JSAny key_id,
+  );
 
   external void wire__crate__api__skip_seed_biometric(NativePortType port_);
 
   external void wire__crate__api__start_background_sync(
-      NativePortType port_, String wallet_id, String? mode);
+    NativePortType port_,
+    String wallet_id,
+    String? mode,
+  );
 
   external void wire__crate__api__start_background_sync_round_robin(
-      NativePortType port_, String? mode);
+    NativePortType port_,
+    String? mode,
+  );
 
   external void wire__crate__api__start_seed_export(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__start_sync(
-      NativePortType port_, String wallet_id, int mode);
+    NativePortType port_,
+    String wallet_id,
+    int mode,
+  );
 
   external void wire__crate__api__switch_wallet(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__sync_status(
-      NativePortType port_, String wallet_id);
+    NativePortType port_,
+    String wallet_id,
+  );
 
   external void wire__crate__api__test_node(
-      NativePortType port_, String url, String? tls_pin);
+    NativePortType port_,
+    String url,
+    String? tls_pin,
+  );
 
   external void wire__crate__api__toggle_address_book_favorite(
-      NativePortType port_, String wallet_id, JSAny id);
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  );
 
   external void wire__crate__api__unlock_app(
-      NativePortType port_, String passphrase);
+    NativePortType port_,
+    String passphrase,
+  );
 
   external void wire__crate__api__update_address_book_entry(
-      NativePortType port_,
-      String wallet_id,
-      JSAny id,
-      String? label,
-      String? notes,
-      int? color_tag,
-      bool? is_favorite);
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+    String? label,
+    String? notes,
+    int? color_tag,
+    bool? is_favorite,
+  );
 
   external void wire__crate__api__validate_mnemonic(
-      NativePortType port_, String mnemonic);
+    NativePortType port_,
+    String mnemonic,
+  );
 
   external void wire__crate__api__verify_app_passphrase(
-      NativePortType port_, String passphrase);
+    NativePortType port_,
+    String passphrase,
+  );
 
   external void wire__crate__api__verify_duress_passphrase(
-      NativePortType port_, String passphrase, String hash);
+    NativePortType port_,
+    String passphrase,
+    String hash,
+  );
 
   external void wire__crate__api__verify_panic_pin(
-      NativePortType port_, String pin);
+    NativePortType port_,
+    String pin,
+  );
 
   external void wire__crate__api__wallet_registry_exists(NativePortType port_);
 }

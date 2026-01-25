@@ -16,26 +16,32 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 ///
 /// Always generates a 24-word mnemonic seed phrase for new wallets.
 /// For restoring wallets with 12 or 18 word seeds, use `restore_wallet()`.
-Future<String> createWallet(
-        {required String name, int? entropyLen, int? birthdayOpt}) =>
-    RustLib.instance.api.crateApiCreateWallet(
-        name: name, entropyLen: entropyLen, birthdayOpt: birthdayOpt);
+Future<String> createWallet({
+  required String name,
+  int? entropyLen,
+  int? birthdayOpt,
+}) => RustLib.instance.api.crateApiCreateWallet(
+  name: name,
+  entropyLen: entropyLen,
+  birthdayOpt: birthdayOpt,
+);
 
 /// Restore wallet from mnemonic
 ///
 /// Supports restoring wallets with 12, 18, or 24 word mnemonic seeds
 /// (for backward compatibility with old wallets that used 12 or 18 word seeds).
 /// New wallets created with `create_wallet()` always use 24-word seeds.
-Future<String> restoreWallet(
-        {required String name,
-        required String mnemonic,
-        String? passphraseOpt,
-        int? birthdayOpt}) =>
-    RustLib.instance.api.crateApiRestoreWallet(
-        name: name,
-        mnemonic: mnemonic,
-        passphraseOpt: passphraseOpt,
-        birthdayOpt: birthdayOpt);
+Future<String> restoreWallet({
+  required String name,
+  required String mnemonic,
+  String? passphraseOpt,
+  int? birthdayOpt,
+}) => RustLib.instance.api.crateApiRestoreWallet(
+  name: name,
+  mnemonic: mnemonic,
+  passphraseOpt: passphraseOpt,
+  birthdayOpt: birthdayOpt,
+);
 
 /// Check if wallet registry database file exists (without opening it)
 ///
@@ -75,15 +81,19 @@ Future<void> unlockApp({required String passphrase}) =>
     RustLib.instance.api.crateApiUnlockApp(passphrase: passphrase);
 
 /// Change app passphrase and re-encrypt all wallet data with the new keys.
-Future<void> changeAppPassphrase(
-        {required String currentPassphrase, required String newPassphrase}) =>
-    RustLib.instance.api.crateApiChangeAppPassphrase(
-        currentPassphrase: currentPassphrase, newPassphrase: newPassphrase);
+Future<void> changeAppPassphrase({
+  required String currentPassphrase,
+  required String newPassphrase,
+}) => RustLib.instance.api.crateApiChangeAppPassphrase(
+  currentPassphrase: currentPassphrase,
+  newPassphrase: newPassphrase,
+);
 
 /// Change passphrase using the cached passphrase from the current session.
 Future<void> changeAppPassphraseWithCached({required String newPassphrase}) =>
-    RustLib.instance.api
-        .crateApiChangeAppPassphraseWithCached(newPassphrase: newPassphrase);
+    RustLib.instance.api.crateApiChangeAppPassphraseWithCached(
+      newPassphrase: newPassphrase,
+    );
 
 /// Reseal registry + wallet DB keys using current platform keystore mode.
 ///
@@ -93,15 +103,19 @@ Future<void> resealDbKeysForBiometrics() =>
     RustLib.instance.api.crateApiResealDbKeysForBiometrics();
 
 /// Get auto-consolidation setting for a wallet.
-Future<bool> getAutoConsolidationEnabled({required String walletId}) =>
-    RustLib.instance.api
-        .crateApiGetAutoConsolidationEnabled(walletId: walletId);
+Future<bool> getAutoConsolidationEnabled({required String walletId}) => RustLib
+    .instance
+    .api
+    .crateApiGetAutoConsolidationEnabled(walletId: walletId);
 
 /// Enable or disable auto-consolidation for a wallet.
-Future<void> setAutoConsolidationEnabled(
-        {required String walletId, required bool enabled}) =>
-    RustLib.instance.api.crateApiSetAutoConsolidationEnabled(
-        walletId: walletId, enabled: enabled);
+Future<void> setAutoConsolidationEnabled({
+  required String walletId,
+  required bool enabled,
+}) => RustLib.instance.api.crateApiSetAutoConsolidationEnabled(
+  walletId: walletId,
+  enabled: enabled,
+);
 
 /// Get the note count threshold that triggers auto-consolidation prompts.
 Future<int> getAutoConsolidationThreshold() =>
@@ -109,24 +123,31 @@ Future<int> getAutoConsolidationThreshold() =>
 
 /// Count selectable notes eligible for auto-consolidation.
 Future<int> getAutoConsolidationCandidateCount({required String walletId}) =>
-    RustLib.instance.api
-        .crateApiGetAutoConsolidationCandidateCount(walletId: walletId);
+    RustLib.instance.api.crateApiGetAutoConsolidationCandidateCount(
+      walletId: walletId,
+    );
 
 /// Get active wallet ID
 Future<String?> getActiveWallet() =>
     RustLib.instance.api.crateApiGetActiveWallet();
 
 /// Rename wallet
-Future<void> renameWallet(
-        {required String walletId, required String newName}) =>
-    RustLib.instance.api
-        .crateApiRenameWallet(walletId: walletId, newName: newName);
+Future<void> renameWallet({
+  required String walletId,
+  required String newName,
+}) => RustLib.instance.api.crateApiRenameWallet(
+  walletId: walletId,
+  newName: newName,
+);
 
 /// Update wallet birthday height
-Future<void> setWalletBirthdayHeight(
-        {required String walletId, required int birthdayHeight}) =>
-    RustLib.instance.api.crateApiSetWalletBirthdayHeight(
-        walletId: walletId, birthdayHeight: birthdayHeight);
+Future<void> setWalletBirthdayHeight({
+  required String walletId,
+  required int birthdayHeight,
+}) => RustLib.instance.api.crateApiSetWalletBirthdayHeight(
+  walletId: walletId,
+  birthdayHeight: birthdayHeight,
+);
 
 /// Delete wallet and its local database
 Future<void> deleteWallet({required String walletId}) =>
@@ -149,127 +170,165 @@ Future<String> nextReceiveAddress({required String walletId}) =>
     RustLib.instance.api.crateApiNextReceiveAddress(walletId: walletId);
 
 /// Label an address for address book
-Future<void> labelAddress(
-        {required String walletId,
-        required String addr,
-        required String label}) =>
-    RustLib.instance.api
-        .crateApiLabelAddress(walletId: walletId, addr: addr, label: label);
+Future<void> labelAddress({
+  required String walletId,
+  required String addr,
+  required String label,
+}) => RustLib.instance.api.crateApiLabelAddress(
+  walletId: walletId,
+  addr: addr,
+  label: label,
+);
 
 /// Set color tag for a wallet address
-Future<void> setAddressColorTag(
-        {required String walletId,
-        required String addr,
-        required AddressBookColorTag colorTag}) =>
-    RustLib.instance.api.crateApiSetAddressColorTag(
-        walletId: walletId, addr: addr, colorTag: colorTag);
+Future<void> setAddressColorTag({
+  required String walletId,
+  required String addr,
+  required AddressBookColorTag colorTag,
+}) => RustLib.instance.api.crateApiSetAddressColorTag(
+  walletId: walletId,
+  addr: addr,
+  colorTag: colorTag,
+);
 
 /// Get all addresses for wallet with labels
 Future<List<AddressInfo>> listAddresses({required String walletId}) =>
     RustLib.instance.api.crateApiListAddresses(walletId: walletId);
 
 /// Get per-address balances for a wallet (optionally filtered by key group).
-Future<List<AddressBalanceInfo>> listAddressBalances(
-        {required String walletId, PlatformInt64? keyId}) =>
-    RustLib.instance.api
-        .crateApiListAddressBalances(walletId: walletId, keyId: keyId);
+Future<List<AddressBalanceInfo>> listAddressBalances({
+  required String walletId,
+  PlatformInt64? keyId,
+}) => RustLib.instance.api.crateApiListAddressBalances(
+  walletId: walletId,
+  keyId: keyId,
+);
 
 /// List address book entries for a wallet
 Future<List<AddressBookEntryFfi>> listAddressBook({required String walletId}) =>
     RustLib.instance.api.crateApiListAddressBook(walletId: walletId);
 
 /// Add an address book entry
-Future<AddressBookEntryFfi> addAddressBookEntry(
-        {required String walletId,
-        required String address,
-        required String label,
-        String? notes,
-        required AddressBookColorTag colorTag}) =>
-    RustLib.instance.api.crateApiAddAddressBookEntry(
-        walletId: walletId,
-        address: address,
-        label: label,
-        notes: notes,
-        colorTag: colorTag);
+Future<AddressBookEntryFfi> addAddressBookEntry({
+  required String walletId,
+  required String address,
+  required String label,
+  String? notes,
+  required AddressBookColorTag colorTag,
+}) => RustLib.instance.api.crateApiAddAddressBookEntry(
+  walletId: walletId,
+  address: address,
+  label: label,
+  notes: notes,
+  colorTag: colorTag,
+);
 
 /// Update an address book entry
-Future<AddressBookEntryFfi> updateAddressBookEntry(
-        {required String walletId,
-        required PlatformInt64 id,
-        String? label,
-        String? notes,
-        AddressBookColorTag? colorTag,
-        bool? isFavorite}) =>
-    RustLib.instance.api.crateApiUpdateAddressBookEntry(
-        walletId: walletId,
-        id: id,
-        label: label,
-        notes: notes,
-        colorTag: colorTag,
-        isFavorite: isFavorite);
+Future<AddressBookEntryFfi> updateAddressBookEntry({
+  required String walletId,
+  required PlatformInt64 id,
+  String? label,
+  String? notes,
+  AddressBookColorTag? colorTag,
+  bool? isFavorite,
+}) => RustLib.instance.api.crateApiUpdateAddressBookEntry(
+  walletId: walletId,
+  id: id,
+  label: label,
+  notes: notes,
+  colorTag: colorTag,
+  isFavorite: isFavorite,
+);
 
 /// Delete an address book entry
-Future<void> deleteAddressBookEntry(
-        {required String walletId, required PlatformInt64 id}) =>
-    RustLib.instance.api
-        .crateApiDeleteAddressBookEntry(walletId: walletId, id: id);
+Future<void> deleteAddressBookEntry({
+  required String walletId,
+  required PlatformInt64 id,
+}) => RustLib.instance.api.crateApiDeleteAddressBookEntry(
+  walletId: walletId,
+  id: id,
+);
 
 /// Toggle favorite status for an entry
-Future<bool> toggleAddressBookFavorite(
-        {required String walletId, required PlatformInt64 id}) =>
-    RustLib.instance.api
-        .crateApiToggleAddressBookFavorite(walletId: walletId, id: id);
+Future<bool> toggleAddressBookFavorite({
+  required String walletId,
+  required PlatformInt64 id,
+}) => RustLib.instance.api.crateApiToggleAddressBookFavorite(
+  walletId: walletId,
+  id: id,
+);
 
 /// Mark an address as used
-Future<void> markAddressUsed(
-        {required String walletId, required String address}) =>
-    RustLib.instance.api
-        .crateApiMarkAddressUsed(walletId: walletId, address: address);
+Future<void> markAddressUsed({
+  required String walletId,
+  required String address,
+}) => RustLib.instance.api.crateApiMarkAddressUsed(
+  walletId: walletId,
+  address: address,
+);
 
 /// Get label for an address
-Future<String?> getLabelForAddress(
-        {required String walletId, required String address}) =>
-    RustLib.instance.api
-        .crateApiGetLabelForAddress(walletId: walletId, address: address);
+Future<String?> getLabelForAddress({
+  required String walletId,
+  required String address,
+}) => RustLib.instance.api.crateApiGetLabelForAddress(
+  walletId: walletId,
+  address: address,
+);
 
 /// Check if an address exists in the book
-Future<bool> addressExistsInBook(
-        {required String walletId, required String address}) =>
-    RustLib.instance.api
-        .crateApiAddressExistsInBook(walletId: walletId, address: address);
+Future<bool> addressExistsInBook({
+  required String walletId,
+  required String address,
+}) => RustLib.instance.api.crateApiAddressExistsInBook(
+  walletId: walletId,
+  address: address,
+);
 
 /// Count address book entries
 Future<int> getAddressBookCount({required String walletId}) =>
     RustLib.instance.api.crateApiGetAddressBookCount(walletId: walletId);
 
 /// Get entry by ID
-Future<AddressBookEntryFfi?> getAddressBookEntry(
-        {required String walletId, required PlatformInt64 id}) =>
-    RustLib.instance.api
-        .crateApiGetAddressBookEntry(walletId: walletId, id: id);
+Future<AddressBookEntryFfi?> getAddressBookEntry({
+  required String walletId,
+  required PlatformInt64 id,
+}) => RustLib.instance.api.crateApiGetAddressBookEntry(
+  walletId: walletId,
+  id: id,
+);
 
 /// Get entry by address
-Future<AddressBookEntryFfi?> getAddressBookEntryByAddress(
-        {required String walletId, required String address}) =>
-    RustLib.instance.api.crateApiGetAddressBookEntryByAddress(
-        walletId: walletId, address: address);
+Future<AddressBookEntryFfi?> getAddressBookEntryByAddress({
+  required String walletId,
+  required String address,
+}) => RustLib.instance.api.crateApiGetAddressBookEntryByAddress(
+  walletId: walletId,
+  address: address,
+);
 
 /// Search entries by query
-Future<List<AddressBookEntryFfi>> searchAddressBook(
-        {required String walletId, required String query}) =>
-    RustLib.instance.api
-        .crateApiSearchAddressBook(walletId: walletId, query: query);
+Future<List<AddressBookEntryFfi>> searchAddressBook({
+  required String walletId,
+  required String query,
+}) => RustLib.instance.api.crateApiSearchAddressBook(
+  walletId: walletId,
+  query: query,
+);
 
 /// List favorites
-Future<List<AddressBookEntryFfi>> getAddressBookFavorites(
-        {required String walletId}) =>
-    RustLib.instance.api.crateApiGetAddressBookFavorites(walletId: walletId);
+Future<List<AddressBookEntryFfi>> getAddressBookFavorites({
+  required String walletId,
+}) => RustLib.instance.api.crateApiGetAddressBookFavorites(walletId: walletId);
 
 /// List recently used addresses
-Future<List<AddressBookEntryFfi>> getRecentlyUsedAddresses(
-        {required String walletId, required int limit}) =>
-    RustLib.instance.api
-        .crateApiGetRecentlyUsedAddresses(walletId: walletId, limit: limit);
+Future<List<AddressBookEntryFfi>> getRecentlyUsedAddresses({
+  required String walletId,
+  required int limit,
+}) => RustLib.instance.api.crateApiGetRecentlyUsedAddresses(
+  walletId: walletId,
+  limit: limit,
+);
 
 /// Export Sapling viewing key from full wallet.
 ///
@@ -296,54 +355,65 @@ Future<String> exportOrchardIvk({required String walletId}) =>
 ///
 /// Supports Sapling viewing keys (zxviews...) and Orchard extended viewing keys (bech32).
 /// If both are provided, creates a watch-only wallet that can view both Sapling and Orchard transactions.
-Future<String> importIvk(
-        {required String name,
-        String? saplingIvk,
-        String? orchardIvk,
-        required int birthday}) =>
-    RustLib.instance.api.crateApiImportIvk(
-        name: name,
-        saplingIvk: saplingIvk,
-        orchardIvk: orchardIvk,
-        birthday: birthday);
+Future<String> importIvk({
+  required String name,
+  String? saplingIvk,
+  String? orchardIvk,
+  required int birthday,
+}) => RustLib.instance.api.crateApiImportIvk(
+  name: name,
+  saplingIvk: saplingIvk,
+  orchardIvk: orchardIvk,
+  birthday: birthday,
+);
 
 /// List key groups for the active wallet account.
 Future<List<KeyGroupInfo>> listKeyGroups({required String walletId}) =>
     RustLib.instance.api.crateApiListKeyGroups(walletId: walletId);
 
 /// Export viewing/spending keys for a specific key group.
-Future<KeyExportInfo> exportKeyGroupKeys(
-        {required String walletId, required PlatformInt64 keyId}) =>
-    RustLib.instance.api
-        .crateApiExportKeyGroupKeys(walletId: walletId, keyId: keyId);
+Future<KeyExportInfo> exportKeyGroupKeys({
+  required String walletId,
+  required PlatformInt64 keyId,
+}) => RustLib.instance.api.crateApiExportKeyGroupKeys(
+  walletId: walletId,
+  keyId: keyId,
+);
 
 /// List addresses for a specific key group.
-Future<List<KeyAddressInfo>> listAddressesForKey(
-        {required String walletId, required PlatformInt64 keyId}) =>
-    RustLib.instance.api
-        .crateApiListAddressesForKey(walletId: walletId, keyId: keyId);
+Future<List<KeyAddressInfo>> listAddressesForKey({
+  required String walletId,
+  required PlatformInt64 keyId,
+}) => RustLib.instance.api.crateApiListAddressesForKey(
+  walletId: walletId,
+  keyId: keyId,
+);
 
 /// Generate a new address for a specific key group.
-Future<String> generateAddressForKey(
-        {required String walletId,
-        required PlatformInt64 keyId,
-        required bool useOrchard}) =>
-    RustLib.instance.api.crateApiGenerateAddressForKey(
-        walletId: walletId, keyId: keyId, useOrchard: useOrchard);
+Future<String> generateAddressForKey({
+  required String walletId,
+  required PlatformInt64 keyId,
+  required bool useOrchard,
+}) => RustLib.instance.api.crateApiGenerateAddressForKey(
+  walletId: walletId,
+  keyId: keyId,
+  useOrchard: useOrchard,
+);
 
 /// Import a spending key into an existing wallet.
-Future<PlatformInt64> importSpendingKey(
-        {required String walletId,
-        String? saplingKey,
-        String? orchardKey,
-        String? label,
-        required int birthdayHeight}) =>
-    RustLib.instance.api.crateApiImportSpendingKey(
-        walletId: walletId,
-        saplingKey: saplingKey,
-        orchardKey: orchardKey,
-        label: label,
-        birthdayHeight: birthdayHeight);
+Future<PlatformInt64> importSpendingKey({
+  required String walletId,
+  String? saplingKey,
+  String? orchardKey,
+  String? label,
+  required int birthdayHeight,
+}) => RustLib.instance.api.crateApiImportSpendingKey(
+  walletId: walletId,
+  saplingKey: saplingKey,
+  orchardKey: orchardKey,
+  label: label,
+  birthdayHeight: birthdayHeight,
+);
 
 /// Export mnemonic seed (DANGEROUS - requires authentication)
 ///
@@ -360,87 +430,102 @@ Future<String> exportSeed({required String walletId}) =>
     RustLib.instance.api.crateApiExportSeed(walletId: walletId);
 
 /// Build transaction with note selection, fee calculation, and change.
-Future<PendingTx> buildTx(
-        {required String walletId,
-        required List<Output> outputs,
-        BigInt? feeOpt}) =>
-    RustLib.instance.api
-        .crateApiBuildTx(walletId: walletId, outputs: outputs, feeOpt: feeOpt);
+Future<PendingTx> buildTx({
+  required String walletId,
+  required List<Output> outputs,
+  BigInt? feeOpt,
+}) => RustLib.instance.api.crateApiBuildTx(
+  walletId: walletId,
+  outputs: outputs,
+  feeOpt: feeOpt,
+);
 
 /// Build transaction using notes from a specific key group.
-Future<PendingTx> buildTxForKey(
-        {required String walletId,
-        required PlatformInt64 keyId,
-        required List<Output> outputs,
-        BigInt? feeOpt}) =>
-    RustLib.instance.api.crateApiBuildTxForKey(
-        walletId: walletId, keyId: keyId, outputs: outputs, feeOpt: feeOpt);
+Future<PendingTx> buildTxForKey({
+  required String walletId,
+  required PlatformInt64 keyId,
+  required List<Output> outputs,
+  BigInt? feeOpt,
+}) => RustLib.instance.api.crateApiBuildTxForKey(
+  walletId: walletId,
+  keyId: keyId,
+  outputs: outputs,
+  feeOpt: feeOpt,
+);
 
 /// Build transaction using selected key groups or addresses.
-Future<PendingTx> buildTxFiltered(
-        {required String walletId,
-        required List<Output> outputs,
-        BigInt? feeOpt,
-        Int64List? keyIdsFilter,
-        Int64List? addressIdsFilter}) =>
-    RustLib.instance.api.crateApiBuildTxFiltered(
-        walletId: walletId,
-        outputs: outputs,
-        feeOpt: feeOpt,
-        keyIdsFilter: keyIdsFilter,
-        addressIdsFilter: addressIdsFilter);
+Future<PendingTx> buildTxFiltered({
+  required String walletId,
+  required List<Output> outputs,
+  BigInt? feeOpt,
+  Int64List? keyIdsFilter,
+  Int64List? addressIdsFilter,
+}) => RustLib.instance.api.crateApiBuildTxFiltered(
+  walletId: walletId,
+  outputs: outputs,
+  feeOpt: feeOpt,
+  keyIdsFilter: keyIdsFilter,
+  addressIdsFilter: addressIdsFilter,
+);
 
 /// Build a consolidation transaction for a key group.
-Future<PendingTx> buildConsolidationTx(
-        {required String walletId,
-        required PlatformInt64 keyId,
-        required String targetAddress,
-        BigInt? feeOpt}) =>
-    RustLib.instance.api.crateApiBuildConsolidationTx(
-        walletId: walletId,
-        keyId: keyId,
-        targetAddress: targetAddress,
-        feeOpt: feeOpt);
+Future<PendingTx> buildConsolidationTx({
+  required String walletId,
+  required PlatformInt64 keyId,
+  required String targetAddress,
+  BigInt? feeOpt,
+}) => RustLib.instance.api.crateApiBuildConsolidationTx(
+  walletId: walletId,
+  keyId: keyId,
+  targetAddress: targetAddress,
+  feeOpt: feeOpt,
+);
 
 /// Build a sweep transaction from selected key groups or addresses.
 /// Sends the full available balance minus fee to the target address.
-Future<PendingTx> buildSweepTx(
-        {required String walletId,
-        required String targetAddress,
-        BigInt? feeOpt,
-        Int64List? keyIdsFilter,
-        Int64List? addressIdsFilter}) =>
-    RustLib.instance.api.crateApiBuildSweepTx(
-        walletId: walletId,
-        targetAddress: targetAddress,
-        feeOpt: feeOpt,
-        keyIdsFilter: keyIdsFilter,
-        addressIdsFilter: addressIdsFilter);
+Future<PendingTx> buildSweepTx({
+  required String walletId,
+  required String targetAddress,
+  BigInt? feeOpt,
+  Int64List? keyIdsFilter,
+  Int64List? addressIdsFilter,
+}) => RustLib.instance.api.crateApiBuildSweepTx(
+  walletId: walletId,
+  targetAddress: targetAddress,
+  feeOpt: feeOpt,
+  keyIdsFilter: keyIdsFilter,
+  addressIdsFilter: addressIdsFilter,
+);
 
 /// Sign pending transaction (all spendable notes in the wallet)
-Future<SignedTx> signTx(
-        {required String walletId, required PendingTx pending}) =>
-    RustLib.instance.api.crateApiSignTx(walletId: walletId, pending: pending);
+Future<SignedTx> signTx({
+  required String walletId,
+  required PendingTx pending,
+}) => RustLib.instance.api.crateApiSignTx(walletId: walletId, pending: pending);
 
 /// Sign pending transaction using notes from a specific key group
-Future<SignedTx> signTxForKey(
-        {required String walletId,
-        required PendingTx pending,
-        required PlatformInt64 keyId}) =>
-    RustLib.instance.api.crateApiSignTxForKey(
-        walletId: walletId, pending: pending, keyId: keyId);
+Future<SignedTx> signTxForKey({
+  required String walletId,
+  required PendingTx pending,
+  required PlatformInt64 keyId,
+}) => RustLib.instance.api.crateApiSignTxForKey(
+  walletId: walletId,
+  pending: pending,
+  keyId: keyId,
+);
 
 /// Sign pending transaction using selected key groups or addresses.
-Future<SignedTx> signTxFiltered(
-        {required String walletId,
-        required PendingTx pending,
-        Int64List? keyIdsFilter,
-        Int64List? addressIdsFilter}) =>
-    RustLib.instance.api.crateApiSignTxFiltered(
-        walletId: walletId,
-        pending: pending,
-        keyIdsFilter: keyIdsFilter,
-        addressIdsFilter: addressIdsFilter);
+Future<SignedTx> signTxFiltered({
+  required String walletId,
+  required PendingTx pending,
+  Int64List? keyIdsFilter,
+  Int64List? addressIdsFilter,
+}) => RustLib.instance.api.crateApiSignTxFiltered(
+  walletId: walletId,
+  pending: pending,
+  keyIdsFilter: keyIdsFilter,
+  addressIdsFilter: addressIdsFilter,
+);
 
 /// Broadcast signed transaction to the network
 ///
@@ -450,12 +535,15 @@ Future<String> broadcastTx({required SignedTx signed}) =>
     RustLib.instance.api.crateApiBroadcastTx(signed: signed);
 
 /// Estimate fee for transaction without building it
-Future<BigInt> estimateFee(
-        {required BigInt numOutputs,
-        required bool hasMemo,
-        String? feePolicy}) =>
-    RustLib.instance.api.crateApiEstimateFee(
-        numOutputs: numOutputs, hasMemo: hasMemo, feePolicy: feePolicy);
+Future<BigInt> estimateFee({
+  required BigInt numOutputs,
+  required bool hasMemo,
+  String? feePolicy,
+}) => RustLib.instance.api.crateApiEstimateFee(
+  numOutputs: numOutputs,
+  hasMemo: hasMemo,
+  feePolicy: feePolicy,
+);
 
 /// Get fee information
 Future<FeeInfo> getFeeInfo() => RustLib.instance.api.crateApiGetFeeInfo();
@@ -474,8 +562,10 @@ Future<CheckpointInfo?> getLastCheckpoint({required String walletId}) =>
 
 /// Rescan wallet from specific height
 Future<void> rescan({required String walletId, required int fromHeight}) =>
-    RustLib.instance.api
-        .crateApiRescan(walletId: walletId, fromHeight: fromHeight);
+    RustLib.instance.api.crateApiRescan(
+      walletId: walletId,
+      fromHeight: fromHeight,
+    );
 
 /// Cancel ongoing sync for a wallet
 Future<void> cancelSync({required String walletId}) =>
@@ -493,34 +583,45 @@ Future<bool> isSyncRunning({required String walletId}) =>
 /// Note: This creates a new SyncEngine instance for background sync to avoid
 /// conflicts with foreground sync. The background sync will use the same
 /// wallet database and storage.
-Future<BackgroundSyncResult> startBackgroundSync(
-        {required String walletId, String? mode}) =>
-    RustLib.instance.api
-        .crateApiStartBackgroundSync(walletId: walletId, mode: mode);
+Future<BackgroundSyncResult> startBackgroundSync({
+  required String walletId,
+  String? mode,
+}) => RustLib.instance.api.crateApiStartBackgroundSync(
+  walletId: walletId,
+  mode: mode,
+);
 
 /// Start background sync using round-robin scheduling with warm-wallet priority.
 ///
 /// Chooses the next wallet to sync based on recent usage and rotates fairly
 /// across wallets over successive runs.
-Future<WalletBackgroundSyncResult> startBackgroundSyncRoundRobin(
-        {String? mode}) =>
-    RustLib.instance.api.crateApiStartBackgroundSyncRoundRobin(mode: mode);
+Future<WalletBackgroundSyncResult> startBackgroundSyncRoundRobin({
+  String? mode,
+}) => RustLib.instance.api.crateApiStartBackgroundSyncRoundRobin(mode: mode);
 
 /// Check if background sync is needed for a wallet
 Future<bool> isBackgroundSyncNeeded({required String walletId}) =>
     RustLib.instance.api.crateApiIsBackgroundSyncNeeded(walletId: walletId);
 
 /// Get recommended background sync mode based on time since last sync
-Future<String> getRecommendedBackgroundSyncMode(
-        {required String walletId, required int minutesSinceLast}) =>
-    RustLib.instance.api.crateApiGetRecommendedBackgroundSyncMode(
-        walletId: walletId, minutesSinceLast: minutesSinceLast);
+Future<String> getRecommendedBackgroundSyncMode({
+  required String walletId,
+  required int minutesSinceLast,
+}) => RustLib.instance.api.crateApiGetRecommendedBackgroundSyncMode(
+  walletId: walletId,
+  minutesSinceLast: minutesSinceLast,
+);
 
 /// Set lightwalletd endpoint
-Future<void> setLightdEndpoint(
-        {required String walletId, required String url, String? tlsPinOpt}) =>
-    RustLib.instance.api.crateApiSetLightdEndpoint(
-        walletId: walletId, url: url, tlsPinOpt: tlsPinOpt);
+Future<void> setLightdEndpoint({
+  required String walletId,
+  required String url,
+  String? tlsPinOpt,
+}) => RustLib.instance.api.crateApiSetLightdEndpoint(
+  walletId: walletId,
+  url: url,
+  tlsPinOpt: tlsPinOpt,
+);
 
 /// Get lightwalletd endpoint
 Future<String> getLightdEndpoint({required String walletId}) =>
@@ -546,18 +647,19 @@ Future<void> shutdownTransport() =>
     RustLib.instance.api.crateApiShutdownTransport();
 
 /// Configure Tor bridge settings (Snowflake/obfs4/custom) for censorship circumvention.
-Future<void> setTorBridgeSettings(
-        {required bool useBridges,
-        required bool fallbackToBridges,
-        required String transport,
-        required List<String> bridgeLines,
-        String? transportPath}) =>
-    RustLib.instance.api.crateApiSetTorBridgeSettings(
-        useBridges: useBridges,
-        fallbackToBridges: fallbackToBridges,
-        transport: transport,
-        bridgeLines: bridgeLines,
-        transportPath: transportPath);
+Future<void> setTorBridgeSettings({
+  required bool useBridges,
+  required bool fallbackToBridges,
+  required String transport,
+  required List<String> bridgeLines,
+  String? transportPath,
+}) => RustLib.instance.api.crateApiSetTorBridgeSettings(
+  useBridges: useBridges,
+  fallbackToBridges: fallbackToBridges,
+  transport: transport,
+  bridgeLines: bridgeLines,
+  transportPath: transportPath,
+);
 
 /// Get current Tor bootstrap status for UI.
 Future<String> getTorStatus() => RustLib.instance.api.crateApiGetTorStatus();
@@ -579,8 +681,10 @@ Future<Balance> getBalance({required String walletId}) =>
 /// Returns transaction history from the database, aggregated by transaction ID.
 /// Transactions are sorted by height descending (newest first).
 Future<List<TxInfo>> listTransactions({required String walletId, int? limit}) =>
-    RustLib.instance.api
-        .crateApiListTransactions(walletId: walletId, limit: limit);
+    RustLib.instance.api.crateApiListTransactions(
+      walletId: walletId,
+      limit: limit,
+    );
 
 /// Fetch and decrypt memo for a specific transaction (lazy memo decoding)
 ///
@@ -597,10 +701,15 @@ Future<List<TxInfo>> listTransactions({required String walletId, int? limit}) =>
 ///
 /// # Returns
 /// Decoded memo string, or None if no memo exists or decryption fails
-Future<String?> fetchTransactionMemo(
-        {required String walletId, required String txid, int? outputIndex}) =>
-    RustLib.instance.api.crateApiFetchTransactionMemo(
-        walletId: walletId, txid: txid, outputIndex: outputIndex);
+Future<String?> fetchTransactionMemo({
+  required String walletId,
+  required String txid,
+  int? outputIndex,
+}) => RustLib.instance.api.crateApiFetchTransactionMemo(
+  walletId: walletId,
+  txid: txid,
+  outputIndex: outputIndex,
+);
 
 /// Generate new mnemonic (utility function for testing/development)
 ///
@@ -654,9 +763,10 @@ Future<void> clearPanicPin() => RustLib.instance.api.crateApiClearPanicPin();
 
 /// Set duress passphrase for decoy vault
 /// Returns the Argon2id hash for secure storage on the client side.
-Future<String> setDuressPassphrase({String? customPassphrase}) =>
-    RustLib.instance.api
-        .crateApiSetDuressPassphrase(customPassphrase: customPassphrase);
+Future<String> setDuressPassphrase({String? customPassphrase}) => RustLib
+    .instance
+    .api
+    .crateApiSetDuressPassphrase(customPassphrase: customPassphrase);
 
 /// Check if a duress passphrase is configured
 Future<bool> hasDuressPassphrase() =>
@@ -671,10 +781,13 @@ Future<void> clearDuressPassphrase() =>
     RustLib.instance.api.crateApiClearDuressPassphrase();
 
 /// Verify duress passphrase (activates decoy mode if correct)
-Future<bool> verifyDuressPassphrase(
-        {required String passphrase, required String hash}) =>
-    RustLib.instance.api
-        .crateApiVerifyDuressPassphrase(passphrase: passphrase, hash: hash);
+Future<bool> verifyDuressPassphrase({
+  required String passphrase,
+  required String hash,
+}) => RustLib.instance.api.crateApiVerifyDuressPassphrase(
+  passphrase: passphrase,
+  hash: hash,
+);
 
 /// Set decoy wallet name
 Future<void> setDecoyWalletName({required String name}) =>
@@ -706,16 +819,20 @@ Future<String> skipSeedBiometric() =>
 ///
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
-Future<List<String>> exportSeedWithPassphrase(
-        {required String walletId, required String passphrase}) =>
-    RustLib.instance.api.crateApiExportSeedWithPassphrase(
-        walletId: walletId, passphrase: passphrase);
+Future<List<String>> exportSeedWithPassphrase({
+  required String walletId,
+  required String passphrase,
+}) => RustLib.instance.api.crateApiExportSeedWithPassphrase(
+  walletId: walletId,
+  passphrase: passphrase,
+);
 
 /// Export seed using cached app passphrase (after biometric approval).
-Future<List<String>> exportSeedWithCachedPassphrase(
-        {required String walletId}) =>
-    RustLib.instance.api
-        .crateApiExportSeedWithCachedPassphrase(walletId: walletId);
+Future<List<String>> exportSeedWithCachedPassphrase({
+  required String walletId,
+}) => RustLib.instance.api.crateApiExportSeedWithCachedPassphrase(
+  walletId: walletId,
+);
 
 /// Cancel seed export flow
 Future<void> cancelSeedExport() =>
@@ -742,17 +859,20 @@ Future<String> exportIvkSecure({required String walletId}) =>
     RustLib.instance.api.crateApiExportIvkSecure(walletId: walletId);
 
 /// Import viewing key to create watch-only wallet
-Future<String> importIvkAsWatchOnly(
-        {required String name,
-        required String ivk,
-        required int birthdayHeight}) =>
-    RustLib.instance.api.crateApiImportIvkAsWatchOnly(
-        name: name, ivk: ivk, birthdayHeight: birthdayHeight);
+Future<String> importIvkAsWatchOnly({
+  required String name,
+  required String ivk,
+  required int birthdayHeight,
+}) => RustLib.instance.api.crateApiImportIvkAsWatchOnly(
+  name: name,
+  ivk: ivk,
+  birthdayHeight: birthdayHeight,
+);
 
 /// Get watch-only capabilities for a wallet
-Future<WatchOnlyCapabilitiesInfo> getWatchOnlyCapabilities(
-        {required String walletId}) =>
-    RustLib.instance.api.crateApiGetWatchOnlyCapabilities(walletId: walletId);
+Future<WatchOnlyCapabilitiesInfo> getWatchOnlyCapabilities({
+  required String walletId,
+}) => RustLib.instance.api.crateApiGetWatchOnlyCapabilities(walletId: walletId);
 
 /// Get watch-only banner info for a wallet
 Future<WatchOnlyBannerInfo?> getWatchOnlyBanner({required String walletId}) =>
@@ -766,15 +886,20 @@ Future<BigInt?> getIvkClipboardRemaining() =>
 Future<BuildInfo> getBuildInfo() => RustLib.instance.api.crateApiGetBuildInfo();
 
 /// Get sync logs for diagnostics
-Future<List<SyncLogEntryFfi>> getSyncLogs(
-        {required String walletId, int? limit}) =>
+Future<List<SyncLogEntryFfi>> getSyncLogs({
+  required String walletId,
+  int? limit,
+}) =>
     RustLib.instance.api.crateApiGetSyncLogs(walletId: walletId, limit: limit);
 
 /// Get checkpoint details at specific height
-Future<CheckpointInfo?> getCheckpointDetails(
-        {required String walletId, required int height}) =>
-    RustLib.instance.api
-        .crateApiGetCheckpointDetails(walletId: walletId, height: height);
+Future<CheckpointInfo?> getCheckpointDetails({
+  required String walletId,
+  required int height,
+}) => RustLib.instance.api.crateApiGetCheckpointDetails(
+  walletId: walletId,
+  height: height,
+);
 
 /// Test connection to a lightwalletd endpoint
 Future<NodeTestResult> testNode({required String url, String? tlsPin}) =>
@@ -788,10 +913,7 @@ class CheckpointInfo {
   /// Unix timestamp when checkpoint was created
   final PlatformInt64 timestamp;
 
-  const CheckpointInfo({
-    required this.height,
-    required this.timestamp,
-  });
+  const CheckpointInfo({required this.height, required this.timestamp});
 
   @override
   int get hashCode => height.hashCode ^ timestamp.hashCode;
@@ -880,14 +1002,11 @@ class LightdEndpoint {
 
   /// Display string (host:port)
   Future<String> displayString() =>
-      RustLib.instance.api.crateApiLightdEndpointDisplayString(
-        that: this,
-      );
+      RustLib.instance.api.crateApiLightdEndpointDisplayString(that: this);
 
   /// Full URL for gRPC connection
-  Future<String> url() => RustLib.instance.api.crateApiLightdEndpointUrl(
-        that: this,
-      );
+  Future<String> url() =>
+      RustLib.instance.api.crateApiLightdEndpointUrl(that: this);
 
   @override
   int get hashCode =>

@@ -7992,9 +7992,7 @@ fn validate_custom_duress_passphrase(passphrase: &str) -> Result<()> {
     AppPassphrase::validate(passphrase)?;
 
     if !passphrase.chars().any(|c| c.is_ascii_lowercase()) {
-        return Err(anyhow!(
-            "Duress passphrase must include a lowercase letter"
-        ));
+        return Err(anyhow!("Duress passphrase must include a lowercase letter"));
     }
     if !passphrase.chars().any(|c| c.is_ascii_uppercase()) {
         return Err(anyhow!(
@@ -8122,8 +8120,8 @@ pub fn clear_panic_pin() -> Result<()> {
 /// Set duress passphrase for decoy vault
 /// Returns the Argon2id hash for secure storage on the client side.
 pub fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result<String> {
-    let app_passphrase = passphrase_store::get_passphrase()
-        .map_err(|e| anyhow!("App is locked: {}", e))?;
+    let app_passphrase =
+        passphrase_store::get_passphrase().map_err(|e| anyhow!("App is locked: {}", e))?;
     let app_passphrase = app_passphrase.as_str();
 
     let custom_trimmed = custom_passphrase
@@ -8181,11 +8179,7 @@ pub fn has_duress_passphrase() -> Result<bool> {
         return Ok(false);
     }
     let registry_db = open_wallet_registry()?;
-    Ok(get_registry_setting(
-        &registry_db,
-        REGISTRY_DURESS_PASSPHRASE_HASH_KEY,
-    )?
-    .is_some())
+    Ok(get_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY)?.is_some())
 }
 
 /// Get the stored duress passphrase hash (for client-side secure storage sync)

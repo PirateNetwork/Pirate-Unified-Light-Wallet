@@ -1,10 +1,10 @@
-﻿//! Performance benchmarks for sync engine
+//! Performance benchmarks for sync engine
 //!
 //! Tests sync throughput and memory usage under various conditions
 
 use pirate_sync_lightd::SyncConfig;
 use std::time::{Duration, Instant};
-use sysinfo::{ProcessExt, System, SystemExt};
+use sysinfo::System;
 use tempfile::TempDir;
 
 /// Mock sync metrics
@@ -304,6 +304,3 @@ async fn bench_memory_usage_during_sync() -> Result<(), Box<dyn std::error::Erro
 
     Ok(())
 }
-
-
-

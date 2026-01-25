@@ -122,24 +122,10 @@ if [ -f "$GENERATED_DIR/api.dart" ] && [ -f "$GENERATED_DIR/frb_generated.dart" 
     echo -e "${GREEN}   Generated files in: $GENERATED_DIR${NC}"
     ls -lh "$GENERATED_DIR"/*.dart 2>/dev/null | awk '{print "   - " $9 " (" $5 ")"}' || true
 else
-    # Check for files in alternative locations (old config paths)
-    OLD_LOCATION1="app/flutter/lib/ffi/bridge_generated.dart"
-    OLD_LOCATION2="app/lib/ffi/bridge_generated.dart"
-    
-    if [ -d "$OLD_LOCATION1" ] && [ -f "$OLD_LOCATION1/api.dart" ]; then
-        echo -e "${YELLOW}⚠️  Files generated in old location, copying to correct location...${NC}"
-        cp -r "$OLD_LOCATION1"/* "$GENERATED_DIR/" 2>/dev/null || true
-        echo -e "${GREEN}✅ Files copied to: $GENERATED_DIR${NC}"
-    elif [ -d "$OLD_LOCATION2" ] && [ -f "$OLD_LOCATION2/api.dart" ]; then
-        echo -e "${YELLOW}⚠️  Files generated in old location, copying to correct location...${NC}"
-        cp -r "$OLD_LOCATION2"/* "$GENERATED_DIR/" 2>/dev/null || true
-        echo -e "${GREEN}✅ Files copied to: $GENERATED_DIR${NC}"
-    else
-        echo -e "${RED}❌ Generated files not found${NC}"
-        echo -e "${YELLOW}   Searching for generated files...${NC}"
-        find . -name "api.dart" -type f 2>/dev/null | head -5
-        exit 1
-    fi
+    echo -e "${RED}❌ Generated files not found at $GENERATED_DIR${NC}"
+    echo -e "${YELLOW}   Searching for generated files...${NC}"
+    find . -name "api.dart" -type f 2>/dev/null | head -5
+    exit 1
 fi
 
 # Final verification

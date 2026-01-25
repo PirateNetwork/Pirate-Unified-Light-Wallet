@@ -1,4 +1,4 @@
-﻿//! DNS leak prevention verification tests
+//! DNS leak prevention verification tests
 //!
 //! These tests verify that DNS queries avoid cleartext (UDP/53) when DoH is used.
 //! IP leak checks are separate and must be validated at the transport layer.
@@ -211,7 +211,10 @@ async fn test_doh_resolution_over_network() {
     let result = resolver.resolve("example.com").await;
 
     assert!(result.is_ok(), "DoH resolution should succeed over network");
-    assert!(!result.unwrap().is_empty(), "DoH response should return IPs");
+    assert!(
+        !result.unwrap().is_empty(),
+        "DoH response should return IPs"
+    );
 }
 
 /// Verify DNS queries are encrypted end-to-end
@@ -271,5 +274,3 @@ async fn test_private_dns_resolution_flow() {
     // let ips = resolver.resolve("example.com").await.unwrap();
     // assert!(!ips.is_empty());
 }
-
-
