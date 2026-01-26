@@ -4663,6 +4663,32 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     ensure_not_decoy("Sync")?;
     tracing::info!("Starting sync for wallet {} in mode {:?}", wallet_id, mode);
     log_orchard_address_samples(&wallet_id);
+    {
+        let sessions = SYNC_SESSIONS.read();
+        if let Some(session_arc) = sessions.get(&wallet_id) {
+            if let Ok(session) = session_arc.try_lock() {
+                if session.is_running {
+                    if let Ok(mut file) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(debug_log_path())
+                    {
+                        use std::io::Write;
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_start_sync_skip_running","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; already running","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+                            ts, wallet_id, mode
+                        );
+                    }
+                    return Ok(());
+                }
+            }
+        }
+    }
     // #region agent log
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
