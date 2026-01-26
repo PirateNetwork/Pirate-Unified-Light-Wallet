@@ -251,9 +251,11 @@ jobs:
 
       - name: Run Semgrep
         uses: returntocorp/semgrep-action@v1
+        env:
+          SEMGREP_PARALLELISM: "1"
         with:
           config: .semgrep.yml
-          semgrep-args: --severity ERROR
+          args: --severity ERROR
 
   # ========================================================================
   # Flutter Quality Gates
