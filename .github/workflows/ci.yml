@@ -54,7 +54,7 @@ jobs:
           key: ${{ runner.os }}-cargo-frb-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install flutter_rust_bridge_codegen
-        run: cargo install flutter_rust_bridge_codegen --locked --version ${{ env.FRB_CODEGEN_VERSION }}
+        run: cargo install flutter_rust_bridge_codegen --locked --version ${{ env.FRB_CODEGEN_VERSION }} --force
 
       - name: Prepare Flutter Dart toolchain
         run: |
