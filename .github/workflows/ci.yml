@@ -239,7 +239,9 @@ jobs:
         run: cargo install cargo-deny --locked --version ${{ env.CARGO_DENY_VERSION }}
 
       - name: Run cargo deny
-        run: cargo deny check
+        run: |
+          cd crates
+          cargo deny check --config ../deny.toml
 
   security-semgrep:
     name: Security - Semgrep
