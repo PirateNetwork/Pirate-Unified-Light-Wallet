@@ -18,6 +18,7 @@ id_ed25519*
 secrets.json
 .env.local
 .env.*.local
+secrets.local.env
 
 # Wallet data (development)
 *.wallet
@@ -341,6 +342,8 @@ tor_data/
 # Bundled Tor/I2P binaries (download during build/packaging)
 app/i2p/
 app/tor-pt/
+app/linux/signing/
+app/windows/signing/
 
 # Test data
 test_wallet.db
