@@ -78,19 +78,19 @@ class AppShell extends ConsumerWidget {
   }
 
   void _showComingSoon(BuildContext context) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          'Coming Soon',
-          style: PTypography.bodyMedium(color: AppColors.textPrimary),
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Coming Soon',
+            style: PTypography.bodyMedium(color: AppColors.textPrimary),
+          ),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.backgroundElevated,
         ),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.backgroundElevated,
-      ),
-    );
+      );
   }
 
   void _openPaySheet(BuildContext context) {
@@ -166,7 +166,7 @@ class AppShell extends ConsumerWidget {
     final body = _isDesktop
         ? Row(
             children: [
-              Container(
+              DecoratedBox(
                 decoration: BoxDecoration(
                   color: AppColors.backgroundSurface,
                   border: Border(

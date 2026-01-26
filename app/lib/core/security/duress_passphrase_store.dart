@@ -1,4 +1,4 @@
-/// Secure storage for duress passphrase hash.
+// Secure storage for duress passphrase hash.
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 

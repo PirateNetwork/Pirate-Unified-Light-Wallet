@@ -371,9 +371,7 @@ class DecoyData {
   }
 
   static DecoyAddressEntry currentAddress() {
-    if (_currentAddress == null) {
-      _currentAddress = _createAddressEntry();
-    }
+    _currentAddress ??= _createAddressEntry();
     return _currentAddress!;
   }
 

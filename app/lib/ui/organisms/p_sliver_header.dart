@@ -14,7 +14,9 @@ class PSliverHeaderDelegate extends SliverPersistentHeaderDelegate {
   final Widget Function(
     BuildContext context,
     double shrinkOffset,
-    bool overlapsContent,
+    {
+      required bool overlapsContent,
+    }
   ) builder;
 
   @override
@@ -30,7 +32,11 @@ class PSliverHeaderDelegate extends SliverPersistentHeaderDelegate {
     bool overlapsContent,
   ) {
     return SizedBox.expand(
-      child: builder(context, shrinkOffset, overlapsContent),
+      child: builder(
+        context,
+        shrinkOffset,
+        overlapsContent: overlapsContent,
+      ),
     );
   }
 

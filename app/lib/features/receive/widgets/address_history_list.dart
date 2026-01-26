@@ -11,10 +11,10 @@ import '../receive_viewmodel.dart';
 class AddressHistoryList extends StatelessWidget {
   final List<AddressInfo> addresses;
   final bool isFiltered;
-  final Function(AddressInfo) onCopy;
-  final Function(AddressInfo) onLabel;
-  final Function(AddressInfo) onColorTag;
-  final Function(AddressInfo) onOpen;
+  final ValueChanged<AddressInfo> onCopy;
+  final ValueChanged<AddressInfo> onLabel;
+  final ValueChanged<AddressInfo> onColorTag;
+  final ValueChanged<AddressInfo> onOpen;
 
   const AddressHistoryList({
     super.key,
@@ -88,10 +88,10 @@ class AddressHistoryList extends StatelessWidget {
 class AddressHistorySliver extends StatelessWidget {
   final List<AddressInfo> addresses;
   final bool isFiltered;
-  final Function(AddressInfo) onCopy;
-  final Function(AddressInfo) onLabel;
-  final Function(AddressInfo) onColorTag;
-  final Function(AddressInfo) onOpen;
+  final ValueChanged<AddressInfo> onCopy;
+  final ValueChanged<AddressInfo> onLabel;
+  final ValueChanged<AddressInfo> onColorTag;
+  final ValueChanged<AddressInfo> onOpen;
 
   const AddressHistorySliver({
     super.key,

@@ -1,15 +1,10 @@
-/// Watch-Only Wallet Banner Component
-/// 
-/// Displays a clear "Incoming only" label for watch-only wallets.
-/// Used in wallet headers, transaction screens, and send screens.
-library;
-
+// Watch-Only Wallet Banner Component
+//
+// Displays a clear "Incoming only" label for watch-only wallets.
+// Used in wallet headers, transaction screens, and send screens.
 import 'package:flutter/material.dart';
 
 import '../../design/deep_space_theme.dart';
-import '../../design/tokens/colors.dart';
-import '../../design/tokens/spacing.dart';
-import '../../design/tokens/typography.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../atoms/p_text_button.dart';
 

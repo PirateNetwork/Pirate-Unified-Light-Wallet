@@ -126,7 +126,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       final redactedLogs = filteredLogs.map((l) => l.toRedactedString()).join('\n');
 
       await Clipboard.setData(ClipboardData(text: redactedLogs));
@@ -206,7 +206,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Checkpoint from ${_formatCheckpointTime(DateTime.fromMillisecondsSinceEpoch(checkpoint.timestamp.toInt()))}',
+                      'Checkpoint from ${_formatCheckpointTime(DateTime.fromMillisecondsSinceEpoch(checkpoint.timestamp))}',
                       style: AppTypography.caption.copyWith(
                         color: AppColors.textSecondary,
                       ),
@@ -257,14 +257,14 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       setState(() => _isRebuilding = true);
 
       try {
         // Start listening to sync progress
         final walletId = ref.read(activeWalletProvider);
         if (walletId != null) {
-          _syncSubscription?.cancel();
+          await _syncSubscription?.cancel();
           _syncSubscription = FfiBridge.syncProgressStream(walletId).listen(
             (status) {
               if (mounted) {
@@ -386,9 +386,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
 
           // Action buttons
           logsAsync.when(
-            data: (logs) => _buildActions(logs),
+            data: _buildActions,
             loading: () => _buildActions([]),
-            error: (_, __) => _buildActions([]),
+            error: (_, _) => _buildActions([]),
           ),
         ],
       ),
@@ -494,9 +494,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
     final checkpointAsync = ref.watch(lastCheckpointProvider);
 
     return checkpointAsync.when(
-      data: (checkpoint) => _buildCheckpointCardContent(checkpoint),
+      data: _buildCheckpointCardContent,
       loading: () => _buildCheckpointCardContent(null, isLoading: true),
-      error: (_, __) => _buildCheckpointCardContent(null),
+      error: (_, _) => _buildCheckpointCardContent(null),
     );
   }
 
@@ -548,7 +548,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                 ),
                 Text(
                   checkpoint != null
-                      ? 'Height ${_formatHeight(checkpoint.height.toInt())}'
+                      ? 'Height ${_formatHeight(checkpoint.height)}'
                       : 'No checkpoint',
                   style: AppTypography.body.copyWith(
                     color: AppColors.textPrimary,
@@ -557,7 +557,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                 ),
                 if (checkpoint != null)
                   Text(
-                    _formatCheckpointTime(DateTime.fromMillisecondsSinceEpoch(checkpoint.timestamp.toInt())),
+                    _formatCheckpointTime(DateTime.fromMillisecondsSinceEpoch(checkpoint.timestamp)),
                     style: AppTypography.caption.copyWith(
                       color: AppColors.textSecondary,
                     ),

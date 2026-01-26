@@ -1,12 +1,12 @@
-/// Background Sync Method Channel Handler
-///
-/// Handles method channel calls from native platform code (Android/iOS)
-/// for background sync operations.
-///
-/// All RPC calls are routed through the configured NetTunnel (Tor/SOCKS5/Direct).
-library;
+// Background Sync Method Channel Handler
+//
+// Handles method channel calls from native platform code (Android/iOS)
+// for background sync operations.
+//
+// All RPC calls are routed through the configured NetTunnel (Tor/SOCKS5/Direct).
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../ffi/ffi_bridge.dart';
 import '../ffi/generated/models.dart';
@@ -26,7 +26,7 @@ class BackgroundSyncErrorCodes {
 /// Background sync handler for native platform integration
 class BackgroundSyncHandler {
   static BackgroundSyncHandler? _instance;
-  static BackgroundSyncHandler get instance => _instance ??= BackgroundSyncHandler._();
+  factory BackgroundSyncHandler() => _instance ??= BackgroundSyncHandler._();
 
   MethodChannel? _channel;
   bool _initialized = false;
@@ -43,7 +43,7 @@ class BackgroundSyncHandler {
     _channel!.setMethodCallHandler(_handleMethodCall);
     _initialized = true;
 
-    print('[BackgroundSyncHandler] Initialized method channel');
+    debugPrint('[BackgroundSyncHandler] Initialized method channel');
   }
 
   /// Dispose of the handler
@@ -57,8 +57,9 @@ class BackgroundSyncHandler {
 
   /// Update the cached active wallet so platform callbacks always receive
   /// the latest context even before the FFI bridge reloads.
+  // ignore: use_setters_to_change_properties
   void updateActiveWallet(WalletId? walletId) {
-    _activeWalletId = walletId as String?;
+    _activeWalletId = walletId;
   }
 
   /// Handle method calls from native code
@@ -94,8 +95,6 @@ class BackgroundSyncHandler {
     final walletId = args['walletId'] as String?;
     final syncMode = args['mode'] as String? ?? 'compact';
     final maxDurationSecs = (args['maxDurationSecs'] as num?)?.toInt() ?? 60;
-    // ignore: unused_local_variable
-    final _maxBlocks = (args['maxBlocks'] as num?)?.toInt() ?? 5000;
     final useRoundRobin = args['useRoundRobin'] as bool? ?? false;
     final tunnelMode = args['tunnelMode'] as String? ?? 'tor';
     final socks5Url = args['socks5Url'] as String?;
@@ -185,7 +184,7 @@ class BackgroundSyncHandler {
       final status = await FfiBridge.getTorStatus();
       return status == 'ready';
     } catch (e) {
-      print('[BackgroundSyncHandler] Tor connection test failed: $e');
+      debugPrint('[BackgroundSyncHandler] Tor connection test failed: $e');
       return false;
     }
   }
@@ -208,7 +207,7 @@ class BackgroundSyncHandler {
       
       return true;
     } catch (e) {
-      print('[BackgroundSyncHandler] SOCKS5 connection test failed: $e');
+      debugPrint('[BackgroundSyncHandler] SOCKS5 connection test failed: $e');
       return false;
     }
   }
@@ -277,12 +276,12 @@ class BackgroundSyncHandler {
 /// Initialize background sync handler
 /// Call this during app startup
 void initializeBackgroundSyncHandler() {
-  BackgroundSyncHandler.instance.initialize();
+  BackgroundSyncHandler().initialize();
 }
 
 /// Dispose background sync handler
 /// Call this during app shutdown
 void disposeBackgroundSyncHandler() {
-  BackgroundSyncHandler.instance.dispose();
+  BackgroundSyncHandler().dispose();
 }
 

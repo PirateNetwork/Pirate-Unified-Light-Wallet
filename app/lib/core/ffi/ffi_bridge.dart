@@ -1,8 +1,7 @@
 // Lightweight shim that routes the app's FFI calls to the generated
 // flutter_rust_bridge bindings. All generated code lives under
 // `app/lib/core/ffi/generated`.
-
-library ffi_bridge;
+// ignore_for_file: always_put_required_named_parameters_first, avoid_catches_without_on_clauses, avoid_positional_boolean_parameters, avoid_print, cascade_invocations, dead_code, omit_local_variable_types, unawaited_futures, unnecessary_await_in_return, unnecessary_lambdas, unnecessary_non_null_assertion, unnecessary_null_checks, unnecessary_raw_strings, unnecessary_type_check, use_if_null_to_convert_nulls_to_bools, use_setters_to_change_properties
 
 import 'dart:async';
 import 'dart:convert';
@@ -1407,32 +1406,6 @@ class FfiBridge {
         responseTimeMs: DateTime.now().difference(startTime).inMilliseconds,
       );
     }
-  }
-
-  /// Validate SPKI pin format
-  static bool _isValidSpkiPin(String pin) {
-    // Accept with or without sha256/ prefix
-    String base64Part = pin;
-    if (pin.startsWith('sha256/')) {
-      base64Part = pin.substring(7);
-    }
-
-    // Check if it's valid base64 and correct length (32 bytes = 44 chars base64)
-    if (base64Part.length != 44 && base64Part.length != 43) {
-      return false;
-    }
-
-    // Basic base64 character validation
-    final base64Regex = RegExp(r'^[A-Za-z0-9+/]+=*$');
-    return base64Regex.hasMatch(base64Part);
-  }
-
-  /// Normalize SPKI pin to just the base64 hash
-  static String _normalizeSpkiPin(String pin) {
-    if (pin.startsWith('sha256/')) {
-      return pin.substring(7);
-    }
-    return pin;
   }
 
   static Future<String> formatAmount(int arrrtoshis) async {

@@ -4,10 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
-import '../../design/theme.dart';
 import '../../design/compat.dart';
-import '../../design/tokens/spacing.dart';
-import '../../design/tokens/typography.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/ffi/ffi_bridge.dart';
@@ -15,7 +12,7 @@ import '../../core/security/screenshot_protection.dart';
 
 /// Watch-Only Wallet Management Screen
 class WatchOnlyScreen extends ConsumerStatefulWidget {
-  const WatchOnlyScreen({Key? key}) : super(key: key);
+  const WatchOnlyScreen({super.key});
 
   @override
   ConsumerState<WatchOnlyScreen> createState() => _WatchOnlyScreenState();
@@ -46,7 +43,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen> with SingleTi
         showBackButton: true,
         centerTitle: true,
       ),
-      body: Container(
+      body: ColoredBox(
         color: Colors.black,
         child: Column(
           children: [
@@ -81,7 +78,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen> with SingleTi
 
 /// Export viewing key tab
 class ExportIvkTab extends ConsumerStatefulWidget {
-  const ExportIvkTab({Key? key}) : super(key: key);
+  const ExportIvkTab({super.key});
 
   @override
   ConsumerState<ExportIvkTab> createState() => _ExportIvkTabState();
@@ -291,7 +288,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
       setState(() => _ivk = ivk);
       _disableScreenshots();
     } catch (e) {
-      setState(() => _error = 'Failed to export viewing key: ${e.toString()}');
+      setState(() => _error = 'Failed to export viewing key: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -315,7 +312,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
 
 /// Import viewing key tab
 class ImportIvkTab extends ConsumerStatefulWidget {
-  const ImportIvkTab({Key? key}) : super(key: key);
+  const ImportIvkTab({super.key});
 
   @override
   ConsumerState<ImportIvkTab> createState() => _ImportIvkTabState();
@@ -487,7 +484,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
           : null;
 
       // Import via FFI
-      final walletId = await FfiBridge.importIvk(
+      await FfiBridge.importIvk(
         name: _nameController.text.trim(),
         saplingIvk: trimmed,
         birthday: birthday ?? FfiBridge.defaultBirthdayHeight,
@@ -503,7 +500,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
         Navigator.pop(context);
       }
     } catch (e) {
-      setState(() => _error = 'Failed to import wallet: ${e.toString()}');
+      setState(() => _error = 'Failed to import wallet: $e');
     } finally {
       setState(() => _isLoading = false);
     }

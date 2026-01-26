@@ -1,4 +1,4 @@
-/// Backup Warning Screen - Warn user about seed backup importance
+// Backup Warning Screen - Warn user about seed backup importance
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

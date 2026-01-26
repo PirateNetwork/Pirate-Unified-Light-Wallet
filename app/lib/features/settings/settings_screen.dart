@@ -2,6 +2,8 @@
 library;
 
 import 'dart:io';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,9 +11,6 @@ import 'package:go_router/go_router.dart';
 import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
-import '../../design/tokens/colors.dart';
-import '../../design/tokens/spacing.dart';
-import '../../design/tokens/typography.dart';
 import 'providers/preferences_providers.dart';
 import '../../ui/molecules/p_list_tile.dart';
 import '../../ui/molecules/wallet_switcher.dart';
@@ -62,7 +61,7 @@ class SettingsScreen extends ConsumerWidget {
                     return enabled ? 'On' : 'Off';
                   },
                   loading: () => 'Checking...',
-                  error: (_, __) => enabled ? 'On' : 'Off',
+                  error: (_, _) => enabled ? 'On' : 'Off',
                 );
                 return PListTile(
                   leading: const Icon(Icons.fingerprint),
@@ -99,7 +98,7 @@ class SettingsScreen extends ConsumerWidget {
                 final subtitle = endpointAsync.when(
                   data: (config) => config.displayString,
                   loading: () => 'Loading...',
-                  error: (_, __) => 'lightd1.piratechain.com:9067',
+                  error: (_, _) => 'lightd1.piratechain.com:9067',
                 );
                 return PListTile(
                   leading: const Icon(Icons.dns_outlined),
@@ -189,7 +188,7 @@ class SettingsScreen extends ConsumerWidget {
                 return enabledAsync.when(
                   data: (enabled) => buildTile(enabled: enabled, loading: false),
                   loading: () => buildTile(enabled: false, loading: true),
-                  error: (_, __) => buildTile(enabled: false, loading: false),
+                  error: (_, _) => buildTile(enabled: false, loading: false),
                 );
               },
             ),
@@ -346,7 +345,7 @@ class SettingsScreen extends ConsumerWidget {
               return null;
             },
           )
-          .catchError((e) {
+          .catchError((Object e) {
         debugPrint('Error loading checkpoint: $e');
         return null;
       });
@@ -420,31 +419,33 @@ class SettingsScreen extends ConsumerWidget {
         ),
       );
 
-      if (confirmed == true) {
+      if (confirmed ?? false) {
         final fromHeight = int.tryParse(controller.text.trim()) ?? 1;
         debugPrint('Rescan confirmed, starting from height: $fromHeight');
         await _appendRescanLog('rescan requested from_height=$fromHeight');
         try {
           // Invalidate sync progress stream before rescan so home screen picks it up
           ref.invalidate(syncProgressStreamProvider);
-          ref
-              .read(rescanProvider)(fromHeight)
-              .then((_) => _appendRescanLog(
-                    'rescan call completed from_height=$fromHeight',
-                  ))
-              .catchError((e) async {
-            await _appendRescanLog(
-              'rescan call failed from_height=$fromHeight error=$e',
-            );
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Failed to start rescan: ${e.toString()}'),
-                  backgroundColor: AppColors.error,
-                ),
+          unawaited(
+            ref
+                .read(rescanProvider)(fromHeight)
+                .then((_) => _appendRescanLog(
+                      'rescan call completed from_height=$fromHeight',
+                    ))
+                .catchError((Object e) async {
+              await _appendRescanLog(
+                'rescan call failed from_height=$fromHeight error=$e',
               );
-            }
-          });
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to start rescan: $e'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            }),
+          );
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -462,7 +463,7 @@ class SettingsScreen extends ConsumerWidget {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Failed to start rescan: ${e.toString()}'),
+                content: Text('Failed to start rescan: $e'),
                 backgroundColor: AppColors.error,
               ),
             );
@@ -479,7 +480,7 @@ class SettingsScreen extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error showing rescan dialog: ${e.toString()}'),
+            content: Text('Error showing rescan dialog: $e'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -490,7 +491,7 @@ class SettingsScreen extends ConsumerWidget {
   String _formatHeight(int height) {
     return height.toString().replaceAllMapped(
       RegExp(r'(\\d{1,3})(?=(\\d{3})+(?!\\d))'),
-      (Match m) => '${m[1]},',
+      (m) => '${m[1]},',
     );
   }
 }

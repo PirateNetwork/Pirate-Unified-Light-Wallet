@@ -1,8 +1,9 @@
-/// Screenshot and screen recording protection
-///
-/// Prevents screenshots when viewing sensitive data like seed phrases
+// Screenshot and screen recording protection
+//
+// Prevents screenshots when viewing sensitive data like seed phrases
 
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Screenshot protection manager
@@ -28,7 +29,7 @@ class ScreenshotProtection {
       }
     } on PlatformException catch (e) {
       // Platform doesn't support or failed
-      print('Screenshot protection failed: ${e.message}');
+      debugPrint('Screenshot protection failed: ${e.message}');
     } on MissingPluginException catch (_) {
       // Platform channel not implemented on this platform
     }
@@ -48,7 +49,7 @@ class ScreenshotProtection {
         _isProtected = false;
       }
     } on PlatformException catch (e) {
-      print('Failed to disable screenshot protection: ${e.message}');
+      debugPrint('Failed to disable screenshot protection: ${e.message}');
     } on MissingPluginException catch (_) {
       // Platform channel not implemented on this platform
     }

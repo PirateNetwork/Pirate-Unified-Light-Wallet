@@ -1,10 +1,11 @@
+// ignore_for_file: noop_primitive_operations
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart';
 import '../../core/providers/wallet_providers.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
@@ -94,12 +95,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 
   /// Convert PlatformInt64 timestamp to DateTime
   DateTime _convertPlatformInt64ToDateTime(PlatformInt64 timestamp) {
-    int timestampValue;
-    if (timestamp is int) {
-      timestampValue = timestamp;
-    } else {
-      timestampValue = (timestamp as dynamic).toInt() as int;
-    }
+    final timestampValue = timestamp.toInt();
     return DateTime.fromMillisecondsSinceEpoch(timestampValue * 1000);
   }
 

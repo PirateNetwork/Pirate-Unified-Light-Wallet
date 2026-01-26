@@ -2,7 +2,6 @@
 library;
 
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_selector/file_selector.dart';
@@ -15,17 +14,14 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:zxing2/qrcode.dart';
 
 import '../../design/deep_space_theme.dart';
-import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../ui/atoms/p_button.dart';
-import '../../ui/atoms/p_icon_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/p_bottom_sheet.dart';
 import '../../ui/molecules/p_dialog.dart';
-import '../../ui/molecules/inline_explain.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/molecules/watch_only_banner.dart';
 import '../../ui/organisms/p_app_bar.dart';
@@ -311,8 +307,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       final filteredAddresses = addressBalances
           .where((addr) =>
               addr.keyId != null && spendableKeyIds.contains(addr.keyId))
-          .toList();
-      filteredAddresses.sort((a, b) => b.spendable.compareTo(a.spendable));
+          .toList()
+        ..sort((a, b) => b.spendable.compareTo(a.spendable));
 
       final spendableByKey = <int, BigInt>{};
       for (final address in filteredAddresses) {
@@ -404,7 +400,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         ],
       );
 
-      if (enable == true && mounted) {
+      if ((enable ?? false) && mounted) {
         await FfiBridge.setAutoConsolidationEnabled(walletId, true);
         ref.invalidate(autoConsolidationEnabledProvider);
       }
@@ -417,7 +413,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   double get _availableBalance {
     final balanceAsync = ref.watch(balanceStreamProvider);
     return balanceAsync.when(
-      data: (Balance? balance) {
+      data: (balance) {
         if (balance?.spendable == null) return 0.0;
         final spendable = balance!.spendable;
         final value = spendable.toDouble() / 100000000.0;
@@ -425,7 +421,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         return value;
       },
       loading: () => _cachedBalance ?? 0.0,
-      error: (_, __) => _cachedBalance ?? 0.0,
+      error: (_, _) => _cachedBalance ?? 0.0,
     );
   }
 
@@ -1018,7 +1014,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       case FeePreset.standard:
         return baseFee;
       case FeePreset.high:
-        return (baseFee * 2).round();
+        return baseFee * 2;
       case FeePreset.custom:
         return _customFeeArrrtoshis ?? baseFee;
     }
@@ -1027,7 +1023,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   int _clampFee(int fee, {int? minFee, int? maxFee}) {
     final minValue = minFee ?? _minFeeArrrtoshis;
     final maxValue = maxFee ?? _maxFeeArrrtoshis;
-    return fee.clamp(minValue, maxValue) as int;
+    return fee.clamp(minValue, maxValue);
   }
 
   int _extraOutputCount() {
@@ -1038,14 +1034,14 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   int _currentMinFeeArrrtoshis() {
     final fee = _baseMinFeeArrrtoshis +
         (_extraOutputCount() * kAdditionalOutputFeeArrrtoshis);
-    return fee.clamp(_baseMinFeeArrrtoshis, _maxFeeArrrtoshis) as int;
+    return fee.clamp(_baseMinFeeArrrtoshis, _maxFeeArrrtoshis);
   }
 
   int _currentBaseFeeArrrtoshis() {
     final minFee = _currentMinFeeArrrtoshis();
     final fee = _defaultFeeArrrtoshis +
         (_extraOutputCount() * kAdditionalOutputFeeArrrtoshis);
-    return fee.clamp(minFee, _maxFeeArrrtoshis) as int;
+    return fee.clamp(minFee, _maxFeeArrrtoshis);
   }
 
   String _truncateAddress(String address) {
@@ -1252,7 +1248,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     int selectedFee = _feePreset == FeePreset.custom
         ? (_customFeeArrrtoshis ?? _selectedFeeArrrtoshis)
         : _feeForPreset(_feePreset, baseFee);
-    selectedFee = selectedFee.clamp(minFee, _maxFeeArrrtoshis) as int;
+    selectedFee = selectedFee.clamp(minFee, _maxFeeArrrtoshis);
     if (_feePreset == FeePreset.custom) {
       _customFeeArrrtoshis = selectedFee;
     }
@@ -1275,35 +1271,39 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     _errorMessage = null;
 
     for (int i = 0; i < _outputs.length; i++) {
-      final output = _outputs[i];
-      output.syncFromControllers();
-      output.error = null;
-      output.isValid = true;
+      final output = _outputs[i]
+        ..syncFromControllers()
+        ..error = null
+        ..isValid = true;
 
       // Validate address using error mapper
       final addressError =
           TransactionErrorMapper.validateAddress(output.address);
       if (addressError != null) {
-        output.error = addressError.message;
-        output.isValid = false;
+        output
+          ..error = addressError.message
+          ..isValid = false;
         allValid = false;
         continue; // Skip further validation for this output
       }
 
       // Validate amount
       if (output.amount.isEmpty) {
-        output.error = 'Amount is required';
-        output.isValid = false;
+        output
+          ..error = 'Amount is required'
+          ..isValid = false;
         allValid = false;
       } else {
         final value = double.tryParse(output.amount);
         if (value == null || value <= 0) {
-          output.error = 'Amount must be greater than zero';
-          output.isValid = false;
+          output
+            ..error = 'Amount must be greater than zero'
+            ..isValid = false;
           allValid = false;
         } else if (value < 0.00000001) {
-          output.error = 'Amount too small (minimum 0.00000001 ARRR)';
-          output.isValid = false;
+          output
+            ..error = 'Amount too small (minimum 0.00000001 ARRR)'
+            ..isValid = false;
           allValid = false;
         }
       }
@@ -1311,8 +1311,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       // Validate memo using error mapper
       final memoError = TransactionErrorMapper.validateMemo(output.memo);
       if (memoError != null) {
-        output.error = memoError.message;
-        output.isValid = false;
+        output
+          ..error = memoError.message
+          ..isValid = false;
         allValid = false;
       }
     }
@@ -1453,8 +1454,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       });
 
       // Refresh balance and transaction history
-      ref.invalidate(balanceProvider);
-      ref.invalidate(transactionsProvider);
+      ref
+        ..invalidate(balanceProvider)
+        ..invalidate(transactionsProvider);
 
       // Show success dialog
       if (mounted) {
@@ -1529,7 +1531,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         ),
       ],
     );
-    if (goHome == true && mounted) {
+    if ((goHome ?? false) && mounted) {
       context.go('/home');
     }
   }
@@ -2142,7 +2144,7 @@ class _SendQrScannerScreenState extends State<_SendQrScannerScreen> {
                   ),
                   const Spacer(),
                   IconButton(
-                    onPressed: () => _controller.toggleTorch(),
+                    onPressed: _controller.toggleTorch,
                     icon: const Icon(Icons.flashlight_on),
                     color: AppColors.textPrimary,
                     tooltip: 'Flash',
@@ -2416,7 +2418,7 @@ class _ReviewStep extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
-                    'Transactions can\'t be undone.',
+                    "Transactions can't be undone.",
                     style: AppTypography.caption.copyWith(
                       color: AppColors.textPrimary,
                     ),

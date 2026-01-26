@@ -1,6 +1,8 @@
 /// Birthday height settings screen
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -169,14 +171,14 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
       await FfiBridge.setWalletBirthdayHeight(walletId, selectedHeight);
       ref.read(refreshWalletsProvider)();
 
+      if (!mounted) return;
       final rescan = await _confirmRescan(context);
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+      if (!mounted) return;
+      setState(() => _isSaving = false);
 
-      if (rescan == true) {
+      if (rescan ?? false) {
         // Kick off rescan without blocking the UI.
-        () async {
+        unawaited(() async {
           try {
             await FfiBridge.rescan(walletId, selectedHeight);
           } catch (e) {
@@ -184,17 +186,18 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
               setState(() => _error = 'Rescan failed to start.');
             }
           }
-        }();
+        }());
         // Invalidate sync progress so home screen updates immediately.
-        ref.invalidate(syncProgressStreamProvider);
-        ref.invalidate(syncStatusProvider);
+        ref
+          ..invalidate(syncProgressStreamProvider)
+          ..invalidate(syncStatusProvider);
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              rescan == true
+              rescan ?? false
                   ? 'Rescanning from block ${_formatHeight(selectedHeight)}...'
                   : 'Birthday height saved.',
             ),
@@ -500,7 +503,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
   String _formatHeight(int height) {
     return height.toString().replaceAllMapped(
       RegExp(r'(\\d{1,3})(?=(\\d{3})+(?!\\d))'),
-      (Match m) => '${m[1]},',
+      (m) => '${m[1]},',
     );
   }
 }

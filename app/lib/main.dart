@@ -120,8 +120,9 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     WidgetsBinding.instance.addObserver(this);
     FfiBridge.setAppActive(true);
     if (_isDesktop) {
-      windowManager.addListener(this);
-      windowManager.setPreventClose(true);
+      windowManager
+        ..addListener(this)
+        ..setPreventClose(true);
     }
 
     ref.listen<AsyncValue<void>>(rustInitProvider, (_, next) {
@@ -177,7 +178,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
   }
 
   @override
-  void onWindowClose() async {
+  Future<void> onWindowClose() async {
     if (_closing) return;
     _closing = true;
     unawaited(windowManager.hide());

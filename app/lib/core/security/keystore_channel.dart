@@ -1,11 +1,11 @@
-/// Platform channel for OS keystore integration
-///
-/// Handles communication with native keystores:
-/// - Android Keystore/StrongBox
-/// - iOS Secure Enclave/Keychain
-/// - macOS Keychain
-/// - Windows DPAPI
-/// - Linux libsecret
+// Platform channel for OS keystore integration
+//
+// Handles communication with native keystores:
+// - Android Keystore/StrongBox
+// - iOS Secure Enclave/Keychain
+// - macOS Keychain
+// - Windows DPAPI
+// - Linux libsecret
 
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -133,7 +133,7 @@ class KeystoreChannel {
   }
 
   /// Enable or disable biometric-gated keystore access on supported platforms.
-  static Future<void> setBiometricsEnabled(bool enabled) async {
+  static Future<void> setBiometricsEnabled({required bool enabled}) async {
     if (!Platform.isAndroid && !Platform.isIOS) {
       return;
     }

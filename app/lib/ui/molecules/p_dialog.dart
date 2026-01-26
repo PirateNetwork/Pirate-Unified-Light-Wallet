@@ -16,7 +16,7 @@ class PDialog extends StatelessWidget {
 
   final String title;
   final Widget content;
-  final List<PDialogAction>? actions;
+  final List<PDialogAction<dynamic>>? actions;
   final bool barrierDismissible;
 
   @override
@@ -74,7 +74,7 @@ class PDialog extends StatelessWidget {
     required BuildContext context,
     required String title,
     required Widget content,
-    List<PDialogAction>? actions,
+    List<PDialogAction<dynamic>>? actions,
     bool barrierDismissible = true,
   }) {
     return showDialog<T>(

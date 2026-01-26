@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/security/biometric_auth.dart';
 import '../../../core/security/passphrase_cache.dart';
 import '../../../design/deep_space_theme.dart';
-import '../../../design/tokens/colors.dart';
 import '../../../features/settings/providers/preferences_providers.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_text_button.dart';
@@ -60,7 +59,7 @@ class _OnboardingBiometricsScreenState
         return;
       }
       await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: true);
-      ref.read(onboardingControllerProvider.notifier).setBiometrics(true);
+      ref.read(onboardingControllerProvider.notifier).setBiometrics(enabled: true);
       final state = ref.read(onboardingControllerProvider);
       final passphrase = state.passphrase;
       if (passphrase != null && passphrase.isNotEmpty) {
@@ -78,7 +77,7 @@ class _OnboardingBiometricsScreenState
 
   Future<void> _skip() async {
     await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: false);
-    ref.read(onboardingControllerProvider.notifier).setBiometrics(false);
+    ref.read(onboardingControllerProvider.notifier).setBiometrics(enabled: false);
     await PassphraseCache.clear();
     _proceed();
   }

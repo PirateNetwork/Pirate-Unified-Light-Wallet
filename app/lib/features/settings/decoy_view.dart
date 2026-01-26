@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import '../../design/theme.dart';
 import '../../design/compat.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
 /// Decoy wallet view shown when panic PIN is entered
 class DecoyView extends StatelessWidget {
-  const DecoyView({Key? key}) : super(key: key);
+  const DecoyView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +126,7 @@ class DecoyView extends StatelessWidget {
           ),
           SizedBox(height: PirateSpacing.xs),
           Text(
-            '≈ \$2.45 USD',
+            r'≈ $2.45 USD',
             style: PirateTypography.body.copyWith(
               color: Colors.grey[500],
             ),
@@ -290,4 +289,3 @@ class DecoyView extends StatelessWidget {
     );
   }
 }
-

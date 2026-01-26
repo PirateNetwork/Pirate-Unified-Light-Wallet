@@ -428,7 +428,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                               subtitle: 'Sweep every spendable note.',
                               selected: pendingIds.isEmpty,
                               onTap: () =>
-                                  setModalState(() => pendingIds.clear()),
+                                  setModalState(pendingIds.clear),
                             );
                           }
                           cursor += 1;

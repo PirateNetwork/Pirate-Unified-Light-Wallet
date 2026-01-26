@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'curves.dart';
-import 'durations.dart';
 
 /// Page transitions for Pirate Wallet
 class PTransitions {

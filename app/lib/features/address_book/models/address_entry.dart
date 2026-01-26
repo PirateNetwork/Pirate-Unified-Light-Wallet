@@ -36,6 +36,7 @@ const int kMaxLabelLength = 100;
 const int kMaxNotesLength = 500;
 
 /// Address book entry
+@immutable
 class AddressEntry {
   final int id;
   final String walletId;

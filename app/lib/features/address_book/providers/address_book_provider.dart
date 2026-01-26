@@ -156,7 +156,7 @@ AddressEntry _ffiEntryToModel(AddressBookEntryFfi ffi) {
 
 /// Address book notifier with FFI integration
 class AddressBookNotifier extends Notifier<AddressBookState> {
-  String? _walletId;
+  final String? _walletId;
 
   AddressBookNotifier([this._walletId]);
 

@@ -10,7 +10,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../design/deep_space_theme.dart';
 
 /// Primary CTA button with Gradient A
@@ -50,7 +49,6 @@ class _PGradientButtonState extends State<PGradientButton>
   bool _reduceMotion = false;
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
-  late Animation<double> _glowAnimation;
 
   bool get _isEnabled => widget.enabled && widget.onPressed != null && !widget.isLoading;
 
@@ -63,9 +61,6 @@ class _PGradientButtonState extends State<PGradientButton>
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.96).animate(
       CurvedAnimation(parent: _animationController, curve: DeepSpaceCurves.snap),
-    );
-    _glowAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: DeepSpaceCurves.standard),
     );
   }
 
@@ -482,4 +477,3 @@ class _PFocusRingState extends State<PFocusRing> with SingleTickerProviderStateM
     );
   }
 }
-

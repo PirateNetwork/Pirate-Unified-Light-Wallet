@@ -1,4 +1,4 @@
-/// Biometric-wrapped passphrase storage for unlock flows.
+// Biometric-wrapped passphrase storage for unlock flows.
 
 import 'dart:convert';
 

@@ -143,9 +143,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         
         // If wallet changed, reset and reinitialize
         if (walletId != null) {
-          Future.microtask(() {
-            _init();
-          });
+          Future.microtask(_init);
           return const ReceiveState(isLoading: true);
         } else {
           return const ReceiveState(
@@ -159,9 +157,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       if (walletId != null && !_initialized) {
         _initialized = true;
         // Use Future.microtask to avoid calling async code during build
-        Future.microtask(() {
-          _init();
-        });
+        Future.microtask(_init);
         // Return loading state while initializing
         return const ReceiveState(isLoading: true);
       }
@@ -182,7 +178,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       debugPrint('Error in ReceiveViewModel.build(): $e');
       debugPrint('Stack trace: $stackTrace');
       return ReceiveState(
-        error: 'Error initializing: ${e.toString()}',
+        error: 'Error initializing: $e',
         isLoading: false,
       );
     }
@@ -191,7 +187,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   /// Initialize the receive screen
   Future<void> _init() async {
     if (_walletId == null) {
-      final errorState = const ReceiveState(
+      const errorState = ReceiveState(
         error: 'No wallet selected',
         isLoading: false,
       );
@@ -201,7 +197,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
     }
     
     try {
-      final loadingState = const ReceiveState(isLoading: true, error: null);
+      const loadingState = ReceiveState(isLoading: true, error: null);
       _lastState = loadingState;
       state = loadingState;
       await loadCurrentAddress();

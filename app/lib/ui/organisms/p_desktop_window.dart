@@ -9,9 +9,8 @@ library;
 
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:pirate_wallet/design/deep_space_theme.dart';
-import 'package:pirate_wallet/design/tokens/spacing.dart';
+import '../../design/deep_space_theme.dart';
+import '../../design/tokens/spacing.dart';
 
 // =============================================================================
 // Custom Titlebar
@@ -322,7 +321,7 @@ class PVibrancyContainer extends StatelessWidget {
   Widget build(BuildContext context) {
     // Check platform support
     if (!DeepSpaceDesktop.supportsVibrancy) {
-      return Container(
+      return DecoratedBox(
         decoration: BoxDecoration(
           color: AppColors.nebula,
           borderRadius: borderRadius,
@@ -334,7 +333,7 @@ class PVibrancyContainer extends StatelessWidget {
     // Platform-specific vibrancy
     return ClipRRect(
       borderRadius: borderRadius ?? BorderRadius.zero,
-      child: Container(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           color: DeepSpaceDesktop.vibrancyColor,
           borderRadius: borderRadius,
@@ -399,7 +398,7 @@ class PDesktopScaffold extends StatelessWidget {
                     duration: DeepSpaceDurations.medium,
                     curve: DeepSpaceCurves.emphasized,
                     width: sidebarCollapsed ? collapsedSidebarWidth : sidebarWidth,
-                    child: sidebar!,
+                    child: sidebar,
                   ),
 
                 // Divider

@@ -417,17 +417,17 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
     if (value.length < 12) {
       return 'Duress passphrase must be at least 12 characters.';
     }
-    if (!RegExp(r'[a-z]').hasMatch(value)) {
+    if (!RegExp('[a-z]').hasMatch(value)) {
       return 'Include a lowercase letter.';
     }
-    if (!RegExp(r'[A-Z]').hasMatch(value)) {
+    if (!RegExp('[A-Z]').hasMatch(value)) {
       return 'Include an uppercase letter.';
     }
-    if (!RegExp(r'[0-9]').hasMatch(value)) {
+    if (!RegExp('[0-9]').hasMatch(value)) {
       return 'Include a number.';
     }
     if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(value)) {
-      return 'Include a symbol like !@#\$%.';
+      return r'Include a symbol like !@#$%.';
     }
     final reversed = value.split('').reversed.join();
     if (value == reversed) {
@@ -457,7 +457,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
       ],
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       try {
         await FfiBridge.clearDuressPassphrase();
         await DuressPassphraseStore.clear();

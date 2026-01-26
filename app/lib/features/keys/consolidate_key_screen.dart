@@ -111,21 +111,19 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       }
       return;
     }
-    AddressBalanceInfo? selected = _selectedTargetAddress;
+    AddressBalanceInfo selected = _selectedTargetAddress ?? addresses.first;
     if (selectAddress != null) {
       selected = addresses.firstWhere(
         (addr) => addr.address == selectAddress,
-        orElse: () => selected ?? addresses.first,
+        orElse: () => selected,
       );
-    } else if (selected != null) {
+    } else if (_selectedTargetAddress != null) {
       selected = addresses.firstWhere(
-        (addr) => addr.addressId == selected!.addressId,
-        orElse: () => selected!,
+        (addr) => addr.addressId == selected.addressId,
+        orElse: () => selected,
       );
-    } else {
-      selected = addresses.first;
     }
-    final resolved = selected ?? addresses.first;
+    final resolved = selected;
     if (mounted) {
       setState(() {
         _addresses = addresses;
@@ -334,10 +332,10 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
     }
 
     return DropdownButtonFormField<AddressBalanceInfo>(
-      value: _selectedTargetAddress,
+      initialValue: _selectedTargetAddress,
       isExpanded: true,
       selectedItemBuilder: (context) => _addresses
-          .map((address) => _buildAddressSelectedItem(address))
+          .map(_buildAddressSelectedItem)
           .toList(),
       decoration: InputDecoration(
         labelText: 'Target wallet address',
@@ -520,4 +518,3 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
     return Color(colorTag.colorValue);
   }
 }
-

@@ -8,14 +8,10 @@ import 'package:go_router/go_router.dart';
 import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
-import '../../design/tokens/colors.dart';
-import '../../design/tokens/spacing.dart';
-import '../../design/tokens/typography.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_card.dart';
-import '../../ui/molecules/p_dialog.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/security/screenshot_protection.dart';
@@ -33,6 +29,9 @@ enum ExportSeedState {
 class ExportSeedStateNotifier extends Notifier<ExportSeedState> {
   @override
   ExportSeedState build() => ExportSeedState.warning;
+
+  ExportSeedState get value => state;
+  set value(ExportSeedState next) => state = next;
 }
 
 final exportSeedStateProvider =
@@ -44,6 +43,13 @@ final exportSeedStateProvider =
 class SeedWordsNotifier extends Notifier<List<String>?> {
   @override
   List<String>? build() => null;
+
+  List<String>? get words => state;
+  set words(List<String> value) => state = value;
+
+  void clear() {
+    state = null;
+  }
 }
 
 final seedWordsProvider =
@@ -55,6 +61,26 @@ final seedWordsProvider =
 class ClipboardTimerNotifier extends Notifier<int?> {
   @override
   int? build() => null;
+
+  int? get value => state;
+  set value(int? seconds) => state = seconds;
+
+  bool tick() {
+    final current = state;
+    if (current == null) {
+      return true;
+    }
+    if (current <= 1) {
+      state = null;
+      return true;
+    }
+    state = current - 1;
+    return false;
+  }
+
+  void clear() {
+    state = null;
+  }
 }
 
 final clipboardTimerProvider =
@@ -115,7 +141,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     
     try {
       await FfiBridge.acknowledgeSeedWarning();
-      ref.read(exportSeedStateProvider.notifier).state = ExportSeedState.biometric;
+      ref.read(exportSeedStateProvider.notifier).value = ExportSeedState.biometric;
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -131,20 +157,20 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       final success = await FfiBridge.authenticateBiometric('Verify identity to export seed');
       
       if (success) {
-        ref.read(exportSeedStateProvider.notifier).state = ExportSeedState.passphrase;
+        ref.read(exportSeedStateProvider.notifier).value = ExportSeedState.passphrase;
       } else {
         setState(() => _error = 'Biometric authentication failed');
       }
     } catch (e) {
       // Biometric not available, skip to passphrase
-      ref.read(exportSeedStateProvider.notifier).state = ExportSeedState.passphrase;
+      ref.read(exportSeedStateProvider.notifier).value = ExportSeedState.passphrase;
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _skipBiometric() async {
-    ref.read(exportSeedStateProvider.notifier).state = ExportSeedState.passphrase;
+    ref.read(exportSeedStateProvider.notifier).value = ExportSeedState.passphrase;
   }
 
   Future<void> _verifyPassphrase() async {
@@ -169,8 +195,8 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
         _passphraseController.text,
       );
       
-      ref.read(seedWordsProvider.notifier).state = words;
-      ref.read(exportSeedStateProvider.notifier).state = ExportSeedState.display;
+      ref.read(seedWordsProvider.notifier).words = words;
+      ref.read(exportSeedStateProvider.notifier).value = ExportSeedState.display;
       
       // Clear passphrase from memory
       _passphraseController.clear();
@@ -189,7 +215,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     await Clipboard.setData(ClipboardData(text: seedPhrase));
     
     // Start auto-clear timer (30 seconds)
-    ref.read(clipboardTimerProvider.notifier).state = 30;
+    ref.read(clipboardTimerProvider.notifier).value = 30;
     _startClipboardTimer();
     
     if (mounted) {
@@ -204,30 +230,28 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
   void _startClipboardTimer() {
     Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      final int? current = ref.read(clipboardTimerProvider);
-      if (current == null || current <= 0) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      final shouldStop = ref.read(clipboardTimerProvider.notifier).tick();
+      if (shouldStop) {
         // Clear clipboard
         await Clipboard.setData(const ClipboardData(text: ''));
-        ref.read(clipboardTimerProvider.notifier).state = null;
         return false;
       }
-      ref.read(clipboardTimerProvider.notifier).state = current - 1;
       return true;
     });
   }
 
   void _complete() {
     // Clear seed from state
-    ref.read(seedWordsProvider.notifier).state = null;
-    ref.read(exportSeedStateProvider.notifier).state = ExportSeedState.warning;
+    ref.read(seedWordsProvider.notifier).clear();
+    ref.read(exportSeedStateProvider.notifier).value = ExportSeedState.warning;
     context.pop();
   }
 
   void _resetExportFlow() {
-    ref.read(exportSeedStateProvider.notifier).state = ExportSeedState.warning;
-    ref.read(seedWordsProvider.notifier).state = null;
-    ref.read(clipboardTimerProvider.notifier).state = null;
+    ref.read(exportSeedStateProvider.notifier).value = ExportSeedState.warning;
+    ref.read(seedWordsProvider.notifier).clear();
+    ref.read(clipboardTimerProvider.notifier).clear();
     _passphraseController.clear();
     setState(() {
       _error = null;
@@ -245,8 +269,8 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
         title: 'Export Seed Phrase',
         subtitle: 'Securely back up your recovery words',
         onBack: () {
-          ref.read(seedWordsProvider.notifier).state = null;
-          ref.read(exportSeedStateProvider.notifier).state = ExportSeedState.warning;
+          ref.read(seedWordsProvider.notifier).clear();
+          ref.read(exportSeedStateProvider.notifier).value = ExportSeedState.warning;
           context.pop();
         },
         showBackButton: true,
@@ -665,7 +689,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           SizedBox(height: AppSpacing.xxl),
           
           PButton(
-            text: 'I\'ve Written It Down',
+            text: "I've Written It Down",
             onPressed: _complete,
             variant: PButtonVariant.primary,
             size: PButtonSize.large,

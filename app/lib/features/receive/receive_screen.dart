@@ -643,7 +643,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   ) {
     final controller = TextEditingController(text: address.label);
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.backgroundElevated,

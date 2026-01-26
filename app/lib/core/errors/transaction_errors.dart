@@ -137,7 +137,7 @@ class TransactionErrorMapper {
         message: 'Insufficient funds',
         technicalDetails: error.toString(),
         suggestion:
-            'You don\'t have enough ARRR to complete this transaction including fees.',
+            "You don't have enough ARRR to complete this transaction including fees.",
       );
     }
 
@@ -343,7 +343,7 @@ class TransactionErrorMapper {
     }
 
     // Basic length check (Sapling ~78 chars, Orchard typically longer)
-    final minLen = 70;
+    const minLen = 70;
     final maxLen = isOrchard ? 120 : 90;
     if (address.length < minLen || address.length > maxLen) {
       return const TransactionError(
@@ -371,7 +371,7 @@ class TransactionErrorMapper {
       return const TransactionError(
         type: TransactionErrorType.insufficientFunds,
         message: 'Insufficient funds',
-        suggestion: 'You don\'t have enough ARRR to send this amount.',
+        suggestion: "You don't have enough ARRR to send this amount.",
       );
     }
 

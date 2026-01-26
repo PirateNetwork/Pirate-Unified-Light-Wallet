@@ -1,4 +1,4 @@
-/// Secure clipboard manager with auto-clear timer
+// Secure clipboard manager with auto-clear timer
 
 import 'dart:async';
 import 'package:flutter/services.dart';

@@ -9,19 +9,19 @@ import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 
 void _showComingSoon(BuildContext context) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.hideCurrentSnackBar();
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text(
-        'Coming Soon',
-        style: PTypography.bodyMedium(color: AppColors.textPrimary),
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(
+          'Coming Soon',
+          style: PTypography.bodyMedium(color: AppColors.textPrimary),
+        ),
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.backgroundElevated,
       ),
-      duration: const Duration(seconds: 1),
-      behavior: SnackBarBehavior.floating,
-      backgroundColor: AppColors.backgroundElevated,
-    ),
-  );
+    );
 }
 
 /// Pay entry screen for desktop and deep links.
@@ -111,11 +111,11 @@ class PaySheet extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final columns = constraints.maxWidth < 360 ? 1 : 2;
-            final spacing = PSpacing.md;
+            const spacing = PSpacing.md;
             final tileWidth =
                 (constraints.maxWidth - spacing * (columns - 1)) / columns;
             final tileHeight =
-                (tileWidth * 0.78).clamp(130.0, 170.0).toDouble();
+                (tileWidth * 0.78).clamp(130.0, 170.0);
             final tiles = [
               _PayActionTile(
                 title: 'Send',
@@ -315,7 +315,7 @@ class _PayContent extends StatelessWidget {
             );
           }
 
-          final spacing = PSpacing.md;
+          const spacing = PSpacing.md;
           final rawTileWidth = (constraints.maxWidth - spacing) / 2;
           final tileWidth = rawTileWidth.clamp(150.0, 220.0);
           final tileHeight = (tileWidth * 0.85).clamp(150.0, 210.0);

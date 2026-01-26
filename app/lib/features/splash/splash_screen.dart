@@ -26,7 +26,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       _navigated = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        if (walletsExist.value == true) {
+        if (walletsExist.value ?? false) {
           if (appUnlocked) {
             context.go('/home');
           } else {

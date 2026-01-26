@@ -66,6 +66,8 @@ enum PSnackVariant {
 
   IconData? get icon {
     switch (this) {
+      case PSnackVariant.neutral:
+        return null;
       case PSnackVariant.success:
         return Icons.check_circle_outline;
       case PSnackVariant.warning:
@@ -74,13 +76,13 @@ enum PSnackVariant {
         return Icons.error_outline;
       case PSnackVariant.info:
         return Icons.info_outline;
-      default:
-        return null;
     }
   }
 
   Color get iconColor {
     switch (this) {
+      case PSnackVariant.neutral:
+        return AppColors.textSecondary;
       case PSnackVariant.success:
         return AppColors.success;
       case PSnackVariant.warning:
@@ -89,13 +91,13 @@ enum PSnackVariant {
         return AppColors.error;
       case PSnackVariant.info:
         return AppColors.info;
-      default:
-        return AppColors.textSecondary;
     }
   }
 
   Color get borderColor {
     switch (this) {
+      case PSnackVariant.neutral:
+        return AppColors.borderDefault;
       case PSnackVariant.success:
         return AppColors.successBorder;
       case PSnackVariant.warning:
@@ -104,8 +106,6 @@ enum PSnackVariant {
         return AppColors.errorBorder;
       case PSnackVariant.info:
         return AppColors.infoBorder;
-      default:
-        return AppColors.borderDefault;
     }
   }
 }

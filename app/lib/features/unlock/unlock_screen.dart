@@ -1,4 +1,4 @@
-/// Unlock Screen - Enter passphrase to unlock wallet
+// Unlock Screen - Enter passphrase to unlock wallet
 
 import 'dart:io';
 
@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design/deep_space_theme.dart';
-import '../../design/tokens/colors.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';

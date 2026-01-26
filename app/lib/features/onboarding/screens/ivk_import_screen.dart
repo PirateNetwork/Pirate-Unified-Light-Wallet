@@ -1,4 +1,6 @@
-/// Viewing key import screen - create watch-only wallet from a viewing key
+// Viewing key import screen - create watch-only wallet from a viewing key
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,9 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../design/deep_space_theme.dart';
-import '../../../design/tokens/colors.dart';
-import '../../../design/tokens/spacing.dart';
-import '../../../design/tokens/typography.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
 import '../../../ui/organisms/p_app_bar.dart';
@@ -94,7 +93,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
       );
 
       // Set as active wallet
-      ref.read(activeWalletProvider.notifier).setActiveWallet(walletId);
+      unawaited(ref.read(activeWalletProvider.notifier).setActiveWallet(walletId));
       
       // Refresh wallets list
       ref.read(refreshWalletsProvider)();

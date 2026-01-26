@@ -1,7 +1,8 @@
-/// Lightwalletd endpoint configuration
-///
-/// Default endpoint and TLS settings for Pirate Chain lightwalletd servers.
-library;
+// Lightwalletd endpoint configuration
+//
+// Default endpoint and TLS settings for Pirate Chain lightwalletd servers.
+
+import 'package:flutter/foundation.dart';
 
 /// Default lightwalletd server host (official mainnet)
 const String kDefaultLightdHost = '64.23.167.130';
@@ -25,6 +26,7 @@ const int kOrchardTestnetPort = 8067;
 const bool kDefaultUseTls = false;
 
 /// Lightwalletd endpoint configuration
+@immutable
 class LightdEndpoint {
   /// Server host
   final String host;
@@ -93,8 +95,8 @@ class LightdEndpoint {
   /// Parse endpoint from URL string
   /// Accepts formats: "host:port", "https://host:port", "http://host:port"
   static LightdEndpoint? tryParse(String input, {String? tlsPin, String? label}) {
-    String normalized = input.trim();
-    bool useTls = kDefaultUseTls; // Default to false (no TLS) since servers don't have certificates
+    var normalized = input.trim();
+    var useTls = kDefaultUseTls; // Default to false (no TLS) since servers don't have certificates
 
     // Handle scheme prefix
     if (normalized.startsWith('https://')) {
@@ -126,7 +128,7 @@ class LightdEndpoint {
       return null;
     }
 
-    int port = kDefaultLightdPort;
+    var port = kDefaultLightdPort;
     if (parts.length == 2) {
       final parsedPort = int.tryParse(parts[1]);
       if (parsedPort == null || parsedPort < 1 || parsedPort > 65535) {

@@ -78,11 +78,13 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
   }
 
   void _editEntry() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AddressBookEditScreen(entry: _entry),
-      ),
-    ).then((result) {
+    Navigator.of(context)
+        .push<AddressEntry?>(
+          MaterialPageRoute<AddressEntry?>(
+            builder: (_) => AddressBookEditScreen(entry: _entry),
+          ),
+        )
+        .then((result) {
       if (result is AddressEntry) {
         setState(() => _entry = result);
       }
@@ -95,7 +97,7 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
       builder: (context) => _DeleteConfirmationDialog(entry: _entry),
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       final success = await ref
           .read(addressBookProvider(_entry.walletId).notifier)
           .deleteEntry(_entry.id);
@@ -119,10 +121,10 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
             delegate: PSliverHeaderDelegate(
               maxExtentHeight: 180,
               minExtentHeight: 120,
-              builder: (context, shrinkOffset, overlapsContent) {
+              builder: (context, shrinkOffset, {required overlapsContent}) {
                 final progress =
                     (shrinkOffset / (180 - 120)).clamp(0.0, 1.0);
-                return Container(
+                return ColoredBox(
                   color: AppColors.voidBlack,
                   child: SafeArea(
                     bottom: false,
@@ -374,7 +376,7 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
   }
 
   Widget _buildMetadataSection() {
-    final dateFormat = (DateTime dt) =>
+    String dateFormat(DateTime dt) =>
         '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
 
     return Container(
@@ -556,7 +558,10 @@ class _DeleteConfirmationDialog extends StatelessWidget {
 
 class AddressBookEditScreen extends ConsumerStatefulWidget {
   const AddressBookEditScreen({this.entry, this.walletId, super.key})
-      : assert(entry != null || walletId != null);
+      : assert(
+          entry != null || walletId != null,
+          'Either entry or walletId must be provided.',
+        );
 
   final AddressEntry? entry;
   final String? walletId;
@@ -919,4 +924,3 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
     );
   }
 }
-

@@ -1,3 +1,5 @@
+// ignore_for_file: noop_primitive_operations
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -101,12 +103,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
 
   /// Convert PlatformInt64 timestamp to DateTime
   DateTime _convertTimestamp(PlatformInt64 timestamp) {
-    int timestampValue;
-    if (timestamp is int) {
-      timestampValue = timestamp;
-    } else {
-      timestampValue = (timestamp as dynamic).toInt() as int;
-    }
+    final timestampValue = timestamp.toInt();
     return DateTime.fromMillisecondsSinceEpoch(timestampValue * 1000);
   }
 

@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 /// Design tokens for colors - Dark-first palette
@@ -296,7 +294,7 @@ class AppColors {
       return;
     }
     _brightness = brightness;
-    WidgetsBinding.instance.renderViewElement?.markNeedsBuild();
+    WidgetsBinding.instance.rootElement?.markNeedsBuild();
   }
 
   static bool get _isLight => _brightness == Brightness.light;
@@ -407,8 +405,8 @@ class AppColors {
 
   static LinearGradient get gradientALinear => LinearGradient(
         colors: gradientA,
-        begin: const Alignment(0.0, 0.0),
-        end: const Alignment(1.0, 1.0),
+        begin: Alignment.center,
+        end: Alignment.bottomRight,
       );
 
   static Color textOnBackground(Color background) {

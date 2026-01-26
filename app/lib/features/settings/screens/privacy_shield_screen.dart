@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../../design/theme.dart';
 import '../../../design/compat.dart';
 import '../../../design/tokens/colors.dart';
 import '../../../ui/atoms/p_button.dart';
@@ -26,7 +25,7 @@ import '../providers/transport_providers.dart';
 /// - DNS resolver
 /// - Test node connection
 class PrivacyShieldScreen extends ConsumerStatefulWidget {
-  const PrivacyShieldScreen({Key? key}) : super(key: key);
+  const PrivacyShieldScreen({super.key});
 
   @override
   ConsumerState<PrivacyShieldScreen> createState() => _PrivacyShieldScreenState();
@@ -343,6 +342,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
   Future<bool> _confirmI2pFirstUse(BuildContext context) async {
     final seen = await _storage.read(key: _i2pWarningKey);
+    if (!context.mounted) {
+      return false;
+    }
     if (seen == 'true') {
       return true;
     }
@@ -371,7 +373,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       },
     );
 
-    if (proceed == true) {
+    if (proceed ?? false) {
       await _storage.write(key: _i2pWarningKey, value: 'true');
     }
     return proceed ?? false;
@@ -507,14 +509,14 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                         await ref
                             .read(transportConfigProvider.notifier)
                             .setI2pEndpoint(candidate);
-                        if (!mounted) return;
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('I2P endpoint saved.'),
                           ),
                         );
                       } catch (e) {
-                        if (!mounted) return;
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('Failed to save I2P endpoint: $e'),
@@ -585,7 +587,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                     text: 'Switch exit node',
                     compact: true,
                     onPressed: torStatus.isReady
-                        ? () => _switchTorExit()
+                        ? _switchTorExit
                         : null,
                   ),
                 ],
@@ -779,7 +781,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         ),
         const SizedBox(height: PirateSpacing.sm),
         DropdownButtonFormField<String>(
-          value: _torBridgeTransport,
+          initialValue: _torBridgeTransport,
           items: const [
             DropdownMenuItem(value: 'snowflake', child: Text('Snowflake')),
             DropdownMenuItem(value: 'obfs4', child: Text('obfs4')),
@@ -1029,7 +1031,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         tlsPin: normalizedPin,
       );
 
-      if (!mounted) return;
+      if (!context.mounted) return;
 
       // Show result dialog
       if (result.success) {
@@ -1038,7 +1040,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         _showFailureDialog(context, result);
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       _showErrorDialog(context, e.toString());
     } finally {
       if (mounted) {
@@ -1050,7 +1052,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   }
 
   void _showSuccessDialog(BuildContext context, NodeTestResult result) {
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.backgroundSurface,
@@ -1109,7 +1111,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   void _showFailureDialog(BuildContext context, NodeTestResult result) {
     final isPinMismatch = result.tlsPinMatched == false;
     
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.backgroundSurface,
@@ -1283,7 +1285,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   }
 
   void _showErrorDialog(BuildContext context, String error) {
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.backgroundSurface,

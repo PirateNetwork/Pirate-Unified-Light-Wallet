@@ -157,13 +157,13 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
     }
     if (Platform.isAndroid || Platform.isIOS) {
       try {
-        await KeystoreChannel.setBiometricsEnabled(enabled);
+        await KeystoreChannel.setBiometricsEnabled(enabled: enabled);
         await FfiBridge.resealDbKeysForBiometrics();
       } catch (e) {
         state = previous;
         await _storage.write(key: _storageKey, value: previous.toString());
         try {
-          await KeystoreChannel.setBiometricsEnabled(previous);
+          await KeystoreChannel.setBiometricsEnabled(enabled: previous);
         } catch (_) {}
         rethrow;
       }

@@ -47,6 +47,8 @@ enum PBadgeVariant {
 
   Color get backgroundColor {
     switch (this) {
+      case PBadgeVariant.neutral:
+        return AppColors.backgroundSurface;
       case PBadgeVariant.success:
         return AppColors.successBackground;
       case PBadgeVariant.warning:
@@ -55,13 +57,13 @@ enum PBadgeVariant {
         return AppColors.errorBackground;
       case PBadgeVariant.info:
         return AppColors.infoBackground;
-      default:
-        return AppColors.backgroundSurface;
     }
   }
 
   Color get borderColor {
     switch (this) {
+      case PBadgeVariant.neutral:
+        return AppColors.borderDefault;
       case PBadgeVariant.success:
         return AppColors.successBorder;
       case PBadgeVariant.warning:
@@ -70,13 +72,13 @@ enum PBadgeVariant {
         return AppColors.errorBorder;
       case PBadgeVariant.info:
         return AppColors.infoBorder;
-      default:
-        return AppColors.borderDefault;
     }
   }
 
   Color get textColor {
     switch (this) {
+      case PBadgeVariant.neutral:
+        return AppColors.textSecondary;
       case PBadgeVariant.success:
         return AppColors.success;
       case PBadgeVariant.warning:
@@ -85,8 +87,6 @@ enum PBadgeVariant {
         return AppColors.error;
       case PBadgeVariant.info:
         return AppColors.info;
-      default:
-        return AppColors.textSecondary;
     }
   }
 }

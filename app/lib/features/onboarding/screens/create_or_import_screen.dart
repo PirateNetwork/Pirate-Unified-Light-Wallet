@@ -1,14 +1,12 @@
-/// Create or Import wallet screen
+// Create or Import wallet screen
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../design/deep_space_theme.dart';
-import '../../../design/tokens/colors.dart';
-import '../../../design/tokens/spacing.dart';
-import '../../../design/tokens/typography.dart';
-import '../../../ui/atoms/p_button.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
@@ -50,7 +48,7 @@ class CreateOrImportScreen extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'Choose how you\'d like to set up your wallet',
+                "Choose how you'd like to set up your wallet",
                 style: AppTypography.body.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -65,10 +63,10 @@ class CreateOrImportScreen extends ConsumerWidget {
                   ref.read(onboardingControllerProvider.notifier).nextStep();
                   if (!context.mounted) return;
                   if (hasPassphrase) {
-                    context.push('/onboarding/backup-warning');
+                    unawaited(context.push('/onboarding/backup-warning'));
                     return;
                   }
-                  context.push('/onboarding/passphrase');
+                  unawaited(context.push('/onboarding/passphrase'));
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(

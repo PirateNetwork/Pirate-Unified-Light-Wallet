@@ -1,4 +1,4 @@
-/// Wallet providers using Riverpod + FFI
+// Wallet providers using Riverpod + FFI
 
 import 'dart:async';
 
@@ -33,7 +33,7 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
     final walletId = await FfiBridge.getActiveWallet();
     state = walletId;
     if (walletId != null) {
-      BackgroundSyncHandler.instance.updateActiveWallet(walletId);
+      BackgroundSyncHandler().updateActiveWallet(walletId);
       // Auto-start sync when loading active wallet on app startup
       unawaited(_startWalletSessions(walletId));
     }
@@ -67,7 +67,7 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
 
   void clearActiveWallet() {
     state = null;
-    BackgroundSyncHandler.instance.updateActiveWallet(null);
+    BackgroundSyncHandler().updateActiveWallet(null);
   }
 
   Future<void> _stopWalletSessions(WalletId walletId) async {
@@ -87,7 +87,7 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
   }
 
   void _notifyBackgroundHandler(WalletId walletId) {
-    BackgroundSyncHandler.instance.updateActiveWallet(walletId);
+    BackgroundSyncHandler().updateActiveWallet(walletId);
   }
 }
 
@@ -141,7 +141,7 @@ final createWalletProvider = Provider<
     );
 
     // Set as active
-    ref.read(activeWalletProvider.notifier).setActiveWallet(walletId);
+    unawaited(ref.read(activeWalletProvider.notifier).setActiveWallet(walletId));
 
     // Refresh wallets list
     ref.read(refreshWalletsProvider)();
@@ -172,7 +172,7 @@ final restoreWalletProvider = Provider<
     );
 
     // Set as active
-    ref.read(activeWalletProvider.notifier).setActiveWallet(walletId);
+    unawaited(ref.read(activeWalletProvider.notifier).setActiveWallet(walletId));
 
     // Refresh wallets list
     ref.read(refreshWalletsProvider)();
@@ -203,7 +203,7 @@ final importIvkProvider = Provider<
     );
 
     // Set as active
-    ref.read(activeWalletProvider.notifier).setActiveWallet(walletId);
+    unawaited(ref.read(activeWalletProvider.notifier).setActiveWallet(walletId));
 
     // Refresh wallets list
     ref.read(refreshWalletsProvider)();
@@ -282,8 +282,9 @@ final generateAddressProvider = Provider<Future<String> Function()>((ref) {
     final address = await FfiBridge.nextReceiveAddress(walletId);
 
     // Refresh addresses list
-    ref.invalidate(addressesProvider);
-    ref.invalidate(currentAddressProvider);
+    ref
+      ..invalidate(addressesProvider)
+      ..invalidate(currentAddressProvider);
 
     return address;
   };
@@ -349,8 +350,9 @@ final rescanProvider = Provider<Future<void> Function(int fromHeight)>((ref) {
     await FfiBridge.rescan(walletId, fromHeight);
 
     // Refresh sync status and progress stream so home screen picks up the new sync
-    ref.invalidate(syncStatusProvider);
-    ref.invalidate(syncProgressStreamProvider);
+    ref
+      ..invalidate(syncStatusProvider)
+      ..invalidate(syncProgressStreamProvider);
   };
 });
 
@@ -491,8 +493,9 @@ final transactionWatcherProvider = Provider<void>((ref) {
   ref.listen<AsyncValue<TxInfo?>>(transactionStreamProvider, (_, next) {
     final tx = next.asData?.value;
     if (tx != null) {
-      ref.invalidate(transactionsProvider);
-      ref.invalidate(balanceProvider);
+      ref
+        ..invalidate(transactionsProvider)
+        ..invalidate(balanceProvider);
     }
   });
 });
@@ -526,8 +529,9 @@ final sendTransactionProvider =
     final txid = await FfiBridge.broadcastTx(signed);
 
     // Refresh transactions and balance
-    ref.invalidate(transactionsProvider);
-    ref.invalidate(balanceProvider);
+    ref
+      ..invalidate(transactionsProvider)
+      ..invalidate(balanceProvider);
 
     return txid;
   };
@@ -603,8 +607,9 @@ final setLightdEndpointProvider = Provider<
       tlsPin: tlsPin,
     );
 
-    ref.invalidate(lightdEndpointProvider);
-    ref.invalidate(lightdEndpointConfigProvider);
+    ref
+      ..invalidate(lightdEndpointProvider)
+      ..invalidate(lightdEndpointConfigProvider);
   };
 });
 
@@ -724,9 +729,8 @@ class AppUnlockedNotifier extends Notifier<bool> {
   @override
   bool build() => false;
 
-  void setUnlocked(bool unlocked) {
-    state = unlocked;
-  }
+  bool get unlocked => state;
+  set unlocked(bool value) => state = value;
 }
 
 final decoyModeProvider =
@@ -736,9 +740,8 @@ class DecoyModeNotifier extends Notifier<bool> {
   @override
   bool build() => false;
 
-  void setDecoyMode(bool isDecoy) {
-    state = isDecoy;
-  }
+  bool get enabled => state;
+  set enabled(bool value) => state = value;
 }
 
 /// Verify and unlock app with passphrase
@@ -747,8 +750,8 @@ final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
     final isValid = await FfiBridge.verifyAppPassphrase(passphrase);
     if (isValid) {
       await FfiBridge.unlockApp(passphrase);
-      ref.read(decoyModeProvider.notifier).setDecoyMode(false);
-      ref.read(appUnlockedProvider.notifier).setUnlocked(true);
+      ref.read(decoyModeProvider.notifier).enabled = false;
+      ref.read(appUnlockedProvider.notifier).unlocked = true;
       // Refresh wallet list after unlock
       ref.invalidate(activeWalletProvider);
       return;
@@ -761,8 +764,8 @@ final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
         hash: duressHash,
       );
       if (isDuress) {
-        ref.read(decoyModeProvider.notifier).setDecoyMode(true);
-        ref.read(appUnlockedProvider.notifier).setUnlocked(true);
+        ref.read(decoyModeProvider.notifier).enabled = true;
+        ref.read(appUnlockedProvider.notifier).unlocked = true;
         ref.invalidate(activeWalletProvider);
         return;
       }

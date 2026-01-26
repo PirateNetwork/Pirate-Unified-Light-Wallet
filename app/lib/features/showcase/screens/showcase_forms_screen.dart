@@ -45,7 +45,7 @@ class _ShowcaseFormsScreenState extends State<ShowcaseFormsScreen> {
                 const PInput(
                   label: 'Email',
                   hint: 'Enter your email',
-                  helperText: 'We\'ll never share your email',
+                  helperText: "We'll never share your email",
                 ),
                 const PInput(
                   label: 'Password',

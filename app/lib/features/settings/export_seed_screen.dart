@@ -4,10 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
-import '../../design/theme.dart';
 import '../../design/compat.dart';
-import '../../design/tokens/spacing.dart';
-import '../../design/tokens/typography.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../core/security/biometric_auth.dart';
@@ -19,6 +16,26 @@ import 'dart:async';
 class ClipboardCountdownNotifier extends Notifier<int?> {
   @override
   int? build() => null;
+
+  int? get value => state;
+  set value(int? seconds) => state = seconds;
+
+  bool tick() {
+    final current = state;
+    if (current == null) {
+      return true;
+    }
+    if (current <= 1) {
+      state = null;
+      return true;
+    }
+    state = current - 1;
+    return false;
+  }
+
+  void clear() {
+    state = null;
+  }
 }
 
 final _clipboardCountdownProvider = NotifierProvider<ClipboardCountdownNotifier, int?>(ClipboardCountdownNotifier.new);
@@ -29,10 +46,10 @@ class ExportSeedScreen extends ConsumerStatefulWidget {
   final String walletName;
 
   const ExportSeedScreen({
-    Key? key,
+    super.key,
     required this.walletId,
     required this.walletName,
-  }) : super(key: key);
+  });
 
   @override
   ConsumerState<ExportSeedScreen> createState() => _ExportSeedScreenState();
@@ -245,7 +262,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       await FfiBridge.acknowledgeSeedWarning();
       setState(() => _step1Complete = true);
     } catch (e) {
-      setState(() => _error = 'Failed to start export: ${e.toString()}');
+      setState(() => _error = 'Failed to start export: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -553,7 +570,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       setState(() => _error = e.message);
     } catch (e) {
       setState(() {
-        _error = 'Biometric authentication error: ${e.toString()}';
+        _error = 'Biometric authentication error: $e';
       });
     } finally {
       setState(() => _isLoading = false);
@@ -574,7 +591,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       await FfiBridge.skipSeedBiometric();
       setState(() => _step2Complete = true);
     } catch (e) {
-      setState(() => _error = 'Failed to skip biometrics: ${e.toString()}');
+      setState(() => _error = 'Failed to skip biometrics: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -619,7 +636,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       });
       _passphraseController.clear();
     } catch (e) {
-      setState(() => _error = 'Failed to verify passphrase: ${e.toString()}');
+      setState(() => _error = 'Failed to verify passphrase: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -631,30 +648,29 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     await Clipboard.setData(ClipboardData(text: _mnemonic!));
     
     // Start 30-second countdown
-    ref.read(_clipboardCountdownProvider.notifier).state = 30;
+    ref.read(_clipboardCountdownProvider.notifier).value = 30;
     
     _clipboardTimer?.cancel();
     _clipboardTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-      final int? current = ref.read(_clipboardCountdownProvider);
-      if (current == null || current <= 1) {
+      final shouldStop = ref.read(_clipboardCountdownProvider.notifier).tick();
+      if (shouldStop) {
         _clearClipboard();
         timer.cancel();
-      } else {
-        ref.read(_clipboardCountdownProvider.notifier).state = current - 1;
       }
     });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Copied. Clears in 30 seconds.'),
-          backgroundColor: Colors.orange[700],
-        ),
-      );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Copied. Clears in 30 seconds.'),
+        backgroundColor: Colors.orange[700],
+      ),
+    );
   }
 
   Future<void> _clearClipboard() async {
     await Clipboard.setData(ClipboardData(text: ''));
-    ref.read(_clipboardCountdownProvider.notifier).state = null;
+    ref.read(_clipboardCountdownProvider.notifier).clear();
     _clipboardTimer?.cancel();
   }
 
@@ -686,7 +702,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       await _clearClipboard();
       if (_exportStarted && !_isDecoyMode()) {
         await FfiBridge.cancelSeedExport();
@@ -725,7 +741,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       await _clearClipboard();
       if (_exportStarted && !_isDecoyMode()) {
         await FfiBridge.cancelSeedExport();

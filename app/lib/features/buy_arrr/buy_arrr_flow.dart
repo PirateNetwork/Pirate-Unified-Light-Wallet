@@ -1,6 +1,8 @@
 /// Buy ARRR flow state management
 library;
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Buy ARRR flow steps
@@ -209,8 +211,8 @@ class BuyArrrController extends Notifier<BuyArrrState> {
       return;
     }
 
-    // TODO: Call FFI to get quote from MM2
-    await Future.delayed(const Duration(seconds: 1));
+    // TODO(pirate): Call FFI to get quote from MM2.
+    await Future<void>.delayed(const Duration(seconds: 1));
 
     final quote = BuyQuote(
       sourceCoin: state.selectedCoin!.ticker,
@@ -241,8 +243,8 @@ class BuyArrrController extends Notifier<BuyArrrState> {
       return;
     }
 
-    // TODO: Call FFI to execute swap via MM2
-    await Future.delayed(const Duration(milliseconds: 500));
+    // TODO(pirate): Call FFI to execute swap via MM2.
+    await Future<void>.delayed(const Duration(milliseconds: 500));
 
     final swapProgress = SwapProgressData(
       uuid: 'swap-uuid',
@@ -260,13 +262,13 @@ class BuyArrrController extends Notifier<BuyArrrState> {
     );
 
     // Start monitoring swap progress
-    _monitorSwapProgress();
+    unawaited(_monitorSwapProgress());
   }
 
   Future<void> _monitorSwapProgress() async {
-    // TODO: Poll MM2 for swap status updates
+    // TODO(pirate): Poll MM2 for swap status updates.
     // For now, simulate progress
-    await Future.delayed(const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(seconds: 2));
     
     if (state.swapProgress != null) {
       state = state.copyWith(
@@ -291,4 +293,3 @@ class BuyArrrController extends Notifier<BuyArrrState> {
 /// Provider for buy ARRR controller
 final buyArrrControllerProvider =
     NotifierProvider<BuyArrrController, BuyArrrState>(BuyArrrController.new);
-

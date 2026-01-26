@@ -11,9 +11,6 @@ import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/security/screenshot_protection.dart';
-import '../../design/tokens/colors.dart';
-import '../../design/tokens/spacing.dart';
-import '../../design/tokens/typography.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/molecules/p_card.dart';
@@ -135,7 +132,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
 
   void _startClipboardTimer() {
     Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
+      await Future<void>.delayed(const Duration(seconds: 1));
       if (_clipboardTimer == null || _clipboardTimer! <= 0) {
         await Clipboard.setData(const ClipboardData(text: ''));
         setState(() => _clipboardTimer = null);
@@ -166,7 +163,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
         throw Exception('Invalid birthday height');
       }
 
-      final walletId = await FfiBridge.importIvkAsWatchOnly(
+      await FfiBridge.importIvkAsWatchOnly(
         name: _nameController.text,
         ivk: _ivkController.text,
         birthdayHeight: birthday,
@@ -190,7 +187,6 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
 
   @override
   Widget build(BuildContext context) {
-    final walletId = ref.watch(activeWalletProvider);
     final walletMeta = ref.watch(activeWalletMetaProvider);
     final isWatchOnly = walletMeta?.watchOnly ?? false;
 

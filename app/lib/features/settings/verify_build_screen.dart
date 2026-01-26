@@ -17,7 +17,7 @@ import '../../core/ffi/generated/api.dart' as api;
 
 /// Verify My Build Screen - Shows reproducible build verification steps
 class VerifyBuildScreen extends ConsumerStatefulWidget {
-  const VerifyBuildScreen({Key? key}) : super(key: key);
+  const VerifyBuildScreen({super.key});
 
   @override
   ConsumerState<VerifyBuildScreen> createState() => _VerifyBuildScreenState();
@@ -128,7 +128,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'Failed to load build info: ${e.toString()}';
+        _error = 'Failed to load build info: $e';
         _isLoading = false;
       });
     }
@@ -238,7 +238,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       if (!mounted) return;
       setState(() {
         _verificationStatus = ReleaseVerificationStatus.error;
-        _verificationMessage = 'Verification failed: ${e.toString()}';
+        _verificationMessage = 'Verification failed: $e';
       });
     }
   }
@@ -248,7 +248,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       final path = Platform.resolvedExecutable;
       if (path.isEmpty) return null;
       final file = File(path);
-      if (!await file.exists()) return null;
+      if (!file.existsSync()) return null;
 
       final hash = await _hashFile(file);
       return _LocalArtifact(
@@ -289,7 +289,9 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         throw Exception('Unexpected GitHub API response');
       }
 
-      return data.map<_ReleaseInfo>((entry) {
+      return data
+          .whereType<Map<String, dynamic>>()
+          .map<_ReleaseInfo>((entry) {
         final assets = <_ReleaseAsset>[];
         final rawAssets = entry['assets'];
         if (rawAssets is List) {
@@ -467,7 +469,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
 
   String _formatTimestamp(DateTime timestamp) {
     final local = timestamp.toLocal();
-    final two = (int value) => value.toString().padLeft(2, '0');
+    String two(int value) => value.toString().padLeft(2, '0');
     return '${local.year}-${two(local.month)}-${two(local.day)} '
         '${two(local.hour)}:${two(local.minute)}';
   }

@@ -1,4 +1,4 @@
-/// Birthday Picker Screen - Select wallet birthday for sync optimization
+// Birthday Picker Screen - Select wallet birthday for sync optimization
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -533,7 +533,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
   String _formatHeight(int height) {
     return height.toString().replaceAllMapped(
       RegExp(r'(\\d{1,3})(?=(\\d{3})+(?!\\d))'),
-      (Match m) => '${m[1]},',
+      (m) => '${m[1]},',
     );
   }
 }

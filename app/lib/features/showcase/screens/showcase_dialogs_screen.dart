@@ -129,7 +129,7 @@ class ShowcaseDialogsScreen extends StatelessWidget {
   }
 
   void _showSimpleDialog(BuildContext context) {
-    PDialog.show(
+    PDialog.show<void>(
       context: context,
       title: 'Simple Dialog',
       content: const Text('This is a simple dialog with a message.'),
@@ -143,7 +143,7 @@ class ShowcaseDialogsScreen extends StatelessWidget {
   }
 
   void _showConfirmDialog(BuildContext context) {
-    PDialog.show(
+    PDialog.show<void>(
       context: context,
       title: 'Confirm Action',
       content: const Text('Are you sure you want to proceed? This action cannot be undone.'),
@@ -163,7 +163,7 @@ class ShowcaseDialogsScreen extends StatelessWidget {
   }
 
   void _showBottomSheet(BuildContext context) {
-    PBottomSheet.show(
+    PBottomSheet.show<void>(
       context: context,
       title: 'Bottom Sheet Example',
       content: Column(
@@ -188,4 +188,3 @@ class ShowcaseDialogsScreen extends StatelessWidget {
     );
   }
 }
-

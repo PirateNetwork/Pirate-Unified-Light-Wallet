@@ -150,6 +150,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
                         return;
                       }
                     }
+                    if (!context.mounted) return;
                     if (Navigator.of(context).canPop()) {
                       Navigator.of(context).pop();
                     }
@@ -223,7 +224,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
       ],
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       final newName = controller.text.trim();
       if (newName.isEmpty || newName == wallet.name) {
         controller.dispose();
@@ -234,6 +235,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
         await FfiBridge.renameWallet(wallet.id, newName);
         ref.read(refreshWalletsProvider)();
       } catch (e) {
+        if (!context.mounted) return;
         _showSnack(context, 'Could not rename wallet: $e');
       }
     }
@@ -266,7 +268,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
       ],
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       try {
         await FfiBridge.deleteWallet(wallet.id);
         ref.read(refreshWalletsProvider)();
@@ -276,7 +278,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
         final notifier = ref.read(activeWalletProvider.notifier);
         if (newActive == null) {
           notifier.clearActiveWallet();
-          ref.read(appUnlockedProvider.notifier).setUnlocked(false);
+          ref.read(appUnlockedProvider.notifier).unlocked = false;
           ref.read(onboardingControllerProvider.notifier).reset();
           if (context.mounted) {
             context.go('/onboarding/welcome');
@@ -285,6 +287,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
           await notifier.setActiveWallet(newActive);
         }
       } catch (e) {
+        if (!context.mounted) return;
         _showSnack(context, 'Could not remove wallet: $e');
       }
     }

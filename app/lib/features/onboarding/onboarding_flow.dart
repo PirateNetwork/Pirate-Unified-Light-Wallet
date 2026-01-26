@@ -147,7 +147,7 @@ class OnboardingController extends Notifier<OnboardingState> {
     state = state.copyWith(passphrase: passphrase);
   }
 
-  void setBiometrics(bool enabled) {
+  void setBiometrics({required bool enabled}) {
     state = state.copyWith(biometricsEnabled: enabled);
   }
 
@@ -168,7 +168,7 @@ class OnboardingController extends Notifier<OnboardingState> {
 
   void previousStep() {
     // Navigate backwards (simplified for now)
-    final steps = OnboardingStep.values;
+    const steps = OnboardingStep.values;
     final currentIndex = steps.indexOf(state.currentStep);
     if (currentIndex > 0) {
       state = state.copyWith(currentStep: steps[currentIndex - 1]);
@@ -245,7 +245,7 @@ class OnboardingController extends Notifier<OnboardingState> {
     if (state.passphrase != null && state.passphrase!.isNotEmpty) {
       try {
         await FfiBridge.unlockApp(state.passphrase!);
-        ref.read(appUnlockedProvider.notifier).setUnlocked(true);
+        ref.read(appUnlockedProvider.notifier).unlocked = true;
       } catch (e) {
         // If unlock fails, it's okay - user will need to unlock on next launch
         debugPrint('Failed to unlock app after wallet creation: $e');

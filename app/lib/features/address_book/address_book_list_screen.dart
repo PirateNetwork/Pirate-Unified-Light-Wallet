@@ -68,13 +68,13 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
 
   void _navigateToDetail(String walletId, AddressEntry entry) {
     Navigator.of(context)
-        .push(
-          MaterialPageRoute(
+        .push<bool?>(
+          MaterialPageRoute<bool?>(
             builder: (_) => AddressBookDetailScreen(entry: entry),
           ),
         )
         .then((result) {
-          if (result == true) {
+          if (result ?? false) {
             _refreshEntries(walletId);
           }
         });
@@ -82,8 +82,8 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
 
   void _navigateToAdd(String walletId) {
     Navigator.of(context)
-        .push(
-          MaterialPageRoute(
+        .push<void>(
+          MaterialPageRoute<void>(
             builder: (_) => AddressBookEditScreen(walletId: walletId),
           ),
         )
@@ -100,7 +100,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
       builder: (context) => _DeleteConfirmationDialog(entry: entry),
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       final walletId = entry.walletId;
       final success = await ref
           .read(addressBookProvider(walletId).notifier)
@@ -195,9 +195,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
                   icon: Icon(Icons.clear, color: AppColors.textMuted),
-                  onPressed: () {
-                    _searchController.clear();
-                  },
+                  onPressed: _searchController.clear,
                 )
               : null,
           filled: true,
@@ -615,4 +613,3 @@ class _DeleteConfirmationDialog extends StatelessWidget {
     );
   }
 }
-

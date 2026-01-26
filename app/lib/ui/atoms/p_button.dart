@@ -6,7 +6,7 @@ import '../../design/tokens/typography.dart';
 
 /// Pirate Wallet Button - Primary action button with gradient
 class PButton extends StatefulWidget {
-  PButton({
+  const PButton({
     required this.onPressed,
     this.child,
     this.text,
@@ -55,8 +55,12 @@ class _PButtonState extends State<PButton> {
           width: widget.fullWidth ? double.infinity : null,
           height: widget.size.height,
           decoration: BoxDecoration(
-            gradient: widget.variant.gradient(isDisabled, _isHovered, _isPressed),
-            border: widget.variant.border(isDisabled),
+          gradient: widget.variant.gradient(
+            isDisabled: isDisabled,
+            isHovered: _isHovered,
+            isPressed: _isPressed,
+          ),
+          border: widget.variant.border(isDisabled: isDisabled),
             borderRadius: BorderRadius.circular(PSpacing.radiusMD),
             boxShadow: _isHovered && !isDisabled
                 ? [
@@ -88,14 +92,14 @@ class _PButtonState extends State<PButton> {
                         child: CircularProgressIndicator(
                           strokeWidth: 2.0,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            widget.variant.textColor(isDisabled),
+                            widget.variant.textColor(isDisabled: isDisabled),
                           ),
                         ),
                       )
                     else if (widget.icon != null) ...[
                       IconTheme(
                         data: IconThemeData(
-                          color: widget.variant.textColor(isDisabled),
+          color: widget.variant.textColor(isDisabled: isDisabled),
                           size: widget.size.iconSize,
                         ),
                         child: widget.icon!,
@@ -104,7 +108,7 @@ class _PButtonState extends State<PButton> {
                     ],
                     DefaultTextStyle(
                       style: widget.size.textStyle.copyWith(
-                        color: widget.variant.textColor(isDisabled),
+                        color: widget.variant.textColor(isDisabled: isDisabled),
                       ),
                       child: contentChild,
                     ),
@@ -131,7 +135,11 @@ enum PButtonVariant {
   ghost,
   danger;
 
-  Gradient? gradient(bool isDisabled, bool isHovered, bool isPressed) {
+  Gradient? gradient({
+    required bool isDisabled,
+    required bool isHovered,
+    required bool isPressed,
+  }) {
     if (isDisabled) return null;
 
     switch (this) {
@@ -153,12 +161,14 @@ enum PButtonVariant {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
-      default:
+      case PButtonVariant.outline:
+      case PButtonVariant.ghost:
+      case PButtonVariant.danger:
         return null;
     }
   }
 
-  BoxBorder? border(bool isDisabled) {
+  BoxBorder? border({required bool isDisabled}) {
     if (this == PButtonVariant.outline) {
       return Border.all(
         color: isDisabled ? AppColors.borderSubtle : AppColors.borderDefault,
@@ -168,7 +178,7 @@ enum PButtonVariant {
     return null;
   }
 
-  Color textColor(bool isDisabled) {
+  Color textColor({required bool isDisabled}) {
     if (isDisabled) return AppColors.textDisabled;
 
     switch (this) {
@@ -177,7 +187,8 @@ enum PButtonVariant {
         return AppColors.textOnAccent;
       case PButtonVariant.danger:
         return AppColors.error;
-      default:
+      case PButtonVariant.outline:
+      case PButtonVariant.ghost:
         return AppColors.textPrimary;
     }
   }
@@ -286,7 +297,7 @@ class _PIconButtonState extends State<PIconButton> {
 
     if (widget.tooltip != null) {
       return Tooltip(
-        message: widget.tooltip!,
+        message: widget.tooltip,
         child: button,
       );
     }

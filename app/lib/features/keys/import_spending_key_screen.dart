@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -77,14 +79,14 @@ class _ImportSpendingKeyScreenState
       );
 
       if (!mounted) return;
-      FfiBridge.rescan(walletId, birthday).catchError((error) {
-        if (mounted) {
-          setState(() {
-            _error = 'Rescan failed to start: $error';
-          });
-        }
-      });
-      context.push('/settings/keys/detail?keyId=$keyId');
+        unawaited(FfiBridge.rescan(walletId, birthday).catchError((Object error) {
+          if (mounted) {
+            setState(() {
+              _error = 'Rescan failed to start: $error';
+            });
+          }
+        }));
+        unawaited(context.push('/settings/keys/detail?keyId=$keyId'));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Rescan started from block $birthday'),

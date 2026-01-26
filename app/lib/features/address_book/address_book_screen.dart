@@ -16,11 +16,7 @@ import 'package:zxing2/qrcode.dart';
 
 import '../../core/ffi/ffi_bridge.dart' hide kMaxLabelLength, kMaxNotesLength;
 import '../../design/deep_space_theme.dart';
-import '../../design/tokens/colors.dart';
-import '../../design/tokens/spacing.dart';
-import '../../design/tokens/typography.dart';
 import '../../ui/atoms/p_button.dart';
-import '../../ui/atoms/p_icon_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_bottom_sheet.dart';
@@ -85,7 +81,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
       _showSnackBar('No active wallet');
       return;
     }
-    PBottomSheet.show(
+    PBottomSheet.show<void>(
       context: context,
       title: 'Add Address',
       content: AddEditAddressSheet(
@@ -104,7 +100,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
       _showSnackBar('No active wallet');
       return;
     }
-    PBottomSheet.show(
+    PBottomSheet.show<void>(
       context: context,
       title: 'Edit Address',
       content: AddEditAddressSheet(
@@ -119,7 +115,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
   }
 
   void _showDetailsSheet(AddressEntry entry) {
-    PBottomSheet.show(
+    PBottomSheet.show<void>(
       context: context,
       title: 'Address Details',
       content: AddressDetailsSheet(
@@ -170,7 +166,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       final success = await ref
           .read(addressBookProvider(entry.walletId).notifier)
           .deleteEntry(entry.id);
@@ -194,7 +190,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
     }
     final state = ref.read(addressBookProvider(walletId));
 
-    PBottomSheet.show(
+    PBottomSheet.show<void>(
       context: context,
       title: 'Filter',
       content: FilterSheet(
@@ -305,9 +301,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
               suffixIcon: state.searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                      },
+                      onPressed: _searchController.clear,
                       tooltip: 'Clear',
                     )
                   : null,
@@ -373,7 +367,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
                   vertical: AppSpacing.md,
                 ),
                 itemCount: filteredEntries.length,
-                separatorBuilder: (_, __) =>
+                separatorBuilder: (_, _) =>
                     const SizedBox(height: AppSpacing.md),
                 itemBuilder: (context, index) {
                   final entry = filteredEntries[index];
@@ -1336,11 +1330,11 @@ class _AddressQrScannerScreenState extends State<_AddressQrScannerScreen> {
         subtitle: 'Align the code in the frame',
         showBackButton: true,
       ),
-      body: Container(
+      body: ColoredBox(
         color: Colors.black,
         child: mobile_scanner.MobileScanner(
           controller: _controller,
-          onDetect: (mobile_scanner.BarcodeCapture capture) {
+          onDetect: (capture) {
             if (_handled) return;
             final barcodes = capture.barcodes;
             for (final barcode in barcodes) {

@@ -1,14 +1,11 @@
-/// Seed Confirm Screen - Verify user has backed up their seed phrase
+// Seed Confirm Screen - Verify user has backed up their seed phrase
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
-import '../../../design/tokens/colors.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
 import '../../../ui/organisms/p_app_bar.dart';
@@ -45,8 +42,9 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
   @override
   void dispose() {
     for (final controller in _wordControllers) {
-      controller.removeListener(_onTextChanged);
-      controller.dispose();
+      controller
+        ..removeListener(_onTextChanged)
+        ..dispose();
     }
     _enableScreenshots();
     super.dispose();
@@ -69,7 +67,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
   void _selectRandomWords() {
     // Select 3 random word positions (1-24)
     final random = DateTime.now().millisecondsSinceEpoch;
-    final randomGenerator = (random % 1000000).toInt();
+    final randomGenerator = random % 1000000;
     _selectedIndices = [];
     final used = <int>{};
     
@@ -133,7 +131,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
         // Invalidate walletsExistProvider to refresh it after wallet creation
         ref.invalidate(walletsExistProvider);
         // Ensure app is marked as unlocked
-        ref.read(appUnlockedProvider.notifier).setUnlocked(true);
+        ref.read(appUnlockedProvider.notifier).unlocked = true;
         // Navigate to home
         context.go('/home');
         ScaffoldMessenger.of(context).showSnackBar(
@@ -188,7 +186,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     Text(
-                      'This confirms you\'ve written down your seed phrase correctly.',
+                      "This confirms you've written down your seed phrase correctly.",
                       style: AppTypography.body.copyWith(
                         color: AppColors.textSecondary,
                       ),

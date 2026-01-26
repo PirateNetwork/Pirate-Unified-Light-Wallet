@@ -1,4 +1,4 @@
-/// Seed Display Screen - Show the generated seed phrase to user
+// Seed Display Screen - Show the generated seed phrase to user
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,9 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
-import '../../../design/tokens/colors.dart';
 import '../../../ui/atoms/p_button.dart';
-import '../../../ui/atoms/p_icon_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
@@ -223,7 +221,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                           const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: Text(
-                              'Make sure you\'ve written it down before continuing',
+                              "Make sure you've written it down before continuing",
                               style: AppTypography.caption.copyWith(
                                 color: AppColors.textPrimary,
                               ),
@@ -234,7 +232,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     PButton(
-                      text: 'I\'ve Written It Down',
+                      text: "I've Written It Down",
                       onPressed: _proceed,
                       variant: PButtonVariant.primary,
                       size: PButtonSize.large,

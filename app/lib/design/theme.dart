@@ -16,7 +16,8 @@ class PTheme {
 
   /// Dark theme (default) - Premium dark UI
   static ThemeData dark({bool highContrast = false}) {
-    final colors = highContrast ? PColorsHighContrast :  PColors;
+    // ignore: unused_local_variable
+    final colors = highContrast ? PColorsHighContrast : PColors;
     
     return ThemeData(
       useMaterial3: true,

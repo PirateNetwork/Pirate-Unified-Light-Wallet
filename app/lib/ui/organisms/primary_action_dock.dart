@@ -15,7 +15,7 @@ class PrimaryActionDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border(top: BorderSide(color: AppColors.borderSubtle)),

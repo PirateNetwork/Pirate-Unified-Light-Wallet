@@ -9,11 +9,7 @@ import '../../../design/deep_space_theme.dart';
 import '../../../config/endpoints.dart' as endpoints;
 import '../../../core/ffi/ffi_bridge.dart' as ffi;
 import '../../../core/providers/wallet_providers.dart';
-import '../../../design/tokens/colors.dart';
-import '../../../design/tokens/spacing.dart';
-import '../../../design/tokens/typography.dart';
 import '../../../ui/atoms/p_button.dart';
-import '../../../ui/atoms/p_icon_button.dart';
 import '../../../ui/atoms/p_input.dart';
 import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/molecules/p_card.dart';
@@ -57,14 +53,14 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   }
 
   Future<void> _loadCurrentEndpoint() async {
-    final configAsync = ref.read(lightdEndpointConfigProvider);
-    
-    configAsync.whenData((config) {
-      _endpointController.text = config.displayString;
-      _tlsPinController.text = config.tlsPin ?? '';
+    ref.read(lightdEndpointConfigProvider).whenData((config) {
+      final displayString = config.displayString;
+      final tlsPin = config.tlsPin ?? '';
+      _endpointController.text = displayString;
+      _tlsPinController.text = tlsPin;
       _useTls = config.useTls;
-      _originalEndpoint = config.displayString;
-      _originalTlsPin = config.tlsPin ?? '';
+      _originalEndpoint = displayString;
+      _originalTlsPin = tlsPin;
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
       if (mounted) setState(() {});
@@ -208,7 +204,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
             _spkiPinMessage =
                 'This endpoint likely does not support TLS. Disable TLS or use a TLS-enabled endpoint. ${errorMessage ?? ''}'.trim();
           } else {
-            _spkiPinMessage = errorMessage?.isNotEmpty == true
+            _spkiPinMessage = errorMessage?.isNotEmpty ?? false
                 ? 'SPKI pin not available: $errorMessage'
                 : 'SPKI pin not available for this endpoint.';
           }
@@ -344,7 +340,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
             children: [
               // Current status card
               endpointConfigAsync.when(
-                data: (config) => _buildStatusCard(config),
+                data: _buildStatusCard,
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => _buildErrorCard(e.toString()),
               ),
@@ -504,7 +500,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                             const SizedBox(width: AppSpacing.sm),
                             Expanded(
                               child: Text(
-                                'TLS pinning adds extra security by verifying the server\'s certificate. '
+                                "TLS pinning adds extra security by verifying the server's certificate. "
                                 'Use Fetch SPKI to grab the pin from the current endpoint.',
                                 style: AppTypography.bodySmall.copyWith(
                                   color: AppColors.warning,

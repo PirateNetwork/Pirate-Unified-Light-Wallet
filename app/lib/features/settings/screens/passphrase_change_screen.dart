@@ -1,4 +1,4 @@
-/// Passphrase change screen
+// Passphrase change screen
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,7 +9,6 @@ import '../../../core/security/biometric_auth.dart';
 import '../../../core/security/duress_passphrase_store.dart';
 import '../../../core/security/passphrase_cache.dart';
 import '../../../design/deep_space_theme.dart';
-import '../../../design/tokens/colors.dart';
 import '../../../features/settings/providers/preferences_providers.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
@@ -90,9 +89,9 @@ class _PassphraseChangeScreenState
     if (password.length >= 12) score++;
     if (password.length >= 16) score++;
 
-    if (RegExp(r'[a-z]').hasMatch(password)) score++;
-    if (RegExp(r'[A-Z]').hasMatch(password)) score++;
-    if (RegExp(r'[0-9]').hasMatch(password)) score++;
+    if (RegExp('[a-z]').hasMatch(password)) score++;
+    if (RegExp('[A-Z]').hasMatch(password)) score++;
+    if (RegExp('[0-9]').hasMatch(password)) score++;
     if (RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) score++;
 
     if (score <= 2) return _PassphraseStrength.weak;
@@ -105,9 +104,9 @@ class _PassphraseChangeScreenState
   bool _meetsRequirements(String password) {
     if (password.length < 12) return false;
     if (_isPalindrome(password)) return false;
-    if (!RegExp(r'[A-Z]').hasMatch(password)) return false;
-    if (!RegExp(r'[a-z]').hasMatch(password)) return false;
-    if (!RegExp(r'[0-9]').hasMatch(password)) return false;
+    if (!RegExp('[A-Z]').hasMatch(password)) return false;
+    if (!RegExp('[a-z]').hasMatch(password)) return false;
+    if (!RegExp('[0-9]').hasMatch(password)) return false;
     if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) return false;
     return true;
   }

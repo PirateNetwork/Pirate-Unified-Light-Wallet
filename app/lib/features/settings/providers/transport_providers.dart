@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/ffi/ffi_bridge.dart';
-import '../../../core/ffi/generated/models.dart' show TunnelMode;
 import '../../../core/providers/wallet_providers.dart';
 
 /// Tor status details for UI.
@@ -367,9 +366,10 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
     try {
       await FfiBridge.cancelSync(walletId);
     } catch (_) {}
-    ref.invalidate(syncStatusProvider);
-    ref.invalidate(syncProgressStreamProvider);
-    ref.invalidate(isSyncRunningProvider);
+    ref
+      ..invalidate(syncStatusProvider)
+      ..invalidate(syncProgressStreamProvider)
+      ..invalidate(isSyncRunningProvider);
   }
 
   String _buildSocks5Url(Map<String, String?> config) {
@@ -384,7 +384,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
     final hasUser = username != null && username.isNotEmpty;
     final hasPass = password != null && password.isNotEmpty;
     final auth = hasUser
-        ? '${Uri.encodeComponent(username)}${hasPass ? ':${Uri.encodeComponent(password!)}' : ''}@'
+        ? '${Uri.encodeComponent(username)}${hasPass ? ':${Uri.encodeComponent(password)}' : ''}@'
         : '';
     final portPart = port.isNotEmpty ? ':$port' : '';
     return 'socks5://$auth$host$portPart';

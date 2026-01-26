@@ -1,11 +1,10 @@
-/// Wallet Shell Screen - Main app shell with FFI integration
-///
-/// Demonstrates the complete FFI wiring with Riverpod providers.
+// Wallet Shell Screen - Main app shell with FFI integration
+//
+// Demonstrates the complete FFI wiring with Riverpod providers.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart'
     show
         TunnelMode,
@@ -424,11 +423,14 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
       TunnelMode_Socks5() => const TunnelMode.tor(),
     };
 
+    final socksUrl = switch (next) {
+      TunnelMode_Socks5(:final url) => url,
+      _ => null,
+    };
+
     ref.read(tunnelModeProvider.notifier).setTunnelMode(
           next,
-          socksUrl: next is TunnelMode_Socks5
-              ? (next as TunnelMode_Socks5).url
-              : null,
+          socksUrl: socksUrl,
         );
 
     ScaffoldMessenger.of(context).showSnackBar(

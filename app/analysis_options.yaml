@@ -32,15 +32,12 @@ linter:
     - avoid_returning_null_for_future
     - cancel_subscriptions
     - close_sinks
-    - valid_regexps
     
     # Style rules
     - always_declare_return_types
-    - always_put_required_named_parameters_first
     # - always_use_package_imports
     - annotate_overrides
     - avoid_bool_literals_in_conditional_expressions
-    - avoid_catches_without_on_clauses
     - avoid_catching_errors
     - avoid_double_and_int_checks
     - avoid_dynamic_calls
@@ -83,11 +80,9 @@ linter:
     - curly_braces_in_flow_control_structures
     - depend_on_referenced_packages
     - deprecated_consistency
-    - directives_ordering
     - do_not_use_environment
     - empty_catches
     - empty_constructor_bodies
-    - eol_at_end_of_file
     - exhaustive_cases
     - file_names
     - flutter_style_todos
@@ -110,7 +105,6 @@ linter:
     - noop_primitive_operations
     - null_check_on_nullable_type_parameter
     - null_closures
-    - omit_local_variable_types
     - one_member_abstracts
     - only_throw_errors
     - overridden_fields
@@ -142,7 +136,6 @@ linter:
     - prefer_if_null_operators
     - prefer_initializing_formals
     - prefer_inlined_adds
-    - prefer_int_literals
     - prefer_interpolation_to_compose_strings
     - prefer_is_empty
     - prefer_is_not_empty

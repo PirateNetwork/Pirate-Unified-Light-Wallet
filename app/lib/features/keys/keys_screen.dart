@@ -119,6 +119,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     } catch (_) {
       orchardKey = null;
     }
+    if (!mounted) return;
 
     final sections = <Widget>[
       if (saplingKey != null && saplingKey.isNotEmpty)
@@ -134,6 +135,9 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
 
     final protection = ScreenshotProtection.protect();
     try {
+      if (!mounted) {
+        return;
+      }
       await PDialog.show<void>(
         context: context,
         title: 'Viewing keys',
@@ -321,7 +325,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     orchardController.dispose();
     birthdayController.dispose();
 
-    if (imported == true) {
+    if (imported ?? false) {
       _showSnack('Watch-only wallet imported.');
     }
   }

@@ -1,4 +1,6 @@
-/// Seed Import Screen - Restore wallet from 24-word mnemonic
+// Seed Import Screen - Restore wallet from 24-word mnemonic
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,11 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../design/deep_space_theme.dart';
-import '../../../design/tokens/colors.dart';
-import '../../../design/tokens/spacing.dart';
-import '../../../design/tokens/typography.dart';
 import '../../../ui/atoms/p_button.dart';
-import '../../../ui/atoms/p_icon_button.dart';
 import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
@@ -51,8 +49,9 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
   @override
   void dispose() {
     for (final controller in _wordControllers) {
-      controller.removeListener(_onTextChanged);
-      controller.dispose();
+      controller
+        ..removeListener(_onTextChanged)
+        ..dispose();
     }
     for (final node in _focusNodes) {
       node.dispose();
@@ -114,7 +113,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
       final hasPassphrase = await FfiBridge.hasAppPassphrase();
       if (!hasPassphrase) {
         if (mounted) {
-          context.push('/onboarding/passphrase');
+          unawaited(context.push('/onboarding/passphrase'));
         }
         return;
       }
@@ -124,7 +123,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
       ref.read(onboardingControllerProvider.notifier).nextStep();
 
       if (mounted) {
-        context.push('/onboarding/birthday');
+      unawaited(context.push('/onboarding/birthday'));
       }
     } catch (e) {
       setState(() {
@@ -215,7 +214,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                     const SizedBox(height: AppSpacing.sm),
 
                     Text(
-                      'Enter the ${_wordCount} words in order.',
+                      'Enter the $_wordCount words in order.',
                       style: AppTypography.body.copyWith(
                         color: AppColors.textSecondary,
                       ),
@@ -392,7 +391,7 @@ class _WordInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.surfaceElevated,
         borderRadius: BorderRadius.circular(8),

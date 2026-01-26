@@ -1,13 +1,12 @@
-/// Passphrase setup screen
+// Passphrase setup screen
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../design/deep_space_theme.dart';
-import '../../../design/tokens/colors.dart';
-import '../../../design/tokens/spacing.dart';
-import '../../../design/tokens/typography.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
@@ -83,9 +82,9 @@ class _PassphraseSetupScreenState
     if (password.length >= 16) score++;
 
     // Complexity
-    if (RegExp(r'[a-z]').hasMatch(password)) score++;
-    if (RegExp(r'[A-Z]').hasMatch(password)) score++;
-    if (RegExp(r'[0-9]').hasMatch(password)) score++;
+    if (RegExp('[a-z]').hasMatch(password)) score++;
+    if (RegExp('[A-Z]').hasMatch(password)) score++;
+    if (RegExp('[0-9]').hasMatch(password)) score++;
     if (RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) score++;
 
     if (score <= 2) return PassphraseStrength.weak;
@@ -153,7 +152,7 @@ class _PassphraseSetupScreenState
           .setPassphrase(_passphraseController.text);
       ref.read(onboardingControllerProvider.notifier).nextStep();
       if (mounted) {
-        context.push('/onboarding/biometrics');
+        unawaited(context.push('/onboarding/biometrics'));
       }
     } catch (e) {
       setState(() {
@@ -398,15 +397,15 @@ class _RequirementsList extends StatelessWidget {
         ),
         _RequirementItem(
           text: 'Uppercase letter',
-          met: RegExp(r'[A-Z]').hasMatch(passphrase),
+          met: RegExp('[A-Z]').hasMatch(passphrase),
         ),
         _RequirementItem(
           text: 'Lowercase letter',
-          met: RegExp(r'[a-z]').hasMatch(passphrase),
+          met: RegExp('[a-z]').hasMatch(passphrase),
         ),
         _RequirementItem(
           text: 'Number',
-          met: RegExp(r'[0-9]').hasMatch(passphrase),
+          met: RegExp('[0-9]').hasMatch(passphrase),
         ),
         _RequirementItem(
           text: 'Symbol',

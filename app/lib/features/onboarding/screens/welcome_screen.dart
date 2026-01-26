@@ -1,13 +1,10 @@
-/// Welcome screen - First screen in onboarding
+// Welcome screen - First screen in onboarding
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../design/deep_space_theme.dart';
-import '../../../design/tokens/colors.dart';
-import '../../../design/tokens/spacing.dart';
-import '../../../design/tokens/typography.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
@@ -176,4 +173,3 @@ class _FeatureItem extends StatelessWidget {
     );
   }
 }
-

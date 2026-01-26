@@ -106,7 +106,7 @@ class WindowEffects {
   /// Get window size
   static Future<Size> getSize() async {
     if (!_isDesktop) return Size.zero;
-    return await windowManager.getSize();
+    return windowManager.getSize();
   }
 
   /// Set minimum size

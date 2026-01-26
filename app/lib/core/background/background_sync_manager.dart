@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../ffi/ffi_bridge.dart';
-import '../ffi/generated/models.dart';
 
 /// Background sync configuration
 class BackgroundSyncConfig {
@@ -430,7 +429,7 @@ class BackgroundSyncManager {
 /// Provider for background sync manager
 final backgroundSyncManagerProvider = Provider<BackgroundSyncManager>((ref) {
   final manager = BackgroundSyncManager();
-  ref.onDispose(() => manager.dispose());
+  ref.onDispose(manager.dispose);
   return manager;
 });
 

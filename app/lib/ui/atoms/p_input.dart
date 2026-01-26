@@ -94,8 +94,9 @@ class _PInputState extends State<PInput> {
     if (_isInternalController) {
       _internalController.dispose();
     }
-    _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
+    _focusNode
+      ..removeListener(_onFocusChange)
+      ..dispose();
     super.dispose();
   }
 
@@ -177,4 +178,3 @@ class _PInputState extends State<PInput> {
     );
   }
 }
-

@@ -253,7 +253,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
       },
     );
     controller.dispose();
-    return result == true;
+    return result ?? false;
   }
 
   Future<void> _exportKeys(KeyGroupInfo key) async {
@@ -265,7 +265,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     try {
       final isDecoy = ref.read(decoyModeProvider);
       final export = isDecoy
-          ? DecoyData.exportKeyGroup(key.id.toInt())
+          ? DecoyData.exportKeyGroup(key.id)
           : await FfiBridge.exportKeyGroupKeys(
               walletId: walletId,
               keyId: key.id,
@@ -308,7 +308,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
         protection.dispose();
       }
     } catch (e) {
-      setState(() => _error = 'Failed to export keys: ${e.toString()}');
+      setState(() => _error = 'Failed to export keys: $e');
     }
   }
 
@@ -497,7 +497,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
             : width >= 600
                 ? 2
                 : 1;
-        final spacing = PSpacing.sm;
+        const spacing = PSpacing.sm;
         final rows = <Widget>[];
 
         for (var i = 0; i < actions.length; i += columns) {

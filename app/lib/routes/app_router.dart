@@ -48,7 +48,6 @@ import '../features/settings/screens/privacy_shield_screen.dart';
 import '../features/unlock/unlock_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../core/providers/wallet_providers.dart';
-import '../ui/motion/curves.dart';
 import '../ui/motion/durations.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -72,12 +71,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
       
       // If wallets exist and we're on onboarding, redirect to unlock
-      if (walletsExistValue == true && isOnboarding && !appUnlockedValue) {
+      if ((walletsExistValue ?? false) && isOnboarding && !appUnlockedValue) {
         return '/unlock';
       }
       
       // If wallets exist and app is not unlocked, redirect to unlock (unless already there)
-      if (walletsExistValue == true && !appUnlockedValue && !isUnlock && !isOnboarding) {
+      if ((walletsExistValue ?? false) && !appUnlockedValue && !isUnlock && !isOnboarding) {
         return '/unlock';
       }
       
@@ -570,12 +569,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 });
 
 /// Build page with custom transition
-CustomTransitionPage _buildPageWithTransition({
+CustomTransitionPage<void> _buildPageWithTransition({
   required BuildContext context,
   required GoRouterState state,
   required Widget child,
 }) {
-  return CustomTransitionPage(
+  return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {

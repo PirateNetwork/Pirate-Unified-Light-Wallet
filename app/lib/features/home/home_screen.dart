@@ -23,14 +23,12 @@ import '../../core/ffi/generated/models.dart'
     show
         SyncStage,
         SyncStatus,
-        TunnelMode,
         TunnelMode_I2p,
         TunnelMode_Socks5,
         TunnelMode_Tor,
         TxInfo;
 import '../../core/providers/wallet_providers.dart';
 import '../settings/providers/transport_providers.dart';
-import '../address_book/providers/address_book_provider.dart';
 
 /// Home screen
 class HomeScreen extends StatefulWidget {
@@ -49,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;
-    final textScale = mediaQuery.textScaleFactor;
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
     final gutter = PSpacing.responsiveGutter(screenWidth);
     final headerVerticalPadding =
         PSpacing.isDesktop(screenWidth) ? PSpacing.lg : PSpacing.md;
@@ -71,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
           delegate: PSliverHeaderDelegate(
             maxExtentHeight: headerExtent,
             minExtentHeight: headerExtent,
-            builder: (context, shrinkOffset, overlapsContent) {
+            builder: (context, shrinkOffset, {required overlapsContent}) {
               return _HomeHeader(
                 padding: EdgeInsets.fromLTRB(
                   gutter,
@@ -221,7 +219,7 @@ class _HomeHeader extends ConsumerWidget {
     final syncStatus = syncStatusAsync.when(
       data: (status) => status,
       loading: () => null,
-      error: (_, __) => null,
+      error: (_, _) => null,
     );
 
     final decoySyncStatus =
@@ -229,26 +227,24 @@ class _HomeHeader extends ConsumerWidget {
     final endpointConfig = endpointConfigAsync.value;
     final i2pEndpoint = transportConfig.i2pEndpoint.trim();
     final i2pEndpointReady =
-        !(tunnelMode is TunnelMode_I2p) || i2pEndpoint.isNotEmpty;
+        tunnelMode is! TunnelMode_I2p || i2pEndpoint.isNotEmpty;
     final usesPrivacyTunnel = (tunnelMode is TunnelMode_Tor) ||
         (tunnelMode is TunnelMode_I2p) ||
         (tunnelMode is TunnelMode_Socks5);
     final tunnelReady =
-        (!(tunnelMode is TunnelMode_Tor) || torStatus.isReady) &&
+        (tunnelMode is! TunnelMode_Tor || torStatus.isReady) &&
             i2pEndpointReady;
     final tunnelError = !isDecoy &&
         ((tunnelMode is TunnelMode_Tor && torStatus.status == 'error') ||
             (tunnelMode is TunnelMode_I2p && !i2pEndpointReady));
 
     final hasEndpoint = endpointConfig != null || endpointConfigAsync.hasValue;
-    final effectiveHasEndpoint = isDecoy
-        ? true
-        : (tunnelMode is TunnelMode_I2p ? i2pEndpointReady : hasEndpoint);
+    final effectiveHasEndpoint = isDecoy || (tunnelMode is TunnelMode_I2p ? i2pEndpointReady : hasEndpoint);
     final tunnelBlocked = !isDecoy && usesPrivacyTunnel && !tunnelReady;
     final displaySyncStatus =
         isDecoy ? decoySyncStatus : (tunnelBlocked ? null : syncStatus);
     final hasStatus = displaySyncStatus != null &&
-        (displaySyncStatus!.targetHeight > BigInt.zero ||
+        (displaySyncStatus.targetHeight > BigInt.zero ||
             displaySyncStatus.localHeight > BigInt.zero);
     final privacyStatus = isDecoy
         ? (usesPrivacyTunnel ? PrivacyStatus.private : PrivacyStatus.limited)
@@ -279,7 +275,7 @@ class _HomeHeader extends ConsumerWidget {
     final balanceData = balanceAsync.when(
       data: (b) => b,
       loading: () => null,
-      error: (_, __) => null,
+      error: (_, _) => null,
     );
     final totalBalance = balanceData?.total ?? BigInt.zero;
     final spendableBalance = balanceData?.spendable ?? BigInt.zero;
@@ -295,7 +291,7 @@ class _HomeHeader extends ConsumerWidget {
       balanceHelper = 'Pending: ${pendingArrr.toStringAsFixed(8)} ARRR';
     }
 
-    final headerSurface = Container(
+    final headerSurface = DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.backgroundBase.withValues(alpha: 0.85),
       ),
@@ -388,19 +384,19 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
     final syncStatus = syncStatusAsync.when(
       data: (status) => status,
       loading: () => null,
-      error: (_, __) => null,
+      error: (_, _) => null,
     );
 
     final decoySyncStatus =
         isDecoy ? _buildDecoySyncStatus(decoyHeight) : null;
     final i2pEndpoint = transportConfig.i2pEndpoint.trim();
     final i2pEndpointReady =
-        !(tunnelMode is TunnelMode_I2p) || i2pEndpoint.isNotEmpty;
+        tunnelMode is! TunnelMode_I2p || i2pEndpoint.isNotEmpty;
     final usesPrivacyTunnel = (tunnelMode is TunnelMode_Tor) ||
         (tunnelMode is TunnelMode_I2p) ||
         (tunnelMode is TunnelMode_Socks5);
     final tunnelReady =
-        (!(tunnelMode is TunnelMode_Tor) || torStatus.isReady) &&
+        (tunnelMode is! TunnelMode_Tor || torStatus.isReady) &&
             i2pEndpointReady;
     final tunnelBlocked = !isDecoy && usesPrivacyTunnel && !tunnelReady;
 
@@ -473,7 +469,7 @@ class _HomeTransactionsSection extends ConsumerWidget {
     final transactions = transactionsAsync.when(
       data: (txs) => txs,
       loading: () => <TxInfo>[],
-      error: (_, __) => <TxInfo>[],
+      error: (_, _) => <TxInfo>[],
     );
 
     if (transactions.isEmpty) {
@@ -613,7 +609,7 @@ color: AppColors.textSecondary,
                     ),
                   ),
                 // Show percentage whenever we have valid progress data (during sync or when monitoring)
-                if (targetHeight.toInt() > 0) ...[
+                if (targetHeight > 0) ...[
                   const SizedBox(width: PSpacing.sm),
                   Text(
                     '${(progress * 100).toStringAsFixed(1)}%',
@@ -647,12 +643,12 @@ color: AppColors.textSecondary,
               children: [
                 Expanded(
                   child: Text(
-                    (targetHeight.toInt() > 0 && currentHeight.toInt() > 0)
-                        ? 'Block ${currentHeight.toString()} / ${targetHeight.toString()}'
-                        : (currentHeight.toInt() > 0)
-                            ? 'Block ${currentHeight.toString()}'
-                            : (targetHeight.toInt() > 0)
-                                ? 'Block 0 / ${targetHeight.toString()}'
+                    (targetHeight > 0 && currentHeight > 0)
+                        ? 'Block $currentHeight / $targetHeight'
+                        : (currentHeight > 0)
+                            ? 'Block $currentHeight'
+                            : (targetHeight > 0)
+                                ? 'Block 0 / $targetHeight'
                                 : 'Block 0',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -761,8 +757,6 @@ class _TransactionItemWithLabel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final walletId = ref.watch(activeWalletProvider);
-    
     // Look up label from address book if this is a sent transaction
     // Note: TxInfo doesn't have toAddress field - would need transaction details
     String? addressLabel;
@@ -775,23 +769,12 @@ class _TransactionItemWithLabel extends ConsumerWidget {
     // }
     
     // Convert PlatformInt64 to int for calculations
-    int amountValue;
-    if (tx.amount is int) {
-      amountValue = tx.amount as int;
-    } else {
-      amountValue = (tx.amount as dynamic).toInt() as int;
-    }
-    
+    final amountValue = tx.amount;
     final isReceived = amountValue >= 0;
     final amount = amountValue.abs() / 100000000.0;
     
     // Convert PlatformInt64 timestamp to DateTime
-    int timestampValue;
-    if (tx.timestamp is int) {
-      timestampValue = tx.timestamp as int;
-    } else {
-      timestampValue = (tx.timestamp as dynamic).toInt() as int;
-    }
+    final timestampValue = tx.timestamp;
     final timestamp = DateTime.fromMillisecondsSinceEpoch(timestampValue * 1000);
 
     return TransactionRowV2(

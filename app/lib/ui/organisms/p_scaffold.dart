@@ -4,7 +4,6 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
-import '../atoms/p_icon_button.dart';
 
 /// Pirate Wallet Scaffold with custom titlebar for desktop
 class PScaffold extends StatelessWidget {
