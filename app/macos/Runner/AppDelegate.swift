@@ -51,6 +51,10 @@ class AppDelegate: FlutterAppDelegate {
     return true
   }
 
+  override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+    return true
+  }
+
   private func handleKeystoreCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "storeKey":
