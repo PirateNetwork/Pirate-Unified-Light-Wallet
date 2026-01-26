@@ -92,6 +92,22 @@ ensure_flathub_remote() {
     fi
 }
 
+stage_rust_linux() {
+    local bundle_dir="$1"
+    log "Building Rust FFI library..."
+    (cd "$PROJECT_ROOT/crates" && cargo build --release --package pirate-ffi-frb --features frb --no-default-features --locked)
+    local so_path="$PROJECT_ROOT/crates/target/release/libpirate_ffi_frb.so"
+    if [ ! -f "$so_path" ]; then
+        error "Rust library not found at $so_path"
+    fi
+    if command -v strip &> /dev/null; then
+        strip --strip-unneeded "$so_path" || warn "Failed to strip $so_path"
+    fi
+    local dest_dir="$bundle_dir/lib"
+    mkdir -p "$dest_dir"
+    cp "$so_path" "$dest_dir/"
+}
+
 log "Fetching Tor/I2P assets..."
 "$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 
@@ -114,6 +130,8 @@ BUNDLE_DIR="build/linux/x64/release/bundle"
 if [ ! -d "$BUNDLE_DIR" ]; then
     error "Build failed: Bundle directory not found"
 fi
+
+stage_rust_linux "$BUNDLE_DIR"
 
 OUTPUT_DIR="$PROJECT_ROOT/dist/linux"
 mkdir -p "$OUTPUT_DIR"

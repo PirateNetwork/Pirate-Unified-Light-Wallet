@@ -231,6 +231,15 @@ if ($Android -or $All) {
                 Write-ColorOutput "Red" "Library not found at $SO_SOURCE"
                 exit 1
             }
+            $stripper = Join-Path $ndkBin "llvm-strip.exe"
+            if (Test-Path $stripper) {
+                & $stripper --strip-unneeded $SO_SOURCE
+                if ($LASTEXITCODE -ne 0) {
+                    Write-ColorOutput "Yellow" "Warning: Failed to strip symbols for $SO_SOURCE"
+                }
+            } else {
+                Write-ColorOutput "Yellow" "Warning: llvm-strip not found at $stripper; skipping strip"
+            }
             $DEST_DIR = Join-Path $APP_DIR "android\\app\\src\\main\\jniLibs\\$($arch.ABI)"
             if (-not (Test-Path $DEST_DIR)) {
                 New-Item -ItemType Directory -Path $DEST_DIR -Force | Out-Null

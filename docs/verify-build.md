@@ -30,6 +30,13 @@ Get-Content <checksums-file>
 
 Compare the hash for your artifact filename to the printed checksum.
 
+## Unsigned vs signed artifacts
+
+Reproducible builds correspond to the `-unsigned` artifacts. Signed releases
+(code-signed, notarized, or store-signed) will not be byte-for-byte identical.
+We publish checksums for both. To reproduce locally, compare against the
+`-unsigned` checksums.
+
 ## Reproduce with Nix
 
 We provide a Nix flake for pinned, reproducible builds.
@@ -53,6 +60,7 @@ nix build .#windows-msix
 ```
 
 The build output is available under the `result/` symlink.
+Look for `*-unsigned.*` artifacts when comparing reproducible builds.
 
 ## Compare build outputs
 

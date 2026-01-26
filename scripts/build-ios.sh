@@ -74,6 +74,7 @@ flutter build ios --release --no-codesign
 
 # Check for signing configuration
 SIGN="${1:-auto}"  # auto, true, or false
+SIGNED=false
 if [ "$REPRODUCIBLE" = "1" ]; then
     SIGN=false
 fi
@@ -104,6 +105,7 @@ if [ "$SIGN" = "true" ]; then
         -exportPath build/ios/ipa
     
     IPA_FILE="build/ios/ipa/Runner.ipa"
+    SIGNED=true
 else
     # Create unsigned IPA
     log "Creating unsigned IPA..."
@@ -112,8 +114,7 @@ else
     mkdir -p Payload
     cp -r Runner.app Payload/
     zip_dir_deterministic "Payload" "Runner.ipa"
-    
-    IPA_FILE="Runner.ipa"
+    IPA_FILE="$APP_DIR/build/ios/iphoneos/Runner.ipa"
     cd "$APP_DIR"
 fi
 
@@ -125,7 +126,11 @@ fi
 OUTPUT_DIR="$PROJECT_ROOT/dist/ios"
 mkdir -p "$OUTPUT_DIR"
 
-OUTPUT_NAME="pirate-unified-wallet-ios.ipa"
+OUTPUT_NAME="pirate-unified-wallet-ios"
+if [ "$SIGNED" != "true" ]; then
+    OUTPUT_NAME="${OUTPUT_NAME}-unsigned"
+fi
+OUTPUT_NAME="${OUTPUT_NAME}.ipa"
 
 # Copy artifacts
 log "Copying artifacts..."

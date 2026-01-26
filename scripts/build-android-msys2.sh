@@ -98,11 +98,17 @@ build_target() {
   local rust_target="$1"
   local abi="$2"
   echo "Building $rust_target ($abi)..."
-  cargo build --release --target "$rust_target" --package pirate-ffi-frb --features frb --no-default-features
+  cargo build --release --target "$rust_target" --package pirate-ffi-frb --features frb --no-default-features --locked
   local so_path="$CRATES_DIR/target/$rust_target/release/libpirate_ffi_frb.so"
   if [[ ! -f "$so_path" ]]; then
     echo "libpirate_ffi_frb.so not found at $so_path" >&2
     exit 1
+  fi
+  local strip_tool="$NDK_BIN/llvm-strip${EXE_SUFFIX}"
+  if [[ -x "$strip_tool" ]]; then
+    "$strip_tool" --strip-unneeded "$so_path" || echo "Failed to strip $so_path" >&2
+  else
+    echo "llvm-strip not found at $strip_tool; skipping strip" >&2
   fi
   local dest_dir="$JNI_DIR/$abi"
   mkdir -p "$dest_dir"

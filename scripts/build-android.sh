@@ -54,6 +54,10 @@ flutter clean
 log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
+# Build Rust FFI libraries for Android
+log "Building Rust Android libraries..."
+bash "$SCRIPT_DIR/build-rust-android.sh"
+
 # Build based on type
 if [ "$BUILD_TYPE" = "bundle" ]; then
     log "Building Android App Bundle..."

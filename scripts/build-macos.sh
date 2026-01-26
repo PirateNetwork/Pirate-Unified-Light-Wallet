@@ -54,6 +54,22 @@ REPRODUCIBLE="${REPRODUCIBLE:-0}"
 log "Fetching Tor/I2P assets..."
 "$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 
+stage_rust_macos() {
+    local app_path="$1"
+    log "Building Rust FFI library..."
+    (cd "$PROJECT_ROOT/crates" && cargo build --release --package pirate-ffi-frb --features frb --no-default-features --locked)
+    local dylib_path="$PROJECT_ROOT/crates/target/release/libpirate_ffi_frb.dylib"
+    if [ ! -f "$dylib_path" ]; then
+        error "Rust library not found at $dylib_path"
+    fi
+    if command -v strip &> /dev/null; then
+        strip -x "$dylib_path" || warn "Failed to strip $dylib_path"
+    fi
+    local dest_dir="$app_path/Contents/Frameworks"
+    mkdir -p "$dest_dir"
+    cp "$dylib_path" "$dest_dir/"
+}
+
 cd "$APP_DIR"
 
 # Clean previous builds
@@ -74,8 +90,11 @@ if [ ! -d "$APP_PATH" ]; then
     error "Build failed: App not found at $APP_PATH"
 fi
 
+stage_rust_macos "$APP_PATH"
+
 # Sign the app if certificate is available
 SIGN="${1:-auto}"
+SIGNED=false
 if [ "$REPRODUCIBLE" = "1" ]; then
     SIGN=false
 fi
@@ -103,13 +122,18 @@ if [ "$SIGN" = "true" ]; then
     codesign --verify --verbose=4 "$APP_PATH"
     
     log "Code signing complete"
+    SIGNED=true
 fi
 
 # Create DMG
 log "Creating DMG..."
 
 DMG_NAME="Pirate Unified Wallet"
-DMG_FILE="$PROJECT_ROOT/dist/macos/pirate-unified-wallet-macos.dmg"
+OUTPUT_NAME="pirate-unified-wallet-macos"
+if [ "$SIGNED" != "true" ]; then
+    OUTPUT_NAME="${OUTPUT_NAME}-unsigned"
+fi
+DMG_FILE="$PROJECT_ROOT/dist/macos/${OUTPUT_NAME}.dmg"
 
 mkdir -p "$PROJECT_ROOT/dist/macos"
 
@@ -173,11 +197,11 @@ fi
 # Generate SHA-256 checksum
 log "Generating checksum..."
 cd "$PROJECT_ROOT/dist/macos"
-shasum -a 256 "pirate-unified-wallet-macos.dmg" > "pirate-unified-wallet-macos.dmg.sha256"
+shasum -a 256 "${OUTPUT_NAME}.dmg" > "${OUTPUT_NAME}.dmg.sha256"
 
 log "Build complete!"
 log "DMG: $DMG_FILE"
-log "SHA-256: $(cat pirate-unified-wallet-macos.dmg.sha256)"
+log "SHA-256: $(cat ${OUTPUT_NAME}.dmg.sha256)"
 
 if [ "$SIGN" = "true" ]; then
     log "DMG is signed"
