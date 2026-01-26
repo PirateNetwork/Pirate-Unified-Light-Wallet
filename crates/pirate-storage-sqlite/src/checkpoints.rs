@@ -217,11 +217,9 @@ impl<'a> CheckpointManager<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
 
     fn setup_test_db() -> Connection {
-        let file = NamedTempFile::new().unwrap();
-        let conn = Connection::open(file.path()).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
 
         // Create required tables
         conn.execute(
