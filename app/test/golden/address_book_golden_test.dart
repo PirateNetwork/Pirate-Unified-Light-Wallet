@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod/riverpod.dart';
 import 'package:golden_toolkit/golden_toolkit.dart';
 
 import 'package:pirate_wallet/design/theme.dart';
@@ -80,7 +81,7 @@ class MockAddressBookNotifier extends AddressBookNotifier {
 }
 
 /// Create test provider overrides
-List createTestOverrides(List<AddressEntry> entries) {
+List<Override> createTestOverrides(List<AddressEntry> entries) {
   return [
     addressBookProvider(testWalletId).overrideWith(
       () => MockAddressBookNotifier(entries),
