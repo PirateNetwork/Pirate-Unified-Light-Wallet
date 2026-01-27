@@ -31,11 +31,30 @@ allow = [
     "Unicode-DFS-2016",
 ]
 confidence-threshold = 0.8
-exceptions = []
+unused-allowed-license = "allow"
+exceptions = [{ crate = "orchard@0.6.0", allow = ["LicenseRef-BOSL-1.0"] }]
 
 [licenses.private]
 ignore = false
 registries = []
+
+[[licenses.clarify]]
+crate = "allo-isolate@0.1.27"
+expression = "Apache-2.0"
+license-files = [{ path = "LICENSE", hash = 0x0a6d4ed6 }]
+
+[[licenses.clarify]]
+crate = "bounded-vec-deque@0.1.1"
+expression = "GPL-3.0-or-later OR BSD-3-Clause"
+license-files = [
+    { path = "LICENSE-GPL", hash = 0xc5a651aa },
+    { path = "LICENSE-BSD", hash = 0xe87d5752 },
+]
+
+[[licenses.clarify]]
+crate = "orchard@0.6.0"
+expression = "LicenseRef-BOSL-1.0"
+license-files = [{ path = "LICENSE-BOSL", hash = 0xf2d16f6e }]
 
 [bans]
 multiple-versions = "allow"
