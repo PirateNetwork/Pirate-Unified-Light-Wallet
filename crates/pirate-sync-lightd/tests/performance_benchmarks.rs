@@ -81,9 +81,7 @@ fn max_checkpoint_avg_micros() -> u128 {
     }
     if cfg!(windows) {
         20_000
-    } else if is_ci() {
-        2_000
-    } else if cfg!(debug_assertions) {
+    } else if is_ci() || cfg!(debug_assertions) {
         2_000
     } else {
         1_000
@@ -96,9 +94,7 @@ fn max_compact_sync_mem_mb() -> usize {
             return parsed;
         }
     }
-    if is_ci() {
-        1_500
-    } else if cfg!(debug_assertions) {
+    if is_ci() || cfg!(debug_assertions) {
         1_500
     } else {
         500
@@ -111,9 +107,7 @@ fn max_memory_increase_mb() -> usize {
             return parsed;
         }
     }
-    if is_ci() {
-        1_500
-    } else if cfg!(debug_assertions) {
+    if is_ci() || cfg!(debug_assertions) {
         1_500
     } else {
         100
