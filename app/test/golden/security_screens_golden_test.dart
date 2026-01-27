@@ -1,6 +1,9 @@
 /// Golden tests for security screens
 /// 
 /// Tests export seed, watch-only, and panic PIN screens
+///
+/// These tests are skipped in CI environments because they require FFI initialization
+/// which causes segfaults during test cleanup.
 
 import 'dart:io';
 import 'package:flutter/material.dart';

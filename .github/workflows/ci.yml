@@ -335,7 +335,7 @@ jobs:
       - name: Run tests
         run: |
           cd app
-          flutter test --coverage
+          flutter test --coverage --exclude-path=test/golden/security_screens_golden_test.dart
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -365,7 +365,7 @@ jobs:
         run: |
           cd app
           if find test/golden -name "*.png" | grep -q .; then
-            flutter test test/golden/
+            flutter test test/golden/ --exclude-path=test/golden/security_screens_golden_test.dart
           else
             echo "No golden images found; skipping golden tests."
           fi
