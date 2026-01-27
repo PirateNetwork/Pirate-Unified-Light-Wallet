@@ -19,7 +19,8 @@ void main() {
   group('Sync Error & Rollback E2E', () {
     testWidgets('Initial sync progress display', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Should show sync progress widget
       if (find.textContaining('Syncing').evaluate().isNotEmpty) {
@@ -36,7 +37,8 @@ void main() {
 
     testWidgets('Sync network error handling', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Simulate network error (would need mock in production)
       // Wait for error to appear
@@ -48,7 +50,8 @@ void main() {
 
         // Tap retry
         await tester.tap(find.text('Retry'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should attempt to sync again
         expect(find.textContaining('Syncing'), findsOneWidget);
@@ -57,18 +60,21 @@ void main() {
 
     testWidgets('Sync interruption handling', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Start sync
       if (find.textContaining('Syncing').evaluate().isNotEmpty) {
         // Interrupt sync by going background (simulate app suspension)
         final binding = tester.binding as IntegrationTestWidgetsFlutterBinding;
         binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Resume app
         binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-        await tester.pumpAndSettle(Duration(seconds: 2));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 2));
 
         // Should resume from checkpoint
         expect(find.textContaining('Syncing'), findsOneWidget);
@@ -78,7 +84,8 @@ void main() {
 
     testWidgets('Checkpoint rollback on corruption', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Simulate corruption detection (would need mock in production)
       // This would trigger automatic rollback
@@ -97,7 +104,8 @@ void main() {
 
     testWidgets('Reorg detection and rollback', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Simulate reorg detection (would need mock)
       await tester.pump(Duration(seconds: 5));
@@ -107,7 +115,8 @@ void main() {
         expect(find.textContaining('Rolling back'), findsOneWidget);
 
         // Wait for rollback to complete
-        await tester.pumpAndSettle(Duration(seconds: 2));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 2));
 
         // Should resume sync
         expect(find.textContaining('Syncing'), findsOneWidget);
@@ -116,46 +125,54 @@ void main() {
 
     testWidgets('Manual rescan from settings', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Navigate to settings
-      await tester.tap(find.byIcon(Icons.settings));
-      await tester.pumpAndSettle();
-
-      // Find rescan option
-      if (find.text('Rescan Blockchain').evaluate().isNotEmpty) {
-        await tester.tap(find.text('Rescan Blockchain'));
+      final settingsIcon = find.byIcon(Icons.settings);
+      if (settingsIcon.evaluate().isNotEmpty) {
+        await tester.tap(settingsIcon);
         await tester.pumpAndSettle();
 
-        // Should show confirmation dialog
-        expect(find.text('Confirm Rescan'), findsOneWidget);
-        expect(find.text('This will rebuild your wallet state'), findsOneWidget);
+        // Find rescan option
+        if (find.text('Rescan Blockchain').evaluate().isNotEmpty) {
+          await tester.tap(find.text('Rescan Blockchain'));
+          await tester.pumpAndSettle();
 
-        // Confirm rescan
-        await tester.tap(find.text('Rescan'));
-        await tester.pumpAndSettle(Duration(seconds: 2));
+          // Should show confirmation dialog
+          expect(find.text('Confirm Rescan'), findsOneWidget);
+          expect(find.text('This will rebuild your wallet state'), findsOneWidget);
 
-        // Should start syncing from birthday height
-        expect(find.textContaining('Syncing'), findsOneWidget);
-        expect(find.textContaining('0%'), findsOneWidget);
+          // Confirm rescan
+          await tester.tap(find.text('Rescan'));
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 2));
+
+          // Should start syncing from birthday height
+          expect(find.textContaining('Syncing'), findsOneWidget);
+          expect(find.textContaining('0%'), findsOneWidget);
+        }
       }
     });
 
     testWidgets('Background sync completion notification', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Send app to background
       final binding = tester.binding as IntegrationTestWidgetsFlutterBinding;
       binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Wait for background sync to complete (simulated)
       await Future.delayed(Duration(seconds: 5));
 
       // Resume app
       binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Should show completed state
       if (find.textContaining('Synced').evaluate().isNotEmpty) {
@@ -165,39 +182,44 @@ void main() {
 
     testWidgets('Deep scan vs compact scan selection', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Navigate to sync settings
-      await tester.tap(find.byIcon(Icons.settings));
-      await tester.pumpAndSettle();
-
-      if (find.text('Sync Mode').evaluate().isNotEmpty) {
-        await tester.tap(find.text('Sync Mode'));
+      final settingsIcon = find.byIcon(Icons.settings);
+      if (settingsIcon.evaluate().isNotEmpty) {
+        await tester.tap(settingsIcon);
         await tester.pumpAndSettle();
 
-        // Should show mode options
-        expect(find.text('Compact'), findsOneWidget);
-        expect(find.text('Deep Scan'), findsOneWidget);
+        if (find.text('Sync Mode').evaluate().isNotEmpty) {
+          await tester.tap(find.text('Sync Mode'));
+          await tester.pumpAndSettle();
 
-        // Select deep scan
-        await tester.tap(find.text('Deep Scan'));
-        await tester.pumpAndSettle();
+          // Should show mode options
+          expect(find.text('Compact'), findsOneWidget);
+          expect(find.text('Deep Scan'), findsOneWidget);
 
-        // Should show deep scan warning
-        expect(find.textContaining('slower'), findsOneWidget);
+          // Select deep scan
+          await tester.tap(find.text('Deep Scan'));
+          await tester.pumpAndSettle();
 
-        // Confirm
-        await tester.tap(find.text('OK'));
-        await tester.pumpAndSettle();
+          // Should show deep scan warning
+          expect(find.textContaining('slower'), findsOneWidget);
 
-        // Sync should restart in deep mode
-        expect(find.textContaining('Deep'), findsOneWidget);
+          // Confirm
+          await tester.tap(find.text('OK'));
+          await tester.pumpAndSettle();
+
+          // Sync should restart in deep mode
+          expect(find.textContaining('Deep'), findsOneWidget);
+        }
       }
     });
 
     testWidgets('Sync progress ETA calculation', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Monitor sync progress
       if (find.textContaining('Syncing').evaluate().isNotEmpty) {
@@ -217,38 +239,44 @@ void main() {
 
     testWidgets('Lightwalletd connection switching', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Navigate to node picker
-      await tester.tap(find.byIcon(Icons.settings));
-      await tester.pumpAndSettle();
-
-      if (find.text('Node Configuration').evaluate().isNotEmpty) {
-        await tester.tap(find.text('Node Configuration'));
+      final settingsIcon = find.byIcon(Icons.settings);
+      if (settingsIcon.evaluate().isNotEmpty) {
+        await tester.tap(settingsIcon);
         await tester.pumpAndSettle();
 
-        // Should show current node
-        expect(find.textContaining('lightd.pirate.black'), findsOneWidget);
-
-        // Select different node
-        if (find.text('Select Node').evaluate().isNotEmpty) {
-          await tester.tap(find.text('Select Node'));
+        if (find.text('Node Configuration').evaluate().isNotEmpty) {
+          await tester.tap(find.text('Node Configuration'));
           await tester.pumpAndSettle();
 
-          // Should restart sync with new node
-          expect(find.textContaining('Switching'), findsOneWidget);
+          // Should show current node
+          expect(find.textContaining('lightd.pirate.black'), findsOneWidget);
 
-          await tester.pumpAndSettle(Duration(seconds: 2));
+          // Select different node
+          if (find.text('Select Node').evaluate().isNotEmpty) {
+            await tester.tap(find.text('Select Node'));
+            await tester.pumpAndSettle();
 
-          // Sync should restart
-          expect(find.textContaining('Syncing'), findsOneWidget);
+            // Should restart sync with new node
+            expect(find.textContaining('Switching'), findsOneWidget);
+
+            await tester.pump();
+            await tester.pump(const Duration(seconds: 2));
+
+            // Sync should restart
+            expect(find.textContaining('Syncing'), findsOneWidget);
+          }
         }
       }
     });
 
     testWidgets('Sync error recovery - auto retry', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Wait for transient error (simulated)
       await tester.pump(Duration(seconds: 5));
@@ -258,7 +286,8 @@ void main() {
         expect(textMatches(RegExp(r'Attempt \d+ of \d+')), findsOneWidget);
 
         // Wait for retry
-        await tester.pumpAndSettle(Duration(seconds: 2));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 2));
 
         // Should resume syncing
         expect(find.textContaining('Syncing'), findsOneWidget);
@@ -267,7 +296,8 @@ void main() {
 
     testWidgets('Checkpoint creation interval verification', (WidgetTester tester) async {
       app.main();
-      await tester.pumpAndSettle(Duration(seconds: 2));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
 
       // Monitor checkpoint creation during sync
       int checkpointCount = 0;

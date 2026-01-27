@@ -23,7 +23,9 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _installFlutterErrorLogging();
 
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+  final isTest = Platform.environment.containsKey('FLUTTER_TEST');
+
+  if (!isTest && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     _singleInstanceLock = await SingleInstanceLock.acquire();
     if (_singleInstanceLock == null) {
       stderr.writeln('Pirate Wallet is already running.');
@@ -32,7 +34,7 @@ void main() async {
   }
 
   // Desktop window setup
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+  if (!isTest && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     await windowManager.ensureInitialized();
 
     const windowOptions = WindowOptions(
