@@ -229,7 +229,7 @@ jobs:
 
       - name: Run cargo audit
         run: |
-          cargo audit --config .cargo/audit.toml --manifest-path crates/Cargo.toml
+          cargo audit --manifest-path crates/Cargo.toml
 
   security-deny:
     name: Security - Cargo Deny
