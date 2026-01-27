@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:pirate_unified_wallet/main.dart' as app;
+import 'package:pirate_wallet/main.dart' as app;
 
 /// Integration test for send and receive flows
 void main() {

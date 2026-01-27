@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:pirate_unified_wallet/main.dart' as app;
+import 'package:pirate_wallet/main.dart' as app;
 
 /// Integration test for sync errors and rollback scenarios
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  Finder textMatches(RegExp pattern) {
+    return find.byWidgetPredicate((widget) {
+      if (widget is Text) {
+        final text = widget.data ?? widget.textSpan?.toPlainText() ?? '';
+        return pattern.hasMatch(text);
+      }
+      return false;
+    });
+  }
 
   group('Sync Error & Rollback E2E', () {
     testWidgets('Initial sync progress display', (WidgetTester tester) async {
@@ -18,7 +27,10 @@ void main() {
         expect(find.textContaining('%'), findsOneWidget);
 
         // Should show current stage
-        expect(find.textMatching('(Headers|Notes|Witness|Verify)'), findsOneWidget);
+        expect(
+          textMatches(RegExp(r'(Headers|Notes|Witness|Verify)')),
+          findsOneWidget,
+        );
       }
     });
 
@@ -193,10 +205,13 @@ void main() {
         await tester.pump(Duration(seconds: 3));
 
         // Should show ETA after sufficient progress
-        expect(find.textMatching(r'\d+ (second|minute|hour)s? remaining'), findsOneWidget);
+        expect(
+          textMatches(RegExp(r'\d+ (second|minute|hour)s? remaining')),
+          findsOneWidget,
+        );
 
         // Should show blocks/sec rate
-        expect(find.textMatching(r'\d+ blocks?/sec'), findsOneWidget);
+        expect(textMatches(RegExp(r'\d+ blocks?/sec')), findsOneWidget);
       }
     });
 
@@ -240,7 +255,7 @@ void main() {
 
       // Should automatically retry after transient error
       if (find.textContaining('Retrying').evaluate().isNotEmpty) {
-        expect(find.textMatching(r'Attempt \d+ of \d+'), findsOneWidget);
+        expect(textMatches(RegExp(r'Attempt \d+ of \d+')), findsOneWidget);
 
         // Wait for retry
         await tester.pumpAndSettle(Duration(seconds: 2));
