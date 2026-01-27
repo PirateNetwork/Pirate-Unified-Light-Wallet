@@ -8,10 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../design/deep_space_theme.dart';
+import '../../../design/tokens/spacing.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/crypto/bip39_wordlist.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/security/screenshot_protection.dart';
 import '../onboarding_flow.dart';
@@ -265,6 +267,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                           index: index,
                           controller: _wordControllers[index],
                           focusNode: _focusNodes[index],
+                          isLast: index == _wordCount - 1,
                           onSubmitted: () {
                             if (index < _wordCount - 1) {
                               _focusNodes[index + 1].requestFocus();
@@ -376,26 +379,289 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
 }
 
 /// Word input field
-class _WordInput extends StatelessWidget {
+class _WordInput extends StatefulWidget {
   final int index;
   final TextEditingController controller;
   final FocusNode focusNode;
+  final bool isLast;
   final VoidCallback onSubmitted;
 
   const _WordInput({
     required this.index,
     required this.controller,
     required this.focusNode,
+    required this.isLast,
     required this.onSubmitted,
   });
 
   @override
+  State<_WordInput> createState() => _WordInputState();
+}
+
+class _WordInputState extends State<_WordInput> {
+  final LayerLink _layerLink = LayerLink();
+  final GlobalKey _fieldKey = GlobalKey();
+  OverlayEntry? _overlay;
+  List<String> _matches = const [];
+  bool _isFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.focusNode.addListener(_onFocusChange);
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _WordInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      oldWidget.focusNode.removeListener(_onFocusChange);
+      widget.focusNode.addListener(_onFocusChange);
+    }
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onTextChanged);
+      widget.controller.addListener(_onTextChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.focusNode.removeListener(_onFocusChange);
+    widget.controller.removeListener(_onTextChanged);
+    _removeOverlay();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!mounted) return;
+    _isFocused = widget.focusNode.hasFocus;
+    if (_isFocused) {
+      _refreshOverlay();
+    } else {
+      Future.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted) return;
+        if (!widget.focusNode.hasFocus) {
+          _removeOverlay();
+        }
+      });
+    }
+    setState(() {});
+  }
+
+  void _onTextChanged() {
+    _updateMatches();
+  }
+
+  void _updateMatches() {
+    final query = widget.controller.text.trim().toLowerCase();
+    final nextMatches =
+        query.isEmpty ? const <String>[] : bip39Suggestions(query, limit: 6);
+    if (!_listEquals(_matches, nextMatches)) {
+      _matches = nextMatches;
+    }
+    _refreshOverlay();
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  void _refreshOverlay() {
+    final query = widget.controller.text.trim().toLowerCase();
+    final exactMatch = _matches.length == 1 && _matches.first == query;
+    final shouldShow = _isFocused && _matches.isNotEmpty && !exactMatch;
+    if (shouldShow) {
+      _showOverlay();
+    } else {
+      _removeOverlay();
+    }
+  }
+
+  void _showOverlay() {
+    if (_overlay == null) {
+      _overlay = OverlayEntry(builder: (context) {
+        return Stack(
+          children: [
+            // Invisible barrier to catch taps outside
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: _removeOverlay,
+                behavior: HitTestBehavior.translucent,
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+            _buildOverlay(context),
+          ],
+        );
+      });
+      Overlay.of(context, rootOverlay: false).insert(_overlay!);
+    } else {
+      _overlay?.markNeedsBuild();
+    }
+  }
+
+  void _removeOverlay() {
+    _overlay?.remove();
+    _overlay = null;
+  }
+
+  Widget _buildOverlay(BuildContext context) {
+    final renderBox = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return const SizedBox.shrink();
+
+    final fieldSize = renderBox.size;
+    final width = fieldSize.width;
+    final height = fieldSize.height;
+    const itemHeight = 40.0;
+    final listHeight = (_matches.length * itemHeight + 8).clamp(itemHeight, itemHeight * 4.5 + 8);
+    final typed = widget.controller.text.trim().toLowerCase();
+    
+    final screenHeight = MediaQuery.of(context).size.height;
+    final fieldOffset = renderBox.localToGlobal(Offset.zero);
+    final spaceBelow = screenHeight - fieldOffset.dy - height;
+    final showAbove = spaceBelow < (listHeight + 20);
+    final offsetY = showAbove ? -(listHeight + 4) : height + 4;
+
+    return CompositedTransformFollower(
+      link: _layerLink,
+      showWhenUnlinked: false,
+      offset: Offset(0, offsetY),
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: width,
+          decoration: BoxDecoration(
+            color: AppColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.accentPrimary.withValues(alpha: 0.5), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 16,
+                spreadRadius: 2,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: listHeight),
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                shrinkWrap: true,
+                physics: const ClampingScrollPhysics(),
+                itemCount: _matches.length,
+                itemBuilder: (context, index) {
+                  final word = _matches[index];
+                  return InkWell(
+                    onTap: () => _selectSuggestion(word),
+                    child: Container(
+                      height: itemHeight,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      alignment: Alignment.centerLeft,
+                      decoration: BoxDecoration(
+                        border: index < _matches.length - 1 
+                          ? Border(bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.3)))
+                          : null,
+                      ),
+                      child: RichText(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        text: TextSpan(
+                          style: AppTypography.body.copyWith(
+                            color: AppColors.textSecondary,
+                            fontSize: 15,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: typed,
+                              style: AppTypography.body.copyWith(
+                                color: AppColors.accentPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            TextSpan(text: word.substring(typed.length)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _selectSuggestion(String word) {
+    widget.controller.text = word;
+    widget.controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: word.length),
+    );
+    _removeOverlay();
+    if (widget.isLast) {
+      widget.focusNode.unfocus();
+      widget.onSubmitted();
+    } else {
+      FocusScope.of(context).nextFocus();
+    }
+  }
+
+  void _applyUniqueCompletion() {
+    final current = widget.controller.text.trim().toLowerCase();
+    final completionMatches =
+        current.isEmpty ? const <String>[] : bip39Suggestions(current, limit: 2);
+    if (completionMatches.length == 1 && completionMatches.first != current) {
+      widget.controller.text = completionMatches.first;
+      widget.controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: completionMatches.first.length),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    final typed = widget.controller.text.trim().toLowerCase();
+    final matches =
+        typed.isEmpty ? const <String>[] : bip39Suggestions(typed, limit: 1);
+    final hasPrefixMatch = typed.isEmpty || matches.isNotEmpty;
+    final borderColor = hasPrefixMatch
+        ? (_isFocused ? AppColors.accentPrimary : AppColors.border)
+        : AppColors.error;
+    final inputStyle = AppTypography.body.copyWith(
+      color: AppColors.textPrimary,
+      fontSize: 14,
+    );
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+
+    return AnimatedContainer(
+      duration:
+          reduceMotion ? Duration.zero : const Duration(milliseconds: 160),
       decoration: BoxDecoration(
         color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(PSpacing.radiusInput),
+        border: Border.all(color: borderColor),
+        boxShadow: _isFocused
+            ? [
+                BoxShadow(
+                  color: AppColors.focusRingSubtle,
+                  blurRadius: 8,
+                  offset: Offset.zero,
+                ),
+              ]
+            : null,
       ),
       child: Row(
         children: [
@@ -404,7 +670,7 @@ class _WordInput extends StatelessWidget {
             width: 28,
             alignment: Alignment.center,
             child: Text(
-              '${index + 1}',
+              '${widget.index + 1}',
               style: AppTypography.caption.copyWith(
                 color: AppColors.textTertiary,
                 fontWeight: FontWeight.w600,
@@ -413,29 +679,58 @@ class _WordInput extends StatelessWidget {
           ),
           // Word input
           Expanded(
-            child: TextField(
-              controller: controller,
-              focusNode: focusNode,
-              style: AppTypography.body.copyWith(
-                color: AppColors.textPrimary,
-                fontSize: 14,
-              ),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 8,
+            child: CompositedTransformTarget(
+              link: _layerLink,
+              child: SizedBox(
+                key: _fieldKey,
+                child: TextField(
+                  controller: widget.controller,
+                  focusNode: widget.focusNode,
+                  style: inputStyle,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 8,
+                    ),
+                    isDense: true,
+                  ),
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: widget.isLast
+                      ? TextInputAction.done
+                      : TextInputAction.next,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp('[a-zA-Z]')),
+                    const _LowerCaseTextFormatter(),
+                  ],
+                  onSubmitted: (_) {
+                    _applyUniqueCompletion();
+                    widget.onSubmitted();
+                  },
                 ),
-                isDense: true,
               ),
-              autocorrect: false,
-              enableSuggestions: false,
-              textInputAction: TextInputAction.next,
-              onSubmitted: (_) => onSubmitted(),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LowerCaseTextFormatter extends TextInputFormatter {
+  const _LowerCaseTextFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final lower = newValue.text.toLowerCase();
+    return newValue.copyWith(
+      text: lower,
+      selection: newValue.selection,
+      composing: TextRange.empty,
     );
   }
 }
