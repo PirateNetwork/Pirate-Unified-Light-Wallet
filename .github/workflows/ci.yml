@@ -258,7 +258,6 @@ jobs:
           SEMGREP_PARALLELISM: "1"
         with:
           config: .semgrep.yml
-          args: --severity ERROR
 
   # ========================================================================
   # Flutter Quality Gates
