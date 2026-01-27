@@ -31,4 +31,4 @@ Low priority
 - Explore alt packaging/publishing (F-Droid, APT for Linux).
 - Decide with team on an app name + logo/icon.
 - Add support for offline signing (without hardware wallet).
-- Add auto completion for seed words similar to Exodus wallet
+- Add iOS and macOS Github action cert signing secrets.
