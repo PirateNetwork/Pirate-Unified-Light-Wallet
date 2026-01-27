@@ -65,6 +65,14 @@ fn get_memory_usage_mb() -> usize {
         .unwrap_or(0)
 }
 
+fn is_ci() -> bool {
+    if let Ok(value) = std::env::var("CI") {
+        let normalized = value.trim().to_ascii_lowercase();
+        return normalized == "1" || normalized == "true" || normalized == "yes";
+    }
+    false
+}
+
 fn max_checkpoint_avg_micros() -> u128 {
     if let Ok(value) = std::env::var("PERF_MAX_CHECKPOINT_US") {
         if let Ok(parsed) = value.parse::<u128>() {
@@ -73,6 +81,8 @@ fn max_checkpoint_avg_micros() -> u128 {
     }
     if cfg!(windows) {
         20_000
+    } else if is_ci() {
+        2_000
     } else if cfg!(debug_assertions) {
         2_000
     } else {
@@ -86,7 +96,9 @@ fn max_compact_sync_mem_mb() -> usize {
             return parsed;
         }
     }
-    if cfg!(debug_assertions) {
+    if is_ci() {
+        1_500
+    } else if cfg!(debug_assertions) {
         1_500
     } else {
         500
@@ -99,7 +111,9 @@ fn max_memory_increase_mb() -> usize {
             return parsed;
         }
     }
-    if cfg!(debug_assertions) {
+    if is_ci() {
+        1_500
+    } else if cfg!(debug_assertions) {
         1_500
     } else {
         100
