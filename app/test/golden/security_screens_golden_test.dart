@@ -153,7 +153,7 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            hasPanicPinProvider.overrideWith((ref) => false),
+            hasPanicPinProvider.overrideWith((ref) async => false),
           ],
           child: const MaterialApp(
             home: PanicPinScreen(),
@@ -169,7 +169,7 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            hasPanicPinProvider.overrideWith((ref) => true),
+            hasPanicPinProvider.overrideWith((ref) async => true),
           ],
           child: const MaterialApp(
             home: PanicPinScreen(),
@@ -185,7 +185,7 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            hasPanicPinProvider.overrideWith((ref) => false),
+            hasPanicPinProvider.overrideWith((ref) async => false),
           ],
           child: const MaterialApp(
             home: PanicPinScreen(),

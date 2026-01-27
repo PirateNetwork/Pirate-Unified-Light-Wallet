@@ -80,7 +80,7 @@ class MockAddressBookNotifier extends AddressBookNotifier {
 }
 
 /// Create test provider overrides
-List<dynamic> createTestOverrides(List<AddressEntry> entries) {
+List<Override> createTestOverrides(List<AddressEntry> entries) {
   return [
     addressBookProvider(testWalletId).overrideWith(
       () => MockAddressBookNotifier(entries),
