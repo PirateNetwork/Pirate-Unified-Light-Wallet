@@ -122,7 +122,7 @@ pub async fn configure_background_sync(
         deep_interval_hours,
         use_foreground_service
     );
-    
+
     Ok(())
 }
 
