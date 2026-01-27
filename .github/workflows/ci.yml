@@ -910,40 +910,62 @@ jobs:
   sign-android:
     name: Sign - Android (APK/AAB)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEYSTORE_B64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != ''
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
       - package-android
     steps:
+      - name: Check signing secrets
+        id: signing
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ] && \
+             [ -n "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ] && \
+             [ -n "${{ secrets.ANDROID_KEY_ALIAS }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip signing (missing secrets)
+        if: steps.signing.outputs.enabled != 'true'
+        run: echo "Android signing skipped: missing secrets."
+
       - name: Setup Java
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Android SDK
+        if: steps.signing.outputs.enabled == 'true'
         uses: android-actions/setup-android@v3
 
       - name: Install Android Build Tools
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           yes | sdkmanager "build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}"
 
       - name: Download APK artifacts
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
           name: android-apk
           path: dist/android
 
       - name: Download AAB artifacts
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
           name: android-aab
           path: dist/android
 
       - name: Decode keystore
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/keystore.jks"
 
       - name: Sign APK and AAB
+        if: steps.signing.outputs.enabled == 'true'
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/keystore.jks
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -991,6 +1013,7 @@ jobs:
           sha256sum "$AAB_SIGNED" > "$AAB_SIGNED.sha256"
 
       - name: Upload signed APK
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: android-apk-signed
@@ -1000,6 +1023,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload signed AAB
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: android-aab-signed
@@ -1011,17 +1035,34 @@ jobs:
   sign-windows:
     name: Sign - Windows (MSIX/Portable)
     runs-on: windows-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && secrets.WINDOWS_SIGN_CERT_PFX_B64 != '' && secrets.WINDOWS_SIGN_CERT_PASSWORD != ''
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
       - package-windows
     steps:
+      - name: Check signing secrets
+        id: signing
+        shell: pwsh
+        run: |
+          if ("${{ secrets.WINDOWS_SIGN_CERT_PFX_B64 }}" -and "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}") {
+            "enabled=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
+          } else {
+            "enabled=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
+          }
+
+      - name: Skip signing (missing secrets)
+        if: steps.signing.outputs.enabled != 'true'
+        shell: pwsh
+        run: Write-Host "Windows signing skipped: missing secrets."
+
       - name: Download Windows artifacts
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
           name: windows-msix
           path: dist/windows
 
       - name: Decode Windows signing certificate
+        if: steps.signing.outputs.enabled == 'true'
         shell: pwsh
         run: |
           $certPath = Join-Path $env:RUNNER_TEMP "windows-signing.pfx"
@@ -1029,6 +1070,7 @@ jobs:
           "WINDOWS_SIGN_CERT=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding ascii -Append
 
       - name: Sign Windows artifacts
+        if: steps.signing.outputs.enabled == 'true'
         shell: pwsh
         run: |
           $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue)
@@ -1070,6 +1112,7 @@ jobs:
           (Get-FileHash -Algorithm SHA256 $zipSigned).Hash | Set-Content -Encoding ascii "$zipSigned.sha256"
 
       - name: Upload signed Windows artifacts
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: windows-signed
@@ -1083,15 +1126,31 @@ jobs:
   sign-macos:
     name: Sign - macOS (DMG)
     runs-on: macos-14
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && secrets.MACOS_SIGN_CERT_P12_B64 != '' && secrets.MACOS_SIGN_CERT_PASSWORD != ''
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
       - package-macos
     steps:
+      - name: Check signing secrets
+        id: signing
+        run: |
+          if [ -n "${{ secrets.MACOS_SIGN_CERT_P12_B64 }}" ] && \
+             [ -n "${{ secrets.MACOS_SIGN_CERT_PASSWORD }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip signing (missing secrets)
+        if: steps.signing.outputs.enabled != 'true'
+        run: echo "macOS signing skipped: missing secrets."
+
       - uses: actions/checkout@v4
+        if: steps.signing.outputs.enabled == 'true'
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
+        if: steps.signing.outputs.enabled == 'true'
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -1099,11 +1158,13 @@ jobs:
           cache: true
 
       - name: Setup Rust
+        if: steps.signing.outputs.enabled == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Import macOS signing certificate
+        if: steps.signing.outputs.enabled == 'true'
         env:
           CERT_PASSWORD: ${{ secrets.MACOS_SIGN_CERT_PASSWORD }}
         run: |
@@ -1119,6 +1180,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 
       - name: Build signed macOS DMG
+        if: steps.signing.outputs.enabled == 'true'
         env:
           MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
           MACOS_NOTARIZE: ${{ secrets.MACOS_NOTARIZE }}
@@ -1130,6 +1192,7 @@ jobs:
           REPRODUCIBLE=0 ./scripts/build-macos.sh true
 
       - name: Upload signed DMG
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg-signed
@@ -1141,15 +1204,33 @@ jobs:
   sign-ios:
     name: Sign - iOS (IPA)
     runs-on: macos-14
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && secrets.IOS_SIGNING_CERT_P12_B64 != '' && secrets.IOS_SIGNING_CERT_PASSWORD != '' && secrets.IOS_PROVISIONING_PROFILE_B64 != '' && secrets.IOS_EXPORT_OPTIONS_PLIST_B64 != ''
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
       - package-ios
     steps:
+      - name: Check signing secrets
+        id: signing
+        run: |
+          if [ -n "${{ secrets.IOS_SIGNING_CERT_P12_B64 }}" ] && \
+             [ -n "${{ secrets.IOS_SIGNING_CERT_PASSWORD }}" ] && \
+             [ -n "${{ secrets.IOS_PROVISIONING_PROFILE_B64 }}" ] && \
+             [ -n "${{ secrets.IOS_EXPORT_OPTIONS_PLIST_B64 }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip signing (missing secrets)
+        if: steps.signing.outputs.enabled != 'true'
+        run: echo "iOS signing skipped: missing secrets."
+
       - uses: actions/checkout@v4
+        if: steps.signing.outputs.enabled == 'true'
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
+        if: steps.signing.outputs.enabled == 'true'
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -1157,14 +1238,17 @@ jobs:
           cache: true
 
       - name: Setup Rust
+        if: steps.signing.outputs.enabled == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Install CocoaPods
+        if: steps.signing.outputs.enabled == 'true'
         run: gem install cocoapods -v ${{ env.COCOAPODS_VERSION }}
 
       - name: Import iOS signing certificate
+        if: steps.signing.outputs.enabled == 'true'
         env:
           CERT_PASSWORD: ${{ secrets.IOS_SIGNING_CERT_PASSWORD }}
         run: |
@@ -1180,6 +1264,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 
       - name: Install provisioning profile
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
           echo "${{ secrets.IOS_PROVISIONING_PROFILE_B64 }}" | base64 -d > "$PROFILE_PATH"
@@ -1190,15 +1275,18 @@ jobs:
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
 
       - name: Install ExportOptions.plist
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           echo "${{ secrets.IOS_EXPORT_OPTIONS_PLIST_B64 }}" | base64 -d > app/ios/ExportOptions.plist
 
       - name: Build signed iOS IPA
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           chmod +x scripts/build-ios.sh
           REPRODUCIBLE=0 ./scripts/build-ios.sh true
 
       - name: Upload signed IPA
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ios-ipa-signed
@@ -1210,35 +1298,54 @@ jobs:
   sign-linux:
     name: Sign - Linux (GPG)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && secrets.LINUX_GPG_PRIVATE_KEY_B64 != '' && secrets.LINUX_GPG_PASSPHRASE != ''
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
       - package-linux
     steps:
+      - name: Check signing secrets
+        id: signing
+        run: |
+          if [ -n "${{ secrets.LINUX_GPG_PRIVATE_KEY_B64 }}" ] && \
+             [ -n "${{ secrets.LINUX_GPG_PASSPHRASE }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip signing (missing secrets)
+        if: steps.signing.outputs.enabled != 'true'
+        run: echo "Linux signing skipped: missing secrets."
+
       - name: Download AppImage artifacts
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
           name: linux-appimage
           path: dist/linux
 
       - name: Download Debian artifacts
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
           name: linux-deb
           path: dist/linux
 
       - name: Download Flatpak artifacts
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
           name: linux-flatpak
           path: dist/linux
 
       - name: Import GPG key
+        if: steps.signing.outputs.enabled == 'true'
         env:
           GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
         run: |
           echo "${{ secrets.LINUX_GPG_PRIVATE_KEY_B64 }}" | base64 -d | gpg --batch --import
 
       - name: Sign Linux artifacts
+        if: steps.signing.outputs.enabled == 'true'
         env:
           GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
         run: |
@@ -1249,6 +1356,7 @@ jobs:
           done
 
       - name: Upload Linux signatures
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: linux-signatures
