@@ -7574,11 +7574,7 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
             wallet_id,
             spendable,
             secret.extsk.len(),
-            secret
-                .orchard_extsk
-                .as_ref()
-                .map(|k| k.len())
-                .unwrap_or(0)
+            secret.orchard_extsk.as_ref().map(|k| k.len()).unwrap_or(0)
         );
     }
 

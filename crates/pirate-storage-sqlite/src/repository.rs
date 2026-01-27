@@ -1899,9 +1899,7 @@ impl<'a> Repository<'a> {
             }
             if let Some(spent_txid_bytes) = spent_txid.as_ref() {
                 let spent_txid_hex = hex::encode(spent_txid_bytes);
-                *spent_target_counts
-                    .entry(spent_txid_hex)
-                    .or_insert(0) += 1;
+                *spent_target_counts.entry(spent_txid_hex).or_insert(0) += 1;
             }
 
             let key = (txid_bytes.clone(), output_index, note_type);
