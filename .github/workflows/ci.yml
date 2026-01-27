@@ -923,11 +923,6 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Skip signing (missing secrets)
-        if: steps.signing.outputs.enabled != 'true'
-        run: |
-          echo "Android signing skipped: missing secrets."
-
       - name: Setup Java
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/setup-java@v4
@@ -1048,11 +1043,6 @@ jobs:
             "enabled=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding ascii -Append
           }
 
-      - name: Skip signing (missing secrets)
-        if: steps.signing.outputs.enabled != 'true'
-        shell: pwsh
-        run: Write-Host "Windows signing skipped: missing secrets."
-
       - name: Download Windows artifacts
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
@@ -1138,11 +1128,6 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Skip signing (missing secrets)
-        if: steps.signing.outputs.enabled != 'true'
-        run: |
-          echo "macOS signing skipped: missing secrets."
-
       - uses: actions/checkout@v4
         if: steps.signing.outputs.enabled == 'true'
         with:
@@ -1215,11 +1200,6 @@ jobs:
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Skip signing (missing secrets)
-        if: steps.signing.outputs.enabled != 'true'
-        run: |
-          echo "iOS signing skipped: missing secrets."
 
       - uses: actions/checkout@v4
         if: steps.signing.outputs.enabled == 'true'
@@ -1307,11 +1287,6 @@ jobs:
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Skip signing (missing secrets)
-        if: steps.signing.outputs.enabled != 'true'
-        run: |
-          echo "Linux signing skipped: missing secrets."
 
       - name: Download AppImage artifacts
         if: steps.signing.outputs.enabled == 'true'
