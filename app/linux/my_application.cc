@@ -1,6 +1,7 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <glib.h>
 #include <libsecret/secret.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -26,7 +27,8 @@ const char kMasterKeyId[] = "pirate_wallet_master_key";
 const SecretSchema kPirateKeystoreSchema = {
     "com.pirate.wallet.keystore",
     SECRET_SCHEMA_NONE,
-    {{"key_id", SECRET_SCHEMA_ATTRIBUTE_STRING}, {nullptr, 0}}};
+    {{"key_id", SECRET_SCHEMA_ATTRIBUTE_STRING},
+     {nullptr, static_cast<SecretSchemaAttributeType>(0)}}};
 
 FlMethodResponse* error_response(const char* code, const char* message) {
   return FL_METHOD_RESPONSE(fl_method_error_response_new(code, message, nullptr));
@@ -61,10 +63,11 @@ bool store_secret(const gchar* key_id,
                   const char* label,
                   gchar** error_message) {
   GError* error = nullptr;
-  gboolean stored = secret_password_store_binary_sync(
-      &kPirateKeystoreSchema, SECRET_COLLECTION_DEFAULT, label,
-      reinterpret_cast<const guchar*>(data), length, nullptr, &error, "key_id",
-      key_id, nullptr);
+  g_autofree gchar* encoded =
+      g_base64_encode(reinterpret_cast<const guchar*>(data), length);
+  gboolean stored = secret_password_store_sync(
+      &kPirateKeystoreSchema, SECRET_COLLECTION_DEFAULT, label, encoded,
+      nullptr, &error, "key_id", key_id, nullptr);
   if (!stored) {
     if (error_message) {
       *error_message =
@@ -80,11 +83,9 @@ bool store_secret(const gchar* key_id,
 
 FlMethodResponse* handle_retrieve_secret(const gchar* key_id) {
   GError* error = nullptr;
-  gsize length = 0;
-  guchar* secret = secret_password_lookup_binary_sync(
-      &kPirateKeystoreSchema, nullptr, &length, &error, "key_id", key_id,
-      nullptr);
-  if (secret == nullptr) {
+  gchar* encoded = secret_password_lookup_sync(&kPirateKeystoreSchema, nullptr,
+                                               &error, "key_id", key_id, nullptr);
+  if (encoded == nullptr) {
     if (error) {
       g_autofree gchar* message = g_strdup(error->message);
       g_error_free(error);
@@ -92,8 +93,11 @@ FlMethodResponse* handle_retrieve_secret(const gchar* key_id) {
     }
     return FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
   }
-  g_autoptr(FlValue) value = fl_value_new_uint8_list(secret, length);
-  secret_password_free(secret);
+  gsize decoded_length = 0;
+  g_autofree guchar* decoded = g_base64_decode(encoded, &decoded_length);
+  secret_password_free(encoded);
+  g_autoptr(FlValue) value =
+      fl_value_new_uint8_list(decoded, decoded_length);
   return FL_METHOD_RESPONSE(fl_method_success_response_new(value));
 }
 
@@ -113,18 +117,16 @@ FlMethodResponse* handle_delete_secret(const gchar* key_id) {
 
 FlMethodResponse* handle_key_exists(const gchar* key_id) {
   GError* error = nullptr;
-  gsize length = 0;
-  guchar* secret = secret_password_lookup_binary_sync(
-      &kPirateKeystoreSchema, nullptr, &length, &error, "key_id", key_id,
-      nullptr);
+  gchar* encoded = secret_password_lookup_sync(&kPirateKeystoreSchema, nullptr,
+                                               &error, "key_id", key_id, nullptr);
   if (error) {
     g_autofree gchar* message = g_strdup(error->message);
     g_error_free(error);
     return error_response("KEYSTORE_ERROR", message);
   }
-  bool exists = secret != nullptr;
-  if (secret) {
-    secret_password_free(secret);
+  bool exists = encoded != nullptr;
+  if (encoded) {
+    secret_password_free(encoded);
   }
   return FL_METHOD_RESPONSE(
       fl_method_success_response_new(fl_value_new_bool(exists)));
