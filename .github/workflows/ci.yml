@@ -283,7 +283,7 @@ jobs:
       - name: Run Semgrep on Dart files
         env:
           SEMGREP_PARALLELISM: "1"
-        run: semgrep scan --config .semgrep.yml --error --metrics off --jobs 1 --max-memory 1500 --timeout 45 --include="app/lib/**/*.dart"
+        run: semgrep scan --config .semgrep.yml --error --metrics off --jobs 1 --max-memory 2000 --timeout 60 --include="app/lib/**/*.dart"
 
   # ========================================================================
   # Flutter Quality Gates

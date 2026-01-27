@@ -1,0 +1,42 @@
+# Semgrep ignore patterns for Pirate Unified Wallet
+
+# Auto-generated Flutter Rust Bridge files (contain many false positives)
+crates/pirate-ffi-frb/src/bridge_generated.rs
+crates/pirate-ffi-frb/src/frb_generated.rs
+crates/pirate-ffi-frb/src/api_impl.rs
+
+# Auto-generated Flutter files
+app/lib/core/ffi/*.dart
+app/.dart_tool/**
+app/ios/Runner/GeneratedPluginRegistrant.*
+app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+app/macos/Runner/GeneratedPluginRegistrant.swift
+app/windows/flutter/generated_plugin_registrant.*
+app/linux/flutter/generated_plugin_registrant.*
+
+# Test files with intentional test data
+**/tests/**
+**/test/**
+**/integration_test/**
+
+# Build artifacts
+**/target/**
+**/build/**
+**/generated/**
+**/.gradle/**
+**/Pods/**
+
+# Dependencies
+**/node_modules/**
+**/.pub-cache/**
+**/pubspec.lock
+
+# Platform-specific
+app/ios/Podfile.lock
+app/android/gradle/**
+app/macos/Podfile.lock
+
+# IDE
+**/.idea/**
+**/.vscode/**
+**/.fleet/**
