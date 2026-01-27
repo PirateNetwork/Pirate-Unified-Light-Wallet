@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -6,6 +7,11 @@ import 'package:pirate_wallet/main.dart' as app;
 /// Integration test for sync errors and rollback scenarios
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  
+  // Skip integration tests in CI - they require a live lightwalletd backend
+  final bool _skipInCI = Platform.environment['CI'] == 'true' || 
+                         Platform.environment['GITHUB_ACTIONS'] == 'true';
+  
   Finder textMatches(RegExp pattern) {
     return find.byWidgetPredicate((widget) {
       if (widget is Text) {
@@ -33,7 +39,7 @@ void main() {
           findsOneWidget,
         );
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Sync network error handling', (WidgetTester tester) async {
       app.main();
@@ -42,7 +48,7 @@ void main() {
 
       // Simulate network error (would need mock in production)
       // Wait for error to appear
-      await tester.pump(Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 5));
 
       // Should show error message
       if (find.textContaining('Network error').evaluate().isNotEmpty) {
@@ -56,7 +62,7 @@ void main() {
         // Should attempt to sync again
         expect(find.textContaining('Syncing'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Sync interruption handling', (WidgetTester tester) async {
       app.main();
@@ -80,7 +86,7 @@ void main() {
         expect(find.textContaining('Syncing'), findsOneWidget);
         expect(find.textContaining('Resumed'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Checkpoint rollback on corruption', (WidgetTester tester) async {
       app.main();
@@ -91,7 +97,7 @@ void main() {
       // This would trigger automatic rollback
 
       // Wait for rollback to complete
-      await tester.pump(Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 3));
 
       // Should show rollback message
       if (find.textContaining('Rolled back').evaluate().isNotEmpty) {
@@ -100,7 +106,7 @@ void main() {
         // Sync should restart from checkpoint
         expect(find.textContaining('Syncing'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Reorg detection and rollback', (WidgetTester tester) async {
       app.main();
@@ -108,7 +114,7 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
 
       // Simulate reorg detection (would need mock)
-      await tester.pump(Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 5));
 
       // Should detect reorg and rollback
       if (find.textContaining('Chain reorganization').evaluate().isNotEmpty) {
@@ -121,7 +127,7 @@ void main() {
         // Should resume sync
         expect(find.textContaining('Syncing'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Manual rescan from settings', (WidgetTester tester) async {
       app.main();
@@ -155,7 +161,7 @@ void main() {
           expect(find.textContaining('0%'), findsOneWidget);
         }
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Background sync completion notification', (WidgetTester tester) async {
       app.main();
@@ -169,7 +175,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
 
       // Wait for background sync to complete (simulated)
-      await Future.delayed(Duration(seconds: 5));
+      await Future.delayed(const Duration(seconds: 5));
 
       // Resume app
       binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -180,7 +186,7 @@ void main() {
       if (find.textContaining('Synced').evaluate().isNotEmpty) {
         expect(find.textContaining('Up to date'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Deep scan vs compact scan selection', (WidgetTester tester) async {
       app.main();
@@ -220,7 +226,7 @@ void main() {
           expect(find.textContaining('Deep'), findsOneWidget);
         }
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Sync progress ETA calculation', (WidgetTester tester) async {
       app.main();
@@ -230,7 +236,7 @@ void main() {
       // Monitor sync progress
       if (find.textContaining('Syncing').evaluate().isNotEmpty) {
         // Wait for ETA to calculate
-        await tester.pump(Duration(seconds: 3));
+        await tester.pump(const Duration(seconds: 3));
 
         // Should show ETA after sufficient progress
         expect(
@@ -241,7 +247,7 @@ void main() {
         // Should show blocks/sec rate
         expect(textMatches(RegExp(r'\d+ blocks?/sec')), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Lightwalletd connection switching', (WidgetTester tester) async {
       app.main();
@@ -280,7 +286,7 @@ void main() {
           }
         }
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Sync error recovery - auto retry', (WidgetTester tester) async {
       app.main();
@@ -288,7 +294,7 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
 
       // Wait for transient error (simulated)
-      await tester.pump(Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 5));
 
       // Should automatically retry after transient error
       if (find.textContaining('Retrying').evaluate().isNotEmpty) {
@@ -301,7 +307,7 @@ void main() {
         // Should resume syncing
         expect(find.textContaining('Syncing'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Checkpoint creation interval verification', (WidgetTester tester) async {
       app.main();
@@ -313,7 +319,7 @@ void main() {
 
       // Watch for checkpoint messages
       for (int i = 0; i < 10; i++) {
-        await tester.pump(Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
 
         if (find.textContaining('Checkpoint').evaluate().isNotEmpty) {
           checkpointCount++;
@@ -322,7 +328,7 @@ void main() {
 
       // Should create checkpoints periodically
       expect(checkpointCount > 0, true, reason: 'Should create checkpoints during sync');
-    });
+    }, skip: _skipInCI);
   });
 }
 

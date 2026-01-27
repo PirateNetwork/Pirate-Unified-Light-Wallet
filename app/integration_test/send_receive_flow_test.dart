@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -6,6 +7,10 @@ import 'package:pirate_wallet/main.dart' as app;
 /// Integration test for send and receive flows
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  // Skip integration tests in CI - they require a live lightwalletd backend
+  final bool _skipInCI = Platform.environment['CI'] == 'true' || 
+                         Platform.environment['GITHUB_ACTIONS'] == 'true';
 
   group('Send/Receive Flow E2E', () {
     testWidgets('Receive flow - display address', (WidgetTester tester) async {
@@ -39,7 +44,7 @@ void main() {
         // Should show success message
         expect(find.textContaining('Copied'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Receive flow - generate new address', (WidgetTester tester) async {
       app.main();
@@ -69,7 +74,7 @@ void main() {
           expect(currentText != newText, true);
         }
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Send flow - basic transaction', (WidgetTester tester) async {
       app.main();
@@ -117,7 +122,7 @@ void main() {
         expect(find.text('0.5'), findsOneWidget);
         expect(find.textContaining('zs1test'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Send flow - send-to-many', (WidgetTester tester) async {
       app.main();
@@ -140,7 +145,7 @@ void main() {
           expect(find.byType(TextField), findsAtLeast(6)); // 3 fields * 2 recipients
         }
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Send flow - address book integration', (WidgetTester tester) async {
       app.main();
@@ -162,7 +167,7 @@ void main() {
           expect(find.text('Address Book'), findsOneWidget);
         }
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Send flow - insufficient funds error', (WidgetTester tester) async {
       app.main();
@@ -195,7 +200,7 @@ void main() {
         // Should show insufficient funds error
         expect(find.textContaining('Insufficient'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Send flow - invalid address error', (WidgetTester tester) async {
       app.main();
@@ -227,7 +232,7 @@ void main() {
         // Should show invalid address error
         expect(find.textContaining('Invalid address'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Send flow - memo validation', (WidgetTester tester) async {
       app.main();
@@ -250,7 +255,7 @@ void main() {
         // Should show memo too long error
         expect(find.textContaining('too long'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
 
     testWidgets('Transaction history display', (WidgetTester tester) async {
       app.main();
@@ -271,7 +276,7 @@ void main() {
         expect(find.text('Amount'), findsOneWidget);
         expect(find.text('Date'), findsOneWidget);
       }
-    });
+    }, skip: _skipInCI);
   });
 }
 
