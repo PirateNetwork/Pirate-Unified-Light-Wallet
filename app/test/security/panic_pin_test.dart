@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pirate_unified_wallet/features/settings/panic_pin_screen.dart';
+import 'package:pirate_wallet/features/settings/panic_pin_screen.dart';
 
 void main() {
   group('Duress Passphrase Screen', () {

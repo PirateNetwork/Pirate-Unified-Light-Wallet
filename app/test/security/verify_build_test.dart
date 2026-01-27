@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pirate_unified_wallet/features/settings/verify_build_screen.dart';
+import 'package:pirate_wallet/features/settings/verify_build_screen.dart';
 
 void main() {
   group('Verify Build Screen Tests', () {
@@ -43,11 +43,11 @@ void main() {
 
       // Should show all 5 steps
       expect(find.text('Verification Steps'), findsOneWidget);
-      expect(find.text('Install Nix with Flakes'), findsOneWidget);
-      expect(find.text('Clone Repository'), findsOneWidget);
-      expect(find.text('Build with Nix'), findsOneWidget);
-      expect(find.text('Compare Hashes'), findsOneWidget);
-      expect(find.text('Verify SBOM'), findsOneWidget);
+      expect(find.text('Download Release + Checksums'), findsOneWidget);
+      expect(find.text('Verify Checksum'), findsOneWidget);
+      expect(find.text('Reproduce with Nix Flake'), findsOneWidget);
+      expect(find.text('Generate SBOM (Optional)'), findsOneWidget);
+      expect(find.text('Generate Provenance (Optional)'), findsOneWidget);
     });
 
     testWidgets('Shows code snippets with copy buttons', (WidgetTester tester) async {
@@ -62,7 +62,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should show code snippets
-      expect(find.textContaining('git clone'), findsWidgets);
+      expect(find.textContaining('curl -L -O'), findsWidgets);
       expect(find.textContaining('nix build'), findsWidgets);
       
       // Should have copy buttons

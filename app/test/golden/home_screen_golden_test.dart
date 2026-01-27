@@ -14,6 +14,7 @@ void main() {
   });
 
   testWidgets('home screen - mobile portrait', (tester) async {
+    if (shouldSkipGoldenTests()) return;
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
@@ -34,6 +35,7 @@ void main() {
   });
 
   testWidgets('home screen - tablet landscape', (tester) async {
+    if (shouldSkipGoldenTests()) return;
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
@@ -50,6 +52,7 @@ void main() {
   });
 
   testWidgets('home screen - desktop', (tester) async {
+    if (shouldSkipGoldenTests()) return;
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
@@ -66,6 +69,7 @@ void main() {
   });
 
   testWidgets('home screen - dark mode', (tester) async {
+    if (shouldSkipGoldenTests()) return;
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(

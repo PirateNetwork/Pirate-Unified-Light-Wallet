@@ -84,8 +84,8 @@ void main() {
 
       expect(focusableWidgets, findsWidgets);
       
-      debugPrint('✅ Found ${focusableWidgets.evaluate().length} focusable widgets');
-      debugPrint('   Focus order should be: Recipient → Amount → Memo → Continue');
+      debugPrint('OK: Found ${focusableWidgets.evaluate().length} focusable widgets');
+      debugPrint('   Focus order should be: Recipient -> Amount -> Memo -> Continue');
     });
   });
 
@@ -112,7 +112,7 @@ void main() {
       // 2. Getting background color from parent
       // 3. Calculating luminance ratio
       
-      debugPrint('✅ Text contrast check (manual verification required)');
+      debugPrint('OK: Text contrast check (manual verification required)');
       debugPrint('   WCAG AA: 4.5:1 for normal text, 3:1 for large text');
     });
   });
@@ -166,11 +166,11 @@ void main() {
 
       // Look for Semantics widgets with value labels
       final semanticsNodes = tester.binding.pipelineOwner.semanticsOwner
-          ?.rootSemanticsNode?.children;
+          ?.rootSemanticsNode?.childrenInTraversalOrder;
       
       expect(semanticsNodes, isNotNull);
       
-      debugPrint('✅ Semantics tree generated');
+      debugPrint('OK: Semantics tree generated');
       debugPrint('   Balance should be announced as "X.XX ARRR"');
     });
   });
@@ -196,7 +196,7 @@ void main() {
         expect(tester.takeException(), isNull,
             reason: 'Layout should handle text scale $scale without overflow');
         
-        debugPrint('✅ Text scale $scale passed');
+        debugPrint('OK: Text scale $scale passed');
       }
     });
   });
@@ -219,7 +219,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Animations should be disabled or reduced
-      debugPrint('✅ Reduce motion test (verify animations are minimal)');
+      debugPrint('OK: Reduce motion test (verify animations are minimal)');
     });
   });
 
@@ -247,7 +247,7 @@ void main() {
 
       expect(interactiveElements, findsWidgets);
       
-      debugPrint('✅ Found ${interactiveElements.evaluate().length} interactive elements');
+      debugPrint('OK: Found ${interactiveElements.evaluate().length} interactive elements');
       debugPrint('   All should be keyboard-accessible');
     });
   });

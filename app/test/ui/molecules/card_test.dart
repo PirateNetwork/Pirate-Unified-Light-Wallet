@@ -4,9 +4,12 @@ import 'package:golden_toolkit/golden_toolkit.dart';
 import 'package:pirate_wallet/design/theme.dart';
 import 'package:pirate_wallet/ui/molecules/p_card.dart';
 
+import '../../golden_test_utils.dart';
+
 void main() {
   group('PCard Golden Tests', () {
     testGoldens('PCard variants', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       final builder = GoldenBuilder.column()

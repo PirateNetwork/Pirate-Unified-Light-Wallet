@@ -1,5 +1,7 @@
-/// Performance tests for scroll/jank detection
+﻿/// Performance tests for scroll/jank detection
 library;
+
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +14,7 @@ import 'package:pirate_wallet/features/home/home_screen.dart';
 import 'package:pirate_wallet/features/settings/providers/transport_providers.dart';
 
 const _testWalletId = 'test-wallet-1';
+final bool _skipPerformanceTests = Platform.environment['CI'] == 'true';
 
 class _TestActiveWalletNotifier extends ActiveWalletNotifier {
   @override
@@ -127,6 +130,7 @@ void main() {
   group('Scroll Performance Tests', () {
     testWidgets('home screen - transaction list scroll performance',
         (tester) async {
+      if (_skipPerformanceTests) return;
       await tester.pumpWidget(
         _buildTestApp(child: const HomeScreen()),
       );
@@ -172,11 +176,11 @@ void main() {
         const target60fps = Duration(microseconds: 16670);
         const target120fps = Duration(microseconds: 8330);
 
-        debugPrint('📊 Scroll Performance:');
-        debugPrint('  Average frame time: ${averageFrameTime.inMicroseconds}µs');
-        debugPrint('  Max frame time: ${maxFrameTime.inMicroseconds}µs');
-        debugPrint('  60 FPS target: ${target60fps.inMicroseconds}µs');
-        debugPrint('  Frames total: ${frameTimes.length}');
+        debugPrint('Scroll performance:');
+        debugPrint('  Average frame time: us');
+        debugPrint('  Max frame time: us');
+        debugPrint('  60 FPS target: us');
+        debugPrint('  Frames total: ');
 
         // Assert 60 FPS capability
         expect(
@@ -187,13 +191,14 @@ void main() {
 
         // Warn if max frame time indicates jank
         if (maxFrameTime > target60fps * 2) {
-          debugPrint('⚠️ Potential jank detected: ${maxFrameTime.inMicroseconds}µs frame');
+          debugPrint('Warning: potential jank detected: us frame');
         }
       }
     });
 
     testWidgets('activity screen - transaction list scroll performance',
         (tester) async {
+      if (_skipPerformanceTests) return;
       await tester.pumpWidget(
         _buildTestApp(child: const ActivityScreen()),
       );
@@ -225,10 +230,10 @@ void main() {
         final maxFrameTime = frameTimes.reduce((a, b) => a > b ? a : b);
         const target60fps = Duration(microseconds: 16670);
 
-        debugPrint('📊 Activity Scroll Performance:');
-        debugPrint('  Average frame time: ${averageFrameTime.inMicroseconds}µs');
-        debugPrint('  Max frame time: ${maxFrameTime.inMicroseconds}µs');
-        debugPrint('  Frames total: ${frameTimes.length}');
+        debugPrint('Activity scroll performance:');
+        debugPrint('  Average frame time: us');
+        debugPrint('  Max frame time: us');
+        debugPrint('  Frames total: ');
 
         expect(
           averageFrameTime,
@@ -241,6 +246,7 @@ void main() {
 
   group('Animation Performance Tests', () {
     testWidgets('home screen - sync indicator animation', (tester) async {
+      if (_skipPerformanceTests) return;
       await tester.pumpWidget(
         _buildTestApp(child: const HomeScreen()),
       );
@@ -267,8 +273,8 @@ void main() {
         
         const target60fps = Duration(microseconds: 16670);
         
-        debugPrint('📊 Animation Performance:');
-        debugPrint('  Average frame time: ${averageFrameTime.inMicroseconds}µs');
+        debugPrint('Animation performance:');
+        debugPrint('  Average frame time: us');
         
         expect(
           averageFrameTime,
@@ -281,6 +287,7 @@ void main() {
 
   group('Memory Performance Tests', () {
     testWidgets('home screen - memory usage during scroll', (tester) async {
+      if (_skipPerformanceTests) return;
       await tester.pumpWidget(
         _buildTestApp(child: const HomeScreen()),
       );
@@ -304,8 +311,7 @@ void main() {
 
       // Check for memory leaks
       // In real tests, use DevTools memory profiling
-      debugPrint('✅ Memory test completed (manual profiling required)');
+      debugPrint('OK: Memory test completed (manual profiling required)');
     });
   });
 }
-

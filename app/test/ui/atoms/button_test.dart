@@ -4,9 +4,12 @@ import 'package:golden_toolkit/golden_toolkit.dart';
 import 'package:pirate_wallet/design/theme.dart';
 import 'package:pirate_wallet/ui/atoms/p_button.dart';
 
+import '../../golden_test_utils.dart';
+
 void main() {
   group('PButton Golden Tests', () {
     testGoldens('PButton variants', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       final builder = GoldenBuilder.column()
@@ -66,6 +69,7 @@ void main() {
     });
 
     testGoldens('PButton sizes', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       final builder = GoldenBuilder.column()

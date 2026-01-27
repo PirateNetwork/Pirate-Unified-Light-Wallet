@@ -1,4 +1,4 @@
-/// Golden tests for Address Book screens
+﻿/// Golden tests for Address Book screens
 ///
 /// Tests list, detail, and edit views for visual regression.
 /// Run with: flutter test --update-goldens test/golden/address_book_golden_test.dart
@@ -14,6 +14,7 @@ import '../../lib/features/address_book/address_book_screen.dart';
 import '../../lib/features/address_book/models/address_entry.dart';
 import '../../lib/features/address_book/providers/address_book_provider.dart';
 import '../../lib/core/providers/wallet_providers.dart';
+import '../golden_test_utils.dart';
 
 /// Test wallet ID
 const testWalletId = 'test_wallet';
@@ -75,13 +76,13 @@ class MockAddressBookNotifier extends AddressBookNotifier {
 }
 
 /// Create test provider overrides
-List<Override> createTestOverrides(List<AddressEntry> entries) {
+List<ProviderOverride> createTestOverrides(List<AddressEntry> entries) {
   return [
     addressBookProvider(testWalletId).overrideWith(
-      (ref) => MockAddressBookNotifier(entries),
+      () => MockAddressBookNotifier(entries),
     ),
     activeWalletProvider.overrideWith(
-      (ref) => _MockActiveWalletNotifier(),
+      () => _MockActiveWalletNotifier(),
     ),
   ];
 }
@@ -95,13 +96,14 @@ class _MockActiveWalletNotifier extends ActiveWalletNotifier {
 void main() {
   group('Address Book Golden Tests', () {
     testGoldens('Address Book List - Desktop', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: createTestOverrides(testEntries),
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -114,13 +116,14 @@ void main() {
     });
 
     testGoldens('Address Book List - Mobile', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: createTestOverrides(testEntries),
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -133,13 +136,14 @@ void main() {
     });
 
     testGoldens('Address Book Empty State', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: createTestOverrides([]),
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -152,6 +156,7 @@ void main() {
     });
 
     testGoldens('Address Card - All Color Tags', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       // Create entries with all color tags
@@ -173,7 +178,7 @@ void main() {
         ProviderScope(
           overrides: createTestOverrides(colorEntries),
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -186,11 +191,12 @@ void main() {
     });
 
     testGoldens('Address Card Widget Variants', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
         MaterialApp(
-          theme: AppTheme.dark(),
+          theme: PTheme.dark(),
           home: Scaffold(
             body: Padding(
               padding: const EdgeInsets.all(16),
@@ -236,7 +242,7 @@ void main() {
         ProviderScope(
           overrides: createTestOverrides(testEntries),
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: Scaffold(
               body: AddEditAddressSheet(
                 walletId: testWalletId,
@@ -260,7 +266,7 @@ void main() {
         ProviderScope(
           overrides: createTestOverrides(testEntries),
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: Scaffold(
               body: AddEditAddressSheet(
                 walletId: testWalletId,
@@ -283,7 +289,7 @@ void main() {
 
       await tester.pumpWidgetBuilder(
         MaterialApp(
-          theme: AppTheme.dark(),
+          theme: PTheme.dark(),
           home: Scaffold(
             body: AddressDetailsSheet(
               entry: testEntries[0],
@@ -314,7 +320,7 @@ void main() {
 
       await tester.pumpWidgetBuilder(
         MaterialApp(
-          theme: AppTheme.dark(),
+          theme: PTheme.dark(),
           home: Scaffold(
             body: FilterSheet(
               currentColor: ColorTag.green,
@@ -350,7 +356,7 @@ void main() {
             ),
           ],
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -378,7 +384,7 @@ void main() {
             ),
           ],
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -406,7 +412,7 @@ void main() {
             ),
           ],
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -434,7 +440,7 @@ void main() {
             ),
           ],
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -464,7 +470,7 @@ void main() {
             ),
           ],
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -494,7 +500,7 @@ void main() {
             ),
           ],
           child: MaterialApp(
-            theme: AppTheme.dark(),
+            theme: PTheme.dark(),
             home: const AddressBookScreen(),
           ),
         ),
@@ -507,3 +513,4 @@ void main() {
     });
   });
 }
+

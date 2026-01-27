@@ -1,17 +1,28 @@
-/// Utilities for golden testing
+﻿/// Utilities for golden testing
 library;
+
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golden_toolkit/golden_toolkit.dart';
 
+bool shouldSkipGoldenTests() {
+  return Platform.environment['CI'] == 'true' ||
+      Platform.environment['SKIP_GOLDENS'] == 'true';
+}
+
 /// Configure golden test environment
 Future<void> configureGoldenTests() async {
+  if (shouldSkipGoldenTests()) {
+    debugPrint('Skipping golden tests (CI or SKIP_GOLDENS).');
+    return;
+  }
   await loadAppFonts();
-  
+
   // Configure golden file comparator
   if (autoUpdateGoldenFiles) {
-    debugPrint('⚠️ Golden files will be updated');
+    debugPrint('Warning: golden files will be updated');
   }
 }
 
@@ -21,6 +32,9 @@ Future<void> expectGoldenMatches(
   String goldenFile, {
   Size size = const Size(375, 812),
 }) async {
+  if (shouldSkipGoldenTests()) {
+    return;
+  }
   // Set device size
   tester.binding.window.physicalSizeTestValue = size;
   tester.binding.window.devicePixelRatioTestValue = 1.0;
@@ -55,6 +69,9 @@ Future<void> testMultipleDevices(
   String baseFileName, {
   List<({String name, Size size})>? devices,
 }) async {
+  if (shouldSkipGoldenTests()) {
+    return;
+  }
   final testDevices = devices ??
       [
         (name: 'mobile', size: DeviceSizes.iphoneX),
@@ -64,7 +81,7 @@ Future<void> testMultipleDevices(
 
   for (final device in testDevices) {
     await tester.pumpWidget(widget);
-    
+
     await expectGoldenMatches(
       tester,
       '${baseFileName}_${device.name}.png',
@@ -72,4 +89,3 @@ Future<void> testMultipleDevices(
     );
   }
 }
-

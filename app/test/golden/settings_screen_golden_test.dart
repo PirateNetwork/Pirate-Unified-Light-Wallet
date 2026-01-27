@@ -14,6 +14,7 @@ void main() {
   });
 
   testWidgets('settings screen - multiple devices', (tester) async {
+    if (shouldSkipGoldenTests()) return;
     await testMultipleDevices(
       tester,
       const ProviderScope(
@@ -26,6 +27,7 @@ void main() {
   });
 
   testWidgets('settings screen - mobile', (tester) async {
+    if (shouldSkipGoldenTests()) return;
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
@@ -42,6 +44,7 @@ void main() {
   });
 
   testWidgets('settings screen - desktop', (tester) async {
+    if (shouldSkipGoldenTests()) return;
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(

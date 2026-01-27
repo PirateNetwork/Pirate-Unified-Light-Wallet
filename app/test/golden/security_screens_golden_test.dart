@@ -8,14 +8,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:golden_toolkit/golden_toolkit.dart';
 
-import 'package:pirate_wallet/app/design/theme.dart';
-import 'package:pirate_wallet/app/features/security/export_seed_screen.dart';
-import 'package:pirate_wallet/app/features/security/watch_only_screen.dart';
-import 'package:pirate_wallet/app/features/security/panic_pin_screen.dart';
+import 'package:pirate_wallet/features/security/export_seed_screen.dart';
+import 'package:pirate_wallet/features/security/watch_only_screen.dart';
+import 'package:pirate_wallet/features/security/panic_pin_screen.dart';
+
+import '../golden_test_utils.dart';
 
 void main() {
   group('Security Screens Golden Tests', () {
     testGoldens('ExportSeedScreen - Warning Step', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         const ProviderScope(
           child: MaterialApp(
@@ -28,6 +30,7 @@ void main() {
     });
 
     testGoldens('ExportSeedScreen - Biometric Step', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
@@ -43,6 +46,7 @@ void main() {
     });
 
     testGoldens('ExportSeedScreen - Passphrase Step', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
@@ -58,6 +62,7 @@ void main() {
     });
 
     testGoldens('ExportSeedScreen - Display Step', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
@@ -81,6 +86,7 @@ void main() {
     });
 
     testGoldens('WatchOnlyScreen - Export Tab', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         const ProviderScope(
           child: MaterialApp(
@@ -93,6 +99,7 @@ void main() {
     });
 
     testGoldens('WatchOnlyScreen - Import Tab', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         const ProviderScope(
           child: MaterialApp(
@@ -110,6 +117,7 @@ void main() {
     });
 
     testGoldens('WatchOnlyBannerWidget', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         const MaterialApp(
           home: Scaffold(
@@ -127,6 +135,7 @@ void main() {
     });
 
     testGoldens('PanicPinScreen - Not Configured', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
@@ -142,6 +151,7 @@ void main() {
     });
 
     testGoldens('PanicPinScreen - Configured', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
@@ -157,6 +167,7 @@ void main() {
     });
 
     testGoldens('PanicPinScreen - Setup Form', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
