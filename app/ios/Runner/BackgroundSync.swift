@@ -789,11 +789,6 @@ extension AppDelegate {
         
         print("[AppDelegate] Background sync initialized")
     }
-    
-    func applicationDidEnterBackground(_ application: UIApplication) {
-        // Ensure syncs are scheduled when app goes to background
-        BackgroundSyncManager.shared.scheduleAllSyncs()
-    }
 }
 
 // MARK: - Debug Helpers (Development only)
