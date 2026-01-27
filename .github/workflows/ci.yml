@@ -262,7 +262,7 @@ jobs:
       - name: Run Semgrep
         env:
           SEMGREP_PARALLELISM: "1"
-        run: semgrep scan --config .semgrep.yml --error --metrics off
+        run: semgrep scan --config .semgrep.yml --error --metrics off --jobs 1
 
   # ========================================================================
   # Flutter Quality Gates
