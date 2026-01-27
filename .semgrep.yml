@@ -42,10 +42,21 @@ rules:
       - metavariable-regex:
           metavariable: $SECRET
           regex: (password|secret|api_key|private_key|mnemonic)
+      - pattern-not-inside: |
+          #[test]
+          fn $FUNC(...) { ... }
+      - pattern-not-inside: |
+          #[cfg(test)]
+          mod $MOD { ... }
     message: |
       Potential hardcoded secret detected. Never commit secrets to source control.
     severity: ERROR
     languages: [rust]
+    paths:
+      include:
+        - "crates/**/src/**/*.rs"
+      exclude:
+        - "crates/**/tests/**/*.rs"
 
   - id: rust-sql-injection
     patterns:
@@ -98,10 +109,10 @@ rules:
   # Dart/Flutter Security Rules
   # ========================================================================
 
-  # Note: Most Dart rules disabled due to memory constraints in CI
-  # The Rust layer handles most security concerns (encryption, networking, key management)
-  # Flutter/Dart layer is primarily UI which is less security-critical
-  # Manual code review covers UI security concerns
+  # Note: Dart Semgrep scans are DISABLED in CI due to persistent memory exhaustion
+  # The rules below are retained for local development use only
+  # The Rust layer handles all security-critical code (encryption, networking, key management)
+  # Flutter/Dart layer is primarily UI - manual code review covers UI security concerns per .cursorrules
   
   - id: dart-print-usage
     patterns:

@@ -105,6 +105,10 @@ pub async fn get_background_sync_status(wallet_id: WalletId) -> Result<HashMap<S
 }
 
 /// Configure background sync settings
+///
+/// Note: This is a no-op on the Rust side. Background sync scheduling is handled
+/// entirely by Flutter using platform-specific schedulers (Android WorkManager, iOS BGTask).
+/// This function exists only for API compatibility.
 pub async fn configure_background_sync(
     wallet_id: WalletId,
     compact_interval_mins: u32,
@@ -112,23 +116,13 @@ pub async fn configure_background_sync(
     use_foreground_service: bool,
 ) -> Result<()> {
     tracing::info!(
-        "Configuring background sync: wallet={}, compact_interval={}min, deep_interval={}h, foreground={}",
+        "Background sync configuration received (handled by Flutter): wallet={}, compact_interval={}min, deep_interval={}h, foreground={}",
         wallet_id,
         compact_interval_mins,
         deep_interval_hours,
         use_foreground_service
     );
-
-    // Persist config in-memory for now (platform schedulers are the source of truth).
-    // This avoids placeholders while keeping behavior deterministic.
-    BG_SYNC_CONFIGS.write().insert(
-        wallet_id,
-        BgSyncConfig {
-            _compact_interval_mins: compact_interval_mins,
-            _deep_interval_hours: deep_interval_hours,
-            _use_foreground_service: use_foreground_service,
-        },
-    );
+    
     Ok(())
 }
 
@@ -146,20 +140,6 @@ pub async fn verify_background_sync_tunnel() -> Result<bool> {
         mode,
         TunnelMode::Tor | TunnelMode::I2p | TunnelMode::Socks5 { .. } | TunnelMode::Direct
     ))
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)] //Temp placeholder till pirate-net crate is finished. TODO remove
-struct BgSyncConfig {
-    _compact_interval_mins: u32,
-    _deep_interval_hours: u32,
-    _use_foreground_service: bool,
-}
-
-use parking_lot::RwLock;
-
-lazy_static::lazy_static! {
-    static ref BG_SYNC_CONFIGS: RwLock<HashMap<WalletId, BgSyncConfig>> = RwLock::new(HashMap::new());
 }
 
 #[cfg(test)]

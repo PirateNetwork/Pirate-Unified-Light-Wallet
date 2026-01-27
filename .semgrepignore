@@ -5,6 +5,9 @@ crates/pirate-ffi-frb/src/bridge_generated.rs
 crates/pirate-ffi-frb/src/frb_generated.rs
 crates/pirate-ffi-frb/src/api_impl.rs
 
+# Placeholder crates not yet implemented
+crates/pirate-mm2/**
+
 # Auto-generated Flutter files
 app/lib/core/ffi/*.dart
 app/.dart_tool/**

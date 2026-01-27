@@ -6,7 +6,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:riverpod/riverpod.dart' show Override;
 import 'package:golden_toolkit/golden_toolkit.dart';
 
 import 'package:pirate_wallet/design/theme.dart';
