@@ -44,6 +44,15 @@ dev_dependencies:
   json_serializable: ^6.11.2
   lints: ^6.0.0
   mocktail: ^1.0.4
+  msix: ^3.16.13
+
+msix_config:
+  display_name: Pirate Wallet
+  publisher_display_name: Pirate Chain
+  publisher: 'CN=PirateChain, O=PirateChain, L=Online, S=Global, C=US'
+  identity_name: black.pirate.wallet
+  msix_version: 1.0.0.0
+  capabilities: internetClient
 
 flutter:
   uses-material-design: true
