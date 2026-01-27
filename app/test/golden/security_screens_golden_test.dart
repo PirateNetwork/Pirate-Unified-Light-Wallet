@@ -11,8 +11,23 @@ import 'package:golden_toolkit/golden_toolkit.dart';
 import 'package:pirate_wallet/features/security/export_seed_screen.dart';
 import 'package:pirate_wallet/features/security/watch_only_screen.dart';
 import 'package:pirate_wallet/features/security/panic_pin_screen.dart';
+import 'package:pirate_wallet/features/security/panic_pin_provider.dart';
 
 import '../golden_test_utils.dart';
+
+class MockExportSeedStateNotifier extends ExportSeedStateNotifier {
+  final ExportSeedState initialState;
+  MockExportSeedStateNotifier(this.initialState);
+  @override
+  ExportSeedState build() => initialState;
+}
+
+class MockSeedWordsNotifier extends SeedWordsNotifier {
+  final List<String>? initialWords;
+  MockSeedWordsNotifier(this.initialWords);
+  @override
+  List<String>? build() => initialWords;
+}
 
 void main() {
   group('Security Screens Golden Tests', () {
@@ -34,7 +49,7 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            exportSeedStateProvider.overrideWith((ref) => ExportSeedState.biometric),
+            exportSeedStateProvider.overrideWith(() => MockExportSeedStateNotifier(ExportSeedState.biometric)),
           ],
           child: const MaterialApp(
             home: ExportSeedScreen(),
@@ -50,7 +65,7 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            exportSeedStateProvider.overrideWith((ref) => ExportSeedState.passphrase),
+            exportSeedStateProvider.overrideWith(() => MockExportSeedStateNotifier(ExportSeedState.passphrase)),
           ],
           child: const MaterialApp(
             home: ExportSeedScreen(),
@@ -66,15 +81,15 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            exportSeedStateProvider.overrideWith((ref) => ExportSeedState.display),
-            seedWordsProvider.overrideWith((ref) => [
+            exportSeedStateProvider.overrideWith(() => MockExportSeedStateNotifier(ExportSeedState.display)),
+            seedWordsProvider.overrideWith(() => MockSeedWordsNotifier([
               'abandon', 'abandon', 'abandon', 'abandon',
               'abandon', 'abandon', 'abandon', 'abandon',
               'abandon', 'abandon', 'abandon', 'abandon',
               'abandon', 'abandon', 'abandon', 'abandon',
               'abandon', 'abandon', 'abandon', 'abandon',
               'abandon', 'abandon', 'abandon', 'art',
-            ]),
+            ])),
           ],
           child: const MaterialApp(
             home: ExportSeedScreen(),

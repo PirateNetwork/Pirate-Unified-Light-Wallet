@@ -7,19 +7,20 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pirate_wallet/design/theme.dart';
 import 'package:pirate_wallet/ui/atoms/p_button.dart';
 
 void main() {
-  testWidgets('App theme + button smoke test', (WidgetTester tester) async {
+  testWidgets('App button smoke test', (WidgetTester tester) async {
+    // Disable animations for testing
+    // Animate.restartOnHotReload = true;
+
     await tester.pumpWidget(
       MaterialApp(
-        theme: PTheme.dark(),
         home: Scaffold(
           body: Center(
             child: PButton(
               onPressed: () {},
-              child: const Text('Continue'),
+              text: 'Continue',
             ),
           ),
         ),

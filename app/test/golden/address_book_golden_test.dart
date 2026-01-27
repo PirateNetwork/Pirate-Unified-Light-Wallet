@@ -1,4 +1,4 @@
-﻿/// Golden tests for Address Book screens
+/// Golden tests for Address Book screens
 ///
 /// Tests list, detail, and edit views for visual regression.
 /// Run with: flutter test --update-goldens test/golden/address_book_golden_test.dart
@@ -70,13 +70,17 @@ final testEntries = [
 
 /// Mock state notifier for testing
 class MockAddressBookNotifier extends AddressBookNotifier {
-  MockAddressBookNotifier(List<AddressEntry> entries) : super(testWalletId) {
-    state = AddressBookState(entries: entries);
-  }
+  final List<AddressEntry> initialEntries;
+  final AddressBookState? initialState;
+
+  MockAddressBookNotifier(this.initialEntries, {this.initialState}) : super(testWalletId);
+
+  @override
+  AddressBookState build() => initialState ?? AddressBookState(entries: initialEntries);
 }
 
 /// Create test provider overrides
-List<ProviderOverride> createTestOverrides(List<AddressEntry> entries) {
+List<Override> createTestOverrides(List<AddressEntry> entries) {
   return [
     addressBookProvider(testWalletId).overrideWith(
       () => MockAddressBookNotifier(entries),
@@ -88,9 +92,8 @@ List<ProviderOverride> createTestOverrides(List<AddressEntry> entries) {
 }
 
 class _MockActiveWalletNotifier extends ActiveWalletNotifier {
-  _MockActiveWalletNotifier() : super() {
-    state = testWalletId;
-  }
+  @override
+  WalletId? build() => testWalletId;
 }
 
 void main() {
@@ -346,13 +349,14 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            addressBookProvider(testWalletId).overrideWith((ref) {
-              final notifier = MockAddressBookNotifier([]);
-              notifier.state = const AddressBookState(isLoading: true);
-              return notifier;
+            addressBookProvider(testWalletId).overrideWith(() {
+              return MockAddressBookNotifier(
+                [],
+                initialState: const AddressBookState(isLoading: true),
+              );
             }),
             activeWalletProvider.overrideWith(
-              (ref) => _MockActiveWalletNotifier(),
+              () => _MockActiveWalletNotifier(),
             ),
           ],
           child: MaterialApp(
@@ -374,13 +378,14 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            addressBookProvider(testWalletId).overrideWith((ref) {
-              final notifier = MockAddressBookNotifier(testEntries);
-              notifier.state = notifier.state.copyWith(showFavoritesOnly: true);
-              return notifier;
+            addressBookProvider(testWalletId).overrideWith(() {
+              return MockAddressBookNotifier(
+                testEntries,
+                initialState: AddressBookState(entries: testEntries).copyWith(showFavoritesOnly: true),
+              );
             }),
             activeWalletProvider.overrideWith(
-              (ref) => _MockActiveWalletNotifier(),
+              () => _MockActiveWalletNotifier(),
             ),
           ],
           child: MaterialApp(
@@ -402,13 +407,14 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            addressBookProvider(testWalletId).overrideWith((ref) {
-              final notifier = MockAddressBookNotifier(testEntries);
-              notifier.state = notifier.state.copyWith(filterColor: ColorTag.green);
-              return notifier;
+            addressBookProvider(testWalletId).overrideWith(() {
+              return MockAddressBookNotifier(
+                testEntries,
+                initialState: AddressBookState(entries: testEntries).copyWith(filterColor: ColorTag.green),
+              );
             }),
             activeWalletProvider.overrideWith(
-              (ref) => _MockActiveWalletNotifier(),
+              () => _MockActiveWalletNotifier(),
             ),
           ],
           child: MaterialApp(
@@ -430,13 +436,14 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            addressBookProvider(testWalletId).overrideWith((ref) {
-              final notifier = MockAddressBookNotifier(testEntries);
-              notifier.state = notifier.state.copyWith(searchQuery: 'alice');
-              return notifier;
+            addressBookProvider(testWalletId).overrideWith(() {
+              return MockAddressBookNotifier(
+                testEntries,
+                initialState: AddressBookState(entries: testEntries).copyWith(searchQuery: 'alice'),
+              );
             }),
             activeWalletProvider.overrideWith(
-              (ref) => _MockActiveWalletNotifier(),
+              () => _MockActiveWalletNotifier(),
             ),
           ],
           child: MaterialApp(
@@ -460,13 +467,14 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            addressBookProvider(testWalletId).overrideWith((ref) {
-              final notifier = MockAddressBookNotifier(testEntries);
-              notifier.state = notifier.state.copyWith(searchQuery: 'nonexistent');
-              return notifier;
+            addressBookProvider(testWalletId).overrideWith(() {
+              return MockAddressBookNotifier(
+                testEntries,
+                initialState: AddressBookState(entries: testEntries).copyWith(searchQuery: 'nonexistent'),
+              );
             }),
             activeWalletProvider.overrideWith(
-              (ref) => _MockActiveWalletNotifier(),
+              () => _MockActiveWalletNotifier(),
             ),
           ],
           child: MaterialApp(
@@ -488,15 +496,16 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            addressBookProvider(testWalletId).overrideWith((ref) {
-              final notifier = MockAddressBookNotifier([]);
-              notifier.state = const AddressBookState(
-                error: 'Failed to load address book',
+            addressBookProvider(testWalletId).overrideWith(() {
+              return MockAddressBookNotifier(
+                [],
+                initialState: const AddressBookState(
+                  error: 'Failed to load address book',
+                ),
               );
-              return notifier;
             }),
             activeWalletProvider.overrideWith(
-              (ref) => _MockActiveWalletNotifier(),
+              () => _MockActiveWalletNotifier(),
             ),
           ],
           child: MaterialApp(

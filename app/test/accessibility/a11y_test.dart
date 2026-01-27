@@ -164,11 +164,10 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Look for Semantics widgets with value labels
-      final semanticsNodes = tester.binding.pipelineOwner.semanticsOwner
-          ?.rootSemanticsNode?.childrenInTraversalOrder;
+      // Look for Semantics widgets
+      final rootNode = tester.binding.pipelineOwner.semanticsOwner?.rootSemanticsNode;
       
-      expect(semanticsNodes, isNotNull);
+      expect(rootNode, isNotNull);
       
       debugPrint('OK: Semantics tree generated');
       debugPrint('   Balance should be announced as "X.XX ARRR"');
