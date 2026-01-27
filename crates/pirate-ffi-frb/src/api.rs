@@ -5612,63 +5612,87 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     // #endregion
 
     // Stop any existing sync session to force a clean rescan.
-    let cancel_result = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        cancel_sync(wallet_id.clone()),
-    )
-    .await;
-    // #region agent log
-    {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
+    let was_syncing = is_sync_running(wallet_id.clone()).unwrap_or(false);
+    if was_syncing {
+        let cancel_result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            cancel_sync(wallet_id.clone()),
+        )
+        .await;
+        // #region agent log
         {
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let step = if cancel_result.is_ok() {
-                "cancel_sync_done"
-            } else {
-                "cancel_sync_timeout"
-            };
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3076","message":"rescan step","data":{{"wallet_id":"{}","step":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts, wallet_id, step
-            );
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let step = if cancel_result.is_ok() {
+                    "cancel_sync_done"
+                } else {
+                    "cancel_sync_timeout"
+                };
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3076","message":"rescan step","data":{{"wallet_id":"{}","step":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                    ts, wallet_id, step
+                );
+            }
         }
-    }
-    // #endregion
+        // #endregion
 
-    let wait_ok = wait_for_sync_stop(&wallet_id, std::time::Duration::from_secs(10)).await;
-    // #region agent log
-    {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
+        let wait_ok = wait_for_sync_stop(&wallet_id, std::time::Duration::from_secs(10)).await;
+        // #region agent log
         {
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let step = if wait_ok {
-                "cancel_sync_wait_done"
-            } else {
-                "cancel_sync_wait_timeout"
-            };
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                ts, wallet_id, step
-            );
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let step = if wait_ok {
+                    "cancel_sync_wait_done"
+                } else {
+                    "cancel_sync_wait_timeout"
+                };
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                    ts, wallet_id, step
+                );
+            }
         }
+        // #endregion
+    } else {
+        // #region agent log
+        {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"cancel_sync_skipped"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                    ts, wallet_id
+                );
+            }
+        }
+        // #endregion
     }
-    // #endregion
 
     if let Some(session_arc) = {
         let sessions = SYNC_SESSIONS.read();
@@ -7529,6 +7553,35 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
 
+    let spendable =
+        !secret.extsk.is_empty() || secret.orchard_extsk.as_ref().is_some_and(|k| !k.is_empty());
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(debug_log_path())
+    {
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let id = format!("{:08x}", ts);
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:list_transactions","message":"list_transactions flags","data":{{"wallet_id":"{}","spendable":{},"extsk_len":{},"orchard_extsk_len":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+            id,
+            ts,
+            wallet_id,
+            spendable,
+            secret.extsk.len(),
+            secret
+                .orchard_extsk
+                .as_ref()
+                .map(|k| k.len())
+                .unwrap_or(0)
+        );
+    }
+
     // Get current height from sync state
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
     let sync_state = sync_storage.load_sync_state()?;
@@ -7538,7 +7591,14 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     const MIN_DEPTH: u64 = 10;
 
     // Get transactions from database
-    let tx_records = repo.get_transactions(secret.account_id, limit, current_height, MIN_DEPTH)?;
+    let split_transfers = spendable;
+    let tx_records = repo.get_transactions_with_options(
+        secret.account_id,
+        limit,
+        current_height,
+        MIN_DEPTH,
+        split_transfers,
+    )?;
 
     // Convert to TxInfo format
     let transactions: Vec<TxInfo> = tx_records

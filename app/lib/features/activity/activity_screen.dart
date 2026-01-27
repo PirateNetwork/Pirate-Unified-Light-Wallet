@@ -166,7 +166,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                     '${tx.amount >= 0 ? '+' : '-'}${(tx.amount.abs() / 100000000.0).toStringAsFixed(4)} ARRR',
                 timestamp: _convertPlatformInt64ToDateTime(tx.timestamp),
                 memo: tx.memo,
-                onTap: () => context.push('/transaction/${tx.txid}'),
+                onTap: () => context.push(
+                  '/transaction/${tx.txid}?amount=${tx.amount.toInt()}',
+                ),
               ),
             );
           },

@@ -28,6 +28,7 @@ class PInput extends StatefulWidget {
     this.onSubmitted,
     this.validator,
     this.inputFormatters,
+    this.focusNode,
     this.autofocus = false,
     this.monospace = false,
     super.key,
@@ -54,6 +55,7 @@ class PInput extends StatefulWidget {
   final ValueChanged<String>? onSubmitted;
   final FormFieldValidator<String>? validator;
   final List<TextInputFormatter>? inputFormatters;
+  final FocusNode? focusNode;
   final bool autofocus;
   final bool monospace;
 
@@ -63,6 +65,7 @@ class PInput extends StatefulWidget {
 
 class _PInputState extends State<PInput> {
   late FocusNode _focusNode;
+  bool _ownsFocusNode = false;
   bool _isFocused = false;
   late TextEditingController _internalController;
   bool _isInternalController = false;
@@ -70,7 +73,12 @@ class _PInputState extends State<PInput> {
   @override
   void initState() {
     super.initState();
-    _focusNode = FocusNode();
+    if (widget.focusNode != null) {
+      _focusNode = widget.focusNode!;
+    } else {
+      _focusNode = FocusNode();
+      _ownsFocusNode = true;
+    }
     _focusNode.addListener(_onFocusChange);
     if (widget.controller == null && widget.value != null) {
       _internalController = TextEditingController(text: widget.value);
@@ -87,6 +95,20 @@ class _PInputState extends State<PInput> {
     if (_isInternalController && widget.value != oldWidget.value) {
       _internalController.text = widget.value ?? '';
     }
+    if (oldWidget.focusNode != widget.focusNode) {
+      _focusNode.removeListener(_onFocusChange);
+      if (_ownsFocusNode) {
+        _focusNode.dispose();
+      }
+      if (widget.focusNode != null) {
+        _focusNode = widget.focusNode!;
+        _ownsFocusNode = false;
+      } else {
+        _focusNode = FocusNode();
+        _ownsFocusNode = true;
+      }
+      _focusNode.addListener(_onFocusChange);
+    }
   }
 
   @override
@@ -94,9 +116,10 @@ class _PInputState extends State<PInput> {
     if (_isInternalController) {
       _internalController.dispose();
     }
-    _focusNode
-      ..removeListener(_onFocusChange)
-      ..dispose();
+    _focusNode.removeListener(_onFocusChange);
+    if (_ownsFocusNode) {
+      _focusNode.dispose();
+    }
     super.dispose();
   }
 

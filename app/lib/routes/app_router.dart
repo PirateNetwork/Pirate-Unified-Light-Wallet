@@ -327,6 +327,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           state: state,
           child: TransactionDetailScreen(
             txid: state.pathParameters['txid'] ?? '',
+            amount: int.tryParse(state.uri.queryParameters['amount'] ?? ''),
           ),
         ),
       ),

@@ -220,6 +220,7 @@ class _HomeHeader extends ConsumerWidget {
       data: (status) => status,
       loading: () => null,
       error: (_, _) => null,
+      skipLoadingOnRefresh: false,
     );
 
     final decoySyncStatus =
@@ -381,11 +382,12 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
         );
     final reduceMotion = MediaQuery.of(context).disableAnimations;
 
-    final syncStatus = syncStatusAsync.when(
-      data: (status) => status,
-      loading: () => null,
-      error: (_, _) => null,
-    );
+      final syncStatus = syncStatusAsync.when(
+        data: (status) => status,
+        loading: () => null,
+        error: (_, _) => null,
+        skipLoadingOnRefresh: false,
+      );
 
     final decoySyncStatus =
         isDecoy ? _buildDecoySyncStatus(decoyHeight) : null;
@@ -519,7 +521,9 @@ class _HomeTransactionsSection extends ConsumerWidget {
             return _TransactionItemWithLabel(
               key: ValueKey(tx.txid),
               tx: tx,
-              onTap: () => context.push('/transaction/${tx.txid}'),
+              onTap: () => context.push(
+                '/transaction/${tx.txid}?amount=${tx.amount}',
+              ),
             );
           },
           childCount: itemCount,

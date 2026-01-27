@@ -37,10 +37,18 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
     super.initState();
     // Set default birthday to current tip - some buffer
     _birthdayController.text = '${FfiBridge.defaultBirthdayHeight}';
+    _nameController.addListener(_onFieldChanged);
+    _saplingIvkController.addListener(_onFieldChanged);
+    _orchardIvkController.addListener(_onFieldChanged);
+    _birthdayController.addListener(_onFieldChanged);
   }
 
   @override
   void dispose() {
+    _nameController.removeListener(_onFieldChanged);
+    _saplingIvkController.removeListener(_onFieldChanged);
+    _orchardIvkController.removeListener(_onFieldChanged);
+    _birthdayController.removeListener(_onFieldChanged);
     _nameController.dispose();
     _saplingIvkController.dispose();
     _orchardIvkController.dispose();
@@ -54,6 +62,11 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
     return _nameController.text.trim().isNotEmpty &&
            hasKey &&
            _birthdayController.text.trim().isNotEmpty;
+  }
+
+  void _onFieldChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _pasteIvk(TextEditingController controller) async {

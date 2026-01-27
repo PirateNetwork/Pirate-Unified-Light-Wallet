@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -391,6 +392,9 @@ class SettingsScreen extends ConsumerWidget {
                   TextField(
                     controller: controller,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
                     decoration: InputDecoration(
                       labelText: 'Start height',
                       hintText: 'e.g., 1',
@@ -417,12 +421,26 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ],
         ),
-      );
+        );
 
-      if (confirmed ?? false) {
-        final fromHeight = int.tryParse(controller.text.trim()) ?? 1;
-        debugPrint('Rescan confirmed, starting from height: $fromHeight');
-        await _appendRescanLog('rescan requested from_height=$fromHeight');
+        if (confirmed ?? false) {
+          final fromHeight = int.tryParse(controller.text.trim());
+            if (fromHeight == null || fromHeight <= 0) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                      'Enter a valid block height to rescan from.',
+                    ),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            controller.dispose();
+            return;
+          }
+          debugPrint('Rescan confirmed, starting from height: $fromHeight');
+          await _appendRescanLog('rescan requested from_height=$fromHeight');
         try {
           // Invalidate sync progress stream before rescan so home screen picks it up
           ref.invalidate(syncProgressStreamProvider);

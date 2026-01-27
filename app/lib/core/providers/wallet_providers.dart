@@ -347,12 +347,20 @@ final rescanProvider = Provider<Future<void> Function(int fromHeight)>((ref) {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) throw Exception('No active wallet');
 
-    await FfiBridge.rescan(walletId, fromHeight);
-
-    // Refresh sync status and progress stream so home screen picks up the new sync
+    // Kick sync status/progress listeners immediately so UI reflects rescan start.
     ref
       ..invalidate(syncStatusProvider)
       ..invalidate(syncProgressStreamProvider);
+
+    await FfiBridge.rescan(walletId, fromHeight);
+
+    // Refresh sync status/progress and clear cached transaction state after rescan.
+    ref
+      ..invalidate(syncStatusProvider)
+      ..invalidate(syncProgressStreamProvider)
+      ..invalidate(transactionsProvider)
+      ..invalidate(balanceProvider)
+      ..invalidate(transactionStreamProvider);
   };
 });
 
@@ -414,7 +422,8 @@ final transactionsProvider = FutureProvider<List<TxInfo>>((ref) async {
   return transactions;
 });
 
-const int _memoPrefetchLimit = 20;
+const int _memoPrefetchLimit = 100;
+const int _memoPrefetchConcurrency = 3;
 final Set<String> _memoPrefetchInFlight = <String>{};
 final Set<String> _memoPrefetchComplete = <String>{};
 
@@ -452,21 +461,33 @@ void _prefetchRecentMemos(
   // Best-effort memo prefetch so memo badges can show without opening details.
   unawaited(() async {
     var memoFetched = false;
-    for (final txid in pending) {
-      final key = _memoPrefetchKey(walletId, txid);
-      try {
-        final memo = await FfiBridge.fetchTransactionMemo(
-          walletId: walletId,
-          txid: txid,
-        );
-        _memoPrefetchComplete.add(key);
-        if (memo != null && memo.isNotEmpty) {
-          memoFetched = true;
-        }
-      } catch (_) {
-        // Ignore failures; memo can still be fetched when opening details.
-      } finally {
-        _memoPrefetchInFlight.remove(key);
+    for (var i = 0; i < pending.length; i += _memoPrefetchConcurrency) {
+      final chunk = pending.sublist(
+        i,
+        i + _memoPrefetchConcurrency > pending.length
+            ? pending.length
+            : i + _memoPrefetchConcurrency,
+      );
+      final results = await Future.wait(
+        chunk.map((txid) async {
+          final key = _memoPrefetchKey(walletId, txid);
+          try {
+            final memo = await FfiBridge.fetchTransactionMemo(
+              walletId: walletId,
+              txid: txid,
+            );
+            _memoPrefetchComplete.add(key);
+            return memo != null && memo.isNotEmpty;
+          } catch (_) {
+            // Ignore failures; memo can still be fetched when opening details.
+            return false;
+          } finally {
+            _memoPrefetchInFlight.remove(key);
+          }
+        }),
+      );
+      if (results.any((fetched) => fetched)) {
+        memoFetched = true;
       }
     }
     if (memoFetched) {
@@ -497,6 +518,23 @@ final transactionWatcherProvider = Provider<void>((ref) {
         ..invalidate(transactionsProvider)
         ..invalidate(balanceProvider);
     }
+  });
+});
+
+/// Refresh transactions/balance when a sync run completes (e.g., after rescan).
+final syncCompletionWatcherProvider = Provider<void>((ref) {
+  ref.watch(activeWalletProvider);
+  var wasSyncing = false;
+  ref.listen<AsyncValue<SyncStatus?>>(syncProgressStreamProvider, (_, next) {
+    next.whenData((status) {
+      final isSyncing = status?.isSyncing ?? false;
+      if (wasSyncing && !isSyncing) {
+        ref
+          ..invalidate(transactionsProvider)
+          ..invalidate(balanceProvider);
+      }
+      wasSyncing = isSyncing;
+    });
   });
 });
 

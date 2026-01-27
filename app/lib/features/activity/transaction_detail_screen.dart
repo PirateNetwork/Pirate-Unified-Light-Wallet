@@ -21,9 +21,10 @@ import '../../ui/organisms/p_skeleton.dart';
 
 /// Transaction detail screen.
 class TransactionDetailScreen extends ConsumerWidget {
-  const TransactionDetailScreen({super.key, required this.txid});
+  const TransactionDetailScreen({super.key, required this.txid, this.amount});
 
   final String txid;
+  final int? amount;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -31,7 +32,16 @@ class TransactionDetailScreen extends ConsumerWidget {
 
     final content = transactionsAsync.when(
       data: (txs) {
-        final tx = txs.where((item) => item.txid == txid).firstOrNull;
+        TxInfo? tx;
+        if (amount != null) {
+          for (final item in txs) {
+            if (item.txid == txid && item.amount.toInt() == amount) {
+              tx = item;
+              break;
+            }
+          }
+        }
+        tx ??= txs.where((item) => item.txid == txid).firstOrNull;
         if (tx == null) {
           return _TransactionMissing(txid: txid);
         }

@@ -1755,8 +1755,23 @@ impl<'a> Repository<'a> {
         &self,
         account_id: i64,
         limit: Option<u32>,
+        current_height: u64,
+        min_depth: u64,
+    ) -> Result<Vec<TransactionRecord>> {
+        self.get_transactions_with_options(account_id, limit, current_height, min_depth, true)
+    }
+
+    /// Get transaction history with optional split behavior.
+    ///
+    /// When `split_transfers` is true, transactions that include both external receives and
+    /// internal change outputs can be split into separate send/receive entries.
+    pub fn get_transactions_with_options(
+        &self,
+        account_id: i64,
+        limit: Option<u32>,
         _current_height: u64,
         _min_depth: u64,
+        split_transfers: bool,
     ) -> Result<Vec<TransactionRecord>> {
         use hex;
         use std::collections::HashMap;
@@ -1812,6 +1827,8 @@ impl<'a> Repository<'a> {
             received_internal: i64,
             sent: i64,
             memo: Option<Vec<u8>>,
+            saw_internal: bool,
+            saw_unknown_scope: bool,
         }
 
         impl TxAggregate {
@@ -1822,11 +1839,16 @@ impl<'a> Repository<'a> {
                     received_internal: 0,
                     sent: 0,
                     memo: None,
+                    saw_internal: false,
+                    saw_unknown_scope: false,
                 }
             }
         }
 
         let mut tx_map: HashMap<String, TxAggregate> = HashMap::new();
+        let mut spent_missing_by_txid: HashMap<String, u64> = HashMap::new();
+        let mut note_counts_by_txid: HashMap<String, u64> = HashMap::new();
+        let mut spent_target_counts: HashMap<String, u64> = HashMap::new();
 
         let mut seen: HashMap<(Vec<u8>, i64, crate::models::NoteType), bool> = HashMap::new();
         for (
@@ -1856,6 +1878,7 @@ impl<'a> Repository<'a> {
                 _ => crate::models::NoteType::Sapling,
             };
             let txid_bytes = self.decrypt_blob(&enc_txid)?;
+            let txid_hex = hex::encode(&txid_bytes);
             let output_index = self.decrypt_int64(&enc_output_index)?;
             let height = self.decrypt_int64(&enc_height)?;
             let value = self.decrypt_int64(&enc_value)?;
@@ -1869,6 +1892,17 @@ impl<'a> Repository<'a> {
             let address_scope = address_id
                 .and_then(|id| address_scopes.get(&id).copied())
                 .unwrap_or(crate::models::AddressScope::External);
+
+            *note_counts_by_txid.entry(txid_hex.clone()).or_insert(0) += 1;
+            if spent && spent_txid.is_none() {
+                *spent_missing_by_txid.entry(txid_hex.clone()).or_insert(0) += 1;
+            }
+            if let Some(spent_txid_bytes) = spent_txid.as_ref() {
+                let spent_txid_hex = hex::encode(spent_txid_bytes);
+                *spent_target_counts
+                    .entry(spent_txid_hex)
+                    .or_insert(0) += 1;
+            }
 
             let key = (txid_bytes.clone(), output_index, note_type);
             let mut process_incoming = false;
@@ -1892,13 +1926,19 @@ impl<'a> Repository<'a> {
             }
 
             if process_incoming {
-                let txid_hex = hex::encode(&txid_bytes);
                 let entry = tx_map
                     .entry(txid_hex.clone())
                     .or_insert_with(|| TxAggregate::new(height));
 
                 if height > entry.height {
                     entry.height = height;
+                }
+
+                if address_id.is_none() {
+                    entry.saw_unknown_scope = true;
+                }
+                if address_scope == crate::models::AddressScope::Internal {
+                    entry.saw_internal = true;
                 }
 
                 match address_scope {
@@ -1919,7 +1959,7 @@ impl<'a> Repository<'a> {
                 let spend_txid_hex = spent_txid
                     .as_ref()
                     .map(hex::encode)
-                    .unwrap_or_else(|| hex::encode(&txid_bytes));
+                    .unwrap_or_else(|| txid_hex.clone());
                 let entry_height = if spent_txid.is_some() { 0 } else { height };
                 let entry = tx_map
                     .entry(spend_txid_hex.clone())
@@ -1938,6 +1978,26 @@ impl<'a> Repository<'a> {
         let ts_map = self.get_transaction_timestamps(&txid_keys)?;
         let memo_map = self.get_transaction_memos(&txid_keys)?;
         let fee_map = self.get_transaction_fees(&txid_keys)?;
+        struct TxDebugRow {
+            txid: String,
+            height: i64,
+            received_external: i64,
+            received_internal: i64,
+            sent: i64,
+            total_received: i64,
+            net_amount: i64,
+            outgoing_amount: i64,
+            fee: i64,
+            saw_internal: bool,
+            saw_unknown_scope: bool,
+            can_split: bool,
+            self_transfer: bool,
+            spent_missing: u64,
+            note_count: u64,
+            spent_targets: u64,
+        }
+
+        let mut debug_records: Vec<TxDebugRow> = Vec::new();
 
         for (txid, entry) in tx_map.iter_mut() {
             if let Some(height) = heights_map.get(txid) {
@@ -1971,7 +2031,47 @@ impl<'a> Repository<'a> {
                 .saturating_sub(entry.received_internal)
                 .saturating_sub(fee_i64);
 
-            if entry.received_external > 0 && outgoing_amount > 0 {
+            let can_split = split_transfers
+                && entry.received_external > 0
+                && outgoing_amount > 0
+                && entry.saw_internal
+                && !entry.saw_unknown_scope;
+            let self_transfer = split_transfers
+                && entry.sent > 0
+                && entry.received_external > 0
+                && entry.received_internal == 0
+                && !entry.saw_unknown_scope
+                && net_amount.abs() <= 20_000;
+            if debug_records.len() < 50 {
+                let spent_missing = spent_missing_by_txid.get(&txid).copied().unwrap_or(0);
+                let note_count = note_counts_by_txid.get(&txid).copied().unwrap_or(0);
+                let spent_targets = spent_target_counts.get(&txid).copied().unwrap_or(0);
+                if spent_missing > 0
+                    || entry.sent > 0
+                    || entry.received_internal > 0
+                    || entry.received_external > 0
+                {
+                    debug_records.push(TxDebugRow {
+                        txid: txid.clone(),
+                        height: entry.height,
+                        received_external: entry.received_external,
+                        received_internal: entry.received_internal,
+                        sent: entry.sent,
+                        total_received,
+                        net_amount,
+                        outgoing_amount,
+                        fee: fee_i64,
+                        saw_internal: entry.saw_internal,
+                        saw_unknown_scope: entry.saw_unknown_scope,
+                        can_split,
+                        self_transfer,
+                        spent_missing,
+                        note_count,
+                        spent_targets,
+                    });
+                }
+            }
+            if can_split {
                 transactions.push(TransactionRecord {
                     txid: txid.clone(),
                     height: entry.height,
@@ -1988,6 +2088,24 @@ impl<'a> Repository<'a> {
                     fee: 0,
                     memo,
                 });
+            } else if self_transfer {
+                let transfer_amount = entry.received_external;
+                transactions.push(TransactionRecord {
+                    txid: txid.clone(),
+                    height: entry.height,
+                    timestamp,
+                    amount: -transfer_amount,
+                    fee,
+                    memo: memo.clone(),
+                });
+                transactions.push(TransactionRecord {
+                    txid,
+                    height: entry.height,
+                    timestamp,
+                    amount: transfer_amount,
+                    fee: 0,
+                    memo,
+                });
             } else {
                 transactions.push(TransactionRecord {
                     txid,
@@ -1997,6 +2115,57 @@ impl<'a> Repository<'a> {
                     fee,
                     memo,
                 });
+            }
+        }
+
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"repository.rs:get_transactions","message":"tx_aggregate summary","data":{{"tx_count":{},"log_count":{},"split_transfers":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                id,
+                ts,
+                transactions.len(),
+                debug_records.len(),
+                split_transfers
+            );
+            for row in debug_records {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let id = format!("{:08x}", ts);
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"repository.rs:get_transactions","message":"tx_aggregate entry","data":{{"txid":"{}","height":{},"received_external":{},"received_internal":{},"sent":{},"total_received":{},"net_amount":{},"outgoing_amount":{},"fee":{},"saw_internal":{},"saw_unknown_scope":{},"can_split":{},"self_transfer":{},"spent_missing_txid":{},"note_count":{},"spent_target_count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    id,
+                    ts,
+                    row.txid,
+                    row.height,
+                    row.received_external,
+                    row.received_internal,
+                    row.sent,
+                    row.total_received,
+                    row.net_amount,
+                    row.outgoing_amount,
+                    row.fee,
+                    row.saw_internal,
+                    row.saw_unknown_scope,
+                    row.can_split,
+                    row.self_transfer,
+                    row.spent_missing,
+                    row.note_count,
+                    row.spent_targets
+                );
             }
         }
 

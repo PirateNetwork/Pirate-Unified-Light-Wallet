@@ -3507,7 +3507,22 @@ impl SyncEngine {
             };
 
             let nk = dfvk.nullifier_deriving_key();
-            let sapling_ivk = dfvk.sapling_ivk();
+            let sapling_ivk = if note.address_scope == AddressScope::Internal {
+                let internal_ivk_bytes = dfvk.to_internal_ivk_bytes();
+                match Option::from(jubjub::Fr::from_bytes(&internal_ivk_bytes)) {
+                    Some(ivk_fr) => SaplingIvk(ivk_fr),
+                    None => {
+                        tracing::warn!(
+                            "Invalid internal Sapling IVK for tx {} output {}",
+                            hex::encode(&note.tx_hash),
+                            note.output_index
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                dfvk.sapling_ivk()
+            };
 
             let position = TxOutputKey::new(&note.tx_hash, note.output_index)
                 .and_then(|key| position_mappings.sapling_by_tx.get(&key).copied());
@@ -3599,6 +3614,8 @@ impl SyncEngine {
         };
         let mut spend_updates: Vec<(i64, [u8; 32])> = Vec::new();
         let mut spend_nullifiers: Vec<([u8; 32], [u8; 32])> = Vec::new();
+        let mut matched_nullifiers: std::collections::HashSet<[u8; 32]> =
+            std::collections::HashSet::new();
         let mut sapling_spends = 0u64;
         let mut orchard_spends = 0u64;
         let mut matched_spends = 0u64;
@@ -3632,6 +3649,7 @@ impl SyncEngine {
                             spend_nullifiers.push((nf, txid));
                             if let Some(id) = self.nullifier_cache.remove(&nf) {
                                 spend_updates.push((id, txid));
+                                matched_nullifiers.insert(nf);
                                 has_spend = true;
                                 matched_spends += 1;
                             }
@@ -3648,6 +3666,7 @@ impl SyncEngine {
                             spend_nullifiers.push((nf, txid));
                             if let Some(id) = self.nullifier_cache.remove(&nf) {
                                 spend_updates.push((id, txid));
+                                matched_nullifiers.insert(nf);
                                 has_spend = true;
                                 matched_spends += 1;
                             }
@@ -3682,18 +3701,26 @@ impl SyncEngine {
                 }
             }
         }
-        if matched_spends == 0 && !spend_nullifiers.is_empty() && !self.nullifier_cache.is_empty() {
-            match sink.mark_notes_spent_by_nullifiers_with_txid(&spend_nullifiers) {
-                Ok(updated) => {
-                    if updated > 0 {
-                        fallback_updates = updated;
-                        self.nullifier_cache.clear();
-                        self.nullifier_cache_loaded = false;
-                        let _ = self.ensure_nullifier_cache();
-                    }
+        if !spend_nullifiers.is_empty() {
+            let mut fallback_entries: Vec<([u8; 32], [u8; 32])> = Vec::new();
+            for (nf, txid) in &spend_nullifiers {
+                if !matched_nullifiers.contains(nf) {
+                    fallback_entries.push((*nf, *txid));
                 }
-                Err(e) => {
-                    tracing::warn!("Fallback spend match failed: {}", e);
+            }
+            if !fallback_entries.is_empty() {
+                match sink.mark_notes_spent_by_nullifiers_with_txid(&fallback_entries) {
+                    Ok(updated) => {
+                        if updated > 0 {
+                            fallback_updates = updated;
+                            self.nullifier_cache.clear();
+                            self.nullifier_cache_loaded = false;
+                            let _ = self.ensure_nullifier_cache();
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Fallback spend match failed: {}", e);
+                    }
                 }
             }
         }

@@ -151,7 +151,9 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(transactionWatcherProvider);
+    ref
+      ..watch(transactionWatcherProvider)
+      ..watch(syncCompletionWatcherProvider);
     final currentIndex = _locationToIndex(location);
     final nav = PNav(
       currentIndex: currentIndex,
