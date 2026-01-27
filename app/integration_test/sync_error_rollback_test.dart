@@ -132,12 +132,14 @@ void main() {
       final settingsIcon = find.byIcon(Icons.settings);
       if (settingsIcon.evaluate().isNotEmpty) {
         await tester.tap(settingsIcon);
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Find rescan option
         if (find.text('Rescan Blockchain').evaluate().isNotEmpty) {
           await tester.tap(find.text('Rescan Blockchain'));
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
 
           // Should show confirmation dialog
           expect(find.text('Confirm Rescan'), findsOneWidget);
@@ -189,11 +191,13 @@ void main() {
       final settingsIcon = find.byIcon(Icons.settings);
       if (settingsIcon.evaluate().isNotEmpty) {
         await tester.tap(settingsIcon);
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         if (find.text('Sync Mode').evaluate().isNotEmpty) {
           await tester.tap(find.text('Sync Mode'));
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
 
           // Should show mode options
           expect(find.text('Compact'), findsOneWidget);
@@ -201,14 +205,16 @@ void main() {
 
           // Select deep scan
           await tester.tap(find.text('Deep Scan'));
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
 
           // Should show deep scan warning
           expect(find.textContaining('slower'), findsOneWidget);
 
           // Confirm
           await tester.tap(find.text('OK'));
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
 
           // Sync should restart in deep mode
           expect(find.textContaining('Deep'), findsOneWidget);
@@ -246,11 +252,13 @@ void main() {
       final settingsIcon = find.byIcon(Icons.settings);
       if (settingsIcon.evaluate().isNotEmpty) {
         await tester.tap(settingsIcon);
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         if (find.text('Node Configuration').evaluate().isNotEmpty) {
           await tester.tap(find.text('Node Configuration'));
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
 
           // Should show current node
           expect(find.textContaining('lightd.pirate.black'), findsOneWidget);
@@ -258,7 +266,8 @@ void main() {
           // Select different node
           if (find.text('Select Node').evaluate().isNotEmpty) {
             await tester.tap(find.text('Select Node'));
-            await tester.pumpAndSettle();
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 500));
 
             // Should restart sync with new node
             expect(find.textContaining('Switching'), findsOneWidget);

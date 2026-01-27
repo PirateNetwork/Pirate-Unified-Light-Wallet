@@ -2,18 +2,18 @@
 ///
 /// Tests list, detail, and edit views for visual regression.
 /// Run with: flutter test --update-goldens test/golden/address_book_golden_test.dart
-library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:golden_toolkit/golden_toolkit.dart';
 
-import '../../lib/design/theme.dart';
-import '../../lib/features/address_book/address_book_screen.dart';
-import '../../lib/features/address_book/models/address_entry.dart';
-import '../../lib/features/address_book/providers/address_book_provider.dart';
-import '../../lib/core/providers/wallet_providers.dart';
+import 'package:pirate_wallet/design/theme.dart';
+import 'package:pirate_wallet/features/address_book/address_book_screen.dart';
+import 'package:pirate_wallet/features/address_book/models/address_entry.dart';
+import 'package:pirate_wallet/features/address_book/providers/address_book_provider.dart';
+import 'package:pirate_wallet/core/providers/wallet_providers.dart';
+import 'package:pirate_wallet/core/ffi/ffi_bridge.dart';
 import '../golden_test_utils.dart';
 
 /// Test wallet ID
@@ -80,7 +80,7 @@ class MockAddressBookNotifier extends AddressBookNotifier {
 }
 
 /// Create test provider overrides
-List<Override> createTestOverrides(List<AddressEntry> entries) {
+List<dynamic> createTestOverrides(List<AddressEntry> entries) {
   return [
     addressBookProvider(testWalletId).overrideWith(
       () => MockAddressBookNotifier(entries),
@@ -93,7 +93,7 @@ List<Override> createTestOverrides(List<AddressEntry> entries) {
 
 class _MockActiveWalletNotifier extends ActiveWalletNotifier {
   @override
-  WalletId? build() => testWalletId;
+  String? build() => testWalletId;
 }
 
 void main() {

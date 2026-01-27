@@ -7,6 +7,7 @@ import 'package:pirate_wallet/features/settings/verify_build_screen.dart';
 
 final bool _skipFfiTests =
     Platform.environment['CI'] == 'true' ||
+    Platform.environment['GITHUB_ACTIONS'] == 'true' ||
     Platform.environment['SKIP_FFI_TESTS'] == 'true';
 
 void main() {

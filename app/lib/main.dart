@@ -19,7 +19,19 @@ import 'core/providers/rust_init_provider.dart';
 
 SingleInstanceLock? _singleInstanceLock;
 
+bool _appInitialized = false;
+
 void main() async {
+  if (_appInitialized) {
+    runApp(
+      const ProviderScope(
+        child: PirateWalletApp(),
+      ),
+    );
+    return;
+  }
+  _appInitialized = true;
+
   WidgetsFlutterBinding.ensureInitialized();
   _installFlutterErrorLogging();
 

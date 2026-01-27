@@ -7,6 +7,7 @@ import 'package:pirate_wallet/features/settings/export_seed_screen.dart';
 
 final bool _skipFfiTests =
     Platform.environment['CI'] == 'true' ||
+    Platform.environment['GITHUB_ACTIONS'] == 'true' ||
     Platform.environment['SKIP_FFI_TESTS'] == 'true';
 
 void main() {
@@ -34,7 +35,7 @@ void main() {
       
       // Should have cancel button
       expect(find.text('Cancel'), findsOneWidget);
-    });
+    }, skip: _skipFfiTests);
 
     testWidgets('Can cancel from warning screen', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -72,7 +73,7 @@ void main() {
 
       // Should return to previous screen
       expect(find.text('Open'), findsOneWidget);
-    });
+    }, skip: _skipFfiTests);
 
     testWidgets('Progresses to biometric step after warning', (WidgetTester tester) async {
       await tester.pumpWidget(

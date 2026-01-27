@@ -1,5 +1,4 @@
-﻿/// Performance tests for scroll/jank detection
-library;
+/// Performance tests for scroll/jank detection
 
 import 'dart:io';
 

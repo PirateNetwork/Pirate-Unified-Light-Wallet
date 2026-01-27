@@ -16,7 +16,8 @@ void main() {
       // Navigate to home (assuming already onboarded)
       if (find.text('Receive').evaluate().isNotEmpty) {
         await tester.tap(find.text('Receive'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show receive screen
         expect(find.text('Receive ARRR'), findsOneWidget);
@@ -32,7 +33,8 @@ void main() {
 
         // Tap copy button
         await tester.tap(find.byIcon(Icons.copy));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show success message
         expect(find.textContaining('Copied'), findsOneWidget);
@@ -46,7 +48,8 @@ void main() {
 
       if (find.text('Receive').evaluate().isNotEmpty) {
         await tester.tap(find.text('Receive'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Get current address
         final currentAddress = find.textContaining('zs1');
@@ -55,7 +58,8 @@ void main() {
 
           // Tap "New Address"
           await tester.tap(find.text('New Address'));
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
 
           // Should show new address
           final newAddress = find.textContaining('zs1');
@@ -74,7 +78,8 @@ void main() {
 
       if (find.text('Send').evaluate().isNotEmpty) {
         await tester.tap(find.text('Send'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show send screen
         expect(find.text('Send ARRR'), findsOneWidget);
@@ -96,14 +101,16 @@ void main() {
           find.widgetWithText(TextField, 'Memo'),
           'Test transaction',
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show fee estimate
         expect(find.textContaining('Fee'), findsOneWidget);
 
         // Tap Review
         await tester.tap(find.text('Review'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show review screen
         expect(find.text('Review Transaction'), findsOneWidget);
@@ -119,13 +126,15 @@ void main() {
 
       if (find.text('Send').evaluate().isNotEmpty) {
         await tester.tap(find.text('Send'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Enable send-to-many
         final addRecipient = find.text('Add Recipient');
         if (addRecipient.evaluate().isNotEmpty) {
           await tester.tap(addRecipient);
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
 
           // Should show second recipient fields
           expect(find.byType(TextField), findsAtLeast(6)); // 3 fields * 2 recipients
@@ -140,12 +149,14 @@ void main() {
 
       if (find.text('Send').evaluate().isNotEmpty) {
         await tester.tap(find.text('Send'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Tap address book icon
         if (find.byIcon(Icons.contacts).evaluate().isNotEmpty) {
           await tester.tap(find.byIcon(Icons.contacts));
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
 
           // Should show address book
           expect(find.text('Address Book'), findsOneWidget);
@@ -160,7 +171,8 @@ void main() {
 
       if (find.text('Send').evaluate().isNotEmpty) {
         await tester.tap(find.text('Send'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Enter amount larger than balance
         await tester.enterText(
@@ -172,11 +184,13 @@ void main() {
           find.widgetWithText(TextField, 'Amount'),
           '999999',
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Tap Review
         await tester.tap(find.text('Review'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show insufficient funds error
         expect(find.textContaining('Insufficient'), findsOneWidget);
@@ -190,7 +204,8 @@ void main() {
 
       if (find.text('Send').evaluate().isNotEmpty) {
         await tester.tap(find.text('Send'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Enter invalid address
         await tester.enterText(
@@ -202,10 +217,12 @@ void main() {
           find.widgetWithText(TextField, 'Amount'),
           '0.1',
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         await tester.tap(find.text('Review'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show invalid address error
         expect(find.textContaining('Invalid address'), findsOneWidget);
@@ -219,14 +236,16 @@ void main() {
 
       if (find.text('Send').evaluate().isNotEmpty) {
         await tester.tap(find.text('Send'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Enter very long memo (>512 chars)
         await tester.enterText(
           find.widgetWithText(TextField, 'Memo'),
           'a' * 600,
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show memo too long error
         expect(find.textContaining('too long'), findsOneWidget);
@@ -244,7 +263,8 @@ void main() {
 
         // Tap a transaction
         await tester.tap(find.byType(ListTile).first);
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show transaction details
         expect(find.text('Transaction Details'), findsOneWidget);

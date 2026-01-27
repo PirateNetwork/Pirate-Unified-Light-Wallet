@@ -1,7 +1,6 @@
 /// Golden tests for security screens
 /// 
 /// Tests export seed, watch-only, and panic PIN screens
-library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +10,7 @@ import 'package:golden_toolkit/golden_toolkit.dart';
 import 'package:pirate_wallet/features/security/export_seed_screen.dart';
 import 'package:pirate_wallet/features/security/watch_only_screen.dart';
 import 'package:pirate_wallet/features/security/panic_pin_screen.dart';
-import 'package:pirate_wallet/features/security/panic_pin_provider.dart';
+import 'package:pirate_wallet/core/ffi/ffi_bridge.dart';
 
 import '../golden_test_utils.dart';
 
@@ -154,7 +153,7 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            hasPanicPinProvider.overrideWith((ref) async => false),
+            hasPanicPinProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(
             home: PanicPinScreen(),
@@ -170,7 +169,7 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            hasPanicPinProvider.overrideWith((ref) async => true),
+            hasPanicPinProvider.overrideWith((ref) => true),
           ],
           child: const MaterialApp(
             home: PanicPinScreen(),
@@ -186,7 +185,7 @@ void main() {
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
-            hasPanicPinProvider.overrideWith((ref) async => false),
+            hasPanicPinProvider.overrideWith((ref) => false),
           ],
           child: const MaterialApp(
             home: PanicPinScreen(),

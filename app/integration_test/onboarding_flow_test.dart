@@ -20,7 +20,8 @@ void main() {
 
       // Tap "Create New Wallet"
       await tester.tap(find.text('Create New Wallet'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Should show wallet name input
       expect(find.text('Name Your Wallet'), findsOneWidget);
@@ -30,11 +31,13 @@ void main() {
         find.byType(TextField).first,
         'Test Wallet',
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Tap continue
       await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Should show passphrase setup
       expect(find.text('Set Passphrase'), findsOneWidget);
@@ -43,11 +46,12 @@ void main() {
       final passphraseFields = find.byType(TextField);
       await tester.enterText(passphraseFields.at(0), 'TestPass123!');
       await tester.enterText(passphraseFields.at(1), 'TestPass123!');
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Tap continue
       await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
+      await tester.pump();
       await tester.pump(const Duration(seconds: 1));
 
       // Should show recovery phrase
@@ -56,14 +60,16 @@ void main() {
 
       // Tap "I've Written It Down"
       await tester.tap(find.text("I've Written It Down"));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Should show verification
       expect(find.text('Verify Recovery Phrase'), findsOneWidget);
 
       // Skip verification for integration test (would need mocking)
       await tester.tap(find.text('Skip for Now'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Should reach home screen
       expect(find.text('Home'), findsOneWidget);
@@ -77,7 +83,8 @@ void main() {
 
       // Tap "Import Existing Wallet"
       await tester.tap(find.text('Import Existing Wallet'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Should show import screen
       expect(find.text('Import Wallet'), findsOneWidget);
@@ -98,7 +105,8 @@ void main() {
         find.widgetWithText(TextField, 'Recovery Phrase'),
         testMnemonic,
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Tap Import
       await tester.tap(find.text('Import'));
@@ -112,7 +120,8 @@ void main() {
       final passphraseFields = find.byType(TextField);
       await tester.enterText(passphraseFields.at(0), 'ImportPass123!');
       await tester.enterText(passphraseFields.at(1), 'ImportPass123!');
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Tap continue
       await tester.tap(find.text('Continue'));
@@ -132,7 +141,8 @@ void main() {
       // Create wallet first
       if (find.text('Create New Wallet').evaluate().isNotEmpty) {
         await tester.tap(find.text('Create New Wallet'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
       }
 
       // ... (abbreviated, goes through creation) ...
@@ -141,14 +151,16 @@ void main() {
       // Note: Actual biometric test requires device support
       if (find.text('Enable Biometrics').evaluate().isNotEmpty) {
         await tester.tap(find.text('Enable Biometrics'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Mock biometric success
         expect(find.text('Biometrics Enabled'), findsOneWidget);
       } else if (find.text('Skip').evaluate().isNotEmpty) {
         // Skip if not available
         await tester.tap(find.text('Skip'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
       }
     });
 
@@ -159,7 +171,8 @@ void main() {
 
       if (find.text('Create New Wallet').evaluate().isNotEmpty) {
         await tester.tap(find.text('Create New Wallet'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
       }
 
       // ... (navigate to birthday height screen) ...
@@ -171,7 +184,8 @@ void main() {
           find.widgetWithText(TextField, 'Birthday Height'),
           '4000000',
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         expect(find.text('4000000'), findsOneWidget);
       }
@@ -183,7 +197,8 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
 
       await tester.tap(find.text('Import Existing Wallet'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Enter invalid mnemonic
       await tester.enterText(
@@ -195,11 +210,13 @@ void main() {
         find.widgetWithText(TextField, 'Recovery Phrase'),
         'invalid mnemonic phrase',
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Tap Import
       await tester.tap(find.text('Import'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
       // Should show error
       expect(find.textContaining('Invalid'), findsOneWidget);
@@ -212,7 +229,8 @@ void main() {
 
       if (find.text('Create New Wallet').evaluate().isNotEmpty) {
         await tester.tap(find.text('Create New Wallet'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
       }
 
       // ... (navigate to passphrase screen) ...
@@ -222,10 +240,12 @@ void main() {
       if (passphraseFields.evaluate().length >= 2) {
         await tester.enterText(passphraseFields.at(0), 'Pass123!');
         await tester.enterText(passphraseFields.at(1), 'DifferentPass123!');
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         await tester.tap(find.text('Continue'));
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
 
         // Should show error
         expect(find.textContaining('match'), findsOneWidget);

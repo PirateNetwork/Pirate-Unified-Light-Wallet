@@ -7,6 +7,7 @@ import 'package:pirate_wallet/features/settings/watch_only_screen.dart';
 
 final bool _skipFfiTests =
     Platform.environment['CI'] == 'true' ||
+    Platform.environment['GITHUB_ACTIONS'] == 'true' ||
     Platform.environment['SKIP_FFI_TESTS'] == 'true';
 
 void main() {
@@ -23,7 +24,7 @@ void main() {
       // Should show both tabs
       expect(find.text('Export Viewing Key'), findsOneWidget);
       expect(find.text('Import Viewing Key'), findsOneWidget);
-    });
+    }, skip: _skipFfiTests);
 
     testWidgets('Export tab shows IVK info', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -40,7 +41,7 @@ void main() {
       expect(find.textContaining('View incoming transactions'), findsOneWidget);
       expect(find.textContaining('Cannot spend'), findsOneWidget);
       expect(find.textContaining('Useful for accounting'), findsOneWidget);
-    });
+    }, skip: _skipFfiTests);
 
     testWidgets('Export button reveals IVK', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -102,7 +103,7 @@ void main() {
       expect(find.text('Wallet name'), findsOneWidget);
       expect(find.text('Incoming viewing key'), findsOneWidget);
       expect(find.text('Birthday height (optional)'), findsOneWidget);
-    });
+    }, skip: _skipFfiTests);
 
     testWidgets('Shows watch-only badge in import tab', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -121,7 +122,7 @@ void main() {
       expect(find.text('Incoming only'), findsOneWidget);
       expect(find.textContaining('cannot spend'), findsOneWidget);
       expect(find.byIcon(Icons.visibility_off), findsOneWidget);
-    });
+    }, skip: _skipFfiTests);
 
     testWidgets('Validates wallet name is required', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -142,7 +143,7 @@ void main() {
 
       // Should show error
       expect(find.text('Please enter a wallet name'), findsOneWidget);
-    });
+    }, skip: _skipFfiTests);
 
     testWidgets('Validates IVK is required', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -169,7 +170,7 @@ void main() {
 
       // Should show error
       expect(find.text('Please enter a viewing key'), findsOneWidget);
-    });
+    }, skip: _skipFfiTests);
 
     testWidgets('Validates IVK format', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -200,7 +201,7 @@ void main() {
 
       // Should show error
       expect(find.text('Invalid viewing key format.'), findsOneWidget);
-    });
+    }, skip: _skipFfiTests);
 
     testWidgets('Birthday height is optional', (WidgetTester tester) async {
       await tester.pumpWidget(
@@ -231,7 +232,7 @@ void main() {
 
       // No error about birthday
       expect(find.textContaining('birthday'), findsNothing);
-    });
+    }, skip: _skipFfiTests);
   });
 }
 

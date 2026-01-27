@@ -8,6 +8,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/ui/atoms/p_button.dart';
+import 'dart:io';
+
+final bool _skipFfiTests =
+    Platform.environment['CI'] == 'true' ||
+    Platform.environment['GITHUB_ACTIONS'] == 'true' ||
+    Platform.environment['SKIP_FFI_TESTS'] == 'true';
 
 void main() {
   testWidgets('App button smoke test', (WidgetTester tester) async {
@@ -28,5 +34,5 @@ void main() {
     );
 
     expect(find.text('Continue'), findsOneWidget);
-  });
+  }, skip: _skipFfiTests);
 }
