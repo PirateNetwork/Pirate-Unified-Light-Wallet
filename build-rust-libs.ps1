@@ -27,6 +27,12 @@ function Write-ColorOutput($ForegroundColor, $Message) {
     Write-Host "$fc$Message$NC"
 }
 
+# Default to Windows build if no target flags are specified.
+if (-not $Windows -and -not $Android -and -not $All) {
+    $Windows = $true
+    Write-ColorOutput "Yellow" "No target specified; defaulting to Windows. Use -All for Windows + Android."
+}
+
 function Convert-ToUnixPath($Path) {
     if (-not $Path) { return $Path }
     return ($Path -replace '\\', '/')
