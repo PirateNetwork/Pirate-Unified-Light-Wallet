@@ -2,6 +2,7 @@
 /// 
 /// Tests export seed, watch-only, and panic PIN screens
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,11 @@ import 'package:pirate_wallet/features/security/panic_pin_screen.dart';
 import 'package:pirate_wallet/core/ffi/ffi_bridge.dart';
 
 import '../golden_test_utils.dart';
+
+// Skip tests that require FFI in CI
+final bool _skipFfiTests = Platform.environment['CI'] == 'true' || 
+                           Platform.environment['GITHUB_ACTIONS'] == 'true' || 
+                           Platform.environment['SKIP_FFI_TESTS'] == 'true';
 
 class MockExportSeedStateNotifier extends ExportSeedStateNotifier {
   final ExportSeedState initialState;
@@ -149,7 +155,7 @@ void main() {
     });
 
     testGoldens('PanicPinScreen - Not Configured', (tester) async {
-      if (shouldSkipGoldenTests()) return;
+      if (shouldSkipGoldenTests() || _skipFfiTests) return;
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
@@ -165,7 +171,7 @@ void main() {
     });
 
     testGoldens('PanicPinScreen - Configured', (tester) async {
-      if (shouldSkipGoldenTests()) return;
+      if (shouldSkipGoldenTests() || _skipFfiTests) return;
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
@@ -181,7 +187,7 @@ void main() {
     });
 
     testGoldens('PanicPinScreen - Setup Form', (tester) async {
-      if (shouldSkipGoldenTests()) return;
+      if (shouldSkipGoldenTests() || _skipFfiTests) return;
       await tester.pumpWidgetBuilder(
         ProviderScope(
           overrides: [
