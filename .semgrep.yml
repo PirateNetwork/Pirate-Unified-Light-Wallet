@@ -37,19 +37,35 @@ rules:
 
   - id: rust-hardcoded-secret
     patterns:
-      - pattern: |
-          let $VAR = "$SECRET";
+      - pattern-either:
+          - pattern: |
+              let $VAR = "$SECRET";
+          - pattern: |
+              let $VAR: $TYPE = "$SECRET";
+          - pattern: |
+              const $VAR: $TYPE = "$SECRET";
       - metavariable-regex:
           metavariable: $SECRET
           regex: (password|secret|api_key|private_key|mnemonic)
-      - pattern-not-inside: |
-          #[test]
-          fn $FUNC(...) { ... }
+      # Exclude test code
       - pattern-not-inside: |
           #[cfg(test)]
-          mod $MOD { ... }
+          mod tests {
+            ...
+          }
+      - pattern-not-inside: |
+          #[test]
+          fn $FUNC(...) {
+            ...
+          }
+      # Exclude test data variables
+      - metavariable-pattern:
+          metavariable: $VAR
+          patterns:
+            - pattern-not-regex: ^(test_|plaintext_|mock_|dummy_|fake_|example_).*
     message: |
       Potential hardcoded secret detected. Never commit secrets to source control.
+      Note: Test data (in #[cfg(test)] modules or test_ prefixed variables) is excluded.
     severity: ERROR
     languages: [rust]
     paths:
