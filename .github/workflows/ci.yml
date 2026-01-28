@@ -335,7 +335,8 @@ jobs:
       - name: Run tests
         run: |
           cd app
-          flutter test --coverage --exclude-path=test/golden/security_screens_golden_test.dart
+          # Exclude security_screens_golden_test.dart which causes FFI segfaults in CI
+          flutter test --coverage $(find test -name '*_test.dart' ! -name 'security_screens_golden_test.dart')
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -365,7 +366,8 @@ jobs:
         run: |
           cd app
           if find test/golden -name "*.png" | grep -q .; then
-            flutter test test/golden/ --exclude-path=test/golden/security_screens_golden_test.dart
+            # Exclude security_screens_golden_test.dart which causes FFI segfaults in CI
+            flutter test $(find test/golden -name '*_test.dart' ! -name 'security_screens_golden_test.dart')
           else
             echo "No golden images found; skipping golden tests."
           fi
