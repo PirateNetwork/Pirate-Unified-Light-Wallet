@@ -56,6 +56,7 @@ flutter pub get --enforce-lockfile
 
 # Build Rust FFI libraries for Android
 log "Building Rust Android libraries..."
+chmod +x "$SCRIPT_DIR/build-rust-android.sh"
 bash "$SCRIPT_DIR/build-rust-android.sh"
 
 # Build based on type

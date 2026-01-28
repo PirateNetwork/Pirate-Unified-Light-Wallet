@@ -52,6 +52,7 @@ normalize_mtime() {
 REPRODUCIBLE="${REPRODUCIBLE:-0}"
 
 log "Fetching Tor/I2P assets..."
+chmod +x "$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 "$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 
 stage_rust_macos() {

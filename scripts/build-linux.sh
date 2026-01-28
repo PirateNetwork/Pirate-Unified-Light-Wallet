@@ -109,6 +109,7 @@ stage_rust_linux() {
 }
 
 log "Fetching Tor/I2P assets..."
+chmod +x "$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 "$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 
 cd "$APP_DIR"
