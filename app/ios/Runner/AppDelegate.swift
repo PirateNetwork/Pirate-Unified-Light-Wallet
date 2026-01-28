@@ -56,7 +56,6 @@ import LocalAuthentication
     }
     
     // Handle background fetch (iOS 13+)
-    @available(iOS 13.0, *)
     override func application(
         _ application: UIApplication,
         performFetchWithCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
@@ -64,8 +63,10 @@ import LocalAuthentication
         // This is called when system wakes app for background refresh
         print("[AppDelegate] Background fetch triggered")
         
-        // Trigger compact sync
-        BackgroundSyncManager.shared.scheduleCompactSync()
+        // Trigger compact sync (iOS 13+ only)
+        if #available(iOS 13.0, *) {
+            BackgroundSyncManager.shared.scheduleCompactSync()
+        }
         
         completionHandler(.newData)
     }
