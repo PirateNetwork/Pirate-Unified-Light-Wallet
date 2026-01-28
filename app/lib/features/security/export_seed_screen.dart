@@ -108,14 +108,6 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     super.initState();
     // Enable screenshot protection
     _enableScreenshotProtection();
-    ref.listen<WalletId?>(
-      activeWalletProvider,
-      (previous, next) {
-        if (previous != next) {
-          _resetExportFlow();
-        }
-      },
-    );
   }
 
   @override
@@ -261,6 +253,16 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen for wallet changes
+    ref.listen<WalletId?>(
+      activeWalletProvider,
+      (previous, next) {
+        if (previous != next) {
+          _resetExportFlow();
+        }
+      },
+    );
+    
     final state = ref.watch(exportSeedStateProvider);
     
     return PScaffold(

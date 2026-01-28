@@ -37,11 +37,6 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
   @override
   void initState() {
     super.initState();
-    ref.listen<bool>(biometricsEnabledProvider, (previous, next) {
-      if (next && !_biometricAttempted) {
-        _tryAutoBiometricUnlock();
-      }
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _tryAutoBiometricUnlock();
     });
@@ -184,6 +179,13 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen for biometrics changes
+    ref.listen<bool>(biometricsEnabledProvider, (previous, next) {
+      if (next && !_biometricAttempted) {
+        _tryAutoBiometricUnlock();
+      }
+    });
+    
     return PScaffold(
       title: 'Unlock Wallet',
       appBar: const PAppBar(

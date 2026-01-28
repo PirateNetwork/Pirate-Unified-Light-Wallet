@@ -62,19 +62,6 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
   @override
   void initState() {
     super.initState();
-    ref.listen<WalletMeta?>(
-      activeWalletMetaProvider,
-      (previous, next) {
-        if (next != null && _exactHeightController.text.isEmpty) {
-          _exactHeightController.text = next.birthdayHeight.toString();
-        }
-      },
-    );
-    // Fire immediately manually
-    final currentWallet = ref.read(activeWalletMetaProvider);
-    if (currentWallet != null && _exactHeightController.text.isEmpty) {
-      _exactHeightController.text = currentWallet.birthdayHeight.toString();
-    }
     _loadLatestHeight();
   }
 
@@ -241,7 +228,22 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen for wallet changes and initialize height
+    ref.listen<WalletMeta?>(
+      activeWalletMetaProvider,
+      (previous, next) {
+        if (next != null && _exactHeightController.text.isEmpty) {
+          _exactHeightController.text = next.birthdayHeight.toString();
+        }
+      },
+    );
+    
     final meta = ref.watch(activeWalletMetaProvider);
+    // Initialize height if not set
+    if (meta != null && _exactHeightController.text.isEmpty) {
+      _exactHeightController.text = meta.birthdayHeight.toString();
+    }
+    
     final selectedHeight = _selectedHeight;
     final tip = _latestHeight;
     final blocksToScan = (selectedHeight != null && tip != null)

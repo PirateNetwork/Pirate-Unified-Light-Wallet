@@ -50,16 +50,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
   @override
   void initState() {
     super.initState();
-    _walletId = ref.read(activeWalletProvider);
     _searchController.addListener(_onSearchChanged);
-    ref.listen<WalletId?>(activeWalletProvider, (_, next) {
-      if (!mounted || next == _walletId) return;
-      setState(() => _walletId = next);
-      if (next != null) {
-        ref.read(addressBookProvider(next).notifier)
-            .setSearchQuery(_searchController.text);
-      }
-    });
   }
 
   @override
@@ -246,6 +237,19 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen for wallet changes
+    ref.listen<WalletId?>(activeWalletProvider, (previous, next) {
+      if (!mounted || next == _walletId) return;
+      setState(() => _walletId = next);
+      if (next != null) {
+        ref.read(addressBookProvider(next).notifier)
+            .setSearchQuery(_searchController.text);
+      }
+    });
+
+    // Read current wallet if not initialized
+    _walletId ??= ref.read(activeWalletProvider);
+    
     final walletId = _walletId;
     if (walletId == null) {
       return PScaffold(

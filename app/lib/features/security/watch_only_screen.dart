@@ -49,14 +49,6 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    ref.listen<WalletId?>(
-      activeWalletProvider,
-      (previous, next) {
-        if (previous != next) {
-          _resetExportState();
-        }
-      },
-    );
   }
 
   @override
@@ -187,6 +179,16 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Listen for wallet changes
+    ref.listen<WalletId?>(
+      activeWalletProvider,
+      (previous, next) {
+        if (previous != next) {
+          _resetExportState();
+        }
+      },
+    );
+    
     final walletMeta = ref.watch(activeWalletMetaProvider);
     final isWatchOnly = walletMeta?.watchOnly ?? false;
 
