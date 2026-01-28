@@ -38,6 +38,8 @@ write_sha256() {
 }
 
 OUTPUT_DIR="${1:-$PROJECT_ROOT/dist/sbom}"
+# Convert to absolute path to avoid issues when cd'ing to subdirectories
+OUTPUT_DIR="$(cd "$(dirname "$OUTPUT_DIR")" 2>/dev/null && pwd)/$(basename "$OUTPUT_DIR")" || OUTPUT_DIR="$PROJECT_ROOT/dist/sbom"
 mkdir -p "$OUTPUT_DIR"
 
 log "Generating SBOM..."
