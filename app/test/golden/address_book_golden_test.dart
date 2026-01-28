@@ -240,6 +240,7 @@ void main() {
     });
 
     testGoldens('Add Address Sheet', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
@@ -264,6 +265,7 @@ void main() {
     });
 
     testGoldens('Edit Address Sheet', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
@@ -289,6 +291,7 @@ void main() {
     });
 
     testGoldens('Address Details Sheet', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
@@ -312,6 +315,7 @@ void main() {
     });
 
     testGoldens('Filter Sheet', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       final colorCounts = {
@@ -345,6 +349,7 @@ void main() {
     });
 
     testGoldens('Address Book Loading State', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
@@ -374,6 +379,7 @@ void main() {
     });
 
     testGoldens('Address Book Favorites Only', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
@@ -403,6 +409,7 @@ void main() {
     });
 
     testGoldens('Address Book with Color Filter', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
@@ -432,6 +439,7 @@ void main() {
     });
 
     testGoldens('Address Book with Search', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
@@ -463,6 +471,7 @@ void main() {
     });
 
     testGoldens('Address Book No Search Results', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
@@ -492,6 +501,7 @@ void main() {
     });
 
     testGoldens('Address Book Error State', (tester) async {
+      if (shouldSkipGoldenTests()) return;
       await loadAppFonts();
 
       await tester.pumpWidgetBuilder(
