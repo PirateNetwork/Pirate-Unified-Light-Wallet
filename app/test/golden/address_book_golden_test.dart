@@ -81,7 +81,7 @@ class MockAddressBookNotifier extends AddressBookNotifier {
 }
 
 /// Create test provider overrides
-List<Override> createTestOverrides(List<AddressEntry> entries) {
+createTestOverrides(List<AddressEntry> entries) {
   return [
     addressBookProvider(testWalletId).overrideWith(
       () => MockAddressBookNotifier(entries),
