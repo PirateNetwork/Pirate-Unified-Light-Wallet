@@ -12,6 +12,7 @@ import '../../ui/organisms/p_nav.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../pay/pay_screen.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../core/services/address_rotation_service.dart';
 
 /// App shell with persistent navigation.
 class AppShell extends ConsumerWidget {
@@ -153,7 +154,10 @@ class AppShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     ref
       ..watch(transactionWatcherProvider)
-      ..watch(syncCompletionWatcherProvider);
+      ..watch(syncCompletionWatcherProvider)
+      ..watch(autoRotationWatcherProvider)
+      ..watch(syncCompletionRotationWatcherProvider)
+      ..watch(walletInitRotationWatcherProvider);
     final currentIndex = _locationToIndex(location);
     final nav = PNav(
       currentIndex: currentIndex,

@@ -5,6 +5,7 @@ import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/security/decoy_data.dart';
 import '../../core/security/clipboard_manager.dart';
+import '../../core/services/address_rotation_service.dart';
 import '../../design/tokens/colors.dart';
 
 /// State for receive screen
@@ -264,6 +265,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   /// Generate a new receive address via diversifier rotation
   /// 
   /// This ALWAYS generates a fresh address (no reuse)
+  /// Automatically skips addresses that already have balances (important for recovery/rescan)
   /// Previous address is added to history
   Future<void> generateNewAddress() async {
     state = state.copyWith(isLoading: true, error: null);
@@ -292,9 +294,10 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         return;
       }
 
-      // Get NEXT receive address from FFI (diversifier rotation)
-      // This enforces that we never reuse the last address
-      final newAddress = await FfiBridge.nextReceiveAddress(walletId);
+      // Use rotation service to get next unused address
+      // This automatically skips addresses with existing balances (prevents reuse after recovery)
+      final rotationService = ref.read(addressRotationServiceProvider);
+      final newAddress = await rotationService.manualRotate(walletId);
       
       // Reset shared flag for fresh address
       _currentAddressShared = false;
