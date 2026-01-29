@@ -126,6 +126,10 @@ extract_archive_or_copy() {
   local dest="$3"
   local tmpdir="$4"
 
+  if [[ -n "$tmpdir" ]]; then
+    mkdir -p "$tmpdir"
+  fi
+
   case "$archive" in
     *.zip)
       have_cmd unzip || error "Missing unzip to extract $archive"
