@@ -57,6 +57,16 @@ zip_dir_deterministic() {
     (cd "$src" && normalize_mtime "." && LC_ALL=C find . -type f -print | sort | zip -X -@ "$dest")
 }
 
+zip_payload_deterministic() {
+    local payload_dir="$1"
+    local dest="$2"
+    local parent
+    parent="$(dirname "$payload_dir")"
+    local base
+    base="$(basename "$payload_dir")"
+    (cd "$parent" && normalize_mtime "$base" && LC_ALL=C find "$base" -type f -print | sort | zip -X -@ "$dest")
+}
+
 cd "$APP_DIR"
 
 # Clean previous builds
@@ -71,6 +81,16 @@ cd ios && pod install --deployment && cd ..
 # Build unsigned IPA first
 log "Building iOS app..."
 flutter build ios --release --no-codesign
+
+# Resolve build output paths
+APP_BUILD_DIR="$APP_DIR/build/ios/iphoneos"
+RUNNER_APP="$APP_BUILD_DIR/Runner.app"
+if [ ! -d "$RUNNER_APP" ]; then
+    RUNNER_APP="$(find "$APP_DIR/build" -path "*/ios/iphoneos/Runner.app" -type d | head -n 1 || true)"
+    if [ -n "$RUNNER_APP" ]; then
+        APP_BUILD_DIR="$(dirname "$RUNNER_APP")"
+    fi
+fi
 
 # Check for signing configuration
 SIGN="${1:-auto}"  # auto, true, or false
@@ -109,13 +129,17 @@ if [ "$SIGN" = "true" ]; then
 else
     # Create unsigned IPA
     log "Creating unsigned IPA..."
-    
-    cd build/ios/iphoneos
-    mkdir -p Payload
-    cp -r Runner.app Payload/
-    zip_dir_deterministic "Payload" "Runner.ipa"
-    IPA_FILE="$APP_DIR/build/ios/iphoneos/Runner.ipa"
-    cd "$APP_DIR"
+
+    if [ -z "$RUNNER_APP" ] || [ ! -d "$RUNNER_APP" ]; then
+        error "Build failed: Runner.app not found under $APP_DIR/build"
+    fi
+
+    PAYLOAD_DIR="$APP_BUILD_DIR/Payload"
+    rm -rf "$PAYLOAD_DIR"
+    mkdir -p "$PAYLOAD_DIR"
+    cp -R "$RUNNER_APP" "$PAYLOAD_DIR/"
+    zip_payload_deterministic "$PAYLOAD_DIR" "$APP_BUILD_DIR/Runner.ipa"
+    IPA_FILE="$APP_BUILD_DIR/Runner.ipa"
 fi
 
 if [ ! -f "$IPA_FILE" ]; then

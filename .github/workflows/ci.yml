@@ -639,7 +639,18 @@ jobs:
       - name: Build iOS IPA
         run: |
           chmod +x scripts/build-ios.sh
-          REPRODUCIBLE=1 ./scripts/build-ios.sh false
+          REPRODUCIBLE=1 ./scripts/build-ios.sh false || {
+            echo "iOS build debug: locating Runner.app output"
+            if [ -d app/build ]; then
+              find app/build -maxdepth 4 -type d -name "iphoneos" -print
+              find app/build -path "*/ios/iphoneos/Runner.app" -type d -print
+              ls -la app/build/ios || true
+              ls -la app/build/ios/iphoneos || true
+            else
+              echo "app/build does not exist"
+            fi
+            exit 1
+          }
 
       - name: Generate SBOM
         run: |
