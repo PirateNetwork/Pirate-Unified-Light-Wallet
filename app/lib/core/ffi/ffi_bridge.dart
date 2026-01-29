@@ -1568,8 +1568,8 @@ class FfiBridge {
       return;
     }
 
-    // Track the last transaction IDs we've seen to detect new ones
-    final Set<String> lastSeenTxids = <String>{};
+    // Track the last transaction state we've seen to detect new/updated ones
+    final Map<String, String> lastSeenStates = <String, String>{};
     DateTime lastCheckTime = DateTime.now();
 
     while (true) {
@@ -1589,22 +1589,24 @@ class FfiBridge {
         // Get list of recent transactions from database
         final transactions = await listTransactions(id, limit: 100);
 
-        // Find new transactions (ones we haven't seen before)
+        // Find new transactions or status changes (e.g., pending -> confirmed)
         for (final txInfo in transactions) {
-          if (!lastSeenTxids.contains(txInfo.txid)) {
-            // New transaction found!
-            lastSeenTxids.add(txInfo.txid);
+          final stateKey =
+              '${txInfo.height ?? 0}:${txInfo.confirmed ? 1 : 0}';
+          final previousState = lastSeenStates[txInfo.txid];
+          if (previousState != stateKey) {
+            // New transaction or confirmation status changed.
+            lastSeenStates[txInfo.txid] = stateKey;
             yield txInfo;
           }
         }
 
-        // Limit the size of lastSeenTxids to prevent memory growth
+        // Limit the size of lastSeenStates to prevent memory growth
         // Keep only the most recent 1000 transaction IDs
-        if (lastSeenTxids.length > 1000) {
+        if (lastSeenStates.length > 1000) {
           final recentTxids =
               transactions.take(1000).map((tx) => tx.txid).toSet();
-          lastSeenTxids.clear();
-          lastSeenTxids.addAll(recentTxids);
+          lastSeenStates.removeWhere((key, _) => !recentTxids.contains(key));
         }
       } catch (e) {
         // If we can't get transactions (e.g., wallet not loaded), log and continue
