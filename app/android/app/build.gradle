@@ -46,7 +46,7 @@ android {
     // Flutter Rust Bridge: Copy native libraries
     sourceSets {
         main {
-            jniLibs.srcDirs = ['src/main/jniLibs', '../../crates/pirate-ffi-frb/target']
+            jniLibs.srcDirs = ['src/main/jniLibs']
         }
     }
 
