@@ -12,7 +12,7 @@ env:
   RUST_VERSION: "1.90.0"
   FLUTTER_VERSION: "3.38.7"
   FRB_CODEGEN_VERSION: "2.11.1"
-  JAVA_VERSION: "21"
+  JAVA_VERSION: "25"
   COCOAPODS_VERSION: "1.16.2"
   APPIMAGETOOL_URL: "https://github.com/AppImage/AppImageKit/releases/download/13/obsolete-appimagetool-x86_64.AppImage"
   APPIMAGETOOL_SHA256: "df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb"
@@ -523,6 +523,12 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
