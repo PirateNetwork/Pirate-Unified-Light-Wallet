@@ -36,7 +36,7 @@ powershell -ExecutionPolicy Bypass -File scripts\fetch-tor-i2p-assets.ps1
 
 Optional overrides (advanced):
 - Tor Browser:
-  - `TOR_BROWSER_VERSION` (default 15.0.4)
+  - `TOR_BROWSER_VERSION` (default 15.0.5)
   - `TOR_BROWSER_BASE_URL` (defaults to `https://dist.torproject.org/torbrowser/$TOR_BROWSER_VERSION`)
   - `TOR_BROWSER_LINUX_URL` / `TOR_BROWSER_MACOS_URL` / `TOR_BROWSER_WINDOWS_URL`
   - `TOR_BROWSER_LINUX_SHA256` / `TOR_BROWSER_MACOS_SHA256` / `TOR_BROWSER_WINDOWS_SHA256`
