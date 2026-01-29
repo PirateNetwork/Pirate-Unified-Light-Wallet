@@ -1,10 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../ffi/ffi_bridge.dart' hide AddressBookColorTag;
 import '../ffi/generated/models.dart';
 import '../providers/wallet_providers.dart';
-import '../sync/sync_status_cache.dart';
 import '../../features/receive/receive_viewmodel.dart';
 
 /// Service for automatic address rotation when funds are received.
@@ -17,6 +18,13 @@ class AddressRotationService {
 
   AddressRotationService(this.ref);
 
+  Future<T> _runQueued<T>(
+    String walletId,
+    Future<T> Function() action,
+  ) async {
+    return ref.read(_rotationQueueProvider).enqueue(walletId, action);
+  }
+
   /// Check if the current receive address has received funds and auto-rotate if needed.
   ///
   /// Called when:
@@ -24,65 +32,67 @@ class AddressRotationService {
   /// 2. Sync completes (handles recovery/rescan)
   /// 3. Wallet is initialized
   Future<void> checkAndRotateIfNeeded(String walletId) async {
-    try {
-      debugPrint('[AddressRotation] Checking if rotation needed for wallet $walletId');
+    return _runQueued(walletId, () async {
+      try {
+        debugPrint('[AddressRotation] Checking if rotation needed for wallet $walletId');
 
-      // Get current receive address
-      final initialAddress = await FfiBridge.currentReceiveAddress(walletId);
+        // Get current receive address
+        final initialAddress = await FfiBridge.currentReceiveAddress(walletId);
 
-      // Get all address balances (may be empty on brand-new wallets)
-      final addressBalances = await FfiBridge.listAddressBalances(walletId);
+        // Get all address balances (may be empty on brand-new wallets)
+        final addressBalances = await FfiBridge.listAddressBalances(walletId);
 
-      // The backend may auto-rotate while loading balances; detect and refresh UI.
-      final currentAddress = await FfiBridge.currentReceiveAddress(walletId);
-      if (currentAddress != initialAddress) {
-        debugPrint(
-          '[AddressRotation] Backend rotated address from $initialAddress to $currentAddress',
-        );
-        ref.invalidate(receiveViewModelProvider);
-        return;
-      }
+        // The backend may auto-rotate while loading balances; detect and refresh UI.
+        final currentAddress = await FfiBridge.currentReceiveAddress(walletId);
+        if (currentAddress != initialAddress) {
+          debugPrint(
+            '[AddressRotation] Backend rotated address from $initialAddress to $currentAddress',
+          );
+          ref.invalidate(receiveViewModelProvider);
+          return;
+        }
 
-      // If we have no address records yet, nothing to do.
-      if (addressBalances.isEmpty) {
-        debugPrint('[AddressRotation] No address balance records found');
-        return;
-      }
+        // If we have no address records yet, nothing to do.
+        if (addressBalances.isEmpty) {
+          debugPrint('[AddressRotation] No address balance records found');
+          return;
+        }
 
-      // Find current address record (if any), otherwise treat as zero-balance.
-      final currentAddressBalance = addressBalances.firstWhere(
-        (addr) => addr.address == currentAddress,
-        orElse: () => AddressBalanceInfo(
-          address: currentAddress,
-          balance: BigInt.zero,
-          spendable: BigInt.zero,
-          pending: BigInt.zero,
-          keyId: 0,
-          addressId: -1,
-          label: null,
-          createdAt: 0,
-          diversifierIndex: 0,
-          colorTag: AddressBookColorTag.none,
-        ),
-      );
-
-      // If current address has received any funds (balance > 0), rotate.
-      if (currentAddressBalance.balance > BigInt.zero ||
-          currentAddressBalance.pending > BigInt.zero) {
-        debugPrint(
-          '[AddressRotation] Current address has balance: ${currentAddressBalance.balance}, '
-          'pending: ${currentAddressBalance.pending}. Rotating...',
+        // Find current address record (if any), otherwise treat as zero-balance.
+        final currentAddressBalance = addressBalances.firstWhere(
+          (addr) => addr.address == currentAddress,
+          orElse: () => AddressBalanceInfo(
+            address: currentAddress,
+            balance: BigInt.zero,
+            spendable: BigInt.zero,
+            pending: BigInt.zero,
+            keyId: 0,
+            addressId: -1,
+            label: null,
+            createdAt: 0,
+            diversifierIndex: 0,
+            colorTag: AddressBookColorTag.none,
+          ),
         );
 
-        await _rotateToNextAddress(walletId);
-      } else {
-        debugPrint('[AddressRotation] Current address is unused, no rotation needed');
+        // If current address has received any funds (balance > 0), rotate.
+        if (currentAddressBalance.balance > BigInt.zero ||
+            currentAddressBalance.pending > BigInt.zero) {
+          debugPrint(
+            '[AddressRotation] Current address has balance: ${currentAddressBalance.balance}, '
+            'pending: ${currentAddressBalance.pending}. Rotating...',
+          );
+
+          await _rotateToNextAddress(walletId);
+        } else {
+          debugPrint('[AddressRotation] Current address is unused, no rotation needed');
+        }
+      } catch (e, stackTrace) {
+        debugPrint('[AddressRotation] Error checking rotation: $e');
+        debugPrint('Stack trace: $stackTrace');
+        // Don't throw - auto-rotation is a nice-to-have, not critical
       }
-    } catch (e, stackTrace) {
-      debugPrint('[AddressRotation] Error checking rotation: $e');
-      debugPrint('Stack trace: $stackTrace');
-      // Don't throw - auto-rotation is a nice-to-have, not critical
-    }
+    });
   }
 
   /// Rotate to the next receive address.
@@ -108,23 +118,51 @@ class AddressRotationService {
   /// This delegates to the backend, which advances to the next diversifier
   /// index and never reuses previously stored addresses.
   Future<String> manualRotate(String walletId) async {
+    return _runQueued(walletId, () async {
+      try {
+        debugPrint('[AddressRotation] Manual rotation requested');
+
+        final newAddress = await FfiBridge.nextReceiveAddress(walletId);
+        debugPrint('[AddressRotation] Manually rotated to: $newAddress');
+
+        // Invalidate receive provider to refresh UI
+        ref.invalidate(receiveViewModelProvider);
+
+        return newAddress;
+      } catch (e, stackTrace) {
+        debugPrint('[AddressRotation] Error during manual rotation: $e');
+        debugPrint('Stack trace: $stackTrace');
+        rethrow; // Manual rotation should throw on error
+      }
+    });
+  }
+}
+
+class _RotationQueue {
+  final Map<String, Future<void>> _chains = {};
+
+  Future<T> enqueue<T>(String walletId, Future<T> Function() action) async {
+    final prior = _chains[walletId] ?? Future.value();
+    final task = prior.then((_) => action());
+    final marker = task.then<void>((_) {}, onError: (_) {});
+    _chains[walletId] = marker;
+
     try {
-      debugPrint('[AddressRotation] Manual rotation requested');
-
-      final newAddress = await FfiBridge.nextReceiveAddress(walletId);
-      debugPrint('[AddressRotation] Manually rotated to: $newAddress');
-
-      // Invalidate receive provider to refresh UI
-      ref.invalidate(receiveViewModelProvider);
-
-      return newAddress;
-    } catch (e, stackTrace) {
-      debugPrint('[AddressRotation] Error during manual rotation: $e');
-      debugPrint('Stack trace: $stackTrace');
-      rethrow; // Manual rotation should throw on error
+      return await task;
+    } finally {
+      if (identical(_chains[walletId], marker)) {
+        final removed = _chains.remove(walletId);
+        if (removed != null) {
+          unawaited(removed);
+        }
+      }
     }
   }
 }
+
+final _rotationQueueProvider = Provider<_RotationQueue>((ref) {
+  return _RotationQueue();
+});
 
 /// Provider for address rotation service.
 final addressRotationServiceProvider = Provider<AddressRotationService>((ref) {
@@ -148,7 +186,7 @@ final autoRotationWatcherProvider = Provider<void>((ref) {
       if (tx == null) return;
 
       // Positive amount => incoming transaction
-      final isIncoming = tx.amount.toInt() > 0;
+      final isIncoming = tx.amount > 0;
 
       if (isIncoming) {
         debugPrint(
