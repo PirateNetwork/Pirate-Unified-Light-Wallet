@@ -499,7 +499,7 @@ impl ShieldedBuilder {
                         )
                     })?
                     .to_extended_fvk();
-                let change_addr = orchard_fvk.address_at_internal(change_diversifier_index);
+                let change_addr = orchard_fvk.address_at(change_diversifier_index);
 
                 tx_builder
                     .add_orchard_output::<()>(
@@ -517,7 +517,7 @@ impl ShieldedBuilder {
             } else {
                 // Use Sapling change address
                 let change_addr = sapling_spending_key
-                    .to_internal_fvk()
+                    .to_extended_fvk()
                     .derive_address(change_diversifier_index)
                     .inner;
 

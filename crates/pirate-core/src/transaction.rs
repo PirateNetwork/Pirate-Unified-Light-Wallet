@@ -368,7 +368,7 @@ impl TransactionBuilder {
         if change > 10_000 {
             // Dust threshold
             let change_addr = spending_key
-                .to_internal_fvk()
+                .to_extended_fvk()
                 .derive_address(change_diversifier_index)
                 .inner;
 
