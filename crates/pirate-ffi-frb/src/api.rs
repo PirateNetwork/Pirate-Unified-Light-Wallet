@@ -2240,9 +2240,7 @@ pub fn list_address_balances(
                     continue;
                 }
                 if let Some(address) = decode_orchard_address_bytes_from_note_bytes(note_bytes)
-                    .and_then(|bytes| {
-                        Option::from(OrchardAddress::from_raw_address_bytes(&bytes))
-                    })
+                    .and_then(|bytes| Option::from(OrchardAddress::from_raw_address_bytes(&bytes)))
                     .and_then(|addr| {
                         OrchardPaymentAddress { inner: addr }
                             .encode_for_network(network_type)
@@ -2329,16 +2327,10 @@ pub fn list_address_balances(
         };
         let diversifier_index = match note.note_type {
             pirate_storage_sqlite::models::NoteType::Sapling => {
-                sapling_index_map
-                    .get(&address_string)
-                    .copied()
-                    .unwrap_or(0)
+                sapling_index_map.get(&address_string).copied().unwrap_or(0)
             }
             pirate_storage_sqlite::models::NoteType::Orchard => {
-                orchard_index_map
-                    .get(&address_string)
-                    .copied()
-                    .unwrap_or(0)
+                orchard_index_map.get(&address_string).copied().unwrap_or(0)
             }
         };
         let address_record = pirate_storage_sqlite::Address {
