@@ -241,9 +241,8 @@ Report vulnerabilities: security@pirate.black
 PGP: See SECURITY.md
 EOF
 
-sed -i "s/{artifact}/$ARTIFACT_NAME/g" "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md" 2>/dev/null || \
-    sed "s/{artifact}/$ARTIFACT_NAME/g" "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md" > "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md.tmp" && \
-    mv "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md.tmp" "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md"
+sed "s/{artifact}/$ARTIFACT_NAME/g" "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md" > "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md.tmp"
+mv "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md.tmp" "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md"
 
 log "Verification instructions created"
 
