@@ -478,6 +478,15 @@ pub fn set_tor_bridge_settings(
     bridge_lines: Vec<String>,
     transport_path: Option<String>,
 ) -> Result<()> {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        let mut config = tor_config_from_env_raw();
+        config.use_bridges = false;
+        config.fallback_to_bridges = false;
+        config.bridges = None;
+        set_tor_config_override(config);
+        return Ok(());
+    }
+
     let mut config = tor_config_from_env_raw();
     let normalized_transport = transport.trim().to_lowercase();
 

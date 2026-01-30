@@ -887,6 +887,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
   }
 
   String _torRoutingSummary() {
+    if (!_isDesktop) {
+      return 'Attempting: Direct (bridges disabled on mobile)';
+    }
     final transportLabel = _torTransportLabel(_torBridgeTransport);
     if (_useTorBridges) {
       return 'Attempting: $transportLabel (bridges)';
