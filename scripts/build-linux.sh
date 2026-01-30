@@ -325,7 +325,7 @@ EOF
     cat > "$DEB_DIR/usr/share/doc/pirate-unified-wallet/copyright" <<EOF
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: pirate-unified-wallet
-Source: https://github.com/pirate/wallet
+Source: https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet
 
 Files: *
 Copyright: 2025 Pirate Chain

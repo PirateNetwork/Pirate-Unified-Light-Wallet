@@ -119,7 +119,7 @@ cat > "$OUTPUT_DIR/$ARTIFACT_NAME.provenance.json" <<EOF
     },
     "runDetails": {
       "builder": {
-        "id": "https://github.com/pirate/wallet/actions",
+        "id": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/actions",
         "version": {
           "nix": "$(nix --version 2>/dev/null || echo 'unknown')",
           "flutter": "$(flutter --version 2>&1 | head -1 || echo 'unknown')",
@@ -221,8 +221,8 @@ cosign verify-blob \
 
 ```bash
 # Clone repository
-git clone https://github.com/pirate/wallet.git
-cd wallet
+git clone https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet.git
+cd Pirate-Unified-Light-Wallet
 
 # Checkout specific commit from provenance
 git checkout $(jq -r '.predicate.buildDefinition.externalParameters.source.digest.sha1' \
@@ -237,8 +237,7 @@ sha256sum result/<artifact>
 
 ## Security Contact
 
-Report vulnerabilities: security@pirate.black
-PGP: See SECURITY.md
+Report vulnerabilities: https://piratechain.com/team
 EOF
 
 sed "s/{artifact}/$ARTIFACT_NAME/g" "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md" > "$OUTPUT_DIR/$ARTIFACT_NAME.VERIFY.md.tmp"
