@@ -119,12 +119,50 @@ if (-not $sevenZip) {
 $torExtract = Join-Path $torTmp "extract"
 Ensure-Dir $torExtract
 & $sevenZip x $torArchive "-o$torExtract" -y | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to extract Tor Browser bundle with 7-Zip"
+}
 
 $snowflakeDest = Join-Path $TorPtDir "windows\\snowflake-client.exe"
 $obfs4Dest = Join-Path $TorPtDir "windows\\obfs4proxy.exe"
 
-$snowflakeBin = Get-ChildItem -Path $torExtract -Recurse -Filter "snowflake-client.exe" | Select-Object -First 1
-$obfs4Bin = Get-ChildItem -Path $torExtract -Recurse -Filter "obfs4proxy.exe" | Select-Object -First 1
+function Find-PluggableTransports {
+    param([string]$Root)
+    $snowflake = Get-ChildItem -Path $Root -Recurse -Filter "snowflake-client.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $snowflake) {
+        $snowflake = Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^snowflake.*\.exe$' } | Select-Object -First 1
+    }
+    $obfs4 = Get-ChildItem -Path $Root -Recurse -Filter "obfs4proxy.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $obfs4) {
+        $obfs4 = Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^obfs4.*\.exe$' } | Select-Object -First 1
+    }
+    return @{ Snowflake = $snowflake; Obfs4 = $obfs4 }
+}
+
+$found = Find-PluggableTransports -Root $torExtract
+$snowflakeBin = $found.Snowflake
+$obfs4Bin = $found.Obfs4
+
+if (-not $snowflakeBin -or -not $obfs4Bin) {
+    $nestedArchives = Get-ChildItem -Path $torExtract -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(app|browser|torbrowser).*\.7z$' }
+    foreach ($archive in $nestedArchives) {
+        $nestedDir = Join-Path $torExtract ("nested-" + [Guid]::NewGuid().ToString("N"))
+        Ensure-Dir $nestedDir
+        & $sevenZip x $archive.FullName "-o$nestedDir" -y | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            continue
+        }
+        $nestedFound = Find-PluggableTransports -Root $nestedDir
+        if ($nestedFound.Snowflake -and $nestedFound.Obfs4) {
+            $snowflakeBin = $nestedFound.Snowflake
+            $obfs4Bin = $nestedFound.Obfs4
+            break
+        }
+    }
+}
 
 if (-not $snowflakeBin -or -not $obfs4Bin) {
     throw "Pluggable transports not found in Tor Browser bundle."
