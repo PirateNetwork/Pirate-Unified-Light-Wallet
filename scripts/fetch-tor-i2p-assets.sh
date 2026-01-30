@@ -260,7 +260,7 @@ fetch_tor_pt() {
     }
     trap cleanup_mount RETURN
 
-    mount_point="$(hdiutil attach -nobrowse -readonly "$dmg" | awk '/\\/Volumes\\// {print $NF; exit}')"
+    mount_point="$(hdiutil attach -nobrowse -readonly "$dmg" | awk '/\/Volumes\// {print $NF; exit}')"
     [[ -n "$mount_point" ]] || error "Failed to mount Tor Browser DMG"
 
     local pt_dir
