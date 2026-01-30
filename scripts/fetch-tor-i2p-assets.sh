@@ -229,14 +229,25 @@ fetch_tor_pt() {
     mkdir -p "$extract_dir"
     tar -xf "$archive" -C "$extract_dir"
 
-    local pt_dir
-    pt_dir="$(find "$extract_dir" -type d -name 'PluggableTransports' | head -n 1)"
-    [[ -n "$pt_dir" ]] || error "PluggableTransports not found in Tor Browser bundle"
-
     local snowflake_dest="$TOR_PT_DIR/$PLATFORM/snowflake-client"
     local obfs4_dest="$TOR_PT_DIR/$PLATFORM/obfs4proxy"
-    cp "$pt_dir/snowflake-client" "$snowflake_dest"
-    cp "$pt_dir/obfs4proxy" "$obfs4_dest"
+    local pt_dir snowflake_src obfs4_src
+    pt_dir="$(find "$extract_dir" -type d -name 'PluggableTransports' | head -n 1)"
+    if [[ -n "$pt_dir" ]]; then
+      snowflake_src="$pt_dir/snowflake-client"
+      obfs4_src="$pt_dir/obfs4proxy"
+    fi
+
+    if [[ ! -f "${snowflake_src:-}" || ! -f "${obfs4_src:-}" ]]; then
+      snowflake_src="$(find "$extract_dir" -type f \( -name 'snowflake-client' -o -name 'snowflake-client*' \) | head -n 1)"
+      obfs4_src="$(find "$extract_dir" -type f \( -name 'obfs4proxy' -o -name 'obfs4proxy*' \) | head -n 1)"
+    fi
+
+    [[ -f "${snowflake_src:-}" ]] || error "snowflake-client not found in Tor Browser bundle"
+    [[ -f "${obfs4_src:-}" ]] || error "obfs4proxy not found in Tor Browser bundle"
+
+    cp "$snowflake_src" "$snowflake_dest"
+    cp "$obfs4_src" "$obfs4_dest"
     chmod +x "$snowflake_dest" "$obfs4_dest"
     rm -rf "$tmpdir"
     return 0
@@ -263,14 +274,25 @@ fetch_tor_pt() {
     mount_point="$(hdiutil attach -nobrowse -readonly "$dmg" | awk -F '\t' '/\/Volumes\// {print $NF; exit}')"
     [[ -n "$mount_point" ]] || error "Failed to mount Tor Browser DMG"
 
-    local pt_dir
-    pt_dir="$(find "$mount_point" -type d -name 'PluggableTransports' | head -n 1)"
-    [[ -n "$pt_dir" ]] || error "PluggableTransports not found in Tor Browser DMG"
-
     local snowflake_dest="$TOR_PT_DIR/$PLATFORM/snowflake-client"
     local obfs4_dest="$TOR_PT_DIR/$PLATFORM/obfs4proxy"
-    cp "$pt_dir/snowflake-client" "$snowflake_dest"
-    cp "$pt_dir/obfs4proxy" "$obfs4_dest"
+    local pt_dir snowflake_src obfs4_src
+    pt_dir="$(find "$mount_point" -type d -name 'PluggableTransports' | head -n 1)"
+    if [[ -n "$pt_dir" ]]; then
+      snowflake_src="$pt_dir/snowflake-client"
+      obfs4_src="$pt_dir/obfs4proxy"
+    fi
+
+    if [[ ! -f "${snowflake_src:-}" || ! -f "${obfs4_src:-}" ]]; then
+      snowflake_src="$(find "$mount_point" -type f \( -name 'snowflake-client' -o -name 'snowflake-client*' \) | head -n 1)"
+      obfs4_src="$(find "$mount_point" -type f \( -name 'obfs4proxy' -o -name 'obfs4proxy*' \) | head -n 1)"
+    fi
+
+    [[ -f "${snowflake_src:-}" ]] || error "snowflake-client not found in Tor Browser DMG"
+    [[ -f "${obfs4_src:-}" ]] || error "obfs4proxy not found in Tor Browser DMG"
+
+    cp "$snowflake_src" "$snowflake_dest"
+    cp "$obfs4_src" "$obfs4_dest"
     chmod +x "$snowflake_dest" "$obfs4_dest"
     rm -rf "$tmpdir"
     return 0

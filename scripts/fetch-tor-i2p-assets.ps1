@@ -133,10 +133,18 @@ function Find-PluggableTransports {
         $snowflake = Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -match '^snowflake.*\.exe$' } | Select-Object -First 1
     }
+    if (-not $snowflake) {
+        $snowflake = Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^snowflake.*$' } | Select-Object -First 1
+    }
     $obfs4 = Get-ChildItem -Path $Root -Recurse -Filter "obfs4proxy.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $obfs4) {
         $obfs4 = Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -match '^obfs4.*\.exe$' } | Select-Object -First 1
+    }
+    if (-not $obfs4) {
+        $obfs4 = Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^obfs4.*$' } | Select-Object -First 1
     }
     return @{ Snowflake = $snowflake; Obfs4 = $obfs4 }
 }
@@ -145,6 +153,40 @@ function Get-ArchiveCandidates {
     param([string]$Root)
     Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '\.(7z|zip|tar|xz|lzma)$' }
+}
+
+function Extract-PluggableTransportsFromArchive {
+    param([string]$Archive, [string]$DestDir)
+    Ensure-Dir $DestDir
+    $snowflakePath = $null
+    $obfs4Path = $null
+    $listing = & $sevenZip l -slt $Archive 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return @{ Snowflake = $null; Obfs4 = $null }
+    }
+    foreach ($line in $listing) {
+        if ($line -match '^Path = (.+)$') {
+            $path = $Matches[1]
+            if (-not $snowflakePath -and $path -match '(?i)snowflake-client(\.exe)?$') {
+                $snowflakePath = $path
+            }
+            if (-not $obfs4Path -and $path -match '(?i)obfs4proxy(\.exe)?$') {
+                $obfs4Path = $path
+            }
+        }
+        if ($snowflakePath -and $obfs4Path) { break }
+    }
+    if ($snowflakePath) {
+        & $sevenZip e $Archive "-o$DestDir" -y $snowflakePath | Out-Null
+    }
+    if ($obfs4Path) {
+        & $sevenZip e $Archive "-o$DestDir" -y $obfs4Path | Out-Null
+    }
+    $snowflake = Get-ChildItem -Path $DestDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^snowflake.*(\.exe)?$' } | Select-Object -First 1
+    $obfs4 = Get-ChildItem -Path $DestDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^obfs4.*(\.exe)?$' } | Select-Object -First 1
+    return @{ Snowflake = $snowflake; Obfs4 = $obfs4 }
 }
 
 $found = Find-PluggableTransports -Root $torExtract
@@ -183,6 +225,20 @@ if (-not $snowflakeBin -or -not $obfs4Bin) {
             if ($seenArchives.Add($more.FullName)) {
                 $archiveQueue.Enqueue($more)
             }
+        }
+    }
+}
+
+if (-not $snowflakeBin -or -not $obfs4Bin) {
+    $directDir = Join-Path $torExtract "direct"
+    $archives = Get-ArchiveCandidates -Root $torExtract
+    $archives = @($torArchive) + $archives
+    foreach ($archive in $archives) {
+        $extracted = Extract-PluggableTransportsFromArchive -Archive $archive -DestDir $directDir
+        if ($extracted.Snowflake -and $extracted.Obfs4) {
+            $snowflakeBin = $extracted.Snowflake
+            $obfs4Bin = $extracted.Obfs4
+            break
         }
     }
 }
