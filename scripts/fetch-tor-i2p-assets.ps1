@@ -141,25 +141,48 @@ function Find-PluggableTransports {
     return @{ Snowflake = $snowflake; Obfs4 = $obfs4 }
 }
 
+function Get-ArchiveCandidates {
+    param([string]$Root)
+    Get-ChildItem -Path $Root -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '\.(7z|zip|tar|xz|lzma)$' }
+}
+
 $found = Find-PluggableTransports -Root $torExtract
 $snowflakeBin = $found.Snowflake
 $obfs4Bin = $found.Obfs4
 
 if (-not $snowflakeBin -or -not $obfs4Bin) {
-    $nestedArchives = Get-ChildItem -Path $torExtract -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^(app|browser|torbrowser).*\.7z$' }
-    foreach ($archive in $nestedArchives) {
+    $archiveQueue = New-Object "System.Collections.Generic.Queue[System.IO.FileInfo]"
+    $seenArchives = New-Object "System.Collections.Generic.HashSet[string]"
+    foreach ($archive in (Get-ArchiveCandidates -Root $torExtract)) {
+        if ($seenArchives.Add($archive.FullName)) {
+            $archiveQueue.Enqueue($archive)
+        }
+    }
+    $maxArchiveExtractions = 25
+    $extractedCount = 0
+    while ($archiveQueue.Count -gt 0 -and (-not $snowflakeBin -or -not $obfs4Bin)) {
+        if ($extractedCount -ge $maxArchiveExtractions) {
+            break
+        }
+        $archive = $archiveQueue.Dequeue()
         $nestedDir = Join-Path $torExtract ("nested-" + [Guid]::NewGuid().ToString("N"))
         Ensure-Dir $nestedDir
         & $sevenZip x $archive.FullName "-o$nestedDir" -y | Out-Null
         if ($LASTEXITCODE -ne 0) {
             continue
         }
+        $extractedCount++
         $nestedFound = Find-PluggableTransports -Root $nestedDir
         if ($nestedFound.Snowflake -and $nestedFound.Obfs4) {
             $snowflakeBin = $nestedFound.Snowflake
             $obfs4Bin = $nestedFound.Obfs4
             break
+        }
+        foreach ($more in (Get-ArchiveCandidates -Root $nestedDir)) {
+            if ($seenArchives.Add($more.FullName)) {
+                $archiveQueue.Enqueue($more)
+            }
         }
     }
 }
