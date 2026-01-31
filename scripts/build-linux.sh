@@ -99,6 +99,20 @@ ensure_flathub_remote() {
     fi
 }
 
+ensure_flatpak_runtime() {
+    if ! command -v flatpak &> /dev/null; then
+        return 0
+    fi
+    local sdk="org.freedesktop.Sdk//23.08"
+    local platform="org.freedesktop.Platform//23.08"
+    if flatpak info --user "$sdk" &> /dev/null && flatpak info --user "$platform" &> /dev/null; then
+        return 0
+    fi
+    log "Installing Flatpak runtime (user)..."
+    if ! flatpak install --user -y flathub "$platform" "$sdk"; then
+        error "Failed to install Flatpak runtime: $platform / $sdk"
+    fi
+}
 stage_rust_linux() {
     local bundle_dir="$1"
     log "Building Rust FFI library..."
@@ -271,8 +285,9 @@ EOF
         if ! ensure_flathub_remote; then
             error "Flathub remote unavailable; cannot build Flatpak."
         fi
+        ensure_flatpak_runtime
         log "Building Flatpak..."
-        flatpak-builder --user --force-clean "$OUTPUT_DIR/flatpak-build" "$FLATPAK_MANIFEST"
+        flatpak-builder --user --install-deps-from=flathub --force-clean "$OUTPUT_DIR/flatpak-build" "$FLATPAK_MANIFEST"
         
         log "Creating Flatpak bundle..."
         flatpak build-bundle "$OUTPUT_DIR/flatpak-build" \
