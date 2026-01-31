@@ -301,10 +301,16 @@ EOF
         fi
         ensure_flatpak_runtime
         log "Building Flatpak..."
-        flatpak-builder --user --install-deps-from=flathub --force-clean "$OUTPUT_DIR/flatpak-build" "$FLATPAK_MANIFEST"
-        
+        local flatpak_build_dir="$OUTPUT_DIR/flatpak-build"
+        local flatpak_repo_dir="$OUTPUT_DIR/flatpak-repo"
+        rm -rf "$flatpak_build_dir" "$flatpak_repo_dir"
+        flatpak-builder --user --install-deps-from=flathub --force-clean \
+            --repo="$flatpak_repo_dir" \
+            "$flatpak_build_dir" \
+            "$FLATPAK_MANIFEST"
+
         log "Creating Flatpak bundle..."
-        flatpak build-bundle "$OUTPUT_DIR/flatpak-build" \
+        flatpak build-bundle "$flatpak_repo_dir" \
             "$OUTPUT_DIR/pirate-unified-wallet.flatpak" \
             com.pirate.wallet
         
