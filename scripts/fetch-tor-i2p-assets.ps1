@@ -17,6 +17,14 @@ if (-not $I2pdBaseUrl) {
     $I2pdBaseUrl = "https://github.com/PurpleI2P/i2pd/releases/download/$I2pdVersion"
 }
 
+$TorPtSource = if ($env:TOR_PT_SOURCE) { $env:TOR_PT_SOURCE } else { "auto" }
+$SnowflakeRepoUrl = if ($env:SNOWFLAKE_REPO_URL) { $env:SNOWFLAKE_REPO_URL } else { "https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake.git" }
+$SnowflakeRef = if ($env:SNOWFLAKE_REF) { $env:SNOWFLAKE_REF } else { "v2.11.0" }
+$SnowflakeCommit = if ($env:SNOWFLAKE_COMMIT) { $env:SNOWFLAKE_COMMIT } else { "6472bd86cdd5d13fe61dc851edcf83b03df7bda1" }
+$Obfs4RepoUrl = if ($env:OBFS4_REPO_URL) { $env:OBFS4_REPO_URL } else { "https://gitlab.com/yawning/obfs4.git" }
+$Obfs4Ref = if ($env:OBFS4_REF) { $env:OBFS4_REF } else { "obfs4proxy-0.0.14" }
+$Obfs4Commit = if ($env:OBFS4_COMMIT) { $env:OBFS4_COMMIT } else { "336a71d6e4cfd2d33e9c57797828007ad74975e9" }
+
 $TorBrowserUrl = if ($env:TOR_BROWSER_WINDOWS_URL) {
     $env:TOR_BROWSER_WINDOWS_URL
 } elseif ($env:TOR_BROWSER_URL) {
@@ -81,6 +89,117 @@ function Find-SevenZip {
     return $null
 }
 
+function Normalize-Mode {
+    param([string]$Mode)
+    if (-not $Mode) { return "auto" }
+    return $Mode.ToLowerInvariant()
+}
+
+function Use-TorPtSource {
+    param([string]$Mode)
+    switch ($Mode) {
+        "1" { return $true }
+        "true" { return $true }
+        "yes" { return $true }
+        "on" { return $true }
+        "auto" { return $true }
+        "only" { return $true }
+        default { return $false }
+    }
+}
+
+function TorPtSourceOnly {
+    param([string]$Mode)
+    return $Mode -eq "only"
+}
+
+function Ensure-Repo {
+    param(
+        [string]$Url,
+        [string]$Ref,
+        [string]$Commit,
+        [string]$Dest
+    )
+    if (-not (Test-Path (Join-Path $Dest ".git"))) {
+        Write-Host "[INFO] Cloning $Url"
+        git clone $Url $Dest | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to clone $Url"
+        }
+    }
+    git -C $Dest fetch --depth 1 origin $Commit | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to fetch $Commit from $Url"
+    }
+    git -C $Dest checkout -q $Commit | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to checkout $Commit in $Dest"
+    }
+    $head = (git -C $Dest rev-parse HEAD).Trim()
+    if ($head -ne $Commit) {
+        throw "Expected $Ref ($Commit) but found $head in $Dest"
+    }
+}
+
+function Build-TorPtFromSource {
+    $mode = Normalize-Mode -Mode $TorPtSource
+    if (-not (Use-TorPtSource -Mode $mode)) {
+        return $false
+    }
+    $goCmd = Get-Command go -ErrorAction SilentlyContinue
+    if (-not $goCmd) {
+        Write-Warning "Go not found; skipping Tor PT source build."
+        return $false
+    }
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $gitCmd) {
+        Write-Warning "Git not found; skipping Tor PT source build."
+        return $false
+    }
+
+    $buildRoot = Join-Path $TorPtDir ".build"
+    $snowflakeRepo = Join-Path $buildRoot "snowflake"
+    $obfs4Repo = Join-Path $buildRoot "obfs4"
+    Ensure-Dir $buildRoot
+    Ensure-Repo -Url $SnowflakeRepoUrl -Ref $SnowflakeRef -Commit $SnowflakeCommit -Dest $snowflakeRepo
+    Ensure-Repo -Url $Obfs4RepoUrl -Ref $Obfs4Ref -Commit $Obfs4Commit -Dest $obfs4Repo
+
+    $snowflakeDest = Join-Path $TorPtDir "windows\\snowflake-client.exe"
+    $obfs4Dest = Join-Path $TorPtDir "windows\\obfs4proxy.exe"
+    Remove-Item -Force -ErrorAction SilentlyContinue $snowflakeDest, $obfs4Dest
+
+    $env:CGO_ENABLED = "0"
+    $env:GOWORK = "off"
+    $env:GOOS = "windows"
+    $env:GOARCH = "amd64"
+
+    Write-Host "[INFO] Building snowflake-client (GOOS=windows GOARCH=amd64)"
+    Push-Location $snowflakeRepo
+    & go build -mod=readonly -buildvcs=false -trimpath -ldflags "-s -w -buildid=" -o $snowflakeDest ./client
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        throw "snowflake-client build failed with exit code $LASTEXITCODE"
+    }
+    Pop-Location
+    if (-not (Test-Path $snowflakeDest)) {
+        throw "Failed to build snowflake-client.exe"
+    }
+
+    Write-Host "[INFO] Building obfs4proxy (GOOS=windows GOARCH=amd64)"
+    Push-Location $obfs4Repo
+    & go build -mod=readonly -buildvcs=false -trimpath -ldflags "-s -w -buildid=" -o $obfs4Dest ./obfs4proxy
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        throw "obfs4proxy build failed with exit code $LASTEXITCODE"
+    }
+    Pop-Location
+    if (-not (Test-Path $obfs4Dest)) {
+        throw "Failed to build obfs4proxy.exe"
+    }
+
+    return $true
+}
+
 Ensure-Dir $I2pDir
 Ensure-Dir $TorPtDir
 Ensure-Dir (Join-Path $I2pDir "windows")
@@ -103,6 +222,25 @@ if (-not $i2pdExe) {
 Copy-Item -Path $i2pdExe.FullName -Destination (Join-Path $I2pDir "windows\\i2pd.exe") -Force
 Remove-Item -Recurse -Force $i2pdExtract
 Remove-Item -Force $i2pdTmp
+
+$torSourceBuilt = $false
+try {
+    if (Build-TorPtFromSource) {
+        Write-Host "[INFO] Tor pluggable transports built from source."
+        $torSourceBuilt = $true
+    }
+} catch {
+    Write-Warning $_.Exception.Message
+}
+
+$modeNormalized = Normalize-Mode -Mode $TorPtSource
+if ($torSourceBuilt) {
+    Write-Host "[INFO] Tor/I2P assets downloaded."
+    exit 0
+}
+if (TorPtSourceOnly -Mode $modeNormalized) {
+    throw "Tor PT source build requested but failed. Install Go and Git or set TOR_PT_SOURCE=off."
+}
 
 $torTmp = Join-Path $env:TEMP ("torbrowser-" + [Guid]::NewGuid().ToString("N"))
 Ensure-Dir $torTmp
@@ -161,26 +299,27 @@ function Extract-PluggableTransportsFromArchive {
     $snowflakePath = $null
     $obfs4Path = $null
     $listing = & $sevenZip l -slt $Archive 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        return @{ Snowflake = $null; Obfs4 = $null }
-    }
-    foreach ($line in $listing) {
-        if ($line -match '^Path = (.+)$') {
-            $path = $Matches[1]
-            if (-not $snowflakePath -and $path -match '(?i)snowflake-client(\.exe)?$') {
-                $snowflakePath = $path
+    if ($LASTEXITCODE -eq 0) {
+        foreach ($line in $listing) {
+            if ($line -match '^Path = (.+)$') {
+                $path = $Matches[1]
+                if (-not $snowflakePath -and $path -match '(?i)snowflake-client(\.exe)?$') {
+                    $snowflakePath = $path
+                }
+                if (-not $obfs4Path -and $path -match '(?i)obfs4proxy(\.exe)?$') {
+                    $obfs4Path = $path
+                }
             }
-            if (-not $obfs4Path -and $path -match '(?i)obfs4proxy(\.exe)?$') {
-                $obfs4Path = $path
-            }
+            if ($snowflakePath -and $obfs4Path) { break }
         }
-        if ($snowflakePath -and $obfs4Path) { break }
-    }
-    if ($snowflakePath) {
-        & $sevenZip e $Archive "-o$DestDir" -y $snowflakePath | Out-Null
-    }
-    if ($obfs4Path) {
-        & $sevenZip e $Archive "-o$DestDir" -y $obfs4Path | Out-Null
+        if ($snowflakePath) {
+            & $sevenZip e $Archive "-o$DestDir" -y $snowflakePath | Out-Null
+        }
+        if ($obfs4Path) {
+            & $sevenZip e $Archive "-o$DestDir" -y $obfs4Path | Out-Null
+        }
+    } else {
+        & $sevenZip e $Archive "-o$DestDir" -y "*snowflake*" "*obfs4*" | Out-Null
     }
     $snowflake = Get-ChildItem -Path $DestDir -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^snowflake.*(\.exe)?$' } | Select-Object -First 1

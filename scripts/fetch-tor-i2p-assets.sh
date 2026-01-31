@@ -26,6 +26,14 @@ I2PD_LINUX_AMD64_SHA512="${I2PD_LINUX_AMD64_SHA512:-a034077c1261a1f9004c340bcab0
 I2PD_LINUX_ARM64_SHA512="${I2PD_LINUX_ARM64_SHA512:-43e8569e78dc738298530017c6824d6fc1187ff365476817c82ebf21c5ed1cdaa141882b787f1ba8fbf043fe0c736e72d5825628ac5d9bf8db8f026a8a3bb4d0}"
 I2PD_MACOS_SHA512="${I2PD_MACOS_SHA512:-db0fef0399e78f1080dab150ffb02ece73cedffd59766502635ae7c397301fda05acbd2979890aa680eecf46d70965c9b7ffff49fc88cc0240e2bec3668daf25}"
 
+TOR_PT_SOURCE="${TOR_PT_SOURCE:-auto}"
+SNOWFLAKE_REPO_URL="${SNOWFLAKE_REPO_URL:-https://gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake.git}"
+SNOWFLAKE_REF="${SNOWFLAKE_REF:-v2.11.0}"
+SNOWFLAKE_COMMIT="${SNOWFLAKE_COMMIT:-6472bd86cdd5d13fe61dc851edcf83b03df7bda1}"
+OBFS4_REPO_URL="${OBFS4_REPO_URL:-https://gitlab.com/yawning/obfs4.git}"
+OBFS4_REF="${OBFS4_REF:-obfs4proxy-0.0.14}"
+OBFS4_COMMIT="${OBFS4_COMMIT:-336a71d6e4cfd2d33e9c57797828007ad74975e9}"
+
 log() {
   echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
 }
@@ -61,6 +69,49 @@ esac
 
 have_cmd() {
   command -v "$1" >/dev/null 2>&1
+}
+
+normalize_mode() {
+  echo "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+tor_pt_source_enabled() {
+  local mode
+  mode="$(normalize_mode "$TOR_PT_SOURCE")"
+  case "$mode" in
+    1|true|yes|on|auto|only) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+tor_pt_source_only() {
+  local mode
+  mode="$(normalize_mode "$TOR_PT_SOURCE")"
+  case "$mode" in
+    only) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_path() {
+  local path="$1"
+  if [[ -L "$path" ]]; then
+    if have_cmd realpath; then
+      realpath "$path"
+      return 0
+    fi
+    if have_cmd readlink; then
+      readlink -f "$path"
+      return 0
+    fi
+  fi
+  echo "$path"
+}
+
+find_pt_binary() {
+  local root="$1"
+  local name="$2"
+  find "$root" \( -type f -o -type l \) -iname "${name}*" | head -n 1
 }
 
 download_file() {
@@ -118,6 +169,124 @@ sha512_check() {
     return 0
   fi
   error "Missing sha512sum/shasum to verify $file"
+}
+
+ensure_repo() {
+  local url="$1"
+  local ref="$2"
+  local commit="$3"
+  local dest="$4"
+
+  if [[ ! -d "$dest/.git" ]]; then
+    log "Cloning $url"
+    if ! git clone "$url" "$dest"; then
+      warn "Failed to clone $url"
+      return 1
+    fi
+  fi
+  if ! (cd "$dest" && GIT_TERMINAL_PROMPT=0 git fetch --depth 1 origin "$commit" >/dev/null 2>&1); then
+    warn "Failed to fetch $commit from $url"
+    return 1
+  fi
+  if ! (cd "$dest" && GIT_TERMINAL_PROMPT=0 git checkout -q "$commit"); then
+    warn "Failed to checkout $commit in $dest"
+    return 1
+  fi
+  local head
+  head="$(cd "$dest" && git rev-parse HEAD)"
+  if [[ "$head" != "$commit" ]]; then
+    warn "Expected $ref ($commit) but found $head in $dest"
+    return 1
+  fi
+}
+
+go_arch_label() {
+  case "$1" in
+    amd64) echo "x86_64" ;;
+    arm64) echo "aarch64" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+go_build_pt() {
+  local repo="$1"
+  local pkg="$2"
+  local goos="$3"
+  local goarch="$4"
+  local output="$5"
+
+  log "Building $(basename "$output") (GOOS=$goos GOARCH=$goarch)"
+  if ! (cd "$repo" && \
+    CGO_ENABLED=0 GOWORK=off GOOS="$goos" GOARCH="$goarch" \
+    go build -mod=readonly -buildvcs=false -trimpath -ldflags "-s -w -buildid=" \
+    -o "$output" "$pkg"); then
+    return 1
+  fi
+  [[ -f "$output" ]] || return 1
+  chmod +x "$output" || return 1
+}
+
+build_tor_pt_from_source() {
+  if ! tor_pt_source_enabled; then
+    return 1
+  fi
+  if ! have_cmd go; then
+    warn "Go not found; skipping Tor PT source build."
+    return 1
+  fi
+  if ! have_cmd git; then
+    warn "Git not found; skipping Tor PT source build."
+    return 1
+  fi
+
+  local build_root="$TOR_PT_DIR/.build"
+  local snowflake_repo="$build_root/snowflake"
+  local obfs4_repo="$build_root/obfs4"
+
+  mkdir -p "$TOR_PT_DIR/$PLATFORM"
+  mkdir -p "$build_root"
+
+  if ! ensure_repo "$SNOWFLAKE_REPO_URL" "$SNOWFLAKE_REF" "$SNOWFLAKE_COMMIT" "$snowflake_repo"; then
+    return 1
+  fi
+  if ! ensure_repo "$OBFS4_REPO_URL" "$OBFS4_REF" "$OBFS4_COMMIT" "$obfs4_repo"; then
+    return 1
+  fi
+
+  if [[ "$PLATFORM" == "linux" ]]; then
+    local goarch
+    case "$ARCH_LABEL" in
+      x86_64) goarch="amd64" ;;
+      aarch64) goarch="arm64" ;;
+      *) error "Unsupported arch for PT build: $ARCH_LABEL" ;;
+    esac
+    local label
+    label="$(go_arch_label "$goarch")"
+    if ! go_build_pt "$snowflake_repo" "./client" "linux" "$goarch" "$TOR_PT_DIR/$PLATFORM/snowflake-client-$label"; then
+      return 1
+    fi
+    if ! go_build_pt "$obfs4_repo" "./obfs4proxy" "linux" "$goarch" "$TOR_PT_DIR/$PLATFORM/obfs4proxy-$label"; then
+      return 1
+    fi
+    return 0
+  fi
+
+  if [[ "$PLATFORM" == "macos" ]]; then
+    local goarch
+    for goarch in amd64 arm64; do
+      local label
+      label="$(go_arch_label "$goarch")"
+      if ! go_build_pt "$snowflake_repo" "./client" "darwin" "$goarch" "$TOR_PT_DIR/$PLATFORM/snowflake-client-$label"; then
+        return 1
+      fi
+      if ! go_build_pt "$obfs4_repo" "./obfs4proxy" "darwin" "$goarch" "$TOR_PT_DIR/$PLATFORM/obfs4proxy-$label"; then
+        return 1
+      fi
+    done
+    return 0
+  fi
+
+  return 1
 }
 
 extract_archive_or_copy() {
@@ -209,6 +378,14 @@ fetch_i2p() {
 
 fetch_tor_pt() {
   mkdir -p "$TOR_PT_DIR/$PLATFORM"
+  if build_tor_pt_from_source; then
+    log "Tor pluggable transports built from source."
+    return 0
+  fi
+  if tor_pt_source_only; then
+    error "Tor PT source build requested but failed. Install Go and Git or set TOR_PT_SOURCE=off."
+  fi
+
   local tmpdir
   tmpdir="$(mktemp -d)"
 
@@ -239,13 +416,15 @@ fetch_tor_pt() {
     fi
 
     if [[ ! -f "${snowflake_src:-}" || ! -f "${obfs4_src:-}" ]]; then
-      snowflake_src="$(find "$extract_dir" -type f \( -name 'snowflake-client' -o -name 'snowflake-client*' \) | head -n 1)"
-      obfs4_src="$(find "$extract_dir" -type f \( -name 'obfs4proxy' -o -name 'obfs4proxy*' \) | head -n 1)"
+      snowflake_src="$(find_pt_binary "$extract_dir" "snowflake-client")"
+      obfs4_src="$(find_pt_binary "$extract_dir" "obfs4proxy")"
     fi
 
     [[ -f "${snowflake_src:-}" ]] || error "snowflake-client not found in Tor Browser bundle"
     [[ -f "${obfs4_src:-}" ]] || error "obfs4proxy not found in Tor Browser bundle"
 
+    snowflake_src="$(resolve_path "$snowflake_src")"
+    obfs4_src="$(resolve_path "$obfs4_src")"
     cp "$snowflake_src" "$snowflake_dest"
     cp "$obfs4_src" "$obfs4_dest"
     chmod +x "$snowflake_dest" "$obfs4_dest"
@@ -284,13 +463,15 @@ fetch_tor_pt() {
     fi
 
     if [[ ! -f "${snowflake_src:-}" || ! -f "${obfs4_src:-}" ]]; then
-      snowflake_src="$(find "$mount_point" -type f \( -name 'snowflake-client' -o -name 'snowflake-client*' \) | head -n 1)"
-      obfs4_src="$(find "$mount_point" -type f \( -name 'obfs4proxy' -o -name 'obfs4proxy*' \) | head -n 1)"
+      snowflake_src="$(find_pt_binary "$mount_point" "snowflake-client")"
+      obfs4_src="$(find_pt_binary "$mount_point" "obfs4proxy")"
     fi
 
     [[ -f "${snowflake_src:-}" ]] || error "snowflake-client not found in Tor Browser DMG"
     [[ -f "${obfs4_src:-}" ]] || error "obfs4proxy not found in Tor Browser DMG"
 
+    snowflake_src="$(resolve_path "$snowflake_src")"
+    obfs4_src="$(resolve_path "$obfs4_src")"
     cp "$snowflake_src" "$snowflake_dest"
     cp "$obfs4_src" "$obfs4_dest"
     chmod +x "$snowflake_dest" "$obfs4_dest"
