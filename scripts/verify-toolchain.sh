@@ -54,6 +54,15 @@ if [[ -n "$JAVA_EXPECTED" ]] && command -v java &> /dev/null; then
   expect_prefix "Java" "$JAVA_FIRST_LINE" "$JAVA_EXPECTED"
 fi
 
+GO_EXPECTED="${GO_VERSION:-}"
+if [[ "$GO_EXPECTED" == *.x ]]; then
+  GO_EXPECTED="${GO_EXPECTED%.x}"
+fi
+if [[ -n "$GO_EXPECTED" ]] && command -v go &> /dev/null; then
+  GO_OUTPUT="$(go version 2>&1 || true)"
+  expect_prefix "Go" "$GO_OUTPUT" "$GO_EXPECTED"
+fi
+
 GRADLE_EXPECTED="${GRADLE_VERSION:-}"
 if [[ -z "$GRADLE_EXPECTED" && -f "$PROJECT_ROOT/app/android/gradle/wrapper/gradle-wrapper.properties" ]]; then
   GRADLE_EXPECTED="$(awk -F 'gradle-' '/distributionUrl/ {print $2}' "$PROJECT_ROOT/app/android/gradle/wrapper/gradle-wrapper.properties" | awk -F '-' '{print $1}')"
