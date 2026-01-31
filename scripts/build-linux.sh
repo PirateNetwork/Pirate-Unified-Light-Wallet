@@ -269,7 +269,18 @@ modules:
     build-commands:
       - cp -r bundle /app/
       - install -Dm755 bundle/pirate_unified_wallet /app/bin/pirate-unified-wallet
-      - install -Dm644 pirate-unified-wallet.desktop /app/share/applications/com.pirate.wallet.desktop
+      - |
+          cat > com.pirate.wallet.desktop <<'DESKTOP'
+          [Desktop Entry]
+          Name=Pirate Unified Wallet
+          Exec=pirate-unified-wallet
+          Icon=com.pirate.wallet
+          Type=Application
+          Categories=Finance;Utility;
+          Comment=Privacy-first cryptocurrency wallet for Pirate Chain
+          Terminal=false
+          DESKTOP
+      - install -Dm644 com.pirate.wallet.desktop /app/share/applications/com.pirate.wallet.desktop
       - install -Dm644 $PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png /app/share/icons/hicolor/256x256/apps/com.pirate.wallet.png
     sources:
       - type: dir
