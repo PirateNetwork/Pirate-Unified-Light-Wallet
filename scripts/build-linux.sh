@@ -137,21 +137,6 @@ stage_rust_linux "$BUNDLE_DIR"
 OUTPUT_DIR="$PROJECT_ROOT/dist/linux"
 mkdir -p "$OUTPUT_DIR"
 
-case "$FORMAT" in
-    appimage)
-        build_appimage
-        ;;
-    flatpak)
-        build_flatpak
-        ;;
-    deb)
-        build_deb
-        ;;
-    *)
-        error "Unknown format: $FORMAT"
-        ;;
-esac
-
 build_appimage() {
     log "Creating AppImage..."
     
@@ -425,5 +410,20 @@ EOF
     log "APT repository metadata created at: $REPO_DIR"
     log "See $REPO_DIR/INSTALL.md for installation instructions"
 }
+
+case "$FORMAT" in
+    appimage)
+        build_appimage
+        ;;
+    flatpak)
+        build_flatpak
+        ;;
+    deb)
+        build_deb
+        ;;
+    *)
+        error "Unknown format: $FORMAT"
+        ;;
+esac
 
 log "Build complete!"
