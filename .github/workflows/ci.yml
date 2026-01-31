@@ -494,6 +494,7 @@ jobs:
     env:
       REPRODUCIBLE: "1"
       JAVA_VERSION: "21"
+      GRADLE_OPTS: "-Dorg.gradle.vfs.watch=false"
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v'))
     needs:
       - rust-test
@@ -583,13 +584,29 @@ jobs:
           ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-arm64-v8a-unsigned.apk dist/provenance
           ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-unsigned.aab dist/provenance
 
-      - name: Upload APK
+      - name: Upload APK (arm64-v8a)
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk
+          name: android-apk-unsigned-arm64-v8a
           path: |
-            dist/android/*.apk
-            dist/android/*.apk.sha256
+            dist/android/pirate-unified-wallet-android-arm64-v8a-unsigned.apk
+            dist/android/pirate-unified-wallet-android-arm64-v8a-unsigned.apk.sha256
+
+      - name: Upload APK (armeabi-v7a)
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-unsigned-armeabi-v7a
+          path: |
+            dist/android/pirate-unified-wallet-android-armeabi-v7a-unsigned.apk
+            dist/android/pirate-unified-wallet-android-armeabi-v7a-unsigned.apk.sha256
+
+      - name: Upload APK (x86_64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-unsigned-x86_64
+          path: |
+            dist/android/pirate-unified-wallet-android-x86_64-unsigned.apk
+            dist/android/pirate-unified-wallet-android-x86_64-unsigned.apk.sha256
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
@@ -1005,6 +1022,8 @@ jobs:
     name: Sign - Android (APK/AAB)
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.vfs.watch=false"
     needs:
       - package-android
     steps:
@@ -1033,11 +1052,25 @@ jobs:
         run: |
           yes | sdkmanager "build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}"
 
-      - name: Download APK artifacts
+      - name: Download APK artifacts (arm64-v8a)
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: android-apk
+          name: android-apk-unsigned-arm64-v8a
+          path: dist/android
+
+      - name: Download APK artifacts (armeabi-v7a)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk-unsigned-armeabi-v7a
+          path: dist/android
+
+      - name: Download APK artifacts (x86_64)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk-unsigned-x86_64
           path: dist/android
 
       - name: Download AAB artifacts
@@ -1067,21 +1100,24 @@ jobs:
             echo "apksigner not found at $APKSIGNER" >&2
             exit 1
           fi
-          APK_UNSIGNED="dist/android/pirate-unified-wallet-android-arm64-v8a-unsigned.apk"
-          APK_SIGNED="dist/android/pirate-unified-wallet-android-arm64-v8a.apk"
-          if [ ! -f "$APK_UNSIGNED" ]; then
-            echo "Unsigned APK not found at $APK_UNSIGNED" >&2
+          mapfile -t APK_UNSIGNED_LIST < <(ls dist/android/*-unsigned.apk 2>/dev/null || true)
+          if [ "${#APK_UNSIGNED_LIST[@]}" -eq 0 ]; then
+            echo "No unsigned APKs found in dist/android" >&2
             exit 1
           fi
-          "$APKSIGNER" sign \
-            --ks "$KEYSTORE_PATH" \
-            --ks-key-alias "$KEY_ALIAS" \
-            --ks-pass "pass:$KEYSTORE_PASSWORD" \
-            --key-pass "pass:$KEY_PASSWORD" \
-            --out "$APK_SIGNED" \
-            "$APK_UNSIGNED"
-          "$APKSIGNER" verify --verbose "$APK_SIGNED"
-          sha256sum "$APK_SIGNED" > "$APK_SIGNED.sha256"
+          for APK_UNSIGNED in "${APK_UNSIGNED_LIST[@]}"; do
+            APK_SIGNED="${APK_UNSIGNED/-unsigned.apk/.apk}"
+            echo "Signing $APK_UNSIGNED -> $APK_SIGNED"
+            "$APKSIGNER" sign \
+              --ks "$KEYSTORE_PATH" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass "pass:$KEYSTORE_PASSWORD" \
+              --key-pass "pass:$KEY_PASSWORD" \
+              --out "$APK_SIGNED" \
+              "$APK_UNSIGNED"
+            "$APKSIGNER" verify --verbose "$APK_SIGNED"
+            sha256sum "$APK_SIGNED" > "$APK_SIGNED.sha256"
+          done
 
           AAB_UNSIGNED="dist/android/pirate-unified-wallet-android-unsigned.aab"
           AAB_SIGNED="dist/android/pirate-unified-wallet-android.aab"
@@ -1100,14 +1136,34 @@ jobs:
             "$KEY_ALIAS"
           sha256sum "$AAB_SIGNED" > "$AAB_SIGNED.sha256"
 
-      - name: Upload signed APK
+      - name: Upload signed APK (arm64-v8a)
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-signed
+          name: android-apk-signed-arm64-v8a
           path: |
             dist/android/pirate-unified-wallet-android-arm64-v8a.apk
             dist/android/pirate-unified-wallet-android-arm64-v8a.apk.sha256
+          if-no-files-found: error
+
+      - name: Upload signed APK (armeabi-v7a)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-signed-armeabi-v7a
+          path: |
+            dist/android/pirate-unified-wallet-android-armeabi-v7a.apk
+            dist/android/pirate-unified-wallet-android-armeabi-v7a.apk.sha256
+          if-no-files-found: error
+
+      - name: Upload signed APK (x86_64)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-signed-x86_64
+          path: |
+            dist/android/pirate-unified-wallet-android-x86_64.apk
+            dist/android/pirate-unified-wallet-android-x86_64.apk.sha256
           if-no-files-found: error
 
       - name: Upload signed AAB

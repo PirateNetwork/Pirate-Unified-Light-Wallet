@@ -71,6 +71,7 @@ if [ "$BUILD_TYPE" = "bundle" ]; then
 else
     log "Building Android APK..."
     APK_MODE="split"
+    APK_FILES=()
     if [ "$ANDROID_SPLIT_PER_ABI" = "1" ]; then
         if ! flutter build apk --release --split-per-abi; then
             warn "Split APK build failed."
@@ -87,29 +88,33 @@ else
     fi
     
     if [ "$APK_MODE" = "split" ]; then
-        # Multiple ABIs (use arm64 output for distribution)
-        ARM64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
-        ARM64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-arm64-v8a-release-unsigned.apk"
-        ARMV7_APK="$APP_DIR/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
-        ARMV7_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-armeabi-v7a-release-unsigned.apk"
-        X86_64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-x86_64-release.apk"
-        X86_64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-x86_64-release-unsigned.apk"
-
-        if [ -f "$ARM64_APK" ]; then
-            OUTPUT_FILE="$ARM64_APK"
-        else
-            OUTPUT_FILE="$ARM64_APK_UNSIGNED"
-        fi
+        # Multiple ABIs
+        ABIS=("arm64-v8a" "armeabi-v7a" "x86_64")
+        for abi in "${ABIS[@]}"; do
+            signed="$APP_DIR/build/app/outputs/flutter-apk/app-${abi}-release.apk"
+            unsigned="$APP_DIR/build/app/outputs/flutter-apk/app-${abi}-release-unsigned.apk"
+            if [ -f "$signed" ]; then
+                APK_FILES+=("$signed")
+            elif [ -f "$unsigned" ]; then
+                APK_FILES+=("$unsigned")
+            else
+                warn "APK for $abi not found."
+            fi
+        done
     else
         ARM64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
         ARM64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-release-unsigned.apk"
         if [ -f "$ARM64_APK" ]; then
-            OUTPUT_FILE="$ARM64_APK"
-        else
-            OUTPUT_FILE="$ARM64_APK_UNSIGNED"
+            APK_FILES+=("$ARM64_APK")
+        elif [ -f "$ARM64_APK_UNSIGNED" ]; then
+            APK_FILES+=("$ARM64_APK_UNSIGNED")
         fi
     fi
-    OUTPUT_NAME_BASE="pirate-unified-wallet-android-arm64-v8a"
+
+    if [ "${#APK_FILES[@]}" -eq 0 ]; then
+        error "Build failed: no APK outputs found"
+    fi
+    OUTPUT_FILE="${APK_FILES[0]}"
 fi
 
 if [ ! -f "$OUTPUT_FILE" ]; then
@@ -163,33 +168,42 @@ if [ "$SIGN" = "true" ]; then
     fi
 fi
 
-if [ "$SIGNED" = "true" ]; then
-    OUTPUT_NAME="${OUTPUT_NAME_BASE}.aab"
-else
-    OUTPUT_NAME="${OUTPUT_NAME_BASE}-unsigned.aab"
-fi
-
-if [ "$BUILD_TYPE" = "apk" ]; then
-    if [ "$SIGNED" = "true" ]; then
-        OUTPUT_NAME="${OUTPUT_NAME_BASE}.apk"
-    else
-        OUTPUT_NAME="${OUTPUT_NAME_BASE}-unsigned.apk"
-    fi
-fi
-
 # Create output directory
 OUTPUT_DIR="$PROJECT_ROOT/dist/android"
 mkdir -p "$OUTPUT_DIR"
 
 # Copy artifacts
 log "Copying artifacts..."
-cp "$OUTPUT_FILE" "$OUTPUT_DIR/$OUTPUT_NAME"
-
-# Generate SHA-256 checksum
-log "Generating checksum..."
-cd "$OUTPUT_DIR"
-sha256sum "$OUTPUT_NAME" > "$OUTPUT_NAME.sha256"
+if [ "$BUILD_TYPE" = "apk" ]; then
+    for apk in "${APK_FILES[@]}"; do
+        filename="$(basename "$apk")"
+        if [[ "$filename" == *"-release-unsigned.apk" ]]; then
+            abi="${filename#app-}"
+            abi="${abi%-release-unsigned.apk}"
+        else
+            abi="${filename#app-}"
+            abi="${abi%-release.apk}"
+        fi
+        if [ "$APK_MODE" != "split" ]; then
+            abi="arm64-v8a"
+        fi
+        if [ "$SIGNED" = "true" ]; then
+            OUTPUT_NAME="pirate-unified-wallet-android-${abi}.apk"
+        else
+            OUTPUT_NAME="pirate-unified-wallet-android-${abi}-unsigned.apk"
+        fi
+        cp "$apk" "$OUTPUT_DIR/$OUTPUT_NAME"
+        sha256sum "$OUTPUT_DIR/$OUTPUT_NAME" > "$OUTPUT_DIR/$OUTPUT_NAME.sha256"
+    done
+else
+    if [ "$SIGNED" = "true" ]; then
+        OUTPUT_NAME="pirate-unified-wallet-android.aab"
+    else
+        OUTPUT_NAME="pirate-unified-wallet-android-unsigned.aab"
+    fi
+    cp "$OUTPUT_FILE" "$OUTPUT_DIR/$OUTPUT_NAME"
+    sha256sum "$OUTPUT_DIR/$OUTPUT_NAME" > "$OUTPUT_DIR/$OUTPUT_NAME.sha256"
+fi
 
 log "Build complete!"
-log "Output: $OUTPUT_DIR/$OUTPUT_NAME"
-log "SHA-256: $(cat "$OUTPUT_NAME.sha256")"
+log "Output directory: $OUTPUT_DIR"
