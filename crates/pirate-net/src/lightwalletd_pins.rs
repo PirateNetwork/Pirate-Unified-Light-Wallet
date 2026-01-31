@@ -69,7 +69,7 @@ impl LightwalletdPins {
     ///
     /// ```bash
     /// # Get certificate
-    /// openssl s_client -connect lightd.pirate.black:443 -showcerts < /dev/null 2>/dev/null | \
+    /// openssl s_client -connect lightd.piratechain.com:443 -showcerts < /dev/null 2>/dev/null | \
     ///   openssl x509 -outform PEM > cert.pem
     ///
     /// # Extract SPKI hash
@@ -252,7 +252,7 @@ mod tests {
         LightwalletdPins::load_all(&mut pinning).unwrap();
 
         // TLS pinning is intentionally empty until gRPC cert extraction is available.
-        let pins = pinning.get_pins("lightd.pirate.black");
+        let pins = pinning.get_pins("lightd.piratechain.com");
         assert!(pins.is_empty(), "Pins should be empty while disabled");
     }
 
@@ -268,7 +268,7 @@ mod tests {
         // Add initial pin
         pinning
             .add_pin(CertificatePin::new(
-                "test.lightd.pirate.black".to_string(),
+                "test.lightd.piratechain.com".to_string(),
                 old_pin.clone(),
                 "Old cert".to_string(),
             ))
@@ -277,7 +277,7 @@ mod tests {
         // Rotate to new pin
         LightwalletdPins::rotate_pin(
             &mut pinning,
-            "test.lightd.pirate.black",
+            "test.lightd.piratechain.com",
             &old_pin,
             &new_pin,
             "New cert",
@@ -285,7 +285,7 @@ mod tests {
         .unwrap();
 
         // Both pins should work during grace period
-        let pins = pinning.get_pins("test.lightd.pirate.black");
+        let pins = pinning.get_pins("test.lightd.piratechain.com");
         assert_eq!(
             pins.len(),
             2,
@@ -293,8 +293,8 @@ mod tests {
         );
 
         // Verify both pins work
-        assert!(pinning.verify("test.lightd.pirate.black", &old_pin).is_ok());
+        assert!(pinning.verify("test.lightd.piratechain.com", &old_pin).is_ok());
 
-        assert!(pinning.verify("test.lightd.pirate.black", &new_pin).is_ok());
+        assert!(pinning.verify("test.lightd.piratechain.com", &new_pin).is_ok());
     }
 }

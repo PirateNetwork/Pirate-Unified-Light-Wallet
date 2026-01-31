@@ -25,7 +25,7 @@ enum Commands {
     /// Run a full sync from birthday to tip
     FullSync {
         /// Lightwalletd endpoint
-        #[arg(short, long, default_value = "https://lightd.pirate.black:443")]
+        #[arg(short, long, default_value = "https://lightd.piratechain.com:443")]
         endpoint: String,
 
         /// Birthday height
@@ -40,7 +40,7 @@ enum Commands {
     /// Benchmark sync performance
     Benchmark {
         /// Lightwalletd endpoint
-        #[arg(short, long, default_value = "https://lightd.pirate.black:443")]
+        #[arg(short, long, default_value = "https://lightd.piratechain.com:443")]
         endpoint: String,
 
         /// Start height
@@ -59,7 +59,7 @@ enum Commands {
     /// Test interrupt and resume
     InterruptTest {
         /// Lightwalletd endpoint
-        #[arg(short, long, default_value = "https://lightd.pirate.black:443")]
+        #[arg(short, long, default_value = "https://lightd.piratechain.com:443")]
         endpoint: String,
 
         /// Birthday height
@@ -74,7 +74,7 @@ enum Commands {
     /// Test checkpoint rollback
     RollbackTest {
         /// Lightwalletd endpoint
-        #[arg(short, long, default_value = "https://lightd.pirate.black:443")]
+        #[arg(short, long, default_value = "https://lightd.piratechain.com:443")]
         endpoint: String,
 
         /// Birthday height

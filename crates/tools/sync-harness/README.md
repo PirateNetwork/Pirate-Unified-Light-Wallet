@@ -1,4 +1,4 @@
-﻿# Sync Harness - Testing Tool
+# Sync Harness - Testing Tool
 
 CLI tool for testing and benchmarking the Pirate Chain sync engine.
 
@@ -34,7 +34,7 @@ cargo run --bin sync-harness -- rollback-test --birthday 4000000 --checkpoint-in
 
 ```bash
 cargo run --bin sync-harness -- full-sync \
-  --endpoint https://lightd.pirate.black:443 \
+  --endpoint https://lightd.piratechain.com:443 \
   --birthday 3800000
 ```
 

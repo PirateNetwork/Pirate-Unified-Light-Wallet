@@ -6,7 +6,7 @@ use std::time::Instant;
 #[tokio::test]
 #[ignore] // Run with: cargo test --test performance -- --ignored
 async fn test_sync_performance_small_range() {
-    let mut engine = SyncEngine::new("https://lightd.pirate.black:443".to_string(), 4_000_000);
+    let mut engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 4_000_000);
 
     let start = Instant::now();
     let result = engine.sync_range(4_000_000, Some(4_001_000)).await;
@@ -36,7 +36,7 @@ async fn test_sync_performance_with_parallelism() {
     };
 
     let mut engine = SyncEngine::with_config(
-        "https://lightd.pirate.black:443".to_string(),
+        "https://lightd.piratechain.com:443".to_string(),
         4_000_000,
         config,
     );
@@ -61,7 +61,7 @@ async fn test_checkpoint_overhead() {
     };
 
     let mut engine_frequent = SyncEngine::with_config(
-        "https://lightd.pirate.black:443".to_string(),
+        "https://lightd.piratechain.com:443".to_string(),
         4_000_000,
         config_frequent,
     );
@@ -79,7 +79,7 @@ async fn test_checkpoint_overhead() {
     };
 
     let mut engine_infrequent = SyncEngine::with_config(
-        "https://lightd.pirate.black:443".to_string(),
+        "https://lightd.piratechain.com:443".to_string(),
         4_000_000,
         config_infrequent,
     );
@@ -117,7 +117,7 @@ async fn test_batch_size_optimization() {
         };
 
         let mut engine = SyncEngine::with_config(
-            "https://lightd.pirate.black:443".to_string(),
+            "https://lightd.piratechain.com:443".to_string(),
             4_000_000,
             config,
         );
@@ -156,7 +156,7 @@ async fn test_lazy_memo_performance() {
     };
 
     let mut engine_lazy = SyncEngine::with_config(
-        "https://lightd.pirate.black:443".to_string(),
+        "https://lightd.piratechain.com:443".to_string(),
         4_000_000,
         config_lazy,
     );
@@ -174,7 +174,7 @@ async fn test_lazy_memo_performance() {
     };
 
     let mut engine_eager = SyncEngine::with_config(
-        "https://lightd.pirate.black:443".to_string(),
+        "https://lightd.piratechain.com:443".to_string(),
         4_000_000,
         config_eager,
     );
@@ -198,7 +198,7 @@ async fn test_lazy_memo_performance() {
 #[tokio::test]
 #[ignore]
 async fn test_progress_overhead() {
-    let mut engine = SyncEngine::new("https://lightd.pirate.black:443".to_string(), 4_000_000);
+    let mut engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 4_000_000);
 
     let progress = engine.progress();
 

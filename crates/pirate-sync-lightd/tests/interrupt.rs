@@ -14,7 +14,7 @@ async fn test_sync_timeout_and_resume() {
     };
 
     let mut engine = SyncEngine::with_config(
-        "https://lightd.pirate.black:443".to_string(),
+        "https://lightd.piratechain.com:443".to_string(),
         4_000_000,
         config,
     );
@@ -46,7 +46,7 @@ async fn test_checkpoint_creation() {
     };
 
     let mut engine = SyncEngine::with_config(
-        "https://lightd.pirate.black:443".to_string(),
+        "https://lightd.piratechain.com:443".to_string(),
         4_000_000,
         config,
     );
@@ -68,7 +68,7 @@ async fn test_checkpoint_creation() {
 #[tokio::test]
 #[ignore = "Requires live network"]
 async fn test_graceful_shutdown() {
-    let mut engine = SyncEngine::new("https://lightd.pirate.black:443".to_string(), 4_000_000);
+    let mut engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 4_000_000);
 
     let progress = engine.progress();
 
@@ -96,7 +96,7 @@ async fn test_graceful_shutdown() {
 #[tokio::test]
 #[ignore] // Requires actual network connection
 async fn test_network_interruption_recovery() {
-    let mut engine = SyncEngine::new("https://lightd.pirate.black:443".to_string(), 4_000_000);
+    let mut engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 4_000_000);
 
     // Simulate network interruption by using short timeout
     let result = timeout(
@@ -132,7 +132,7 @@ async fn test_multiple_interruptions() {
         let next_height = current_height + blocks_per_interrupt;
 
         let mut engine = SyncEngine::with_config(
-            "https://lightd.pirate.black:443".to_string(),
+            "https://lightd.piratechain.com:443".to_string(),
             u32::try_from(current_height).unwrap(),
             config.clone(),
         );
@@ -157,7 +157,7 @@ async fn test_corrupted_state_rollback() {
     };
 
     let mut engine = SyncEngine::with_config(
-        "https://lightd.pirate.black:443".to_string(),
+        "https://lightd.piratechain.com:443".to_string(),
         4_000_000,
         config,
     );
@@ -177,7 +177,7 @@ async fn test_corrupted_state_rollback() {
 #[tokio::test]
 #[ignore = "Requires live network"]
 async fn test_reorg_detection() {
-    let mut engine = SyncEngine::new("https://lightd.pirate.black:443".to_string(), 4_000_000);
+    let mut engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 4_000_000);
 
     // In production, would:
     // 1. Sync to height N

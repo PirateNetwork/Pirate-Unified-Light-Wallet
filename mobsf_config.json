@@ -1,6 +1,6 @@
 {
   "name": "Pirate Unified Wallet",
-  "package": "black.pirate.wallet",
+  "package": "com.pirate.wallet",
   "version": "1.0.0",
   "scan_type": "apk",
   "permissions_required": [

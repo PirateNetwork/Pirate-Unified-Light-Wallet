@@ -50,7 +50,7 @@ msix_config:
   display_name: Pirate Wallet
   publisher_display_name: Pirate Chain
   publisher: 'CN=PirateChain, O=PirateChain, L=Online, S=Global, C=US'
-  identity_name: black.pirate.wallet
+  identity_name: com.pirate.wallet
   msix_version: 1.0.0.0
   signing_enabled: false
   install_certificate: false

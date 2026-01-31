@@ -267,7 +267,7 @@ void main() {
           await tester.pump(const Duration(milliseconds: 500));
 
           // Should show current node
-          expect(find.textContaining('lightd.pirate.black'), findsOneWidget);
+          expect(find.textContaining('lightd.piratechain.com'), findsOneWidget);
 
           // Select different node
           if (find.text('Select Node').evaluate().isNotEmpty) {

@@ -197,7 +197,7 @@ fn test_default_pins_loaded() {
     let pinning = TlsPinning::default();
 
     // Defaults are intentionally empty until gRPC cert extraction is available.
-    let pins = pinning.get_pins("lightd.pirate.black");
+    let pins = pinning.get_pins("lightd.piratechain.com");
     assert!(pins.is_empty(), "Pins should be empty while disabled");
 }
 

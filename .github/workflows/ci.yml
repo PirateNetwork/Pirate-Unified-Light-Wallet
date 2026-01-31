@@ -994,7 +994,7 @@ jobs:
           name: linux-flatpak
           path: |
             dist/linux/*.flatpak
-            black.pirate.wallet.yml
+            com.pirate.wallet.yml
 
       - name: Upload Debian Package
         uses: actions/upload-artifact@v4

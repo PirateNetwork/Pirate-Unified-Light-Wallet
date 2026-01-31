@@ -115,7 +115,7 @@ Widget _buildTestApp({required Widget child, List<TxInfo>? transactions}) {
       tunnelModeProvider.overrideWith(_TestTunnelModeNotifier.new),
       lightdEndpointConfigProvider.overrideWith(
         (ref) async => const LightdEndpointConfig(
-          url: 'https://lightd.pirate.black:443',
+          url: 'https://lightd.piratechain.com:443',
         ),
       ),
       torStatusProvider.overrideWith(_TestTorStatusNotifier.new),

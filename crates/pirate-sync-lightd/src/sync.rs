@@ -4967,13 +4967,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_sync_engine_creation() {
-        let engine = SyncEngine::new("https://lightd.pirate.black:443".to_string(), 3_800_000);
+        let engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 3_800_000);
         assert_eq!(engine.birthday_height(), 3_800_000);
     }
 
     #[tokio::test]
     async fn test_birthday_height_update() {
-        let mut engine = SyncEngine::new("https://lightd.pirate.black:443".to_string(), 3_800_000);
+        let mut engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 3_800_000);
         engine.set_birthday_height(4_000_000);
         assert_eq!(engine.birthday_height(), 4_000_000);
     }

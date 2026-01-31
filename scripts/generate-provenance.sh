@@ -100,7 +100,7 @@ cat > "$OUTPUT_DIR/$ARTIFACT_NAME.provenance.json" <<EOF
   "predicateType": "https://slsa.dev/provenance/v1",
   "predicate": {
     "buildDefinition": {
-      "buildType": "https://pirate.black/build-types/nix-flake@v1",
+      "buildType": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/${GIT_COMMIT}/.github/workflows/ci.yml",
       "externalParameters": {
         "source": {
           "uri": "$GIT_REMOTE",

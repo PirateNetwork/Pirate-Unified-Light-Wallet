@@ -249,10 +249,10 @@ build_flatpak() {
     log "Creating Flatpak manifest..."
     
     # Create Flatpak manifest
-    FLATPAK_MANIFEST="$PROJECT_ROOT/black.pirate.wallet.yml"
+    FLATPAK_MANIFEST="$PROJECT_ROOT/com.pirate.wallet.yml"
     
     cat > "$FLATPAK_MANIFEST" <<EOF
-app-id: black.pirate.wallet
+app-id: com.pirate.wallet
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
@@ -269,8 +269,8 @@ modules:
     build-commands:
       - cp -r bundle /app/
       - install -Dm755 bundle/pirate_unified_wallet /app/bin/pirate-unified-wallet
-      - install -Dm644 pirate-unified-wallet.desktop /app/share/applications/black.pirate.wallet.desktop
-      - install -Dm644 $PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png /app/share/icons/hicolor/256x256/apps/black.pirate.wallet.png
+      - install -Dm644 pirate-unified-wallet.desktop /app/share/applications/com.pirate.wallet.desktop
+      - install -Dm644 $PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png /app/share/icons/hicolor/256x256/apps/com.pirate.wallet.png
     sources:
       - type: dir
         path: $BUNDLE_DIR
@@ -292,7 +292,7 @@ EOF
         log "Creating Flatpak bundle..."
         flatpak build-bundle "$OUTPUT_DIR/flatpak-build" \
             "$OUTPUT_DIR/pirate-unified-wallet.flatpak" \
-            black.pirate.wallet
+            com.pirate.wallet
         
         log "Flatpak created: $OUTPUT_DIR/pirate-unified-wallet.flatpak"
     else
@@ -321,13 +321,13 @@ Version: 1.0.0
 Section: utils
 Priority: optional
 Architecture: amd64
-Maintainer: Pirate Chain <dev@pirate.black>
+Maintainer: Pirate Chain <dev@piratechain.com>
 Description: Privacy-first cryptocurrency wallet for Pirate Chain
  Pirate Unified Wallet is a production-grade, privacy-first wallet for
  Pirate Chain (ARRR) with Sapling shielded transactions, Tor routing,
  and watch-only capabilities.
 Depends: libgtk-3-0, libglib2.0-0, libsqlite3-0
-Homepage: https://pirate.black
+Homepage: https://piratechain.com
 EOF
     
     # Create desktop entry
@@ -426,12 +426,14 @@ EOF
 Add the repository (once hosted):
 
 ```bash
-echo "deb [trusted=yes] https://apt.pirate.black stable main" | sudo tee /etc/apt/sources.list.d/pirate.list
+echo "deb [trusted=yes] <APT_REPO_URL> stable main" | sudo tee /etc/apt/sources.list.d/pirate.list
 sudo apt update
 sudo apt install pirate-unified-wallet
 ```
 
 ## Local Installation
+
+Replace `<APT_REPO_URL>` with the official repository URL when published.
 
 For local installation from the .deb file:
 
