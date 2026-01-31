@@ -31,6 +31,11 @@ export FLUTTER_SUPPRESS_ANALYTICS=true
 export DART_SUPPRESS_ANALYTICS=true
 export CARGO_INCREMENTAL=0
 
+if [ -d "/c/Strawberry/perl/bin" ]; then
+    export PATH="/c/Strawberry/perl/bin:/c/Strawberry/c/bin:$PATH"
+    export PERL="/c/Strawberry/perl/bin/perl"
+fi
+
 log "Building Windows MSIX (reproducible)"
 log "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
 
