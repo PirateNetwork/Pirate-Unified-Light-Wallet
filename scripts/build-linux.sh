@@ -150,7 +150,15 @@ build_appimage() {
         download_file "$APPIMAGETOOL_URL" "$appimagetool_tmp"
         sha256_check "$appimagetool_tmp" "$APPIMAGETOOL_SHA256"
         chmod +x "$appimagetool_tmp"
-        APPIMAGETOOL="$appimagetool_tmp"
+        local appimagetool_extract
+        appimagetool_extract="$(mktemp -d)"
+        if ! (cd "$appimagetool_extract" && "$appimagetool_tmp" --appimage-extract >/dev/null 2>&1); then
+            error "Failed to extract appimagetool AppImage (FUSE not available?)"
+        fi
+        if [ ! -x "$appimagetool_extract/squashfs-root/AppRun" ]; then
+            error "Extracted appimagetool AppRun not found"
+        fi
+        APPIMAGETOOL="$appimagetool_extract/squashfs-root/AppRun"
     else
         APPIMAGETOOL=appimagetool
     fi
