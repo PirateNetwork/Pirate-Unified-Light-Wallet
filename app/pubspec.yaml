@@ -52,6 +52,8 @@ msix_config:
   publisher: 'CN=PirateChain, O=PirateChain, L=Online, S=Global, C=US'
   identity_name: black.pirate.wallet
   msix_version: 1.0.0.0
+  signing_enabled: false
+  install_certificate: false
   capabilities: internetClient
 
 flutter:
