@@ -727,6 +727,12 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Install Perl (OpenSSL build)
+        shell: pwsh
+        run: |
+          choco install strawberryperl --version 5.42.0.1 --no-progress -y
+          "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding ascii -Append
+
       - name: Set SOURCE_DATE_EPOCH
         run: |
           $epoch = git log -1 --format=%ct
