@@ -281,11 +281,14 @@ modules:
           Terminal=false
           DESKTOP
       - install -Dm644 com.pirate.wallet.desktop /app/share/applications/com.pirate.wallet.desktop
-      - install -Dm644 $PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png /app/share/icons/hicolor/256x256/apps/com.pirate.wallet.png
+      - install -Dm644 assets/p-logo-url-no-bg.png /app/share/icons/hicolor/256x256/apps/com.pirate.wallet.png
     sources:
       - type: dir
         path: $BUNDLE_DIR
         dest: bundle
+      - type: file
+        path: $PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png
+        dest: assets
 EOF
     
     log "Flatpak manifest created: $FLATPAK_MANIFEST"
