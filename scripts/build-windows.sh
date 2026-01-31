@@ -54,7 +54,51 @@ REPRODUCIBLE="${REPRODUCIBLE:-0}"
 zip_dir_deterministic() {
     local src="$1"
     local dest="$2"
-    (cd "$src" && normalize_mtime "." && LC_ALL=C find . -type f -print | sort | zip -X -@ "$dest")
+    (cd "$src" && normalize_mtime ".")
+    if command -v zip &> /dev/null; then
+        (cd "$src" && LC_ALL=C find . -type f -print | sort | zip -X -@ "$dest")
+        return 0
+    fi
+    if command -v python &> /dev/null; then
+        python - "$src" "$dest" "${SOURCE_DATE_EPOCH:-}" <<'PY'
+import os
+import sys
+import time
+import datetime
+import zipfile
+import shutil
+
+src = sys.argv[1]
+dest = sys.argv[2]
+epoch_raw = sys.argv[3] if len(sys.argv) > 3 else ""
+try:
+    epoch = int(epoch_raw) if epoch_raw else int(time.time())
+except ValueError:
+    epoch = int(time.time())
+
+dt = datetime.datetime.utcfromtimestamp(epoch)
+zip_dt = (dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+
+if os.path.exists(dest):
+    os.remove(dest)
+
+with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk(src):
+        dirs.sort()
+        files.sort()
+        for name in files:
+            path = os.path.join(root, name)
+            rel = os.path.relpath(path, src).replace(os.sep, "/")
+            info = zipfile.ZipInfo(rel, date_time=zip_dt)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o100644 << 16
+            with open(path, "rb") as f, zf.open(info, "w") as out:
+                shutil.copyfileobj(f, out, 1024 * 1024)
+        # Only the entries matter, directories are implied.
+PY
+        return 0
+    fi
+    error "zip not found and python not available to create portable archive."
 }
 
 sign_windows_binaries() {
