@@ -205,7 +205,17 @@ EOF
     
     # Build AppImage
     normalize_mtime "$APPDIR"
-    ARCH=x86_64 $APPIMAGETOOL "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
+    local appimage_epoch="${SOURCE_DATE_EPOCH:-}"
+    if [ -n "$appimage_epoch" ]; then
+        # Avoid mksquashfs conflict when SOURCE_DATE_EPOCH is set
+        # and appimagetool passes timestamp flags internally.
+        env -u SOURCE_DATE_EPOCH \
+            APPIMAGE_SQUASHFS_OPTIONS="-all-time $appimage_epoch" \
+            ARCH=x86_64 \
+            "$APPIMAGETOOL" "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
+    else
+        ARCH=x86_64 "$APPIMAGETOOL" "$APPDIR" "$OUTPUT_DIR/pirate-unified-wallet-linux-x86_64.AppImage"
+    fi
     
     # Generate checksum
     cd "$OUTPUT_DIR"
