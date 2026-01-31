@@ -29,6 +29,8 @@ warn() {
 BUILD_TYPE="${1:-apk}"  # apk or bundle
 SIGN="${2:-false}"      # Sign the build
 REPRODUCIBLE="${REPRODUCIBLE:-0}"
+ANDROID_SPLIT_PER_ABI="${ANDROID_SPLIT_PER_ABI:-1}"
+ANDROID_GRADLE_STACKTRACE="${ANDROID_GRADLE_STACKTRACE:-1}"
 
 # Reproducible build settings
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || date +%s)}"
@@ -68,20 +70,44 @@ if [ "$BUILD_TYPE" = "bundle" ]; then
     OUTPUT_NAME_BASE="pirate-unified-wallet-android"
 else
     log "Building Android APK..."
-    flutter build apk --release --split-per-abi
-    
-    # Multiple ABIs
-    ARM64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
-    ARM64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-arm64-v8a-release-unsigned.apk"
-    ARMV7_APK="$APP_DIR/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
-    ARMV7_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-armeabi-v7a-release-unsigned.apk"
-    X86_64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-x86_64-release.apk"
-    X86_64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-x86_64-release-unsigned.apk"
-    
-    if [ -f "$ARM64_APK" ]; then
-        OUTPUT_FILE="$ARM64_APK"
+    APK_MODE="split"
+    if [ "$ANDROID_SPLIT_PER_ABI" = "1" ]; then
+        if ! flutter build apk --release --split-per-abi; then
+            warn "Split APK build failed."
+            if [ "$ANDROID_GRADLE_STACKTRACE" = "1" ]; then
+                warn "Retrying split build with Gradle --stacktrace --info..."
+                (cd "$APP_DIR/android" && ./gradlew assembleRelease -Psplit-per-abi=true --stacktrace --info)
+            else
+                error "Split APK build failed. Set ANDROID_GRADLE_STACKTRACE=1 for diagnostics."
+            fi
+        fi
     else
-        OUTPUT_FILE="$ARM64_APK_UNSIGNED"
+        APK_MODE="arm64"
+        flutter build apk --release --target-platform=android-arm64
+    fi
+    
+    if [ "$APK_MODE" = "split" ]; then
+        # Multiple ABIs (use arm64 output for distribution)
+        ARM64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
+        ARM64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-arm64-v8a-release-unsigned.apk"
+        ARMV7_APK="$APP_DIR/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk"
+        ARMV7_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-armeabi-v7a-release-unsigned.apk"
+        X86_64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-x86_64-release.apk"
+        X86_64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-x86_64-release-unsigned.apk"
+
+        if [ -f "$ARM64_APK" ]; then
+            OUTPUT_FILE="$ARM64_APK"
+        else
+            OUTPUT_FILE="$ARM64_APK_UNSIGNED"
+        fi
+    else
+        ARM64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
+        ARM64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-release-unsigned.apk"
+        if [ -f "$ARM64_APK" ]; then
+            OUTPUT_FILE="$ARM64_APK"
+        else
+            OUTPUT_FILE="$ARM64_APK_UNSIGNED"
+        fi
     fi
     OUTPUT_NAME_BASE="pirate-unified-wallet-android-arm64-v8a"
 fi
