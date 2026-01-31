@@ -103,8 +103,8 @@ ensure_flatpak_runtime() {
     if ! command -v flatpak &> /dev/null; then
         return 0
     fi
-    local sdk="org.freedesktop.Sdk//23.08"
-    local platform="org.freedesktop.Platform//23.08"
+    local sdk="org.freedesktop.Sdk//25.08"
+    local platform="org.freedesktop.Platform//25.08"
     if flatpak info --user "$sdk" &> /dev/null && flatpak info --user "$platform" &> /dev/null; then
         return 0
     fi
@@ -147,7 +147,7 @@ flutter pub get --enforce-lockfile
 log "Building Linux app..."
 flutter build linux --release
 
-BUNDLE_DIR="build/linux/x64/release/bundle"
+BUNDLE_DIR="$APP_DIR/build/linux/x64/release/bundle"
 
 if [ ! -d "$BUNDLE_DIR" ]; then
     error "Build failed: Bundle directory not found"
@@ -254,7 +254,7 @@ build_flatpak() {
     cat > "$FLATPAK_MANIFEST" <<EOF
 app-id: black.pirate.wallet
 runtime: org.freedesktop.Platform
-runtime-version: '23.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 command: pirate-unified-wallet
 finish-args:
