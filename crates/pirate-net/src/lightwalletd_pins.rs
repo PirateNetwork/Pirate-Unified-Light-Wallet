@@ -293,8 +293,12 @@ mod tests {
         );
 
         // Verify both pins work
-        assert!(pinning.verify("test.lightd.piratechain.com", &old_pin).is_ok());
+        assert!(pinning
+            .verify("test.lightd.piratechain.com", &old_pin)
+            .is_ok());
 
-        assert!(pinning.verify("test.lightd.piratechain.com", &new_pin).is_ok());
+        assert!(pinning
+            .verify("test.lightd.piratechain.com", &new_pin)
+            .is_ok());
     }
 }
