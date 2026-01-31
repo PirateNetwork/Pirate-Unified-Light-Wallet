@@ -52,6 +52,16 @@ SYFT_SHA256_DARWIN_ARM64="${SYFT_SHA256_DARWIN_ARM64:-c0f6a4fc0563ef1dfe1acf9a45
 SYFT_SHA256_DARWIN_AMD64="${SYFT_SHA256_DARWIN_AMD64:-9e84d1f152ef9d3bb541cc7cedf81ed4c7ed78f6cc2e4c8f0db9e052b64cd7be}"
 SYFT_SHA256_WINDOWS_AMD64="${SYFT_SHA256_WINDOWS_AMD64:-eedac363e277dfecac420b6e4ed0a861bc2c9c84a7544157f52807a99bff07cd}"
 CARGO_AUDITABLE_VERSION="${CARGO_AUDITABLE_VERSION:-0.7.2}"
+SBOM_APP_NAME="${SBOM_APP_NAME:-Pirate Unified Light Wallet}"
+SBOM_APP_VERSION="${SBOM_APP_VERSION:-}"
+
+if [[ -z "$SBOM_APP_VERSION" ]]; then
+    if [[ -n "${GITHUB_REF:-}" && "$GITHUB_REF" == refs/tags/v* ]]; then
+        SBOM_APP_VERSION="${GITHUB_REF#refs/tags/}"
+    else
+        SBOM_APP_VERSION="0.0.0-unsigned"
+    fi
+fi
 
 # ============================================================================
 # Rust SBOM with cargo auditable
@@ -171,6 +181,8 @@ fi
 
 # Generate SBOM for Flutter app
 syft "$PROJECT_ROOT/app" \
+    --name "$SBOM_APP_NAME" \
+    --version "$SBOM_APP_VERSION" \
     --output spdx-json="$OUTPUT_DIR/flutter-sbom.spdx.json" \
     --output cyclonedx-json="$OUTPUT_DIR/flutter-sbom.cdx.json"
 
@@ -195,8 +207,8 @@ cat > "$OUTPUT_DIR/SBOM-SUMMARY.md" <<EOF
 # Software Bill of Materials (SBOM)
 
 Generated: $SBOM_DATE
-Project: Pirate Unified Wallet
-Version: 1.0.0
+Project: $SBOM_APP_NAME
+Version: $SBOM_APP_VERSION
 
 ## Files
 
