@@ -771,7 +771,10 @@ jobs:
 
       - name: Generate SBOM
         shell: bash
+        env:
+          PERL: C:\Strawberry\perl\bin\perl.exe
         run: |
+          export PATH="/c/Strawberry/perl/bin:/c/Strawberry/c/bin:$PATH"
           chmod +x scripts/generate-sbom.sh
           ./scripts/generate-sbom.sh dist/sbom
 
