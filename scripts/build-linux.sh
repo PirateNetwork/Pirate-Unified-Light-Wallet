@@ -188,11 +188,11 @@ EOF
     
     cp "$APPDIR/pirate-unified-wallet.desktop" "$APPDIR/usr/share/applications/"
     
-    # Copy icon (assuming it exists)
-    if [ -f "$PROJECT_ROOT/assets/icon.png" ]; then
-        cp "$PROJECT_ROOT/assets/icon.png" \
+    # Copy icon
+    if [ -f "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" ]; then
+        cp "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" \
             "$APPDIR/usr/share/icons/hicolor/256x256/apps/pirate-unified-wallet.png"
-        cp "$PROJECT_ROOT/assets/icon.png" "$APPDIR/pirate-unified-wallet.png"
+        cp "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" "$APPDIR/pirate-unified-wallet.png"
     fi
     
     # Create AppRun script
@@ -239,7 +239,7 @@ modules:
       - cp -r bundle /app/
       - install -Dm755 bundle/pirate_unified_wallet /app/bin/pirate-unified-wallet
       - install -Dm644 pirate-unified-wallet.desktop /app/share/applications/black.pirate.wallet.desktop
-      - install -Dm644 icon.png /app/share/icons/hicolor/256x256/apps/black.pirate.wallet.png
+      - install -Dm644 $PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png /app/share/icons/hicolor/256x256/apps/black.pirate.wallet.png
     sources:
       - type: dir
         path: $BUNDLE_DIR
@@ -309,8 +309,8 @@ Terminal=false
 EOF
     
     # Copy icon
-    if [ -f "$PROJECT_ROOT/assets/icon.png" ]; then
-        cp "$PROJECT_ROOT/assets/icon.png" \
+    if [ -f "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" ]; then
+        cp "$PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png" \
             "$DEB_DIR/usr/share/icons/hicolor/256x256/apps/pirate-unified-wallet.png"
     fi
     
