@@ -85,10 +85,15 @@ flutter pub get --enforce-lockfile
 log "Building macOS app..."
 flutter build macos --release
 
-APP_PATH="build/macos/Build/Products/Release/Pirate Unified Wallet.app"
+APP_OUTPUT_DIR="build/macos/Build/Products/Release"
+APP_PATH="$APP_OUTPUT_DIR/Pirate Unified Wallet.app"
 
 if [ ! -d "$APP_PATH" ]; then
-    error "Build failed: App not found at $APP_PATH"
+    APP_PATH="$(find "$APP_OUTPUT_DIR" -maxdepth 1 -type d -name "*.app" | LC_ALL=C sort | head -n 1)"
+fi
+
+if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+    error "Build failed: App not found in $APP_OUTPUT_DIR"
 fi
 
 stage_rust_macos "$APP_PATH"
