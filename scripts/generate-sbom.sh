@@ -179,10 +179,16 @@ if ! command -v syft &> /dev/null; then
     rm -rf "$SYFT_TMP_DIR"
 fi
 
-# Generate SBOM for Flutter app
+# Generate SBOM for Flutter app (feature-detect name/version flags)
+SYFT_NAME_ARGS=()
+if syft --help 2>&1 | grep -q -- "--name"; then
+    SYFT_NAME_ARGS=(--name "$SBOM_APP_NAME" --version "$SBOM_APP_VERSION")
+elif syft --help 2>&1 | grep -q -- "--source-name"; then
+    SYFT_NAME_ARGS=(--source-name "$SBOM_APP_NAME" --source-version "$SBOM_APP_VERSION")
+fi
+
 syft "$PROJECT_ROOT/app" \
-    --name "$SBOM_APP_NAME" \
-    --version "$SBOM_APP_VERSION" \
+    "${SYFT_NAME_ARGS[@]}" \
     --output spdx-json="$OUTPUT_DIR/flutter-sbom.spdx.json" \
     --output cyclonedx-json="$OUTPUT_DIR/flutter-sbom.cdx.json"
 
