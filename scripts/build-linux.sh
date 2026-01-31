@@ -281,13 +281,13 @@ modules:
           Terminal=false
           DESKTOP
       - install -Dm644 com.pirate.wallet.desktop /app/share/applications/com.pirate.wallet.desktop
-      - install -Dm644 assets/p-logo-url-no-bg.png /app/share/icons/hicolor/256x256/apps/com.pirate.wallet.png
+      - install -Dm644 assets/app_icon_256.png /app/share/icons/hicolor/256x256/apps/com.pirate.wallet.png
     sources:
       - type: dir
         path: $BUNDLE_DIR
         dest: bundle
       - type: file
-        path: $PROJECT_ROOT/app/assets/icons/p-logo-url-no-bg.png
+        path: $PROJECT_ROOT/app/macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_256.png
         dest: assets
 EOF
     
