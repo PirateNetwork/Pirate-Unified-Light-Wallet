@@ -86,9 +86,16 @@ ensure_flathub_remote() {
     if ! command -v flatpak &> /dev/null; then
         return 0
     fi
-    if ! flatpak remotes | awk '{print $1}' | grep -q '^flathub$'; then
-        log "Adding Flathub remote..."
-        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+    if flatpak remotes --system 2>/dev/null | awk '{print $1}' | grep -q '^flathub$'; then
+        return 0
+    fi
+    if flatpak remotes --user 2>/dev/null | awk '{print $1}' | grep -q '^flathub$'; then
+        return 0
+    fi
+    log "Adding Flathub remote (user)..."
+    if ! flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo; then
+        warn "Unable to add Flathub remote (user)."
+        return 1
     fi
 }
 
@@ -261,9 +268,11 @@ EOF
     
     # Check if flatpak-builder is available
     if command -v flatpak-builder &> /dev/null; then
-        ensure_flathub_remote
+        if ! ensure_flathub_remote; then
+            error "Flathub remote unavailable; cannot build Flatpak."
+        fi
         log "Building Flatpak..."
-        flatpak-builder --force-clean "$OUTPUT_DIR/flatpak-build" "$FLATPAK_MANIFEST"
+        flatpak-builder --user --force-clean "$OUTPUT_DIR/flatpak-build" "$FLATPAK_MANIFEST"
         
         log "Creating Flatpak bundle..."
         flatpak build-bundle "$OUTPUT_DIR/flatpak-build" \
