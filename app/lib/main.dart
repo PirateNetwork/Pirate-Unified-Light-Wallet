@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'core/ffi/ffi_bridge.dart';
 import 'core/desktop/single_instance.dart';
+import 'core/desktop/windows_version.dart';
 import 'core/logging/debug_log_path.dart';
 import 'design/theme.dart';
 import 'design/tokens/colors.dart';
@@ -50,14 +51,16 @@ void main() async {
   // Desktop window setup
   if (!isTest && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     await windowManager.ensureInitialized();
+    final useCustomTitleBar = shouldUseCustomTitleBar();
 
-    const windowOptions = WindowOptions(
+    final windowOptions = WindowOptions(
       size: Size(1200, 800),
       minimumSize: Size(960, 600),
       center: true,
       title: 'Pirate Wallet',
       backgroundColor: Color(0xFF0B0F14),
-      titleBarStyle: TitleBarStyle.hidden,
+      titleBarStyle:
+          useCustomTitleBar ? TitleBarStyle.hidden : TitleBarStyle.normal,
     );
 
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
@@ -252,5 +255,4 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     );
   }
 }
-
 

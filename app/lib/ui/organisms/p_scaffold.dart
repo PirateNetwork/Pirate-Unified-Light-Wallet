@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
+import '../../core/desktop/windows_version.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -34,8 +35,9 @@ class PScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = useSafeArea ? SafeArea(child: body) : body;
+    final useCustomTitleBar = _isDesktop && shouldUseCustomTitleBar();
 
-    if (_isDesktop) {
+    if (useCustomTitleBar) {
       return Scaffold(
         backgroundColor: AppColors.backgroundBase,
         body: Column(
