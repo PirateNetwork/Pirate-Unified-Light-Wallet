@@ -56,7 +56,7 @@ zip_dir_deterministic() {
     local dest="$2"
     (cd "$src" && normalize_mtime ".")
     if command -v zip &> /dev/null; then
-        (cd "$src" && LC_ALL=C find . -type f -print | sort | zip -X -@ "$dest")
+        (cd "$src" && LC_ALL=C find . -type f ! -name "*.msix" -print | sort | zip -X -@ "$dest")
         return 0
     fi
     if command -v python &> /dev/null; then
@@ -89,6 +89,8 @@ with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name in files:
             path = os.path.join(root, name)
             rel = os.path.relpath(path, src).replace(os.sep, "/")
+            if rel.endswith(".msix"):
+                continue
             info = zipfile.ZipInfo(rel, date_time=zip_dt)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16

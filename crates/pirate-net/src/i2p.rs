@@ -15,6 +15,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 /// I2P bootstrap status
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum I2pStatus {
@@ -291,6 +297,10 @@ impl I2pClient {
         cmd.args(&config.extra_args);
         cmd.stdout(Stdio::null());
         cmd.stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
 
         let child = cmd.spawn().map_err(|e| {
             let message = format!("Failed to start i2pd: {}", e);

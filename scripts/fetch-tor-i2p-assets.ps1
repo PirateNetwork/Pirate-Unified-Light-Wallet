@@ -172,10 +172,11 @@ function Build-TorPtFromSource {
     $env:GOWORK = "off"
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
+    $goLdFlags = "-s -w -buildid= -H=windowsgui"
 
     Write-Host "[INFO] Building snowflake-client (GOOS=windows GOARCH=amd64)"
     Push-Location $snowflakeRepo
-    & go build -mod=readonly -buildvcs=false -trimpath -ldflags "-s -w -buildid=" -o $snowflakeDest ./client
+    & go build -mod=readonly -buildvcs=false -trimpath -ldflags $goLdFlags -o $snowflakeDest ./client
     if ($LASTEXITCODE -ne 0) {
         Pop-Location
         throw "snowflake-client build failed with exit code $LASTEXITCODE"
@@ -187,7 +188,7 @@ function Build-TorPtFromSource {
 
     Write-Host "[INFO] Building obfs4proxy (GOOS=windows GOARCH=amd64)"
     Push-Location $obfs4Repo
-    & go build -mod=readonly -buildvcs=false -trimpath -ldflags "-s -w -buildid=" -o $obfs4Dest ./obfs4proxy
+    & go build -mod=readonly -buildvcs=false -trimpath -ldflags $goLdFlags -o $obfs4Dest ./obfs4proxy
     if ($LASTEXITCODE -ne 0) {
         Pop-Location
         throw "obfs4proxy build failed with exit code $LASTEXITCODE"
