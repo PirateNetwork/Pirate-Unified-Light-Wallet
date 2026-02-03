@@ -1,6 +1,8 @@
 Pirate Unified Wallet
 =====================
 
+Warning: This software is under active development and should not be used outside of testing
+
 Cross-platform Pirate Chain wallet with Rust core and Flutter UI. Full README and
 extended docs are coming soon.
 
