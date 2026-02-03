@@ -1630,6 +1630,95 @@ jobs:
           path: dist/linux/*.asc
           if-no-files-found: warn
 
+  release:
+    name: Release - Publish Artifacts
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    needs:
+      - ci-success
+      - sign-android
+      - sign-windows
+      - sign-macos
+      - sign-ios
+      - sign-linux
+    steps:
+      - name: Checkout tag for release notes
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Collect release files
+        run: |
+          set -euo pipefail
+          mkdir -p release
+
+          # Signed artifacts.
+          find release-artifacts -type f \( \
+            -name 'pirate-unified-wallet-android-*.apk' \
+            -o -name 'pirate-unified-wallet-android-*.apk.sha256' \
+            -o -name 'pirate-unified-wallet-android.aab' \
+            -o -name 'pirate-unified-wallet-android.aab.sha256' \
+            -o -name 'pirate-unified-wallet-windows.msix' \
+            -o -name 'pirate-unified-wallet-windows.msix.sha256' \
+            -o -name 'pirate-unified-wallet-windows-portable.zip' \
+            -o -name 'pirate-unified-wallet-windows-portable.zip.sha256' \
+            -o -name 'pirate-unified-wallet-macos.dmg' \
+            -o -name 'pirate-unified-wallet-macos.dmg.sha256' \
+            -o -name 'pirate-unified-wallet-ios.ipa' \
+            -o -name 'pirate-unified-wallet-ios.ipa.sha256' \
+            -o -name '*.asc' \
+          \) ! -name '*-unsigned*' -exec cp -f {} release/ \;
+
+          # Linux packages (distributed with detached signatures) + iOS simulator.
+          find release-artifacts -type f \( \
+            -name '*.AppImage' \
+            -o -name '*.deb' \
+            -o -name '*.flatpak' \
+            -o -name 'pirate-unified-wallet-ios-simulator.app.zip' \
+          \) -exec cp -f {} release/ \;
+
+          # Hashes for unsigned artifacts.
+          find release-artifacts -type f \( \
+            -name '*-unsigned*.sha256' \
+            -o -name '*.AppImage.sha256' \
+            -o -name '*.deb.sha256' \
+            -o -name 'pirate-unified-wallet-ios-simulator.app.zip.sha256' \
+          \) -exec cp -f {} release/ \;
+
+          # Flatpak hashes are not generated during packaging.
+          for flatpak in release/*.flatpak; do
+            if [ -f "$flatpak" ] && [ ! -f "$flatpak.sha256" ]; then
+              sha256sum "$flatpak" > "$flatpak.sha256"
+            fi
+          done
+
+          echo "Release files:"
+          ls -la release
+
+      - name: Build release notes from annotated tag
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF_NAME}"
+          TAG_BODY="$(git tag -l --format='%(contents)' "$TAG_NAME")"
+          if [ -z "$TAG_BODY" ]; then
+            echo "Tag '$TAG_NAME' has no annotation; using tag name as release notes." >&2
+            TAG_BODY="$TAG_NAME"
+          fi
+          printf "%s\n" "$TAG_BODY" > release/RELEASE_NOTES.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body_path: release/RELEASE_NOTES.md
+
   ci-success:
     name: CI - All Checks Passed
     runs-on: ubuntu-latest
