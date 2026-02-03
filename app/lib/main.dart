@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'core/ffi/ffi_bridge.dart';
 import 'core/desktop/single_instance.dart';
+import 'core/logging/debug_log_path.dart';
 import 'design/theme.dart';
 import 'design/tokens/colors.dart';
 import 'features/settings/providers/preferences_providers.dart';
@@ -33,7 +34,8 @@ void main() async {
   _appInitialized = true;
 
   WidgetsFlutterBinding.ensureInitialized();
-  _installFlutterErrorLogging();
+  final logPath = await resolveDebugLogPath();
+  _installFlutterErrorLogging(logPath);
 
   final isTest = Platform.environment.containsKey('FLUTTER_TEST');
 
@@ -80,12 +82,9 @@ void main() async {
   );
 }
 
-void _installFlutterErrorLogging() {
+void _installFlutterErrorLogging(String logPath) {
   Future<void> writeLog(String message, StackTrace? stack) async {
     try {
-      final baseDir = Directory.current.path;
-      final logPath = Platform.environment['PIRATE_DEBUG_LOG_PATH'] ??
-          '$baseDir${Platform.pathSeparator}.cursor${Platform.pathSeparator}debug.log';
       final logFile = File(logPath);
       await logFile.parent.create(recursive: true);
       final payload = jsonEncode({
@@ -253,6 +252,5 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     );
   }
 }
-
 
 

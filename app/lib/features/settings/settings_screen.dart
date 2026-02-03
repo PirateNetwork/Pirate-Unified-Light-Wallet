@@ -17,6 +17,7 @@ import '../../ui/molecules/p_list_tile.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/logging/debug_log_path.dart';
 
 /// Settings screen
 class SettingsScreen extends ConsumerWidget {
@@ -26,9 +27,7 @@ class SettingsScreen extends ConsumerWidget {
 
   static Future<void> _appendRescanLog(String message) async {
     try {
-      if (!Platform.isWindows) return;
-      final logPath = Platform.environment['PIRATE_DEBUG_LOG_PATH'] ??
-          '${Directory.current.path}${Platform.pathSeparator}.cursor${Platform.pathSeparator}debug.log';
+      final logPath = await resolveDebugLogPath();
       final file = File(logPath);
       final ts = DateTime.now().millisecondsSinceEpoch;
       final line =

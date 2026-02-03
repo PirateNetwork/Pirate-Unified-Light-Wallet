@@ -75,9 +75,13 @@ fn debug_log_path() -> PathBuf {
     let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
         PathBuf::from(path)
     } else {
-        env::current_dir()
-            .map(|dir| dir.join(".cursor").join("debug.log"))
-            .unwrap_or_else(|_| PathBuf::from(".cursor").join("debug.log"))
+        ProjectDirs::from("com", "Pirate", "PirateWallet")
+            .map(|dirs| dirs.data_local_dir().join("logs").join("debug.log"))
+            .unwrap_or_else(|| {
+                env::current_dir()
+                    .map(|dir| dir.join(".cursor").join("debug.log"))
+                    .unwrap_or_else(|_| PathBuf::from(".cursor").join("debug.log"))
+            })
     };
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
