@@ -686,7 +686,7 @@ jobs:
       - name: Build iOS Simulator app
         run: |
           cd app
-          flutter build ios --simulator --release
+          flutter build ios --simulator --debug
           SIM_APP="build/ios/iphonesimulator/Runner.app"
           if [ ! -d "$SIM_APP" ]; then
             echo "Simulator app not found at $SIM_APP" >&2
