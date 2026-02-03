@@ -1247,11 +1247,40 @@ jobs:
             if ($signtool) { $signtoolPath = $signtool.Source }
           }
           if (-not $signtoolPath) {
-            $kitRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\\10\\bin"
+            $kitRoots = @()
+            $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+            if ($pf86) { $kitRoots += (Join-Path $pf86 'Windows Kits\\10\\bin') }
+            $pf = [Environment]::GetEnvironmentVariable('ProgramFiles')
+            if ($pf) { $kitRoots += (Join-Path $pf 'Windows Kits\\10\\bin') }
+            $kitRoots += 'C:\\Program Files (x86)\\Windows Kits\\10\\bin'
+            $kitRoots += 'C:\\Program Files\\Windows Kits\\10\\bin'
+            $kitRoots = $kitRoots | Select-Object -Unique
+            foreach ($kitRoot in $kitRoots) {
+              if (-not (Test-Path $kitRoot)) { continue }
+              $signtoolCandidate = Get-ChildItem -Path (Join-Path $kitRoot '10.*\\x64\\signtool.exe') -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+              if (-not $signtoolCandidate) {
+                $versionDirs = Get-ChildItem -Path $kitRoot -Directory -ErrorAction SilentlyContinue |
+                  Sort-Object Name -Descending
+                foreach ($dir in $versionDirs) {
+                  $candidate = Join-Path $dir.FullName 'x64\\signtool.exe'
+                  if (Test-Path $candidate) {
+                    $signtoolPath = $candidate
+                    break
+                  }
+                }
+              } else {
+                $signtoolPath = $signtoolCandidate.FullName
+              }
+              if ($signtoolPath) { break }
+            }
+          }
+          if (-not $signtoolPath) {
+            Write-Host "signtool not found. Attempting to install Windows SDK..."
+            choco install windows-sdk-10.0.22621.0 -y --no-progress
+            $kitRoot = 'C:\\Program Files (x86)\\Windows Kits\\10\\bin'
             if (Test-Path $kitRoot) {
-              $signtoolCandidate = Get-ChildItem -Path $kitRoot -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -match '\\\\x64\\\\signtool\\.exe$' } |
-                Sort-Object FullName -Descending |
+              $signtoolCandidate = Get-ChildItem -Path (Join-Path $kitRoot '10.*\\x64\\signtool.exe') -ErrorAction SilentlyContinue |
                 Select-Object -First 1
               if ($signtoolCandidate) { $signtoolPath = $signtoolCandidate.FullName }
             }
@@ -1338,6 +1367,13 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Setup Go
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
 
       - name: Import macOS signing certificate
         if: steps.signing.outputs.mode == 'provided'
