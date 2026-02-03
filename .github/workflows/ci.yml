@@ -1239,12 +1239,25 @@ jobs:
         if: steps.signing.outputs.enabled == 'true'
         shell: pwsh
         run: |
+          $signtoolPath = $null
           $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue)
-          if (-not $signtool) {
+          if ($signtool) { $signtoolPath = $signtool.Source }
+          if (-not $signtoolPath) {
             $signtool = (Get-Command signtool -ErrorAction SilentlyContinue)
+            if ($signtool) { $signtoolPath = $signtool.Source }
           }
-          if (-not $signtool) {
-            Write-Error "signtool not found on PATH"
+          if (-not $signtoolPath) {
+            $kitRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\\10\\bin"
+            if (Test-Path $kitRoot) {
+              $signtoolCandidate = Get-ChildItem -Path $kitRoot -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '\\\\x64\\\\signtool\\.exe$' } |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1
+              if ($signtoolCandidate) { $signtoolPath = $signtoolCandidate.FullName }
+            }
+          }
+          if (-not $signtoolPath) {
+            Write-Error "signtool not found on PATH or in Windows Kits"
             exit 1
           }
 
@@ -1255,7 +1268,7 @@ jobs:
           $msixSigned = "dist/windows/pirate-unified-wallet-windows.msix"
           if (Test-Path $msixUnsigned) {
             Copy-Item $msixUnsigned $msixSigned -Force
-            & $signtool.Source sign /fd SHA256 /f $cert /p $pass $msixSigned
+            & $signtoolPath sign /fd SHA256 /f $cert /p $pass $msixSigned
             (Get-FileHash -Algorithm SHA256 $msixSigned).Hash | Set-Content -Encoding ascii "$msixSigned.sha256"
           } else {
             Write-Host "Unsigned MSIX not found; skipping MSIX signing."
@@ -1271,7 +1284,7 @@ jobs:
           if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
           Expand-Archive -Path $zipUnsigned -DestinationPath $tempDir
           Get-ChildItem $tempDir -Recurse -Include *.exe,*.dll | ForEach-Object {
-            & $signtool.Source sign /fd SHA256 /f $cert /p $pass $_.FullName
+            & $signtoolPath sign /fd SHA256 /f $cert /p $pass $_.FullName
           }
           if (Test-Path $zipSigned) { Remove-Item $zipSigned -Force }
           Compress-Archive -Path (Join-Path $tempDir '*') -DestinationPath $zipSigned
@@ -1341,6 +1354,8 @@ jobs:
           security import "$CERT_PATH" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security list-keychains -s "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "MACOS_SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "MACOS_SIGN_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Generate self-signed macOS certificate
         if: steps.signing.outputs.mode == 'selfsigned'
@@ -1368,20 +1383,45 @@ jobs:
           security import "$CERT_P12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security list-keychains -s "$KEYCHAIN"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "MACOS_SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "MACOS_SIGN_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+          echo "MACOS_SIGN_IDENTITY=Pirate Unified Wallet CI Self-Signed" >> "$GITHUB_ENV"
 
       - name: Resolve macOS signing identity
         if: steps.signing.outputs.enabled == 'true'
         run: |
+          KEYCHAIN="${MACOS_SIGN_KEYCHAIN:-$RUNNER_TEMP/macos-signing.keychain-db}"
+          if [ -f "$KEYCHAIN" ] && [ -n "${MACOS_SIGN_KEYCHAIN_PASSWORD:-}" ]; then
+            security unlock-keychain -p "$MACOS_SIGN_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            security list-keychains -s "$KEYCHAIN"
+            security default-keychain -s "$KEYCHAIN"
+          fi
+
+          if [ -n "${MACOS_SIGN_IDENTITY:-}" ]; then
+            echo "MACOS_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
           if [ -n "${{ secrets.MACOS_SIGN_IDENTITY }}" ]; then
             echo "MACOS_SIGN_IDENTITY=${{ secrets.MACOS_SIGN_IDENTITY }}" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          if [ -f "$KEYCHAIN" ]; then
+            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F '\"' 'NR==1 {print $2}')"
           else
             IDENTITY="$(security find-identity -v -p codesigning | awk -F '\"' 'NR==1 {print $2}')"
-            if [ -z "$IDENTITY" ]; then
-              echo "No code signing identity found after import" >&2
-              exit 1
-            fi
-            echo "MACOS_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
           fi
+          if [ -z "$IDENTITY" ]; then
+            echo "No code signing identity found after import" >&2
+            if [ -f "$KEYCHAIN" ]; then
+              security find-identity -v -p codesigning "$KEYCHAIN" || true
+            else
+              security find-identity -v -p codesigning || true
+            fi
+            exit 1
+          fi
+          echo "MACOS_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
       - name: Build signed macOS DMG
         if: steps.signing.outputs.enabled == 'true'
