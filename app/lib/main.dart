@@ -126,9 +126,22 @@ class PirateWalletApp extends ConsumerStatefulWidget {
 class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     with WindowListener, WidgetsBindingObserver {
   bool _closing = false;
+  Color? _lastWindowBackground;
 
   bool get _isDesktop =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+  void _syncWindowBackground(Color color) {
+    if (!_isDesktop) {
+      return;
+    }
+    final lastColor = _lastWindowBackground;
+    if (lastColor != null && lastColor.toARGB32() == color.toARGB32()) {
+      return;
+    }
+    _lastWindowBackground = color;
+    unawaited(windowManager.setBackgroundColor(color));
+  }
 
   @override
   void initState() {
@@ -230,16 +243,20 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
       darkTheme: PTheme.dark(),
       themeMode: themeModeSetting.themeMode,
 
-      builder: (context, child) {
-        // Sync colors with current theme brightness on every build
-        // This ensures AppColors stays in sync when theme changes
-        // For system mode, this will use the actual resolved brightness
-        final currentBrightness = Theme.of(context).brightness;
-        AppColors.syncWithTheme(currentBrightness);
-        
-        // Return a widget that forces rebuild when theme changes
-        // This ensures all child widgets rebuild when AppColors changes
-        return Theme(
+        builder: (context, child) {
+          // Sync colors with current theme brightness on every build
+          // This ensures AppColors stays in sync when theme changes
+          // For system mode, this will use the actual resolved brightness
+          final currentBrightness = Theme.of(context).brightness;
+          AppColors.syncWithTheme(currentBrightness);
+
+          if (Platform.isWindows) {
+            _syncWindowBackground(AppColors.backgroundBase);
+          }
+          
+          // Return a widget that forces rebuild when theme changes
+          // This ensures all child widgets rebuild when AppColors changes
+          return Theme(
           data: Theme.of(context),
           child: child ?? const SizedBox.shrink(),
         );
@@ -255,4 +272,3 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     );
   }
 }
-
