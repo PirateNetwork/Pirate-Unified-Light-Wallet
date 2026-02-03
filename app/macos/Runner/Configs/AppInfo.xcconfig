@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = app
+PRODUCT_NAME = Pirate Unified Wallet
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.app
+PRODUCT_BUNDLE_IDENTIFIER = com.pirate.wallet
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2025 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright (C) 2026 Pirate Network. All rights reserved.
