@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/ffi/generated/models.dart' show WalletMeta;
 import '../../../core/providers/wallet_providers.dart';
+import '../../../core/services/birthday_update_service.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
@@ -156,6 +157,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
 
     try {
       await FfiBridge.setWalletBirthdayHeight(walletId, selectedHeight);
+      await BirthdayUpdateService.clearPending(walletId);
       ref.read(refreshWalletsProvider)();
 
       if (!mounted) return;

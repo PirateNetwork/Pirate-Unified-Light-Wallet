@@ -325,6 +325,14 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
   bool _isLoading = false;
   String? _error;
 
+  Future<int?> _getDefaultBirthdayHeight() async {
+    try {
+      return await FfiBridge.getDefaultBirthdayHeight();
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -482,12 +490,16 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
       final birthday = _birthdayController.text.isNotEmpty
           ? int.tryParse(_birthdayController.text)
           : null;
+      final fallbackBirthday = birthday ?? await _getDefaultBirthdayHeight();
+      if (fallbackBirthday == null) {
+        throw StateError('Failed to resolve a default birthday height.');
+      }
 
       // Import via FFI
       await FfiBridge.importIvk(
         name: _nameController.text.trim(),
         saplingIvk: trimmed,
-        birthday: birthday ?? FfiBridge.defaultBirthdayHeight,
+        birthday: fallbackBirthday,
       );
 
       if (mounted) {

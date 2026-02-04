@@ -10,6 +10,7 @@ import '../ffi/generated/api.dart' as api;
 import 'rust_init_provider.dart';
 import '../security/duress_passphrase_store.dart';
 import '../sync/sync_status_cache.dart';
+import '../services/birthday_update_service.dart';
 
 // ============================================================================
 // Session & Active Wallet
@@ -792,6 +793,11 @@ final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
       ref.read(appUnlockedProvider.notifier).unlocked = true;
       // Refresh wallet list after unlock
       ref.invalidate(activeWalletProvider);
+      unawaited(
+        BirthdayUpdateService.resumePendingUpdates(
+          onWalletsUpdated: ref.read(refreshWalletsProvider),
+        ),
+      );
       return;
     }
 

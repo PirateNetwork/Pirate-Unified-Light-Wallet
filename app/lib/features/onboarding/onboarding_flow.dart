@@ -3,11 +3,13 @@
 /// Manages the multi-step onboarding process with validation
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/ffi/ffi_bridge.dart';
-import '../../config/endpoints.dart' as endpoints;
+import '../../core/services/birthday_update_service.dart';
 
 /// Onboarding steps
 enum OnboardingStep {
@@ -188,40 +190,39 @@ class OnboardingController extends Notifier<OnboardingState> {
 
     switch (mode) {
       case OnboardingMode.create:
-        // For new wallets, auto-fetch latest block height if not set
+        // For new wallets, wait for a lightwalletd tip and set birthday to tip-10
         int? birthday = state.birthdayHeight;
+        _BirthdayResolution? resolution;
         if (birthday == null) {
-          // Fetch latest block height from network
-          try {
-            final result = await FfiBridge.testNode(url: endpoints.kDefaultLightd);
-            if (result.success && result.latestBlockHeight != null) {
-              birthday = result.latestBlockHeight;
-              state = state.copyWith(birthdayHeight: birthday);
-            } else {
-              // Fallback to default if fetch fails
-              birthday = FfiBridge.defaultBirthdayHeight;
-            }
-          } catch (_) {
-            // Fallback to default if fetch fails
-            birthday = FfiBridge.defaultBirthdayHeight;
-          }
+          resolution = await _resolveBirthdayHeight();
+          birthday = resolution.height;
+          state = state.copyWith(birthdayHeight: birthday);
         }
         
         // If we have a mnemonic in state (from seed display), use restore_wallet
         // to create wallet with that specific mnemonic. Otherwise, use create_wallet
         // which generates a new mnemonic.
+        final WalletId walletId;
         if (state.mnemonic != null && state.mnemonic!.isNotEmpty) {
-          await ref.read(restoreWalletProvider)(
+          walletId = await ref.read(restoreWalletProvider)(
             name: walletName,
             mnemonic: state.mnemonic!,
             passphrase: null, // BIP-39 passphrase, not app passphrase
             birthday: birthday,
           );
         } else {
-          await ref.read(createWalletProvider)(
+          walletId = await ref.read(createWalletProvider)(
             name: walletName,
             birthday: birthday,
           );
+        }
+        if (resolution?.timedOut == true) {
+          await BirthdayUpdateService.markPending(walletId, birthday);
+          unawaited(BirthdayUpdateService.updateWhenAvailable(
+            walletId,
+            birthday,
+            onWalletsUpdated: ref.read(refreshWalletsProvider),
+          ));
         }
         break;
       case OnboardingMode.import:
@@ -254,6 +255,35 @@ class OnboardingController extends Notifier<OnboardingState> {
     
     state = state.copyWith(currentStep: OnboardingStep.complete);
   }
+
+  Future<_BirthdayResolution> _resolveBirthdayHeight() async {
+    const maxWait = Duration(minutes: 10);
+    var attempt = 0;
+    final start = DateTime.now();
+
+    while (DateTime.now().difference(start) < maxWait) {
+      final height = await BirthdayUpdateService.fetchLatestBirthdayHeight();
+      if (height != null) {
+        return _BirthdayResolution(height: height, timedOut: false);
+      }
+      attempt += 1;
+      final delaySeconds = attempt < 3 ? 5 : (attempt < 6 ? 10 : 20);
+      await Future<void>.delayed(Duration(seconds: delaySeconds));
+    }
+
+    return const _BirthdayResolution(height: 1, timedOut: true);
+  }
+
+}
+
+class _BirthdayResolution {
+  final int height;
+  final bool timedOut;
+
+  const _BirthdayResolution({
+    required this.height,
+    required this.timedOut,
+  });
 }
 
 /// Provider for onboarding controller

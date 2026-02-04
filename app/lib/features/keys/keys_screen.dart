@@ -70,12 +70,21 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     );
   }
 
+  Future<int?> _getDefaultBirthdayHeight() async {
+    try {
+      return await FfiBridge.getDefaultBirthdayHeight();
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _showImportViewingKeyDialog() async {
+    final defaultBirthday = await _getDefaultBirthdayHeight();
     final nameController = TextEditingController(text: 'Watch-only wallet');
     final saplingController = TextEditingController();
     final orchardController = TextEditingController();
     final birthdayController = TextEditingController(
-      text: '${FfiBridge.defaultBirthdayHeight}',
+      text: defaultBirthday?.toString() ?? '',
     );
     bool isLoading = false;
     String? error;

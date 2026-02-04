@@ -354,14 +354,17 @@ class FfiBridge {
   static WalletId? _activeWalletId;
   static bool _appIsActive = true;
 
-  /// Default mainnet birthday height (from pirate_params)
-  static const int defaultBirthdayHeight = 3800000;
-
   static void setAppActive(bool isActive) {
     _appIsActive = isActive;
   }
 
   static bool get appIsActive => _appIsActive;
+
+  /// Default birthday height from network parameters.
+  static Future<int> getDefaultBirthdayHeight() async {
+    final info = await getNetworkInfo();
+    return info.defaultBirthday;
+  }
 
   // ============================================================================
   // WALLET LIFECYCLE - FFI Implementation
