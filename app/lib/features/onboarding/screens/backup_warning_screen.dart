@@ -9,6 +9,7 @@ import '../../../ui/atoms/p_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
+import '../widgets/onboarding_progress_indicator.dart';
 
 class BackupWarningScreen extends ConsumerStatefulWidget {
   const BackupWarningScreen({super.key});
@@ -43,6 +44,11 @@ class _BackupWarningScreenState extends ConsumerState<BackupWarningScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const OnboardingProgressIndicator(
+              currentStep: 4,
+              totalSteps: 6,
+            ),
+            const SizedBox(height: AppSpacing.xxl),
             // Warning icon
             Container(
               padding: const EdgeInsets.all(AppSpacing.lg),

@@ -14,6 +14,7 @@ import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
 import '../../../core/providers/wallet_providers.dart';
+import '../widgets/onboarding_progress_indicator.dart';
 
 class SeedConfirmScreen extends ConsumerStatefulWidget {
   const SeedConfirmScreen({super.key});
@@ -183,6 +184,11 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    const OnboardingProgressIndicator(
+                      currentStep: 6,
+                      totalSteps: 6,
+                    ),
+                    const SizedBox(height: AppSpacing.xxl),
                     Text(
                       'Enter these words from your seed phrase',
                       style: AppTypography.h2.copyWith(

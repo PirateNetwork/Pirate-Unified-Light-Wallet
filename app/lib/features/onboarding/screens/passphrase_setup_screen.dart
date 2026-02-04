@@ -14,6 +14,7 @@ import '../../../ui/atoms/p_input.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
+import '../widgets/onboarding_progress_indicator.dart';
 
 /// Passphrase strength
 enum PassphraseStrength {
@@ -181,6 +182,11 @@ class _PassphraseSetupScreenState
 
   @override
   Widget build(BuildContext context) {
+    final onboardingState = ref.watch(onboardingControllerProvider);
+    final isImport = onboardingState.mode == OnboardingMode.import;
+    final totalSteps = isImport ? 5 : 6;
+    final currentStep = isImport ? 3 : 2;
+
     final basePadding = AppSpacing.screenPadding(
       MediaQuery.of(context).size.width,
       vertical: AppSpacing.xl,
@@ -200,7 +206,10 @@ class _PassphraseSetupScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _ProgressIndicator(currentStep: 2, totalSteps: 6),
+            OnboardingProgressIndicator(
+              currentStep: currentStep,
+              totalSteps: totalSteps,
+            ),
             const SizedBox(height: AppSpacing.xxl),
             Text(
               'Choose a strong passphrase',
@@ -465,56 +474,6 @@ class _RequirementItem extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Progress indicator (same as before, could be extracted)
-class _ProgressIndicator extends StatelessWidget {
-  final int currentStep;
-  final int totalSteps;
-
-  const _ProgressIndicator({
-    required this.currentStep,
-    required this.totalSteps,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: currentStep / totalSteps,
-                  backgroundColor: AppColors.surfaceElevated,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    AppColors.accentPrimary,
-                  ),
-                  minHeight: 4,
-                  semanticsLabel: 'Onboarding progress',
-                  semanticsValue: '${(currentStep / totalSteps * 100).round()}%',
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(
-              'Step $currentStep of $totalSteps',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.textTertiary,
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

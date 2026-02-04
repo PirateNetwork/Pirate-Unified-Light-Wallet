@@ -12,6 +12,7 @@ import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../onboarding_flow.dart';
+import '../widgets/onboarding_progress_indicator.dart';
 
 /// Create or Import screen
 class CreateOrImportScreen extends ConsumerWidget {
@@ -19,6 +20,10 @@ class CreateOrImportScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final onboardingState = ref.watch(onboardingControllerProvider);
+    final totalSteps =
+        onboardingState.mode == OnboardingMode.import ? 5 : 6;
+
     return PScaffold(
       title: 'New Wallet',
       appBar: PAppBar(
@@ -38,7 +43,10 @@ class CreateOrImportScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _ProgressIndicator(currentStep: 1, totalSteps: 6),
+              OnboardingProgressIndicator(
+                currentStep: 1,
+                totalSteps: totalSteps,
+              ),
               const SizedBox(height: AppSpacing.xxl),
               Text(
                 'Create or Import Wallet',
@@ -317,56 +325,6 @@ class CreateOrImportScreen extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Progress indicator widget
-class _ProgressIndicator extends StatelessWidget {
-  final int currentStep;
-  final int totalSteps;
-
-  const _ProgressIndicator({
-    required this.currentStep,
-    required this.totalSteps,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: currentStep / totalSteps,
-                  backgroundColor: AppColors.surfaceElevated,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    AppColors.accentPrimary,
-                  ),
-                  minHeight: 4,
-                  semanticsLabel: 'Onboarding progress',
-                  semanticsValue: '${(currentStep / totalSteps * 100).round()}%',
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(
-              'Step $currentStep of $totalSteps',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.textTertiary,
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

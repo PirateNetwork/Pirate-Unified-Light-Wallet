@@ -15,6 +15,7 @@ import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
+import '../widgets/onboarding_progress_indicator.dart';
 
 /// Birthday input mode
 enum BirthdayInputMode {
@@ -204,6 +205,8 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
   Widget build(BuildContext context) {
     final onboardingState = ref.watch(onboardingControllerProvider);
     final isRestore = onboardingState.mode == OnboardingMode.import;
+    final totalSteps = isRestore ? 5 : 6;
+    final currentStep = isRestore ? 5 : 5;
     final gutter = AppSpacing.responsiveGutter(MediaQuery.of(context).size.width);
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     final selectedHeight = _selectedHeight;
@@ -230,9 +233,9 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
               gutter,
               AppSpacing.lg,
             ),
-            child: _ProgressIndicator(
-              currentStep: isRestore ? 3 : 5,
-              totalSteps: isRestore ? 4 : 6,
+            child: OnboardingProgressIndicator(
+              currentStep: currentStep,
+              totalSteps: totalSteps,
             ),
           ),
           Expanded(
@@ -611,49 +614,6 @@ class _ModeCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Progress indicator widget
-class _ProgressIndicator extends StatelessWidget {
-  final int currentStep;
-  final int totalSteps;
-
-  const _ProgressIndicator({
-    required this.currentStep,
-    required this.totalSteps,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: currentStep / totalSteps,
-                  backgroundColor: AppColors.surfaceElevated,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    AppColors.accentPrimary,
-                  ),
-                  minHeight: 6,
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Text(
-              '$currentStep of $totalSteps',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

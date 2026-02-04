@@ -12,6 +12,7 @@ import '../../../ui/atoms/p_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
+import '../widgets/onboarding_progress_indicator.dart';
 
 class SeedDisplayScreen extends ConsumerStatefulWidget {
   const SeedDisplayScreen({super.key});
@@ -123,6 +124,11 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const OnboardingProgressIndicator(
+                    currentStep: 5,
+                    totalSteps: 6,
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
                   Text(
                     'Write down these 24 words',
                     style: AppTypography.h2.copyWith(

@@ -17,6 +17,7 @@ import '../../../core/crypto/bip39_wordlist.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/security/screenshot_protection.dart';
 import '../onboarding_flow.dart';
+import '../widgets/onboarding_progress_indicator.dart';
 
 /// Seed import screen for wallet restoration
 class SeedImportScreen extends ConsumerStatefulWidget {
@@ -214,7 +215,10 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
               gutter,
               AppSpacing.lg,
             ),
-            child: _ProgressIndicator(currentStep: 2, totalSteps: 5),
+            child: const OnboardingProgressIndicator(
+              currentStep: 2,
+              totalSteps: 5,
+            ),
           ),
 
           Expanded(
@@ -813,56 +817,6 @@ class _WordCountChip extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Progress indicator (shared widget)
-class _ProgressIndicator extends StatelessWidget {
-  final int currentStep;
-  final int totalSteps;
-
-  const _ProgressIndicator({
-    required this.currentStep,
-    required this.totalSteps,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: currentStep / totalSteps,
-                  backgroundColor: AppColors.surfaceElevated,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    AppColors.accentPrimary,
-                  ),
-                  minHeight: 4,
-                  semanticsLabel: 'Onboarding progress',
-                  semanticsValue: '${(currentStep / totalSteps * 100).round()}%',
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(
-              'Step $currentStep of $totalSteps',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.textTertiary,
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

@@ -14,6 +14,7 @@ import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
+import '../widgets/onboarding_progress_indicator.dart';
 
 class OnboardingBiometricsScreen extends ConsumerStatefulWidget {
   const OnboardingBiometricsScreen({super.key});
@@ -98,6 +99,11 @@ class _OnboardingBiometricsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final onboardingState = ref.watch(onboardingControllerProvider);
+    final isImport = onboardingState.mode == OnboardingMode.import;
+    final totalSteps = isImport ? 5 : 6;
+    final currentStep = isImport ? 4 : 3;
+
     return PScaffold(
       title: 'Biometrics',
       appBar: const PAppBar(
@@ -113,6 +119,11 @@ class _OnboardingBiometricsScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            OnboardingProgressIndicator(
+              currentStep: currentStep,
+              totalSteps: totalSteps,
+            ),
+            const SizedBox(height: AppSpacing.xxl),
             Text(
               'Use biometrics to unlock',
               style: AppTypography.h2.copyWith(
