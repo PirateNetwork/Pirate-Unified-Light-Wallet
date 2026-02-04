@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/ffi/generated/models.dart'
+    show AddressBalanceInfo, KeyGroupInfo, KeyTypeInfo;
 import '../../core/providers/wallet_providers.dart';
 import '../../core/security/decoy_data.dart';
 import '../../core/security/clipboard_manager.dart';
@@ -121,6 +124,10 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   bool _initialized = false;
   ReceiveState? _lastState;
   bool _isDecoy = false;
+  String? _activeImportedAddress;
+  static const String _importedAddressStorageKeyPrefix =
+      'ui_receive_active_imported_address_v1_';
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
   
   /// Track if current address was shared (copied/shared)
   bool _currentAddressShared = false;
@@ -141,6 +148,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         _isDecoy = isDecoy;
         _initialized = false;
         _lastState = null;
+        _activeImportedAddress = null;
         
         // If wallet changed, reset and reinitialize
         if (walletId != null) {
@@ -311,7 +319,10 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       _lastState = state;
 
       // Reload address history to include old address
-      await _loadAddressHistory(currentAddressOverride: newAddress);
+      await _loadAddressHistory(
+        currentAddressOverride: newAddress,
+        forceCurrentAddress: true,
+      );
       _lastState = state;
     } catch (e) {
       state = state.copyWith(
@@ -478,7 +489,10 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   }
 
   /// Load address history with diversifier indices
-  Future<void> _loadAddressHistory({String? currentAddressOverride}) async {
+  Future<void> _loadAddressHistory({
+    String? currentAddressOverride,
+    bool forceCurrentAddress = false,
+  }) async {
     try {
       final walletId = _walletId;
       if (walletId == null) return;
@@ -508,10 +522,77 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         return;
       }
 
+      var importedKeys = <KeyGroupInfo>[];
+      if (!forceCurrentAddress) {
+        try {
+          importedKeys = await _loadImportedSpendingKeys(walletId);
+          if (importedKeys.isNotEmpty) {
+            await _ensureImportedKeyAddresses(walletId, importedKeys);
+          }
+          if (_activeImportedAddress == null && importedKeys.isNotEmpty) {
+            _activeImportedAddress =
+                await _loadPersistedImportedAddress(walletId);
+          }
+        } catch (e) {
+          debugPrint('Failed to load imported keys: $e');
+          importedKeys = <KeyGroupInfo>[];
+        }
+      }
+
       // Get address balances from FFI
-      final addresses = await FfiBridge.listAddressBalances(walletId);
-      final currentAddress = currentAddressOverride ??
-          await FfiBridge.currentReceiveAddress(walletId);
+      var addresses = await FfiBridge.listAddressBalances(walletId);
+      if (forceCurrentAddress) {
+        await _persistImportedAddress(walletId, null);
+        _activeImportedAddress = null;
+      } else if (importedKeys.isNotEmpty) {
+        final importedIds = importedKeys.map((key) => key.id.toInt()).toSet();
+        final previousImported = _activeImportedAddress;
+        if (previousImported != null) {
+          AddressBalanceInfo? previousEntry;
+          for (final address in addresses) {
+            if (address.address == previousImported &&
+                importedIds.contains(address.keyId?.toInt())) {
+              previousEntry = address;
+              break;
+            }
+          }
+          if (previousEntry == null) {
+            await _persistImportedAddress(walletId, null);
+            _activeImportedAddress = null;
+          } else {
+            final hasBalance = previousEntry.balance != BigInt.zero ||
+                previousEntry.pending != BigInt.zero ||
+                previousEntry.spendable != BigInt.zero;
+            if (hasBalance) {
+              await FfiBridge.nextReceiveAddress(walletId);
+              await _persistImportedAddress(walletId, null);
+              _activeImportedAddress = null;
+              addresses = await FfiBridge.listAddressBalances(walletId);
+            } else {
+              _activeImportedAddress = previousEntry.address;
+            }
+          }
+        }
+      } else {
+        await _persistImportedAddress(walletId, null);
+        _activeImportedAddress = null;
+      }
+      final seedCurrentAddress = forceCurrentAddress &&
+              currentAddressOverride != null
+          ? currentAddressOverride
+          : await FfiBridge.currentReceiveAddress(walletId);
+      final importedCurrentAddress = forceCurrentAddress
+          ? null
+          : _selectImportedReceiveAddress(
+              addresses,
+              importedKeys,
+              preferredAddress: _activeImportedAddress,
+            );
+      final currentAddress = importedCurrentAddress ?? seedCurrentAddress;
+      _activeImportedAddress = importedCurrentAddress;
+      if (!forceCurrentAddress) {
+        await _persistImportedAddress(walletId, importedCurrentAddress);
+      }
 
       // Convert FFI AddressBalanceInfo to local AddressInfo with balance tracking
       final history = addresses
@@ -561,6 +642,114 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       throw Exception('No active wallet');
     }
     return wallet;
+  }
+
+  Future<List<KeyGroupInfo>> _loadImportedSpendingKeys(
+    WalletId walletId,
+  ) async {
+    final keys = await FfiBridge.listKeyGroups(walletId);
+    return keys
+        .where((key) => key.keyType == KeyTypeInfo.importedSpending)
+        .toList();
+  }
+
+  Future<void> _ensureImportedKeyAddresses(
+    WalletId walletId,
+    List<KeyGroupInfo> keys,
+  ) async {
+    for (final key in keys) {
+      try {
+        final addresses = await FfiBridge.listAddressesForKey(walletId, key.id);
+        if (addresses.isNotEmpty) {
+          continue;
+        }
+        final useOrchard = key.hasOrchard;
+        if (!useOrchard && !key.hasSapling) {
+          continue;
+        }
+        await FfiBridge.generateAddressForKey(
+          walletId: walletId,
+          keyId: key.id,
+          useOrchard: useOrchard,
+        );
+      } catch (e) {
+        debugPrint('Failed to prepare imported address: $e');
+      }
+    }
+  }
+
+  String? _selectImportedReceiveAddress(
+    List<AddressBalanceInfo> addresses,
+    List<KeyGroupInfo> importedKeys,
+    {String? preferredAddress},
+  ) {
+    if (importedKeys.isEmpty) return null;
+    final importedIds = importedKeys.map((key) => key.id.toInt()).toSet();
+    if (preferredAddress != null && preferredAddress.isNotEmpty) {
+      for (final address in addresses) {
+        if (address.address != preferredAddress) {
+          continue;
+        }
+        final keyId = address.keyId?.toInt();
+        if (keyId == null || !importedIds.contains(keyId)) {
+          return null;
+        }
+        final hasBalance = address.balance != BigInt.zero ||
+            address.pending != BigInt.zero ||
+            address.spendable != BigInt.zero;
+        if (!hasBalance) {
+          return address.address;
+        }
+        return null;
+      }
+    }
+    AddressBalanceInfo? candidate;
+    for (final address in addresses) {
+      final keyId = address.keyId?.toInt();
+      if (keyId == null || !importedIds.contains(keyId)) {
+        continue;
+      }
+      if (address.balance != BigInt.zero ||
+          address.pending != BigInt.zero ||
+          address.spendable != BigInt.zero) {
+        continue;
+      }
+      if (candidate == null ||
+          address.createdAt.toInt() > candidate.createdAt.toInt()) {
+        candidate = address;
+      }
+    }
+    return candidate?.address;
+  }
+
+  Future<String?> _loadPersistedImportedAddress(WalletId walletId) async {
+    try {
+      final key = '$_importedAddressStorageKeyPrefix$walletId';
+      final raw = await _storage.read(key: key);
+      if (raw == null || raw.trim().isEmpty) {
+        return null;
+      }
+      return raw;
+    } catch (e) {
+      debugPrint('Failed to read imported address preference: $e');
+      return null;
+    }
+  }
+
+  Future<void> _persistImportedAddress(
+    WalletId walletId,
+    String? address,
+  ) async {
+    final key = '$_importedAddressStorageKeyPrefix$walletId';
+    try {
+      if (address == null || address.trim().isEmpty) {
+        await _storage.delete(key: key);
+      } else {
+        await _storage.write(key: key, value: address);
+      }
+    } catch (e) {
+      debugPrint('Failed to persist imported address preference: $e');
+    }
   }
 }
 
