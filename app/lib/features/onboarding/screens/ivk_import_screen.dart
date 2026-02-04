@@ -243,11 +243,6 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
                     iconColor: AppColors.error,
                     text: 'Cannot spend funds',
                   ),
-                  _InfoRow(
-                    icon: Icons.cancel_outlined,
-                    iconColor: AppColors.error,
-                    text: 'Outgoing details are hidden',
-                  ),
                 ],
               ),
             ),
@@ -267,7 +262,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
             PInput(
               controller: _saplingIvkController,
               label: 'Sapling viewing key (optional)',
-              hint: 'Paste your Sapling viewing key',
+              hint: 'Starts with zxviews1…',
               maxLines: 3,
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste),
@@ -281,7 +276,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
             PInput(
               controller: _orchardIvkController,
               label: 'Orchard viewing key (optional)',
-              hint: 'Paste your Orchard viewing key',
+              hint: 'Starts with pirate-extended-viewing-key1…',
               maxLines: 3,
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste),
