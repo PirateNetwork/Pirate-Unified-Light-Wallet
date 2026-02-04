@@ -164,7 +164,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Watch-only wallet created'),
+            content: Text('View only wallet created'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -193,9 +193,9 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
     final isWatchOnly = walletMeta?.watchOnly ?? false;
 
     return PScaffold(
-      title: 'Watch-Only Wallets',
+      title: 'View Only Wallets',
       appBar: const PAppBar(
-        title: 'Watch-Only Wallets',
+        title: 'View Only Wallets',
         subtitle: 'Export or import viewing keys',
       ),
       body: Column(
@@ -260,8 +260,8 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
-                      'Export your viewing key to create a watch-only '
-                      'wallet on another device. Watch-only wallets can see incoming '
+                      'Export your viewing key to create a view only '
+                      'wallet on another device. View only wallets can see incoming '
                       'transactions but cannot spend funds.',
                       style: AppTypography.body.copyWith(
                         color: AppColors.textPrimary,
@@ -318,7 +318,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'This is a watch-only wallet. Viewing keys can only be exported '
+                    'This is a view only wallet. Viewing keys can only be exported '
                     'from a full wallet.',
                     style: AppTypography.body.copyWith(
                       color: AppColors.textSecondary,
@@ -405,7 +405,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
-                      'Import a viewing key to create a watch-only wallet. '
+                      'Import a viewing key to create a view only wallet. '
                       'You will be able to see your balance and incoming transactions, '
                       'but you cannot spend funds.',
                       style: AppTypography.body.copyWith(
@@ -469,7 +469,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
           const SizedBox(height: AppSpacing.xl),
           
           PButton(
-            text: 'Create Watch-Only Wallet',
+            text: 'Create View Only Wallet',
             onPressed: _isImporting ? null : _importIvk,
             isLoading: _isImporting,
             variant: PButtonVariant.primary,
@@ -514,7 +514,7 @@ class WatchOnlyBannerWidget extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Incoming Only',
+                  'View only',
                   style: AppTypography.bodyBold.copyWith(
                     color: AppColors.info,
                   ),

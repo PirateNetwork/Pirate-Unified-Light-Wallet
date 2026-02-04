@@ -145,7 +145,7 @@ class TorStatusDetails {
 }
 
 /// Watch-only wallet label constant
-const String kWatchOnlyLabel = 'Incoming only';
+const String kWatchOnlyLabel = 'View only';
 
 /// Watch-only wallet banner message
 const String kWatchOnlyBannerMessage =
@@ -751,7 +751,7 @@ class FfiBridge {
   /// - See outgoing transaction details
   /// - Export seed phrase
   ///
-  /// @param name - Wallet display name (will append " (Incoming only)")
+  /// @param name - Wallet display name (will append " (View only)")
   /// @param ivk - Viewing key string
   /// @param birthday - Block height to scan from (required for viewing key import)
   ///
@@ -2002,7 +2002,7 @@ class FfiBridge {
 
   /// Get watch-only banner for wallet
   ///
-  /// Returns banner info with "Incoming only" label for watch-only wallets.
+  /// Returns banner info with "View only" label for watch-only wallets.
   static Future<api.WatchOnlyBannerInfo?> getWatchOnlyBanner(
       WalletId walletId) async {
     if (kUseFrbBindings) {

@@ -230,7 +230,7 @@ class CreateOrImportScreen extends ConsumerWidget {
                               Icons.visibility_outlined,
                               color: AppColors.textSecondary,
                               size: 32,
-                              semanticLabel: 'Import watch-only wallet',
+                              semanticLabel: 'Import view only wallet',
                             ),
                           ),
                           const SizedBox(width: AppSpacing.md),
@@ -259,7 +259,7 @@ class CreateOrImportScreen extends ConsumerWidget {
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
-                                        'Incoming only',
+                                        'View only',
                                         style: AppTypography.caption.copyWith(
                                           color: AppColors.accentSecondary,
                                           fontSize: 10,

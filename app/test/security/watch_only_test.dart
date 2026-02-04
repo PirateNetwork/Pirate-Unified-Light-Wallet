@@ -11,7 +11,7 @@ final bool _skipFfiTests =
     Platform.environment['SKIP_FFI_TESTS'] == 'true';
 
 void main() {
-  group('Watch-Only Wallet Tests', () {
+  group('View Only Wallet Tests', () {
     testWidgets('Shows export and import tabs', (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -99,13 +99,13 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should show form fields
-      expect(find.text('Import watch-only wallet'), findsOneWidget);
+      expect(find.text('Import view only wallet'), findsOneWidget);
       expect(find.text('Wallet name'), findsOneWidget);
       expect(find.text('Incoming viewing key'), findsOneWidget);
       expect(find.text('Birthday height (optional)'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Shows watch-only badge in import tab', (WidgetTester tester) async {
+    testWidgets('Shows view only badge in import tab', (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
@@ -119,7 +119,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should show badge
-      expect(find.text('Incoming only'), findsOneWidget);
+      expect(find.text('View only'), findsOneWidget);
       expect(find.textContaining('cannot spend'), findsOneWidget);
       expect(find.byIcon(Icons.visibility_off), findsOneWidget);
     }, skip: _skipFfiTests);
@@ -138,7 +138,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Try to import without name
-      await tester.tap(find.text('Import watch-only wallet'));
+      await tester.tap(find.text('Import view only wallet'));
       await tester.pumpAndSettle();
 
       // Should show error
@@ -165,7 +165,7 @@ void main() {
       );
 
       // Try to import
-      await tester.tap(find.text('Import watch-only wallet'));
+      await tester.tap(find.text('Import view only wallet'));
       await tester.pumpAndSettle();
 
       // Should show error
@@ -196,7 +196,7 @@ void main() {
       );
 
       // Try to import
-      await tester.tap(find.text('Import watch-only wallet'));
+      await tester.tap(find.text('Import view only wallet'));
       await tester.pumpAndSettle();
 
       // Should show error
@@ -227,7 +227,7 @@ void main() {
       );
 
       // Should not show error for missing birthday
-      await tester.tap(find.text('Import watch-only wallet'));
+      await tester.tap(find.text('Import view only wallet'));
       await tester.pumpAndSettle();
 
       // No error about birthday

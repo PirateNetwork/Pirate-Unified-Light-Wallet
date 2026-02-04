@@ -36,10 +36,10 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen> with SingleTi
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Watch-Only Wallets',
+      title: 'View Only Wallets',
       appBar: const PAppBar(
-        title: 'Watch-Only Wallets',
-        subtitle: 'Incoming activity only',
+        title: 'View Only Wallets',
+        subtitle: 'View only',
         showBackButton: true,
         centerTitle: true,
       ),
@@ -362,13 +362,13 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
           ),
           SizedBox(height: PirateSpacing.xl),
           Text(
-            'Import watch-only wallet',
+            'Import view only wallet',
             style: PirateTypography.h2.copyWith(color: Colors.white),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
-            'Create a watch-only wallet to view incoming activity.',
+            'Create a view only wallet to view incoming activity.',
             style: PirateTypography.body.copyWith(color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),
@@ -378,7 +378,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
           PInput(
             controller: _nameController,
             label: 'Wallet name',
-            hint: 'e.g., Savings (watch-only)',
+            hint: 'e.g., Savings (view only)',
           ),
           SizedBox(height: PirateSpacing.lg),
           PInput(
@@ -420,7 +420,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
             onPressed: _importWallet,
             loading: _isLoading,
             icon: const Icon(Icons.add),
-            child: const Text('Import watch-only wallet'),
+            child: const Text('Import view only wallet'),
           ),
         ],
       ),
@@ -444,7 +444,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Incoming only',
+                  'View only',
                   style: PirateTypography.bodyLarge.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -452,7 +452,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
                 ),
                 SizedBox(height: PirateSpacing.xs),
                 Text(
-                  'Watch-only wallets cannot spend. They only show incoming activity.',
+                  'View only wallets cannot spend. They only show incoming activity.',
                   style: PirateTypography.bodySmall.copyWith(color: Colors.grey[400]),
                 ),
               ],
@@ -505,7 +505,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Watch-only wallet imported.'),
+            content: Text('View only wallet imported.'),
             backgroundColor: Colors.green[700],
           ),
         );

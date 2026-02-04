@@ -71,7 +71,7 @@ class WalletSwitcherButton extends ConsumerWidget {
             if (isWatchOnly && !compact) ...[
               const SizedBox(width: PSpacing.xs),
               const PBadge(
-                label: 'Watch',
+                label: 'View',
                 variant: PBadgeVariant.info,
                 size: PBadgeSize.small,
               ),
@@ -170,7 +170,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
             ),
             const SizedBox(height: PSpacing.sm),
             PTextButton(
-              label: 'Import watch-only wallet',
+              label: 'Import view only wallet',
               trailingIcon: Icons.visibility_outlined,
               onPressed: () => _startWatchOnlyFlow(context, ref),
               fullWidth: true,
@@ -357,7 +357,7 @@ class _WalletRow extends StatelessWidget {
                   ),
                   const SizedBox(height: PSpacing.xxs),
                   Text(
-                    wallet.watchOnly ? 'Incoming only' : 'Full access',
+                    wallet.watchOnly ? 'View only' : 'Full access',
                     style: PTypography.bodySmall(
                       color: AppColors.textSecondary,
                     ),

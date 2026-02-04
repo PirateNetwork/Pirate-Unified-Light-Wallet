@@ -1550,7 +1550,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       appBar: PAppBar(
         title: title,
         subtitle: _isWatchOnly
-            ? 'This is watch-only. Sending is off.'
+            ? 'This is view only. Sending is off.'
             : 'Paste an address.',
         onBack: _isSending ? null : () => context.pop(),
         showBackButton: true,

@@ -1,6 +1,6 @@
 // Watch-Only Wallet Banner Component
 //
-// Displays a clear "Incoming only" label for watch-only wallets.
+// Displays a clear "View only" label for watch-only wallets.
 // Used in wallet headers, transaction screens, and send screens.
 import 'package:flutter/material.dart';
 
@@ -19,8 +19,8 @@ enum WatchOnlyBannerStyle {
 }
 
 /// Watch-only wallet banner
-/// 
-/// Clearly labels watch-only wallets as "Incoming only" to prevent
+///
+/// Clearly labels watch-only wallets as "View only" to prevent
 /// user confusion about spending capabilities.
 class WatchOnlyBanner extends StatelessWidget {
   final WatchOnlyBannerStyle style;
@@ -81,7 +81,7 @@ class _FullBanner extends StatelessWidget {
                 Icons.visibility,
                 color: AppColors.accentPrimary,
                 size: 20,
-                semanticLabel: 'Watch-only wallet',
+                semanticLabel: 'View only wallet',
               ),
             ),
             const SizedBox(width: AppSpacing.md),
@@ -147,7 +147,7 @@ class _ChipBanner extends StatelessWidget {
               Icons.visibility,
               color: AppColors.accentPrimary,
               size: 16,
-              semanticLabel: 'Watch-only',
+              semanticLabel: 'View only',
             ),
             const SizedBox(width: AppSpacing.xs),
             Text(
@@ -177,7 +177,7 @@ class _InlineBanner extends StatelessWidget {
           Icons.visibility,
           color: AppColors.textSecondary,
           size: 14,
-          semanticLabel: 'Watch-only',
+          semanticLabel: 'View only',
         ),
         const SizedBox(width: 4),
         Text(
@@ -230,7 +230,7 @@ class WatchOnlyWarningDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'This is a watch-only wallet. It can only view incoming transactions.',
+            'This is a view only wallet. It can only view incoming transactions.',
             style: AppTypography.body.copyWith(
               color: AppColors.textSecondary,
             ),

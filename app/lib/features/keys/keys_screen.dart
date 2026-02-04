@@ -80,7 +80,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
 
   Future<void> _showImportViewingKeyDialog() async {
     final defaultBirthday = await _getDefaultBirthdayHeight();
-    final nameController = TextEditingController(text: 'Watch-only wallet');
+    final nameController = TextEditingController(text: 'View only wallet');
     final saplingController = TextEditingController();
     final orchardController = TextEditingController();
     final birthdayController = TextEditingController(
@@ -160,7 +160,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                     PInput(
                       controller: nameController,
                       label: 'Wallet name',
-                      hint: 'e.g. Watch-only wallet',
+                      hint: 'e.g. View only wallet',
                     ),
                     SizedBox(height: PSpacing.md),
                     PInput(
@@ -222,7 +222,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     birthdayController.dispose();
 
     if (imported ?? false) {
-      _showSnack('Watch-only wallet imported.');
+      _showSnack('View only wallet imported.');
     }
   }
 
@@ -234,7 +234,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
           Text('Key imports', style: PTypography.heading4()),
           SizedBox(height: PSpacing.xs),
           Text(
-            'Import viewing keys for watch-only wallets or add a private key.',
+            'Import viewing keys for view only wallets or add a private key.',
             style: PTypography.bodySmall(color: AppColors.textSecondary),
           ),
           SizedBox(height: PSpacing.md),
@@ -438,7 +438,7 @@ class _KeyCard extends StatelessWidget {
               if (keyInfo.hasOrchard)
                 _chip('Orchard', AppColors.successBackground, AppColors.success),
               if (!keyInfo.spendable)
-                _chip('Watch-only', AppColors.warningBackground, AppColors.warning),
+                _chip('View only', AppColors.warningBackground, AppColors.warning),
             ],
           ),
         ],

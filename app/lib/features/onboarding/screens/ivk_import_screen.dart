@@ -24,7 +24,7 @@ class IvkImportScreen extends ConsumerStatefulWidget {
 }
 
 class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
-  final _nameController = TextEditingController(text: 'Watch-only wallet');
+  final _nameController = TextEditingController(text: 'View only wallet');
   final _saplingIvkController = TextEditingController();
   final _orchardIvkController = TextEditingController();
   final _birthdayController = TextEditingController();
@@ -133,7 +133,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Watch-only wallet created.',
+                    'View only wallet created.',
                   ),
                 ),
               ],
@@ -164,7 +164,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
       title: 'Import Viewing Key',
       appBar: PAppBar(
         title: 'Import Viewing Key',
-        subtitle: 'Create a watch-only wallet',
+        subtitle: 'Create a view only wallet',
         onBack: () => context.pop(),
       ),
       body: SingleChildScrollView(
@@ -215,7 +215,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
                               ),
                             ),
                             Text(
-                              'Incoming activity only',
+                              'View only',
                               style: AppTypography.caption.copyWith(
                                 color: AppColors.textSecondary,
                               ),
@@ -258,7 +258,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
             PInput(
               controller: _nameController,
               label: 'Wallet name',
-              hint: 'e.g., Watch-only wallet',
+              hint: 'e.g., View only wallet',
             ),
 
             const SizedBox(height: AppSpacing.lg),
@@ -371,7 +371,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
 
             // Import button
             PButton(
-              text: _isImporting ? 'Importing...' : 'Import watch-only wallet',
+              text: _isImporting ? 'Importing...' : 'Import view only wallet',
               onPressed: _isValid && !_isImporting ? _importIvk : null,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,

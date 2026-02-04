@@ -256,7 +256,7 @@ class TransactionErrorMapper {
     if (errorStr.contains('watch') && errorStr.contains('only')) {
       return const TransactionError(
         type: TransactionErrorType.watchOnlyCannotSpend,
-        message: 'Cannot send from watch-only wallet',
+        message: 'Cannot send from view only wallet',
         suggestion:
             'This wallet can only view incoming transactions. Use the full wallet to send.',
       );

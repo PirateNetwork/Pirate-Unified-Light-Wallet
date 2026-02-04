@@ -626,7 +626,7 @@ class _KeySummaryCard extends StatelessWidget {
               if (keyInfo.hasOrchard)
                 _chip('Orchard', AppColors.successBackground, AppColors.success),
               if (!keyInfo.spendable)
-                _chip('Watch-only', AppColors.warningBackground, AppColors.warning),
+                _chip('View only', AppColors.warningBackground, AppColors.warning),
             ],
           ),
         ],
