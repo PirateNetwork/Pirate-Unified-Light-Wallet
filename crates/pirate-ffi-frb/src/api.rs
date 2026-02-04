@@ -2232,8 +2232,14 @@ pub fn list_address_balances(
     };
 
     let mut notes = repo.get_unspent_notes(secret.account_id)?;
-    let mut used_sapling_addresses = HashSet::new();
-    let mut used_orchard_addresses = HashSet::new();
+    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+    let sync_state = sync_storage.load_sync_state()?;
+    let current_height = sync_state.local_height.max(sync_state.target_height);
+    const MIN_DEPTH: u64 = 10;
+    let confirmation_threshold = current_height.saturating_sub(MIN_DEPTH);
+
+    let mut balances_by_address: HashMap<String, (u64, u64, u64)> = HashMap::new();
+
     for note in notes.iter() {
         if note.value <= 0 {
             continue;
@@ -2253,30 +2259,49 @@ pub fn list_address_balances(
         let Some(note_bytes) = note.note.as_deref() else {
             continue;
         };
-        match note.note_type {
+        let address_string = match note.note_type {
             pirate_storage_sqlite::models::NoteType::Sapling => {
-                if let Some(address) = decode_sapling_address_bytes_from_note_bytes(note_bytes)
+                decode_sapling_address_bytes_from_note_bytes(note_bytes)
                     .and_then(|bytes| SaplingPaymentAddress::from_bytes(&bytes))
                     .map(|addr| PaymentAddress { inner: addr }.encode_for_network(network_type))
-                {
-                    used_sapling_addresses.insert(address);
-                }
             }
             pirate_storage_sqlite::models::NoteType::Orchard => {
                 if !orchard_active {
-                    continue;
-                }
-                if let Some(address) = decode_orchard_address_bytes_from_note_bytes(note_bytes)
-                    .and_then(|bytes| Option::from(OrchardAddress::from_raw_address_bytes(&bytes)))
-                    .and_then(|addr| {
-                        OrchardPaymentAddress { inner: addr }
-                            .encode_for_network(network_type)
-                            .ok()
-                    })
-                {
-                    used_orchard_addresses.insert(address);
+                    None
+                } else {
+                    decode_orchard_address_bytes_from_note_bytes(note_bytes)
+                        .and_then(|bytes| Option::from(OrchardAddress::from_raw_address_bytes(&bytes)))
+                        .and_then(|addr| {
+                            OrchardPaymentAddress { inner: addr }
+                                .encode_for_network(network_type)
+                                .ok()
+                        })
                 }
             }
+        };
+        let Some(address_string) = address_string else {
+            continue;
+        };
+        let value = match u64::try_from(note.value) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let entry = balances_by_address.entry(address_string).or_insert((0, 0, 0));
+        entry.0 = entry
+            .0
+            .checked_add(value)
+            .ok_or_else(|| anyhow!("Balance overflow"))?;
+        let note_height = note.height as u64;
+        if note_height > 0 && note_height <= confirmation_threshold {
+            entry.1 = entry
+                .1
+                .checked_add(value)
+                .ok_or_else(|| anyhow!("Balance overflow"))?;
+        } else {
+            entry.2 = entry
+                .2
+                .checked_add(value)
+                .ok_or_else(|| anyhow!("Balance overflow"))?;
         }
     }
 
@@ -2315,26 +2340,34 @@ pub fn list_address_balances(
         };
         (sapling_fvk, orchard_fvk)
     };
-    let sapling_index_map = sapling_fvk
-        .as_ref()
-        .map(|fvk| {
-            map_used_addresses_until_found(&used_sapling_addresses, |index| {
-                Some(fvk.derive_address(index).encode_for_network(network_type))
-            })
-        })
-        .unwrap_or_default();
-    let orchard_index_map = if orchard_active {
-        orchard_fvk
-            .as_ref()
-            .map(|fvk| {
-                map_used_addresses_until_found(&used_orchard_addresses, |index| {
-                    fvk.address_at(index).encode_for_network(network_type).ok()
-                })
-            })
-            .unwrap_or_default()
-    } else {
-        HashMap::new()
-    };
+    let created_at = chrono::Utc::now().timestamp();
+    let mut scanned_addresses: HashMap<String, u32> = HashMap::new();
+    if let Some(fvk) = sapling_fvk.as_ref() {
+        scan_sequential_addresses(
+            &repo,
+            secret.account_id,
+            scan_key_id,
+            AddressType::Sapling,
+            &balances_by_address,
+            |index| Some(fvk.derive_address(index).encode_for_network(network_type)),
+            &mut scanned_addresses,
+            created_at,
+        )?;
+    }
+    if orchard_active {
+        if let Some(fvk) = orchard_fvk.as_ref() {
+            scan_sequential_addresses(
+                &repo,
+                secret.account_id,
+                scan_key_id,
+                AddressType::Orchard,
+                &balances_by_address,
+                |index| fvk.address_at(index).encode_for_network(network_type).ok(),
+                &mut scanned_addresses,
+                created_at,
+            )?;
+        }
+    }
     for note in notes.iter_mut() {
         if key_id.is_some() {
             let note_key_id = match note.key_id {
@@ -2381,31 +2414,25 @@ pub fn list_address_balances(
         let Some(address_string) = address_string else {
             continue;
         };
-        let address_type = match note.note_type {
-            pirate_storage_sqlite::models::NoteType::Sapling => AddressType::Sapling,
-            pirate_storage_sqlite::models::NoteType::Orchard => AddressType::Orchard,
-        };
-        let diversifier_index = match note.note_type {
-            pirate_storage_sqlite::models::NoteType::Sapling => {
-                sapling_index_map.get(&address_string).copied().unwrap_or(0)
-            }
-            pirate_storage_sqlite::models::NoteType::Orchard => {
-                orchard_index_map.get(&address_string).copied().unwrap_or(0)
-            }
-        };
-        let address_record = pirate_storage_sqlite::Address {
-            id: None,
-            key_id: note.key_id,
-            account_id: secret.account_id,
-            diversifier_index,
-            address: address_string.clone(),
-            address_type,
-            label: None,
-            created_at: chrono::Utc::now().timestamp(),
-            color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
-            address_scope: pirate_storage_sqlite::AddressScope::External,
-        };
-        let _ = repo.upsert_address(&address_record);
+        if let Some(diversifier_index) = scanned_addresses.get(&address_string).copied() {
+            let address_type = match note.note_type {
+                pirate_storage_sqlite::models::NoteType::Sapling => AddressType::Sapling,
+                pirate_storage_sqlite::models::NoteType::Orchard => AddressType::Orchard,
+            };
+            let address_record = pirate_storage_sqlite::Address {
+                id: None,
+                key_id: note.key_id.or(Some(scan_key_id)),
+                account_id: secret.account_id,
+                diversifier_index,
+                address: address_string.clone(),
+                address_type,
+                label: None,
+                created_at,
+                color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+                address_scope: pirate_storage_sqlite::AddressScope::External,
+            };
+            let _ = repo.upsert_address(&address_record);
+        }
         if let Some(addr) = repo
             .get_address_by_string(secret.account_id, &address_string)?
             .and_then(|addr| addr.id)
@@ -2424,13 +2451,6 @@ pub fn list_address_balances(
         addresses.retain(|addr| addr.address_type != AddressType::Orchard);
     }
     addresses.retain(|addr| addr.address_scope != pirate_storage_sqlite::AddressScope::Internal);
-
-    // Load sync height for confirmation depth calculations.
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
-    let sync_state = sync_storage.load_sync_state()?;
-    let current_height = sync_state.local_height.max(sync_state.target_height);
-    const MIN_DEPTH: u64 = 10;
-    let confirmation_threshold = current_height.saturating_sub(MIN_DEPTH);
 
     let mut balances: HashMap<i64, (u64, u64, u64)> = HashMap::new();
 
@@ -2510,35 +2530,51 @@ pub fn list_address_balances(
     Ok(infos)
 }
 
-fn map_used_addresses_until_found<F>(
-    used_addresses: &HashSet<String>,
+fn scan_sequential_addresses<F>(
+    repo: &pirate_storage_sqlite::Repository,
+    account_id: i64,
+    key_id: i64,
+    address_type: AddressType,
+    balances_by_address: &HashMap<String, (u64, u64, u64)>,
     mut derive_address: F,
-) -> HashMap<String, u32>
+    scanned: &mut HashMap<String, u32>,
+    created_at: i64,
+) -> Result<()>
 where
     F: FnMut(u32) -> Option<String>,
 {
-    if used_addresses.is_empty() {
-        return HashMap::new();
-    }
-    let mut map = HashMap::new();
     let mut index = 0u32;
-    let mut remaining = used_addresses.len();
-
-    while remaining > 0 {
+    loop {
         let Some(address) = derive_address(index) else {
             break;
         };
-        if used_addresses.contains(&address) && !map.contains_key(&address) {
-            map.insert(address, index);
-            remaining = remaining.saturating_sub(1);
-        }
-        if index == u32::MAX {
+        let address_record = pirate_storage_sqlite::Address {
+            id: None,
+            key_id: Some(key_id),
+            account_id,
+            diversifier_index: index,
+            address: address.clone(),
+            address_type,
+            label: None,
+            created_at,
+            color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+            address_scope: pirate_storage_sqlite::AddressScope::External,
+        };
+        let _ = repo.upsert_address(&address_record);
+        scanned.entry(address.clone()).or_insert(index);
+        let has_balance = balances_by_address
+            .get(&address)
+            .map(|(total, _, _)| *total > 0)
+            .unwrap_or(false);
+        if !has_balance {
             break;
         }
-        index = index.saturating_add(1);
+        index = index
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("Diversifier index overflow"))?;
     }
 
-    map
+    Ok(())
 }
 
 const SAPLING_NOTE_BYTES_VERSION: u8 = 1;

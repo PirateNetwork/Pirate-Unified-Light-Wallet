@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart'
     show AddressBalanceInfo, KeyGroupInfo, KeyTypeInfo;
@@ -540,40 +540,8 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       }
 
       // Get address balances from FFI
-      var addresses = await FfiBridge.listAddressBalances(walletId);
+      final addresses = await FfiBridge.listAddressBalances(walletId);
       if (forceCurrentAddress) {
-        await _persistImportedAddress(walletId, null);
-        _activeImportedAddress = null;
-      } else if (importedKeys.isNotEmpty) {
-        final importedIds = importedKeys.map((key) => key.id.toInt()).toSet();
-        final previousImported = _activeImportedAddress;
-        if (previousImported != null) {
-          AddressBalanceInfo? previousEntry;
-          for (final address in addresses) {
-            if (address.address == previousImported &&
-                importedIds.contains(address.keyId?.toInt())) {
-              previousEntry = address;
-              break;
-            }
-          }
-          if (previousEntry == null) {
-            await _persistImportedAddress(walletId, null);
-            _activeImportedAddress = null;
-          } else {
-            final hasBalance = previousEntry.balance != BigInt.zero ||
-                previousEntry.pending != BigInt.zero ||
-                previousEntry.spendable != BigInt.zero;
-            if (hasBalance) {
-              await FfiBridge.nextReceiveAddress(walletId);
-              await _persistImportedAddress(walletId, null);
-              _activeImportedAddress = null;
-              addresses = await FfiBridge.listAddressBalances(walletId);
-            } else {
-              _activeImportedAddress = previousEntry.address;
-            }
-          }
-        }
-      } else {
         await _persistImportedAddress(walletId, null);
         _activeImportedAddress = null;
       }
