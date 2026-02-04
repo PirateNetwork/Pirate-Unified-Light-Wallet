@@ -15,11 +15,14 @@ class WelcomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = AppSpacing.isMobile(screenWidth);
+
     return PScaffold(
       title: 'Pirate Unified Wallet',
       body: Padding(
         padding: AppSpacing.screenPadding(
-          MediaQuery.of(context).size.width,
+          screenWidth,
           vertical: AppSpacing.xl,
         ),
         child: Column(
@@ -55,6 +58,7 @@ class WelcomeScreen extends ConsumerWidget {
               'Pirate Unified Wallet',
               style: AppTypography.h1.copyWith(
                 color: AppColors.textPrimary,
+                height: isMobile ? 1.3 : null,
               ),
               textAlign: TextAlign.center,
             ),
@@ -65,7 +69,7 @@ class WelcomeScreen extends ConsumerWidget {
               'Privacy made convenient.\nKeys stay on your device.',
               style: AppTypography.body.copyWith(
                 color: AppColors.textSecondary,
-                height: 1.5,
+                height: isMobile ? 1.6 : 1.5,
               ),
               textAlign: TextAlign.center,
             ),
