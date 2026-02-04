@@ -2215,6 +2215,21 @@ pub fn list_address_balances(
     let network_type = address_prefix_network_type(&wallet_id)?;
     let orchard_active = should_generate_orchard(&wallet_id)?;
     let scan_key_id = key_id.unwrap_or(primary_key_id);
+    let key_material = if let Some(id) = key_id {
+        let key = repo
+            .get_account_key_by_id(id)?
+            .ok_or_else(|| anyhow!("Key group not found for {}", id))?;
+        if key.account_id != secret.account_id {
+            return Err(anyhow!(
+                "Key group {} does not belong to wallet {}",
+                id,
+                wallet_id
+            ));
+        }
+        Some(key)
+    } else {
+        None
+    };
 
     let mut notes = repo.get_unspent_notes(secret.account_id)?;
     let mut used_sapling_addresses = HashSet::new();
@@ -2223,7 +2238,15 @@ pub fn list_address_balances(
         if note.value <= 0 {
             continue;
         }
-        let note_key_id = note.key_id.unwrap_or(scan_key_id);
+        let note_key_id = match note.key_id {
+            Some(id) => id,
+            None => {
+                if key_id.is_some() && scan_key_id != primary_key_id {
+                    continue;
+                }
+                scan_key_id
+            }
+        };
         if note_key_id != scan_key_id {
             continue;
         }
@@ -2257,21 +2280,40 @@ pub fn list_address_balances(
         }
     }
 
-    let sapling_fvk = if !secret.extsk.is_empty() {
-        Some(ExtendedSpendingKey::from_bytes(&secret.extsk)?.to_extended_fvk())
+    let (sapling_fvk, orchard_fvk) = if let Some(key) = key_material.as_ref() {
+        let sapling_fvk = if let Some(bytes) = key.sapling_extsk.as_ref() {
+            Some(ExtendedSpendingKey::from_bytes(bytes)?.to_extended_fvk())
+        } else {
+            key.sapling_dfvk
+                .as_ref()
+                .and_then(|bytes| ExtendedFullViewingKey::from_bytes(bytes))
+        };
+        let orchard_fvk = if let Some(bytes) = key.orchard_extsk.as_ref() {
+            Some(OrchardExtendedSpendingKey::from_bytes(bytes)?.to_extended_fvk())
+        } else {
+            key.orchard_fvk
+                .as_ref()
+                .and_then(|bytes| OrchardExtendedFullViewingKey::from_bytes(bytes).ok())
+        };
+        (sapling_fvk, orchard_fvk)
     } else {
-        secret
-            .dfvk
-            .as_ref()
-            .and_then(|bytes| ExtendedFullViewingKey::from_bytes(bytes))
-    };
-    let orchard_fvk = if let Some(bytes) = secret.orchard_extsk.as_ref() {
-        Some(OrchardExtendedSpendingKey::from_bytes(bytes)?.to_extended_fvk())
-    } else {
-        secret
-            .orchard_ivk
-            .as_ref()
-            .and_then(|bytes| OrchardExtendedFullViewingKey::from_bytes(bytes).ok())
+        let sapling_fvk = if !secret.extsk.is_empty() {
+            Some(ExtendedSpendingKey::from_bytes(&secret.extsk)?.to_extended_fvk())
+        } else {
+            secret
+                .dfvk
+                .as_ref()
+                .and_then(|bytes| ExtendedFullViewingKey::from_bytes(bytes))
+        };
+        let orchard_fvk = if let Some(bytes) = secret.orchard_extsk.as_ref() {
+            Some(OrchardExtendedSpendingKey::from_bytes(bytes)?.to_extended_fvk())
+        } else {
+            secret
+                .orchard_ivk
+                .as_ref()
+                .and_then(|bytes| OrchardExtendedFullViewingKey::from_bytes(bytes).ok())
+        };
+        (sapling_fvk, orchard_fvk)
     };
     let sapling_index_map = sapling_fvk
         .as_ref()
@@ -2294,6 +2336,20 @@ pub fn list_address_balances(
         HashMap::new()
     };
     for note in notes.iter_mut() {
+        if key_id.is_some() {
+            let note_key_id = match note.key_id {
+                Some(id) => id,
+                None => {
+                    if scan_key_id != primary_key_id {
+                        continue;
+                    }
+                    scan_key_id
+                }
+            };
+            if note_key_id != scan_key_id {
+                continue;
+            }
+        }
         if note.address_id.is_some() {
             continue;
         }

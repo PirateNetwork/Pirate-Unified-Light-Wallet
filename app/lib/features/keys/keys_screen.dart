@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,7 +6,6 @@ import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/security/decoy_data.dart';
-import '../../core/security/screenshot_protection.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -15,7 +13,6 @@ import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_card.dart';
-import '../../ui/molecules/p_dialog.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 
@@ -69,116 +66,6 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
       SnackBar(
         content: Text(message),
         backgroundColor: color ?? AppColors.success,
-      ),
-    );
-  }
-
-  Future<void> _exportViewingKeys() async {
-    if (_isDecoy) {
-      final sections = <Widget>[
-        _buildViewingKeySection(
-          'Sapling viewing key',
-          DecoyData.saplingViewingKey(),
-        ),
-        _buildViewingKeySection(
-          'Orchard viewing key',
-          DecoyData.orchardViewingKey(),
-        ),
-      ];
-      final protection = ScreenshotProtection.protect();
-      try {
-        await PDialog.show<void>(
-          context: context,
-          title: 'Viewing keys',
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: sections,
-          ),
-          actions: const [
-            PDialogAction(label: 'Close'),
-          ],
-        );
-      } finally {
-        protection.dispose();
-      }
-      return;
-    }
-
-    final walletId = _walletId;
-    if (walletId == null) return;
-    String? saplingKey;
-    String? orchardKey;
-    try {
-      saplingKey = await FfiBridge.exportIvkSecure(walletId);
-    } catch (_) {
-      saplingKey = null;
-    }
-    try {
-      orchardKey = await FfiBridge.exportOrchardViewingKey(walletId);
-    } catch (_) {
-      orchardKey = null;
-    }
-    if (!mounted) return;
-
-    final sections = <Widget>[
-      if (saplingKey != null && saplingKey.isNotEmpty)
-        _buildViewingKeySection('Sapling viewing key', saplingKey),
-      if (orchardKey != null && orchardKey.isNotEmpty)
-        _buildViewingKeySection('Orchard viewing key', orchardKey),
-    ];
-
-    if (sections.isEmpty) {
-      _showSnack('No viewing keys available.', color: AppColors.error);
-      return;
-    }
-
-    final protection = ScreenshotProtection.protect();
-    try {
-      if (!mounted) {
-        return;
-      }
-      await PDialog.show<void>(
-        context: context,
-        title: 'Viewing keys',
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: sections,
-        ),
-        actions: const [
-          PDialogAction(label: 'Close'),
-        ],
-      );
-    } finally {
-      protection.dispose();
-    }
-  }
-
-  Widget _buildViewingKeySection(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: PSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: PTypography.labelMedium()),
-          SizedBox(height: PSpacing.xs),
-          Row(
-            children: [
-              Expanded(
-                child: SelectableText(
-                  value,
-                  style: PTypography.codeSmall(color: AppColors.textSecondary),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.copy, size: 18),
-                onPressed: () => Clipboard.setData(ClipboardData(text: value)),
-                tooltip: 'Copy',
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -335,10 +222,10 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Viewing keys', style: PTypography.heading4()),
+          Text('Key imports', style: PTypography.heading4()),
           SizedBox(height: PSpacing.xs),
           Text(
-            'Export or import viewing keys for watch-only wallets.',
+            'Import viewing keys for watch-only wallets or add a private key.',
             style: PTypography.bodySmall(color: AppColors.textSecondary),
           ),
           SizedBox(height: PSpacing.md),
@@ -347,9 +234,10 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
             runSpacing: PSpacing.sm,
             children: [
               PButton(
-                onPressed: _exportViewingKeys,
+                onPressed:
+                    isDecoy ? null : () => context.push('/settings/keys/import'),
                 variant: PButtonVariant.secondary,
-                child: const Text('Export viewing key'),
+                child: const Text('Import private key'),
               ),
               PButton(
                 onPressed: isDecoy ? null : _showImportViewingKeyDialog,
