@@ -37,6 +37,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
   bool _isValidating = false;
   String? _validationError;
   int _wordCount = 24;
+  bool _isPasting = false;
 
   @override
   void initState() {
@@ -46,6 +47,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
     for (final controller in _wordControllers) {
       controller.addListener(_onTextChanged);
     }
+    _wordControllers.first.addListener(_onFirstWordChanged);
   }
 
   @override
@@ -55,6 +57,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
         ..removeListener(_onTextChanged)
         ..dispose();
     }
+    _wordControllers.first.removeListener(_onFirstWordChanged);
     for (final node in _focusNodes) {
       node.dispose();
     }
@@ -74,6 +77,36 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
 
   void _onTextChanged() {
     setState(() {}); // Rebuild to update button state
+  }
+
+  void _onFirstWordChanged() {
+    if (_isPasting) return;
+    final raw = _wordControllers.first.text;
+    if (!raw.contains(RegExp(r'\s'))) return;
+    final words = raw.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+    if (words.length <= 1) return;
+    _applyPastedWords(words.toList());
+  }
+
+  void _applyPastedWords(List<String> words) {
+    if (words.isEmpty) return;
+    _isPasting = true;
+    try {
+      final normalized = words.map((word) => word.toLowerCase()).toList();
+      final nextCount = normalized.length <= 12 ? 12 : 24;
+      if (_wordCount != nextCount) {
+        setState(() => _wordCount = nextCount);
+      }
+      for (int i = 0; i < _wordControllers.length; i++) {
+        if (i < nextCount && i < normalized.length) {
+          _wordControllers[i].text = normalized[i];
+        } else {
+          _wordControllers[i].clear();
+        }
+      }
+    } finally {
+      _isPasting = false;
+    }
   }
 
   String get _mnemonic {
@@ -140,20 +173,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
     if (data?.text == null) return;
 
     final words = data!.text!.trim().split(RegExp(r'\s+'));
-    
-    // Determine word count from pasted content
-    if (words.length == 12) {
-      setState(() => _wordCount = 12);
-    } else if (words.length >= 24) {
-      setState(() => _wordCount = 24);
-    }
-
-    // Fill in word fields
-    for (int i = 0; i < _wordCount && i < words.length; i++) {
-      _wordControllers[i].text = words[i].toLowerCase();
-    }
-
-    setState(() {});
+    _applyPastedWords(words);
   }
 
   void _clearAll() {
