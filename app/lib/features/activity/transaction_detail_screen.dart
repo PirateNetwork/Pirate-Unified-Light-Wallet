@@ -124,7 +124,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
     final isReceived = tx.amount >= 0;
     final amountArrr = _formatArrr(tx.amount.abs());
     final feeArrr = _formatArrr(tx.fee.toInt());
-    final statusText = tx.confirmed ? 'Confirmed' : 'Confirming';
+    final statusText = tx.confirmed ? 'Confirmed' : 'Pending';
     final statusColor = tx.confirmed ? AppColors.success : AppColors.warning;
     final timestamp = _convertTimestamp(tx.timestamp);
     final localizations = MaterialLocalizations.of(context);

@@ -7759,8 +7759,9 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height;
 
-    // Standard confirmation depth for Pirate Chain (10 blocks)
-    const MIN_DEPTH: u64 = 10;
+    // Confirmation thresholds: receive requires 10, send requires 1.
+    const RECEIVE_MIN_DEPTH: u64 = 10;
+    const SEND_MIN_DEPTH: u64 = 1;
 
     // Get transactions from database
     let split_transfers = spendable;
@@ -7768,7 +7769,7 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
         secret.account_id,
         limit,
         current_height,
-        MIN_DEPTH,
+        RECEIVE_MIN_DEPTH,
         split_transfers,
     )?;
 
@@ -7778,8 +7779,18 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
         .map(|tx| {
             // Determine confirmed status
             let confirmed = if tx.height > 0 {
-                let confirmations = current_height.saturating_sub(tx.height as u64);
-                confirmations >= MIN_DEPTH
+                let height = tx.height as u64;
+                let confirmations = if current_height >= height {
+                    current_height.saturating_sub(height).saturating_add(1)
+                } else {
+                    0
+                };
+                let min_depth = if tx.amount < 0 {
+                    SEND_MIN_DEPTH
+                } else {
+                    RECEIVE_MIN_DEPTH
+                };
+                confirmations >= min_depth
             } else {
                 false
             };
