@@ -11,15 +11,32 @@ import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/providers/wallet_providers.dart';
 import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
 
 /// Create or Import screen
-class CreateOrImportScreen extends ConsumerWidget {
+class CreateOrImportScreen extends ConsumerStatefulWidget {
   const CreateOrImportScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CreateOrImportScreen> createState() =>
+      _CreateOrImportScreenState();
+}
+
+class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref
+          .read(onboardingControllerProvider.notifier)
+          .reset(startAt: OnboardingStep.createOrImport);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final onboardingState = ref.watch(onboardingControllerProvider);
     final totalSteps =
         onboardingState.mode == OnboardingMode.import ? 5 : 6;
@@ -65,10 +82,12 @@ class CreateOrImportScreen extends ConsumerWidget {
             PCard(
               child: InkWell(
                 onTap: () async {
-                  ref.read(onboardingControllerProvider.notifier)
-                      .setMode(OnboardingMode.create);
+                  final controller =
+                      ref.read(onboardingControllerProvider.notifier);
+                  controller.reset(startAt: OnboardingStep.createOrImport);
+                  controller.setMode(OnboardingMode.create);
                   final hasPassphrase = await FfiBridge.hasAppPassphrase();
-                  ref.read(onboardingControllerProvider.notifier).nextStep();
+                  controller.nextStep();
                   if (!context.mounted) return;
                   if (hasPassphrase) {
                     unawaited(context.push('/onboarding/backup-warning'));
@@ -139,9 +158,11 @@ class CreateOrImportScreen extends ConsumerWidget {
             PCard(
               child: InkWell(
                 onTap: () {
-                  ref.read(onboardingControllerProvider.notifier)
-                      .setMode(OnboardingMode.import);
-                  ref.read(onboardingControllerProvider.notifier).nextStep();
+                  final controller =
+                      ref.read(onboardingControllerProvider.notifier);
+                  controller.reset(startAt: OnboardingStep.createOrImport);
+                  controller.setMode(OnboardingMode.import);
+                  controller.nextStep();
                   context.push('/onboarding/import-seed');
                 },
                 borderRadius: BorderRadius.circular(16),
@@ -205,7 +226,19 @@ class CreateOrImportScreen extends ConsumerWidget {
             const SizedBox(height: AppSpacing.lg),
             PCard(
               child: InkWell(
-                onTap: () {
+                onTap: () async {
+                  final controller =
+                      ref.read(onboardingControllerProvider.notifier);
+                  controller.reset(startAt: OnboardingStep.createOrImport);
+                  controller.setMode(OnboardingMode.watchOnly);
+                  final hasPassphrase = await FfiBridge.hasAppPassphrase();
+                  final isUnlocked = ref.read(appUnlockedProvider);
+                  if (hasPassphrase && !isUnlocked) {
+                    if (!context.mounted) return;
+                    context.push('/unlock?redirect=/onboarding/import-ivk');
+                    return;
+                  }
+                  if (!context.mounted) return;
                   context.push('/onboarding/import-ivk');
                 },
                 borderRadius: BorderRadius.circular(16),

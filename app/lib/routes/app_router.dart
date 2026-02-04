@@ -58,15 +58,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     debugLogDiagnostics: true,
     redirect: (context, state) {
       final walletsExistAsync = ref.read(walletsExistProvider);
+      final hasPassphraseAsync = ref.read(hasAppPassphraseProvider);
       final appUnlockedValue = ref.read(appUnlockedProvider);
       final isOnboarding = state.uri.path.startsWith('/onboarding');
       final isUnlock = state.uri.path == '/unlock';
+      final isSplash = state.uri.path == '/splash';
       
       // Get walletsExist value (if available)
       final walletsExistValue = walletsExistAsync.value;
+      final hasPassphraseValue = hasPassphraseAsync.value;
       
       // If still loading, don't redirect yet (let initialLocation handle it)
-      if (!walletsExistAsync.hasValue) {
+      if (!walletsExistAsync.hasValue || !hasPassphraseAsync.hasValue) {
+        return null;
+      }
+
+      // If no wallets exist, keep user in onboarding (unless they need to unlock)
+      if (walletsExistValue == false) {
+        if (isUnlock && (hasPassphraseValue ?? false)) {
+          return null;
+        }
+        if (isUnlock && (hasPassphraseValue ?? false) == false) {
+          return '/onboarding/welcome';
+        }
+        if (!isOnboarding && !isUnlock && !isSplash) {
+          return '/onboarding/welcome';
+        }
         return null;
       }
       
@@ -78,11 +95,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // If wallets exist and app is not unlocked, redirect to unlock (unless already there)
       if ((walletsExistValue ?? false) && !appUnlockedValue && !isUnlock && !isOnboarding) {
         return '/unlock';
-      }
-      
-      // If no wallets exist and we're on unlock, redirect to onboarding
-      if (walletsExistValue == false && isUnlock) {
-        return '/onboarding/welcome';
       }
       
       return null;
@@ -112,7 +124,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _buildPageWithTransition(
           context: context,
           state: state,
-          child: const UnlockScreen(),
+          child: UnlockScreen(
+            redirectTo: state.uri.queryParameters['redirect'],
+          ),
         ),
       ),
       

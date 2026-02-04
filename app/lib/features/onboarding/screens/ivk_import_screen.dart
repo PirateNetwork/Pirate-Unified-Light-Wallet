@@ -96,6 +96,15 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
     });
 
     try {
+      final hasPassphrase = await FfiBridge.hasAppPassphrase();
+      if (hasPassphrase && !ref.read(appUnlockedProvider)) {
+        setState(() {
+          _error = 'App is locked. Unlock to import a view only wallet.';
+          _isImporting = false;
+        });
+        return;
+      }
+
       final birthday = int.tryParse(_birthdayController.text.trim());
       if (birthday == null || birthday < 1) {
         throw ArgumentError('Invalid birthday height');

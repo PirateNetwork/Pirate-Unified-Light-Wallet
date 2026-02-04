@@ -19,7 +19,9 @@ import '../../core/security/passphrase_cache.dart';
 
 /// Unlock screen for entering passphrase
 class UnlockScreen extends ConsumerStatefulWidget {
-  const UnlockScreen({super.key});
+  const UnlockScreen({super.key, this.redirectTo});
+
+  final String? redirectTo;
 
   @override
   ConsumerState<UnlockScreen> createState() => _UnlockScreenState();
@@ -82,10 +84,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
         }
       }
       
-      if (mounted) {
-        // Navigate to home after successful unlock
-        context.go('/home');
-      }
+      await _navigateAfterUnlock();
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -161,9 +160,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
       final unlockApp = ref.read(unlockAppProvider);
       await unlockApp(cached);
 
-      if (mounted) {
-        context.go('/home');
-      }
+      await _navigateAfterUnlock();
     } catch (e) {
       if (mounted && !silentFailure) {
         setState(() {
@@ -175,6 +172,21 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
         setState(() => _isBiometricUnlocking = false);
       }
     }
+  }
+
+  Future<void> _navigateAfterUnlock() async {
+    final redirect = widget.redirectTo;
+    if (redirect != null && redirect.isNotEmpty) {
+      if (mounted) {
+        context.go(redirect);
+      }
+      return;
+    }
+
+    ref.invalidate(walletsExistProvider);
+    final walletsExist = await ref.read(walletsExistProvider.future);
+    if (!mounted) return;
+    context.go(walletsExist ? '/home' : '/onboarding/welcome');
   }
 
   @override

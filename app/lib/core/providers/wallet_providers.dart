@@ -754,6 +754,7 @@ final walletsExistProvider = FutureProvider<bool>((ref) async {
 /// Check if app passphrase is configured
 final hasAppPassphraseProvider = FutureProvider<bool>((ref) async {
   try {
+    await ref.watch(rustInitProvider.future);
     return await FfiBridge.hasAppPassphrase();
   } catch (e) {
     return false;
@@ -793,6 +794,7 @@ final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
       ref.read(appUnlockedProvider.notifier).unlocked = true;
       // Refresh wallet list after unlock
       ref.invalidate(activeWalletProvider);
+      ref.invalidate(walletsExistProvider);
       unawaited(
         BirthdayUpdateService.resumePendingUpdates(
           onWalletsUpdated: ref.read(refreshWalletsProvider),
@@ -811,6 +813,7 @@ final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
         ref.read(decoyModeProvider.notifier).enabled = true;
         ref.read(appUnlockedProvider.notifier).unlocked = true;
         ref.invalidate(activeWalletProvider);
+        ref.invalidate(walletsExistProvider);
         return;
       }
     }
