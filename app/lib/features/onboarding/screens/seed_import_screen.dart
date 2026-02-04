@@ -198,178 +198,189 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
           ),
 
           Expanded(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: gutter),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Title
-                    Text(
-                      'Enter your seed phrase',
-                      style: AppTypography.h2.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.sm),
-
-                    Text(
-                      'Enter the $_wordCount words in order.',
-                      style: AppTypography.body.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.md),
-
-                    // Word count toggle
-                    Row(
-                      children: [
-                        _WordCountChip(
-                          label: '12 words',
-                          selected: _wordCount == 12,
-                          onTap: () => setState(() => _wordCount = 12),
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        _WordCountChip(
-                          label: '24 words',
-                          selected: _wordCount == 24,
-                          onTap: () => setState(() => _wordCount = 24),
-                        ),
-                        const Spacer(),
-                        PTextButton(
-                          label: 'Clear all',
-                          leadingIcon: Icons.clear,
-                          variant: PTextButtonVariant.subtle,
-                          onPressed: _clearAll,
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // Word grid
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        childAspectRatio: 2.5,
-                        crossAxisSpacing: AppSpacing.sm,
-                        mainAxisSpacing: AppSpacing.sm,
-                      ),
-                      itemCount: _wordCount,
-                      itemBuilder: (context, index) {
-                        return _WordInput(
-                          index: index,
-                          controller: _wordControllers[index],
-                          focusNode: _focusNodes[index],
-                          isLast: index == _wordCount - 1,
-                          onSubmitted: () {
-                            if (index < _wordCount - 1) {
-                              _focusNodes[index + 1].requestFocus();
-                            } else {
-                              _focusNodes[index].unfocus();
-                              _validateAndProceed();
-                            }
-                          },
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // Error message
-                    if (_validationError != null)
-                      Container(
-                        padding: const EdgeInsets.all(AppSpacing.md),
-                        decoration: BoxDecoration(
-                          color: AppColors.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.error.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Row(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(
+                    gutter,
+                    0,
+                    gutter,
+                    AppSpacing.lg + viewInsets,
+                  ),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: ConstrainedBox(
+                    constraints:
+                        BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Icon(
-                              Icons.error_outline,
-                              color: AppColors.error,
-                              size: 20,
+                            // Title
+                            Text(
+                              'Enter your seed phrase',
+                              style: AppTypography.h2.copyWith(
+                                color: AppColors.textPrimary,
+                              ),
                             ),
-                            const SizedBox(width: AppSpacing.sm),
-                            Expanded(
-                              child: Text(
-                                _validationError!,
-                                style: AppTypography.body.copyWith(
-                                  color: AppColors.error,
+
+                            const SizedBox(height: AppSpacing.sm),
+
+                            Text(
+                              'Enter the $_wordCount words in order.',
+                              style: AppTypography.body.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+
+                            const SizedBox(height: AppSpacing.md),
+
+                            // Word count toggle
+                            Row(
+                              children: [
+                                _WordCountChip(
+                                  label: '12 words',
+                                  selected: _wordCount == 12,
+                                  onTap: () => setState(() => _wordCount = 12),
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                                _WordCountChip(
+                                  label: '24 words',
+                                  selected: _wordCount == 24,
+                                  onTap: () => setState(() => _wordCount = 24),
+                                ),
+                                const Spacer(),
+                                PTextButton(
+                                  label: 'Clear all',
+                                  leadingIcon: Icons.clear,
+                                  variant: PTextButtonVariant.subtle,
+                                  onPressed: _clearAll,
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: AppSpacing.lg),
+
+                            // Word grid
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                childAspectRatio: 2.5,
+                                crossAxisSpacing: AppSpacing.sm,
+                                mainAxisSpacing: AppSpacing.sm,
+                              ),
+                              itemCount: _wordCount,
+                              itemBuilder: (context, index) {
+                                return _WordInput(
+                                  index: index,
+                                  controller: _wordControllers[index],
+                                  focusNode: _focusNodes[index],
+                                  isLast: index == _wordCount - 1,
+                                  onSubmitted: () {
+                                    if (index < _wordCount - 1) {
+                                      _focusNodes[index + 1].requestFocus();
+                                    } else {
+                                      _focusNodes[index].unfocus();
+                                      _validateAndProceed();
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+
+                            const SizedBox(height: AppSpacing.lg),
+
+                            // Error message
+                            if (_validationError != null)
+                              Container(
+                                padding: const EdgeInsets.all(AppSpacing.md),
+                                decoration: BoxDecoration(
+                                  color: AppColors.error.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color:
+                                        AppColors.error.withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      color: AppColors.error,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: AppSpacing.sm),
+                                    Expanded(
+                                      child: Text(
+                                        _validationError!,
+                                        style: AppTypography.body.copyWith(
+                                          color: AppColors.error,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
+
+                            const SizedBox(height: AppSpacing.lg),
+
+                            // Security notice
+                            Container(
+                              padding: const EdgeInsets.all(AppSpacing.md),
+                              decoration: BoxDecoration(
+                                color:
+                                    AppColors.warning.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color:
+                                      AppColors.warning.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.security,
+                                    color: AppColors.warning,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: AppSpacing.sm),
+                                  Expanded(
+                                    child: Text(
+                                      'Keep this private. Anyone with your seed phrase '
+                                      'can access your funds.',
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const Spacer(),
+
+                            PButton(
+                              text: _isValidating ? 'Validating...' : 'Continue',
+                              onPressed: _isComplete && !_isValidating
+                                  ? _validateAndProceed
+                                  : null,
+                              variant: PButtonVariant.primary,
+                              size: PButtonSize.large,
+                              isLoading: _isValidating,
                             ),
                           ],
                         ),
                       ),
-
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // Security notice
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.warning.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.security,
-                            color: AppColors.warning,
-                            size: 20,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              'Keep this private. Anyone with your seed phrase '
-                              'can access your funds.',
-                              style: AppTypography.caption.copyWith(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
-
-                    const SizedBox(height: AppSpacing.xl),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // Continue button
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              gutter,
-              AppSpacing.lg,
-              gutter,
-              AppSpacing.lg + viewInsets,
-            ),
-            child: PButton(
-              text: _isValidating ? 'Validating...' : 'Continue',
-              onPressed: _isComplete && !_isValidating
-                  ? _validateAndProceed
-                  : null,
-              variant: PButtonVariant.primary,
-              size: PButtonSize.large,
-              isLoading: _isValidating,
+                  ),
+                );
+              },
             ),
           ),
         ],
