@@ -381,13 +381,13 @@ EOF
     
     # Build deb package
     normalize_mtime "$DEB_DIR"
-    dpkg-deb --build "$DEB_DIR" "$OUTPUT_DIR/pirate-unified-wallet_1.0.0_amd64.deb"
+    dpkg-deb --build "$DEB_DIR" "$OUTPUT_DIR/pirate-unified-wallet-amd64.deb"
     
     # Generate checksum
     cd "$OUTPUT_DIR"
-    sha256sum "pirate-unified-wallet_1.0.0_amd64.deb" > "pirate-unified-wallet_1.0.0_amd64.deb.sha256"
+    sha256sum "pirate-unified-wallet-amd64.deb" > "pirate-unified-wallet-amd64.deb.sha256"
     
-    log "Debian package created: $OUTPUT_DIR/pirate-unified-wallet_1.0.0_amd64.deb"
+    log "Debian package created: $OUTPUT_DIR/pirate-unified-wallet-amd64.deb"
     
     # Create repository metadata (for apt install pirate-unified-wallet)
     create_apt_repo_metadata
@@ -401,7 +401,7 @@ create_apt_repo_metadata() {
     mkdir -p "$REPO_DIR/dists/stable/main/binary-amd64"
     
     # Copy deb to pool
-    cp "$OUTPUT_DIR/pirate-unified-wallet_1.0.0_amd64.deb" "$REPO_DIR/pool/main/"
+    cp "$OUTPUT_DIR/pirate-unified-wallet-amd64.deb" "$REPO_DIR/pool/main/"
     
     if ! command -v dpkg-scanpackages &> /dev/null; then
         error "dpkg-scanpackages not found. Install dpkg-dev to generate apt metadata."
@@ -458,7 +458,7 @@ Replace `<APT_REPO_URL>` with the official repository URL when published.
 For local installation from the .deb file:
 
 ```bash
-sudo dpkg -i pirate-unified-wallet_1.0.0_amd64.deb
+sudo dpkg -i pirate-unified-wallet-amd64.deb
 sudo apt-get install -f  # Install dependencies
 ```
 
@@ -467,7 +467,7 @@ sudo apt-get install -f  # Install dependencies
 Verify the package signature:
 
 ```bash
-sha256sum -c pirate-unified-wallet_1.0.0_amd64.deb.sha256
+sha256sum -c pirate-unified-wallet-amd64.deb.sha256
 ```
 EOF
     

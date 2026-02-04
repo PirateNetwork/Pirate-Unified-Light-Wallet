@@ -25,6 +25,23 @@ warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+abi_label() {
+    case "$1" in
+        arm64-v8a)
+            echo "V8"
+            ;;
+        armeabi-v7a)
+            echo "V7"
+            ;;
+        x86_64)
+            echo "x86"
+            ;;
+        *)
+            echo "$1"
+            ;;
+    esac
+}
+
 # Parse arguments
 BUILD_TYPE="${1:-apk}"  # apk or bundle
 SIGN="${2:-false}"      # Sign the build
@@ -187,10 +204,11 @@ if [ "$BUILD_TYPE" = "apk" ]; then
         if [ "$APK_MODE" != "split" ]; then
             abi="arm64-v8a"
         fi
+        abi_tag="$(abi_label "$abi")"
         if [ "$SIGNED" = "true" ]; then
-            OUTPUT_NAME="pirate-unified-wallet-android-${abi}.apk"
+            OUTPUT_NAME="pirate-unified-wallet-android-${abi_tag}.apk"
         else
-            OUTPUT_NAME="pirate-unified-wallet-android-${abi}-unsigned.apk"
+            OUTPUT_NAME="pirate-unified-wallet-android-${abi_tag}-unsigned.apk"
         fi
         cp "$apk" "$OUTPUT_DIR/$OUTPUT_NAME"
         sha256sum "$OUTPUT_DIR/$OUTPUT_NAME" > "$OUTPUT_DIR/$OUTPUT_NAME.sha256"

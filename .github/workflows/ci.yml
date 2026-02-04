@@ -581,32 +581,32 @@ jobs:
       - name: Generate Provenance
         run: |
           chmod +x scripts/generate-provenance.sh
-          ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-arm64-v8a-unsigned.apk dist/provenance
+          ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-V8-unsigned.apk dist/provenance
           ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-unsigned.aab dist/provenance
 
-      - name: Upload APK (arm64-v8a)
+      - name: Upload APK (V8)
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-unsigned-arm64-v8a
+          name: android-apk-unsigned-v8
           path: |
-            dist/android/pirate-unified-wallet-android-arm64-v8a-unsigned.apk
-            dist/android/pirate-unified-wallet-android-arm64-v8a-unsigned.apk.sha256
+            dist/android/pirate-unified-wallet-android-V8-unsigned.apk
+            dist/android/pirate-unified-wallet-android-V8-unsigned.apk.sha256
 
-      - name: Upload APK (armeabi-v7a)
+      - name: Upload APK (V7)
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-unsigned-armeabi-v7a
+          name: android-apk-unsigned-v7
           path: |
-            dist/android/pirate-unified-wallet-android-armeabi-v7a-unsigned.apk
-            dist/android/pirate-unified-wallet-android-armeabi-v7a-unsigned.apk.sha256
+            dist/android/pirate-unified-wallet-android-V7-unsigned.apk
+            dist/android/pirate-unified-wallet-android-V7-unsigned.apk.sha256
 
-      - name: Upload APK (x86_64)
+      - name: Upload APK (x86)
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-unsigned-x86_64
+          name: android-apk-unsigned-x86
           path: |
-            dist/android/pirate-unified-wallet-android-x86_64-unsigned.apk
-            dist/android/pirate-unified-wallet-android-x86_64-unsigned.apk.sha256
+            dist/android/pirate-unified-wallet-android-x86-unsigned.apk
+            dist/android/pirate-unified-wallet-android-x86-unsigned.apk.sha256
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
@@ -1002,7 +1002,7 @@ jobs:
         run: |
           chmod +x scripts/generate-provenance.sh
           ./scripts/generate-provenance.sh dist/linux/pirate-unified-wallet-linux-x86_64.AppImage dist/provenance
-          ./scripts/generate-provenance.sh dist/linux/pirate-unified-wallet_1.0.0_amd64.deb dist/provenance
+          ./scripts/generate-provenance.sh dist/linux/pirate-unified-wallet-amd64.deb dist/provenance
 
       - name: Upload AppImage
         uses: actions/upload-artifact@v4
@@ -1079,25 +1079,25 @@ jobs:
         run: |
           yes | sdkmanager "build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}"
 
-      - name: Download APK artifacts (arm64-v8a)
+      - name: Download APK artifacts (V8)
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: android-apk-unsigned-arm64-v8a
+          name: android-apk-unsigned-v8
           path: dist/android
 
-      - name: Download APK artifacts (armeabi-v7a)
+      - name: Download APK artifacts (V7)
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: android-apk-unsigned-armeabi-v7a
+          name: android-apk-unsigned-v7
           path: dist/android
 
-      - name: Download APK artifacts (x86_64)
+      - name: Download APK artifacts (x86)
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: android-apk-unsigned-x86_64
+          name: android-apk-unsigned-x86
           path: dist/android
 
       - name: Download AAB artifacts
@@ -1163,34 +1163,34 @@ jobs:
             "$KEY_ALIAS"
           sha256sum "$AAB_SIGNED" > "$AAB_SIGNED.sha256"
 
-      - name: Upload signed APK (arm64-v8a)
+      - name: Upload signed APK (V8)
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-signed-arm64-v8a
+          name: android-apk-signed-v8
           path: |
-            dist/android/pirate-unified-wallet-android-arm64-v8a.apk
-            dist/android/pirate-unified-wallet-android-arm64-v8a.apk.sha256
+            dist/android/pirate-unified-wallet-android-V8.apk
+            dist/android/pirate-unified-wallet-android-V8.apk.sha256
           if-no-files-found: error
 
-      - name: Upload signed APK (armeabi-v7a)
+      - name: Upload signed APK (V7)
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-signed-armeabi-v7a
+          name: android-apk-signed-v7
           path: |
-            dist/android/pirate-unified-wallet-android-armeabi-v7a.apk
-            dist/android/pirate-unified-wallet-android-armeabi-v7a.apk.sha256
+            dist/android/pirate-unified-wallet-android-V7.apk
+            dist/android/pirate-unified-wallet-android-V7.apk.sha256
           if-no-files-found: error
 
-      - name: Upload signed APK (x86_64)
+      - name: Upload signed APK (x86)
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-signed-x86_64
+          name: android-apk-signed-x86
           path: |
-            dist/android/pirate-unified-wallet-android-x86_64.apk
-            dist/android/pirate-unified-wallet-android-x86_64.apk.sha256
+            dist/android/pirate-unified-wallet-android-x86.apk
+            dist/android/pirate-unified-wallet-android-x86.apk.sha256
           if-no-files-found: error
 
       - name: Upload signed AAB
