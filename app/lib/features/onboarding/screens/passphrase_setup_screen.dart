@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../design/deep_space_theme.dart';
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/security/screenshot_protection.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
 import '../../../ui/organisms/p_app_bar.dart';
@@ -40,6 +41,7 @@ class _PassphraseSetupScreenState
   bool _obscureConfirm = true;
   bool _isSaving = false;
   String? _error;
+  ScreenProtection? _screenProtection;
 
   PassphraseStrength _strength = PassphraseStrength.weak;
   bool _passwordsMatch = false;
@@ -49,13 +51,25 @@ class _PassphraseSetupScreenState
     super.initState();
     _passphraseController.addListener(_onPassphraseChanged);
     _confirmController.addListener(_onConfirmChanged);
+    _disableScreenshots();
   }
 
   @override
   void dispose() {
     _passphraseController.dispose();
     _confirmController.dispose();
+    _enableScreenshots();
     super.dispose();
+  }
+
+  void _disableScreenshots() {
+    if (_screenProtection != null) return;
+    _screenProtection = ScreenshotProtection.protect();
+  }
+
+  void _enableScreenshots() {
+    _screenProtection?.dispose();
+    _screenProtection = null;
   }
 
   void _onPassphraseChanged() {
