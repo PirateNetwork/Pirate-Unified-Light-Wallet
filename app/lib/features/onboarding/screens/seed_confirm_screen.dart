@@ -134,21 +134,27 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
       // Create wallet with the mnemonic we generated
       await ref.read(onboardingControllerProvider.notifier).complete('My Pirate Wallet');
       
-      if (mounted) {
-        // Invalidate walletsExistProvider to refresh it after wallet creation
-        ref.invalidate(walletsExistProvider);
-        // Ensure app is marked as unlocked
-        ref.read(appUnlockedProvider.notifier).unlocked = true;
-        // Navigate to home
-        context.go('/home');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Wallet created. Syncing...'),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+      ref.invalidate(walletsExistProvider);
+      final walletsExist = await ref.read(walletsExistProvider.future);
+      if (!mounted) return;
+      if (!walletsExist) {
+        setState(() {
+          _error = 'Wallet creation succeeded but was not detected. Try again.';
+          _isVerifying = false;
+        });
+        return;
       }
+      // Ensure app is marked as unlocked
+      ref.read(appUnlockedProvider.notifier).unlocked = true;
+      // Navigate to home
+      context.go('/home');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Wallet created. Syncing...'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e) {
       setState(() {
         _error = 'Verification failed: $e';

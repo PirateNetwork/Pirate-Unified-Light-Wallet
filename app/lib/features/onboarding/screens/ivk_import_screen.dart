@@ -131,6 +131,16 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
       ref.read(refreshWalletsProvider)();
 
       if (mounted) {
+        ref.invalidate(walletsExistProvider);
+        final walletsExist = await ref.read(walletsExistProvider.future);
+        if (!mounted) return;
+        if (!walletsExist) {
+          setState(() {
+            _error = 'Wallet import succeeded but was not detected. Try again.';
+            _isImporting = false;
+          });
+          return;
+        }
         // Navigate to home with success message
         context.go('/home');
         

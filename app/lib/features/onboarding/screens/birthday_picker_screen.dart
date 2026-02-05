@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../config/endpoints.dart' as endpoints;
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/providers/wallet_providers.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
@@ -178,21 +179,29 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
         ..setBirthdayHeight(selectedHeight)
         ..nextStep();
 
-      if (mounted) {
-        context.go('/home');
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              state.mode == OnboardingMode.create
-                  ? 'Wallet created. Syncing...'
-                  : 'Wallet restored. Syncing from block ${_formatHeight(selectedHeight)}...',
-            ),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+      ref.invalidate(walletsExistProvider);
+      final walletsExist = await ref.read(walletsExistProvider.future);
+      if (!mounted) return;
+      if (!walletsExist) {
+        setState(() {
+          _error = 'Wallet creation succeeded but was not detected. Try again.';
+          _isCreating = false;
+        });
+        return;
       }
+      context.go('/home');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            state.mode == OnboardingMode.create
+                ? 'Wallet created. Syncing...'
+                : 'Wallet restored. Syncing from block ${_formatHeight(selectedHeight)}...',
+          ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e) {
       setState(() {
         _error = 'Failed to create wallet: $e';
