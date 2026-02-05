@@ -32,3 +32,4 @@ Low priority
 - Decide with team on an app name + logo/icon.
 - Add support for offline signing (without hardware wallet).
 - Add iOS and macOS Github action cert signing secrets.
+- Automate in app versioning based on git tags
