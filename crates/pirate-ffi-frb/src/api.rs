@@ -2270,7 +2270,9 @@ pub fn list_address_balances(
                     None
                 } else {
                     decode_orchard_address_bytes_from_note_bytes(note_bytes)
-                        .and_then(|bytes| Option::from(OrchardAddress::from_raw_address_bytes(&bytes)))
+                        .and_then(|bytes| {
+                            Option::from(OrchardAddress::from_raw_address_bytes(&bytes))
+                        })
                         .and_then(|addr| {
                             OrchardPaymentAddress { inner: addr }
                                 .encode_for_network(network_type)
@@ -2286,7 +2288,9 @@ pub fn list_address_balances(
             Ok(v) => v,
             Err(_) => continue,
         };
-        let entry = balances_by_address.entry(address_string).or_insert((0, 0, 0));
+        let entry = balances_by_address
+            .entry(address_string)
+            .or_insert((0, 0, 0));
         entry.0 = entry
             .0
             .checked_add(value)
@@ -2343,29 +2347,33 @@ pub fn list_address_balances(
     let created_at = chrono::Utc::now().timestamp();
     let mut scanned_addresses: HashMap<String, u32> = HashMap::new();
     if let Some(fvk) = sapling_fvk.as_ref() {
-        scan_sequential_addresses(
-            &repo,
-            secret.account_id,
-            scan_key_id,
-            AddressType::Sapling,
-            &balances_by_address,
-            |index| Some(fvk.derive_address(index).encode_for_network(network_type)),
-            &mut scanned_addresses,
+        let mut scan_context = SequentialAddressScan {
+            repo: &repo,
+            account_id: secret.account_id,
+            key_id: scan_key_id,
+            address_type: AddressType::Sapling,
+            balances_by_address: &balances_by_address,
+            scanned: &mut scanned_addresses,
             created_at,
-        )?;
+        };
+        scan_sequential_addresses(&mut scan_context, |index| {
+            Some(fvk.derive_address(index).encode_for_network(network_type))
+        })?;
     }
     if orchard_active {
         if let Some(fvk) = orchard_fvk.as_ref() {
-            scan_sequential_addresses(
-                &repo,
-                secret.account_id,
-                scan_key_id,
-                AddressType::Orchard,
-                &balances_by_address,
-                |index| fvk.address_at(index).encode_for_network(network_type).ok(),
-                &mut scanned_addresses,
+            let mut scan_context = SequentialAddressScan {
+                repo: &repo,
+                account_id: secret.account_id,
+                key_id: scan_key_id,
+                address_type: AddressType::Orchard,
+                balances_by_address: &balances_by_address,
+                scanned: &mut scanned_addresses,
                 created_at,
-            )?;
+            };
+            scan_sequential_addresses(&mut scan_context, |index| {
+                fvk.address_at(index).encode_for_network(network_type).ok()
+            })?;
         }
     }
     for note in notes.iter_mut() {
@@ -2530,15 +2538,19 @@ pub fn list_address_balances(
     Ok(infos)
 }
 
-fn scan_sequential_addresses<F>(
-    repo: &pirate_storage_sqlite::Repository,
+struct SequentialAddressScan<'a> {
+    repo: &'a pirate_storage_sqlite::Repository<'a>,
     account_id: i64,
     key_id: i64,
     address_type: AddressType,
-    balances_by_address: &HashMap<String, (u64, u64, u64)>,
-    mut derive_address: F,
-    scanned: &mut HashMap<String, u32>,
+    balances_by_address: &'a HashMap<String, (u64, u64, u64)>,
+    scanned: &'a mut HashMap<String, u32>,
     created_at: i64,
+}
+
+fn scan_sequential_addresses<F>(
+    context: &mut SequentialAddressScan<'_>,
+    mut derive_address: F,
 ) -> Result<()>
 where
     F: FnMut(u32) -> Option<String>,
@@ -2550,19 +2562,20 @@ where
         };
         let address_record = pirate_storage_sqlite::Address {
             id: None,
-            key_id: Some(key_id),
-            account_id,
+            key_id: Some(context.key_id),
+            account_id: context.account_id,
             diversifier_index: index,
             address: address.clone(),
-            address_type,
+            address_type: context.address_type,
             label: None,
-            created_at,
+            created_at: context.created_at,
             color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
             address_scope: pirate_storage_sqlite::AddressScope::External,
         };
-        let _ = repo.upsert_address(&address_record);
-        scanned.entry(address.clone()).or_insert(index);
-        let has_balance = balances_by_address
+        let _ = context.repo.upsert_address(&address_record);
+        context.scanned.entry(address.clone()).or_insert(index);
+        let has_balance = context
+            .balances_by_address
             .get(&address)
             .map(|(total, _, _)| *total > 0)
             .unwrap_or(false);

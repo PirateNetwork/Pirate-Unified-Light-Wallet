@@ -80,6 +80,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
 
   Future<void> _showImportViewingKeyDialog() async {
     final defaultBirthday = await _getDefaultBirthdayHeight();
+    if (!mounted) return;
     final nameController = TextEditingController(text: 'View only wallet');
     final saplingController = TextEditingController();
     final orchardController = TextEditingController();

@@ -649,16 +649,16 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   String? _selectImportedReceiveAddress(
     List<AddressBalanceInfo> addresses,
     List<KeyGroupInfo> importedKeys,
-    {String? preferredAddress},
+    {String? preferredAddress}
   ) {
     if (importedKeys.isEmpty) return null;
-    final importedIds = importedKeys.map((key) => key.id.toInt()).toSet();
+    final importedIds = importedKeys.map((key) => key.id).toSet();
     if (preferredAddress != null && preferredAddress.isNotEmpty) {
       for (final address in addresses) {
         if (address.address != preferredAddress) {
           continue;
         }
-        final keyId = address.keyId?.toInt();
+        final keyId = address.keyId;
         if (keyId == null || !importedIds.contains(keyId)) {
           return null;
         }
@@ -673,7 +673,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
     }
     AddressBalanceInfo? candidate;
     for (final address in addresses) {
-      final keyId = address.keyId?.toInt();
+      final keyId = address.keyId;
       if (keyId == null || !importedIds.contains(keyId)) {
         continue;
       }
@@ -682,8 +682,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
           address.spendable != BigInt.zero) {
         continue;
       }
-      if (candidate == null ||
-          address.createdAt.toInt() > candidate.createdAt.toInt()) {
+      if (candidate == null || address.createdAt > candidate.createdAt) {
         candidate = address;
       }
     }

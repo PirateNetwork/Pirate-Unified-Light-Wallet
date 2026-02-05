@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../ffi/ffi_bridge.dart';
@@ -9,7 +8,7 @@ import '../ffi/generated/models.dart' show WalletMeta;
 
 class BirthdayUpdateService {
   static const String _storageKey = 'pending_wallet_birthday_v1';
-  static final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  static const FlutterSecureStorage _storage = FlutterSecureStorage();
   static final Set<String> _inFlight = <String>{};
 
   static Future<void> markPending(WalletId walletId, int fallbackHeight) async {

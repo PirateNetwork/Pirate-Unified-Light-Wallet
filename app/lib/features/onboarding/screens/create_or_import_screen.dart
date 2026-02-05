@@ -82,12 +82,11 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
             PCard(
               child: InkWell(
                 onTap: () async {
-                  final controller =
-                      ref.read(onboardingControllerProvider.notifier);
-                  controller.reset(startAt: OnboardingStep.createOrImport);
-                  controller.setMode(OnboardingMode.create);
+                  ref.read(onboardingControllerProvider.notifier)
+                    ..reset(startAt: OnboardingStep.createOrImport)
+                    ..setMode(OnboardingMode.create)
+                    ..nextStep();
                   final hasPassphrase = await FfiBridge.hasAppPassphrase();
-                  controller.nextStep();
                   if (!context.mounted) return;
                   if (hasPassphrase) {
                     unawaited(context.push('/onboarding/backup-warning'));
@@ -158,11 +157,10 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
             PCard(
               child: InkWell(
                 onTap: () {
-                  final controller =
-                      ref.read(onboardingControllerProvider.notifier);
-                  controller.reset(startAt: OnboardingStep.createOrImport);
-                  controller.setMode(OnboardingMode.import);
-                  controller.nextStep();
+                  ref.read(onboardingControllerProvider.notifier)
+                    ..reset(startAt: OnboardingStep.createOrImport)
+                    ..setMode(OnboardingMode.import)
+                    ..nextStep();
                   context.push('/onboarding/import-seed');
                 },
                 borderRadius: BorderRadius.circular(16),
@@ -227,19 +225,20 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
             PCard(
               child: InkWell(
                 onTap: () async {
-                  final controller =
-                      ref.read(onboardingControllerProvider.notifier);
-                  controller.reset(startAt: OnboardingStep.createOrImport);
-                  controller.setMode(OnboardingMode.watchOnly);
+                  ref.read(onboardingControllerProvider.notifier)
+                    ..reset(startAt: OnboardingStep.createOrImport)
+                    ..setMode(OnboardingMode.watchOnly);
                   final hasPassphrase = await FfiBridge.hasAppPassphrase();
                   final isUnlocked = ref.read(appUnlockedProvider);
                   if (hasPassphrase && !isUnlocked) {
                     if (!context.mounted) return;
-                    context.push('/unlock?redirect=/onboarding/import-ivk');
+                    unawaited(
+                      context.push('/unlock?redirect=/onboarding/import-ivk'),
+                    );
                     return;
                   }
                   if (!context.mounted) return;
-                  context.push('/onboarding/import-ivk');
+                  unawaited(context.push('/onboarding/import-ivk'));
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(

@@ -216,7 +216,7 @@ class OnboardingController extends Notifier<OnboardingState> {
             birthday: birthday,
           );
         }
-        if (resolution?.timedOut == true) {
+        if (resolution?.timedOut ?? false) {
           await BirthdayUpdateService.markPending(walletId, birthday);
           unawaited(BirthdayUpdateService.updateWhenAvailable(
             walletId,

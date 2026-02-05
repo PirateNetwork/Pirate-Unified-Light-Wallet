@@ -106,10 +106,9 @@ class WelcomeScreen extends ConsumerWidget {
                     PButton(
                       text: 'Get Started',
                       onPressed: () {
-                        final controller =
-                            ref.read(onboardingControllerProvider.notifier);
-                        controller.reset(startAt: OnboardingStep.welcome);
-                        controller.nextStep();
+                        ref.read(onboardingControllerProvider.notifier)
+                          ..reset(startAt: OnboardingStep.welcome)
+                          ..nextStep();
                         context.push('/onboarding/create-or-import');
                       },
                       variant: PButtonVariant.primary,
