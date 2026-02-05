@@ -226,133 +226,135 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
               isCompactHeight ? AppSpacing.xs : AppSpacing.sm;
           final sectionSpacing =
               isCompactHeight ? AppSpacing.lg : AppSpacing.xl;
-          return SingleChildScrollView(
-            padding: contentPadding,
+          return CustomScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (isCompactHeight)
-                        SizedBox(height: AppSpacing.lg)
-                      else
-                        const Spacer(),
-                      
-                      // Icon
-                      Icon(
-                        Icons.lock_outline,
-                        size: iconSize,
-                        color: AppColors.accentPrimary,
-                      ),
-                      
-                      SizedBox(height: iconSpacing),
-                      
-                      // Title
-                      Text(
-                        'Enter Passphrase',
-                        style: AppTypography.h2.copyWith(
-                          color: AppColors.textPrimary,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      
-                      SizedBox(height: titleSpacing),
-                      
-                      // Subtitle
-                      Text(
-                        'Enter your passphrase to unlock and access your wallets',
-                        style: AppTypography.body.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      
-                      SizedBox(height: sectionSpacing),
+            slivers: [
+              SliverPadding(
+                padding: contentPadding,
+                sliver: SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (isCompactHeight)
+                          SizedBox(height: AppSpacing.lg)
+                        else
+                          const Spacer(),
 
-                      // Passphrase input
-                      PInput(
-                        controller: _passphraseController,
-                        label: 'Passphrase',
-                        hint: 'Enter your passphrase',
-                        obscureText: _obscurePassphrase,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _unlock(),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassphrase
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
+                        // Icon
+                        Icon(
+                          Icons.lock_outline,
+                          size: iconSize,
+                          color: AppColors.accentPrimary,
+                        ),
+
+                        SizedBox(height: iconSpacing),
+
+                        // Title
+                        Text(
+                          'Enter Passphrase',
+                          style: AppTypography.h2.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        SizedBox(height: titleSpacing),
+
+                        // Subtitle
+                        Text(
+                          'Enter your passphrase to unlock and access your wallets',
+                          style: AppTypography.body.copyWith(
                             color: AppColors.textSecondary,
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassphrase = !_obscurePassphrase;
-                            });
+                          textAlign: TextAlign.center,
+                        ),
+
+                        SizedBox(height: sectionSpacing),
+
+                        // Passphrase input
+                        PInput(
+                          controller: _passphraseController,
+                          label: 'Passphrase',
+                          hint: 'Enter your passphrase',
+                          obscureText: _obscurePassphrase,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _unlock(),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassphrase
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              color: AppColors.textSecondary,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassphrase = !_obscurePassphrase;
+                              });
+                            },
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your passphrase';
+                            }
+                            return null;
                           },
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your passphrase';
-                          }
-                          return null;
-                        },
-                      ),
-                      
-                      const SizedBox(height: AppSpacing.md),
-                      
-                      // Error message
-                      if (_error != null)
-                        Container(
-                          padding: const EdgeInsets.all(AppSpacing.md),
-                          decoration: BoxDecoration(
-                            color: AppColors.error.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: AppColors.error.withValues(alpha: 0.3),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                color: AppColors.error,
-                                size: 20,
+
+                        const SizedBox(height: AppSpacing.md),
+
+                        // Error message
+                        if (_error != null)
+                          Container(
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.error.withValues(alpha: 0.3),
                               ),
-                              const SizedBox(width: AppSpacing.sm),
-                              Expanded(
-                                child: Text(
-                                  _error!,
-                                  style: AppTypography.body.copyWith(
-                                    color: AppColors.error,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  color: AppColors.error,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                                Expanded(
+                                  child: Text(
+                                    _error!,
+                                    style: AppTypography.body.copyWith(
+                                      color: AppColors.error,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
+
+                        if (isCompactHeight)
+                          SizedBox(height: AppSpacing.lg)
+                        else
+                          const Spacer(),
+
+                        // Unlock button
+                        PButton(
+                          text: 'Unlock',
+                          onPressed: _isUnlocking ? null : _unlock,
+                          variant: PButtonVariant.primary,
+                          size: PButtonSize.large,
+                          isLoading: _isUnlocking,
                         ),
-                      
-                      if (isCompactHeight)
-                        SizedBox(height: AppSpacing.lg)
-                      else
-                        const Spacer(),
-                      
-                      // Unlock button
-                      PButton(
-                        text: 'Unlock',
-                        onPressed: _isUnlocking ? null : _unlock,
-                        variant: PButtonVariant.primary,
-                        size: PButtonSize.large,
-                        isLoading: _isUnlocking,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           );
         },
       ),

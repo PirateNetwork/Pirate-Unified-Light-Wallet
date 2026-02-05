@@ -173,110 +173,108 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
         subtitle: 'Confirm you wrote it down',
         showBackButton: true,
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
+      body: CustomScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        slivers: [
+          SliverPadding(
             padding: contentPadding,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const OnboardingProgressIndicator(
-                      currentStep: 6,
-                      totalSteps: 6,
+            sliver: SliverFillRemaining(
+              hasScrollBody: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const OnboardingProgressIndicator(
+                    currentStep: 6,
+                    totalSteps: 6,
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+                  Text(
+                    'Enter these words from your seed phrase',
+                    style: AppTypography.h2.copyWith(
+                      color: AppColors.textPrimary,
                     ),
-                    const SizedBox(height: AppSpacing.xxl),
-                    Text(
-                      'Enter these words from your seed phrase',
-                      style: AppTypography.h2.copyWith(
-                        color: AppColors.textPrimary,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    "This confirms you've written down your seed phrase correctly.",
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  // Word inputs
+                  ...List.generate(3, (i) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                      child: _SeedWordInput(
+                        controller: _wordControllers[i],
+                        focusNode: _focusNodes[i],
+                        label: 'Word ${_selectedIndices[i]}',
+                        hint: 'Enter word ${_selectedIndices[i]}',
+                        textInputAction:
+                            i < 2 ? TextInputAction.next : TextInputAction.done,
+                        autofocus: i == 0,
+                        onSubmitted: () {
+                          if (i < 2) {
+                            _focusNodes[i + 1].requestFocus();
+                          } else {
+                            _verifyAndProceed();
+                          }
+                        },
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      "This confirms you've written down your seed phrase correctly.",
-                      style: AppTypography.body.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-                    
-                    // Word inputs
-                    ...List.generate(3, (i) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                        child: _SeedWordInput(
-                          controller: _wordControllers[i],
-                          focusNode: _focusNodes[i],
-                          label: 'Word ${_selectedIndices[i]}',
-                          hint: 'Enter word ${_selectedIndices[i]}',
-                          textInputAction:
-                              i < 2 ? TextInputAction.next : TextInputAction.done,
-                          autofocus: i == 0,
-                          onSubmitted: () {
-                            if (i < 2) {
-                              _focusNodes[i + 1].requestFocus();
-                            } else {
-                              _verifyAndProceed();
-                            }
-                          },
+                    );
+                  }),
+
+                  if (_error != null) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.error.withValues(alpha: 0.3),
                         ),
-                      );
-                    }),
-                    
-                    if (_error != null) ...[
-                      const SizedBox(height: AppSpacing.md),
-                      Container(
-                        padding: const EdgeInsets.all(AppSpacing.md),
-                        decoration: BoxDecoration(
-                          color: AppColors.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.error.withValues(alpha: 0.3),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            color: AppColors.error,
+                            size: 20,
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              color: AppColors.error,
-                              size: 20,
-                            ),
-                            const SizedBox(width: AppSpacing.sm),
-                            Expanded(
-                              child: Text(
-                                _error!,
-                                style: AppTypography.body.copyWith(
-                                  color: AppColors.error,
-                                ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: AppTypography.body.copyWith(
+                                color: AppColors.error,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                    
-                    const Spacer(),
-                    
-                    PButton(
-                      text: 'Verify & Create Wallet',
-                      onPressed:
-                          _isComplete && !_isVerifying ? _verifyAndProceed : null,
-                      variant: PButtonVariant.primary,
-                      size: PButtonSize.large,
-                      isLoading: _isVerifying,
                     ),
                   ],
-                ),
+
+                  const Spacer(),
+
+                  PButton(
+                    text: 'Verify & Create Wallet',
+                    onPressed:
+                        _isComplete && !_isVerifying ? _verifyAndProceed : null,
+                    variant: PButtonVariant.primary,
+                    size: PButtonSize.large,
+                    isLoading: _isVerifying,
+                  ),
+                ],
               ),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

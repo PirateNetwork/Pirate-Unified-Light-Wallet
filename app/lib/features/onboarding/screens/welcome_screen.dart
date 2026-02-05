@@ -20,116 +20,114 @@ class WelcomeScreen extends ConsumerWidget {
 
     return PScaffold(
       title: 'Pirate Unified Wallet',
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
             padding: AppSpacing.screenPadding(
               screenWidth,
               vertical: AppSpacing.xl,
             ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Spacer(),
-                    // Logo/Brand
-                    TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      duration: const Duration(milliseconds: 800),
-                      curve: Curves.easeOut,
-                      builder: (context, value, child) {
-                        return Opacity(
-                          opacity: value,
-                          child: Transform.scale(
-                            scale: 0.8 + (0.2 * value),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: Icon(
-                        Icons.shield_outlined,
-                        size: 120,
-                        color: AppColors.accentPrimary,
-                        semanticLabel: 'Pirate Wallet Logo',
-                      ),
+            sliver: SliverFillRemaining(
+              hasScrollBody: false,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Spacer(),
+                  // Logo/Brand
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 800),
+                    curve: Curves.easeOut,
+                    builder: (context, value, child) {
+                      return Opacity(
+                        opacity: value,
+                        child: Transform.scale(
+                          scale: 0.8 + (0.2 * value),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Icon(
+                      Icons.shield_outlined,
+                      size: 120,
+                      color: AppColors.accentPrimary,
+                      semanticLabel: 'Pirate Wallet Logo',
                     ),
-                    const SizedBox(height: AppSpacing.xl),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
 
-                    // Title
-                    Text(
-                      'Pirate Unified Wallet',
-                      style: AppTypography.h1.copyWith(
-                        color: AppColors.textPrimary,
-                        height: isMobile ? 1.3 : null,
-                      ),
-                      textAlign: TextAlign.center,
+                  // Title
+                  Text(
+                    'Pirate Unified Wallet',
+                    style: AppTypography.h1.copyWith(
+                      color: AppColors.textPrimary,
+                      height: isMobile ? 1.3 : null,
                     ),
-                    const SizedBox(height: AppSpacing.md),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
 
-                    // Subtitle
-                    Text(
-                      'Privacy made convenient.\nKeys stay on your device.',
-                      style: AppTypography.body.copyWith(
-                        color: AppColors.textSecondary,
-                        height: isMobile ? 1.6 : 1.5,
-                      ),
-                      textAlign: TextAlign.center,
+                  // Subtitle
+                  Text(
+                    'Privacy made convenient.\nKeys stay on your device.',
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textSecondary,
+                      height: isMobile ? 1.6 : 1.5,
                     ),
+                    textAlign: TextAlign.center,
+                  ),
 
-                    const Spacer(),
+                  const Spacer(),
 
-                    // Features list
-                    _FeatureItem(
-                      icon: Icons.key,
-                      title: 'Self-custody',
-                      subtitle: 'Keys stay on your device',
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    _FeatureItem(
-                      icon: Icons.visibility_off,
-                      title: 'Private by default',
-                      subtitle: 'Shielded transactions',
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    _FeatureItem(
-                      icon: Icons.lock_outline,
-                      title: 'Encrypted',
-                      subtitle: 'No telemetry',
-                    ),
+                  // Features list
+                  _FeatureItem(
+                    icon: Icons.key,
+                    title: 'Self-custody',
+                    subtitle: 'Keys stay on your device',
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  _FeatureItem(
+                    icon: Icons.visibility_off,
+                    title: 'Private by default',
+                    subtitle: 'Shielded transactions',
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  _FeatureItem(
+                    icon: Icons.lock_outline,
+                    title: 'Encrypted',
+                    subtitle: 'No telemetry',
+                  ),
 
-                    const Spacer(),
+                  const Spacer(),
 
-                    // Get Started button
-                    PButton(
-                      text: 'Get Started',
-                      onPressed: () {
-                        ref.read(onboardingControllerProvider.notifier)
-                          ..reset(startAt: OnboardingStep.welcome)
-                          ..nextStep();
-                        context.push('/onboarding/create-or-import');
-                      },
-                      variant: PButtonVariant.primary,
-                      size: PButtonSize.large,
-                    ),
-                    const SizedBox(height: AppSpacing.md),
+                  // Get Started button
+                  PButton(
+                    text: 'Get Started',
+                    onPressed: () {
+                      ref.read(onboardingControllerProvider.notifier)
+                        ..reset(startAt: OnboardingStep.welcome)
+                        ..nextStep();
+                      context.push('/onboarding/create-or-import');
+                    },
+                    variant: PButtonVariant.primary,
+                    size: PButtonSize.large,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
 
-                    // Legal notice
-                    Text(
-                      'By continuing, you agree to the Terms and Privacy Policy',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textTertiary,
-                      ),
-                      textAlign: TextAlign.center,
+                  // Legal notice
+                  Text(
+                    'By continuing, you agree to the Terms and Privacy Policy',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textTertiary,
                     ),
-                  ],
-                ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

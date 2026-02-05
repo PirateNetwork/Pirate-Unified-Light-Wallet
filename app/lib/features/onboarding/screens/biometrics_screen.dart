@@ -111,85 +111,90 @@ class _OnboardingBiometricsScreenState
         subtitle: 'Faster unlock with device security',
         showBackButton: true,
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
             padding: AppSpacing.screenPadding(
               MediaQuery.of(context).size.width,
               vertical: AppSpacing.xl,
             ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    OnboardingProgressIndicator(
-                      currentStep: currentStep,
-                      totalSteps: totalSteps,
+            sliver: SliverFillRemaining(
+              hasScrollBody: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OnboardingProgressIndicator(
+                    currentStep: currentStep,
+                    totalSteps: totalSteps,
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+                  Text(
+                    'Use biometrics to unlock',
+                    style: AppTypography.h2.copyWith(
+                      color: AppColors.textPrimary,
                     ),
-                    const SizedBox(height: AppSpacing.xxl),
-                    Text(
-                      'Use biometrics to unlock',
-                      style: AppTypography.h2.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'You can still unlock with your passphrase. '
+                    'Biometrics never leave your device.',
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textSecondary,
                     ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      'You can still unlock with your passphrase. '
-                      'Biometrics never leave your device.',
-                      style: AppTypography.body.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xxl),
-                    if (_error != null)
-                      Container(
-                        padding: const EdgeInsets.all(AppSpacing.md),
-                        margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-                        decoration: BoxDecoration(
-                          color: AppColors.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.error.withValues(alpha: 0.3),
-                          ),
+                  ),
+                  const SizedBox(height: AppSpacing.xxl),
+                  if (_error != null)
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.error.withValues(alpha: 0.3),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.error_outline, color: AppColors.error, size: 18),
-                            const SizedBox(width: AppSpacing.sm),
-                            Expanded(
-                              child: Text(
-                                _error!,
-                                style: AppTypography.body.copyWith(
-                                  color: AppColors.error,
-                                ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            color: AppColors.error,
+                            size: 18,
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: AppTypography.body.copyWith(
+                                color: AppColors.error,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    const Spacer(),
-                    PButton(
-                      text: _isAvailable ? 'Enable biometrics' : 'Biometrics unavailable',
-                      onPressed: !_isAvailable || _isLoading ? null : _enableBiometrics,
-                      variant: PButtonVariant.primary,
-                      size: PButtonSize.large,
-                      isLoading: _isLoading,
                     ),
-                    const SizedBox(height: AppSpacing.md),
-                    PTextButton(
-                      label: 'Skip for now',
-                      onPressed: _isLoading ? null : _skip,
-                      variant: PTextButtonVariant.subtle,
-                    ),
-                  ],
-                ),
+                  const Spacer(),
+                  PButton(
+                    text: _isAvailable
+                        ? 'Enable biometrics'
+                        : 'Biometrics unavailable',
+                    onPressed:
+                        !_isAvailable || _isLoading ? null : _enableBiometrics,
+                    variant: PButtonVariant.primary,
+                    size: PButtonSize.large,
+                    isLoading: _isLoading,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  PTextButton(
+                    label: 'Skip for now',
+                    onPressed: _isLoading ? null : _skip,
+                    variant: PTextButtonVariant.subtle,
+                  ),
+                ],
               ),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

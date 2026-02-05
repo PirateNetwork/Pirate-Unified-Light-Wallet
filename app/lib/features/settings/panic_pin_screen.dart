@@ -240,79 +240,78 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
   }
 
   Widget _buildManageView() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          padding: PSpacing.screenPadding(
-            MediaQuery.of(context).size.width,
-            vertical: PSpacing.xl,
-          ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: IntrinsicHeight(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(PSpacing.lg),
-                    decoration: BoxDecoration(
-                      color: AppColors.successBackground,
-                      border: Border.all(color: AppColors.successBorder),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.check_circle, color: AppColors.success, size: 32),
-                        const SizedBox(width: PSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Duress passphrase configured',
-                                style: PTypography.bodyLarge(
-                                  color: AppColors.textPrimary,
-                                ).copyWith(fontWeight: FontWeight.w600),
+    final padding = PSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+      vertical: PSpacing.xl,
+    );
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: padding,
+          sliver: SliverFillRemaining(
+            hasScrollBody: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(PSpacing.lg),
+                  decoration: BoxDecoration(
+                    color: AppColors.successBackground,
+                    border: Border.all(color: AppColors.successBorder),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, color: AppColors.success, size: 32),
+                      const SizedBox(width: PSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Duress passphrase configured',
+                              style: PTypography.bodyLarge(
+                                color: AppColors.textPrimary,
+                              ).copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: PSpacing.xs),
+                            Text(
+                              'Entering it opens a decoy wallet.',
+                              style: PTypography.bodyMedium(
+                                color: AppColors.textSecondary,
                               ),
-                              const SizedBox(height: PSpacing.xs),
-                              Text(
-                                'Entering it opens a decoy wallet.',
-                                style: PTypography.bodyMedium(
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: PSpacing.xl),
-                  _buildInfoCard(),
-                  const Spacer(),
-                  PButton(
-                    onPressed: () {
-                      setState(() {
-                        _showSetup = true;
-                        _error = null;
-                      });
-                    },
-                    text: 'Update duress passphrase',
-                    fullWidth: true,
-                  ),
-                  const SizedBox(height: PSpacing.md),
-                  PButton(
-                    onPressed: _removeDuressPassphrase,
-                    icon: const Icon(Icons.delete_outline),
-                    variant: PButtonVariant.danger,
-                    text: 'Remove duress passphrase',
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: PSpacing.xl),
+                _buildInfoCard(),
+                const Spacer(),
+                PButton(
+                  onPressed: () {
+                    setState(() {
+                      _showSetup = true;
+                      _error = null;
+                    });
+                  },
+                  text: 'Update duress passphrase',
+                  fullWidth: true,
+                ),
+                const SizedBox(height: PSpacing.md),
+                PButton(
+                  onPressed: _removeDuressPassphrase,
+                  icon: const Icon(Icons.delete_outline),
+                  variant: PButtonVariant.danger,
+                  text: 'Remove duress passphrase',
+                ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 
