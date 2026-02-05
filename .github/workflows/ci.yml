@@ -1706,11 +1706,23 @@ jobs:
           TAG_NAME="${GITHUB_REF_NAME}"
           TAG_REF="refs/tags/$TAG_NAME"
           TAG_TYPE="$(git cat-file -t "$TAG_REF" 2>/dev/null || true)"
-          if [ "$TAG_TYPE" != "tag" ]; then
-            echo "Tag '$TAG_NAME' is not annotated. Recreate it with: git tag -a $TAG_NAME -m \"...\"" >&2
-            exit 1
+          if [ "$TAG_TYPE" = "tag" ]; then
+            TAG_BODY="$(git cat-file -p "$TAG_REF" | sed -n '1,/^$/d')"
+          else
+            echo "Tag '$TAG_NAME' is lightweight; using commit message fallback."
+            COMMIT_SHA="$(git rev-parse "$TAG_REF" 2>/dev/null || true)"
+            if [ -n "$COMMIT_SHA" ]; then
+              COMMIT_SUBJECT="$(git log -1 --format=%s "$COMMIT_SHA")"
+              COMMIT_BODY="$(git log -1 --format=%b "$COMMIT_SHA")"
+              if [ -n "$COMMIT_BODY" ]; then
+                TAG_BODY="$(printf "%s\n\n%s" "$COMMIT_SUBJECT" "$COMMIT_BODY")"
+              else
+                TAG_BODY="$COMMIT_SUBJECT"
+              fi
+            else
+              TAG_BODY="$TAG_NAME"
+            fi
           fi
-          TAG_BODY="$(git cat-file -p "$TAG_REF" | sed -n '1,/^$/d')"
           mkdir -p release-notes
           printf "%s\n" "$TAG_BODY" > release-notes/RELEASE_NOTES.md
 
