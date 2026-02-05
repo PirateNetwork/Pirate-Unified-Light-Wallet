@@ -176,7 +176,11 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    FfiBridge.setAppActive(state == AppLifecycleState.resumed);
+    if (state == AppLifecycleState.detached) {
+      FfiBridge.setAppActive(false);
+    } else {
+      FfiBridge.setAppActive(true);
+    }
   }
 
   @override
@@ -186,12 +190,12 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
   @override
   void onWindowBlur() {
-    FfiBridge.setAppActive(false);
+    // Keep polling active while the app is open.
   }
 
   @override
   void onWindowMinimize() {
-    FfiBridge.setAppActive(false);
+    FfiBridge.setAppActive(true);
   }
 
   @override
@@ -210,6 +214,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
   Future<void> onWindowClose() async {
     if (_closing) return;
     _closing = true;
+    FfiBridge.setAppActive(false);
     unawaited(windowManager.hide());
     unawaited(_shutdownTransports());
     final release = _singleInstanceLock?.release();

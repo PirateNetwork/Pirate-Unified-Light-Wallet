@@ -5295,6 +5295,61 @@ pub fn sync_status(wallet_id: WalletId) -> Result<SyncStatus> {
     }
 }
 
+fn schedule_target_height_update(
+    sync: Arc<tokio::sync::Mutex<SyncEngine>>,
+    session_arc: Arc<tokio::sync::Mutex<SyncSession>>,
+) {
+    if let Ok(mut session) = session_arc.try_lock() {
+        session.last_target_height_update = Some(std::time::Instant::now());
+    }
+
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        let sync_clone = Arc::clone(&sync);
+        let session_arc_clone = Arc::clone(&session_arc);
+        handle.spawn(async move {
+            let result = run_sync_engine_task(sync_clone, |engine| {
+                Box::pin(async move {
+                    engine
+                        .update_target_height()
+                        .await
+                        .map_err(anyhow::Error::from)
+                })
+            })
+            .await;
+            if result.is_ok() {
+                let mut session = session_arc_clone.lock().await;
+                session.last_target_height_update = Some(std::time::Instant::now());
+            }
+        });
+    } else {
+        let sync_clone = Arc::clone(&sync);
+        let session_arc_clone = Arc::clone(&session_arc);
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            if let Ok(runtime) = runtime {
+                runtime.block_on(async move {
+                    let result = run_sync_engine_task(sync_clone, |engine| {
+                        Box::pin(async move {
+                            engine
+                                .update_target_height()
+                                .await
+                                .map_err(anyhow::Error::from)
+                        })
+                    })
+                    .await;
+                    if result.is_ok() {
+                        if let Ok(mut session) = session_arc_clone.try_lock() {
+                            session.last_target_height_update = Some(std::time::Instant::now());
+                        }
+                    }
+                });
+            }
+        });
+    }
+}
+
 fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
     // #region agent log
     {
@@ -5439,88 +5494,14 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
     };
 
     let (progress_handle, perf_handle, sync_handle, last_status, last_target_update) = {
-        if let Ok(session) = session_arc.try_lock() {
-            (
-                session.progress.clone(),
-                session.perf.clone(),
-                session.sync.clone(),
-                session.last_status.clone(),
-                session.last_target_height_update,
-            )
-        } else {
-            // #region agent log
-            {
-                use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_sync_status_lock_busy","timestamp":{},"location":"api.rs:2626","message":"sync_status session lock busy","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                        ts, wallet_id
-                    );
-                }
-            }
-            // #endregion
-            if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
-                let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
-                if let Ok(state) = sync_storage.load_sync_state() {
-                    let percent = if state.target_height > 0 {
-                        (state.local_height as f64 / state.target_height as f64) * 100.0
-                    } else {
-                        0.0
-                    };
-                    // #region agent log
-                    {
-                        use std::io::Write;
-                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(debug_log_path())
-                        {
-                            let ts = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_millis();
-                            let _ = writeln!(
-                                file,
-                                r#"{{"id":"log_sync_status_state_busy","timestamp":{},"location":"api.rs:2652","message":"sync_status returning from sync_state (lock busy)","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
-                                ts, wallet_id, state.local_height, state.target_height, percent
-                            );
-                        }
-                    }
-                    // #endregion
-                    return Ok(SyncStatus {
-                        local_height: state.local_height,
-                        target_height: state.target_height,
-                        percent,
-                        eta: None,
-                        stage: crate::models::SyncStage::Verify,
-                        last_checkpoint: Some(state.last_checkpoint_height),
-                        blocks_per_second: 0.0,
-                        notes_decrypted: 0,
-                        last_batch_ms: 0,
-                    });
-                }
-            }
-            return Ok(SyncStatus {
-                local_height: 0,
-                target_height: 0,
-                percent: 0.0,
-                eta: None,
-                stage: crate::models::SyncStage::Headers,
-                last_checkpoint: None,
-                blocks_per_second: 0.0,
-                notes_decrypted: 0,
-                last_batch_ms: 0,
-            });
-        }
+        let session = session_arc.blocking_lock();
+        (
+            session.progress.clone(),
+            session.perf.clone(),
+            session.sync.clone(),
+            session.last_status.clone(),
+            session.last_target_height_update,
+        )
     };
 
     if let Some(progress) = progress_handle {
@@ -5531,25 +5512,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 .unwrap_or(true);
             if should_update {
                 if let Some(sync) = sync_handle.as_ref() {
-                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                        let sync_clone = Arc::clone(sync);
-                        let session_arc_clone = Arc::clone(&session_arc);
-                        handle.spawn(async move {
-                            let result = run_sync_engine_task(sync_clone, |engine| {
-                                Box::pin(async move {
-                                    engine
-                                        .update_target_height()
-                                        .await
-                                        .map_err(anyhow::Error::from)
-                                })
-                            })
-                            .await;
-                            if result.is_ok() {
-                                let mut session = session_arc_clone.lock().await;
-                                session.last_target_height_update = Some(std::time::Instant::now());
-                            }
-                        });
-                    }
+                    schedule_target_height_update(Arc::clone(sync), Arc::clone(&session_arc));
                 }
             }
             let status = SyncStatus {
@@ -5611,25 +5574,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     .unwrap_or(true);
 
                 if should_update {
-                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                        let sync_clone = Arc::clone(&sync);
-                        let session_arc_clone = Arc::clone(&session_arc);
-                        handle.spawn(async move {
-                            let result = run_sync_engine_task(sync_clone, |engine| {
-                                Box::pin(async move {
-                                    engine
-                                        .update_target_height()
-                                        .await
-                                        .map_err(anyhow::Error::from)
-                                })
-                            })
-                            .await;
-                            if result.is_ok() {
-                                let mut session = session_arc_clone.lock().await;
-                                session.last_target_height_update = Some(std::time::Instant::now());
-                            }
-                        });
-                    }
+                    schedule_target_height_update(Arc::clone(&sync), Arc::clone(&session_arc));
                 }
 
                 let status = SyncStatus {

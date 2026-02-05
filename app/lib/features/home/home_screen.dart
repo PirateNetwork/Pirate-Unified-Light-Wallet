@@ -261,17 +261,10 @@ class _HomeHeader extends ConsumerWidget {
                         ? PrivacyStatus.private
                         : PrivacyStatus.limited;
 
-    final currentHeight = displaySyncStatus?.localHeight ?? BigInt.zero;
-    final targetHeight = displaySyncStatus?.targetHeight ?? BigInt.zero;
-    final heightLag =
-        targetHeight > currentHeight ? targetHeight - currentHeight : BigInt.zero;
-    const syncLagThreshold = 10;
-    final isNearTip =
-        targetHeight > BigInt.zero && heightLag <= BigInt.from(syncLagThreshold);
     final isSyncing =
-        !tunnelBlocked && !isNearTip && (displaySyncStatus?.isSyncing ?? false);
-    final isComplete = !tunnelBlocked &&
-        (isNearTip || (displaySyncStatus?.isComplete ?? false));
+        !tunnelBlocked && (displaySyncStatus?.isSyncing ?? false);
+    final isComplete =
+        !tunnelBlocked && (displaySyncStatus?.isComplete ?? false);
 
     final balanceData = balanceAsync.when(
       data: (b) => b,
@@ -406,15 +399,10 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
         isDecoy ? decoySyncStatus : (tunnelBlocked ? null : syncStatus);
     final currentHeight = displaySyncStatus?.localHeight ?? BigInt.zero;
     final targetHeight = displaySyncStatus?.targetHeight ?? BigInt.zero;
-    final heightLag =
-        targetHeight > currentHeight ? targetHeight - currentHeight : BigInt.zero;
-    const syncLagThreshold = 10;
-    final isNearTip =
-        targetHeight > BigInt.zero && heightLag <= BigInt.from(syncLagThreshold);
     final isSyncing =
-        !tunnelBlocked && !isNearTip && (displaySyncStatus?.isSyncing ?? false);
-    final isComplete = !tunnelBlocked &&
-        (isNearTip || (displaySyncStatus?.isComplete ?? false));
+        !tunnelBlocked && (displaySyncStatus?.isSyncing ?? false);
+    final isComplete =
+        !tunnelBlocked && (displaySyncStatus?.isComplete ?? false);
 
     if (reduceMotion) {
       if (_syncAnimationController.isAnimating) {
@@ -426,7 +414,13 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
       _syncAnimationController.stop();
     }
 
-    final syncProgress = (displaySyncStatus?.percent ?? 0.0) / 100.0;
+    final rawPercent = displaySyncStatus?.percent ?? 0.0;
+    final displayPercent = (targetHeight > BigInt.zero)
+        ? (isComplete
+            ? rawPercent.clamp(0.0, 100.0)
+            : rawPercent.clamp(0.0, 99.9))
+        : 0.0;
+    final syncProgress = displayPercent / 100.0;
     final stage = isComplete
         ? 'Synced'
         : displaySyncStatus?.stageName ??
