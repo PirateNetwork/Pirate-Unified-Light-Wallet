@@ -1659,10 +1659,39 @@ class _RecipientsStep extends StatelessWidget {
     required this.onContinue,
   });
 
+  double _parseAmount(TextEditingController controller) {
+    final raw = controller.text.trim();
+    if (raw.isEmpty) return 0.0;
+    final value = double.tryParse(raw);
+    if (value == null || value.isNaN || value.isInfinite) return 0.0;
+    return value <= 0 ? 0.0 : value;
+  }
+
+  double _totalOtherAmounts(int excludeIndex) {
+    var total = 0.0;
+    for (var i = 0; i < outputs.length; i++) {
+      if (i == excludeIndex) continue;
+      total += _parseAmount(outputs[i].amountController);
+    }
+    return total;
+  }
+
+  double _maxAmountForOutput(int index) {
+    final otherTotal = _totalOtherAmounts(index);
+    final maxAmount = availableBalance - calculatedFee - otherTotal;
+    if (maxAmount.isNaN || maxAmount.isInfinite) return 0.0;
+    return maxAmount < 0 ? 0.0 : maxAmount;
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = totalAmount + calculatedFee;
     final hasEnough = total <= availableBalance;
+    final spendableAfterFee = availableBalance - calculatedFee;
+    final spendableForPercent =
+        spendableAfterFee.isFinite && spendableAfterFee > 0
+            ? spendableAfterFee
+            : 0.0;
 
     return Column(
       children: [
@@ -1733,8 +1762,11 @@ class _RecipientsStep extends StatelessWidget {
                   onImport == null ? null : () => onImport!(index);
 
               return _OutputCard(
+                key: ObjectKey(outputs[index]),
                 index: index,
                 output: outputs[index],
+                maxAmount: _maxAmountForOutput(index),
+                spendableForPercent: spendableForPercent,
                 canRemove: outputs.length > 1,
                 onRemove: () => onRemoveOutput(index),
                 onChanged: () => onOutputChanged(index),
@@ -1862,6 +1894,8 @@ class _RecipientsStep extends StatelessWidget {
 class _OutputCard extends StatelessWidget {
   final int index;
   final OutputEntry output;
+  final double maxAmount;
+  final double spendableForPercent;
   final bool canRemove;
   final VoidCallback onRemove;
   final VoidCallback onChanged;
@@ -1869,8 +1903,11 @@ class _OutputCard extends StatelessWidget {
   final VoidCallback? onImport;
 
   const _OutputCard({
+    super.key,
     required this.index,
     required this.output,
+    required this.maxAmount,
+    required this.spendableForPercent,
     required this.canRemove,
     required this.onRemove,
     required this.onChanged,
@@ -1878,8 +1915,18 @@ class _OutputCard extends StatelessWidget {
     this.onImport,
   });
 
+  static String _formatArrrFloor(double amount) {
+    if (amount <= 0) return '';
+    final arrrtoshis = (amount * 100000000.0).floor();
+    if (arrrtoshis <= 0) return '';
+    final floored = arrrtoshis / 100000000.0;
+    return floored.toStringAsFixed(8);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final canMax = maxAmount >= 0.00000001;
+
     return PCard(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -1992,6 +2039,24 @@ class _OutputCard extends StatelessWidget {
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => onChanged(),
+              suffixIcon: _AmountMaxButton(
+                enabled: canMax,
+                onTap: () {
+                  if (!canMax) return;
+                  output.amountController.text = _formatArrrFloor(maxAmount);
+                  onChanged();
+                },
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.xs),
+            _AmountPresetSlider(
+              maxAmount: maxAmount,
+              spendableForPercent: spendableForPercent,
+              controller: output.amountController,
+              onCommit: onChanged,
+              enabled: canMax,
+              formatter: _formatArrrFloor,
             ),
 
             const SizedBox(height: AppSpacing.md),
@@ -2020,6 +2085,255 @@ class _OutputCard extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AmountMaxButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _AmountMaxButton({
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final background = enabled
+        ? AppColors.selectedBackground
+        : AppColors.backgroundSurface.withValues(alpha: 0.6);
+    final border =
+        enabled ? AppColors.selectedBorder : AppColors.borderSubtle;
+    final textColor = enabled ? AppColors.accentPrimary : AppColors.textTertiary;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: AppSpacing.xs),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 36),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: AppSpacing.xs,
+          ),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+            border: Border.all(color: border),
+          ),
+          child: Text(
+            'MAX',
+            style: PTypography.labelSmall(color: textColor),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AmountPresetSlider extends StatefulWidget {
+  final double maxAmount;
+  final double spendableForPercent;
+  final TextEditingController controller;
+  final VoidCallback onCommit;
+  final bool enabled;
+  final String Function(double) formatter;
+
+  const _AmountPresetSlider({
+    required this.maxAmount,
+    required this.spendableForPercent,
+    required this.controller,
+    required this.onCommit,
+    required this.enabled,
+    required this.formatter,
+  });
+
+  @override
+  State<_AmountPresetSlider> createState() => _AmountPresetSliderState();
+}
+
+class _AmountPresetSliderState extends State<_AmountPresetSlider> {
+  double _value = 0.0;
+  static const double _presetEpsilon = 0.02;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = _valueFromController();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AmountPresetSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newValue = _valueFromController();
+    if ((_value - newValue).abs() >= 0.001) {
+      _value = newValue;
+    }
+  }
+
+  double _valueFromController() {
+    final maxAmount = widget.maxAmount;
+    if (maxAmount <= 0) return 0.0;
+
+    final raw = widget.controller.text.trim();
+    final amount = raw.isEmpty ? 0.0 : (double.tryParse(raw) ?? 0.0);
+    if (amount <= 0) return 0.0;
+    if (amount >= maxAmount) return 1.0;
+
+    final ratio = amount / maxAmount;
+    if (ratio.isNaN || ratio.isInfinite) return 0.0;
+    return ratio.clamp(0.0, 1.0);
+  }
+
+  double _currentAmount() {
+    final raw = widget.controller.text.trim();
+    if (raw.isEmpty) return 0.0;
+    final value = double.tryParse(raw);
+    if (value == null || value.isNaN || value.isInfinite) return 0.0;
+    return value <= 0 ? 0.0 : value;
+  }
+
+  String _percentLabel() {
+    final total = widget.spendableForPercent;
+    if (total <= 0) return '0%';
+    final ratio = (_currentAmount() / total).clamp(0.0, 1.0);
+    final pct = ratio * 100.0;
+    if (pct < 1) return '${pct.toStringAsFixed(2)}%';
+    if (pct < 10) return '${pct.toStringAsFixed(1)}%';
+    return '${pct.toStringAsFixed(0)}%';
+  }
+
+  void _setValue(double rawValue, {required bool commit}) {
+    final preset = rawValue.clamp(0.0, 1.0);
+    setState(() => _value = preset);
+
+    if (widget.maxAmount <= 0) {
+      widget.controller.text = '';
+      if (commit) widget.onCommit();
+      return;
+    }
+
+    if (preset <= 0) {
+      widget.controller.text = '';
+    } else {
+      final amount = (widget.maxAmount * preset).clamp(0.0, widget.maxAmount);
+      widget.controller.text = widget.formatter(amount);
+    }
+    if (commit) widget.onCommit();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.enabled && widget.maxAmount > 0;
+    final label = _percentLabel();
+    final isAt0 = (_value - 0.0).abs() <= _presetEpsilon;
+    final isAtHalf = (_value - 0.5).abs() <= _presetEpsilon;
+    final isAtMax = (_value - 1.0).abs() <= _presetEpsilon;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3,
+              activeTrackColor: AppColors.accentPrimary,
+              inactiveTrackColor: AppColors.borderSubtle,
+              thumbColor: AppColors.accentPrimary,
+              overlayColor: AppColors.accentPrimary.withValues(alpha: 0.16),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              showValueIndicator: ShowValueIndicator.onlyForContinuous,
+              valueIndicatorColor: AppColors.accentPrimary,
+              valueIndicatorTextStyle:
+                  PTypography.labelSmall(color: Colors.white),
+            ),
+            child: Slider(
+              value: _value,
+              min: 0,
+              max: 1,
+              label: label,
+              onChanged: enabled
+                  ? (v) => _setValue(v, commit: false)
+                  : null,
+              onChangeEnd: enabled ? (_) => widget.onCommit() : null,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _AmountPresetLabel(
+                    label: '0',
+                    isSelected: isAt0,
+                    onTap: enabled ? () => _setValue(0.0, commit: true) : null,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.center,
+                  child: _AmountPresetLabel(
+                    label: '1/2',
+                    isSelected: isAtHalf,
+                    onTap:
+                        enabled ? () => _setValue(0.5, commit: true) : null,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _AmountPresetLabel(
+                    label: 'MAX',
+                    isSelected: isAtMax,
+                    onTap: enabled ? () => _setValue(1.0, commit: true) : null,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AmountPresetLabel extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback? onTap;
+
+  const _AmountPresetLabel({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isSelected ? AppColors.accentPrimary : AppColors.textTertiary;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        child: Text(
+          label,
+          style: PTypography.labelSmall(color: color),
         ),
       ),
     );
