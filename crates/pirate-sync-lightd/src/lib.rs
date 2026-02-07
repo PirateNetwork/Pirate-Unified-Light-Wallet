@@ -9,9 +9,9 @@
 
 pub mod background;
 pub mod background_logger;
-pub mod cancel;
 mod block_cache;
 mod bridge_tree_codec;
+pub mod cancel;
 pub mod client;
 pub mod error;
 pub mod frontier;
@@ -28,6 +28,7 @@ pub use background::{
     BackgroundSyncConfig, BackgroundSyncMode, BackgroundSyncOrchestrator, BackgroundSyncResult,
 };
 pub use background_logger::{BackgroundSyncEvent, BackgroundSyncLogger};
+pub use cancel::CancelToken;
 pub use client::{
     bootstrap_transport, fetch_spki_pin, i2p_status, rotate_tor_exit, shutdown_transport,
     tor_status, BroadcastResult, CompactBlock, CompactBlockData, CompactOrchardAction,
@@ -36,7 +37,6 @@ pub use client::{
     TreeState, DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_URL,
 };
 pub use error::{Error, Result};
-pub use cancel::CancelToken;
 pub use frontier::{FrontierSnapshot, SaplingCommitment, SaplingFrontier, SAPLING_TREE_DEPTH};
 pub use orchard_frontier::{OrchardFrontier, OrchardFrontierSnapshot};
 pub use pipeline::{

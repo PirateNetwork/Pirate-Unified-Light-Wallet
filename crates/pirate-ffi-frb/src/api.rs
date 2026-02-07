@@ -5102,7 +5102,6 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         max_batch_memory_bytes,
     };
 
-
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
     // Reserve the sync session slot so concurrent start_sync calls can't spawn
     // multiple engines/tasks for the same wallet.
@@ -5160,9 +5159,12 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     // We need to modify SyncEngine to accept a LightClientConfig instead of just a URL
     // For now, create the client manually and pass it to a modified sync engine
     let client = LightClient::with_config(client_config);
-    let sync = match SyncEngine::with_client_and_config(client, start_height, config)
-        .with_wallet(wallet_id.clone(), db_key, master_key, network_type)
-    {
+    let sync = match SyncEngine::with_client_and_config(client, start_height, config).with_wallet(
+        wallet_id.clone(),
+        db_key,
+        master_key,
+        network_type,
+    ) {
         Ok(sync) => sync,
         Err(e) => {
             session_arc.lock().await.is_running = false;
@@ -5285,7 +5287,6 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         }
         // Don't set is_running = false here - sync continues monitoring even after catching up
     });
-
 
     Ok(())
 }

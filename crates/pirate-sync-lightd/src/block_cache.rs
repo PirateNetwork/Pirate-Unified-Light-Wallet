@@ -4,11 +4,11 @@ use crate::client::CompactBlockData;
 use crate::{Error, Result};
 use directories::ProjectDirs;
 use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use parking_lot::Mutex;
 use tokio::sync::Notify;
 
 pub struct BlockCache {
