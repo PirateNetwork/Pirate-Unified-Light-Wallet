@@ -1598,6 +1598,63 @@ jobs:
           path: dist/linux/*.asc
           if-no-files-found: warn
 
+  virustotal-scan:
+    name: Security - VirusTotal Scan (Artifacts)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - package-android
+      - package-ios
+      - package-windows
+      - package-macos
+      - package-linux
+      - sign-android
+      - sign-windows
+      - sign-macos
+      - sign-ios
+      - sign-linux
+    steps:
+      - name: Check VirusTotal API key
+        id: vt
+        run: |
+          if [ -n "${{ secrets.VIRUSTOTAL_API_KEY }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Missing VIRUSTOTAL_API_KEY secret. Skipping VirusTotal artifact scanning." >&2
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.vt.outputs.enabled == 'true'
+
+      - name: Download artifacts
+        if: steps.vt.outputs.enabled == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          path: vt-artifacts
+
+      - name: Scan artifacts with VirusTotal
+        if: steps.vt.outputs.enabled == 'true'
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+          VT_MIN_INTERVAL_SECONDS: "16"
+          VT_POLL_TIMEOUT_SECONDS: "1200"
+        run: |
+          python3 scripts/virustotal_scan.py vt-artifacts vt-report
+          {
+            echo "## VirusTotal"
+            echo ""
+            cat vt-report/virustotal-results.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload VirusTotal report
+        if: steps.vt.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: virustotal-report
+          path: vt-report/*
+          if-no-files-found: warn
+
   release:
     name: Release - Publish Artifacts
     runs-on: ubuntu-latest
