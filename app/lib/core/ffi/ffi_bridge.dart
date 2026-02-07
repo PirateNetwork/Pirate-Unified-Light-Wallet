@@ -53,7 +53,7 @@ GeneratedAddressBookColorTag _convertColorTag(AddressBookColorTag localTag) {
 typedef WalletId = String;
 typedef FeeInfo = api.FeeInfo;
 // Types are imported directly from models.dart, no need for aliases
-/// FFI Bridge - Flutter ↔ Rust Interface
+/// FFI Bridge - Flutter <-> Rust Interface
 ///
 /// This file provides the Dart API that mirrors the Rust FFI in pirate-ffi-api.
 ///
@@ -255,15 +255,15 @@ class NodeTestResult {
     if (tlsEnabled) {
       parts.add('TLS enabled');
       if (tlsPinMatched == true) {
-        parts.add('Pin verified ✓');
+        parts.add('Pin verified (OK)');
       } else if (tlsPinMatched == false) {
-        parts.add('Pin MISMATCH ✗');
+        parts.add('Pin MISMATCH');
       }
     }
     if (latestBlockHeight != null) {
       parts.add('Block #$latestBlockHeight');
     }
-    return parts.join(' • ');
+    return parts.join(' - ');
   }
 
   /// Get transport icon name
@@ -1449,7 +1449,6 @@ class FfiBridge {
     int lastTargetHeight = 0;
     DateTime? lastRestartAttempt;
     DateTime? lastStartAttempt;
-
     while (true) {
       try {
         if (!_appIsActive) {

@@ -9,6 +9,7 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/ffi/ffi_bridge.dart';
+import 'core/ffi/generated/models.dart' show SyncMode;
 import 'core/desktop/single_instance.dart';
 import 'core/desktop/windows_version.dart';
 import 'core/logging/debug_log_path.dart';
@@ -176,12 +177,39 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.detached) {
-      FfiBridge.setAppActive(false);
-    } else {
-      FfiBridge.setAppActive(true);
+    if (_isDesktop) {
+      // Desktop stays effectively "active" while the window exists.
+      // We only mark inactive when fully detached/closing.
+      FfiBridge.setAppActive(state != AppLifecycleState.detached);
+      return;
+    }
+
+    // Mobile: pause UI polling while backgrounded. The Rust sync engine has
+    // its own timeout/reconnect logic and should self-heal on resume.
+    switch (state) {
+      case AppLifecycleState.resumed:
+        FfiBridge.setAppActive(true);
+        unawaited(_ensureMobileSyncRunning());
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        FfiBridge.setAppActive(false);
+        break;
     }
   }
+
+  Future<void> _ensureMobileSyncRunning() async {
+    try {
+      final walletId = await FfiBridge.getActiveWallet();
+      if (walletId == null) return;
+      await FfiBridge.startSync(walletId, SyncMode.compact);
+    } catch (_) {
+      // Best-effort.
+    }
+  }
+
 
   @override
   void onWindowFocus() {

@@ -18,6 +18,10 @@ pub enum Error {
     #[error("Sync error: {0}")]
     Sync(String),
 
+    /// Operation cancelled
+    #[error("Cancelled")]
+    Cancelled,
+
     /// Privacy error
     #[error("Privacy error: {0}")]
     Privacy(String),

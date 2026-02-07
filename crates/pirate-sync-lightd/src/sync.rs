@@ -18,7 +18,7 @@ use crate::pipeline::NoteType;
 use crate::pipeline::{DecryptedNote, PerfCounters};
 use crate::progress::SyncStage;
 use crate::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes;
-use crate::{Error, LightClient, Result, SyncProgress};
+use crate::{CancelToken, Error, LightClient, Result, SyncProgress};
 use directories::ProjectDirs;
 use group::ff::PrimeField;
 use hex;
@@ -234,8 +234,8 @@ pub struct SyncEngine {
     perf: Arc<PerfCounters>,
     /// Parallel trial-decryption worker pool
     decrypt_pool: Arc<rayon::ThreadPool>,
-    /// Cancellation flag
-    cancelled: Arc<RwLock<bool>>,
+    /// Cancellation token
+    cancel: CancelToken,
     /// Background full-tx enrichment limiter
     enrich_semaphore: Arc<tokio::sync::Semaphore>,
 }
@@ -279,7 +279,7 @@ impl SyncEngine {
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
             decrypt_pool: Arc::new(decrypt_pool),
-            cancelled: Arc::new(RwLock::new(false)),
+            cancel: CancelToken::new(),
             enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
         }
     }
@@ -362,7 +362,7 @@ impl SyncEngine {
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
             decrypt_pool: Arc::new(decrypt_pool),
-            cancelled: Arc::new(RwLock::new(false)),
+            cancel: CancelToken::new(),
             enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
         }
     }
@@ -396,7 +396,7 @@ impl SyncEngine {
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
             decrypt_pool: Arc::new(decrypt_pool),
-            cancelled: Arc::new(RwLock::new(false)),
+            cancel: CancelToken::new(),
             enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
         }
     }
@@ -408,18 +408,18 @@ impl SyncEngine {
 
     /// Cancel sync
     pub async fn cancel(&self) {
-        *self.cancelled.write().await = true;
+        self.cancel.cancel();
         tracing::info!("Sync cancellation requested");
     }
 
     /// Share cancellation flag without locking the engine.
-    pub fn cancel_flag(&self) -> Arc<RwLock<bool>> {
-        Arc::clone(&self.cancelled)
+    pub fn cancel_flag(&self) -> CancelToken {
+        self.cancel.clone()
     }
 
     /// Check if cancelled
     async fn is_cancelled(&self) -> bool {
-        *self.cancelled.read().await
+        self.cancel.is_cancelled()
     }
 
     /// Attach wallet context and open encrypted storage (shared DB with FFI)
@@ -1214,8 +1214,8 @@ impl SyncEngine {
         // Reset perf counters
         self.perf.reset();
 
-        // Reset cancellation flag.
-        *self.cancelled.write().await = false;
+        // Reset cancellation token.
+        self.cancel.reset();
 
         if start > 0 {
             let needs_init = self.frontier.read().await.is_empty();
@@ -1275,7 +1275,7 @@ impl SyncEngine {
                 // Check for cancellation
                 if self.is_cancelled().await {
                     tracing::warn!("Sync cancelled at height {}", current_height);
-                    return Err(Error::Sync("Sync cancelled".to_string()));
+                    return Err(Error::Cancelled);
                 }
 
                 let batch_start_time = Instant::now();
@@ -1326,9 +1326,67 @@ impl SyncEngine {
                 }
                 // #endregion
 
-                let fetch_wait_start = Instant::now();
-                let blocks = handle.await.map_err(|e| Error::Sync(e.to_string()))??;
-                let fetch_wait_ms = fetch_wait_start.elapsed().as_millis();
+                let (blocks, fetch_wait_ms) = {
+                    let mut backoff = Duration::from_secs(2);
+                    let max_backoff = Duration::from_secs(60);
+                    let mut prefetch_handle = Some(handle);
+
+                    loop {
+                        let (blocks_res, wait_ms): (Result<Vec<CompactBlockData>>, u128) =
+                            if let Some(handle) = prefetch_handle.take() {
+                                let fetch_wait_start = Instant::now();
+                                let mut handle = handle;
+                                let res = tokio::select! {
+                                    joined = &mut handle => match joined {
+                                        Ok(inner) => inner,
+                                        Err(e) => Err(Error::Sync(e.to_string())),
+                                    },
+                                    _ = self.cancel.cancelled() => {
+                                        handle.abort();
+                                        return Err(Error::Cancelled);
+                                    }
+                                };
+                                let wait_ms = fetch_wait_start.elapsed().as_millis();
+                                (res, wait_ms)
+                            } else {
+                                let fetch_wait_start = Instant::now();
+                                let res = SyncEngine::fetch_blocks_with_retry_inner(
+                                    self.client.clone(),
+                                    batch_start,
+                                    batch_end,
+                                    self.cancel.clone(),
+                                )
+                                .await;
+                                let wait_ms = fetch_wait_start.elapsed().as_millis();
+                                (res, wait_ms)
+                            };
+
+                        match blocks_res {
+                            Ok(blocks) => break (blocks, wait_ms),
+                            Err(Error::Cancelled) => return Err(Error::Cancelled),
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Block fetch failed for {}-{}: {}. Reconnecting and retrying in {:?}...",
+                                    batch_start,
+                                    batch_end,
+                                    e,
+                                    backoff
+                                );
+                                self.client.disconnect().await;
+                                if let Err(conn_err) = self.client.connect().await {
+                                    tracing::warn!("Reconnect failed: {}", conn_err);
+                                }
+                                tokio::select! {
+                                    _ = tokio::time::sleep(backoff) => {},
+                                    _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                                }
+                                backoff = std::cmp::min(backoff.saturating_mul(2), max_backoff);
+                                // Retry using a direct fetch (no prefetch).
+                                continue;
+                            }
+                        }
+                    }
+                };
 
                 // #region agent log
                 if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -1911,6 +1969,11 @@ impl SyncEngine {
                 progress.current_height()
             };
 
+            if self.is_cancelled().await {
+                tracing::warn!("Sync cancelled while monitoring at height {}", current);
+                return Err(Error::Cancelled);
+            }
+
             match self.client.get_latest_block().await {
                 Ok(latest_height) => {
                     if latest_height > current {
@@ -1952,17 +2015,27 @@ impl SyncEngine {
                             "Caught up to blockchain tip ({}), waiting for new blocks...",
                             current
                         );
-                        tokio::time::sleep(Duration::from_secs(10)).await; // Check every 10 seconds
-                                                                           // Continue the outer loop to check again
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                            _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                        }
+                        // Continue the outer loop to check again
                         continue;
                     }
                 }
                 Err(e) => {
                     tracing::warn!(
-                        "Failed to check for new blocks after sync: {}, retrying in 30s",
+                        "Failed to check for new blocks after sync: {}, reconnecting and retrying in 30s",
                         e
                     );
-                    tokio::time::sleep(Duration::from_secs(30)).await; // Wait longer on error
+                    self.client.disconnect().await;
+                    if let Err(conn_err) = self.client.connect().await {
+                        tracing::warn!("Reconnect failed: {}", conn_err);
+                    }
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+                        _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                    }
                     continue; // Retry
                 }
             }
@@ -1973,9 +2046,14 @@ impl SyncEngine {
         client: LightClient,
         start: u64,
         end: u64,
+        cancel: CancelToken,
     ) -> Result<Vec<CompactBlockData>> {
         if start > end {
             return Ok(Vec::new());
+        }
+
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
         }
 
         let expected_blocks = end.saturating_sub(start).saturating_add(1) as usize;
@@ -2068,11 +2146,14 @@ impl SyncEngine {
         }
 
         loop {
-            let inflight = acquire_inflight(client.endpoint(), start, end).await;
+            let inflight = acquire_inflight(client.endpoint(), start, end);
 
             match inflight {
                 InflightLease::Follower(notify) => {
-                    notify.notified().await;
+                    tokio::select! {
+                        _ = notify.notified() => {}
+                        _ = cancel.cancelled() => return Err(Error::Cancelled),
+                    }
                     if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
                         if let Ok(blocks) = cache.load_range(start, end) {
                             if blocks.len() == expected_blocks {
@@ -2086,10 +2167,12 @@ impl SyncEngine {
                     let mut attempts = 0;
                     let result = loop {
                         // Use get_compact_block_range with retry logic
-                        match client
-                            .get_compact_block_range(start as u32..(end + 1) as u32)
-                            .await
-                        {
+                        let fetch = tokio::select! {
+                            res = client.get_compact_block_range(start as u32..(end + 1) as u32) => res,
+                            _ = cancel.cancelled() => Err(Error::Cancelled),
+                        };
+
+                        match fetch {
                             Ok(blocks) => {
                                 if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
                                     if let Err(e) = cache.store_blocks(&blocks) {
@@ -2123,6 +2206,7 @@ impl SyncEngine {
                                 }
                                 break Ok(blocks);
                             }
+                            Err(e) if matches!(e, Error::Cancelled) => break Err(e),
                             Err(e) if attempts < MAX_RETRY_ATTEMPTS => {
                                 attempts += 1;
                                 let backoff = RETRY_BACKOFF_MS * (1 << attempts);
@@ -2133,12 +2217,15 @@ impl SyncEngine {
                                     backoff,
                                     e
                                 );
-                                tokio::time::sleep(Duration::from_millis(backoff)).await;
+                                tokio::select! {
+                                    _ = tokio::time::sleep(Duration::from_millis(backoff)) => {}
+                                    _ = cancel.cancelled() => break Err(Error::Cancelled),
+                                }
                             }
                             Err(e) => break Err(e),
                         }
                     };
-                    token.complete().await;
+                    token.complete();
                     return result;
                 }
             }
@@ -2290,8 +2377,9 @@ impl SyncEngine {
 
     fn spawn_prefetch(&self, start: u64, end: u64) -> PrefetchTask {
         let client = self.client.clone();
+        let cancel = self.cancel.clone();
         let handle = tokio::spawn(async move {
-            SyncEngine::fetch_blocks_with_retry_inner(client, start, end).await
+            SyncEngine::fetch_blocks_with_retry_inner(client, start, end, cancel).await
         });
         PrefetchTask { start, end, handle }
     }
@@ -2768,7 +2856,7 @@ impl SyncEngine {
             let sem = Arc::clone(&semaphore);
             let work_clone = work.clone();
             tasks.push(tokio::spawn(async move {
-                let _permit = sem.acquire().await;
+                let _permit = sem.acquire_owned().await.ok();
                 let raw = client
                     .get_transaction_with_fallback(&txid, work_clone.block, work_clone.index)
                     .await;

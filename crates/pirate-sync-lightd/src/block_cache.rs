@@ -8,7 +8,8 @@ use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use tokio::sync::{Mutex, Notify};
+use parking_lot::Mutex;
+use tokio::sync::Notify;
 
 pub struct BlockCache {
     path: PathBuf,
@@ -32,29 +33,47 @@ pub enum InflightLease {
 pub struct InflightToken {
     key: RangeKey,
     notify: std::sync::Arc<Notify>,
+    completed: bool,
 }
 
 impl InflightToken {
-    pub async fn complete(self) {
-        let mut map = INFLIGHT_RANGES.lock().await;
-        map.remove(&self.key);
-        self.notify.notify_waiters();
+    pub fn complete(mut self) {
+        self.completed = true;
+        finish_inflight(&self.key, &self.notify);
     }
 }
 
-pub async fn acquire_inflight(endpoint: &str, start: u64, end: u64) -> InflightLease {
+impl Drop for InflightToken {
+    fn drop(&mut self) {
+        if !self.completed {
+            finish_inflight(&self.key, &self.notify);
+        }
+    }
+}
+
+fn finish_inflight(key: &RangeKey, notify: &std::sync::Arc<Notify>) {
+    let mut map = INFLIGHT_RANGES.lock();
+    map.remove(key);
+    notify.notify_waiters();
+}
+
+pub fn acquire_inflight(endpoint: &str, start: u64, end: u64) -> InflightLease {
     let key = RangeKey {
         endpoint: endpoint.to_string(),
         start,
         end,
     };
-    let mut map = INFLIGHT_RANGES.lock().await;
+    let mut map = INFLIGHT_RANGES.lock();
     if let Some(existing) = find_overlap_locked(&map, endpoint, start, end) {
         return InflightLease::Follower(existing);
     }
     let notify = std::sync::Arc::new(Notify::new());
     map.insert(key.clone(), notify.clone());
-    InflightLease::Leader(InflightToken { key, notify })
+    InflightLease::Leader(InflightToken {
+        key,
+        notify,
+        completed: false,
+    })
 }
 
 fn find_overlap_locked(

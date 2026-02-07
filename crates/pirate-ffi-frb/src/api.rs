@@ -4755,7 +4755,7 @@ pub struct FeeInfo {
 // ============================================================================
 // Sync
 // ============================================================================
-use pirate_sync_lightd::{PerfCounters, SyncConfig, SyncEngine, SyncProgress};
+use pirate_sync_lightd::{CancelToken, PerfCounters, SyncConfig, SyncEngine, SyncProgress};
 use tokio::sync::Mutex;
 
 fn map_stage(stage: pirate_sync_lightd::SyncStage) -> crate::models::SyncStage {
@@ -4846,7 +4846,7 @@ struct SyncSession {
     /// The sync engine
     sync: Option<Arc<tokio::sync::Mutex<SyncEngine>>>,
     /// Cancellation flag shared with the engine
-    cancelled: Option<Arc<tokio::sync::RwLock<bool>>>,
+    cancelled: Option<CancelToken>,
     /// Shared progress tracker (readable without locking the engine)
     progress: Option<Arc<tokio::sync::RwLock<SyncProgress>>>,
     /// Shared performance counters
@@ -4888,30 +4888,33 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     ensure_not_decoy("Sync")?;
     tracing::info!("Starting sync for wallet {} in mode {:?}", wallet_id, mode);
     log_orchard_address_samples(&wallet_id);
-    {
+
+    // Fast-path: if a sync task is already running for this wallet, don't redo
+    // the (potentially expensive) initialization work.
+    let session_arc_opt = {
         let sessions = SYNC_SESSIONS.read();
-        if let Some(session_arc) = sessions.get(&wallet_id) {
-            if let Ok(session) = session_arc.try_lock() {
-                if session.is_running {
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
-                        let ts = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis();
-                        let _ = writeln!(
-                            file,
-                            r#"{{"id":"log_start_sync_skip_running","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; already running","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
-                            ts, wallet_id, mode
-                        );
-                    }
-                    return Ok(());
-                }
+        sessions.get(&wallet_id).cloned()
+    };
+    if let Some(session_arc) = session_arc_opt {
+        let is_running = { session_arc.lock().await.is_running };
+        if is_running {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_start_sync_skip_running","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; already running","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+                    ts, wallet_id, mode
+                );
             }
+            return Ok(());
         }
     }
     // #region agent log
@@ -5099,14 +5102,73 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         max_batch_memory_bytes,
     };
 
+
+    let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
+    // Reserve the sync session slot so concurrent start_sync calls can't spawn
+    // multiple engines/tasks for the same wallet.
+    let session_arc = {
+        let mut sessions = SYNC_SESSIONS.write();
+        sessions
+            .entry(wallet_id.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(SyncSession::default())))
+            .clone()
+    };
+
+    {
+        let mut session = session_arc.lock().await;
+        if session.is_running {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_start_sync_skip_running","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; already running","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+                    ts, wallet_id, mode
+                );
+            }
+            return Ok(());
+        }
+
+        session.is_running = true;
+        // Clear stale handles; they'll be replaced after engine init.
+        session.sync = None;
+        session.cancelled = None;
+        session.progress = None;
+        session.perf = None;
+        session.last_status = SyncStatus {
+            local_height: start_height as u64,
+            target_height: 0,
+            percent: 0.0,
+            eta: None,
+            stage: crate::models::SyncStage::Headers,
+            last_checkpoint: None,
+            blocks_per_second: 0.0,
+            notes_decrypted: 0,
+            last_batch_ms: 0,
+        };
+        session.last_target_height_update = None;
+    }
+
     // Create sync engine with wallet context and proper client config
     // We need to modify SyncEngine to accept a LightClientConfig instead of just a URL
     // For now, create the client manually and pass it to a modified sync engine
     let client = LightClient::with_config(client_config);
-    let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
-    let sync = SyncEngine::with_client_and_config(client, start_height, config)
+    let sync = match SyncEngine::with_client_and_config(client, start_height, config)
         .with_wallet(wallet_id.clone(), db_key, master_key, network_type)
-        .map_err(|e| anyhow!("Failed to initialize sync engine: {}", e))?;
+    {
+        Ok(sync) => sync,
+        Err(e) => {
+            session_arc.lock().await.is_running = false;
+            return Err(anyhow!("Failed to initialize sync engine: {}", e));
+        }
+    };
     let sync = Arc::new(Mutex::new(sync));
     let (progress, perf, cancel_flag) = {
         let engine = sync.clone().lock_owned().await;
@@ -5117,129 +5179,113 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         )
     };
 
-    // Store session
+    // Update the existing session entry with the live engine handles.
     {
-        let mut sessions = SYNC_SESSIONS.write();
-        let session = Arc::new(tokio::sync::Mutex::new(SyncSession {
-            sync: Some(Arc::clone(&sync)),
-            cancelled: Some(cancel_flag),
-            progress: Some(progress),
-            perf: Some(perf),
-            last_status: SyncStatus {
-                local_height: start_height as u64,
-                target_height: 0,
-                percent: 0.0,
-                eta: None,
-                stage: crate::models::SyncStage::Headers,
-                last_checkpoint: None,
-                blocks_per_second: 0.0,
-                notes_decrypted: 0,
-                last_batch_ms: 0,
-            },
-            is_running: true,
-            last_target_height_update: None,
-        }));
-        sessions.insert(wallet_id.clone(), session.clone());
+        let mut session = session_arc.lock().await;
+        session.sync = Some(Arc::clone(&sync));
+        session.cancelled = Some(cancel_flag);
+        session.progress = Some(progress);
+        session.perf = Some(perf);
+        session.last_status = SyncStatus {
+            local_height: start_height as u64,
+            target_height: 0,
+            percent: 0.0,
+            eta: None,
+            stage: crate::models::SyncStage::Headers,
+            last_checkpoint: None,
+            blocks_per_second: 0.0,
+            notes_decrypted: 0,
+            last_batch_ms: 0,
+        };
+        // Keep is_running = true; the engine monitors for new blocks after catching up.
+        session.last_target_height_update = None;
     }
 
     // Start sync in background
     let wallet_id_for_task = wallet_id.clone();
+    let session_arc_for_task = Arc::clone(&session_arc);
+    let sync_for_task = Arc::clone(&sync);
     tokio::spawn(async move {
-        // Clone the session arc while holding the lock, then drop the lock unconditionally
-        let session_arc_opt = {
-            let sessions = SYNC_SESSIONS.read();
-            sessions.get(&wallet_id_for_task).cloned()
-        }; // sessions guard dropped here before any await points
-
-        if let Some(session_arc) = session_arc_opt {
-            let sync_opt = { session_arc.lock().await.sync.clone() };
-
-            if let Some(sync) = sync_opt {
-                let wallet_id_for_log = wallet_id_for_task.clone();
-                let result = run_sync_engine_task(sync.clone(), move |engine| {
-                    Box::pin(async move {
-                        tracing::info!(
-                            "Starting sync_from_birthday for wallet {}",
-                            wallet_id_for_log
-                        );
-                        let result = engine
-                            .sync_from_birthday()
-                            .await
-                            .map_err(anyhow::Error::from);
-                        if let Err(ref e) = result {
-                            tracing::error!("Sync error in engine: {:?}", e);
-                        }
-                        result
-                    })
-                })
-                .await;
-
-                // Snapshot status after sync attempt.
-                let (progress_arc, perf_snapshot) = {
-                    let engine = sync.clone().lock_owned().await;
-                    (engine.progress(), engine.perf_counters().snapshot())
-                };
-                let status_opt = {
-                    let progress = progress_arc.read().await;
-                    let status = SyncStatus {
-                        local_height: progress.current_height(),
-                        target_height: progress.target_height(),
-                        percent: progress.percentage(),
-                        eta: progress.eta_seconds(),
-                        stage: map_stage(progress.stage()),
-                        last_checkpoint: progress.last_checkpoint(),
-                        blocks_per_second: perf_snapshot.blocks_per_second,
-                        notes_decrypted: perf_snapshot.notes_decrypted,
-                        last_batch_ms: perf_snapshot.avg_batch_ms,
-                    };
-                    tracing::debug!(
-                        "Sync status snapshot: local={}, target={}, stage={:?}, percent={:.2}%",
-                        status.local_height,
-                        status.target_height,
-                        status.stage,
-                        status.percent
-                    );
-                    Some(status)
-                };
-
-                let mut session = session_arc.lock().await;
-                if let Some(status) = status_opt {
-                    session.last_status = status;
+        let wallet_id_for_log = wallet_id_for_task.clone();
+        let result = run_sync_engine_task(sync_for_task.clone(), move |engine| {
+            Box::pin(async move {
+                tracing::info!(
+                    "Starting sync_from_birthday for wallet {}",
+                    wallet_id_for_log
+                );
+                let result = engine
+                    .sync_from_birthday()
+                    .await
+                    .map_err(anyhow::Error::from);
+                if let Err(ref e) = result {
+                    tracing::error!("Sync error in engine: {:?}", e);
                 }
-                match &result {
-                    Ok(()) => {
-                        // Sync caught up - but it's still running in the background monitoring for new blocks
-                        // Don't set is_running = false, sync continues indefinitely
-                        tracing::info!(
-                            "Sync caught up for wallet {} (still monitoring for new blocks)",
-                            wallet_id_for_task
+                result
+            })
+        })
+        .await;
+
+        // Snapshot status after sync attempt.
+        let (progress_arc, perf_snapshot) = {
+            let engine = sync_for_task.clone().lock_owned().await;
+            (engine.progress(), engine.perf_counters().snapshot())
+        };
+        let status_opt = {
+            let progress = progress_arc.read().await;
+            let status = SyncStatus {
+                local_height: progress.current_height(),
+                target_height: progress.target_height(),
+                percent: progress.percentage(),
+                eta: progress.eta_seconds(),
+                stage: map_stage(progress.stage()),
+                last_checkpoint: progress.last_checkpoint(),
+                blocks_per_second: perf_snapshot.blocks_per_second,
+                notes_decrypted: perf_snapshot.notes_decrypted,
+                last_batch_ms: perf_snapshot.avg_batch_ms,
+            };
+            tracing::debug!(
+                "Sync status snapshot: local={}, target={}, stage={:?}, percent={:.2}%",
+                status.local_height,
+                status.target_height,
+                status.stage,
+                status.percent
+            );
+            Some(status)
+        };
+
+        let mut session = session_arc_for_task.lock().await;
+        if let Some(status) = status_opt {
+            session.last_status = status;
+        }
+        match &result {
+            Ok(()) => {
+                // Sync caught up - but it's still running in the background monitoring for new blocks
+                // Don't set is_running = false, sync continues indefinitely
+                tracing::info!(
+                    "Sync caught up for wallet {} (still monitoring for new blocks)",
+                    wallet_id_for_task
+                );
+                if let Ok(registry_db) = open_wallet_registry() {
+                    if let Err(e) = touch_wallet_last_synced(&registry_db, &wallet_id_for_task) {
+                        tracing::warn!(
+                            "Failed to update last_synced_at for {}: {}",
+                            wallet_id_for_task,
+                            e
                         );
-                        if let Ok(registry_db) = open_wallet_registry() {
-                            if let Err(e) =
-                                touch_wallet_last_synced(&registry_db, &wallet_id_for_task)
-                            {
-                                tracing::warn!(
-                                    "Failed to update last_synced_at for {}: {}",
-                                    wallet_id_for_task,
-                                    e
-                                );
-                            }
-                        }
-                        // Keep is_running = true since sync is still monitoring
-                    }
-                    Err(e) => {
-                        tracing::error!("Sync failed for wallet {}: {:?}", wallet_id_for_task, e);
-                        tracing::error!("Sync error details: {}", e);
-                        // Only set is_running = false on actual error
-                        session.is_running = false;
                     }
                 }
-                // Don't set is_running = false here - sync continues monitoring even after catching up
-            } else {
-                session_arc.lock().await.is_running = false;
+                // Keep is_running = true since sync is still monitoring
+            }
+            Err(e) => {
+                tracing::error!("Sync failed for wallet {}: {:?}", wallet_id_for_task, e);
+                tracing::error!("Sync error details: {}", e);
+                // Only set is_running = false on actual error
+                session.is_running = false;
             }
         }
+        // Don't set is_running = false here - sync continues monitoring even after catching up
     });
+
 
     Ok(())
 }
@@ -6415,7 +6461,7 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
     if let Some(session_arc) = session_arc_opt {
         let cancel_opt = { session_arc.lock().await.cancelled.clone() };
         if let Some(cancelled) = cancel_opt {
-            *cancelled.write().await = true;
+            cancelled.cancel();
             tracing::info!("Sync cancelled for wallet {}", wallet_id);
             // #region agent log
             {
@@ -6475,9 +6521,6 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
                 // #endregion
             }
         }
-        if let Ok(mut session) = session_arc.try_lock() {
-            session.is_running = false;
-        }
     }
 
     Ok(())
@@ -6488,12 +6531,14 @@ pub fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
     if is_decoy_mode_active() {
         return Ok(false);
     }
-    let sessions = SYNC_SESSIONS.read();
+    let session_arc_opt = {
+        let sessions = SYNC_SESSIONS.read();
+        sessions.get(&wallet_id).cloned()
+    };
 
-    if let Some(session_arc) = sessions.get(&wallet_id) {
-        if let Ok(session) = session_arc.try_lock() {
-            return Ok(session.is_running);
-        }
+    if let Some(session_arc) = session_arc_opt {
+        let session = session_arc.blocking_lock();
+        return Ok(session.is_running);
     }
 
     Ok(false)
@@ -6946,9 +6991,9 @@ pub fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEndpoint>
 /// Detect network type from endpoint URL
 ///
 /// Detects network based on hostname and port:
-/// - `lightd1.piratechain.com:9067` → Mainnet (Sapling only)
-/// - `64.23.167.130:9067` → Mainnet (Orchard-ready, but not activated)
-/// - `64.23.167.130:8067` → Testnet (Orchard activated at block 61)
+/// - `lightd1.piratechain.com:9067` -> Mainnet (Sapling only)
+/// - `64.23.167.130:9067` -> Mainnet (Orchard-ready, but not activated)
+/// - `64.23.167.130:8067` -> Testnet (Orchard activated at block 61)
 fn detect_network_from_endpoint(host: &str, port: u16) -> NetworkType {
     // Testnet uses port 8067
     if port == 8067 {

@@ -1139,6 +1139,19 @@ impl LightClient {
             .connect_timeout(self.config.connect_timeout)
             .timeout(self.config.request_timeout);
 
+        // Keepalive to avoid hung streams after network transitions (mobile background/resume,
+        // Tor circuit changes, etc.). We avoid keepalives while idle to reduce background chatter.
+        let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
+        let tcp_keepalive = Some(Duration::from_secs(if is_mobile { 60 } else { 30 }));
+        let h2_keepalive_interval = Duration::from_secs(if is_mobile { 60 } else { 30 });
+        let h2_keepalive_timeout = Duration::from_secs(15);
+
+        endpoint = endpoint
+            .tcp_keepalive(tcp_keepalive)
+            .http2_keep_alive_interval(h2_keepalive_interval)
+            .keep_alive_timeout(h2_keepalive_timeout)
+            .keep_alive_while_idle(false);
+
         // Configure TLS if enabled
         // #region agent log
         if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -1338,7 +1351,11 @@ impl LightClient {
             return Ok(Vec::new());
         }
 
-        self.with_retry(|| async {
+        let range = range.clone();
+
+        self.with_retry(move || {
+            let range = range.clone();
+            async move {
             let mut client = self.get_client().await?;
             let start_instant = Instant::now();
 
@@ -1360,12 +1377,38 @@ impl LightClient {
             let mut first_block_ms: Option<u128> = None;
             let mut estimated_bytes = 0u64;
 
-            while let Some(block) = stream.message().await? {
+            let first_msg_timeout = Duration::from_secs(5 * 60);
+            let next_msg_timeout = Duration::from_secs(5 * 60);
+
+            loop {
+                let idle_timeout = if blocks.is_empty() {
+                    first_msg_timeout
+                } else {
+                    next_msg_timeout
+                };
+
+                let msg = tokio::time::timeout(idle_timeout, stream.message())
+                    .await
+                    .map_err(|_| {
+                        Error::Network(format!(
+                            "Timed out waiting for compact block stream ({}..{}, received {} blocks; idle {:?})",
+                            range.start,
+                            range.end,
+                            blocks.len(),
+                            idle_timeout
+                        ))
+                    })??;
+
+                let Some(block) = msg else {
+                    break;
+                };
+
                 if first_block_ms.is_none() {
                     first_block_ms = Some(start_instant.elapsed().as_millis());
                 }
                 let compact = CompactBlock::from(block);
-                estimated_bytes = estimated_bytes.saturating_add(estimate_compact_block_bytes(&compact));
+                estimated_bytes = estimated_bytes
+                    .saturating_add(estimate_compact_block_bytes(&compact));
                 blocks.push(compact);
             }
 
@@ -1407,7 +1450,9 @@ impl LightClient {
 
             debug!("Received {} blocks", blocks.len());
             Ok(blocks)
-        }).await
+            }
+        })
+        .await
     }
 
     /// Stream compact blocks in batches
@@ -1728,6 +1773,11 @@ impl LightClient {
             match operation().await {
                 Ok(result) => return Ok(result),
                 Err(e) => {
+                    // Cancellation should return immediately (no retries/backoff).
+                    if matches!(e, Error::Cancelled) {
+                        return Err(e);
+                    }
+
                     attempt += 1;
                     if attempt >= self.config.retry.max_attempts {
                         return Err(e);

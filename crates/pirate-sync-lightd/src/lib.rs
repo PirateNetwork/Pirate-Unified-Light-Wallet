@@ -9,6 +9,7 @@
 
 pub mod background;
 pub mod background_logger;
+pub mod cancel;
 mod block_cache;
 mod bridge_tree_codec;
 pub mod client;
@@ -35,6 +36,7 @@ pub use client::{
     TreeState, DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_URL,
 };
 pub use error::{Error, Result};
+pub use cancel::CancelToken;
 pub use frontier::{FrontierSnapshot, SaplingCommitment, SaplingFrontier, SAPLING_TREE_DEPTH};
 pub use orchard_frontier::{OrchardFrontier, OrchardFrontierSnapshot};
 pub use pipeline::{
