@@ -386,3 +386,4 @@ fuzz/artifacts/
 !.editorconfig
 !.github/
 
+.cursorignore
