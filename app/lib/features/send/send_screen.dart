@@ -288,8 +288,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         _defaultFeeArrrtoshis = baseFee;
         _baseMinFeeArrrtoshis = minFee;
         _maxFeeArrrtoshis = maxFee;
+        _updateFeePreview();
       });
-      _updateFeePreview();
     } catch (_) {
       // Ignore fee info errors.
     }
@@ -884,8 +884,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                             _pendingTx = null;
                             _pendingKeyIds = null;
                             _pendingAddressIds = null;
+                            _updateFeePreview();
                           });
-                          _updateFeePreview();
                           Navigator.of(context).pop();
                         },
                       ),
@@ -1109,8 +1109,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     if (index < 0 || index >= _outputs.length) return;
     _applyPiratePaymentRequest(index);
     _outputs[index].syncFromControllers();
-    _updateFeePreview();
-    setState(() {});
+    setState(_updateFeePreview);
   }
 
   void _applyPiratePaymentRequest(int index) {
@@ -1252,16 +1251,20 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     if (_feePreset == FeePreset.custom) {
       _customFeeArrrtoshis = selectedFee;
     }
+
+    double parseController(TextEditingController controller) {
+      final raw = controller.text.trim();
+      if (raw.isEmpty) return 0.0;
+      final value = double.tryParse(raw);
+      if (value == null || value.isNaN || value.isInfinite) return 0.0;
+      return value <= 0 ? 0.0 : value;
+    }
+
     _minFeeArrrtoshis = minFee;
     _selectedFeeArrrtoshis = selectedFee;
-    final fee = _feeArrrFromArrrtoshis(selectedFee);
-
+    _calculatedFee = _feeArrrFromArrrtoshis(selectedFee);
     _totalAmount = _outputs.fold(0.0, (sum, o) {
-      return sum + (double.tryParse(o.amount) ?? 0);
-    });
-
-    setState(() {
-      _calculatedFee = fee;
+      return sum + parseController(o.amountController);
     });
   }
 
@@ -2267,40 +2270,81 @@ class _AmountPresetSliderState extends State<_AmountPresetSlider> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
-          child: Row(
-            children: [
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _AmountPresetLabel(
-                    label: '0',
-                    isSelected: isAt0,
-                    onTap: enabled ? () => _setValue(0.0, commit: true) : null,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Match Flutter's default track insets (based on overlay radius).
+              const trackInset = 14.0;
+              final width = constraints.maxWidth;
+              final trackWidth = (width - (trackInset * 2)).clamp(0.0, width);
+
+              double xFor(double fraction) {
+                return trackInset + (trackWidth * fraction);
+              }
+
+              double labelWidth(String label) {
+                final painter = TextPainter(
+                  text: TextSpan(
+                    text: label,
+                    style: PTypography.labelSmall(color: Colors.white),
                   ),
+                  maxLines: 1,
+                  textDirection: Directionality.of(context),
+                )..layout();
+                // _AmountPresetLabel uses horizontal padding AppSpacing.sm on both sides.
+                return painter.width + (AppSpacing.sm * 2);
+              }
+
+              double clampLeft(double left, double w) {
+                if (!left.isFinite) return 0.0;
+                // Keep labels inside the card so they don't get clipped.
+                final maxLeft = width - w;
+                if (maxLeft <= 0) return 0.0;
+                return left.clamp(0.0, maxLeft);
+              }
+
+              final w0 = labelWidth('0');
+              final wHalf = labelWidth('1/2');
+              final wMax = labelWidth('MAX');
+
+              return SizedBox(
+                height: 34,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: clampLeft(xFor(0.0) - (w0 / 2), w0),
+                      child: _AmountPresetLabel(
+                        label: '0',
+                        isSelected: isAt0,
+                        onTap: enabled
+                            ? () => _setValue(0.0, commit: true)
+                            : null,
+                      ),
+                    ),
+                    Positioned(
+                      left: clampLeft(xFor(0.5) - (wHalf / 2), wHalf),
+                      child: _AmountPresetLabel(
+                        label: '1/2',
+                        isSelected: isAtHalf,
+                        onTap: enabled
+                            ? () => _setValue(0.5, commit: true)
+                            : null,
+                      ),
+                    ),
+                    Positioned(
+                      left: clampLeft(xFor(1.0) - (wMax / 2), wMax),
+                      child: _AmountPresetLabel(
+                        label: 'MAX',
+                        isSelected: isAtMax,
+                        onTap: enabled
+                            ? () => _setValue(1.0, commit: true)
+                            : null,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.center,
-                  child: _AmountPresetLabel(
-                    label: '1/2',
-                    isSelected: isAtHalf,
-                    onTap:
-                        enabled ? () => _setValue(0.5, commit: true) : null,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: _AmountPresetLabel(
-                    label: 'MAX',
-                    isSelected: isAtMax,
-                    onTap: enabled ? () => _setValue(1.0, commit: true) : null,
-                  ),
-                ),
-              ),
-            ],
+              );
+            },
           ),
         ),
       ],
