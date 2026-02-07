@@ -3,7 +3,6 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
-
 // Static analysis wrongly picks the IO variant, thus ignore this
 // ignore_for_file: argument_type_not_assignable
 
@@ -14,1214 +13,2983 @@ import 'frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
 
+abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
+  RustLibApiImplPlatform({
+    required super.handler,
+    required super.wire,
+    required super.generalizedFrbRustBinding,
+    required super.portManager,
+  });
 
+  @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw);
 
+  @protected
+  String dco_decode_String(dynamic raw);
 
-                abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
-                  RustLibApiImplPlatform({
-                    required super.handler,
-                    required super.wire,
-                    required super.generalizedFrbRustBinding,
-                    required super.portManager,
-                  });
+  @protected
+  AddressBalanceInfo dco_decode_address_balance_info(dynamic raw);
 
-                  
+  @protected
+  AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw);
 
-                  @protected AnyhowException dco_decode_AnyhowException(dynamic raw);
+  @protected
+  AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw);
 
-@protected String dco_decode_String(dynamic raw);
+  @protected
+  AddressInfo dco_decode_address_info(dynamic raw);
 
-@protected AddressBalanceInfo dco_decode_address_balance_info(dynamic raw);
+  @protected
+  BackgroundSyncResult dco_decode_background_sync_result(dynamic raw);
 
-@protected AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw);
+  @protected
+  Balance dco_decode_balance(dynamic raw);
 
-@protected AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw);
+  @protected
+  bool dco_decode_bool(dynamic raw);
 
-@protected AddressInfo dco_decode_address_info(dynamic raw);
+  @protected
+  AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(
+    dynamic raw,
+  );
 
-@protected BackgroundSyncResult dco_decode_background_sync_result(dynamic raw);
+  @protected
+  AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(
+    dynamic raw,
+  );
 
-@protected Balance dco_decode_balance(dynamic raw);
+  @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw);
 
-@protected bool dco_decode_bool(dynamic raw);
+  @protected
+  CheckpointInfo dco_decode_box_autoadd_checkpoint_info(dynamic raw);
 
-@protected AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(dynamic raw);
+  @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
 
-@protected AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(dynamic raw);
+  @protected
+  LightdEndpoint dco_decode_box_autoadd_lightd_endpoint(dynamic raw);
 
-@protected bool dco_decode_box_autoadd_bool(dynamic raw);
+  @protected
+  PendingTx dco_decode_box_autoadd_pending_tx(dynamic raw);
 
-@protected CheckpointInfo dco_decode_box_autoadd_checkpoint_info(dynamic raw);
+  @protected
+  SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw);
 
-@protected PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
+  @protected
+  TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw);
 
-@protected LightdEndpoint dco_decode_box_autoadd_lightd_endpoint(dynamic raw);
+  @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw);
 
-@protected PendingTx dco_decode_box_autoadd_pending_tx(dynamic raw);
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
 
-@protected SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw);
+  @protected
+  WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(
+    dynamic raw,
+  );
 
-@protected TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw);
+  @protected
+  BuildInfo dco_decode_build_info(dynamic raw);
 
-@protected int dco_decode_box_autoadd_u_32(dynamic raw);
+  @protected
+  CheckpointInfo dco_decode_checkpoint_info(dynamic raw);
 
-@protected BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+  @protected
+  double dco_decode_f_64(dynamic raw);
 
-@protected WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(dynamic raw);
+  @protected
+  FeeInfo dco_decode_fee_info(dynamic raw);
 
-@protected BuildInfo dco_decode_build_info(dynamic raw);
+  @protected
+  int dco_decode_i_32(dynamic raw);
 
-@protected CheckpointInfo dco_decode_checkpoint_info(dynamic raw);
+  @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw);
 
-@protected double dco_decode_f_64(dynamic raw);
+  @protected
+  KeyAddressInfo dco_decode_key_address_info(dynamic raw);
 
-@protected FeeInfo dco_decode_fee_info(dynamic raw);
+  @protected
+  KeyExportInfo dco_decode_key_export_info(dynamic raw);
 
-@protected int dco_decode_i_32(dynamic raw);
+  @protected
+  KeyGroupInfo dco_decode_key_group_info(dynamic raw);
 
-@protected PlatformInt64 dco_decode_i_64(dynamic raw);
+  @protected
+  KeyTypeInfo dco_decode_key_type_info(dynamic raw);
 
-@protected KeyAddressInfo dco_decode_key_address_info(dynamic raw);
+  @protected
+  LightdEndpoint dco_decode_lightd_endpoint(dynamic raw);
 
-@protected KeyExportInfo dco_decode_key_export_info(dynamic raw);
+  @protected
+  List<String> dco_decode_list_String(dynamic raw);
 
-@protected KeyGroupInfo dco_decode_key_group_info(dynamic raw);
+  @protected
+  List<AddressBalanceInfo> dco_decode_list_address_balance_info(dynamic raw);
 
-@protected KeyTypeInfo dco_decode_key_type_info(dynamic raw);
+  @protected
+  List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw);
 
-@protected LightdEndpoint dco_decode_lightd_endpoint(dynamic raw);
+  @protected
+  List<AddressInfo> dco_decode_list_address_info(dynamic raw);
 
-@protected List<String> dco_decode_list_String(dynamic raw);
+  @protected
+  List<KeyAddressInfo> dco_decode_list_key_address_info(dynamic raw);
 
-@protected List<AddressBalanceInfo> dco_decode_list_address_balance_info(dynamic raw);
+  @protected
+  List<KeyGroupInfo> dco_decode_list_key_group_info(dynamic raw);
 
-@protected List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw);
+  @protected
+  List<Output> dco_decode_list_output(dynamic raw);
 
-@protected List<AddressInfo> dco_decode_list_address_info(dynamic raw);
+  @protected
+  Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
 
-@protected List<KeyAddressInfo> dco_decode_list_key_address_info(dynamic raw);
+  @protected
+  Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
-@protected List<KeyGroupInfo> dco_decode_list_key_group_info(dynamic raw);
+  @protected
+  List<SyncLogEntryFfi> dco_decode_list_sync_log_entry_ffi(dynamic raw);
 
-@protected List<Output> dco_decode_list_output(dynamic raw);
+  @protected
+  List<TxInfo> dco_decode_list_tx_info(dynamic raw);
 
-@protected Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
+  @protected
+  List<WalletMeta> dco_decode_list_wallet_meta(dynamic raw);
 
-@protected Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+  @protected
+  NetworkInfo dco_decode_network_info(dynamic raw);
 
-@protected List<SyncLogEntryFfi> dco_decode_list_sync_log_entry_ffi(dynamic raw);
+  @protected
+  NodeTestResult dco_decode_node_test_result(dynamic raw);
 
-@protected List<TxInfo> dco_decode_list_tx_info(dynamic raw);
+  @protected
+  String? dco_decode_opt_String(dynamic raw);
 
-@protected List<WalletMeta> dco_decode_list_wallet_meta(dynamic raw);
+  @protected
+  AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(
+    dynamic raw,
+  );
 
-@protected NetworkInfo dco_decode_network_info(dynamic raw);
+  @protected
+  AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(
+    dynamic raw,
+  );
 
-@protected NodeTestResult dco_decode_node_test_result(dynamic raw);
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
 
-@protected String? dco_decode_opt_String(dynamic raw);
+  @protected
+  CheckpointInfo? dco_decode_opt_box_autoadd_checkpoint_info(dynamic raw);
 
-@protected AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(dynamic raw);
+  @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
 
-@protected AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(dynamic raw);
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
-@protected bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
-@protected CheckpointInfo? dco_decode_opt_box_autoadd_checkpoint_info(dynamic raw);
+  @protected
+  WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(
+    dynamic raw,
+  );
 
-@protected PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+  @protected
+  Int64List? dco_decode_opt_list_prim_i_64_strict(dynamic raw);
 
-@protected int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+  @protected
+  Output dco_decode_output(dynamic raw);
 
-@protected BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+  @protected
+  PendingTx dco_decode_pending_tx(dynamic raw);
 
-@protected WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(dynamic raw);
+  @protected
+  SeedExportWarnings dco_decode_seed_export_warnings(dynamic raw);
 
-@protected Int64List? dco_decode_opt_list_prim_i_64_strict(dynamic raw);
+  @protected
+  SignedTx dco_decode_signed_tx(dynamic raw);
 
-@protected Output dco_decode_output(dynamic raw);
+  @protected
+  SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw);
 
-@protected PendingTx dco_decode_pending_tx(dynamic raw);
+  @protected
+  SyncMode dco_decode_sync_mode(dynamic raw);
 
-@protected SeedExportWarnings dco_decode_seed_export_warnings(dynamic raw);
+  @protected
+  SyncStage dco_decode_sync_stage(dynamic raw);
 
-@protected SignedTx dco_decode_signed_tx(dynamic raw);
+  @protected
+  SyncStatus dco_decode_sync_status(dynamic raw);
 
-@protected SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw);
+  @protected
+  TunnelMode dco_decode_tunnel_mode(dynamic raw);
 
-@protected SyncMode dco_decode_sync_mode(dynamic raw);
+  @protected
+  TxInfo dco_decode_tx_info(dynamic raw);
 
-@protected SyncStage dco_decode_sync_stage(dynamic raw);
+  @protected
+  int dco_decode_u_16(dynamic raw);
 
-@protected SyncStatus dco_decode_sync_status(dynamic raw);
+  @protected
+  int dco_decode_u_32(dynamic raw);
 
-@protected TunnelMode dco_decode_tunnel_mode(dynamic raw);
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
 
-@protected TxInfo dco_decode_tx_info(dynamic raw);
+  @protected
+  int dco_decode_u_8(dynamic raw);
 
-@protected int dco_decode_u_16(dynamic raw);
+  @protected
+  void dco_decode_unit(dynamic raw);
 
-@protected int dco_decode_u_32(dynamic raw);
+  @protected
+  BigInt dco_decode_usize(dynamic raw);
 
-@protected BigInt dco_decode_u_64(dynamic raw);
+  @protected
+  WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(
+    dynamic raw,
+  );
 
-@protected int dco_decode_u_8(dynamic raw);
+  @protected
+  WalletMeta dco_decode_wallet_meta(dynamic raw);
 
-@protected void dco_decode_unit(dynamic raw);
+  @protected
+  WatchOnlyBannerInfo dco_decode_watch_only_banner_info(dynamic raw);
 
-@protected BigInt dco_decode_usize(dynamic raw);
+  @protected
+  WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(
+    dynamic raw,
+  );
 
-@protected WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(dynamic raw);
+  @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
-@protected WalletMeta dco_decode_wallet_meta(dynamic raw);
+  @protected
+  String sse_decode_String(SseDeserializer deserializer);
 
-@protected WatchOnlyBannerInfo dco_decode_watch_only_banner_info(dynamic raw);
+  @protected
+  AddressBalanceInfo sse_decode_address_balance_info(
+    SseDeserializer deserializer,
+  );
 
-@protected WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(dynamic raw);
+  @protected
+  AddressBookColorTag sse_decode_address_book_color_tag(
+    SseDeserializer deserializer,
+  );
 
-@protected AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+  @protected
+  AddressBookEntryFfi sse_decode_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected String sse_decode_String(SseDeserializer deserializer);
+  @protected
+  AddressInfo sse_decode_address_info(SseDeserializer deserializer);
 
-@protected AddressBalanceInfo sse_decode_address_balance_info(SseDeserializer deserializer);
+  @protected
+  BackgroundSyncResult sse_decode_background_sync_result(
+    SseDeserializer deserializer,
+  );
 
-@protected AddressBookColorTag sse_decode_address_book_color_tag(SseDeserializer deserializer);
+  @protected
+  Balance sse_decode_balance(SseDeserializer deserializer);
 
-@protected AddressBookEntryFfi sse_decode_address_book_entry_ffi(SseDeserializer deserializer);
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer);
 
-@protected AddressInfo sse_decode_address_info(SseDeserializer deserializer);
+  @protected
+  AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(
+    SseDeserializer deserializer,
+  );
 
-@protected BackgroundSyncResult sse_decode_background_sync_result(SseDeserializer deserializer);
+  @protected
+  AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected Balance sse_decode_balance(SseDeserializer deserializer);
+  @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
-@protected bool sse_decode_bool(SseDeserializer deserializer);
+  @protected
+  CheckpointInfo sse_decode_box_autoadd_checkpoint_info(
+    SseDeserializer deserializer,
+  );
 
-@protected AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(SseDeserializer deserializer);
+  @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
 
-@protected AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(SseDeserializer deserializer);
+  @protected
+  LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(
+    SseDeserializer deserializer,
+  );
 
-@protected bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
+  @protected
+  PendingTx sse_decode_box_autoadd_pending_tx(SseDeserializer deserializer);
 
-@protected CheckpointInfo sse_decode_box_autoadd_checkpoint_info(SseDeserializer deserializer);
+  @protected
+  SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer);
 
-@protected PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
+  @protected
+  TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer);
 
-@protected LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(SseDeserializer deserializer);
+  @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
-@protected PendingTx sse_decode_box_autoadd_pending_tx(SseDeserializer deserializer);
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
-@protected SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer);
+  @protected
+  WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(
+    SseDeserializer deserializer,
+  );
 
-@protected TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer);
+  @protected
+  BuildInfo sse_decode_build_info(SseDeserializer deserializer);
 
-@protected int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+  @protected
+  CheckpointInfo sse_decode_checkpoint_info(SseDeserializer deserializer);
 
-@protected BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+  @protected
+  double sse_decode_f_64(SseDeserializer deserializer);
 
-@protected WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(SseDeserializer deserializer);
+  @protected
+  FeeInfo sse_decode_fee_info(SseDeserializer deserializer);
 
-@protected BuildInfo sse_decode_build_info(SseDeserializer deserializer);
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
 
-@protected CheckpointInfo sse_decode_checkpoint_info(SseDeserializer deserializer);
+  @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
-@protected double sse_decode_f_64(SseDeserializer deserializer);
+  @protected
+  KeyAddressInfo sse_decode_key_address_info(SseDeserializer deserializer);
 
-@protected FeeInfo sse_decode_fee_info(SseDeserializer deserializer);
+  @protected
+  KeyExportInfo sse_decode_key_export_info(SseDeserializer deserializer);
 
-@protected int sse_decode_i_32(SseDeserializer deserializer);
+  @protected
+  KeyGroupInfo sse_decode_key_group_info(SseDeserializer deserializer);
 
-@protected PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+  @protected
+  KeyTypeInfo sse_decode_key_type_info(SseDeserializer deserializer);
 
-@protected KeyAddressInfo sse_decode_key_address_info(SseDeserializer deserializer);
+  @protected
+  LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer);
 
-@protected KeyExportInfo sse_decode_key_export_info(SseDeserializer deserializer);
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
 
-@protected KeyGroupInfo sse_decode_key_group_info(SseDeserializer deserializer);
+  @protected
+  List<AddressBalanceInfo> sse_decode_list_address_balance_info(
+    SseDeserializer deserializer,
+  );
 
-@protected KeyTypeInfo sse_decode_key_type_info(SseDeserializer deserializer);
+  @protected
+  List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer);
+  @protected
+  List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
 
-@protected List<String> sse_decode_list_String(SseDeserializer deserializer);
+  @protected
+  List<KeyAddressInfo> sse_decode_list_key_address_info(
+    SseDeserializer deserializer,
+  );
 
-@protected List<AddressBalanceInfo> sse_decode_list_address_balance_info(SseDeserializer deserializer);
+  @protected
+  List<KeyGroupInfo> sse_decode_list_key_group_info(
+    SseDeserializer deserializer,
+  );
 
-@protected List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(SseDeserializer deserializer);
+  @protected
+  List<Output> sse_decode_list_output(SseDeserializer deserializer);
 
-@protected List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
+  @protected
+  Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
 
-@protected List<KeyAddressInfo> sse_decode_list_key_address_info(SseDeserializer deserializer);
+  @protected
+  Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
-@protected List<KeyGroupInfo> sse_decode_list_key_group_info(SseDeserializer deserializer);
+  @protected
+  List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected List<Output> sse_decode_list_output(SseDeserializer deserializer);
+  @protected
+  List<TxInfo> sse_decode_list_tx_info(SseDeserializer deserializer);
 
-@protected Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
+  @protected
+  List<WalletMeta> sse_decode_list_wallet_meta(SseDeserializer deserializer);
 
-@protected Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+  @protected
+  NetworkInfo sse_decode_network_info(SseDeserializer deserializer);
 
-@protected List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(SseDeserializer deserializer);
+  @protected
+  NodeTestResult sse_decode_node_test_result(SseDeserializer deserializer);
 
-@protected List<TxInfo> sse_decode_list_tx_info(SseDeserializer deserializer);
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
 
-@protected List<WalletMeta> sse_decode_list_wallet_meta(SseDeserializer deserializer);
+  @protected
+  AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(
+    SseDeserializer deserializer,
+  );
 
-@protected NetworkInfo sse_decode_network_info(SseDeserializer deserializer);
+  @protected
+  AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected NodeTestResult sse_decode_node_test_result(SseDeserializer deserializer);
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
 
-@protected String? sse_decode_opt_String(SseDeserializer deserializer);
+  @protected
+  CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(
+    SseDeserializer deserializer,
+  );
 
-@protected AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(SseDeserializer deserializer);
+  @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
 
-@protected AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(SseDeserializer deserializer);
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
-@protected bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
-@protected CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(SseDeserializer deserializer);
+  @protected
+  WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(
+    SseDeserializer deserializer,
+  );
 
-@protected PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+  @protected
+  Int64List? sse_decode_opt_list_prim_i_64_strict(SseDeserializer deserializer);
 
-@protected int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+  @protected
+  Output sse_decode_output(SseDeserializer deserializer);
 
-@protected BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+  @protected
+  PendingTx sse_decode_pending_tx(SseDeserializer deserializer);
 
-@protected WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(SseDeserializer deserializer);
+  @protected
+  SeedExportWarnings sse_decode_seed_export_warnings(
+    SseDeserializer deserializer,
+  );
 
-@protected Int64List? sse_decode_opt_list_prim_i_64_strict(SseDeserializer deserializer);
+  @protected
+  SignedTx sse_decode_signed_tx(SseDeserializer deserializer);
 
-@protected Output sse_decode_output(SseDeserializer deserializer);
+  @protected
+  SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer);
 
-@protected PendingTx sse_decode_pending_tx(SseDeserializer deserializer);
+  @protected
+  SyncMode sse_decode_sync_mode(SseDeserializer deserializer);
 
-@protected SeedExportWarnings sse_decode_seed_export_warnings(SseDeserializer deserializer);
+  @protected
+  SyncStage sse_decode_sync_stage(SseDeserializer deserializer);
 
-@protected SignedTx sse_decode_signed_tx(SseDeserializer deserializer);
+  @protected
+  SyncStatus sse_decode_sync_status(SseDeserializer deserializer);
 
-@protected SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer);
+  @protected
+  TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer);
 
-@protected SyncMode sse_decode_sync_mode(SseDeserializer deserializer);
+  @protected
+  TxInfo sse_decode_tx_info(SseDeserializer deserializer);
 
-@protected SyncStage sse_decode_sync_stage(SseDeserializer deserializer);
+  @protected
+  int sse_decode_u_16(SseDeserializer deserializer);
 
-@protected SyncStatus sse_decode_sync_status(SseDeserializer deserializer);
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer);
 
-@protected TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer);
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
-@protected TxInfo sse_decode_tx_info(SseDeserializer deserializer);
+  @protected
+  int sse_decode_u_8(SseDeserializer deserializer);
 
-@protected int sse_decode_u_16(SseDeserializer deserializer);
+  @protected
+  void sse_decode_unit(SseDeserializer deserializer);
 
-@protected int sse_decode_u_32(SseDeserializer deserializer);
+  @protected
+  BigInt sse_decode_usize(SseDeserializer deserializer);
 
-@protected BigInt sse_decode_u_64(SseDeserializer deserializer);
+  @protected
+  WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(
+    SseDeserializer deserializer,
+  );
 
-@protected int sse_decode_u_8(SseDeserializer deserializer);
+  @protected
+  WalletMeta sse_decode_wallet_meta(SseDeserializer deserializer);
 
-@protected void sse_decode_unit(SseDeserializer deserializer);
+  @protected
+  WatchOnlyBannerInfo sse_decode_watch_only_banner_info(
+    SseDeserializer deserializer,
+  );
 
-@protected BigInt sse_decode_usize(SseDeserializer deserializer);
+  @protected
+  WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(
+    SseDeserializer deserializer,
+  );
 
-@protected WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(SseDeserializer deserializer);
+  @protected
+  String cst_encode_AnyhowException(AnyhowException raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    throw UnimplementedError();
+  }
 
-@protected WalletMeta sse_decode_wallet_meta(SseDeserializer deserializer);
+  @protected
+  String cst_encode_String(String raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw;
+  }
 
-@protected WatchOnlyBannerInfo sse_decode_watch_only_banner_info(SseDeserializer deserializer);
+  @protected
+  JSAny cst_encode_address_balance_info(AddressBalanceInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.address),
+      cst_encode_u_64(raw.balance),
+      cst_encode_u_64(raw.spendable),
+      cst_encode_u_64(raw.pending),
+      cst_encode_opt_box_autoadd_i_64(raw.keyId),
+      cst_encode_i_64(raw.addressId),
+      cst_encode_opt_String(raw.label),
+      cst_encode_i_64(raw.createdAt),
+      cst_encode_address_book_color_tag(raw.colorTag),
+      cst_encode_u_32(raw.diversifierIndex),
+    ].jsify()!;
+  }
 
-@protected WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(SseDeserializer deserializer);
-
-@protected String cst_encode_AnyhowException(AnyhowException raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-throw UnimplementedError(); }
-
-@protected String cst_encode_String(String raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw; }
-
-@protected JSAny cst_encode_address_balance_info(AddressBalanceInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.address),cst_encode_u_64(raw.balance),cst_encode_u_64(raw.spendable),cst_encode_u_64(raw.pending),cst_encode_opt_box_autoadd_i_64(raw.keyId),cst_encode_i_64(raw.addressId),cst_encode_opt_String(raw.label),cst_encode_i_64(raw.createdAt),cst_encode_address_book_color_tag(raw.colorTag),cst_encode_u_32(raw.diversifierIndex)].jsify()!; }
-
-@protected JSAny cst_encode_address_book_entry_ffi(AddressBookEntryFfi raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_i_64(raw.id),cst_encode_String(raw.walletId),cst_encode_String(raw.address),cst_encode_String(raw.label),cst_encode_opt_String(raw.notes),cst_encode_address_book_color_tag(raw.colorTag),cst_encode_bool(raw.isFavorite),cst_encode_i_64(raw.createdAt),cst_encode_i_64(raw.updatedAt),cst_encode_opt_box_autoadd_i_64(raw.lastUsedAt),cst_encode_u_32(raw.useCount)].jsify()!; }
-
-@protected JSAny cst_encode_address_info(AddressInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.address),cst_encode_u_32(raw.diversifierIndex),cst_encode_opt_String(raw.label),cst_encode_i_64(raw.createdAt),cst_encode_address_book_color_tag(raw.colorTag)].jsify()!; }
-
-@protected JSAny cst_encode_background_sync_result(BackgroundSyncResult raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.mode),cst_encode_u_64(raw.blocksSynced),cst_encode_u_64(raw.startHeight),cst_encode_u_64(raw.endHeight),cst_encode_u_64(raw.durationSecs),cst_encode_list_String(raw.errors),cst_encode_opt_box_autoadd_u_64(raw.newBalance),cst_encode_u_32(raw.newTransactions)].jsify()!; }
-
-@protected JSAny cst_encode_balance(Balance raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_u_64(raw.total),cst_encode_u_64(raw.spendable),cst_encode_u_64(raw.pending)].jsify()!; }
-
-@protected int cst_encode_box_autoadd_address_book_color_tag(AddressBookColorTag raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_address_book_color_tag(raw); }
-
-@protected JSAny cst_encode_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_address_book_entry_ffi(raw); }
-
-@protected bool cst_encode_box_autoadd_bool(bool raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_bool(raw); }
-
-@protected JSAny cst_encode_box_autoadd_checkpoint_info(CheckpointInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_checkpoint_info(raw); }
-
-@protected JSAny cst_encode_box_autoadd_i_64(PlatformInt64 raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_i_64(raw); }
-
-@protected JSAny cst_encode_box_autoadd_lightd_endpoint(LightdEndpoint raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_lightd_endpoint(raw); }
-
-@protected JSAny cst_encode_box_autoadd_pending_tx(PendingTx raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_pending_tx(raw); }
-
-@protected JSAny cst_encode_box_autoadd_signed_tx(SignedTx raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_signed_tx(raw); }
-
-@protected JSAny cst_encode_box_autoadd_tunnel_mode(TunnelMode raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_tunnel_mode(raw); }
-
-@protected int cst_encode_box_autoadd_u_32(int raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_u_32(raw); }
-
-@protected JSAny cst_encode_box_autoadd_u_64(BigInt raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_u_64(raw); }
-
-@protected JSAny cst_encode_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_watch_only_banner_info(raw); }
-
-@protected JSAny cst_encode_build_info(BuildInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.version),cst_encode_String(raw.gitCommit),cst_encode_String(raw.buildDate),cst_encode_String(raw.rustVersion),cst_encode_String(raw.targetTriple)].jsify()!; }
-
-@protected JSAny cst_encode_checkpoint_info(CheckpointInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_u_32(raw.height),cst_encode_i_64(raw.timestamp)].jsify()!; }
-
-@protected JSAny cst_encode_fee_info(FeeInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_u_64(raw.defaultFee),cst_encode_u_64(raw.minFee),cst_encode_u_64(raw.maxFee),cst_encode_u_64(raw.feePerOutput),cst_encode_f_64(raw.memoFeeMultiplier)].jsify()!; }
-
-@protected JSAny cst_encode_i_64(PlatformInt64 raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return castNativeBigInt(raw); }
-
-@protected JSAny cst_encode_key_address_info(KeyAddressInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_i_64(raw.keyId),cst_encode_String(raw.address),cst_encode_u_32(raw.diversifierIndex),cst_encode_opt_String(raw.label),cst_encode_i_64(raw.createdAt),cst_encode_address_book_color_tag(raw.colorTag)].jsify()!; }
-
-@protected JSAny cst_encode_key_export_info(KeyExportInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_i_64(raw.keyId),cst_encode_opt_String(raw.saplingViewingKey),cst_encode_opt_String(raw.orchardViewingKey),cst_encode_opt_String(raw.saplingSpendingKey),cst_encode_opt_String(raw.orchardSpendingKey)].jsify()!; }
-
-@protected JSAny cst_encode_key_group_info(KeyGroupInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_i_64(raw.id),cst_encode_opt_String(raw.label),cst_encode_key_type_info(raw.keyType),cst_encode_bool(raw.spendable),cst_encode_bool(raw.hasSapling),cst_encode_bool(raw.hasOrchard),cst_encode_i_64(raw.birthdayHeight),cst_encode_i_64(raw.createdAt)].jsify()!; }
-
-@protected JSAny cst_encode_lightd_endpoint(LightdEndpoint raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.host),cst_encode_u_16(raw.port),cst_encode_bool(raw.useTls),cst_encode_opt_String(raw.tlsPin),cst_encode_opt_String(raw.label)].jsify()!; }
-
-@protected JSAny cst_encode_list_String(List<String> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_String).toList().jsify()!; }
-
-@protected JSAny cst_encode_list_address_balance_info(List<AddressBalanceInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_address_balance_info).toList().jsify()!; }
-
-@protected JSAny cst_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_address_book_entry_ffi).toList().jsify()!; }
-
-@protected JSAny cst_encode_list_address_info(List<AddressInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_address_info).toList().jsify()!; }
-
-@protected JSAny cst_encode_list_key_address_info(List<KeyAddressInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_key_address_info).toList().jsify()!; }
-
-@protected JSAny cst_encode_list_key_group_info(List<KeyGroupInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_key_group_info).toList().jsify()!; }
-
-@protected JSAny cst_encode_list_output(List<Output> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_output).toList().jsify()!; }
-
-@protected JSAny cst_encode_list_prim_i_64_strict(Int64List raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.inner.jsify()!; }
-
-@protected JSAny cst_encode_list_prim_u_8_strict(Uint8List raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.jsify()!; }
-
-@protected JSAny cst_encode_list_sync_log_entry_ffi(List<SyncLogEntryFfi> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_sync_log_entry_ffi).toList().jsify()!; }
-
-@protected JSAny cst_encode_list_tx_info(List<TxInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_tx_info).toList().jsify()!; }
-
-@protected JSAny cst_encode_list_wallet_meta(List<WalletMeta> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.map(cst_encode_wallet_meta).toList().jsify()!; }
-
-@protected JSAny cst_encode_network_info(NetworkInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.name),cst_encode_u_32(raw.coinType),cst_encode_u_16(raw.rpcPort),cst_encode_u_32(raw.defaultBirthday)].jsify()!; }
-
-@protected JSAny cst_encode_node_test_result(NodeTestResult raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_bool(raw.success),cst_encode_opt_box_autoadd_u_64(raw.latestBlockHeight),cst_encode_String(raw.transportMode),cst_encode_bool(raw.tlsEnabled),cst_encode_opt_box_autoadd_bool(raw.tlsPinMatched),cst_encode_opt_String(raw.expectedPin),cst_encode_opt_String(raw.actualPin),cst_encode_opt_String(raw.errorMessage),cst_encode_u_64(raw.responseTimeMs),cst_encode_opt_String(raw.serverVersion),cst_encode_opt_String(raw.chainName)].jsify()!; }
-
-@protected String? cst_encode_opt_String(String? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_String(raw); }
-
-@protected int? cst_encode_opt_box_autoadd_address_book_color_tag(AddressBookColorTag? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_box_autoadd_address_book_color_tag(raw); }
-
-@protected JSAny? cst_encode_opt_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_box_autoadd_address_book_entry_ffi(raw); }
-
-@protected bool? cst_encode_opt_box_autoadd_bool(bool? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_box_autoadd_bool(raw); }
-
-@protected JSAny? cst_encode_opt_box_autoadd_checkpoint_info(CheckpointInfo? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_box_autoadd_checkpoint_info(raw); }
-
-@protected JSAny? cst_encode_opt_box_autoadd_i_64(PlatformInt64? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_box_autoadd_i_64(raw); }
-
-@protected int? cst_encode_opt_box_autoadd_u_32(int? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_box_autoadd_u_32(raw); }
-
-@protected JSAny? cst_encode_opt_box_autoadd_u_64(BigInt? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_box_autoadd_u_64(raw); }
-
-@protected JSAny? cst_encode_opt_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_box_autoadd_watch_only_banner_info(raw); }
-
-@protected JSAny? cst_encode_opt_list_prim_i_64_strict(Int64List? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? null : cst_encode_list_prim_i_64_strict(raw); }
-
-@protected JSAny cst_encode_output(Output raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.addr),cst_encode_u_64(raw.amount),cst_encode_opt_String(raw.memo)].jsify()!; }
-
-@protected JSAny cst_encode_pending_tx(PendingTx raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.id),cst_encode_list_output(raw.outputs),cst_encode_u_64(raw.totalAmount),cst_encode_u_64(raw.fee),cst_encode_u_64(raw.change),cst_encode_u_64(raw.inputTotal),cst_encode_u_32(raw.numInputs),cst_encode_u_32(raw.expiryHeight),cst_encode_i_64(raw.createdAt)].jsify()!; }
-
-@protected JSAny cst_encode_seed_export_warnings(SeedExportWarnings raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.primary),cst_encode_String(raw.secondary),cst_encode_String(raw.backupInstructions),cst_encode_String(raw.clipboardWarning)].jsify()!; }
-
-@protected JSAny cst_encode_signed_tx(SignedTx raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.txid),cst_encode_list_prim_u_8_strict(raw.raw),cst_encode_usize(raw.size)].jsify()!; }
-
-@protected JSAny cst_encode_sync_log_entry_ffi(SyncLogEntryFfi raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_i_64(raw.timestamp),cst_encode_String(raw.level),cst_encode_String(raw.module),cst_encode_String(raw.message)].jsify()!; }
-
-@protected JSAny cst_encode_sync_status(SyncStatus raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_u_64(raw.localHeight),cst_encode_u_64(raw.targetHeight),cst_encode_f_64(raw.percent),cst_encode_opt_box_autoadd_u_64(raw.eta),cst_encode_sync_stage(raw.stage),cst_encode_opt_box_autoadd_u_64(raw.lastCheckpoint),cst_encode_f_64(raw.blocksPerSecond),cst_encode_u_64(raw.notesDecrypted),cst_encode_u_64(raw.lastBatchMs)].jsify()!; }
-
-@protected JSAny cst_encode_tunnel_mode(TunnelMode raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-if (raw is TunnelMode_Tor) {
-            return [0 ].jsify()!;
-        }
-if (raw is TunnelMode_I2p) {
-            return [1 ].jsify()!;
-        }
-if (raw is TunnelMode_Socks5) {
-            return [2 ,cst_encode_String(raw.url)].jsify()!;
-        }
-if (raw is TunnelMode_Direct) {
-            return [3 ].jsify()!;
-        }
-
-                throw Exception('unreachable'); }
-
-@protected JSAny cst_encode_tx_info(TxInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.txid),cst_encode_opt_box_autoadd_u_32(raw.height),cst_encode_i_64(raw.timestamp),cst_encode_i_64(raw.amount),cst_encode_u_64(raw.fee),cst_encode_opt_String(raw.memo),cst_encode_bool(raw.confirmed)].jsify()!; }
-
-@protected JSAny cst_encode_u_64(BigInt raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return castNativeBigInt(raw); }
-
-@protected JSAny cst_encode_usize(BigInt raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return castNativeBigInt(raw); }
-
-@protected JSAny cst_encode_wallet_background_sync_result(WalletBackgroundSyncResult raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.walletId),cst_encode_String(raw.mode),cst_encode_u_64(raw.blocksSynced),cst_encode_u_64(raw.startHeight),cst_encode_u_64(raw.endHeight),cst_encode_u_64(raw.durationSecs),cst_encode_list_String(raw.errors),cst_encode_opt_box_autoadd_u_64(raw.newBalance),cst_encode_u_32(raw.newTransactions)].jsify()!; }
-
-@protected JSAny cst_encode_wallet_meta(WalletMeta raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.id),cst_encode_String(raw.name),cst_encode_i_64(raw.createdAt),cst_encode_bool(raw.watchOnly),cst_encode_u_32(raw.birthdayHeight),cst_encode_opt_String(raw.networkType)].jsify()!; }
-
-@protected JSAny cst_encode_watch_only_banner_info(WatchOnlyBannerInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_String(raw.bannerType),cst_encode_String(raw.title),cst_encode_String(raw.subtitle),cst_encode_String(raw.icon)].jsify()!; }
-
-@protected JSAny cst_encode_watch_only_capabilities_info(WatchOnlyCapabilitiesInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return [cst_encode_bool(raw.canViewIncoming),cst_encode_bool(raw.canViewOutgoing),cst_encode_bool(raw.canSpend),cst_encode_bool(raw.canExportSeed),cst_encode_bool(raw.canGenerateAddresses),cst_encode_bool(raw.isWatchOnly)].jsify()!; }
-
-@protected int cst_encode_address_book_color_tag(AddressBookColorTag raw);
-
-@protected bool cst_encode_bool(bool raw);
-
-@protected double cst_encode_f_64(double raw);
-
-@protected int cst_encode_i_32(int raw);
-
-@protected int cst_encode_key_type_info(KeyTypeInfo raw);
-
-@protected int cst_encode_sync_mode(SyncMode raw);
-
-@protected int cst_encode_sync_stage(SyncStage raw);
-
-@protected int cst_encode_u_16(int raw);
-
-@protected int cst_encode_u_32(int raw);
-
-@protected int cst_encode_u_8(int raw);
-
-@protected void cst_encode_unit(void raw);
-
-@protected void sse_encode_AnyhowException(AnyhowException self, SseSerializer serializer);
-
-@protected void sse_encode_String(String self, SseSerializer serializer);
-
-@protected void sse_encode_address_balance_info(AddressBalanceInfo self, SseSerializer serializer);
-
-@protected void sse_encode_address_book_color_tag(AddressBookColorTag self, SseSerializer serializer);
-
-@protected void sse_encode_address_book_entry_ffi(AddressBookEntryFfi self, SseSerializer serializer);
-
-@protected void sse_encode_address_info(AddressInfo self, SseSerializer serializer);
-
-@protected void sse_encode_background_sync_result(BackgroundSyncResult self, SseSerializer serializer);
-
-@protected void sse_encode_balance(Balance self, SseSerializer serializer);
-
-@protected void sse_encode_bool(bool self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_address_book_color_tag(AddressBookColorTag self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_checkpoint_info(CheckpointInfo self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_i_64(PlatformInt64 self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_lightd_endpoint(LightdEndpoint self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_pending_tx(PendingTx self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_signed_tx(SignedTx self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_tunnel_mode(TunnelMode self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo self, SseSerializer serializer);
-
-@protected void sse_encode_build_info(BuildInfo self, SseSerializer serializer);
-
-@protected void sse_encode_checkpoint_info(CheckpointInfo self, SseSerializer serializer);
-
-@protected void sse_encode_f_64(double self, SseSerializer serializer);
-
-@protected void sse_encode_fee_info(FeeInfo self, SseSerializer serializer);
-
-@protected void sse_encode_i_32(int self, SseSerializer serializer);
-
-@protected void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
-
-@protected void sse_encode_key_address_info(KeyAddressInfo self, SseSerializer serializer);
-
-@protected void sse_encode_key_export_info(KeyExportInfo self, SseSerializer serializer);
-
-@protected void sse_encode_key_group_info(KeyGroupInfo self, SseSerializer serializer);
-
-@protected void sse_encode_key_type_info(KeyTypeInfo self, SseSerializer serializer);
-
-@protected void sse_encode_lightd_endpoint(LightdEndpoint self, SseSerializer serializer);
-
-@protected void sse_encode_list_String(List<String> self, SseSerializer serializer);
-
-@protected void sse_encode_list_address_balance_info(List<AddressBalanceInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> self, SseSerializer serializer);
-
-@protected void sse_encode_list_address_info(List<AddressInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_key_address_info(List<KeyAddressInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_key_group_info(List<KeyGroupInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_output(List<Output> self, SseSerializer serializer);
-
-@protected void sse_encode_list_prim_i_64_strict(Int64List self, SseSerializer serializer);
-
-@protected void sse_encode_list_prim_u_8_strict(Uint8List self, SseSerializer serializer);
-
-@protected void sse_encode_list_sync_log_entry_ffi(List<SyncLogEntryFfi> self, SseSerializer serializer);
-
-@protected void sse_encode_list_tx_info(List<TxInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_wallet_meta(List<WalletMeta> self, SseSerializer serializer);
-
-@protected void sse_encode_network_info(NetworkInfo self, SseSerializer serializer);
-
-@protected void sse_encode_node_test_result(NodeTestResult self, SseSerializer serializer);
-
-@protected void sse_encode_opt_String(String? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_address_book_color_tag(AddressBookColorTag? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_checkpoint_info(CheckpointInfo? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_i_64(PlatformInt64? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_list_prim_i_64_strict(Int64List? self, SseSerializer serializer);
-
-@protected void sse_encode_output(Output self, SseSerializer serializer);
-
-@protected void sse_encode_pending_tx(PendingTx self, SseSerializer serializer);
-
-@protected void sse_encode_seed_export_warnings(SeedExportWarnings self, SseSerializer serializer);
-
-@protected void sse_encode_signed_tx(SignedTx self, SseSerializer serializer);
-
-@protected void sse_encode_sync_log_entry_ffi(SyncLogEntryFfi self, SseSerializer serializer);
-
-@protected void sse_encode_sync_mode(SyncMode self, SseSerializer serializer);
-
-@protected void sse_encode_sync_stage(SyncStage self, SseSerializer serializer);
-
-@protected void sse_encode_sync_status(SyncStatus self, SseSerializer serializer);
-
-@protected void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer);
-
-@protected void sse_encode_tx_info(TxInfo self, SseSerializer serializer);
-
-@protected void sse_encode_u_16(int self, SseSerializer serializer);
-
-@protected void sse_encode_u_32(int self, SseSerializer serializer);
-
-@protected void sse_encode_u_64(BigInt self, SseSerializer serializer);
-
-@protected void sse_encode_u_8(int self, SseSerializer serializer);
-
-@protected void sse_encode_unit(void self, SseSerializer serializer);
-
-@protected void sse_encode_usize(BigInt self, SseSerializer serializer);
-
-@protected void sse_encode_wallet_background_sync_result(WalletBackgroundSyncResult self, SseSerializer serializer);
-
-@protected void sse_encode_wallet_meta(WalletMeta self, SseSerializer serializer);
-
-@protected void sse_encode_watch_only_banner_info(WatchOnlyBannerInfo self, SseSerializer serializer);
-
-@protected void sse_encode_watch_only_capabilities_info(WatchOnlyCapabilitiesInfo self, SseSerializer serializer);
-                }
-                
-
+  @protected
+  JSAny cst_encode_address_book_entry_ffi(AddressBookEntryFfi raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_i_64(raw.id),
+      cst_encode_String(raw.walletId),
+      cst_encode_String(raw.address),
+      cst_encode_String(raw.label),
+      cst_encode_opt_String(raw.notes),
+      cst_encode_address_book_color_tag(raw.colorTag),
+      cst_encode_bool(raw.isFavorite),
+      cst_encode_i_64(raw.createdAt),
+      cst_encode_i_64(raw.updatedAt),
+      cst_encode_opt_box_autoadd_i_64(raw.lastUsedAt),
+      cst_encode_u_32(raw.useCount),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_address_info(AddressInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.address),
+      cst_encode_u_32(raw.diversifierIndex),
+      cst_encode_opt_String(raw.label),
+      cst_encode_i_64(raw.createdAt),
+      cst_encode_address_book_color_tag(raw.colorTag),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_background_sync_result(BackgroundSyncResult raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.mode),
+      cst_encode_u_64(raw.blocksSynced),
+      cst_encode_u_64(raw.startHeight),
+      cst_encode_u_64(raw.endHeight),
+      cst_encode_u_64(raw.durationSecs),
+      cst_encode_list_String(raw.errors),
+      cst_encode_opt_box_autoadd_u_64(raw.newBalance),
+      cst_encode_u_32(raw.newTransactions),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_balance(Balance raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_u_64(raw.total),
+      cst_encode_u_64(raw.spendable),
+      cst_encode_u_64(raw.pending),
+    ].jsify()!;
+  }
+
+  @protected
+  int cst_encode_box_autoadd_address_book_color_tag(AddressBookColorTag raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_address_book_color_tag(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_address_book_entry_ffi(raw);
+  }
+
+  @protected
+  bool cst_encode_box_autoadd_bool(bool raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_bool(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_checkpoint_info(CheckpointInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_checkpoint_info(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_i_64(PlatformInt64 raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_i_64(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_lightd_endpoint(LightdEndpoint raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_lightd_endpoint(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_pending_tx(PendingTx raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_pending_tx(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_signed_tx(SignedTx raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_signed_tx(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_tunnel_mode(TunnelMode raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_tunnel_mode(raw);
+  }
+
+  @protected
+  int cst_encode_box_autoadd_u_32(int raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_u_32(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_u_64(BigInt raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_u_64(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_watch_only_banner_info(raw);
+  }
+
+  @protected
+  JSAny cst_encode_build_info(BuildInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.version),
+      cst_encode_String(raw.gitCommit),
+      cst_encode_String(raw.buildDate),
+      cst_encode_String(raw.rustVersion),
+      cst_encode_String(raw.targetTriple),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_checkpoint_info(CheckpointInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_u_32(raw.height),
+      cst_encode_i_64(raw.timestamp),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_fee_info(FeeInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_u_64(raw.defaultFee),
+      cst_encode_u_64(raw.minFee),
+      cst_encode_u_64(raw.maxFee),
+      cst_encode_u_64(raw.feePerOutput),
+      cst_encode_f_64(raw.memoFeeMultiplier),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_i_64(PlatformInt64 raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return castNativeBigInt(raw);
+  }
+
+  @protected
+  JSAny cst_encode_key_address_info(KeyAddressInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_i_64(raw.keyId),
+      cst_encode_String(raw.address),
+      cst_encode_u_32(raw.diversifierIndex),
+      cst_encode_opt_String(raw.label),
+      cst_encode_i_64(raw.createdAt),
+      cst_encode_address_book_color_tag(raw.colorTag),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_key_export_info(KeyExportInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_i_64(raw.keyId),
+      cst_encode_opt_String(raw.saplingViewingKey),
+      cst_encode_opt_String(raw.orchardViewingKey),
+      cst_encode_opt_String(raw.saplingSpendingKey),
+      cst_encode_opt_String(raw.orchardSpendingKey),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_key_group_info(KeyGroupInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_i_64(raw.id),
+      cst_encode_opt_String(raw.label),
+      cst_encode_key_type_info(raw.keyType),
+      cst_encode_bool(raw.spendable),
+      cst_encode_bool(raw.hasSapling),
+      cst_encode_bool(raw.hasOrchard),
+      cst_encode_i_64(raw.birthdayHeight),
+      cst_encode_i_64(raw.createdAt),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_lightd_endpoint(LightdEndpoint raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.host),
+      cst_encode_u_16(raw.port),
+      cst_encode_bool(raw.useTls),
+      cst_encode_opt_String(raw.tlsPin),
+      cst_encode_opt_String(raw.label),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_String(List<String> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_String).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_address_balance_info(List<AddressBalanceInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_address_balance_info).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_address_book_entry_ffi).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_address_info(List<AddressInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_address_info).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_key_address_info(List<KeyAddressInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_key_address_info).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_key_group_info(List<KeyGroupInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_key_group_info).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_output(List<Output> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_output).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_prim_i_64_strict(Int64List raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.inner.jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_prim_u_8_strict(Uint8List raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_sync_log_entry_ffi(List<SyncLogEntryFfi> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_sync_log_entry_ffi).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_tx_info(List<TxInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_tx_info).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_list_wallet_meta(List<WalletMeta> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_wallet_meta).toList().jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_network_info(NetworkInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.name),
+      cst_encode_u_32(raw.coinType),
+      cst_encode_u_16(raw.rpcPort),
+      cst_encode_u_32(raw.defaultBirthday),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_node_test_result(NodeTestResult raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_bool(raw.success),
+      cst_encode_opt_box_autoadd_u_64(raw.latestBlockHeight),
+      cst_encode_String(raw.transportMode),
+      cst_encode_bool(raw.tlsEnabled),
+      cst_encode_opt_box_autoadd_bool(raw.tlsPinMatched),
+      cst_encode_opt_String(raw.expectedPin),
+      cst_encode_opt_String(raw.actualPin),
+      cst_encode_opt_String(raw.errorMessage),
+      cst_encode_u_64(raw.responseTimeMs),
+      cst_encode_opt_String(raw.serverVersion),
+      cst_encode_opt_String(raw.chainName),
+    ].jsify()!;
+  }
+
+  @protected
+  String? cst_encode_opt_String(String? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? null : cst_encode_String(raw);
+  }
+
+  @protected
+  int? cst_encode_opt_box_autoadd_address_book_color_tag(
+    AddressBookColorTag? raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null
+        ? null
+        : cst_encode_box_autoadd_address_book_color_tag(raw);
+  }
+
+  @protected
+  JSAny? cst_encode_opt_box_autoadd_address_book_entry_ffi(
+    AddressBookEntryFfi? raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null
+        ? null
+        : cst_encode_box_autoadd_address_book_entry_ffi(raw);
+  }
+
+  @protected
+  bool? cst_encode_opt_box_autoadd_bool(bool? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? null : cst_encode_box_autoadd_bool(raw);
+  }
+
+  @protected
+  JSAny? cst_encode_opt_box_autoadd_checkpoint_info(CheckpointInfo? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? null : cst_encode_box_autoadd_checkpoint_info(raw);
+  }
+
+  @protected
+  JSAny? cst_encode_opt_box_autoadd_i_64(PlatformInt64? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? null : cst_encode_box_autoadd_i_64(raw);
+  }
+
+  @protected
+  int? cst_encode_opt_box_autoadd_u_32(int? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? null : cst_encode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  JSAny? cst_encode_opt_box_autoadd_u_64(BigInt? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? null : cst_encode_box_autoadd_u_64(raw);
+  }
+
+  @protected
+  JSAny? cst_encode_opt_box_autoadd_watch_only_banner_info(
+    WatchOnlyBannerInfo? raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null
+        ? null
+        : cst_encode_box_autoadd_watch_only_banner_info(raw);
+  }
+
+  @protected
+  JSAny? cst_encode_opt_list_prim_i_64_strict(Int64List? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? null : cst_encode_list_prim_i_64_strict(raw);
+  }
+
+  @protected
+  JSAny cst_encode_output(Output raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.addr),
+      cst_encode_u_64(raw.amount),
+      cst_encode_opt_String(raw.memo),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_pending_tx(PendingTx raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.id),
+      cst_encode_list_output(raw.outputs),
+      cst_encode_u_64(raw.totalAmount),
+      cst_encode_u_64(raw.fee),
+      cst_encode_u_64(raw.change),
+      cst_encode_u_64(raw.inputTotal),
+      cst_encode_u_32(raw.numInputs),
+      cst_encode_u_32(raw.expiryHeight),
+      cst_encode_i_64(raw.createdAt),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_seed_export_warnings(SeedExportWarnings raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.primary),
+      cst_encode_String(raw.secondary),
+      cst_encode_String(raw.backupInstructions),
+      cst_encode_String(raw.clipboardWarning),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_signed_tx(SignedTx raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.txid),
+      cst_encode_list_prim_u_8_strict(raw.raw),
+      cst_encode_usize(raw.size),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_sync_log_entry_ffi(SyncLogEntryFfi raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_i_64(raw.timestamp),
+      cst_encode_String(raw.level),
+      cst_encode_String(raw.module),
+      cst_encode_String(raw.message),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_sync_status(SyncStatus raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_u_64(raw.localHeight),
+      cst_encode_u_64(raw.targetHeight),
+      cst_encode_f_64(raw.percent),
+      cst_encode_opt_box_autoadd_u_64(raw.eta),
+      cst_encode_sync_stage(raw.stage),
+      cst_encode_opt_box_autoadd_u_64(raw.lastCheckpoint),
+      cst_encode_f_64(raw.blocksPerSecond),
+      cst_encode_u_64(raw.notesDecrypted),
+      cst_encode_u_64(raw.lastBatchMs),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_tunnel_mode(TunnelMode raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    if (raw is TunnelMode_Tor) {
+      return [0].jsify()!;
+    }
+    if (raw is TunnelMode_I2p) {
+      return [1].jsify()!;
+    }
+    if (raw is TunnelMode_Socks5) {
+      return [2, cst_encode_String(raw.url)].jsify()!;
+    }
+    if (raw is TunnelMode_Direct) {
+      return [3].jsify()!;
+    }
+
+    throw Exception('unreachable');
+  }
+
+  @protected
+  JSAny cst_encode_tx_info(TxInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.txid),
+      cst_encode_opt_box_autoadd_u_32(raw.height),
+      cst_encode_i_64(raw.timestamp),
+      cst_encode_i_64(raw.amount),
+      cst_encode_u_64(raw.fee),
+      cst_encode_opt_String(raw.memo),
+      cst_encode_bool(raw.confirmed),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_u_64(BigInt raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return castNativeBigInt(raw);
+  }
+
+  @protected
+  JSAny cst_encode_usize(BigInt raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return castNativeBigInt(raw);
+  }
+
+  @protected
+  JSAny cst_encode_wallet_background_sync_result(
+    WalletBackgroundSyncResult raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.walletId),
+      cst_encode_String(raw.mode),
+      cst_encode_u_64(raw.blocksSynced),
+      cst_encode_u_64(raw.startHeight),
+      cst_encode_u_64(raw.endHeight),
+      cst_encode_u_64(raw.durationSecs),
+      cst_encode_list_String(raw.errors),
+      cst_encode_opt_box_autoadd_u_64(raw.newBalance),
+      cst_encode_u_32(raw.newTransactions),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_wallet_meta(WalletMeta raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.id),
+      cst_encode_String(raw.name),
+      cst_encode_i_64(raw.createdAt),
+      cst_encode_bool(raw.watchOnly),
+      cst_encode_u_32(raw.birthdayHeight),
+      cst_encode_opt_String(raw.networkType),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_watch_only_banner_info(WatchOnlyBannerInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.bannerType),
+      cst_encode_String(raw.title),
+      cst_encode_String(raw.subtitle),
+      cst_encode_String(raw.icon),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_watch_only_capabilities_info(WatchOnlyCapabilitiesInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_bool(raw.canViewIncoming),
+      cst_encode_bool(raw.canViewOutgoing),
+      cst_encode_bool(raw.canSpend),
+      cst_encode_bool(raw.canExportSeed),
+      cst_encode_bool(raw.canGenerateAddresses),
+      cst_encode_bool(raw.isWatchOnly),
+    ].jsify()!;
+  }
+
+  @protected
+  int cst_encode_address_book_color_tag(AddressBookColorTag raw);
+
+  @protected
+  bool cst_encode_bool(bool raw);
+
+  @protected
+  double cst_encode_f_64(double raw);
+
+  @protected
+  int cst_encode_i_32(int raw);
+
+  @protected
+  int cst_encode_key_type_info(KeyTypeInfo raw);
+
+  @protected
+  int cst_encode_sync_mode(SyncMode raw);
+
+  @protected
+  int cst_encode_sync_stage(SyncStage raw);
+
+  @protected
+  int cst_encode_u_16(int raw);
+
+  @protected
+  int cst_encode_u_32(int raw);
+
+  @protected
+  int cst_encode_u_8(int raw);
+
+  @protected
+  void cst_encode_unit(void raw);
+
+  @protected
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_String(String self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_address_balance_info(
+    AddressBalanceInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_address_book_color_tag(
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_address_book_entry_ffi(
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_address_info(AddressInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_background_sync_result(
+    BackgroundSyncResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_balance(Balance self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_address_book_color_tag(
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_address_book_entry_ffi(
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_checkpoint_info(
+    CheckpointInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_lightd_endpoint(
+    LightdEndpoint self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_pending_tx(
+    PendingTx self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_signed_tx(
+    SignedTx self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_tunnel_mode(
+    TunnelMode self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_watch_only_banner_info(
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_build_info(BuildInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_checkpoint_info(
+    CheckpointInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_f_64(double self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_fee_info(FeeInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_key_address_info(
+    KeyAddressInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_key_export_info(KeyExportInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_key_group_info(KeyGroupInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_key_type_info(KeyTypeInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_lightd_endpoint(
+    LightdEndpoint self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_address_balance_info(
+    List<AddressBalanceInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_address_book_entry_ffi(
+    List<AddressBookEntryFfi> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_address_info(
+    List<AddressInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_key_address_info(
+    List<KeyAddressInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_key_group_info(
+    List<KeyGroupInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_output(List<Output> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_prim_i_64_strict(
+    Int64List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_8_strict(
+    Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_sync_log_entry_ffi(
+    List<SyncLogEntryFfi> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_tx_info(List<TxInfo> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_wallet_meta(
+    List<WalletMeta> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_network_info(NetworkInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_node_test_result(
+    NodeTestResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_address_book_color_tag(
+    AddressBookColorTag? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_address_book_entry_ffi(
+    AddressBookEntryFfi? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_checkpoint_info(
+    CheckpointInfo? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_watch_only_banner_info(
+    WatchOnlyBannerInfo? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_list_prim_i_64_strict(
+    Int64List? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_output(Output self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_pending_tx(PendingTx self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_seed_export_warnings(
+    SeedExportWarnings self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_signed_tx(SignedTx self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_log_entry_ffi(
+    SyncLogEntryFfi self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_sync_mode(SyncMode self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_stage(SyncStage self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_status(SyncStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tx_info(TxInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_8(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_usize(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_wallet_background_sync_result(
+    WalletBackgroundSyncResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_wallet_meta(WalletMeta self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_watch_only_banner_info(
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_watch_only_capabilities_info(
+    WatchOnlyCapabilitiesInfo self,
+    SseSerializer serializer,
+  );
+}
 
 // Section: wire_class
 
 class RustLibWire implements BaseWire {
-            RustLibWire.fromExternalLibrary(ExternalLibrary lib);
-
-            void wire__crate__api__acknowledge_seed_warning(NativePortType port_) => wasmModule.wire__crate__api__acknowledge_seed_warning(port_);
-
-void wire__crate__api__add_address_book_entry(NativePortType port_,String wallet_id,String address,String label,String? notes,int color_tag) => wasmModule.wire__crate__api__add_address_book_entry(port_,wallet_id,address,label,notes,color_tag);
-
-void wire__crate__api__address_exists_in_book(NativePortType port_,String wallet_id,String address) => wasmModule.wire__crate__api__address_exists_in_book(port_,wallet_id,address);
-
-void wire__crate__api__are_seed_screenshots_blocked(NativePortType port_) => wasmModule.wire__crate__api__are_seed_screenshots_blocked(port_);
-
-void wire__crate__api__bootstrap_tunnel(NativePortType port_,JSAny mode) => wasmModule.wire__crate__api__bootstrap_tunnel(port_,mode);
-
-void wire__crate__api__broadcast_tx(NativePortType port_,JSAny signed) => wasmModule.wire__crate__api__broadcast_tx(port_,signed);
-
-void wire__crate__api__build_consolidation_tx(NativePortType port_,String wallet_id,JSAny key_id,String target_address,JSAny? fee_opt) => wasmModule.wire__crate__api__build_consolidation_tx(port_,wallet_id,key_id,target_address,fee_opt);
-
-void wire__crate__api__build_sweep_tx(NativePortType port_,String wallet_id,String target_address,JSAny? fee_opt,JSAny? key_ids_filter,JSAny? address_ids_filter) => wasmModule.wire__crate__api__build_sweep_tx(port_,wallet_id,target_address,fee_opt,key_ids_filter,address_ids_filter);
-
-void wire__crate__api__build_tx(NativePortType port_,String wallet_id,JSAny outputs,JSAny? fee_opt) => wasmModule.wire__crate__api__build_tx(port_,wallet_id,outputs,fee_opt);
-
-void wire__crate__api__build_tx_filtered(NativePortType port_,String wallet_id,JSAny outputs,JSAny? fee_opt,JSAny? key_ids_filter,JSAny? address_ids_filter) => wasmModule.wire__crate__api__build_tx_filtered(port_,wallet_id,outputs,fee_opt,key_ids_filter,address_ids_filter);
-
-void wire__crate__api__build_tx_for_key(NativePortType port_,String wallet_id,JSAny key_id,JSAny outputs,JSAny? fee_opt) => wasmModule.wire__crate__api__build_tx_for_key(port_,wallet_id,key_id,outputs,fee_opt);
-
-void wire__crate__api__cancel_seed_export(NativePortType port_) => wasmModule.wire__crate__api__cancel_seed_export(port_);
-
-void wire__crate__api__cancel_sync(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__cancel_sync(port_,wallet_id);
-
-void wire__crate__api__change_app_passphrase(NativePortType port_,String current_passphrase,String new_passphrase) => wasmModule.wire__crate__api__change_app_passphrase(port_,current_passphrase,new_passphrase);
-
-void wire__crate__api__change_app_passphrase_with_cached(NativePortType port_,String new_passphrase) => wasmModule.wire__crate__api__change_app_passphrase_with_cached(port_,new_passphrase);
-
-void wire__crate__api__clear_duress_passphrase(NativePortType port_) => wasmModule.wire__crate__api__clear_duress_passphrase(port_);
-
-void wire__crate__api__clear_panic_pin(NativePortType port_) => wasmModule.wire__crate__api__clear_panic_pin(port_);
-
-void wire__crate__api__complete_seed_biometric(NativePortType port_,bool success) => wasmModule.wire__crate__api__complete_seed_biometric(port_,success);
-
-void wire__crate__api__create_wallet(NativePortType port_,String name,int? _entropy_len,int? birthday_opt) => wasmModule.wire__crate__api__create_wallet(port_,name,_entropy_len,birthday_opt);
-
-void wire__crate__api__current_receive_address(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__current_receive_address(port_,wallet_id);
-
-void wire__crate__api__delete_address_book_entry(NativePortType port_,String wallet_id,JSAny id) => wasmModule.wire__crate__api__delete_address_book_entry(port_,wallet_id,id);
-
-void wire__crate__api__delete_wallet(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__delete_wallet(port_,wallet_id);
-
-void wire__crate__api__estimate_fee(NativePortType port_,JSAny num_outputs,bool has_memo,String? fee_policy) => wasmModule.wire__crate__api__estimate_fee(port_,num_outputs,has_memo,fee_policy);
-
-void wire__crate__api__exit_decoy_mode(NativePortType port_) => wasmModule.wire__crate__api__exit_decoy_mode(port_);
-
-void wire__crate__api__export_ivk(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__export_ivk(port_,wallet_id);
-
-void wire__crate__api__export_ivk_secure(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__export_ivk_secure(port_,wallet_id);
-
-void wire__crate__api__export_key_group_keys(NativePortType port_,String wallet_id,JSAny key_id) => wasmModule.wire__crate__api__export_key_group_keys(port_,wallet_id,key_id);
-
-void wire__crate__api__export_orchard_ivk(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__export_orchard_ivk(port_,wallet_id);
-
-void wire__crate__api__export_orchard_viewing_key(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__export_orchard_viewing_key(port_,wallet_id);
-
-void wire__crate__api__export_seed(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__export_seed(port_,wallet_id);
-
-void wire__crate__api__export_seed_with_cached_passphrase(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__export_seed_with_cached_passphrase(port_,wallet_id);
-
-void wire__crate__api__export_seed_with_passphrase(NativePortType port_,String wallet_id,String passphrase) => wasmModule.wire__crate__api__export_seed_with_passphrase(port_,wallet_id,passphrase);
-
-void wire__crate__api__fetch_transaction_memo(NativePortType port_,String wallet_id,String txid,int? output_index) => wasmModule.wire__crate__api__fetch_transaction_memo(port_,wallet_id,txid,output_index);
-
-void wire__crate__api__format_amount(NativePortType port_,JSAny arrrtoshis) => wasmModule.wire__crate__api__format_amount(port_,arrrtoshis);
-
-void wire__crate__api__generate_address_for_key(NativePortType port_,String wallet_id,JSAny key_id,bool use_orchard) => wasmModule.wire__crate__api__generate_address_for_key(port_,wallet_id,key_id,use_orchard);
-
-void wire__crate__api__generate_mnemonic(NativePortType port_,int? word_count) => wasmModule.wire__crate__api__generate_mnemonic(port_,word_count);
-
-void wire__crate__api__get_active_wallet(NativePortType port_) => wasmModule.wire__crate__api__get_active_wallet(port_);
-
-void wire__crate__api__get_address_book_count(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_address_book_count(port_,wallet_id);
-
-void wire__crate__api__get_address_book_entry(NativePortType port_,String wallet_id,JSAny id) => wasmModule.wire__crate__api__get_address_book_entry(port_,wallet_id,id);
-
-void wire__crate__api__get_address_book_entry_by_address(NativePortType port_,String wallet_id,String address) => wasmModule.wire__crate__api__get_address_book_entry_by_address(port_,wallet_id,address);
-
-void wire__crate__api__get_address_book_favorites(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_address_book_favorites(port_,wallet_id);
-
-void wire__crate__api__get_auto_consolidation_candidate_count(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_auto_consolidation_candidate_count(port_,wallet_id);
-
-void wire__crate__api__get_auto_consolidation_enabled(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_auto_consolidation_enabled(port_,wallet_id);
-
-void wire__crate__api__get_auto_consolidation_threshold(NativePortType port_) => wasmModule.wire__crate__api__get_auto_consolidation_threshold(port_);
-
-void wire__crate__api__get_balance(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_balance(port_,wallet_id);
-
-void wire__crate__api__get_build_info(NativePortType port_) => wasmModule.wire__crate__api__get_build_info(port_);
-
-void wire__crate__api__get_checkpoint_details(NativePortType port_,String _wallet_id,int height) => wasmModule.wire__crate__api__get_checkpoint_details(port_,_wallet_id,height);
-
-void wire__crate__api__get_duress_passphrase_hash(NativePortType port_) => wasmModule.wire__crate__api__get_duress_passphrase_hash(port_);
-
-void wire__crate__api__get_fee_info(NativePortType port_) => wasmModule.wire__crate__api__get_fee_info(port_);
-
-void wire__crate__api__get_ivk_clipboard_remaining(NativePortType port_) => wasmModule.wire__crate__api__get_ivk_clipboard_remaining(port_);
-
-void wire__crate__api__get_label_for_address(NativePortType port_,String wallet_id,String address) => wasmModule.wire__crate__api__get_label_for_address(port_,wallet_id,address);
-
-void wire__crate__api__get_last_checkpoint(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_last_checkpoint(port_,wallet_id);
-
-void wire__crate__api__get_lightd_endpoint(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_lightd_endpoint(port_,wallet_id);
-
-void wire__crate__api__get_lightd_endpoint_config(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_lightd_endpoint_config(port_,wallet_id);
-
-void wire__crate__api__get_network_info(NativePortType port_) => wasmModule.wire__crate__api__get_network_info(port_);
-
-void wire__crate__api__get_recently_used_addresses(NativePortType port_,String wallet_id,int limit) => wasmModule.wire__crate__api__get_recently_used_addresses(port_,wallet_id,limit);
-
-void wire__crate__api__get_recommended_background_sync_mode(NativePortType port_,String _wallet_id,int minutes_since_last) => wasmModule.wire__crate__api__get_recommended_background_sync_mode(port_,_wallet_id,minutes_since_last);
-
-void wire__crate__api__get_seed_clipboard_remaining(NativePortType port_) => wasmModule.wire__crate__api__get_seed_clipboard_remaining(port_);
-
-void wire__crate__api__get_seed_export_state(NativePortType port_) => wasmModule.wire__crate__api__get_seed_export_state(port_);
-
-void wire__crate__api__get_seed_export_warnings(NativePortType port_) => wasmModule.wire__crate__api__get_seed_export_warnings(port_);
-
-void wire__crate__api__get_sync_logs(NativePortType port_,String wallet_id,int? limit) => wasmModule.wire__crate__api__get_sync_logs(port_,wallet_id,limit);
-
-void wire__crate__api__get_tor_status(NativePortType port_) => wasmModule.wire__crate__api__get_tor_status(port_);
-
-void wire__crate__api__get_tunnel(NativePortType port_) => wasmModule.wire__crate__api__get_tunnel(port_);
-
-void wire__crate__api__get_vault_mode(NativePortType port_) => wasmModule.wire__crate__api__get_vault_mode(port_);
-
-void wire__crate__api__get_watch_only_banner(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_watch_only_banner(port_,wallet_id);
-
-void wire__crate__api__get_watch_only_capabilities(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__get_watch_only_capabilities(port_,wallet_id);
-
-void wire__crate__api__has_app_passphrase(NativePortType port_) => wasmModule.wire__crate__api__has_app_passphrase(port_);
-
-void wire__crate__api__has_duress_passphrase(NativePortType port_) => wasmModule.wire__crate__api__has_duress_passphrase(port_);
-
-void wire__crate__api__has_panic_pin(NativePortType port_) => wasmModule.wire__crate__api__has_panic_pin(port_);
-
-void wire__crate__api__import_ivk(NativePortType port_,String name,String? sapling_ivk,String? orchard_ivk,int birthday) => wasmModule.wire__crate__api__import_ivk(port_,name,sapling_ivk,orchard_ivk,birthday);
-
-void wire__crate__api__import_ivk_as_watch_only(NativePortType port_,String name,String ivk,int birthday_height) => wasmModule.wire__crate__api__import_ivk_as_watch_only(port_,name,ivk,birthday_height);
-
-void wire__crate__api__import_spending_key(NativePortType port_,String wallet_id,String? sapling_key,String? orchard_key,String? label,int birthday_height) => wasmModule.wire__crate__api__import_spending_key(port_,wallet_id,sapling_key,orchard_key,label,birthday_height);
-
-void wire__crate__api__is_background_sync_needed(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__is_background_sync_needed(port_,wallet_id);
-
-void wire__crate__api__is_decoy_mode(NativePortType port_) => wasmModule.wire__crate__api__is_decoy_mode(port_);
-
-void wire__crate__api__is_sync_running(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__is_sync_running(port_,wallet_id);
-
-void wire__crate__api__label_address(NativePortType port_,String wallet_id,String addr,String label) => wasmModule.wire__crate__api__label_address(port_,wallet_id,addr,label);
-
-void wire__crate__api__lightd_endpoint_default(NativePortType port_) => wasmModule.wire__crate__api__lightd_endpoint_default(port_);
-
-void wire__crate__api__lightd_endpoint_display_string(NativePortType port_,JSAny that) => wasmModule.wire__crate__api__lightd_endpoint_display_string(port_,that);
-
-void wire__crate__api__lightd_endpoint_url(NativePortType port_,JSAny that) => wasmModule.wire__crate__api__lightd_endpoint_url(port_,that);
-
-void wire__crate__api__list_address_balances(NativePortType port_,String wallet_id,JSAny? key_id) => wasmModule.wire__crate__api__list_address_balances(port_,wallet_id,key_id);
-
-void wire__crate__api__list_address_book(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__list_address_book(port_,wallet_id);
-
-void wire__crate__api__list_addresses(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__list_addresses(port_,wallet_id);
-
-void wire__crate__api__list_addresses_for_key(NativePortType port_,String wallet_id,JSAny key_id) => wasmModule.wire__crate__api__list_addresses_for_key(port_,wallet_id,key_id);
-
-void wire__crate__api__list_key_groups(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__list_key_groups(port_,wallet_id);
-
-void wire__crate__api__list_transactions(NativePortType port_,String wallet_id,int? limit) => wasmModule.wire__crate__api__list_transactions(port_,wallet_id,limit);
-
-void wire__crate__api__list_wallets(NativePortType port_) => wasmModule.wire__crate__api__list_wallets(port_);
-
-void wire__crate__api__mark_address_used(NativePortType port_,String wallet_id,String address) => wasmModule.wire__crate__api__mark_address_used(port_,wallet_id,address);
-
-void wire__crate__api__next_receive_address(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__next_receive_address(port_,wallet_id);
-
-void wire__crate__api__parse_amount(NativePortType port_,String arrr) => wasmModule.wire__crate__api__parse_amount(port_,arrr);
-
-void wire__crate__api__rename_wallet(NativePortType port_,String wallet_id,String new_name) => wasmModule.wire__crate__api__rename_wallet(port_,wallet_id,new_name);
-
-void wire__crate__api__rescan(NativePortType port_,String wallet_id,int from_height) => wasmModule.wire__crate__api__rescan(port_,wallet_id,from_height);
-
-void wire__crate__api__reseal_db_keys_for_biometrics(NativePortType port_) => wasmModule.wire__crate__api__reseal_db_keys_for_biometrics(port_);
-
-void wire__crate__api__restore_wallet(NativePortType port_,String name,String mnemonic,String? passphrase_opt,int? birthday_opt) => wasmModule.wire__crate__api__restore_wallet(port_,name,mnemonic,passphrase_opt,birthday_opt);
-
-void wire__crate__api__rotate_tor_exit(NativePortType port_) => wasmModule.wire__crate__api__rotate_tor_exit(port_);
-
-void wire__crate__api__search_address_book(NativePortType port_,String wallet_id,String query) => wasmModule.wire__crate__api__search_address_book(port_,wallet_id,query);
-
-void wire__crate__api__set_address_color_tag(NativePortType port_,String wallet_id,String addr,int color_tag) => wasmModule.wire__crate__api__set_address_color_tag(port_,wallet_id,addr,color_tag);
-
-void wire__crate__api__set_app_passphrase(NativePortType port_,String passphrase) => wasmModule.wire__crate__api__set_app_passphrase(port_,passphrase);
-
-void wire__crate__api__set_auto_consolidation_enabled(NativePortType port_,String wallet_id,bool enabled) => wasmModule.wire__crate__api__set_auto_consolidation_enabled(port_,wallet_id,enabled);
-
-void wire__crate__api__set_decoy_wallet_name(NativePortType port_,String name) => wasmModule.wire__crate__api__set_decoy_wallet_name(port_,name);
-
-void wire__crate__api__set_duress_passphrase(NativePortType port_,String? custom_passphrase) => wasmModule.wire__crate__api__set_duress_passphrase(port_,custom_passphrase);
-
-void wire__crate__api__set_lightd_endpoint(NativePortType port_,String wallet_id,String url,String? tls_pin_opt) => wasmModule.wire__crate__api__set_lightd_endpoint(port_,wallet_id,url,tls_pin_opt);
-
-void wire__crate__api__set_panic_pin(NativePortType port_,String pin) => wasmModule.wire__crate__api__set_panic_pin(port_,pin);
-
-void wire__crate__api__set_tor_bridge_settings(NativePortType port_,bool use_bridges,bool fallback_to_bridges,String transport,JSAny bridge_lines,String? transport_path) => wasmModule.wire__crate__api__set_tor_bridge_settings(port_,use_bridges,fallback_to_bridges,transport,bridge_lines,transport_path);
-
-void wire__crate__api__set_tunnel(NativePortType port_,JSAny mode) => wasmModule.wire__crate__api__set_tunnel(port_,mode);
-
-void wire__crate__api__set_wallet_birthday_height(NativePortType port_,String wallet_id,int birthday_height) => wasmModule.wire__crate__api__set_wallet_birthday_height(port_,wallet_id,birthday_height);
-
-void wire__crate__api__shutdown_transport(NativePortType port_) => wasmModule.wire__crate__api__shutdown_transport(port_);
-
-void wire__crate__api__sign_tx(NativePortType port_,String wallet_id,JSAny pending) => wasmModule.wire__crate__api__sign_tx(port_,wallet_id,pending);
-
-void wire__crate__api__sign_tx_filtered(NativePortType port_,String wallet_id,JSAny pending,JSAny? key_ids_filter,JSAny? address_ids_filter) => wasmModule.wire__crate__api__sign_tx_filtered(port_,wallet_id,pending,key_ids_filter,address_ids_filter);
-
-void wire__crate__api__sign_tx_for_key(NativePortType port_,String wallet_id,JSAny pending,JSAny key_id) => wasmModule.wire__crate__api__sign_tx_for_key(port_,wallet_id,pending,key_id);
-
-void wire__crate__api__skip_seed_biometric(NativePortType port_) => wasmModule.wire__crate__api__skip_seed_biometric(port_);
-
-void wire__crate__api__start_background_sync(NativePortType port_,String wallet_id,String? mode) => wasmModule.wire__crate__api__start_background_sync(port_,wallet_id,mode);
-
-void wire__crate__api__start_background_sync_round_robin(NativePortType port_,String? mode) => wasmModule.wire__crate__api__start_background_sync_round_robin(port_,mode);
-
-void wire__crate__api__start_seed_export(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__start_seed_export(port_,wallet_id);
-
-void wire__crate__api__start_sync(NativePortType port_,String wallet_id,int mode) => wasmModule.wire__crate__api__start_sync(port_,wallet_id,mode);
-
-void wire__crate__api__switch_wallet(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__switch_wallet(port_,wallet_id);
-
-void wire__crate__api__sync_status(NativePortType port_,String wallet_id) => wasmModule.wire__crate__api__sync_status(port_,wallet_id);
-
-void wire__crate__api__test_node(NativePortType port_,String url,String? tls_pin) => wasmModule.wire__crate__api__test_node(port_,url,tls_pin);
-
-void wire__crate__api__toggle_address_book_favorite(NativePortType port_,String wallet_id,JSAny id) => wasmModule.wire__crate__api__toggle_address_book_favorite(port_,wallet_id,id);
-
-void wire__crate__api__unlock_app(NativePortType port_,String passphrase) => wasmModule.wire__crate__api__unlock_app(port_,passphrase);
-
-void wire__crate__api__update_address_book_entry(NativePortType port_,String wallet_id,JSAny id,String? label,String? notes,int? color_tag,bool? is_favorite) => wasmModule.wire__crate__api__update_address_book_entry(port_,wallet_id,id,label,notes,color_tag,is_favorite);
-
-void wire__crate__api__validate_mnemonic(NativePortType port_,String mnemonic) => wasmModule.wire__crate__api__validate_mnemonic(port_,mnemonic);
-
-void wire__crate__api__verify_app_passphrase(NativePortType port_,String passphrase) => wasmModule.wire__crate__api__verify_app_passphrase(port_,passphrase);
-
-void wire__crate__api__verify_duress_passphrase(NativePortType port_,String passphrase,String hash) => wasmModule.wire__crate__api__verify_duress_passphrase(port_,passphrase,hash);
-
-void wire__crate__api__verify_panic_pin(NativePortType port_,String pin) => wasmModule.wire__crate__api__verify_panic_pin(port_,pin);
-
-void wire__crate__api__wallet_registry_exists(NativePortType port_) => wasmModule.wire__crate__api__wallet_registry_exists(port_);
-        }
-        @JS('wasm_bindgen') external RustLibWasmModule get wasmModule;
-
-        @JS() @anonymous extension type RustLibWasmModule._(JSObject _) implements JSObject {
-            external void wire__crate__api__acknowledge_seed_warning(NativePortType port_);
-
-external void wire__crate__api__add_address_book_entry(NativePortType port_,String wallet_id,String address,String label,String? notes,int color_tag);
-
-external void wire__crate__api__address_exists_in_book(NativePortType port_,String wallet_id,String address);
-
-external void wire__crate__api__are_seed_screenshots_blocked(NativePortType port_);
-
-external void wire__crate__api__bootstrap_tunnel(NativePortType port_,JSAny mode);
-
-external void wire__crate__api__broadcast_tx(NativePortType port_,JSAny signed);
-
-external void wire__crate__api__build_consolidation_tx(NativePortType port_,String wallet_id,JSAny key_id,String target_address,JSAny? fee_opt);
-
-external void wire__crate__api__build_sweep_tx(NativePortType port_,String wallet_id,String target_address,JSAny? fee_opt,JSAny? key_ids_filter,JSAny? address_ids_filter);
-
-external void wire__crate__api__build_tx(NativePortType port_,String wallet_id,JSAny outputs,JSAny? fee_opt);
-
-external void wire__crate__api__build_tx_filtered(NativePortType port_,String wallet_id,JSAny outputs,JSAny? fee_opt,JSAny? key_ids_filter,JSAny? address_ids_filter);
-
-external void wire__crate__api__build_tx_for_key(NativePortType port_,String wallet_id,JSAny key_id,JSAny outputs,JSAny? fee_opt);
-
-external void wire__crate__api__cancel_seed_export(NativePortType port_);
-
-external void wire__crate__api__cancel_sync(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__change_app_passphrase(NativePortType port_,String current_passphrase,String new_passphrase);
-
-external void wire__crate__api__change_app_passphrase_with_cached(NativePortType port_,String new_passphrase);
-
-external void wire__crate__api__clear_duress_passphrase(NativePortType port_);
-
-external void wire__crate__api__clear_panic_pin(NativePortType port_);
-
-external void wire__crate__api__complete_seed_biometric(NativePortType port_,bool success);
-
-external void wire__crate__api__create_wallet(NativePortType port_,String name,int? _entropy_len,int? birthday_opt);
-
-external void wire__crate__api__current_receive_address(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__delete_address_book_entry(NativePortType port_,String wallet_id,JSAny id);
-
-external void wire__crate__api__delete_wallet(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__estimate_fee(NativePortType port_,JSAny num_outputs,bool has_memo,String? fee_policy);
-
-external void wire__crate__api__exit_decoy_mode(NativePortType port_);
-
-external void wire__crate__api__export_ivk(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__export_ivk_secure(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__export_key_group_keys(NativePortType port_,String wallet_id,JSAny key_id);
-
-external void wire__crate__api__export_orchard_ivk(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__export_orchard_viewing_key(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__export_seed(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__export_seed_with_cached_passphrase(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__export_seed_with_passphrase(NativePortType port_,String wallet_id,String passphrase);
-
-external void wire__crate__api__fetch_transaction_memo(NativePortType port_,String wallet_id,String txid,int? output_index);
-
-external void wire__crate__api__format_amount(NativePortType port_,JSAny arrrtoshis);
-
-external void wire__crate__api__generate_address_for_key(NativePortType port_,String wallet_id,JSAny key_id,bool use_orchard);
-
-external void wire__crate__api__generate_mnemonic(NativePortType port_,int? word_count);
-
-external void wire__crate__api__get_active_wallet(NativePortType port_);
-
-external void wire__crate__api__get_address_book_count(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__get_address_book_entry(NativePortType port_,String wallet_id,JSAny id);
-
-external void wire__crate__api__get_address_book_entry_by_address(NativePortType port_,String wallet_id,String address);
-
-external void wire__crate__api__get_address_book_favorites(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__get_auto_consolidation_candidate_count(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__get_auto_consolidation_enabled(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__get_auto_consolidation_threshold(NativePortType port_);
-
-external void wire__crate__api__get_balance(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__get_build_info(NativePortType port_);
-
-external void wire__crate__api__get_checkpoint_details(NativePortType port_,String _wallet_id,int height);
-
-external void wire__crate__api__get_duress_passphrase_hash(NativePortType port_);
-
-external void wire__crate__api__get_fee_info(NativePortType port_);
-
-external void wire__crate__api__get_ivk_clipboard_remaining(NativePortType port_);
-
-external void wire__crate__api__get_label_for_address(NativePortType port_,String wallet_id,String address);
-
-external void wire__crate__api__get_last_checkpoint(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__get_lightd_endpoint(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__get_lightd_endpoint_config(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__get_network_info(NativePortType port_);
-
-external void wire__crate__api__get_recently_used_addresses(NativePortType port_,String wallet_id,int limit);
-
-external void wire__crate__api__get_recommended_background_sync_mode(NativePortType port_,String _wallet_id,int minutes_since_last);
-
-external void wire__crate__api__get_seed_clipboard_remaining(NativePortType port_);
-
-external void wire__crate__api__get_seed_export_state(NativePortType port_);
-
-external void wire__crate__api__get_seed_export_warnings(NativePortType port_);
-
-external void wire__crate__api__get_sync_logs(NativePortType port_,String wallet_id,int? limit);
-
-external void wire__crate__api__get_tor_status(NativePortType port_);
-
-external void wire__crate__api__get_tunnel(NativePortType port_);
-
-external void wire__crate__api__get_vault_mode(NativePortType port_);
-
-external void wire__crate__api__get_watch_only_banner(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__get_watch_only_capabilities(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__has_app_passphrase(NativePortType port_);
-
-external void wire__crate__api__has_duress_passphrase(NativePortType port_);
-
-external void wire__crate__api__has_panic_pin(NativePortType port_);
-
-external void wire__crate__api__import_ivk(NativePortType port_,String name,String? sapling_ivk,String? orchard_ivk,int birthday);
-
-external void wire__crate__api__import_ivk_as_watch_only(NativePortType port_,String name,String ivk,int birthday_height);
-
-external void wire__crate__api__import_spending_key(NativePortType port_,String wallet_id,String? sapling_key,String? orchard_key,String? label,int birthday_height);
-
-external void wire__crate__api__is_background_sync_needed(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__is_decoy_mode(NativePortType port_);
-
-external void wire__crate__api__is_sync_running(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__label_address(NativePortType port_,String wallet_id,String addr,String label);
-
-external void wire__crate__api__lightd_endpoint_default(NativePortType port_);
-
-external void wire__crate__api__lightd_endpoint_display_string(NativePortType port_,JSAny that);
-
-external void wire__crate__api__lightd_endpoint_url(NativePortType port_,JSAny that);
-
-external void wire__crate__api__list_address_balances(NativePortType port_,String wallet_id,JSAny? key_id);
-
-external void wire__crate__api__list_address_book(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__list_addresses(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__list_addresses_for_key(NativePortType port_,String wallet_id,JSAny key_id);
-
-external void wire__crate__api__list_key_groups(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__list_transactions(NativePortType port_,String wallet_id,int? limit);
-
-external void wire__crate__api__list_wallets(NativePortType port_);
-
-external void wire__crate__api__mark_address_used(NativePortType port_,String wallet_id,String address);
-
-external void wire__crate__api__next_receive_address(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__parse_amount(NativePortType port_,String arrr);
-
-external void wire__crate__api__rename_wallet(NativePortType port_,String wallet_id,String new_name);
-
-external void wire__crate__api__rescan(NativePortType port_,String wallet_id,int from_height);
-
-external void wire__crate__api__reseal_db_keys_for_biometrics(NativePortType port_);
-
-external void wire__crate__api__restore_wallet(NativePortType port_,String name,String mnemonic,String? passphrase_opt,int? birthday_opt);
-
-external void wire__crate__api__rotate_tor_exit(NativePortType port_);
-
-external void wire__crate__api__search_address_book(NativePortType port_,String wallet_id,String query);
-
-external void wire__crate__api__set_address_color_tag(NativePortType port_,String wallet_id,String addr,int color_tag);
-
-external void wire__crate__api__set_app_passphrase(NativePortType port_,String passphrase);
-
-external void wire__crate__api__set_auto_consolidation_enabled(NativePortType port_,String wallet_id,bool enabled);
-
-external void wire__crate__api__set_decoy_wallet_name(NativePortType port_,String name);
-
-external void wire__crate__api__set_duress_passphrase(NativePortType port_,String? custom_passphrase);
-
-external void wire__crate__api__set_lightd_endpoint(NativePortType port_,String wallet_id,String url,String? tls_pin_opt);
-
-external void wire__crate__api__set_panic_pin(NativePortType port_,String pin);
-
-external void wire__crate__api__set_tor_bridge_settings(NativePortType port_,bool use_bridges,bool fallback_to_bridges,String transport,JSAny bridge_lines,String? transport_path);
-
-external void wire__crate__api__set_tunnel(NativePortType port_,JSAny mode);
-
-external void wire__crate__api__set_wallet_birthday_height(NativePortType port_,String wallet_id,int birthday_height);
-
-external void wire__crate__api__shutdown_transport(NativePortType port_);
-
-external void wire__crate__api__sign_tx(NativePortType port_,String wallet_id,JSAny pending);
-
-external void wire__crate__api__sign_tx_filtered(NativePortType port_,String wallet_id,JSAny pending,JSAny? key_ids_filter,JSAny? address_ids_filter);
-
-external void wire__crate__api__sign_tx_for_key(NativePortType port_,String wallet_id,JSAny pending,JSAny key_id);
-
-external void wire__crate__api__skip_seed_biometric(NativePortType port_);
-
-external void wire__crate__api__start_background_sync(NativePortType port_,String wallet_id,String? mode);
-
-external void wire__crate__api__start_background_sync_round_robin(NativePortType port_,String? mode);
-
-external void wire__crate__api__start_seed_export(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__start_sync(NativePortType port_,String wallet_id,int mode);
-
-external void wire__crate__api__switch_wallet(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__sync_status(NativePortType port_,String wallet_id);
-
-external void wire__crate__api__test_node(NativePortType port_,String url,String? tls_pin);
-
-external void wire__crate__api__toggle_address_book_favorite(NativePortType port_,String wallet_id,JSAny id);
-
-external void wire__crate__api__unlock_app(NativePortType port_,String passphrase);
-
-external void wire__crate__api__update_address_book_entry(NativePortType port_,String wallet_id,JSAny id,String? label,String? notes,int? color_tag,bool? is_favorite);
-
-external void wire__crate__api__validate_mnemonic(NativePortType port_,String mnemonic);
-
-external void wire__crate__api__verify_app_passphrase(NativePortType port_,String passphrase);
-
-external void wire__crate__api__verify_duress_passphrase(NativePortType port_,String passphrase,String hash);
-
-external void wire__crate__api__verify_panic_pin(NativePortType port_,String pin);
-
-external void wire__crate__api__wallet_registry_exists(NativePortType port_);
-        }
-        
+  RustLibWire.fromExternalLibrary(ExternalLibrary lib);
+
+  void wire__crate__api__acknowledge_seed_warning(NativePortType port_) =>
+      wasmModule.wire__crate__api__acknowledge_seed_warning(port_);
+
+  void wire__crate__api__add_address_book_entry(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+    String label,
+    String? notes,
+    int color_tag,
+  ) => wasmModule.wire__crate__api__add_address_book_entry(
+    port_,
+    wallet_id,
+    address,
+    label,
+    notes,
+    color_tag,
+  );
+
+  void wire__crate__api__address_exists_in_book(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  ) => wasmModule.wire__crate__api__address_exists_in_book(
+    port_,
+    wallet_id,
+    address,
+  );
+
+  void wire__crate__api__are_seed_screenshots_blocked(NativePortType port_) =>
+      wasmModule.wire__crate__api__are_seed_screenshots_blocked(port_);
+
+  void wire__crate__api__bootstrap_tunnel(NativePortType port_, JSAny mode) =>
+      wasmModule.wire__crate__api__bootstrap_tunnel(port_, mode);
+
+  void wire__crate__api__broadcast_tx(NativePortType port_, JSAny signed) =>
+      wasmModule.wire__crate__api__broadcast_tx(port_, signed);
+
+  void wire__crate__api__build_consolidation_tx(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    String target_address,
+    JSAny? fee_opt,
+  ) => wasmModule.wire__crate__api__build_consolidation_tx(
+    port_,
+    wallet_id,
+    key_id,
+    target_address,
+    fee_opt,
+  );
+
+  void wire__crate__api__build_sweep_tx(
+    NativePortType port_,
+    String wallet_id,
+    String target_address,
+    JSAny? fee_opt,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  ) => wasmModule.wire__crate__api__build_sweep_tx(
+    port_,
+    wallet_id,
+    target_address,
+    fee_opt,
+    key_ids_filter,
+    address_ids_filter,
+  );
+
+  void wire__crate__api__build_tx(
+    NativePortType port_,
+    String wallet_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+  ) =>
+      wasmModule.wire__crate__api__build_tx(port_, wallet_id, outputs, fee_opt);
+
+  void wire__crate__api__build_tx_filtered(
+    NativePortType port_,
+    String wallet_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  ) => wasmModule.wire__crate__api__build_tx_filtered(
+    port_,
+    wallet_id,
+    outputs,
+    fee_opt,
+    key_ids_filter,
+    address_ids_filter,
+  );
+
+  void wire__crate__api__build_tx_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+  ) => wasmModule.wire__crate__api__build_tx_for_key(
+    port_,
+    wallet_id,
+    key_id,
+    outputs,
+    fee_opt,
+  );
+
+  void wire__crate__api__cancel_seed_export(NativePortType port_) =>
+      wasmModule.wire__crate__api__cancel_seed_export(port_);
+
+  void wire__crate__api__cancel_sync(NativePortType port_, String wallet_id) =>
+      wasmModule.wire__crate__api__cancel_sync(port_, wallet_id);
+
+  void wire__crate__api__change_app_passphrase(
+    NativePortType port_,
+    String current_passphrase,
+    String new_passphrase,
+  ) => wasmModule.wire__crate__api__change_app_passphrase(
+    port_,
+    current_passphrase,
+    new_passphrase,
+  );
+
+  void wire__crate__api__change_app_passphrase_with_cached(
+    NativePortType port_,
+    String new_passphrase,
+  ) => wasmModule.wire__crate__api__change_app_passphrase_with_cached(
+    port_,
+    new_passphrase,
+  );
+
+  void wire__crate__api__clear_duress_passphrase(NativePortType port_) =>
+      wasmModule.wire__crate__api__clear_duress_passphrase(port_);
+
+  void wire__crate__api__clear_panic_pin(NativePortType port_) =>
+      wasmModule.wire__crate__api__clear_panic_pin(port_);
+
+  void wire__crate__api__complete_seed_biometric(
+    NativePortType port_,
+    bool success,
+  ) => wasmModule.wire__crate__api__complete_seed_biometric(port_, success);
+
+  void wire__crate__api__create_wallet(
+    NativePortType port_,
+    String name,
+    int? _entropy_len,
+    int? birthday_opt,
+  ) => wasmModule.wire__crate__api__create_wallet(
+    port_,
+    name,
+    _entropy_len,
+    birthday_opt,
+  );
+
+  void wire__crate__api__current_receive_address(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__current_receive_address(port_, wallet_id);
+
+  void wire__crate__api__delete_address_book_entry(
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  ) => wasmModule.wire__crate__api__delete_address_book_entry(
+    port_,
+    wallet_id,
+    id,
+  );
+
+  void wire__crate__api__delete_wallet(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__delete_wallet(port_, wallet_id);
+
+  void wire__crate__api__estimate_fee(
+    NativePortType port_,
+    JSAny num_outputs,
+    bool has_memo,
+    String? fee_policy,
+  ) => wasmModule.wire__crate__api__estimate_fee(
+    port_,
+    num_outputs,
+    has_memo,
+    fee_policy,
+  );
+
+  void wire__crate__api__exit_decoy_mode(NativePortType port_) =>
+      wasmModule.wire__crate__api__exit_decoy_mode(port_);
+
+  void wire__crate__api__export_ivk(NativePortType port_, String wallet_id) =>
+      wasmModule.wire__crate__api__export_ivk(port_, wallet_id);
+
+  void wire__crate__api__export_ivk_secure(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__export_ivk_secure(port_, wallet_id);
+
+  void wire__crate__api__export_key_group_keys(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+  ) => wasmModule.wire__crate__api__export_key_group_keys(
+    port_,
+    wallet_id,
+    key_id,
+  );
+
+  void wire__crate__api__export_orchard_ivk(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__export_orchard_ivk(port_, wallet_id);
+
+  void wire__crate__api__export_orchard_viewing_key(
+    NativePortType port_,
+    String wallet_id,
+  ) =>
+      wasmModule.wire__crate__api__export_orchard_viewing_key(port_, wallet_id);
+
+  void wire__crate__api__export_seed(NativePortType port_, String wallet_id) =>
+      wasmModule.wire__crate__api__export_seed(port_, wallet_id);
+
+  void wire__crate__api__export_seed_with_cached_passphrase(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__export_seed_with_cached_passphrase(
+    port_,
+    wallet_id,
+  );
+
+  void wire__crate__api__export_seed_with_passphrase(
+    NativePortType port_,
+    String wallet_id,
+    String passphrase,
+  ) => wasmModule.wire__crate__api__export_seed_with_passphrase(
+    port_,
+    wallet_id,
+    passphrase,
+  );
+
+  void wire__crate__api__fetch_transaction_memo(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+    int? output_index,
+  ) => wasmModule.wire__crate__api__fetch_transaction_memo(
+    port_,
+    wallet_id,
+    txid,
+    output_index,
+  );
+
+  void wire__crate__api__format_amount(
+    NativePortType port_,
+    JSAny arrrtoshis,
+  ) => wasmModule.wire__crate__api__format_amount(port_, arrrtoshis);
+
+  void wire__crate__api__generate_address_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    bool use_orchard,
+  ) => wasmModule.wire__crate__api__generate_address_for_key(
+    port_,
+    wallet_id,
+    key_id,
+    use_orchard,
+  );
+
+  void wire__crate__api__generate_mnemonic(
+    NativePortType port_,
+    int? word_count,
+  ) => wasmModule.wire__crate__api__generate_mnemonic(port_, word_count);
+
+  void wire__crate__api__get_active_wallet(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_active_wallet(port_);
+
+  void wire__crate__api__get_address_book_count(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_address_book_count(port_, wallet_id);
+
+  void wire__crate__api__get_address_book_entry(
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  ) =>
+      wasmModule.wire__crate__api__get_address_book_entry(port_, wallet_id, id);
+
+  void wire__crate__api__get_address_book_entry_by_address(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  ) => wasmModule.wire__crate__api__get_address_book_entry_by_address(
+    port_,
+    wallet_id,
+    address,
+  );
+
+  void wire__crate__api__get_address_book_favorites(
+    NativePortType port_,
+    String wallet_id,
+  ) =>
+      wasmModule.wire__crate__api__get_address_book_favorites(port_, wallet_id);
+
+  void wire__crate__api__get_auto_consolidation_candidate_count(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_auto_consolidation_candidate_count(
+    port_,
+    wallet_id,
+  );
+
+  void wire__crate__api__get_auto_consolidation_enabled(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_auto_consolidation_enabled(
+    port_,
+    wallet_id,
+  );
+
+  void wire__crate__api__get_auto_consolidation_threshold(
+    NativePortType port_,
+  ) => wasmModule.wire__crate__api__get_auto_consolidation_threshold(port_);
+
+  void wire__crate__api__get_balance(NativePortType port_, String wallet_id) =>
+      wasmModule.wire__crate__api__get_balance(port_, wallet_id);
+
+  void wire__crate__api__get_build_info(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_build_info(port_);
+
+  void wire__crate__api__get_checkpoint_details(
+    NativePortType port_,
+    String _wallet_id,
+    int height,
+  ) => wasmModule.wire__crate__api__get_checkpoint_details(
+    port_,
+    _wallet_id,
+    height,
+  );
+
+  void wire__crate__api__get_duress_passphrase_hash(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_duress_passphrase_hash(port_);
+
+  void wire__crate__api__get_fee_info(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_fee_info(port_);
+
+  void wire__crate__api__get_ivk_clipboard_remaining(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_ivk_clipboard_remaining(port_);
+
+  void wire__crate__api__get_label_for_address(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  ) => wasmModule.wire__crate__api__get_label_for_address(
+    port_,
+    wallet_id,
+    address,
+  );
+
+  void wire__crate__api__get_last_checkpoint(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_last_checkpoint(port_, wallet_id);
+
+  void wire__crate__api__get_lightd_endpoint(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_lightd_endpoint(port_, wallet_id);
+
+  void wire__crate__api__get_lightd_endpoint_config(
+    NativePortType port_,
+    String wallet_id,
+  ) =>
+      wasmModule.wire__crate__api__get_lightd_endpoint_config(port_, wallet_id);
+
+  void wire__crate__api__get_network_info(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_network_info(port_);
+
+  void wire__crate__api__get_recently_used_addresses(
+    NativePortType port_,
+    String wallet_id,
+    int limit,
+  ) => wasmModule.wire__crate__api__get_recently_used_addresses(
+    port_,
+    wallet_id,
+    limit,
+  );
+
+  void wire__crate__api__get_recommended_background_sync_mode(
+    NativePortType port_,
+    String _wallet_id,
+    int minutes_since_last,
+  ) => wasmModule.wire__crate__api__get_recommended_background_sync_mode(
+    port_,
+    _wallet_id,
+    minutes_since_last,
+  );
+
+  void wire__crate__api__get_seed_clipboard_remaining(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_seed_clipboard_remaining(port_);
+
+  void wire__crate__api__get_seed_export_state(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_seed_export_state(port_);
+
+  void wire__crate__api__get_seed_export_warnings(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_seed_export_warnings(port_);
+
+  void wire__crate__api__get_sync_logs(
+    NativePortType port_,
+    String wallet_id,
+    int? limit,
+  ) => wasmModule.wire__crate__api__get_sync_logs(port_, wallet_id, limit);
+
+  void wire__crate__api__get_tor_status(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_tor_status(port_);
+
+  void wire__crate__api__get_tunnel(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_tunnel(port_);
+
+  void wire__crate__api__get_vault_mode(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_vault_mode(port_);
+
+  void wire__crate__api__get_watch_only_banner(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_watch_only_banner(port_, wallet_id);
+
+  void wire__crate__api__get_watch_only_capabilities(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_watch_only_capabilities(
+    port_,
+    wallet_id,
+  );
+
+  void wire__crate__api__has_app_passphrase(NativePortType port_) =>
+      wasmModule.wire__crate__api__has_app_passphrase(port_);
+
+  void wire__crate__api__has_duress_passphrase(NativePortType port_) =>
+      wasmModule.wire__crate__api__has_duress_passphrase(port_);
+
+  void wire__crate__api__has_panic_pin(NativePortType port_) =>
+      wasmModule.wire__crate__api__has_panic_pin(port_);
+
+  void wire__crate__api__import_ivk(
+    NativePortType port_,
+    String name,
+    String? sapling_ivk,
+    String? orchard_ivk,
+    int birthday,
+  ) => wasmModule.wire__crate__api__import_ivk(
+    port_,
+    name,
+    sapling_ivk,
+    orchard_ivk,
+    birthday,
+  );
+
+  void wire__crate__api__import_ivk_as_watch_only(
+    NativePortType port_,
+    String name,
+    String ivk,
+    int birthday_height,
+  ) => wasmModule.wire__crate__api__import_ivk_as_watch_only(
+    port_,
+    name,
+    ivk,
+    birthday_height,
+  );
+
+  void wire__crate__api__import_spending_key(
+    NativePortType port_,
+    String wallet_id,
+    String? sapling_key,
+    String? orchard_key,
+    String? label,
+    int birthday_height,
+  ) => wasmModule.wire__crate__api__import_spending_key(
+    port_,
+    wallet_id,
+    sapling_key,
+    orchard_key,
+    label,
+    birthday_height,
+  );
+
+  void wire__crate__api__is_background_sync_needed(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__is_background_sync_needed(port_, wallet_id);
+
+  void wire__crate__api__is_decoy_mode(NativePortType port_) =>
+      wasmModule.wire__crate__api__is_decoy_mode(port_);
+
+  void wire__crate__api__is_sync_running(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__is_sync_running(port_, wallet_id);
+
+  void wire__crate__api__label_address(
+    NativePortType port_,
+    String wallet_id,
+    String addr,
+    String label,
+  ) =>
+      wasmModule.wire__crate__api__label_address(port_, wallet_id, addr, label);
+
+  void wire__crate__api__lightd_endpoint_default(NativePortType port_) =>
+      wasmModule.wire__crate__api__lightd_endpoint_default(port_);
+
+  void wire__crate__api__lightd_endpoint_display_string(
+    NativePortType port_,
+    JSAny that,
+  ) => wasmModule.wire__crate__api__lightd_endpoint_display_string(port_, that);
+
+  void wire__crate__api__lightd_endpoint_url(
+    NativePortType port_,
+    JSAny that,
+  ) => wasmModule.wire__crate__api__lightd_endpoint_url(port_, that);
+
+  void wire__crate__api__list_address_balances(
+    NativePortType port_,
+    String wallet_id,
+    JSAny? key_id,
+  ) => wasmModule.wire__crate__api__list_address_balances(
+    port_,
+    wallet_id,
+    key_id,
+  );
+
+  void wire__crate__api__list_address_book(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__list_address_book(port_, wallet_id);
+
+  void wire__crate__api__list_addresses(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__list_addresses(port_, wallet_id);
+
+  void wire__crate__api__list_addresses_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+  ) => wasmModule.wire__crate__api__list_addresses_for_key(
+    port_,
+    wallet_id,
+    key_id,
+  );
+
+  void wire__crate__api__list_key_groups(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__list_key_groups(port_, wallet_id);
+
+  void wire__crate__api__list_transactions(
+    NativePortType port_,
+    String wallet_id,
+    int? limit,
+  ) => wasmModule.wire__crate__api__list_transactions(port_, wallet_id, limit);
+
+  void wire__crate__api__list_wallets(NativePortType port_) =>
+      wasmModule.wire__crate__api__list_wallets(port_);
+
+  void wire__crate__api__mark_address_used(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  ) =>
+      wasmModule.wire__crate__api__mark_address_used(port_, wallet_id, address);
+
+  void wire__crate__api__next_receive_address(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__next_receive_address(port_, wallet_id);
+
+  void wire__crate__api__parse_amount(NativePortType port_, String arrr) =>
+      wasmModule.wire__crate__api__parse_amount(port_, arrr);
+
+  void wire__crate__api__rename_wallet(
+    NativePortType port_,
+    String wallet_id,
+    String new_name,
+  ) => wasmModule.wire__crate__api__rename_wallet(port_, wallet_id, new_name);
+
+  void wire__crate__api__rescan(
+    NativePortType port_,
+    String wallet_id,
+    int from_height,
+  ) => wasmModule.wire__crate__api__rescan(port_, wallet_id, from_height);
+
+  void wire__crate__api__reseal_db_keys_for_biometrics(NativePortType port_) =>
+      wasmModule.wire__crate__api__reseal_db_keys_for_biometrics(port_);
+
+  void wire__crate__api__restore_wallet(
+    NativePortType port_,
+    String name,
+    String mnemonic,
+    String? passphrase_opt,
+    int? birthday_opt,
+  ) => wasmModule.wire__crate__api__restore_wallet(
+    port_,
+    name,
+    mnemonic,
+    passphrase_opt,
+    birthday_opt,
+  );
+
+  void wire__crate__api__rotate_tor_exit(NativePortType port_) =>
+      wasmModule.wire__crate__api__rotate_tor_exit(port_);
+
+  void wire__crate__api__search_address_book(
+    NativePortType port_,
+    String wallet_id,
+    String query,
+  ) =>
+      wasmModule.wire__crate__api__search_address_book(port_, wallet_id, query);
+
+  void wire__crate__api__set_address_color_tag(
+    NativePortType port_,
+    String wallet_id,
+    String addr,
+    int color_tag,
+  ) => wasmModule.wire__crate__api__set_address_color_tag(
+    port_,
+    wallet_id,
+    addr,
+    color_tag,
+  );
+
+  void wire__crate__api__set_app_passphrase(
+    NativePortType port_,
+    String passphrase,
+  ) => wasmModule.wire__crate__api__set_app_passphrase(port_, passphrase);
+
+  void wire__crate__api__set_auto_consolidation_enabled(
+    NativePortType port_,
+    String wallet_id,
+    bool enabled,
+  ) => wasmModule.wire__crate__api__set_auto_consolidation_enabled(
+    port_,
+    wallet_id,
+    enabled,
+  );
+
+  void wire__crate__api__set_decoy_wallet_name(
+    NativePortType port_,
+    String name,
+  ) => wasmModule.wire__crate__api__set_decoy_wallet_name(port_, name);
+
+  void wire__crate__api__set_duress_passphrase(
+    NativePortType port_,
+    String? custom_passphrase,
+  ) => wasmModule.wire__crate__api__set_duress_passphrase(
+    port_,
+    custom_passphrase,
+  );
+
+  void wire__crate__api__set_lightd_endpoint(
+    NativePortType port_,
+    String wallet_id,
+    String url,
+    String? tls_pin_opt,
+  ) => wasmModule.wire__crate__api__set_lightd_endpoint(
+    port_,
+    wallet_id,
+    url,
+    tls_pin_opt,
+  );
+
+  void wire__crate__api__set_panic_pin(NativePortType port_, String pin) =>
+      wasmModule.wire__crate__api__set_panic_pin(port_, pin);
+
+  void wire__crate__api__set_tor_bridge_settings(
+    NativePortType port_,
+    bool use_bridges,
+    bool fallback_to_bridges,
+    String transport,
+    JSAny bridge_lines,
+    String? transport_path,
+  ) => wasmModule.wire__crate__api__set_tor_bridge_settings(
+    port_,
+    use_bridges,
+    fallback_to_bridges,
+    transport,
+    bridge_lines,
+    transport_path,
+  );
+
+  void wire__crate__api__set_tunnel(NativePortType port_, JSAny mode) =>
+      wasmModule.wire__crate__api__set_tunnel(port_, mode);
+
+  void wire__crate__api__set_wallet_birthday_height(
+    NativePortType port_,
+    String wallet_id,
+    int birthday_height,
+  ) => wasmModule.wire__crate__api__set_wallet_birthday_height(
+    port_,
+    wallet_id,
+    birthday_height,
+  );
+
+  void wire__crate__api__shutdown_transport(NativePortType port_) =>
+      wasmModule.wire__crate__api__shutdown_transport(port_);
+
+  void wire__crate__api__sign_tx(
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+  ) => wasmModule.wire__crate__api__sign_tx(port_, wallet_id, pending);
+
+  void wire__crate__api__sign_tx_filtered(
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  ) => wasmModule.wire__crate__api__sign_tx_filtered(
+    port_,
+    wallet_id,
+    pending,
+    key_ids_filter,
+    address_ids_filter,
+  );
+
+  void wire__crate__api__sign_tx_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+    JSAny key_id,
+  ) => wasmModule.wire__crate__api__sign_tx_for_key(
+    port_,
+    wallet_id,
+    pending,
+    key_id,
+  );
+
+  void wire__crate__api__skip_seed_biometric(NativePortType port_) =>
+      wasmModule.wire__crate__api__skip_seed_biometric(port_);
+
+  void wire__crate__api__start_background_sync(
+    NativePortType port_,
+    String wallet_id,
+    String? mode,
+  ) => wasmModule.wire__crate__api__start_background_sync(
+    port_,
+    wallet_id,
+    mode,
+  );
+
+  void wire__crate__api__start_background_sync_round_robin(
+    NativePortType port_,
+    String? mode,
+  ) => wasmModule.wire__crate__api__start_background_sync_round_robin(
+    port_,
+    mode,
+  );
+
+  void wire__crate__api__start_seed_export(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__start_seed_export(port_, wallet_id);
+
+  void wire__crate__api__start_sync(
+    NativePortType port_,
+    String wallet_id,
+    int mode,
+  ) => wasmModule.wire__crate__api__start_sync(port_, wallet_id, mode);
+
+  void wire__crate__api__switch_wallet(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__switch_wallet(port_, wallet_id);
+
+  void wire__crate__api__sync_status(NativePortType port_, String wallet_id) =>
+      wasmModule.wire__crate__api__sync_status(port_, wallet_id);
+
+  void wire__crate__api__test_node(
+    NativePortType port_,
+    String url,
+    String? tls_pin,
+  ) => wasmModule.wire__crate__api__test_node(port_, url, tls_pin);
+
+  void wire__crate__api__toggle_address_book_favorite(
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  ) => wasmModule.wire__crate__api__toggle_address_book_favorite(
+    port_,
+    wallet_id,
+    id,
+  );
+
+  void wire__crate__api__unlock_app(NativePortType port_, String passphrase) =>
+      wasmModule.wire__crate__api__unlock_app(port_, passphrase);
+
+  void wire__crate__api__update_address_book_entry(
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+    String? label,
+    String? notes,
+    int? color_tag,
+    bool? is_favorite,
+  ) => wasmModule.wire__crate__api__update_address_book_entry(
+    port_,
+    wallet_id,
+    id,
+    label,
+    notes,
+    color_tag,
+    is_favorite,
+  );
+
+  void wire__crate__api__validate_mnemonic(
+    NativePortType port_,
+    String mnemonic,
+  ) => wasmModule.wire__crate__api__validate_mnemonic(port_, mnemonic);
+
+  void wire__crate__api__verify_app_passphrase(
+    NativePortType port_,
+    String passphrase,
+  ) => wasmModule.wire__crate__api__verify_app_passphrase(port_, passphrase);
+
+  void wire__crate__api__verify_duress_passphrase(
+    NativePortType port_,
+    String passphrase,
+    String hash,
+  ) => wasmModule.wire__crate__api__verify_duress_passphrase(
+    port_,
+    passphrase,
+    hash,
+  );
+
+  void wire__crate__api__verify_panic_pin(NativePortType port_, String pin) =>
+      wasmModule.wire__crate__api__verify_panic_pin(port_, pin);
+
+  void wire__crate__api__wallet_registry_exists(NativePortType port_) =>
+      wasmModule.wire__crate__api__wallet_registry_exists(port_);
+}
+
+@JS('wasm_bindgen')
+external RustLibWasmModule get wasmModule;
+
+@JS()
+@anonymous
+extension type RustLibWasmModule._(JSObject _) implements JSObject {
+  external void wire__crate__api__acknowledge_seed_warning(
+    NativePortType port_,
+  );
+
+  external void wire__crate__api__add_address_book_entry(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+    String label,
+    String? notes,
+    int color_tag,
+  );
+
+  external void wire__crate__api__address_exists_in_book(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  );
+
+  external void wire__crate__api__are_seed_screenshots_blocked(
+    NativePortType port_,
+  );
+
+  external void wire__crate__api__bootstrap_tunnel(
+    NativePortType port_,
+    JSAny mode,
+  );
+
+  external void wire__crate__api__broadcast_tx(
+    NativePortType port_,
+    JSAny signed,
+  );
+
+  external void wire__crate__api__build_consolidation_tx(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    String target_address,
+    JSAny? fee_opt,
+  );
+
+  external void wire__crate__api__build_sweep_tx(
+    NativePortType port_,
+    String wallet_id,
+    String target_address,
+    JSAny? fee_opt,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  );
+
+  external void wire__crate__api__build_tx(
+    NativePortType port_,
+    String wallet_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+  );
+
+  external void wire__crate__api__build_tx_filtered(
+    NativePortType port_,
+    String wallet_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  );
+
+  external void wire__crate__api__build_tx_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    JSAny outputs,
+    JSAny? fee_opt,
+  );
+
+  external void wire__crate__api__cancel_seed_export(NativePortType port_);
+
+  external void wire__crate__api__cancel_sync(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__change_app_passphrase(
+    NativePortType port_,
+    String current_passphrase,
+    String new_passphrase,
+  );
+
+  external void wire__crate__api__change_app_passphrase_with_cached(
+    NativePortType port_,
+    String new_passphrase,
+  );
+
+  external void wire__crate__api__clear_duress_passphrase(NativePortType port_);
+
+  external void wire__crate__api__clear_panic_pin(NativePortType port_);
+
+  external void wire__crate__api__complete_seed_biometric(
+    NativePortType port_,
+    bool success,
+  );
+
+  external void wire__crate__api__create_wallet(
+    NativePortType port_,
+    String name,
+    int? _entropy_len,
+    int? birthday_opt,
+  );
+
+  external void wire__crate__api__current_receive_address(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__delete_address_book_entry(
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  );
+
+  external void wire__crate__api__delete_wallet(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__estimate_fee(
+    NativePortType port_,
+    JSAny num_outputs,
+    bool has_memo,
+    String? fee_policy,
+  );
+
+  external void wire__crate__api__exit_decoy_mode(NativePortType port_);
+
+  external void wire__crate__api__export_ivk(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__export_ivk_secure(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__export_key_group_keys(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+  );
+
+  external void wire__crate__api__export_orchard_ivk(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__export_orchard_viewing_key(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__export_seed(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__export_seed_with_cached_passphrase(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__export_seed_with_passphrase(
+    NativePortType port_,
+    String wallet_id,
+    String passphrase,
+  );
+
+  external void wire__crate__api__fetch_transaction_memo(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+    int? output_index,
+  );
+
+  external void wire__crate__api__format_amount(
+    NativePortType port_,
+    JSAny arrrtoshis,
+  );
+
+  external void wire__crate__api__generate_address_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+    bool use_orchard,
+  );
+
+  external void wire__crate__api__generate_mnemonic(
+    NativePortType port_,
+    int? word_count,
+  );
+
+  external void wire__crate__api__get_active_wallet(NativePortType port_);
+
+  external void wire__crate__api__get_address_book_count(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__get_address_book_entry(
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  );
+
+  external void wire__crate__api__get_address_book_entry_by_address(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  );
+
+  external void wire__crate__api__get_address_book_favorites(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__get_auto_consolidation_candidate_count(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__get_auto_consolidation_enabled(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__get_auto_consolidation_threshold(
+    NativePortType port_,
+  );
+
+  external void wire__crate__api__get_balance(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__get_build_info(NativePortType port_);
+
+  external void wire__crate__api__get_checkpoint_details(
+    NativePortType port_,
+    String _wallet_id,
+    int height,
+  );
+
+  external void wire__crate__api__get_duress_passphrase_hash(
+    NativePortType port_,
+  );
+
+  external void wire__crate__api__get_fee_info(NativePortType port_);
+
+  external void wire__crate__api__get_ivk_clipboard_remaining(
+    NativePortType port_,
+  );
+
+  external void wire__crate__api__get_label_for_address(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  );
+
+  external void wire__crate__api__get_last_checkpoint(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__get_lightd_endpoint(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__get_lightd_endpoint_config(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__get_network_info(NativePortType port_);
+
+  external void wire__crate__api__get_recently_used_addresses(
+    NativePortType port_,
+    String wallet_id,
+    int limit,
+  );
+
+  external void wire__crate__api__get_recommended_background_sync_mode(
+    NativePortType port_,
+    String _wallet_id,
+    int minutes_since_last,
+  );
+
+  external void wire__crate__api__get_seed_clipboard_remaining(
+    NativePortType port_,
+  );
+
+  external void wire__crate__api__get_seed_export_state(NativePortType port_);
+
+  external void wire__crate__api__get_seed_export_warnings(
+    NativePortType port_,
+  );
+
+  external void wire__crate__api__get_sync_logs(
+    NativePortType port_,
+    String wallet_id,
+    int? limit,
+  );
+
+  external void wire__crate__api__get_tor_status(NativePortType port_);
+
+  external void wire__crate__api__get_tunnel(NativePortType port_);
+
+  external void wire__crate__api__get_vault_mode(NativePortType port_);
+
+  external void wire__crate__api__get_watch_only_banner(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__get_watch_only_capabilities(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__has_app_passphrase(NativePortType port_);
+
+  external void wire__crate__api__has_duress_passphrase(NativePortType port_);
+
+  external void wire__crate__api__has_panic_pin(NativePortType port_);
+
+  external void wire__crate__api__import_ivk(
+    NativePortType port_,
+    String name,
+    String? sapling_ivk,
+    String? orchard_ivk,
+    int birthday,
+  );
+
+  external void wire__crate__api__import_ivk_as_watch_only(
+    NativePortType port_,
+    String name,
+    String ivk,
+    int birthday_height,
+  );
+
+  external void wire__crate__api__import_spending_key(
+    NativePortType port_,
+    String wallet_id,
+    String? sapling_key,
+    String? orchard_key,
+    String? label,
+    int birthday_height,
+  );
+
+  external void wire__crate__api__is_background_sync_needed(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__is_decoy_mode(NativePortType port_);
+
+  external void wire__crate__api__is_sync_running(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__label_address(
+    NativePortType port_,
+    String wallet_id,
+    String addr,
+    String label,
+  );
+
+  external void wire__crate__api__lightd_endpoint_default(NativePortType port_);
+
+  external void wire__crate__api__lightd_endpoint_display_string(
+    NativePortType port_,
+    JSAny that,
+  );
+
+  external void wire__crate__api__lightd_endpoint_url(
+    NativePortType port_,
+    JSAny that,
+  );
+
+  external void wire__crate__api__list_address_balances(
+    NativePortType port_,
+    String wallet_id,
+    JSAny? key_id,
+  );
+
+  external void wire__crate__api__list_address_book(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__list_addresses(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__list_addresses_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
+  );
+
+  external void wire__crate__api__list_key_groups(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__list_transactions(
+    NativePortType port_,
+    String wallet_id,
+    int? limit,
+  );
+
+  external void wire__crate__api__list_wallets(NativePortType port_);
+
+  external void wire__crate__api__mark_address_used(
+    NativePortType port_,
+    String wallet_id,
+    String address,
+  );
+
+  external void wire__crate__api__next_receive_address(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__parse_amount(
+    NativePortType port_,
+    String arrr,
+  );
+
+  external void wire__crate__api__rename_wallet(
+    NativePortType port_,
+    String wallet_id,
+    String new_name,
+  );
+
+  external void wire__crate__api__rescan(
+    NativePortType port_,
+    String wallet_id,
+    int from_height,
+  );
+
+  external void wire__crate__api__reseal_db_keys_for_biometrics(
+    NativePortType port_,
+  );
+
+  external void wire__crate__api__restore_wallet(
+    NativePortType port_,
+    String name,
+    String mnemonic,
+    String? passphrase_opt,
+    int? birthday_opt,
+  );
+
+  external void wire__crate__api__rotate_tor_exit(NativePortType port_);
+
+  external void wire__crate__api__search_address_book(
+    NativePortType port_,
+    String wallet_id,
+    String query,
+  );
+
+  external void wire__crate__api__set_address_color_tag(
+    NativePortType port_,
+    String wallet_id,
+    String addr,
+    int color_tag,
+  );
+
+  external void wire__crate__api__set_app_passphrase(
+    NativePortType port_,
+    String passphrase,
+  );
+
+  external void wire__crate__api__set_auto_consolidation_enabled(
+    NativePortType port_,
+    String wallet_id,
+    bool enabled,
+  );
+
+  external void wire__crate__api__set_decoy_wallet_name(
+    NativePortType port_,
+    String name,
+  );
+
+  external void wire__crate__api__set_duress_passphrase(
+    NativePortType port_,
+    String? custom_passphrase,
+  );
+
+  external void wire__crate__api__set_lightd_endpoint(
+    NativePortType port_,
+    String wallet_id,
+    String url,
+    String? tls_pin_opt,
+  );
+
+  external void wire__crate__api__set_panic_pin(
+    NativePortType port_,
+    String pin,
+  );
+
+  external void wire__crate__api__set_tor_bridge_settings(
+    NativePortType port_,
+    bool use_bridges,
+    bool fallback_to_bridges,
+    String transport,
+    JSAny bridge_lines,
+    String? transport_path,
+  );
+
+  external void wire__crate__api__set_tunnel(NativePortType port_, JSAny mode);
+
+  external void wire__crate__api__set_wallet_birthday_height(
+    NativePortType port_,
+    String wallet_id,
+    int birthday_height,
+  );
+
+  external void wire__crate__api__shutdown_transport(NativePortType port_);
+
+  external void wire__crate__api__sign_tx(
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+  );
+
+  external void wire__crate__api__sign_tx_filtered(
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+    JSAny? key_ids_filter,
+    JSAny? address_ids_filter,
+  );
+
+  external void wire__crate__api__sign_tx_for_key(
+    NativePortType port_,
+    String wallet_id,
+    JSAny pending,
+    JSAny key_id,
+  );
+
+  external void wire__crate__api__skip_seed_biometric(NativePortType port_);
+
+  external void wire__crate__api__start_background_sync(
+    NativePortType port_,
+    String wallet_id,
+    String? mode,
+  );
+
+  external void wire__crate__api__start_background_sync_round_robin(
+    NativePortType port_,
+    String? mode,
+  );
+
+  external void wire__crate__api__start_seed_export(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__start_sync(
+    NativePortType port_,
+    String wallet_id,
+    int mode,
+  );
+
+  external void wire__crate__api__switch_wallet(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__sync_status(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__test_node(
+    NativePortType port_,
+    String url,
+    String? tls_pin,
+  );
+
+  external void wire__crate__api__toggle_address_book_favorite(
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+  );
+
+  external void wire__crate__api__unlock_app(
+    NativePortType port_,
+    String passphrase,
+  );
+
+  external void wire__crate__api__update_address_book_entry(
+    NativePortType port_,
+    String wallet_id,
+    JSAny id,
+    String? label,
+    String? notes,
+    int? color_tag,
+    bool? is_favorite,
+  );
+
+  external void wire__crate__api__validate_mnemonic(
+    NativePortType port_,
+    String mnemonic,
+  );
+
+  external void wire__crate__api__verify_app_passphrase(
+    NativePortType port_,
+    String passphrase,
+  );
+
+  external void wire__crate__api__verify_duress_passphrase(
+    NativePortType port_,
+    String passphrase,
+    String hash,
+  );
+
+  external void wire__crate__api__verify_panic_pin(
+    NativePortType port_,
+    String pin,
+  );
+
+  external void wire__crate__api__wallet_registry_exists(NativePortType port_);
+}
