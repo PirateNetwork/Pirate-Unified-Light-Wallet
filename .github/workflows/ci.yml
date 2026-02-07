@@ -1668,6 +1668,7 @@ jobs:
       - sign-macos
       - sign-ios
       - sign-linux
+      - virustotal-scan
     steps:
       - name: Checkout tag for release notes
         uses: actions/checkout@v4
@@ -1716,6 +1717,11 @@ jobs:
             -name '*.sha256' \
             -o -name '*.asc' \
           \) -exec cp -f {} release-meta/ \;
+
+          # VirusTotal scan report (optional; only present when VIRUSTOTAL_API_KEY is configured).
+          if [ -d release-artifacts/virustotal-report ]; then
+            find release-artifacts/virustotal-report -type f -maxdepth 1 -exec cp -f {} release-meta/ \;
+          fi
 
           # Flatpak hashes are not generated during packaging.
           for flatpak in release/*.flatpak; do
