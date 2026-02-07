@@ -217,7 +217,9 @@ log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
 log "Building macOS app (universal2)..."
-flutter build macos --release --universal
+# On modern Flutter versions, `flutter build macos` produces a universal build by
+# default. We validate the result below via lipo checks.
+flutter build macos --release
 
 APP_OUTPUT_DIR="build/macos/Build/Products/Release"
 APP_PATH="$APP_OUTPUT_DIR/Pirate Unified Wallet.app"
