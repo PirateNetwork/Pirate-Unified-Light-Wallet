@@ -15,6 +15,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
+#[cfg(target_os = "macos")]
+use std::path::Path;
+
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -77,6 +80,11 @@ fn i2pd_binary_filenames() -> Vec<String> {
     } else {
         let arch = env::consts::ARCH;
         names.push(format!("i2pd-{}", arch));
+        if cfg!(target_os = "macos") && arch == "aarch64" {
+            // Apple Silicon can run Intel binaries under Rosetta. This keeps I2P
+            // usable even when upstream i2pd releases are x86_64-only.
+            names.push("i2pd-x86_64".to_string());
+        }
         names.push("i2pd".to_string());
     }
     names
@@ -143,6 +151,104 @@ fn find_i2pd_binary() -> Option<PathBuf> {
 
     log_debug_event("i2p.rs:find_i2pd_binary", "i2p_bin_missing", "bin=i2pd");
     None
+}
+
+#[cfg(target_os = "macos")]
+fn rosetta_install_instructions() -> &'static str {
+    "Rosetta 2 is required to run the bundled Intel (x86_64) i2pd on Apple Silicon.\n\
+Install it with:\n\
+  softwareupdate --install-rosetta --agree-to-license\n\
+If that fails, try:\n\
+  sudo softwareupdate --install-rosetta --agree-to-license"
+}
+
+#[cfg(target_os = "macos")]
+fn is_rosetta_installed() -> bool {
+    // Most reliable check: attempt to run an x86_64 binary via `arch`.
+    // If Rosetta is missing, this fails with "Bad CPU type in executable".
+    Command::new("/usr/bin/arch")
+        .args(["-x86_64", "/usr/bin/true"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn try_install_rosetta() -> bool {
+    // First, try direct install (may succeed without prompting in some environments).
+    let direct = Command::new("/usr/sbin/softwareupdate")
+        .args(["--install-rosetta", "--agree-to-license"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if direct {
+        return true;
+    }
+
+    // Fallback: prompt for admin privileges via AppleScript.
+    // This is still "automatic" from the user's perspective (a system password dialog),
+    // and avoids requiring them to manually run Terminal commands.
+    let script = r#"do shell script "/usr/sbin/softwareupdate --install-rosetta --agree-to-license" with administrator privileges"#;
+    Command::new("/usr/bin/osascript")
+        .args(["-e", script])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn needs_rosetta_for_binary(path: &Path) -> bool {
+    if env::consts::ARCH != "aarch64" {
+        return false;
+    }
+
+    // Our bundling convention uses i2pd-x86_64 when the upstream macOS tarball is Intel-only.
+    // This avoids invoking Rosetta checks for native/universal binaries.
+    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    name == "i2pd-x86_64"
+}
+
+#[cfg(target_os = "macos")]
+async fn ensure_rosetta_for_i2p_binary(binary: &Path) -> Result<()> {
+    if !needs_rosetta_for_binary(binary) {
+        return Ok(());
+    }
+
+    // `softwareupdate` can be slow (download/install), so keep it off the async executor.
+    let binary = binary.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        if is_rosetta_installed() {
+            return Ok(());
+        }
+
+        log_debug_event(
+            "i2p.rs:rosetta",
+            "rosetta_missing",
+            &format!("binary={}", binary.display()),
+        );
+
+        let installed = try_install_rosetta();
+        if installed && is_rosetta_installed() {
+            log_debug_event(
+                "i2p.rs:rosetta",
+                "rosetta_installed",
+                &format!("binary={}", binary.display()),
+            );
+            Ok(())
+        } else {
+            let message = rosetta_install_instructions().to_string();
+            log_debug_event("i2p.rs:rosetta", "rosetta_install_failed", "error=missing");
+            Err(Error::Network(message))
+        }
+    })
+    .await
+    .map_err(|e| Error::Network(format!("Rosetta check task failed: {}", e)))?
 }
 
 fn pick_available_port(address: &str, preferred: u16) -> u16 {
@@ -291,6 +397,21 @@ impl I2pClient {
         let conf_path = data_dir.join("i2pd.conf");
         write_config(&conf_path, &config)?;
 
+        #[cfg(target_os = "macos")]
+        if let Err(e) = ensure_rosetta_for_i2p_binary(&binary).await {
+            let message = match &e {
+                Error::Network(msg) => msg.clone(),
+                _ => e.to_string(),
+            };
+            *self.status.lock().await = I2pStatus::Error(message.clone());
+            log_debug_event(
+                "i2p.rs:I2pClient::start",
+                "i2p_start_error",
+                &format!("error={}", message),
+            );
+            return Err(e);
+        }
+
         let mut cmd = Command::new(binary);
         cmd.arg("--datadir").arg(&data_dir);
         cmd.arg("--conf").arg(&conf_path);
@@ -304,6 +425,13 @@ impl I2pClient {
 
         let child = cmd.spawn().map_err(|e| {
             let message = format!("Failed to start i2pd: {}", e);
+            #[cfg(target_os = "macos")]
+            let message = if e.raw_os_error() == Some(86) {
+                format!("{}. On Apple Silicon this usually means Rosetta is missing, or the bundled i2pd is Intel-only. Install Rosetta with: softwareupdate --install-rosetta --agree-to-license", message)
+            } else {
+                message
+            };
+
             *self.status.blocking_lock() = I2pStatus::Error(message.clone());
             log_debug_event(
                 "i2p.rs:I2pClient::start",

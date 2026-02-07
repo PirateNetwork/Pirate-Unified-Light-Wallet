@@ -337,8 +337,36 @@ fetch_i2p() {
     log "Downloading i2pd (macOS): $url"
     download_file "$url" "$archive"
     sha512_check "$archive" "$I2PD_MACOS_SHA512"
-    extract_archive_or_copy "$archive" "i2pd" "$I2P_DIR/macos/i2pd" "$tmpdir/unpack"
-    chmod +x "$I2P_DIR/macos/i2pd"
+
+    # Extract once, then store as universal (i2pd) or arch-specific (i2pd-x86_64 / i2pd-aarch64).
+    local extracted="$tmpdir/i2pd"
+    extract_archive_or_copy "$archive" "i2pd" "$extracted" "$tmpdir/unpack"
+    chmod +x "$extracted"
+
+    local dest_name="i2pd"
+    if have_cmd lipo; then
+      local archs
+      archs="$(lipo -archs "$extracted" 2>/dev/null || true)"
+      case "$archs" in
+        *x86_64*arm64*|*arm64*x86_64*) dest_name="i2pd" ;;
+        *x86_64*) dest_name="i2pd-x86_64" ;;
+        *arm64*) dest_name="i2pd-aarch64" ;;
+        *) dest_name="i2pd" ;;
+      esac
+    else
+      # Best-effort default: treat the upstream tarball as Intel-only.
+      dest_name="i2pd-x86_64"
+    fi
+
+    # Avoid shipping a mismatched generic i2pd in universal builds.
+    if [[ "$dest_name" != "i2pd" ]]; then
+      rm -f "$I2P_DIR/macos/i2pd"
+    else
+      rm -f "$I2P_DIR/macos/i2pd-x86_64" "$I2P_DIR/macos/i2pd-aarch64"
+    fi
+
+    cp "$extracted" "$I2P_DIR/macos/$dest_name"
+    chmod +x "$I2P_DIR/macos/$dest_name"
     rm -rf "$tmpdir"
     return 0
   fi
