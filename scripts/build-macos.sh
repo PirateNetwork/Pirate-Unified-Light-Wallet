@@ -92,13 +92,15 @@ stage_rust_macos_universal() {
   # flutter_rust_bridge's default loader for iOS/macOS expects a framework at
   # "$stem.framework/$stem" (see flutter_rust_bridge's loadExternalLibraryRaw).
   # Therefore, we bundle the Rust dynamic library as a .framework in the app.
+  #
+  # Use a "flat" framework layout (no Versions/ symlinks) because it's the most
+  # compatible format for embedded frameworks in app bundles.
   local fw_name="pirate_ffi_frb"
   local fw_dir="$dest_dir/${fw_name}.framework"
-  local fw_versions_dir="$fw_dir/Versions/A"
-  local fw_resources_dir="$fw_versions_dir/Resources"
-  mkdir -p "$fw_resources_dir"
+  rm -rf "$fw_dir"
+  mkdir -p "$fw_dir"
 
-  local out="$fw_versions_dir/$fw_name"
+  local out="$fw_dir/$fw_name"
   lipo -create -output "$out" "$dylib_arm" "$dylib_x86"
   chmod +x "$out" || true
 
@@ -112,7 +114,7 @@ stage_rust_macos_universal() {
   fi
 
   # Minimal Info.plist so codesign / Gatekeeper treat this as a framework bundle.
-  cat > "$fw_resources_dir/Info.plist" <<EOF
+  cat > "$fw_dir/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -136,12 +138,6 @@ stage_rust_macos_universal() {
 </dict>
 </plist>
 EOF
-
-  # Standard framework symlinks so dlopen("$fw_name.framework/$fw_name") works.
-  ln -sf A "$fw_dir/Versions/Current"
-  ln -sf "Versions/Current/${fw_name}" "$fw_dir/${fw_name}"
-  ln -sf "Versions/Current/Resources" "$fw_dir/Resources"
-  ln -sf "Versions/Current/Resources/Info.plist" "$fw_dir/Info.plist"
 }
 
 require_universal_macho() {
