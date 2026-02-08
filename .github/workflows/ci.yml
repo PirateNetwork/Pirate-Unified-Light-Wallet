@@ -882,6 +882,13 @@ jobs:
           chmod +x scripts/build-macos.sh
           REPRODUCIBLE=1 ./scripts/build-macos.sh false
 
+      - name: Verify macOS DMG
+        run: |
+          chmod +x scripts/verify-macos-dmg.sh
+          for dmg in dist/macos/*.dmg; do
+            scripts/verify-macos-dmg.sh "$dmg"
+          done
+
       - name: Generate SBOM
         run: |
           chmod +x scripts/generate-sbom.sh

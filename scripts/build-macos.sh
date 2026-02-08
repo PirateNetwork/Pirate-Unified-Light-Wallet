@@ -89,17 +89,59 @@ stage_rust_macos_universal() {
   local dest_dir="$app_path/Contents/Frameworks"
   mkdir -p "$dest_dir"
 
-  local out="$dest_dir/libpirate_ffi_frb.dylib"
+  # flutter_rust_bridge's default loader for iOS/macOS expects a framework at
+  # "$stem.framework/$stem" (see flutter_rust_bridge's loadExternalLibraryRaw).
+  # Therefore, we bundle the Rust dynamic library as a .framework in the app.
+  local fw_name="pirate_ffi_frb"
+  local fw_dir="$dest_dir/${fw_name}.framework"
+  local fw_versions_dir="$fw_dir/Versions/A"
+  local fw_resources_dir="$fw_versions_dir/Resources"
+  mkdir -p "$fw_resources_dir"
+
+  local out="$fw_versions_dir/$fw_name"
   lipo -create -output "$out" "$dylib_arm" "$dylib_x86"
+  chmod +x "$out" || true
 
   if command -v install_name_tool >/dev/null 2>&1; then
     # Ensure the install name is @rpath so the app can load it from Contents/Frameworks.
-    install_name_tool -id "@rpath/libpirate_ffi_frb.dylib" "$out" || warn "install_name_tool failed on $out"
+    install_name_tool -id "@rpath/${fw_name}.framework/${fw_name}" "$out" || warn "install_name_tool failed on $out"
   fi
 
   if command -v strip >/dev/null 2>&1; then
     strip -x "$out" || warn "Failed to strip $out"
   fi
+
+  # Minimal Info.plist so codesign / Gatekeeper treat this as a framework bundle.
+  cat > "$fw_resources_dir/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>${fw_name}</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.pirate.wallet.${fw_name}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>${fw_name}</string>
+  <key>CFBundlePackageType</key>
+  <string>FMWK</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+</dict>
+</plist>
+EOF
+
+  # Standard framework symlinks so dlopen("$fw_name.framework/$fw_name") works.
+  ln -sf A "$fw_dir/Versions/Current"
+  ln -sf "Versions/Current/${fw_name}" "$fw_dir/${fw_name}"
+  ln -sf "Versions/Current/Resources" "$fw_dir/Resources"
+  ln -sf "Versions/Current/Resources/Info.plist" "$fw_dir/Info.plist"
 }
 
 require_universal_macho() {
@@ -124,7 +166,7 @@ verify_universal_app_bundle() {
   exe_name="$(basename "$app_path" .app)"
 
   require_universal_macho "$app_path/Contents/MacOS/$exe_name"
-  require_universal_macho "$app_path/Contents/Frameworks/libpirate_ffi_frb.dylib"
+  require_universal_macho "$app_path/Contents/Frameworks/pirate_ffi_frb.framework/pirate_ffi_frb"
 
   local frameworks_dir="$app_path/Contents/Frameworks"
   if [ -d "$frameworks_dir" ]; then
@@ -186,6 +228,60 @@ sign_nested_code() {
       fi
     done
   fi
+}
+
+sign_nested_code_no_timestamp() {
+  local app_path="$1"
+  local identity="$2"
+
+  local frameworks_dir="$app_path/Contents/Frameworks"
+  local plugins_dir="$app_path/Contents/PlugIns"
+
+  if [ -d "$frameworks_dir" ]; then
+    while IFS= read -r -d '' f; do
+      codesign --force --sign "$identity" "$f"
+    done < <(find "$frameworks_dir" -type f -name "*.dylib" -print0 | LC_ALL=C sort -z)
+
+    while IFS= read -r -d '' f; do
+      codesign --force --sign "$identity" "$f"
+    done < <(find "$frameworks_dir" -type d -name "*.framework" -print0 | LC_ALL=C sort -z)
+
+    while IFS= read -r -d '' f; do
+      codesign --force --sign "$identity" "$f"
+    done < <(find "$frameworks_dir" -type d -name "*.app" -print0 | LC_ALL=C sort -z)
+  fi
+
+  if [ -d "$plugins_dir" ]; then
+    while IFS= read -r -d '' f; do
+      codesign --force --sign "$identity" "$f"
+    done < <(find "$plugins_dir" -type d \( -name "*.appex" -o -name "*.plugin" -o -name "*.xpc" \) -print0 | LC_ALL=C sort -z)
+  fi
+
+  local resources_dir="$app_path/Contents/Resources"
+  if [ -d "$resources_dir" ]; then
+    local extra_dir
+    for extra_dir in "$resources_dir/tor-pt" "$resources_dir/i2p"; do
+      if [ -d "$extra_dir" ]; then
+        while IFS= read -r -d '' f; do
+          codesign --force --sign "$identity" "$f"
+        done < <(find "$extra_dir" -type f -perm -111 -print0 | LC_ALL=C sort -z)
+      fi
+    done
+  fi
+}
+
+adhoc_sign_app_bundle() {
+  local app_path="$1"
+  local identity="-"
+
+  log "Ad-hoc signing nested code..."
+  sign_nested_code_no_timestamp "$app_path" "$identity"
+
+  log "Ad-hoc signing app bundle..."
+  codesign --force --sign "$identity" "$app_path"
+
+  log "Verifying signature..."
+  codesign --verify --deep --strict --verbose=4 "$app_path"
 }
 
 sign_app_bundle() {
@@ -269,6 +365,12 @@ if [ "$SIGN" = "true" ]; then
   log "Code signing macOS app..."
   sign_app_bundle "$APP_PATH" "$SIGN_IDENTITY" "$ENTITLEMENTS_PATH"
   SIGNED=true
+else
+  # We modify the app bundle after the Flutter/Xcode build (e.g. adding the Rust
+  # framework), which can invalidate the build-time ad-hoc signature. Re-sign
+  # ad-hoc so the app can launch and load embedded frameworks consistently.
+  log "Re-signing macOS app ad-hoc..."
+  adhoc_sign_app_bundle "$APP_PATH"
 fi
 
 # Create DMG
@@ -288,13 +390,13 @@ cp -R "$APP_PATH" "$TMP_DMG_DIR/"
 
 if [ "$SIGNED" != "true" ]; then
   cat > "$TMP_DMG_DIR/README.txt" <<'EOF'
-Pirate Unified Wallet (unsigned test build)
+ Pirate Unified Wallet (test build)
 
-This build is not code-signed or notarized yet. macOS may block it on first launch.
+ This build is not Developer ID code-signed or notarized yet. macOS may block it on first launch.
 
-How to run it:
-1) Drag "Pirate Unified Wallet.app" to /Applications
-2) Open Terminal and run:
+ How to run it:
+ 1) Drag "Pirate Unified Wallet.app" to /Applications
+ 2) Open Terminal and run:
    xattr -dr com.apple.quarantine "/Applications/Pirate Unified Wallet.app"
 3) Then right-click the app and choose Open (first run).
    Alternatively: System Settings -> Privacy & Security -> Open Anyway.
