@@ -23,6 +23,8 @@ namespace {
 const char kKeystoreChannelName[] = "com.pirate.wallet/keystore";
 const char kSecurityChannelName[] = "com.pirate.wallet/security";
 const char kMasterKeyId[] = "pirate_wallet_master_key";
+const uint8_t kSealedMarker[] = {'l', 'i', 'n', 'u', 'x', '-', 'k', 'e', 'y',
+                                 'c', 'h', 'a', 'i', 'n', '-', 'v', '1'};
 
 const SecretSchema kPirateKeystoreSchema = {
     "com.pirate.wallet.keystore",
@@ -209,9 +211,10 @@ static void keystore_method_call_handler(FlMethodChannel* channel,
                                   error_message ? error_message
                                                 : "Failed to seal key");
       } else {
-        g_autoptr(FlValue) empty_list = fl_value_new_list();
-        response =
-            FL_METHOD_RESPONSE(fl_method_success_response_new(empty_list));
+        // Return a non-empty marker so Dart-side cache existence checks work.
+        g_autoptr(FlValue) marker = fl_value_new_uint8_list(
+            kSealedMarker, sizeof(kSealedMarker));
+        response = FL_METHOD_RESPONSE(fl_method_success_response_new(marker));
       }
     }
   } else if (strcmp(method, "unsealMasterKey") == 0) {

@@ -151,17 +151,37 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
   Future<void> setEnabled({required bool enabled}) async {
     final previous = state;
     state = enabled;
-    await _storage.write(key: _storageKey, value: enabled.toString());
-    if (!enabled) {
-      await PassphraseCache.clear();
+
+    var persisted = false;
+    try {
+      await _storage.write(key: _storageKey, value: enabled.toString());
+      persisted = true;
+    } catch (e) {
+      // This is a non-sensitive UI preference. If secure storage persistence
+      // fails on a device, keep onboarding/settings usable instead of blocking.
+      debugPrint('Failed to persist biometrics preference: $e');
     }
+
+    if (!enabled) {
+      try {
+        await PassphraseCache.clear();
+      } catch (e) {
+        // Disabling biometrics should remain best-effort and never block UI.
+        debugPrint('Failed to clear biometric passphrase cache: $e');
+      }
+    }
+
     if (Platform.isAndroid || Platform.isIOS) {
       try {
         await KeystoreChannel.setBiometricsEnabled(enabled: enabled);
         await FfiBridge.resealDbKeysForBiometrics();
       } catch (e) {
         state = previous;
-        await _storage.write(key: _storageKey, value: previous.toString());
+        if (persisted) {
+          try {
+            await _storage.write(key: _storageKey, value: previous.toString());
+          } catch (_) {}
+        }
         try {
           await KeystoreChannel.setBiometricsEnabled(enabled: previous);
         } catch (_) {}

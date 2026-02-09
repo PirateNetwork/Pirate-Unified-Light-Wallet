@@ -7,6 +7,7 @@ import LocalAuthentication
 class AppDelegate: FlutterAppDelegate {
   private let keystoreService = "com.pirate.wallet.keystore"
   private let masterKeyAccount = "pirate_wallet_master_key"
+  private let sealedKeyMarker = Data("macos-keychain-v1".utf8)
   private var securityChannel: FlutterMethodChannel?
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
@@ -112,7 +113,8 @@ class AppDelegate: FlutterAppDelegate {
       }
       do {
         try storeKeychainData(masterKey.data, account: masterKeyAccount)
-        result(FlutterStandardTypedData(bytes: Data()))
+        // Return a non-empty marker so Dart-side cache existence checks work.
+        result(FlutterStandardTypedData(bytes: sealedKeyMarker))
       } catch {
         result(FlutterError(code: "SEAL_ERROR", message: error.localizedDescription, details: nil))
       }

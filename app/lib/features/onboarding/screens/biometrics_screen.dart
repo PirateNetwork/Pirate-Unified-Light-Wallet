@@ -64,11 +64,32 @@ class _OnboardingBiometricsScreenState
       final state = ref.read(onboardingControllerProvider);
       final passphrase = state.passphrase;
       if (passphrase != null && passphrase.isNotEmpty) {
-        await PassphraseCache.store(passphrase);
+        try {
+          await PassphraseCache.store(passphrase);
+        } catch (e) {
+          // Keep state consistent: if we cannot wrap the passphrase, biometrics
+          // cannot unlock the wallet, so roll back and surface a clear message.
+          await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: false);
+          ref.read(onboardingControllerProvider.notifier).setBiometrics(enabled: false);
+          try {
+            await PassphraseCache.clear();
+          } catch (_) {}
+          if (mounted) {
+            setState(() {
+              _error =
+                  'Biometrics could not be initialized on this device. '
+                  'You can continue with your passphrase.';
+            });
+          }
+          return;
+        }
       }
       _proceed();
-    } catch (_) {
-      setState(() => _error = 'Unable to enable biometrics.');
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Unable to enable biometrics.');
+      }
+      debugPrint('Failed to enable onboarding biometrics: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -77,10 +98,38 @@ class _OnboardingBiometricsScreenState
   }
 
   Future<void> _skip() async {
-    await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: false);
-    ref.read(onboardingControllerProvider.notifier).setBiometrics(enabled: false);
-    await PassphraseCache.clear();
-    _proceed();
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      try {
+        await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: false);
+      } catch (e) {
+        // Skip must remain non-blocking; proceed even if preference persistence
+        // fails on this device.
+        debugPrint('Failed to persist biometrics=false during onboarding skip: $e');
+      }
+
+      ref.read(onboardingControllerProvider.notifier).setBiometrics(enabled: false);
+
+      try {
+        await PassphraseCache.clear();
+      } catch (e) {
+        debugPrint('Failed to clear passphrase cache during onboarding skip: $e');
+      }
+
+      if (mounted) {
+        _proceed();
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _proceed() {
