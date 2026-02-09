@@ -5540,8 +5540,11 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
         }
     };
 
-    let (progress_handle, perf_handle, sync_handle, last_status, last_target_update) = {
-        let session = session_arc.blocking_lock();
+    let (progress_handle, perf_handle, sync_handle, last_status, last_target_update) = if let Ok(
+        session,
+    ) =
+        session_arc.try_lock()
+    {
         (
             session.progress.clone(),
             session.perf.clone(),
@@ -5549,6 +5552,62 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             session.last_status.clone(),
             session.last_target_height_update,
         )
+    } else {
+        // Never block here: this function can be called while async tasks are running
+        // on the same runtime thread.
+        {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_sync_status_lock_busy","timestamp":{},"location":"api.rs:2610","message":"sync_status session lock busy","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
+                    ts, wallet_id
+                );
+            }
+        }
+
+        // Return persisted sync state as a stable fallback while lock contention clears.
+        if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
+            let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+            if let Ok(state) = sync_storage.load_sync_state() {
+                let percent = if state.target_height > 0 {
+                    (state.local_height as f64 / state.target_height as f64) * 100.0
+                } else {
+                    0.0
+                };
+                return Ok(SyncStatus {
+                    local_height: state.local_height,
+                    target_height: state.target_height,
+                    percent,
+                    eta: None,
+                    stage: crate::models::SyncStage::Verify,
+                    last_checkpoint: Some(state.last_checkpoint_height),
+                    blocks_per_second: 0.0,
+                    notes_decrypted: 0,
+                    last_batch_ms: 0,
+                });
+            }
+        }
+
+        return Ok(SyncStatus {
+            local_height: 0,
+            target_height: 0,
+            percent: 0.0,
+            eta: None,
+            stage: crate::models::SyncStage::Headers,
+            last_checkpoint: None,
+            blocks_per_second: 0.0,
+            notes_decrypted: 0,
+            last_batch_ms: 0,
+        });
     };
 
     if let Some(progress) = progress_handle {
@@ -6538,8 +6597,12 @@ pub fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
     };
 
     if let Some(session_arc) = session_arc_opt {
-        let session = session_arc.blocking_lock();
-        return Ok(session.is_running);
+        if let Ok(session) = session_arc.try_lock() {
+            return Ok(session.is_running);
+        }
+        // Conservatively report running when lock is contended to avoid
+        // starting overlapping sync sessions.
+        return Ok(true);
     }
 
     Ok(false)

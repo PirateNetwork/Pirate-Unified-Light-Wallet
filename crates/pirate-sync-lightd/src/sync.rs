@@ -4347,6 +4347,14 @@ impl StorageSink {
             if n.txid.is_empty() {
                 continue;
             }
+            let note_type = match n.note_type {
+                crate::pipeline::NoteType::Orchard => {
+                    pirate_storage_sqlite::models::NoteType::Orchard
+                }
+                crate::pipeline::NoteType::Sapling => {
+                    pirate_storage_sqlite::models::NoteType::Sapling
+                }
+            };
             let txid_hex = hex::encode(&n.txid);
             // #region agent log
             if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -4401,6 +4409,29 @@ impl StorageSink {
             {
                 let mut updated = existing.clone();
                 let mut changed = false;
+                let incoming_nullifier = n.nullifier.to_vec();
+                let incoming_commitment = n.commitment.to_vec();
+                let incoming_value = n.value as i64;
+
+                if existing.note_type != note_type {
+                    updated.note_type = note_type;
+                    changed = true;
+                }
+
+                if existing.value != incoming_value {
+                    updated.value = incoming_value;
+                    changed = true;
+                }
+
+                if existing.nullifier != incoming_nullifier {
+                    updated.nullifier = incoming_nullifier;
+                    changed = true;
+                }
+
+                if existing.commitment != incoming_commitment {
+                    updated.commitment = incoming_commitment;
+                    changed = true;
+                }
 
                 if existing.memo.is_none() {
                     if let Some(memo) = n.memo_bytes() {
@@ -4425,8 +4456,18 @@ impl StorageSink {
                     updated.note = Some(n.note_bytes.clone());
                     changed = true;
                 }
+                if !n.note_bytes.is_empty() && existing.note.as_ref() != Some(&n.note_bytes) {
+                    updated.note = Some(n.note_bytes.clone());
+                    changed = true;
+                }
 
                 if existing.merkle_path.is_none() && !n.merkle_path.is_empty() {
+                    updated.merkle_path = Some(n.merkle_path.clone());
+                    changed = true;
+                }
+                if !n.merkle_path.is_empty()
+                    && existing.merkle_path.as_ref() != Some(&n.merkle_path)
+                {
                     updated.merkle_path = Some(n.merkle_path.clone());
                     changed = true;
                 }
@@ -4437,10 +4478,24 @@ impl StorageSink {
                         changed = true;
                     }
                 }
+                if let Some(anchor) = n.anchor {
+                    let anchor_vec = anchor.to_vec();
+                    if existing.anchor.as_ref() != Some(&anchor_vec) {
+                        updated.anchor = Some(anchor_vec);
+                        changed = true;
+                    }
+                }
 
                 if existing.position.is_none() {
                     if let Some(position) = n.position {
                         updated.position = Some(position as i64);
+                        changed = true;
+                    }
+                }
+                if let Some(position) = n.position {
+                    let pos = position as i64;
+                    if existing.position != Some(pos) {
+                        updated.position = Some(pos);
                         changed = true;
                     }
                 }
@@ -4450,20 +4505,19 @@ impl StorageSink {
                     changed = true;
                 }
 
+                if !n.diversifier.is_empty() {
+                    let diversifier = n.diversifier.clone();
+                    if existing.diversifier.as_ref() != Some(&diversifier) {
+                        updated.diversifier = Some(diversifier);
+                        changed = true;
+                    }
+                }
+
                 if changed {
                     repo.update_note_by_id(&updated)?;
                 }
                 continue;
             }
-
-            let note_type = match n.note_type {
-                crate::pipeline::NoteType::Orchard => {
-                    pirate_storage_sqlite::models::NoteType::Orchard
-                }
-                crate::pipeline::NoteType::Sapling => {
-                    pirate_storage_sqlite::models::NoteType::Sapling
-                }
-            };
 
             let record = NoteRecord {
                 id: None,

@@ -572,12 +572,14 @@ impl<'a> Repository<'a> {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
-        // Decrypt all notes including all metadata for privacy
+        // Decrypt all notes including all metadata for privacy.
+        // If duplicate rows exist for the same output, any spent row wins so stale
+        // unspent duplicates cannot inflate balance after migrations/re-syncs.
         let total_rows = notes.len();
-        let mut decrypted_notes = Vec::with_capacity(total_rows);
-        let mut matched = 0usize;
         let mut invalid_values = 0usize;
-        let mut seen: HashSet<(Vec<u8>, i64, crate::models::NoteType)> = HashSet::new();
+        let mut spent_outputs: HashSet<(Vec<u8>, i64, crate::models::NoteType)> = HashSet::new();
+        let mut unspent_by_output: HashMap<(Vec<u8>, i64, crate::models::NoteType), NoteRecord> =
+            HashMap::new();
         for (
             id,
             enc_account_id,
@@ -601,25 +603,29 @@ impl<'a> Repository<'a> {
         ) in notes
         {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
-            let decrypted_spent = self.decrypt_bool(&enc_spent)?;
-
-            // Filter by account_id and spent status in memory (privacy-first approach)
-            if decrypted_account_id != account_id || decrypted_spent {
+            if decrypted_account_id != account_id {
                 continue;
             }
             let decrypted_txid = self.decrypt_blob(&enc_txid)?;
             let decrypted_output_index = self.decrypt_int64(&enc_output_index)?;
-            if !seen.insert((decrypted_txid.clone(), decrypted_output_index, note_type)) {
+            let key = (decrypted_txid.clone(), decrypted_output_index, note_type);
+
+            let decrypted_spent = self.decrypt_bool(&enc_spent)?;
+            if decrypted_spent {
+                spent_outputs.insert(key.clone());
+                unspent_by_output.remove(&key);
                 continue;
             }
-            matched += 1;
+            if spent_outputs.contains(&key) {
+                continue;
+            }
+
             let value = self.decrypt_int64(&enc_value)?;
             if !note_value_is_valid(value) {
                 invalid_values += 1;
                 continue;
             }
-
-            decrypted_notes.push(NoteRecord {
+            let candidate = NoteRecord {
                 id,
                 account_id: decrypted_account_id,
                 key_id: self.decrypt_optional_int64(enc_key_id)?,
@@ -639,8 +645,24 @@ impl<'a> Repository<'a> {
                 position: self.decrypt_optional_int64(enc_position)?,
                 memo: self.decrypt_optional_blob(enc_memo)?,
                 address_id: self.decrypt_optional_int64(enc_address_id)?,
-            });
+            };
+
+            match unspent_by_output.get(&key) {
+                Some(existing) => {
+                    // Prefer the latest row for this output key.
+                    let existing_id = existing.id.unwrap_or_default();
+                    let candidate_id = candidate.id.unwrap_or_default();
+                    if candidate_id > existing_id {
+                        unspent_by_output.insert(key, candidate);
+                    }
+                }
+                None => {
+                    unspent_by_output.insert(key, candidate);
+                }
+            }
         }
+        let decrypted_notes: Vec<NoteRecord> = unspent_by_output.into_values().collect();
+        let matched = decrypted_notes.len();
 
         // #region agent log
         if let Ok(mut file) = std::fs::OpenOptions::new()
