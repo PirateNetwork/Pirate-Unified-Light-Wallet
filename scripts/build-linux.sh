@@ -337,7 +337,7 @@ build_deb() {
     # Create control file
     cat > "$DEB_DIR/DEBIAN/control" <<EOF
 Package: pirate-unified-wallet
-Version: 1.0.0
+Version: 1.0.4
 Section: utils
 Priority: optional
 Architecture: amd64

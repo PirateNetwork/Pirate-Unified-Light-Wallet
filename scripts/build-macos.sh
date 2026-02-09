@@ -132,7 +132,7 @@ stage_rust_macos_universal() {
   <key>CFBundlePackageType</key>
   <string>FMWK</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0.0</string>
+  <string>1.0.4</string>
   <key>CFBundleVersion</key>
   <string>1</string>
 </dict>

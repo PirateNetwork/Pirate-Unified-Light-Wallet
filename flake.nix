@@ -275,7 +275,7 @@ EOF
           # Android APK (signed)
           android-apk = pkgs.stdenv.mkDerivation {
             pname = "pirate-unified-wallet-android";
-            version = "1.0.0";
+            version = "1.0.4";
             
             src = ./.;
             
@@ -296,7 +296,7 @@ EOF
           # Android AAB (signed, Play Store ready)
           android-bundle = pkgs.stdenv.mkDerivation {
             pname = "pirate-unified-wallet-android-bundle";
-            version = "1.0.0";
+            version = "1.0.4";
             
             src = ./.;
             
@@ -317,7 +317,7 @@ EOF
           # Linux AppImage
           linux-appimage = pkgs.stdenv.mkDerivation {
             pname = "pirate-unified-wallet-linux";
-            version = "1.0.0";
+            version = "1.0.4";
             
             src = ./.;
             
@@ -338,7 +338,7 @@ EOF
           # macOS DMG (universal binary)
           macos-dmg = pkgs.stdenv.mkDerivation {
             pname = "pirate-unified-wallet-macos";
-            version = "1.0.0";
+            version = "1.0.4";
             
             src = ./.;
             
@@ -359,7 +359,7 @@ EOF
           # Windows MSIX
           windows-msix = pkgs.stdenv.mkDerivation {
             pname = "pirate-unified-wallet-windows";
-            version = "1.0.0";
+            version = "1.0.4";
             
             src = ./.;
             
