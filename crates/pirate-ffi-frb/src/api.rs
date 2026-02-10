@@ -49,6 +49,7 @@ use pirate_sync_lightd::client::{
 use pirate_sync_lightd::OrchardFrontier;
 use rusqlite::params;
 use sha2::{Digest, Sha256};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
@@ -75,6 +76,12 @@ lazy_static::lazy_static! {
     static ref TUNNEL_MODE: Arc<RwLock<TunnelMode>> = Arc::new(RwLock::new(TunnelMode::Tor));
     /// Pending tunnel mode to persist once registry is available.
     static ref PENDING_TUNNEL_MODE: Arc<RwLock<Option<TunnelMode>>> = Arc::new(RwLock::new(None));
+}
+
+thread_local! {
+    // Avoid reopening (and leaking) a new Database handle on every FFI call.
+    // We keep one opened handle per wallet per thread.
+    static WALLET_DB_CACHE: RefCell<HashMap<String, &'static Database>> = RefCell::new(HashMap::new());
 }
 
 static REGISTRY_LOADED: AtomicBool = AtomicBool::new(false);
@@ -1713,9 +1720,16 @@ fn wallet_db_keys(wallet_id: &str) -> Result<(EncryptionKey, MasterKey)> {
 }
 
 fn open_wallet_db_for(wallet_id: &str) -> Result<(&'static Database, Repository<'static>)> {
+    if let Some(db_ref) = WALLET_DB_CACHE.with(|cache| cache.borrow().get(wallet_id).copied()) {
+        return Ok((db_ref, Repository::new(db_ref)));
+    }
+
     let passphrase = app_passphrase()?;
     let (db, _key, _master_key) = open_wallet_db_with_passphrase(wallet_id, &passphrase)?;
     let db_ref: &'static Database = Box::leak(Box::new(db));
+    WALLET_DB_CACHE.with(|cache| {
+        cache.borrow_mut().insert(wallet_id.to_string(), db_ref);
+    });
     Ok((db_ref, Repository::new(db_ref)))
 }
 
