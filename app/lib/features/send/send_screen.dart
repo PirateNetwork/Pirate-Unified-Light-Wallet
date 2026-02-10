@@ -425,6 +425,20 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     );
   }
 
+  /// Get pending balance from provider
+  double get _pendingBalance {
+    final balanceAsync = ref.watch(balanceStreamProvider);
+    return balanceAsync.when(
+      data: (balance) {
+        if (balance?.pending == null) return 0.0;
+        final pending = balance!.pending;
+        return pending.toDouble() / 100000000.0;
+      },
+      loading: () => 0.0,
+      error: (_, _) => 0.0,
+    );
+  }
+
   double get _availableBalanceForSelection {
     final overall = _availableBalance;
     if (_selectedAddresses.isNotEmpty) {
@@ -437,11 +451,33 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     return overall;
   }
 
+  double get _pendingBalanceForSelection {
+    final overall = _pendingBalance;
+    if (_selectedAddresses.isNotEmpty) {
+      return _toArrr(_selectedAddressPending());
+    }
+    if (_selectedKey != null) {
+      final pending = _pendingForKey(_selectedKey!.id);
+      return _toArrr(pending);
+    }
+    return overall;
+  }
+
   BigInt _spendableForKey(int keyId) {
     var total = BigInt.zero;
     for (final addr in _addressBalances) {
       if (addr.keyId == keyId) {
         total += addr.spendable;
+      }
+    }
+    return total;
+  }
+
+  BigInt _pendingForKey(int keyId) {
+    var total = BigInt.zero;
+    for (final addr in _addressBalances) {
+      if (addr.keyId == keyId) {
+        total += addr.pending;
       }
     }
     return total;
@@ -1078,6 +1114,14 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     return total;
   }
 
+  BigInt _selectedAddressPending() {
+    var total = BigInt.zero;
+    for (final addr in _selectedAddresses) {
+      total += addr.pending;
+    }
+    return total;
+  }
+
   /// Add new output entry
   void _addOutput() {
     if (_outputs.length >= kMaxRecipients) {
@@ -1325,10 +1369,18 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     _updateFeePreview();
     final total = _totalAmount + _calculatedFee;
     final available = _availableBalanceForSelection;
+    final pending = _pendingBalanceForSelection;
     if (total > available) {
-      _errorMessage =
-          'Insufficient funds: need ${total.toStringAsFixed(8)} ARRR, '
-          'have ${available.toStringAsFixed(8)} ARRR';
+      if (available <= 0 && pending > 0) {
+        _errorMessage =
+            'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '
+            'have ${available.toStringAsFixed(8)} ARRR. '
+            '${pending.toStringAsFixed(8)} ARRR is pending and becomes spendable after 10 confirmations.';
+      } else {
+        _errorMessage =
+            'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '
+            'have ${available.toStringAsFixed(8)} ARRR';
+      }
       allValid = false;
     }
 
