@@ -14,6 +14,7 @@ import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
 import 'providers/preferences_providers.dart';
 import '../../ui/molecules/p_list_tile.dart';
+import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
@@ -134,10 +135,10 @@ class SettingsScreen extends ConsumerWidget {
                   onTap: wallet == null
                       ? null
                       : () => context.push(
-                            '/settings/export-seed'
-                            '?walletId=${wallet.id}'
-                            '&walletName=${Uri.encodeComponent(wallet.name)}',
-                          ),
+                          '/settings/export-seed'
+                          '?walletId=${wallet.id}'
+                          '&walletName=${Uri.encodeComponent(wallet.name)}',
+                        ),
                   trailing: const Icon(Icons.chevron_right),
                 );
               },
@@ -158,14 +159,19 @@ class SettingsScreen extends ConsumerWidget {
             Consumer(
               builder: (context, ref, _) {
                 final walletId = ref.watch(activeWalletProvider);
-                final enabledAsync = ref.watch(autoConsolidationEnabledProvider);
-                Widget buildTile({required bool enabled, required bool loading}) {
+                final enabledAsync = ref.watch(
+                  autoConsolidationEnabledProvider,
+                );
+                Widget buildTile({
+                  required bool enabled,
+                  required bool loading,
+                }) {
                   final status = enabled ? 'On' : 'Off';
                   final subtitle = walletId == null
                       ? 'No active wallet'
                       : loading
-                          ? 'Loading...'
-                          : '$status - Combine unlabeled notes during sends';
+                      ? 'Loading...'
+                      : '$status - Combine unlabeled notes during sends';
                   return PListTile(
                     leading: const Icon(Icons.merge_type_outlined),
                     title: 'Auto consolidation',
@@ -186,7 +192,8 @@ class SettingsScreen extends ConsumerWidget {
                 }
 
                 return enabledAsync.when(
-                  data: (enabled) => buildTile(enabled: enabled, loading: false),
+                  data: (enabled) =>
+                      buildTile(enabled: enabled, loading: false),
                   loading: () => buildTile(enabled: false, loading: true),
                   error: (_, _) => buildTile(enabled: false, loading: false),
                 );
@@ -294,8 +301,13 @@ class SettingsScreen extends ConsumerWidget {
       ],
     );
 
-    final appBarActions =
-        isMobile ? null : const [WalletSwitcherButton(compact: true)];
+    final appBarActions = [
+      ConnectionStatusIndicator(
+        full: !isMobile,
+        onTap: () => context.push('/settings/privacy-shield'),
+      ),
+      if (!isMobile) const WalletSwitcherButton(compact: true),
+    ];
 
     if (!useScaffold) {
       if (isDesktop) {
@@ -346,9 +358,9 @@ class SettingsScreen extends ConsumerWidget {
             },
           )
           .catchError((Object e) {
-        debugPrint('Error loading checkpoint: $e');
-        return null;
-      });
+            debugPrint('Error loading checkpoint: $e');
+            return null;
+          });
 
       debugPrint('Showing rescan dialog');
       final confirmed = await showDialog<bool>(
@@ -360,12 +372,14 @@ class SettingsScreen extends ConsumerWidget {
           content: FutureBuilder(
             future: suggestedFuture,
             builder: (context, snapshot) {
-              final isLoading = snapshot.connectionState == ConnectionState.waiting;
+              final isLoading =
+                  snapshot.connectionState == ConnectionState.waiting;
               if (!isLoading && snapshot.hasData) {
                 suggestedHeight = snapshot.data?.height;
                 if (!appliedSuggested &&
                     suggestedHeight != null &&
-                    (controller.text.trim().isEmpty || controller.text.trim() == '1')) {
+                    (controller.text.trim().isEmpty ||
+                        controller.text.trim() == '1')) {
                   appliedSuggested = true;
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (!dialogContext.mounted) {
@@ -378,8 +392,8 @@ class SettingsScreen extends ConsumerWidget {
               final helperText = isLoading
                   ? 'Loading suggested height...'
                   : (suggestedHeight == null
-                      ? 'Enter a block height to rescan from.'
-                      : 'Suggested: $suggestedHeight');
+                        ? 'Enter a block height to rescan from.'
+                        : 'Suggested: $suggestedHeight');
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,9 +405,7 @@ class SettingsScreen extends ConsumerWidget {
                   TextField(
                     controller: controller,
                     keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                    ],
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
                       labelText: 'Start height',
                       hintText: 'e.g., 1',
@@ -420,48 +432,50 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ],
         ),
-        );
+      );
 
-        if (confirmed ?? false) {
-          final fromHeight = int.tryParse(controller.text.trim());
-            if (fromHeight == null || fromHeight <= 0) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text(
-                      'Enter a valid block height to rescan from.',
-                    ),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              }
-            controller.dispose();
-            return;
+      if (confirmed ?? false) {
+        final fromHeight = int.tryParse(controller.text.trim());
+        if (fromHeight == null || fromHeight <= 0) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'Enter a valid block height to rescan from.',
+                ),
+                backgroundColor: AppColors.error,
+              ),
+            );
           }
-          debugPrint('Rescan confirmed, starting from height: $fromHeight');
-          await _appendRescanLog('rescan requested from_height=$fromHeight');
+          controller.dispose();
+          return;
+        }
+        debugPrint('Rescan confirmed, starting from height: $fromHeight');
+        await _appendRescanLog('rescan requested from_height=$fromHeight');
         try {
           // Invalidate sync progress stream before rescan so home screen picks it up
           ref.invalidate(syncProgressStreamProvider);
           unawaited(
             ref
                 .read(rescanProvider)(fromHeight)
-                .then((_) => _appendRescanLog(
-                      'rescan call completed from_height=$fromHeight',
-                    ))
-                .catchError((Object e) async {
-              await _appendRescanLog(
-                'rescan call failed from_height=$fromHeight error=$e',
-              );
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Failed to start rescan: $e'),
-                    backgroundColor: AppColors.error,
+                .then(
+                  (_) => _appendRescanLog(
+                    'rescan call completed from_height=$fromHeight',
                   ),
-                );
-              }
-            }),
+                )
+                .catchError((Object e) async {
+                  await _appendRescanLog(
+                    'rescan call failed from_height=$fromHeight error=$e',
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to start rescan: $e'),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                  }
+                }),
           );
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

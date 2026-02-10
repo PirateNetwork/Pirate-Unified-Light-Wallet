@@ -13,6 +13,7 @@ import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
 import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/molecules/p_card.dart';
+import '../../../ui/molecules/connection_status_indicator.dart';
 import '../../../ui/molecules/p_snack.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
@@ -29,7 +30,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _endpointController = TextEditingController();
   final _tlsPinController = TextEditingController();
-  
+
   bool _useTls = endpoints.kDefaultUseTls;
   bool _isLoading = false;
   bool _hasChanges = false;
@@ -73,7 +74,8 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
           _tlsPinController.text.trim() == (_originalTlsPin ?? '')) {
         _tlsPinController.clear();
       }
-      _hasChanges = value != _originalEndpoint || 
+      _hasChanges =
+          value != _originalEndpoint ||
           _tlsPinController.text != (_originalTlsPin ?? '');
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
@@ -82,7 +84,8 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
   void _onTlsPinChanged(String value) {
     setState(() {
-      _hasChanges = _endpointController.text != _originalEndpoint || 
+      _hasChanges =
+          _endpointController.text != _originalEndpoint ||
           value != (_originalTlsPin ?? '');
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
@@ -93,12 +96,12 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     if (value == null || value.trim().isEmpty) {
       return 'Endpoint is required';
     }
-    
+
     final parsed = endpoints.LightdEndpoint.tryParse(value);
     if (parsed == null) {
       return 'Invalid endpoint format (use host:port)';
     }
-    
+
     return null;
   }
 
@@ -106,12 +109,12 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     if (value == null || value.trim().isEmpty) {
       return null; // TLS pin is optional
     }
-    
+
     final normalized = _normalizeSpkiPin(value.trim());
     if (!_isValidSpkiPin(normalized)) {
       return 'Invalid TLS pin format (base64-encoded SPKI hash)';
     }
-    
+
     return null;
   }
 
@@ -160,10 +163,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         : 'http://${parsed.host}:${parsed.port}';
 
     try {
-      final result = await ffi.FfiBridge.testNode(
-        url: url,
-        tlsPin: null,
-      );
+      final result = await ffi.FfiBridge.testNode(url: url, tlsPin: null);
       final actualPin = result.actualPin?.trim();
       if (actualPin != null && actualPin.isNotEmpty) {
         final normalizedPin = _normalizeSpkiPin(actualPin);
@@ -193,7 +193,8 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       } else {
         final errorMessage = result.errorMessage?.trim();
         final normalizedError = errorMessage?.toLowerCase() ?? '';
-        final tlsLikelyUnsupported = _useTls &&
+        final tlsLikelyUnsupported =
+            _useTls &&
             (normalizedError.contains('connection failed') ||
                 normalizedError.contains('transport error') ||
                 normalizedError.contains('tls') ||
@@ -202,7 +203,8 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         setState(() {
           if (tlsLikelyUnsupported) {
             _spkiPinMessage =
-                'This endpoint likely does not support TLS. Disable TLS or use a TLS-enabled endpoint. ${errorMessage ?? ''}'.trim();
+                'This endpoint likely does not support TLS. Disable TLS or use a TLS-enabled endpoint. ${errorMessage ?? ''}'
+                    .trim();
           } else {
             _spkiPinMessage = errorMessage?.isNotEmpty ?? false
                 ? 'SPKI pin not available: $errorMessage'
@@ -227,38 +229,35 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       final endpoint = _endpointController.text.trim();
       final tlsPin = _normalizeSpkiPin(_tlsPinController.text.trim());
-      
+
       // Build URL with scheme
       final parsed = endpoints.LightdEndpoint.tryParse(endpoint);
       if (parsed == null) {
         throw Exception('Invalid endpoint');
       }
-      
-      final fullUrl = _useTls 
+
+      final fullUrl = _useTls
           ? 'https://${parsed.host}:${parsed.port}'
           : 'http://${parsed.host}:${parsed.port}';
-      
+
       final setEndpoint = ref.read(setLightdEndpointProvider);
-      await setEndpoint(
-        url: fullUrl,
-        tlsPin: tlsPin.isEmpty ? null : tlsPin,
-      );
-      
+      await setEndpoint(url: fullUrl, tlsPin: tlsPin.isEmpty ? null : tlsPin);
+
       _originalEndpoint = parsed.displayString;
       _originalTlsPin = tlsPin.isEmpty ? '' : tlsPin;
-      
+
       if (mounted) {
         setState(() {
           _hasChanges = false;
           _isLoading = false;
         });
-        
+
         PSnack.show(
           context: context,
           message: 'Node endpoint saved',
@@ -268,7 +267,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        
+
         PSnack.show(
           context: context,
           message: 'Failed to save endpoint: $e',
@@ -283,7 +282,9 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       _endpointController.text = endpoints.kDefaultLightd;
       _tlsPinController.text = '';
       _useTls = endpoints.kDefaultUseTls;
-      _hasChanges = endpoints.kDefaultLightd != _originalEndpoint || (_originalTlsPin?.isNotEmpty ?? false);
+      _hasChanges =
+          endpoints.kDefaultLightd != _originalEndpoint ||
+          (_originalTlsPin?.isNotEmpty ?? false);
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
     });
@@ -294,7 +295,8 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       _endpointController.text = endpoint.displayString;
       _tlsPinController.text = endpoint.tlsPin ?? '';
       _useTls = endpoint.useTls;
-      _hasChanges = _endpointController.text != _originalEndpoint ||
+      _hasChanges =
+          _endpointController.text != _originalEndpoint ||
           _tlsPinController.text != (_originalTlsPin ?? '');
       _spkiPinMessage = null;
       _spkiPinMessageIsError = false;
@@ -305,11 +307,13 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   Widget build(BuildContext context) {
     final endpointConfigAsync = ref.watch(lightdEndpointConfigProvider);
     final isMobile = AppSpacing.isMobile(MediaQuery.of(context).size.width);
-    final basePadding = AppSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final basePadding = AppSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+    );
     final contentPadding = basePadding.copyWith(
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
-    
+
     return PScaffold(
       title: 'Node Configuration',
       appBar: PAppBar(
@@ -317,6 +321,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         subtitle: 'Choose your lightwalletd endpoint',
         centerTitle: true,
         actions: [
+          ConnectionStatusIndicator(full: !isMobile),
           if (isMobile)
             PIconButton(
               icon: Icon(Icons.refresh, color: AppColors.textSecondary),
@@ -344,7 +349,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => _buildErrorCard(e.toString()),
               ),
-              
+
               const SizedBox(height: AppSpacing.xl),
 
               // Suggested endpoints (Orchard-capable presets)
@@ -372,7 +377,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
               ),
 
               const SizedBox(height: AppSpacing.xl),
-              
+
               // Endpoint input section
               Text(
                 'LIGHTWALLETD ENDPOINT',
@@ -383,7 +388,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              
+
               PCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,19 +402,19 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                       onChanged: _onEndpointChanged,
                       prefixIcon: const Icon(Icons.dns_outlined),
                     ),
-                    
+
                     const SizedBox(height: AppSpacing.lg),
-                    
+
                     // TLS toggle
                     SwitchListTile(
                       title: const Text('Use TLS'),
                       subtitle: Text(
-                        _useTls 
-                            ? 'Encrypted connection (recommended)' 
+                        _useTls
+                            ? 'Encrypted connection (recommended)'
                             : 'Unencrypted connection (not recommended)',
                         style: AppTypography.bodySmall.copyWith(
-                          color: _useTls 
-                              ? AppColors.success 
+                          color: _useTls
+                              ? AppColors.success
                               : AppColors.warning,
                         ),
                       ),
@@ -420,16 +425,18 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                           _hasChanges = true;
                         });
                       },
-                      activeTrackColor: AppColors.accentPrimary.withValues(alpha: 0.4),
+                      activeTrackColor: AppColors.accentPrimary.withValues(
+                        alpha: 0.4,
+                      ),
                       activeThumbColor: AppColors.accentPrimary,
                       contentPadding: EdgeInsets.zero,
                     ),
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: AppSpacing.xl),
-              
+
               // TLS pin section
               Text(
                 'TLS CERTIFICATE PIN (OPTIONAL)',
@@ -440,82 +447,82 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              
+
               PCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      PInput(
-                        controller: _tlsPinController,
-                        label: 'SPKI Pin (base64)',
-                        hint: 'Leave empty to skip certificate pinning',
-                        validator: _validateTlsPin,
-                        onChanged: _onTlsPinChanged,
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        maxLines: 2,
-                      ),
-                      
-                      const SizedBox(height: AppSpacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    PInput(
+                      controller: _tlsPinController,
+                      label: 'SPKI Pin (base64)',
+                      hint: 'Leave empty to skip certificate pinning',
+                      validator: _validateTlsPin,
+                      onChanged: _onTlsPinChanged,
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      maxLines: 2,
+                    ),
 
-                      PButton(
-                        text: _isFetchingSpkiPin ? 'Fetching...' : 'Fetch SPKI',
-                        onPressed: _useTls && !_isFetchingSpkiPin && !_isLoading
-                            ? _fetchSpkiPin
-                            : null,
-                        variant: PButtonVariant.secondary,
-                        fullWidth: true,
-                      ),
+                    const SizedBox(height: AppSpacing.md),
 
-                      if (_spkiPinMessage != null) ...[
-                        const SizedBox(height: AppSpacing.sm),
-                        Text(
-                          _spkiPinMessage!,
-                          style: AppTypography.bodySmall.copyWith(
-                            color: _spkiPinMessageIsError
-                                ? AppColors.error
-                                : AppColors.success,
-                          ),
-                        ),
-                      ],
-                    
-                      const SizedBox(height: AppSpacing.md),
-                    
-                      Container(
-                        padding: const EdgeInsets.all(AppSpacing.md),
-                        decoration: BoxDecoration(
-                          color: AppColors.warning.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: AppColors.warning.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              color: AppColors.warning,
-                              size: 20,
-                            ),
-                            const SizedBox(width: AppSpacing.sm),
-                            Expanded(
-                              child: Text(
-                                "TLS pinning adds extra security by verifying the server's certificate. "
-                                'Use Fetch SPKI to grab the pin from the current endpoint.',
-                                style: AppTypography.bodySmall.copyWith(
-                                  color: AppColors.warning,
-                                ),
-                              ),
-                            ),
-                          ],
+                    PButton(
+                      text: _isFetchingSpkiPin ? 'Fetching...' : 'Fetch SPKI',
+                      onPressed: _useTls && !_isFetchingSpkiPin && !_isLoading
+                          ? _fetchSpkiPin
+                          : null,
+                      variant: PButtonVariant.secondary,
+                      fullWidth: true,
+                    ),
+
+                    if (_spkiPinMessage != null) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        _spkiPinMessage!,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: _spkiPinMessageIsError
+                              ? AppColors.error
+                              : AppColors.success,
                         ),
                       ),
                     ],
-                  ),
+
+                    const SizedBox(height: AppSpacing.md),
+
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.warning.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: AppColors.warning,
+                            size: 20,
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              "TLS pinning adds extra security by verifying the server's certificate. "
+                              'Use Fetch SPKI to grab the pin from the current endpoint.',
+                              style: AppTypography.bodySmall.copyWith(
+                                color: AppColors.warning,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              
+              ),
+
               const SizedBox(height: AppSpacing.xxl),
-              
+
               // Save button
               SizedBox(
                 width: double.infinity,
@@ -525,9 +532,9 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                   child: const Text('Save Changes'),
                 ),
               ),
-              
+
               const SizedBox(height: AppSpacing.lg),
-              
+
               // Help text
               Text(
                 'Changes will take effect immediately. The wallet will reconnect to the new endpoint.',
@@ -536,7 +543,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              
+
               const SizedBox(height: AppSpacing.xxl),
             ],
           ),
@@ -558,13 +565,13 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: AppColors.success,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.success.withValues(alpha: 0.4),
-                          blurRadius: 8,
-                          spreadRadius: 2,
-                        ),
-                      ],
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.success.withValues(alpha: 0.4),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
@@ -577,7 +584,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.md),
-          
+
           Row(
             children: [
               Icon(
@@ -610,9 +617,9 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
               ),
             ],
           ),
-          
+
           const SizedBox(height: AppSpacing.sm),
-          
+
           Wrap(
             spacing: AppSpacing.xs,
             runSpacing: AppSpacing.xs,

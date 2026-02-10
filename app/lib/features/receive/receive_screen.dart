@@ -12,6 +12,7 @@ import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/atoms/p_text_button.dart';
+import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
@@ -102,8 +103,10 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     if (params.isEmpty) return address;
 
     final query = params.entries
-        .map((entry) =>
-            '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}')
+        .map(
+          (entry) =>
+              '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}',
+        )
         .join('&');
     return 'pirate:$address?$query';
   }
@@ -114,7 +117,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       // Safely watch the provider
       final state = ref.watch(receiveViewModelProvider);
       final viewModel = ref.read(receiveViewModelProvider.notifier);
-      
+
       final screenWidth = MediaQuery.of(context).size.width;
       final isMobile = PSpacing.isMobile(screenWidth);
       final gutter = PSpacing.responsiveGutter(screenWidth);
@@ -134,7 +137,13 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
         appBar: PAppBar(
           title: 'Receive',
           subtitle: 'Share a QR code to get paid.',
-          actions: isMobile ? null : const [WalletSwitcherButton(compact: true)],
+          actions: [
+            ConnectionStatusIndicator(
+              full: !isMobile,
+              onTap: () => context.push('/settings/privacy-shield'),
+            ),
+            if (!isMobile) const WalletSwitcherButton(compact: true),
+          ],
           showBackButton: true,
           centerTitle: true,
         ),
@@ -144,403 +153,413 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
               return CustomScrollView(
                 controller: _scrollController,
                 slivers: [
-          // Content
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(
-              gutter,
-              PSpacing.lg,
-              gutter,
-              PSpacing.lg,
-            ),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // Always show at least one state - ensure we never have an empty list
-                // Loading state
-                if (state.isLoading && state.currentAddress == null)
-                  const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(32.0),
-                      child: CircularProgressIndicator(),
+                  // Content
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      gutter,
+                      PSpacing.lg,
+                      gutter,
+                      PSpacing.lg,
                     ),
-                  )
-                else if (state.error != null && state.currentAddress == null)
-                  // Error state
-                  PCard(
-                    child: Padding(
-                      padding: EdgeInsets.all(PSpacing.md),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            size: 48,
-                            color: AppColors.error,
-                          ),
-                          SizedBox(height: PSpacing.sm),
-                          Text(
-                            'Error loading address',
-                            style: PTypography.heading3(),
-                          ),
-                          SizedBox(height: PSpacing.xs),
-                          Text(
-                            state.error!,
-                            style: PTypography.bodySmall(),
-                            textAlign: TextAlign.center,
-                          ),
-                          SizedBox(height: PSpacing.md),
-                          PButton(
-                            onPressed: viewModel.loadCurrentAddress,
-                            variant: PButtonVariant.secondary,
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else if (state.currentAddress == null)
-                  // Empty state (no address, no error, not loading)
-                  PCard(
-                    child: Padding(
-                      padding: EdgeInsets.all(PSpacing.md),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.qr_code_2_outlined,
-                            size: 48,
-                            color: AppColors.textSecondary,
-                          ),
-                          SizedBox(height: PSpacing.sm),
-                          Text(
-                            'No address loaded',
-                            style: PTypography.heading3(),
-                          ),
-                          SizedBox(height: PSpacing.xs),
-                          Text(
-                            'Tap the button below to generate a receive address',
-                            style: PTypography.bodySmall(),
-                            textAlign: TextAlign.center,
-                          ),
-                          SizedBox(height: PSpacing.md),
-                          PButton(
-                            onPressed: viewModel.loadCurrentAddress,
-                            variant: PButtonVariant.primary,
-                            child: const Text('Load Address'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // Success state
-                if (state.currentAddress != null) ...[
-                  // QR Code Card
-                  AddressQRWidget(
-                    address: state.currentAddress!,
-                    qrData: requestUri,
-                    onCopy: () => viewModel.copyAddress(
-                      context,
-                      value: requestUri ?? state.currentAddress!,
-                      successMessage: hasRequestData
-                          ? 'Payment request copied! Will clear in 60 seconds'
-                          : null,
-                    ),
-                    onShare: () => viewModel.shareAddress(
-                      context,
-                      value: requestUri ?? state.currentAddress!,
-                      successMessage: hasRequestData
-                          ? 'Payment request ready to share'
-                          : null,
-                    ),
-                    copyTooltip: hasRequestData ? 'Copy request' : 'Copy address',
-                    shareTooltip:
-                        hasRequestData ? 'Share request' : 'Share address',
-                  ),
-
-                  SizedBox(height: PSpacing.lg),
-
-                  // Payment request options
-                  PCard(
-                    backgroundColor: AppColors.backgroundPanel,
-                    child: Padding(
-                      padding: EdgeInsets.all(PSpacing.md),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Payment request (optional)',
-                            style: PTypography.labelMedium(
-                              color: AppColors.textSecondary,
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        // Always show at least one state - ensure we never have an empty list
+                        // Loading state
+                        if (state.isLoading && state.currentAddress == null)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(32.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else if (state.error != null &&
+                            state.currentAddress == null)
+                          // Error state
+                          PCard(
+                            child: Padding(
+                              padding: EdgeInsets.all(PSpacing.md),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.error_outline,
+                                    size: 48,
+                                    color: AppColors.error,
+                                  ),
+                                  SizedBox(height: PSpacing.sm),
+                                  Text(
+                                    'Error loading address',
+                                    style: PTypography.heading3(),
+                                  ),
+                                  SizedBox(height: PSpacing.xs),
+                                  Text(
+                                    state.error!,
+                                    style: PTypography.bodySmall(),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  SizedBox(height: PSpacing.md),
+                                  PButton(
+                                    onPressed: viewModel.loadCurrentAddress,
+                                    variant: PButtonVariant.secondary,
+                                    child: const Text('Retry'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else if (state.currentAddress == null)
+                          // Empty state (no address, no error, not loading)
+                          PCard(
+                            child: Padding(
+                              padding: EdgeInsets.all(PSpacing.md),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.qr_code_2_outlined,
+                                    size: 48,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  SizedBox(height: PSpacing.sm),
+                                  Text(
+                                    'No address loaded',
+                                    style: PTypography.heading3(),
+                                  ),
+                                  SizedBox(height: PSpacing.xs),
+                                  Text(
+                                    'Tap the button below to generate a receive address',
+                                    style: PTypography.bodySmall(),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  SizedBox(height: PSpacing.md),
+                                  PButton(
+                                    onPressed: viewModel.loadCurrentAddress,
+                                    variant: PButtonVariant.primary,
+                                    child: const Text('Load Address'),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          SizedBox(height: PSpacing.sm),
-                          PInput(
-                            controller: _amountController,
-                            label: 'Amount',
-                            hint: '0.00 ARRR',
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            inputFormatters: [_amountFormatter],
-                            helperText: 'Adds amount to the QR code',
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            textInputAction: TextInputAction.next,
-                          ),
-                          SizedBox(height: PSpacing.md),
-                          PInput(
-                            controller: _memoController,
-                            label: 'Memo (optional)',
-                            hint: 'Optional note for the sender',
-                            maxLines: 3,
-                            maxLength: 512,
-                            helperText: 'Included in the payment request',
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
 
-                  SizedBox(height: PSpacing.lg),
-
-                  // Privacy notice if address was shared
-                  if (state.addressWasShared)
-                    Padding(
-                      padding: EdgeInsets.only(bottom: PSpacing.md),
-                      child: Container(
-                        padding: EdgeInsets.all(PSpacing.sm),
-                        decoration: BoxDecoration(
-                          color: AppColors.warningBackground,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.warningBorder),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              color: AppColors.warning,
-                              size: 18,
+                        // Success state
+                        if (state.currentAddress != null) ...[
+                          // QR Code Card
+                          AddressQRWidget(
+                            address: state.currentAddress!,
+                            qrData: requestUri,
+                            onCopy: () => viewModel.copyAddress(
+                              context,
+                              value: requestUri ?? state.currentAddress!,
+                              successMessage: hasRequestData
+                                  ? 'Payment request copied! Will clear in 60 seconds'
+                                  : null,
                             ),
-                            SizedBox(width: PSpacing.xs),
-                            Expanded(
-                              child: Text(
-                                'Address shared. Generate a new one for privacy.',
-                                style: PTypography.bodySmall().copyWith(
-                                  color: AppColors.warning,
+                            onShare: () => viewModel.shareAddress(
+                              context,
+                              value: requestUri ?? state.currentAddress!,
+                              successMessage: hasRequestData
+                                  ? 'Payment request ready to share'
+                                  : null,
+                            ),
+                            copyTooltip: hasRequestData
+                                ? 'Copy request'
+                                : 'Copy address',
+                            shareTooltip: hasRequestData
+                                ? 'Share request'
+                                : 'Share address',
+                          ),
+
+                          SizedBox(height: PSpacing.lg),
+
+                          // Payment request options
+                          PCard(
+                            backgroundColor: AppColors.backgroundPanel,
+                            child: Padding(
+                              padding: EdgeInsets.all(PSpacing.md),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Payment request (optional)',
+                                    style: PTypography.labelMedium(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                  SizedBox(height: PSpacing.sm),
+                                  PInput(
+                                    controller: _amountController,
+                                    label: 'Amount',
+                                    hint: '0.00 ARRR',
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    inputFormatters: [_amountFormatter],
+                                    helperText: 'Adds amount to the QR code',
+                                    autocorrect: false,
+                                    enableSuggestions: false,
+                                    textInputAction: TextInputAction.next,
+                                  ),
+                                  SizedBox(height: PSpacing.md),
+                                  PInput(
+                                    controller: _memoController,
+                                    label: 'Memo (optional)',
+                                    hint: 'Optional note for the sender',
+                                    maxLines: 3,
+                                    maxLength: 512,
+                                    helperText:
+                                        'Included in the payment request',
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: PSpacing.lg),
+
+                          // Privacy notice if address was shared
+                          if (state.addressWasShared)
+                            Padding(
+                              padding: EdgeInsets.only(bottom: PSpacing.md),
+                              child: Container(
+                                padding: EdgeInsets.all(PSpacing.sm),
+                                decoration: BoxDecoration(
+                                  color: AppColors.warningBackground,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppColors.warningBorder,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline,
+                                      color: AppColors.warning,
+                                      size: 18,
+                                    ),
+                                    SizedBox(width: PSpacing.xs),
+                                    Expanded(
+                                      child: Text(
+                                        'Address shared. Generate a new one for privacy.',
+                                        style: PTypography.bodySmall().copyWith(
+                                          color: AppColors.warning,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  
-                  // Action Buttons
-                  Row(
-                    children: [
-                          Expanded(
-                            child: PButton(
-                              onPressed: viewModel.generateNewAddress,
-                              icon: const Icon(Icons.refresh),
-                              variant: state.addressWasShared 
-                                  ? PButtonVariant.primary 
-                                  : PButtonVariant.secondary,
-                              child: const Text('New address'),
-                            ),
-                          ),
-                      SizedBox(width: PSpacing.md),
-                          Expanded(
-                            child: PButton(
-                              onPressed: () => viewModel.copyAddress(
-                                context,
-                                value: requestUri ?? state.currentAddress!,
-                                successMessage: hasRequestData
-                                    ? 'Payment request copied! Will clear in 60 seconds'
-                                    : null,
-                              ),
-                              icon: const Icon(Icons.copy),
-                              variant: state.addressWasShared 
-                                  ? PButtonVariant.secondary 
-                                  : PButtonVariant.primary,
-                              child: Text(
-                                hasRequestData
-                                    ? 'Copy request'
-                                    : 'Copy address',
-                              ),
-                            ),
-                          ),
-                    ],
-                  ),
 
-                  SizedBox(height: PSpacing.xl),
-
-                  // Privacy Notice
-                  PCard(
-                    backgroundColor: AppColors.backgroundPanel,
-                    child: Padding(
-                      padding: EdgeInsets.all(PSpacing.md),
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.shield_outlined,
-                            color: AppColors.gradientAStart,
-                            size: 24,
-                          ),
-                          SizedBox(height: PSpacing.sm),
-                          Text(
-                            'Each address is fresh and unlinkable for maximum privacy',
-                            style: PTypography.bodySmall().copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(height: PSpacing.xl),
-                  PTextButton(
-                    label: 'Manage keys & addresses',
-                    leadingIcon: Icons.vpn_key_outlined,
-                    onPressed: () => context.push('/settings/keys'),
-                    variant: PTextButtonVariant.subtle,
-                  ),
-                  SizedBox(height: PSpacing.md),
-
-                  // Address History Section
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Previous addresses',
-                          style: PTypography.heading3(),
-                        ),
-                      ),
-                      PopupMenuButton<_AddressSort>(
-                        onSelected: (value) =>
-                            setState(() => _addressSort = value),
-                        itemBuilder: (context) => const [
-                          PopupMenuItem(
-                            value: _AddressSort.newest,
-                            child: Text('Newest to oldest'),
-                          ),
-                          PopupMenuItem(
-                            value: _AddressSort.oldest,
-                            child: Text('Oldest to newest'),
-                          ),
-                          PopupMenuItem(
-                            value: _AddressSort.balanceHigh,
-                            child: Text('Highest balance'),
-                          ),
-                          PopupMenuItem(
-                            value: _AddressSort.balanceLow,
-                            child: Text('Lowest balance'),
-                          ),
-                        ],
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: PSpacing.sm,
-                            vertical: PSpacing.xs,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.backgroundSurface,
-                            borderRadius:
-                                BorderRadius.circular(PSpacing.radiusSM),
-                            border: Border.all(color: AppColors.borderSubtle),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          // Action Buttons
+                          Row(
                             children: [
-                              Icon(
-                                Icons.swap_vert,
-                                size: 16,
-                                color: AppColors.textSecondary,
+                              Expanded(
+                                child: PButton(
+                                  onPressed: viewModel.generateNewAddress,
+                                  icon: const Icon(Icons.refresh),
+                                  variant: state.addressWasShared
+                                      ? PButtonVariant.primary
+                                      : PButtonVariant.secondary,
+                                  child: const Text('New address'),
+                                ),
                               ),
-                              SizedBox(width: PSpacing.xs),
-                              Text(
-                                _sortLabel(_addressSort),
-                                style: PTypography.labelSmall(
-                                  color: AppColors.textSecondary,
+                              SizedBox(width: PSpacing.md),
+                              Expanded(
+                                child: PButton(
+                                  onPressed: () => viewModel.copyAddress(
+                                    context,
+                                    value: requestUri ?? state.currentAddress!,
+                                    successMessage: hasRequestData
+                                        ? 'Payment request copied! Will clear in 60 seconds'
+                                        : null,
+                                  ),
+                                  icon: const Icon(Icons.copy),
+                                  variant: state.addressWasShared
+                                      ? PButtonVariant.secondary
+                                      : PButtonVariant.primary,
+                                  child: Text(
+                                    hasRequestData
+                                        ? 'Copy request'
+                                        : 'Copy address',
+                                  ),
                                 ),
                               ),
                             ],
                           ),
+
+                          SizedBox(height: PSpacing.xl),
+
+                          // Privacy Notice
+                          PCard(
+                            backgroundColor: AppColors.backgroundPanel,
+                            child: Padding(
+                              padding: EdgeInsets.all(PSpacing.md),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.shield_outlined,
+                                    color: AppColors.gradientAStart,
+                                    size: 24,
+                                  ),
+                                  SizedBox(height: PSpacing.sm),
+                                  Text(
+                                    'Each address is fresh and unlinkable for maximum privacy',
+                                    style: PTypography.bodySmall().copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          SizedBox(height: PSpacing.xl),
+                          PTextButton(
+                            label: 'Manage keys & addresses',
+                            leadingIcon: Icons.vpn_key_outlined,
+                            onPressed: () => context.push('/settings/keys'),
+                            variant: PTextButtonVariant.subtle,
+                          ),
+                          SizedBox(height: PSpacing.md),
+
+                          // Address History Section
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Previous addresses',
+                                  style: PTypography.heading3(),
+                                ),
+                              ),
+                              PopupMenuButton<_AddressSort>(
+                                onSelected: (value) =>
+                                    setState(() => _addressSort = value),
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                    value: _AddressSort.newest,
+                                    child: Text('Newest to oldest'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: _AddressSort.oldest,
+                                    child: Text('Oldest to newest'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: _AddressSort.balanceHigh,
+                                    child: Text('Highest balance'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: _AddressSort.balanceLow,
+                                    child: Text('Lowest balance'),
+                                  ),
+                                ],
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: PSpacing.sm,
+                                    vertical: PSpacing.xs,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.backgroundSurface,
+                                    borderRadius: BorderRadius.circular(
+                                      PSpacing.radiusSM,
+                                    ),
+                                    border: Border.all(
+                                      color: AppColors.borderSubtle,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.swap_vert,
+                                        size: 16,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                      SizedBox(width: PSpacing.xs),
+                                      Text(
+                                        _sortLabel(_addressSort),
+                                        style: PTypography.labelSmall(
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: PSpacing.sm),
+                          PInput(
+                            controller: _searchController,
+                            hint: 'Search labels or addresses',
+                            prefixIcon: const Icon(Icons.search),
+                            textInputAction: TextInputAction.search,
+                            suffixIcon: _addressQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.close),
+                                    onPressed: () => _searchController.clear(),
+                                  )
+                                : null,
+                          ),
+                          SizedBox(height: PSpacing.sm),
+                          Text(
+                            'Your previously generated addresses. All remain valid.',
+                            style: PTypography.bodySmall().copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          SizedBox(height: PSpacing.md),
+                        ],
+                      ]),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      gutter,
+                      0,
+                      gutter,
+                      PSpacing.lg,
+                    ),
+                    sliver: AddressHistorySliver(
+                      addresses: addressHistory,
+                      isFiltered: _addressQuery.trim().isNotEmpty,
+                      onCopy: (address) =>
+                          viewModel.copySpecificAddress(context, address),
+                      onLabel: (address) =>
+                          _showLabelDialog(context, viewModel, address),
+                      onColorTag: (address) =>
+                          _showColorTagPicker(context, viewModel, address),
+                      onOpen: (address) => context.go('/activity'),
+                    ),
+                  ),
+                  if (addressHistory.length >= 6)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          gutter,
+                          0,
+                          gutter,
+                          PSpacing.lg,
+                        ),
+                        child: Center(
+                          child: PTextButton(
+                            label: 'Back to top',
+                            onPressed: () {
+                              if (_scrollController.hasClients) {
+                                _scrollController.animateTo(
+                                  0,
+                                  duration: const Duration(milliseconds: 250),
+                                  curve: Curves.easeOut,
+                                );
+                              }
+                            },
+                            variant: PTextButtonVariant.subtle,
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-                  SizedBox(height: PSpacing.sm),
-                  PInput(
-                    controller: _searchController,
-                    hint: 'Search labels or addresses',
-                    prefixIcon: const Icon(Icons.search),
-                    textInputAction: TextInputAction.search,
-                    suffixIcon: _addressQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => _searchController.clear(),
-                          )
-                        : null,
-                  ),
-                  SizedBox(height: PSpacing.sm),
-                  Text(
-                    'Your previously generated addresses. All remain valid.',
-                    style: PTypography.bodySmall().copyWith(
-                      color: AppColors.textSecondary,
                     ),
-                  ),
-                  SizedBox(height: PSpacing.md),
-
-                ]
-              ]),
-            ),
-          ),
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(
-                gutter,
-                0,
-                gutter,
-                PSpacing.lg,
-              ),
-              sliver: AddressHistorySliver(
-                addresses: addressHistory,
-                isFiltered: _addressQuery.trim().isNotEmpty,
-                onCopy: (address) =>
-                    viewModel.copySpecificAddress(context, address),
-                onLabel: (address) =>
-                    _showLabelDialog(context, viewModel, address),
-                onColorTag: (address) =>
-                    _showColorTagPicker(context, viewModel, address),
-                onOpen: (address) => context.go('/activity'),
-              ),
-            ),
-            if (addressHistory.length >= 6)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    gutter,
-                    0,
-                    gutter,
-                    PSpacing.lg,
-                  ),
-                  child: Center(
-                    child: PTextButton(
-                      label: 'Back to top',
-                      onPressed: () {
-                        if (_scrollController.hasClients) {
-                          _scrollController.animateTo(
-                            0,
-                            duration: const Duration(milliseconds: 250),
-                            curve: Curves.easeOut,
-                          );
-                        }
-                      },
-                      variant: PTextButtonVariant.subtle,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-                );
+                ],
+              );
             } catch (e, stackTrace) {
               // If there's an error in the widget tree, show error screen
               debugPrint('Error in CustomScrollView: $e');
@@ -601,11 +620,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 64,
-                  color: AppColors.error,
-                ),
+                Icon(Icons.error_outline, size: 64, color: AppColors.error),
                 const SizedBox(height: PSpacing.md),
                 Text(
                   'Error loading receive screen',
@@ -708,10 +723,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Color tag',
-                style: PTypography.heading4(),
-              ),
+              Text('Color tag', style: PTypography.heading4()),
               SizedBox(height: PSpacing.md),
               Wrap(
                 spacing: PSpacing.sm,
@@ -822,9 +834,4 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   }
 }
 
-enum _AddressSort {
-  newest,
-  oldest,
-  balanceHigh,
-  balanceLow,
-}
+enum _AddressSort { newest, oldest, balanceHigh, balanceLow }

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/typography.dart';
+import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_nav.dart';
@@ -16,11 +17,7 @@ import '../../core/services/address_rotation_service.dart';
 
 /// App shell with persistent navigation.
 class AppShell extends ConsumerWidget {
-  const AppShell({
-    required this.location,
-    required this.child,
-    super.key,
-  });
+  const AppShell({required this.location, required this.child, super.key});
 
   final String location;
   final Widget child;
@@ -131,20 +128,29 @@ class AppShell extends ConsumerWidget {
       return const PAppBar(
         title: 'Pay',
         subtitle: 'Send, receive, buy, or spend in a few taps.',
-        actions: [WalletSwitcherButton(compact: true)],
+        actions: [
+          ConnectionStatusIndicator(full: true),
+          WalletSwitcherButton(compact: true),
+        ],
       );
     }
     if (path.startsWith('/activity')) {
       return const PAppBar(
         title: 'Activity',
-        actions: [WalletSwitcherButton(compact: true)],
+        actions: [
+          ConnectionStatusIndicator(full: true),
+          WalletSwitcherButton(compact: true),
+        ],
       );
     }
     if (path.startsWith('/settings')) {
       return const PAppBar(
         title: 'Settings',
         subtitle: 'Security and privacy controls.',
-        actions: [WalletSwitcherButton(compact: true)],
+        actions: [
+          ConnectionStatusIndicator(full: true),
+          WalletSwitcherButton(compact: true),
+        ],
       );
     }
     return null;
@@ -179,10 +185,7 @@ class AppShell extends ConsumerWidget {
                     right: BorderSide(color: AppColors.borderSubtle),
                   ),
                 ),
-                child: SafeArea(
-                  right: false,
-                  child: nav,
-                ),
+                child: SafeArea(right: false, child: nav),
               ),
               Expanded(
                 child: Column(

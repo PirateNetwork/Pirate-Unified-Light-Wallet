@@ -12,18 +12,14 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
+import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/molecules/transaction_row_v2.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 
-enum ActivityFilter {
-  all,
-  sent,
-  received,
-  pending,
-}
+enum ActivityFilter { all, sent, received, pending }
 
 extension ActivityFilterLabel on ActivityFilter {
   String get label {
@@ -85,8 +81,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       filtered = filtered.where((tx) {
         final memo = tx.memo?.toLowerCase() ?? '';
         // TxInfo doesn't have toAddress - search by txid and memo only
-        return tx.txid.toLowerCase().contains(query) ||
-            memo.contains(query);
+        return tx.txid.toLowerCase().contains(query) || memo.contains(query);
       });
     }
 
@@ -123,7 +118,12 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
         final itemCount = headerCount + bodyCount;
 
         return ListView.builder(
-          padding: EdgeInsets.fromLTRB(gutter, PSpacing.lg, gutter, PSpacing.lg),
+          padding: EdgeInsets.fromLTRB(
+            gutter,
+            PSpacing.lg,
+            gutter,
+            PSpacing.lg,
+          ),
           itemCount: itemCount,
           itemBuilder: (context, index) {
             if (index == 0) {
@@ -180,8 +180,13 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 
     final isMobile = PSpacing.isMobile(screenWidth);
     final isDesktop = PSpacing.isDesktop(screenWidth);
-    final appBarActions =
-        isMobile ? null : const [WalletSwitcherButton(compact: true)];
+    final appBarActions = [
+      ConnectionStatusIndicator(
+        full: !isMobile,
+        onTap: () => context.push('/settings/privacy-shield'),
+      ),
+      if (!isMobile) const WalletSwitcherButton(compact: true),
+    ];
 
     if (!widget.useScaffold) {
       if (isDesktop) {
@@ -190,10 +195,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       return PScaffold(
         title: 'Activity',
         useSafeArea: false,
-        appBar: PAppBar(
-          title: 'Activity',
-          actions: appBarActions,
-        ),
+        appBar: PAppBar(title: 'Activity', actions: appBarActions),
         body: content,
       );
     }
@@ -202,20 +204,14 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       title: 'Activity',
       appBar: isDesktop
           ? null
-          : PAppBar(
-              title: 'Activity',
-              actions: appBarActions,
-            ),
+          : PAppBar(title: 'Activity', actions: appBarActions),
       body: content,
     );
   }
 }
 
 class _FilterChips extends StatelessWidget {
-  const _FilterChips({
-    required this.selected,
-    required this.onSelected,
-  });
+  const _FilterChips({required this.selected, required this.onSelected});
 
   final ActivityFilter selected;
   final ValueChanged<ActivityFilter> onSelected;
@@ -257,8 +253,12 @@ class _FilterChipButton extends StatelessWidget {
     final background = isSelected
         ? AppColors.selectedBackground
         : AppColors.backgroundSurface;
-    final border = isSelected ? AppColors.selectedBorder : AppColors.borderSubtle;
-    final textColor = isSelected ? AppColors.textPrimary : AppColors.textSecondary;
+    final border = isSelected
+        ? AppColors.selectedBorder
+        : AppColors.borderSubtle;
+    final textColor = isSelected
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
 
     return InkWell(
       onTap: onTap,
@@ -274,10 +274,7 @@ class _FilterChipButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(PSpacing.radiusFull),
           border: Border.all(color: border),
         ),
-        child: Text(
-          label,
-          style: PTypography.labelSmall(color: textColor),
-        ),
+        child: Text(label, style: PTypography.labelSmall(color: textColor)),
       ),
     );
   }
@@ -297,11 +294,7 @@ class _ActivityEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.receipt_long,
-              size: 48,
-              color: AppColors.textTertiary,
-            ),
+            Icon(Icons.receipt_long, size: 48, color: AppColors.textTertiary),
             const SizedBox(height: PSpacing.md),
             Text(
               'Nothing here yet.',
@@ -330,11 +323,7 @@ class _ActivityErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: AppColors.error,
-            ),
+            Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: PSpacing.md),
             Text(
               'Unable to load activity',

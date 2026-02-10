@@ -21,6 +21,7 @@ import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/p_bottom_sheet.dart';
+import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/p_dialog.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/molecules/watch_only_banner.dart';
@@ -46,11 +47,7 @@ class PiratePaymentRequest {
   final String? amount;
   final String? memo;
 
-  const PiratePaymentRequest({
-    required this.address,
-    this.amount,
-    this.memo,
-  });
+  const PiratePaymentRequest({required this.address, this.amount, this.memo});
 }
 
 PiratePaymentRequest? _parsePiratePaymentRequest(String input) {
@@ -117,14 +114,14 @@ class OutputEntry {
   final TextEditingController memoController;
 
   OutputEntry()
-      : address = '',
-        amount = '',
-        memo = '',
-        isValid = false,
-        error = null,
-        addressController = TextEditingController(),
-        amountController = TextEditingController(),
-        memoController = TextEditingController();
+    : address = '',
+      amount = '',
+      memo = '',
+      isValid = false,
+      error = null,
+      addressController = TextEditingController(),
+      amountController = TextEditingController(),
+      memoController = TextEditingController();
 
   /// Get amount in arrrtoshis
   int get arrrtoshis {
@@ -162,12 +159,7 @@ enum SendStep {
   error,
 }
 
-enum FeePreset {
-  low,
-  standard,
-  high,
-  custom,
-}
+enum FeePreset { low, standard, high, custom }
 
 extension FeePresetLabel on FeePreset {
   String get label {
@@ -304,11 +296,14 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       final spendableKeys = keys.where((k) => k.spendable).toList();
       final addressBalances = await FfiBridge.listAddressBalances(walletId);
       final spendableKeyIds = spendableKeys.map((k) => k.id).toSet();
-      final filteredAddresses = addressBalances
-          .where((addr) =>
-              addr.keyId != null && spendableKeyIds.contains(addr.keyId))
-          .toList()
-        ..sort((a, b) => b.spendable.compareTo(a.spendable));
+      final filteredAddresses =
+          addressBalances
+              .where(
+                (addr) =>
+                    addr.keyId != null && spendableKeyIds.contains(addr.keyId),
+              )
+              .toList()
+            ..sort((a, b) => b.spendable.compareTo(a.spendable));
 
       final spendableByKey = <int, BigInt>{};
       for (final address in filteredAddresses) {
@@ -318,11 +313,13 @@ class _SendScreenState extends ConsumerState<SendScreen> {
             (spendableByKey[keyId] ?? BigInt.zero) + address.spendable;
       }
       spendableKeys.sort(
-        (a, b) => (spendableByKey[b.id] ?? BigInt.zero)
-            .compareTo(spendableByKey[a.id] ?? BigInt.zero),
+        (a, b) => (spendableByKey[b.id] ?? BigInt.zero).compareTo(
+          spendableByKey[a.id] ?? BigInt.zero,
+        ),
       );
-      final selectableKeys =
-          spendableKeys.where((k) => k.keyType != KeyTypeInfo.seed).toList();
+      final selectableKeys = spendableKeys
+          .where((k) => k.keyType != KeyTypeInfo.seed)
+          .toList();
 
       setState(() {
         _spendableKeys = spendableKeys;
@@ -335,8 +332,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         _selectedKey = null;
       }
       if (_selectedAddresses.isNotEmpty) {
-        final selectedIds =
-            _selectedAddresses.map((addr) => addr.addressId).toSet();
+        final selectedIds = _selectedAddresses
+            .map((addr) => addr.addressId)
+            .toSet();
         _selectedAddresses = _addressBalances
             .where((addr) => selectedIds.contains(addr.addressId))
             .toList();
@@ -360,8 +358,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       final enabled = await FfiBridge.getAutoConsolidationEnabled(walletId);
       if (enabled) return;
       final threshold = await FfiBridge.getAutoConsolidationThreshold();
-      final candidateCount =
-          await FfiBridge.getAutoConsolidationCandidateCount(walletId);
+      final candidateCount = await FfiBridge.getAutoConsolidationCandidateCount(
+        walletId,
+      );
       if (candidateCount < threshold) return;
       if (!mounted) return;
 
@@ -502,8 +501,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     if (!mounted) return;
 
     KeyGroupInfo? pendingKey = _selectedKey;
-    final pendingAddressIds =
-        _selectedAddresses.map((addr) => addr.addressId).toSet();
+    final pendingAddressIds = _selectedAddresses
+        .map((addr) => addr.addressId)
+        .toSet();
 
     await showModalBottomSheet<void>(
       context: context,
@@ -574,7 +574,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                   builder: (context, snapshot) {
                     final isRefreshing =
                         snapshot.connectionState == ConnectionState.waiting;
-                    final showLoading = isRefreshing &&
+                    final showLoading =
+                        isRefreshing &&
                         _spendableKeys.isEmpty &&
                         _addressBalances.isEmpty;
 
@@ -585,14 +586,13 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                         Text('Spend from', style: AppTypography.h4),
                         const SizedBox(height: AppSpacing.md),
                         if (isRefreshing)
-                          const LinearProgressIndicator(
-                            minHeight: 2,
-                          ),
+                          const LinearProgressIndicator(minHeight: 2),
                         if (isRefreshing) const SizedBox(height: AppSpacing.md),
                         if (showLoading)
                           const Padding(
-                            padding:
-                                EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                            padding: EdgeInsets.symmetric(
+                              vertical: AppSpacing.lg,
+                            ),
                             child: Center(child: CircularProgressIndicator()),
                           )
                         else
@@ -618,7 +618,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                     title: 'Auto (all keys)',
                                     subtitle:
                                         'Let the wallet choose notes automatically.',
-                                    selected: pendingKey == null &&
+                                    selected:
+                                        pendingKey == null &&
                                         pendingAddressIds.isEmpty,
                                     onTap: selectAuto,
                                   );
@@ -627,29 +628,37 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
                                 if (_selectableKeys.isNotEmpty) {
                                   if (index == cursor) {
-                                    return const SizedBox(height: AppSpacing.md);
+                                    return const SizedBox(
+                                      height: AppSpacing.md,
+                                    );
                                   }
                                   cursor += 1;
                                   if (index == cursor) {
-                                    return Text('Keys',
-                                        style: AppTypography.labelMedium);
+                                    return Text(
+                                      'Keys',
+                                      style: AppTypography.labelMedium,
+                                    );
                                   }
                                   cursor += 1;
                                   if (index == cursor) {
-                                    return const SizedBox(height: AppSpacing.xs);
+                                    return const SizedBox(
+                                      height: AppSpacing.xs,
+                                    );
                                   }
                                   cursor += 1;
                                   final keyIndex = index - cursor;
                                   if (keyIndex >= 0 &&
                                       keyIndex < _selectableKeys.length) {
                                     final key = _selectableKeys[keyIndex];
-                                    final balance =
-                                        _formatArrr(_spendableForKey(key.id));
+                                    final balance = _formatArrr(
+                                      _spendableForKey(key.id),
+                                    );
                                     return _buildSpendOption(
                                       context,
                                       title: _displayKeyLabel(key),
                                       subtitle: 'Spendable $balance',
-                                      selected: pendingKey?.id == key.id &&
+                                      selected:
+                                          pendingKey?.id == key.id &&
                                           pendingAddressIds.isEmpty,
                                       onTap: () => selectKey(key),
                                     );
@@ -659,28 +668,38 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
                                 if (_addressBalances.isNotEmpty) {
                                   if (index == cursor) {
-                                    return const SizedBox(height: AppSpacing.md);
+                                    return const SizedBox(
+                                      height: AppSpacing.md,
+                                    );
                                   }
                                   cursor += 1;
                                   if (index == cursor) {
-                                    return Text('Addresses',
-                                        style: AppTypography.labelMedium);
+                                    return Text(
+                                      'Addresses',
+                                      style: AppTypography.labelMedium,
+                                    );
                                   }
                                   cursor += 1;
                                   if (index == cursor) {
-                                    return const SizedBox(height: AppSpacing.xs);
+                                    return const SizedBox(
+                                      height: AppSpacing.xs,
+                                    );
                                   }
                                   cursor += 1;
                                   final addressIndex = index - cursor;
                                   if (addressIndex >= 0 &&
                                       addressIndex < _addressBalances.length) {
-                                    final address = _addressBalances[addressIndex];
-                                    final name = address.label ??
+                                    final address =
+                                        _addressBalances[addressIndex];
+                                    final name =
+                                        address.label ??
                                         _truncateAddress(address.address);
-                                    final balance =
-                                        _formatArrr(address.spendable);
-                                    final selected = pendingAddressIds
-                                        .contains(address.addressId);
+                                    final balance = _formatArrr(
+                                      address.spendable,
+                                    );
+                                    final selected = pendingAddressIds.contains(
+                                      address.addressId,
+                                    );
                                     return _buildMultiSpendOption(
                                       context,
                                       title: name,
@@ -718,8 +737,10 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   }
 
   Future<void> _openFeeSelector() async {
-    final inputFormatter =
-        TextInputFormatter.withFunction((oldValue, newValue) {
+    final inputFormatter = TextInputFormatter.withFunction((
+      oldValue,
+      newValue,
+    ) {
       final text = newValue.text;
       if (text.isEmpty) return newValue;
       if (!RegExp(r'^\d+(\.\d{0,8})?$').hasMatch(text)) {
@@ -795,10 +816,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Choose a fee speed',
-                  style: AppTypography.bodyMedium,
-                ),
+                Text('Choose a fee speed', style: AppTypography.bodyMedium),
                 const SizedBox(height: AppSpacing.sm),
                 Wrap(
                   spacing: AppSpacing.xs,
@@ -855,11 +873,13 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                 PInput(
                   label: 'Custom fee (ARRR)',
                   controller: controller,
-                  hint: _feeArrrFromArrrtoshis(_minFeeArrrtoshis)
-                      .toStringAsFixed(8),
+                  hint: _feeArrrFromArrrtoshis(
+                    _minFeeArrrtoshis,
+                  ).toStringAsFixed(8),
                   errorText: feeError,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   inputFormatters: [inputFormatter],
                   onChanged: onCustomChanged,
                 ),
@@ -893,8 +913,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                         text: 'Apply',
                         onPressed: () {
                           if (pendingPreset == FeePreset.custom) {
-                            final parsed =
-                                double.tryParse(controller.text.trim());
+                            final parsed = double.tryParse(
+                              controller.text.trim(),
+                            );
                             if (parsed == null) {
                               setModalState(() {
                                 feeError = 'Enter a valid fee amount.';
@@ -947,8 +968,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   }) {
     return PCard(
       onTap: onTap,
-      backgroundColor:
-          selected ? AppColors.selectedBackground : AppColors.backgroundSurface,
+      backgroundColor: selected
+          ? AppColors.selectedBackground
+          : AppColors.backgroundSurface,
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Row(
@@ -957,8 +979,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
               selected
                   ? Icons.check_circle
                   : Icons.account_balance_wallet_outlined,
-              color:
-                  selected ? AppColors.accentPrimary : AppColors.textSecondary,
+              color: selected
+                  ? AppColors.accentPrimary
+                  : AppColors.textSecondary,
               size: 20,
             ),
             const SizedBox(width: AppSpacing.sm),
@@ -992,16 +1015,18 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   }) {
     return PCard(
       onTap: onTap,
-      backgroundColor:
-          selected ? AppColors.selectedBackground : AppColors.backgroundSurface,
+      backgroundColor: selected
+          ? AppColors.selectedBackground
+          : AppColors.backgroundSurface,
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Row(
           children: [
             Icon(
               selected ? Icons.check_box : Icons.check_box_outline_blank,
-              color:
-                  selected ? AppColors.accentPrimary : AppColors.textSecondary,
+              color: selected
+                  ? AppColors.accentPrimary
+                  : AppColors.textSecondary,
               size: 20,
             ),
             const SizedBox(width: AppSpacing.sm),
@@ -1068,14 +1093,16 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   }
 
   int _currentMinFeeArrrtoshis() {
-    final fee = _baseMinFeeArrrtoshis +
+    final fee =
+        _baseMinFeeArrrtoshis +
         (_extraOutputCount() * kAdditionalOutputFeeArrrtoshis);
     return fee.clamp(_baseMinFeeArrrtoshis, _maxFeeArrrtoshis);
   }
 
   int _currentBaseFeeArrrtoshis() {
     final minFee = _currentMinFeeArrrtoshis();
-    final fee = _defaultFeeArrrtoshis +
+    final fee =
+        _defaultFeeArrrtoshis +
         (_extraOutputCount() * kAdditionalOutputFeeArrrtoshis);
     return fee.clamp(minFee, _maxFeeArrrtoshis);
   }
@@ -1227,8 +1254,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   Future<String?> _decodeQrFromImageBytes(Uint8List bytes) async {
     try {
       final uiImage = await _decodeUiImage(bytes);
-      final byteData =
-          await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final byteData = await uiImage.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
       if (byteData == null) {
         uiImage.dispose();
         return null;
@@ -1257,11 +1285,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     return completer.future;
   }
 
-  Int32List _rgbaToArgbPixels(
-    Uint8List rgbaBytes,
-    int width,
-    int height,
-  ) {
+  Int32List _rgbaToArgbPixels(Uint8List rgbaBytes, int width, int height) {
     final pixels = Int32List(width * height);
     for (int i = 0; i < pixels.length; i++) {
       final offset = i * 4;
@@ -1324,8 +1348,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         ..isValid = true;
 
       // Validate address using error mapper
-      final addressError =
-          TransactionErrorMapper.validateAddress(output.address);
+      final addressError = TransactionErrorMapper.validateAddress(
+        output.address,
+      );
       if (addressError != null) {
         output
           ..error = addressError.message
@@ -1538,10 +1563,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Your transaction is on its way.',
-            style: AppTypography.body,
-          ),
+          Text('Your transaction is on its way.', style: AppTypography.body),
           if (_totalAmount > 0) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -1596,8 +1618,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     final title = _currentStep == SendStep.review
         ? 'Review'
         : _currentStep == SendStep.sending
-            ? 'Sending'
-            : 'Send';
+        ? 'Sending'
+        : 'Send';
     final isMobile = PSpacing.isMobile(MediaQuery.of(context).size.width);
 
     return PScaffold(
@@ -1617,6 +1639,10 @@ class _SendScreenState extends ConsumerState<SendScreen> {
               tooltip: 'Add recipient',
               onPressed: _addOutput,
             ),
+          ConnectionStatusIndicator(
+            full: !isMobile,
+            onTap: () => context.push('/settings/privacy-shield'),
+          ),
           if (!isMobile) const WalletSwitcherButton(compact: true),
         ],
       ),
@@ -1745,8 +1771,8 @@ class _RecipientsStep extends StatelessWidget {
     final spendableAfterFee = availableBalance - calculatedFee;
     final spendableForPercent =
         spendableAfterFee.isFinite && spendableAfterFee > 0
-            ? spendableAfterFee
-            : 0.0;
+        ? spendableAfterFee
+        : 0.0;
 
     return Column(
       children: [
@@ -1783,10 +1809,7 @@ class _RecipientsStep extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Icon(
-                    Icons.chevron_right,
-                    color: AppColors.textTertiary,
-                  ),
+                  Icon(Icons.chevron_right, color: AppColors.textTertiary),
                 ],
               ),
             ),
@@ -1802,8 +1825,9 @@ class _RecipientsStep extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                   child: PButton(
-                    onPressed:
-                        outputs.length < kMaxRecipients ? onAddOutput : null,
+                    onPressed: outputs.length < kMaxRecipients
+                        ? onAddOutput
+                        : null,
                     variant: PButtonVariant.outline,
                     fullWidth: true,
                     icon: const Icon(Icons.add),
@@ -1813,8 +1837,9 @@ class _RecipientsStep extends StatelessWidget {
               }
 
               final scanHandler = onScan == null ? null : () => onScan!(index);
-              final importHandler =
-                  onImport == null ? null : () => onImport!(index);
+              final importHandler = onImport == null
+                  ? null
+                  : () => onImport!(index);
 
               return _OutputCard(
                 key: ObjectKey(outputs[index]),
@@ -1922,9 +1947,7 @@ class _RecipientsStep extends StatelessWidget {
                 const SizedBox(height: AppSpacing.sm),
                 Text(
                   errorMessage!,
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.error,
-                  ),
+                  style: AppTypography.caption.copyWith(color: AppColors.error),
                 ),
               ],
 
@@ -1993,8 +2016,9 @@ class _OutputCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 16,
-                  backgroundColor:
-                      AppColors.accentPrimary.withValues(alpha: 0.2),
+                  backgroundColor: AppColors.accentPrimary.withValues(
+                    alpha: 0.2,
+                  ),
                   child: Text(
                     '${index + 1}',
                     style: AppTypography.labelMedium.copyWith(
@@ -2091,8 +2115,9 @@ class _OutputCard extends StatelessWidget {
               controller: output.amountController,
               label: 'Amount (ARRR)',
               hint: '0.00000000',
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               onChanged: (_) => onChanged(),
               suffixIcon: _AmountMaxButton(
                 enabled: canMax,
@@ -2150,19 +2175,17 @@ class _AmountMaxButton extends StatelessWidget {
   final bool enabled;
   final VoidCallback onTap;
 
-  const _AmountMaxButton({
-    required this.enabled,
-    required this.onTap,
-  });
+  const _AmountMaxButton({required this.enabled, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final background = enabled
         ? AppColors.selectedBackground
         : AppColors.backgroundSurface.withValues(alpha: 0.6);
-    final border =
-        enabled ? AppColors.selectedBorder : AppColors.borderSubtle;
-    final textColor = enabled ? AppColors.accentPrimary : AppColors.textTertiary;
+    final border = enabled ? AppColors.selectedBorder : AppColors.borderSubtle;
+    final textColor = enabled
+        ? AppColors.accentPrimary
+        : AppColors.textTertiary;
 
     return Padding(
       padding: const EdgeInsets.only(right: AppSpacing.xs),
@@ -2180,10 +2203,7 @@ class _AmountMaxButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(PSpacing.radiusFull),
             border: Border.all(color: border),
           ),
-          child: Text(
-            'MAX',
-            style: PTypography.labelSmall(color: textColor),
-          ),
+          child: Text('MAX', style: PTypography.labelSmall(color: textColor)),
         ),
       ),
     );
@@ -2305,17 +2325,16 @@ class _AmountPresetSliderState extends State<_AmountPresetSlider> {
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
               showValueIndicator: ShowValueIndicator.onlyForContinuous,
               valueIndicatorColor: AppColors.accentPrimary,
-              valueIndicatorTextStyle:
-                  PTypography.labelSmall(color: Colors.white),
+              valueIndicatorTextStyle: PTypography.labelSmall(
+                color: Colors.white,
+              ),
             ),
             child: Slider(
               value: _value,
               min: 0,
               max: 1,
               label: label,
-              onChanged: enabled
-                  ? (v) => _setValue(v, commit: false)
-                  : null,
+              onChanged: enabled ? (v) => _setValue(v, commit: false) : null,
               onChangeEnd: enabled ? (_) => widget.onCommit() : null,
             ),
           ),
@@ -2427,10 +2446,7 @@ class _AmountPresetLabel extends StatelessWidget {
           horizontal: AppSpacing.sm,
           vertical: AppSpacing.xs,
         ),
-        child: Text(
-          label,
-          style: PTypography.labelSmall(color: color),
-        ),
+        child: Text(label, style: PTypography.labelSmall(color: color)),
       ),
     );
   }
@@ -2449,12 +2465,15 @@ class _FeePresetChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final background =
-        isSelected ? AppColors.selectedBackground : AppColors.backgroundSurface;
-    final border =
-        isSelected ? AppColors.selectedBorder : AppColors.borderSubtle;
-    final textColor =
-        isSelected ? AppColors.textPrimary : AppColors.textSecondary;
+    final background = isSelected
+        ? AppColors.selectedBackground
+        : AppColors.backgroundSurface;
+    final border = isSelected
+        ? AppColors.selectedBorder
+        : AppColors.borderSubtle;
+    final textColor = isSelected
+        ? AppColors.textPrimary
+        : AppColors.textSecondary;
 
     return InkWell(
       onTap: onTap,
@@ -2470,10 +2489,7 @@ class _FeePresetChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(PSpacing.radiusFull),
           border: Border.all(color: border),
         ),
-        child: Text(
-          label,
-          style: PTypography.labelSmall(color: textColor),
-        ),
+        child: Text(label, style: PTypography.labelSmall(color: textColor)),
       ),
     );
   }
@@ -2533,10 +2549,7 @@ class _SendQrScannerScreenState extends State<_SendQrScannerScreen> {
                 height: 240,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: AppColors.accentPrimary,
-                    width: 2,
-                  ),
+                  border: Border.all(color: AppColors.accentPrimary, width: 2),
                 ),
               ),
             ),
@@ -2813,9 +2826,7 @@ class _ReviewStep extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.error.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.error.withValues(alpha: 0.3),
-              ),
+              border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2892,9 +2903,7 @@ class _DetailRow extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.body.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
@@ -2946,9 +2955,7 @@ class _SendingStep extends StatelessWidget {
             const SizedBox(height: AppSpacing.xxl),
             Text(
               stage,
-              style: AppTypography.h4.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTypography.h4.copyWith(color: AppColors.textPrimary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.md),
@@ -2972,10 +2979,7 @@ class _ErrorStep extends StatelessWidget {
   final String error;
   final VoidCallback onRetry;
 
-  const _ErrorStep({
-    required this.error,
-    required this.onRetry,
-  });
+  const _ErrorStep({required this.error, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -2988,17 +2992,11 @@ class _ErrorStep extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: AppColors.error,
-            ),
+            Icon(Icons.error_outline, size: 64, color: AppColors.error),
             const SizedBox(height: AppSpacing.lg),
             Text(
               'Send failed',
-              style: AppTypography.h3.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
             ),
             const SizedBox(height: AppSpacing.md),
             Text(

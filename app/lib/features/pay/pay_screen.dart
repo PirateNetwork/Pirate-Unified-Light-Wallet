@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
+import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
@@ -35,8 +36,13 @@ class PayScreen extends StatelessWidget {
     final size = MediaQuery.of(context).size;
     final isMobile = PSpacing.isMobile(size.width);
     final isDesktop = PSpacing.isDesktop(size.width);
-    final appBarActions =
-        isMobile ? null : const [WalletSwitcherButton(compact: true)];
+    final appBarActions = [
+      ConnectionStatusIndicator(
+        full: !isMobile,
+        onTap: () => context.push('/settings/privacy-shield'),
+      ),
+      if (!isMobile) const WalletSwitcherButton(compact: true),
+    ];
     final content = _PayContent(
       onSend: () => context.push('/send'),
       onReceive: () => context.push('/receive'),
@@ -114,8 +120,7 @@ class PaySheet extends StatelessWidget {
             const spacing = PSpacing.md;
             final tileWidth =
                 (constraints.maxWidth - spacing * (columns - 1)) / columns;
-            final tileHeight =
-                (tileWidth * 0.78).clamp(130.0, 170.0);
+            final tileHeight = (tileWidth * 0.78).clamp(130.0, 170.0);
             final tiles = [
               _PayActionTile(
                 title: 'Send',
@@ -180,7 +185,9 @@ class PaySheet extends StatelessWidget {
                       margin: const EdgeInsets.only(bottom: PSpacing.md),
                       decoration: BoxDecoration(
                         color: AppColors.borderStrong,
-                        borderRadius: BorderRadius.circular(PSpacing.radiusFull),
+                        borderRadius: BorderRadius.circular(
+                          PSpacing.radiusFull,
+                        ),
                       ),
                     ),
                   ),
@@ -191,7 +198,9 @@ class PaySheet extends StatelessWidget {
                   const SizedBox(height: PSpacing.xs),
                   Text(
                     'Send, receive, buy, or spend ARRR.',
-                    style: PTypography.bodySmall(color: AppColors.textSecondary),
+                    style: PTypography.bodySmall(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: PSpacing.lg),
                   Flexible(
@@ -295,19 +304,14 @@ class _PayContent extends StatelessWidget {
             ];
             return Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 600,
-                ),
+                constraints: const BoxConstraints(maxWidth: 600),
                 child: Wrap(
                   spacing: PSpacing.lg,
                   runSpacing: PSpacing.lg,
                   children: tiles
                       .map(
-                        (tile) => SizedBox(
-                          width: 280,
-                          height: 240,
-                          child: tile,
-                        ),
+                        (tile) =>
+                            SizedBox(width: 280, height: 240, child: tile),
                       )
                       .toList(),
                 ),
@@ -412,30 +416,30 @@ class _PayActionTile extends StatelessWidget {
     final padding = isDesktop
         ? PSpacing.xl
         : compact
-            ? PSpacing.md
-            : PSpacing.lg;
+        ? PSpacing.md
+        : PSpacing.lg;
     final iconSize = isDesktop
         ? 32.0
         : compact
-            ? 24.0
-            : 28.0;
+        ? 24.0
+        : 28.0;
     final iconContainerSize = isDesktop ? 56.0 : (compact ? 40.0 : 48.0);
     final titleStyle = isDesktop
         ? PTypography.heading3(color: AppColors.textOnAccent)
         : compact
-            ? PTypography.titleLarge(color: AppColors.textOnAccent)
-            : PTypography.heading4(color: AppColors.textOnAccent);
+        ? PTypography.titleLarge(color: AppColors.textOnAccent)
+        : PTypography.heading4(color: AppColors.textOnAccent);
     final subtitleStyle = isDesktop
         ? PTypography.bodyLarge(
             color: AppColors.textOnAccent.withValues(alpha: 0.9),
           )
         : compact
-            ? PTypography.bodySmall(
-                color: AppColors.textOnAccent.withValues(alpha: 0.8),
-              )
-            : PTypography.bodyMedium(
-                color: AppColors.textOnAccent.withValues(alpha: 0.85),
-              );
+        ? PTypography.bodySmall(
+            color: AppColors.textOnAccent.withValues(alpha: 0.8),
+          )
+        : PTypography.bodyMedium(
+            color: AppColors.textOnAccent.withValues(alpha: 0.85),
+          );
 
     return Material(
       color: Colors.transparent,
@@ -480,7 +484,11 @@ class _PayActionTile extends StatelessWidget {
                     semanticLabel: title,
                   ),
                 ),
-                SizedBox(height: isDesktop ? PSpacing.lg : (compact ? PSpacing.sm : PSpacing.md)),
+                SizedBox(
+                  height: isDesktop
+                      ? PSpacing.lg
+                      : (compact ? PSpacing.sm : PSpacing.md),
+                ),
                 Text(
                   title,
                   maxLines: 1,

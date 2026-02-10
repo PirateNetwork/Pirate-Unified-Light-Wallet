@@ -4,24 +4,21 @@ import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-enum PrivacyStatus {
-  private,
-  limited,
-  connecting,
-  offline,
-}
+enum PrivacyStatus { private, limited, connecting, offline }
 
 class PrivacyStatusChip extends StatelessWidget {
   const PrivacyStatusChip({
     required this.status,
     this.onTap,
     this.compact = false,
+    this.dotOnly = false,
     super.key,
   });
 
   final PrivacyStatus status;
   final VoidCallback? onTap;
   final bool compact;
+  final bool dotOnly;
 
   String get _label {
     switch (status) {
@@ -51,9 +48,17 @@ class PrivacyStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final padding = compact
-        ? const EdgeInsets.symmetric(horizontal: PSpacing.sm, vertical: PSpacing.xs)
-        : const EdgeInsets.symmetric(horizontal: PSpacing.md, vertical: PSpacing.xs);
+    final padding = dotOnly
+        ? const EdgeInsets.all(PSpacing.xs)
+        : compact
+        ? const EdgeInsets.symmetric(
+            horizontal: PSpacing.sm,
+            vertical: PSpacing.xs,
+          )
+        : const EdgeInsets.symmetric(
+            horizontal: PSpacing.md,
+            vertical: PSpacing.xs,
+          );
 
     return InkWell(
       onTap: onTap,
@@ -76,11 +81,13 @@ class PrivacyStatusChip extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
             ),
-            const SizedBox(width: PSpacing.xs),
-            Text(
-              _label,
-              style: PTypography.labelSmall(color: AppColors.textSecondary),
-            ),
+            if (!dotOnly) ...[
+              const SizedBox(width: PSpacing.xs),
+              Text(
+                _label,
+                style: PTypography.labelSmall(color: AppColors.textSecondary),
+              ),
+            ],
           ],
         ),
       ),

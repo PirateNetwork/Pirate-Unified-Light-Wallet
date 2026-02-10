@@ -11,6 +11,7 @@ import '../../../ui/atoms/p_input.dart';
 import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/atoms/p_toggle.dart';
 import '../../../ui/molecules/p_card.dart';
+import '../../../ui/molecules/connection_status_indicator.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/ffi/ffi_bridge.dart';
@@ -18,7 +19,7 @@ import '../../../core/providers/wallet_providers.dart';
 import '../providers/transport_providers.dart';
 
 /// Privacy Shield settings screen
-/// 
+///
 /// Allows users to configure:
 /// - Transport mode (Tor/SOCKS5/Direct)
 /// - SOCKS5 proxy settings
@@ -28,7 +29,8 @@ class PrivacyShieldScreen extends ConsumerStatefulWidget {
   const PrivacyShieldScreen({super.key});
 
   @override
-  ConsumerState<PrivacyShieldScreen> createState() => _PrivacyShieldScreenState();
+  ConsumerState<PrivacyShieldScreen> createState() =>
+      _PrivacyShieldScreenState();
 }
 
 class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
@@ -60,9 +62,11 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = PirateSpacing.isMobile(MediaQuery.of(context).size.width);
     final transportConfig = ref.watch(transportConfigProvider);
-    final basePadding =
-        PirateSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final basePadding = PirateSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+    );
     final padding = basePadding.copyWith(
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
@@ -85,9 +89,10 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
     return PScaffold(
       title: 'Privacy Shield',
-      appBar: const PAppBar(
+      appBar: PAppBar(
         title: 'Privacy Shield',
         subtitle: 'Network & tunneling',
+        actions: [ConnectionStatusIndicator(full: !isMobile)],
       ),
       body: SingleChildScrollView(
         padding: padding,
@@ -147,20 +152,21 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             SizedBox(
               width: double.infinity,
               child: PButton(
-                text: _isTestingConnection ? 'Testing...' : 'Test Node Connection',
-                onPressed: _isTestingConnection ? null : () => _testNodeConnection(context, ref),
+                text: _isTestingConnection
+                    ? 'Testing...'
+                    : 'Test Node Connection',
+                onPressed: _isTestingConnection
+                    ? null
+                    : () => _testNodeConnection(context, ref),
                 variant: PButtonVariant.secondary,
               ),
             ),
-            
+
             const SizedBox(height: PirateSpacing.sm),
-            
+
             Text(
               'Tests connection to lightwalletd using current transport and TLS settings',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
               textAlign: TextAlign.center,
             ),
           ],
@@ -304,7 +310,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                   Text(
                     title,
                     style: TextStyle(
-                      color: isSelected ? AppColors.accentPrimary : AppColors.textPrimary,
+                      color: isSelected
+                          ? AppColors.accentPrimary
+                          : AppColors.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
@@ -447,10 +455,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         children: [
           Text(
             'I2P endpoints use .i2p hostnames (often ending in .b32.i2p).',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: PirateSpacing.sm),
           PInput(
@@ -474,10 +479,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             const SizedBox(height: PirateSpacing.xs),
             Text(
               'No I2P endpoint set. I2P mode will stay offline until you add one.',
-              style: TextStyle(
-                color: AppColors.warning,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: AppColors.warning, fontSize: 12),
             ),
           ],
           const SizedBox(height: PirateSpacing.md),
@@ -511,9 +513,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                             .setI2pEndpoint(candidate);
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('I2P endpoint saved.'),
-                          ),
+                          const SnackBar(content: Text('I2P endpoint saved.')),
                         );
                       } catch (e) {
                         if (!context.mounted) return;
@@ -586,9 +586,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                   PTextButton(
                     text: 'Switch exit node',
                     compact: true,
-                    onPressed: torStatus.isReady
-                        ? _switchTorExit
-                        : null,
+                    onPressed: torStatus.isReady ? _switchTorExit : null,
                   ),
                 ],
               ),
@@ -597,18 +595,12 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           const SizedBox(height: PirateSpacing.md),
           Text(
             'Tor provides the strongest privacy by routing traffic through multiple relays, making it very difficult to trace.',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: PirateSpacing.xs),
           Text(
             routingSummary,
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
           if (isBootstrapping) ...[
             const SizedBox(height: PirateSpacing.md),
@@ -623,19 +615,13 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
               progress == null
                   ? 'Bootstrapping...'
                   : 'Bootstrapping... $progress%',
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
             if (torStatus.blocked != null && torStatus.blocked!.isNotEmpty) ...[
               const SizedBox(height: PirateSpacing.xs),
               Text(
                 'Blocked: ${torStatus.blocked}',
-                style: TextStyle(
-                  color: AppColors.warning,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: AppColors.warning, fontSize: 12),
               ),
             ],
           ],
@@ -643,10 +629,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             const SizedBox(height: PirateSpacing.xs),
             Text(
               torStatus.error!,
-              style: TextStyle(
-                color: AppColors.error,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: AppColors.error, fontSize: 12),
             ),
           ],
           if (_isDesktop) ...[
@@ -685,10 +668,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         Container(
           width: 12,
           height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 4),
         Text(
@@ -708,7 +688,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       await FfiBridge.rotateTorExit();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Switched Tor exit node. Reconnecting...')),
+        const SnackBar(
+          content: Text('Switched Tor exit node. Reconnecting...'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -734,14 +716,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       ),
       subtitle: Text(
         'Bridges and transport overrides',
-        style: TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 12,
-        ),
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
       ),
-      children: [
-        _buildTorBridgeControls(context, ref),
-      ],
+      children: [_buildTorBridgeControls(context, ref)],
     );
   }
 
@@ -752,10 +729,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         children: [
           Text(
             'Bridge transports (Snowflake/obfs4) are desktop-only.',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
         ],
       );
@@ -820,10 +794,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           const SizedBox(height: PirateSpacing.xs),
           Text(
             _torBridgeError!,
-            style: TextStyle(
-              color: AppColors.error,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: AppColors.error, fontSize: 12),
           ),
         ],
         const SizedBox(height: PirateSpacing.sm),
@@ -931,10 +902,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       transportPath: path.isEmpty ? null : path,
     );
 
-    await ref.read(transportConfigProvider.notifier).setTorBridgeConfig(
-          config,
-          apply: true,
-        );
+    await ref
+        .read(transportConfigProvider.notifier)
+        .setTorBridgeConfig(config, apply: true);
   }
 
   Future<void> _applyTorBridgePreset(WidgetRef ref, String transport) async {
@@ -964,13 +934,28 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     return PCard(
       child: Column(
         children: [
-          _buildDnsOption(ref, 'cloudflare_doh', 'Cloudflare (1.1.1.1)', currentProvider),
+          _buildDnsOption(
+            ref,
+            'cloudflare_doh',
+            'Cloudflare (1.1.1.1)',
+            currentProvider,
+          ),
           Divider(height: 1, color: AppColors.borderDefault),
           _buildDnsOption(ref, 'quad9_doh', 'Quad9 (9.9.9.9)', currentProvider),
           Divider(height: 1, color: AppColors.borderDefault),
-          _buildDnsOption(ref, 'google_doh', 'Google (8.8.8.8)', currentProvider),
+          _buildDnsOption(
+            ref,
+            'google_doh',
+            'Google (8.8.8.8)',
+            currentProvider,
+          ),
           Divider(height: 1, color: AppColors.borderDefault),
-          _buildDnsOption(ref, 'system', 'System (Not Private)', currentProvider),
+          _buildDnsOption(
+            ref,
+            'system',
+            'System (Not Private)',
+            currentProvider,
+          ),
         ],
       ),
     );
@@ -1001,8 +986,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color:
-                      isSelected ? AppColors.accentPrimary : AppColors.textPrimary,
+                  color: isSelected
+                      ? AppColors.accentPrimary
+                      : AppColors.textPrimary,
                   fontSize: 14,
                 ),
               ),
@@ -1015,7 +1001,6 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     );
   }
 
-
   Future<void> _testNodeConnection(BuildContext context, WidgetRef ref) async {
     setState(() {
       _isTestingConnection = true;
@@ -1023,16 +1008,15 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
     try {
       // Get current endpoint
-      final endpointConfig = await ref.read(lightdEndpointConfigProvider.future);
+      final endpointConfig = await ref.read(
+        lightdEndpointConfigProvider.future,
+      );
       final url = endpointConfig.url;
       final tlsPin = endpointConfig.tlsPin?.trim();
       final normalizedPin = tlsPin == null || tlsPin.isEmpty ? null : tlsPin;
 
       // Test the node connection
-      final result = await FfiBridge.testNode(
-        url: url,
-        tlsPin: normalizedPin,
-      );
+      final result = await FfiBridge.testNode(url: url, tlsPin: normalizedPin);
 
       if (!context.mounted) return;
 
@@ -1078,8 +1062,14 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildResultRow('Transport', '${result.transportIcon} ${result.transportMode.toUpperCase()}'),
-            _buildResultRow('TLS', result.tlsEnabled ? 'Enabled ✓' : 'Disabled'),
+            _buildResultRow(
+              'Transport',
+              '${result.transportIcon} ${result.transportMode.toUpperCase()}',
+            ),
+            _buildResultRow(
+              'TLS',
+              result.tlsEnabled ? 'Enabled ✓' : 'Disabled',
+            ),
             if (result.tlsPinMatched != null)
               _buildResultRow(
                 'Pin Verified',
@@ -1113,7 +1103,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
   void _showFailureDialog(BuildContext context, NodeTestResult result) {
     final isPinMismatch = result.tlsPinMatched == false;
-    
+
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1129,7 +1119,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                isPinMismatch ? 'Certificate Pin Mismatch' : 'Connection Failed',
+                isPinMismatch
+                    ? 'Certificate Pin Mismatch'
+                    : 'Connection Failed',
                 style: TextStyle(color: AppColors.textPrimary),
               ),
             ),
@@ -1140,19 +1132,27 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildResultRow('Transport', '${result.transportIcon} ${result.transportMode.toUpperCase()}'),
-              _buildResultRow('TLS', result.tlsEnabled ? 'Enabled' : 'Disabled'),
+              _buildResultRow(
+                'Transport',
+                '${result.transportIcon} ${result.transportMode.toUpperCase()}',
+              ),
+              _buildResultRow(
+                'TLS',
+                result.tlsEnabled ? 'Enabled' : 'Disabled',
+              ),
               _buildResultRow('Response Time', '${result.responseTimeMs}ms'),
-              
+
               const SizedBox(height: 16),
-              
+
               if (isPinMismatch) ...[
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.red.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: Colors.red.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1274,7 +1274,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: result.actualPin!));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Actual pin copied to clipboard')),
+                  const SnackBar(
+                    content: Text('Actual pin copied to clipboard'),
+                  ),
                 );
               },
             ),
@@ -1307,10 +1309,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             ),
           ],
         ),
-        content: Text(
-          error,
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
+        content: Text(error, style: TextStyle(color: AppColors.textSecondary)),
         actions: [
           PTextButton(
             label: 'OK',
@@ -1331,10 +1330,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 13,
-              ),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
           ),
           const SizedBox(width: PirateSpacing.sm),

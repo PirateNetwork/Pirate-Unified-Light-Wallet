@@ -12,7 +12,7 @@ import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../ui/atoms/p_text_button.dart';
-import '../../ui/molecules/privacy_status_chip.dart';
+import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/transaction_row_v2.dart';
 import '../../ui/molecules/wallet_switcher.dart';
@@ -49,13 +49,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final screenWidth = mediaQuery.size.width;
     final textScale = MediaQuery.textScalerOf(context).scale(1.0);
     final gutter = PSpacing.responsiveGutter(screenWidth);
-    final headerVerticalPadding =
-        PSpacing.isDesktop(screenWidth) ? PSpacing.lg : PSpacing.md;
+    final headerVerticalPadding = PSpacing.isDesktop(screenWidth)
+        ? PSpacing.lg
+        : PSpacing.md;
     final baseHeaderExtent = PSpacing.isMobile(screenWidth)
         ? 280.0
         : PSpacing.isTablet(screenWidth)
-            ? 300.0
-            : 320.0;
+        ? 300.0
+        : 320.0;
     final extraHeaderHeight = textScale > 1.0 ? (textScale - 1.0) * 32.0 : 0.0;
     final headerExtent =
         baseHeaderExtent + mediaQuery.padding.top + extraHeaderHeight;
@@ -95,9 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
             gutter,
             PSpacing.md,
           ),
-          sliver: const SliverToBoxAdapter(
-            child: _HomeSyncIndicator(),
-          ),
+          sliver: const SliverToBoxAdapter(child: _HomeSyncIndicator()),
         ),
         SliverToBoxAdapter(
           child: Padding(
@@ -166,10 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return content;
     }
 
-    return PScaffold(
-      title: 'Wallet Home',
-      body: content,
-    );
+    return PScaffold(title: 'Wallet Home', body: content);
   }
 }
 
@@ -209,12 +205,10 @@ class _HomeHeader extends ConsumerWidget {
     final tunnelMode = ref.watch(tunnelModeProvider);
     final torStatus = ref.watch(torStatusProvider);
     final transportConfig = ref.watch(transportConfigProvider);
-    final endpointConfigAsync = ref.watch(lightdEndpointConfigProvider);
     final isDecoy = ref.watch(decoyModeProvider);
-    final decoyHeight = ref.watch(decoySyncHeightProvider).maybeWhen(
-          data: (height) => height,
-          orElse: () => 0,
-        );
+    final decoyHeight = ref
+        .watch(decoySyncHeightProvider)
+        .maybeWhen(data: (height) => height, orElse: () => 0);
 
     final syncStatus = syncStatusAsync.when(
       data: (status) => status,
@@ -223,46 +217,23 @@ class _HomeHeader extends ConsumerWidget {
       skipLoadingOnRefresh: false,
     );
 
-    final decoySyncStatus =
-        isDecoy ? _buildDecoySyncStatus(decoyHeight) : null;
-    final endpointConfig = endpointConfigAsync.value;
+    final decoySyncStatus = isDecoy ? _buildDecoySyncStatus(decoyHeight) : null;
     final i2pEndpoint = transportConfig.i2pEndpoint.trim();
     final i2pEndpointReady =
         tunnelMode is! TunnelMode_I2p || i2pEndpoint.isNotEmpty;
-    final usesPrivacyTunnel = (tunnelMode is TunnelMode_Tor) ||
+    final usesPrivacyTunnel =
+        (tunnelMode is TunnelMode_Tor) ||
         (tunnelMode is TunnelMode_I2p) ||
         (tunnelMode is TunnelMode_Socks5);
     final tunnelReady =
         (tunnelMode is! TunnelMode_Tor || torStatus.isReady) &&
-            i2pEndpointReady;
-    final tunnelError = !isDecoy &&
-        ((tunnelMode is TunnelMode_Tor && torStatus.status == 'error') ||
-            (tunnelMode is TunnelMode_I2p && !i2pEndpointReady));
-
-    final hasEndpoint = endpointConfig != null || endpointConfigAsync.hasValue;
-    final effectiveHasEndpoint = isDecoy || (tunnelMode is TunnelMode_I2p ? i2pEndpointReady : hasEndpoint);
+        i2pEndpointReady;
     final tunnelBlocked = !isDecoy && usesPrivacyTunnel && !tunnelReady;
-    final displaySyncStatus =
-        isDecoy ? decoySyncStatus : (tunnelBlocked ? null : syncStatus);
-    final hasStatus = displaySyncStatus != null &&
-        (displaySyncStatus.targetHeight > BigInt.zero ||
-            displaySyncStatus.localHeight > BigInt.zero);
-    final privacyStatus = isDecoy
-        ? (usesPrivacyTunnel ? PrivacyStatus.private : PrivacyStatus.limited)
-        : !effectiveHasEndpoint
-            ? PrivacyStatus.offline
-            : tunnelBlocked
-                ? (tunnelError
-                    ? PrivacyStatus.offline
-                    : PrivacyStatus.connecting)
-                : !hasStatus
-                    ? PrivacyStatus.connecting
-                    : usesPrivacyTunnel
-                        ? PrivacyStatus.private
-                        : PrivacyStatus.limited;
+    final displaySyncStatus = isDecoy
+        ? decoySyncStatus
+        : (tunnelBlocked ? null : syncStatus);
 
-    final isSyncing =
-        !tunnelBlocked && (displaySyncStatus?.isSyncing ?? false);
+    final isSyncing = !tunnelBlocked && (displaySyncStatus?.isSyncing ?? false);
     final isComplete =
         !tunnelBlocked && (displaySyncStatus?.isComplete ?? false);
 
@@ -274,8 +245,9 @@ class _HomeHeader extends ConsumerWidget {
     final totalBalance = balanceData?.total ?? BigInt.zero;
     final spendableBalance = balanceData?.spendable ?? BigInt.zero;
     final pendingBalance = balanceData?.pending ?? BigInt.zero;
-    final displayBalance =
-        (isSyncing || !isComplete) ? spendableBalance : totalBalance;
+    final displayBalance = (isSyncing || !isComplete)
+        ? spendableBalance
+        : totalBalance;
     final balanceArrr = displayBalance.toDouble() / 100000000.0;
     final pendingArrr = pendingBalance.toDouble() / 100000000.0;
     String? balanceHelper;
@@ -301,8 +273,8 @@ class _HomeHeader extends ConsumerWidget {
                 children: [
                   const WalletSwitcherButton(),
                   const Spacer(),
-                  PrivacyStatusChip(
-                    status: privacyStatus,
+                  ConnectionStatusIndicator(
+                    full: true,
                     compact: true,
                     onTap: () => context.push('/settings/privacy-shield'),
                   ),
@@ -328,11 +300,7 @@ class _HomeHeader extends ConsumerWidget {
           )
         : headerSurface;
 
-    return RepaintBoundary(
-      child: ClipRect(
-        child: headerContent,
-      ),
-    );
+    return RepaintBoundary(child: ClipRect(child: headerContent));
   }
 }
 
@@ -369,38 +337,37 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
     final torStatus = ref.watch(torStatusProvider);
     final transportConfig = ref.watch(transportConfigProvider);
     final isDecoy = ref.watch(decoyModeProvider);
-    final decoyHeight = ref.watch(decoySyncHeightProvider).maybeWhen(
-          data: (height) => height,
-          orElse: () => 0,
-        );
+    final decoyHeight = ref
+        .watch(decoySyncHeightProvider)
+        .maybeWhen(data: (height) => height, orElse: () => 0);
     final reduceMotion = MediaQuery.of(context).disableAnimations;
 
-      final syncStatus = syncStatusAsync.when(
-        data: (status) => status,
-        loading: () => null,
-        error: (_, _) => null,
-        skipLoadingOnRefresh: false,
-      );
+    final syncStatus = syncStatusAsync.when(
+      data: (status) => status,
+      loading: () => null,
+      error: (_, _) => null,
+      skipLoadingOnRefresh: false,
+    );
 
-    final decoySyncStatus =
-        isDecoy ? _buildDecoySyncStatus(decoyHeight) : null;
+    final decoySyncStatus = isDecoy ? _buildDecoySyncStatus(decoyHeight) : null;
     final i2pEndpoint = transportConfig.i2pEndpoint.trim();
     final i2pEndpointReady =
         tunnelMode is! TunnelMode_I2p || i2pEndpoint.isNotEmpty;
-    final usesPrivacyTunnel = (tunnelMode is TunnelMode_Tor) ||
+    final usesPrivacyTunnel =
+        (tunnelMode is TunnelMode_Tor) ||
         (tunnelMode is TunnelMode_I2p) ||
         (tunnelMode is TunnelMode_Socks5);
     final tunnelReady =
         (tunnelMode is! TunnelMode_Tor || torStatus.isReady) &&
-            i2pEndpointReady;
+        i2pEndpointReady;
     final tunnelBlocked = !isDecoy && usesPrivacyTunnel && !tunnelReady;
 
-    final displaySyncStatus =
-        isDecoy ? decoySyncStatus : (tunnelBlocked ? null : syncStatus);
+    final displaySyncStatus = isDecoy
+        ? decoySyncStatus
+        : (tunnelBlocked ? null : syncStatus);
     final currentHeight = displaySyncStatus?.localHeight ?? BigInt.zero;
     final targetHeight = displaySyncStatus?.targetHeight ?? BigInt.zero;
-    final isSyncing =
-        !tunnelBlocked && (displaySyncStatus?.isSyncing ?? false);
+    final isSyncing = !tunnelBlocked && (displaySyncStatus?.isSyncing ?? false);
     final isComplete =
         !tunnelBlocked && (displaySyncStatus?.isComplete ?? false);
 
@@ -417,17 +384,18 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
     final rawPercent = displaySyncStatus?.percent ?? 0.0;
     final displayPercent = (targetHeight > BigInt.zero)
         ? (isComplete
-            ? rawPercent.clamp(0.0, 100.0)
-            : rawPercent.clamp(0.0, 99.9))
+              ? rawPercent.clamp(0.0, 100.0)
+              : rawPercent.clamp(0.0, 99.9))
         : 0.0;
     final syncProgress = displayPercent / 100.0;
     final stage = isComplete
         ? 'Synced'
         : displaySyncStatus?.stageName ??
-            (displaySyncStatus != null ? 'Syncing' : 'Not synced');
+              (displaySyncStatus != null ? 'Syncing' : 'Not synced');
     final eta = isComplete
         ? null
-        : displaySyncStatus?.etaFormatted ?? (isSyncing ? 'Calculating...' : null);
+        : displaySyncStatus?.etaFormatted ??
+              (isSyncing ? 'Calculating...' : null);
 
     return RepaintBoundary(
       child: _SyncIndicator(
@@ -501,27 +469,18 @@ class _HomeTransactionsSection extends ConsumerWidget {
 
     final itemCount = transactions.length > 10 ? 10 : transactions.length;
     return SliverPadding(
-      padding: EdgeInsets.fromLTRB(
-        gutter,
-        0,
-        gutter,
-        PSpacing.lg,
-      ),
+      padding: EdgeInsets.fromLTRB(gutter, 0, gutter, PSpacing.lg),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            if (index >= itemCount) return null;
-            final tx = transactions[index];
-            return _TransactionItemWithLabel(
-              key: ValueKey(tx.txid),
-              tx: tx,
-              onTap: () => context.push(
-                '/transaction/${tx.txid}?amount=${tx.amount}',
-              ),
-            );
-          },
-          childCount: itemCount,
-        ),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          if (index >= itemCount) return null;
+          final tx = transactions[index];
+          return _TransactionItemWithLabel(
+            key: ValueKey(tx.txid),
+            tx: tx,
+            onTap: () =>
+                context.push('/transaction/${tx.txid}?amount=${tx.amount}'),
+          );
+        }, childCount: itemCount),
       ),
     );
   }
@@ -557,13 +516,13 @@ class _SyncIndicator extends StatelessWidget {
     final icon = isSyncing
         ? Icons.sync
         : isComplete
-            ? Icons.check_circle
-            : Icons.sync_disabled;
+        ? Icons.check_circle
+        : Icons.sync_disabled;
     final iconColor = isSyncing
         ? AppColors.accentPrimary
         : isComplete
-            ? AppColors.success
-            : AppColors.textSecondary;
+        ? AppColors.success
+        : AppColors.textSecondary;
 
     return PCard(
       child: Padding(
@@ -577,18 +536,10 @@ class _SyncIndicator extends StatelessWidget {
                 if (isSyncing)
                   RotationTransition(
                     turns: animation,
-                    child: Icon(
-                      icon,
-                      size: 16,
-                      color: iconColor,
-                    ),
+                    child: Icon(icon, size: 16, color: iconColor),
                   )
                 else
-                  Icon(
-                    icon,
-                    size: 16,
-                    color: iconColor,
-                  ),
+                  Icon(icon, size: 16, color: iconColor),
                 const SizedBox(width: PSpacing.sm),
                 Expanded(
                   child: Text(
@@ -603,7 +554,7 @@ class _SyncIndicator extends StatelessWidget {
                   Text(
                     '${blocksPerSecond.toStringAsFixed(1)} blk/s',
                     style: PTypography.caption().copyWith(
-color: AppColors.textSecondary,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 // Show percentage whenever we have valid progress data (during sync or when monitoring)
@@ -644,10 +595,10 @@ color: AppColors.textSecondary,
                     (targetHeight > 0 && currentHeight > 0)
                         ? 'Block $currentHeight / $targetHeight'
                         : (currentHeight > 0)
-                            ? 'Block $currentHeight'
-                            : (targetHeight > 0)
-                                ? 'Block 0 / $targetHeight'
-                                : 'Block 0',
+                        ? 'Block $currentHeight'
+                        : (targetHeight > 0)
+                        ? 'Block 0 / $targetHeight'
+                        : 'Block 0',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: PTypography.caption().copyWith(
@@ -719,12 +670,7 @@ class _QuickActionButton extends StatelessWidget {
                   color: color.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 28,
-                  semanticLabel: label,
-                ),
+                child: Icon(icon, color: color, size: 28, semanticLabel: label),
               ),
               const SizedBox(height: PSpacing.sm),
               Text(
@@ -747,11 +693,7 @@ class _TransactionItemWithLabel extends ConsumerWidget {
   final TxInfo tx;
   final VoidCallback? onTap;
 
-  const _TransactionItemWithLabel({
-    super.key,
-    required this.tx,
-    this.onTap,
-  });
+  const _TransactionItemWithLabel({super.key, required this.tx, this.onTap});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -765,21 +707,22 @@ class _TransactionItemWithLabel extends ConsumerWidget {
     //       .map((e) => e.label)
     //       .firstOrNull;
     // }
-    
+
     // Convert PlatformInt64 to int for calculations
     final amountValue = tx.amount;
     final isReceived = amountValue >= 0;
     final amount = amountValue.abs() / 100000000.0;
-    
+
     // Convert PlatformInt64 timestamp to DateTime
     final timestampValue = tx.timestamp;
-    final timestamp = DateTime.fromMillisecondsSinceEpoch(timestampValue * 1000);
+    final timestamp = DateTime.fromMillisecondsSinceEpoch(
+      timestampValue * 1000,
+    );
 
     return TransactionRowV2(
       isReceived: isReceived,
       isConfirmed: tx.confirmed,
-      amountText:
-          '${isReceived ? '+' : '-'}${amount.toStringAsFixed(4)} ARRR',
+      amountText: '${isReceived ? '+' : '-'}${amount.toStringAsFixed(4)} ARRR',
       timestamp: timestamp,
       memo: tx.memo,
       addressLabel: addressLabel,
