@@ -59,8 +59,12 @@ class _OnboardingBiometricsScreenState
         setState(() => _error = 'Biometric authentication failed.');
         return;
       }
-      await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: true);
-      ref.read(onboardingControllerProvider.notifier).setBiometrics(enabled: true);
+      await ref
+          .read(biometricsEnabledProvider.notifier)
+          .setEnabled(enabled: true);
+      ref
+          .read(onboardingControllerProvider.notifier)
+          .setBiometrics(enabled: true);
       final state = ref.read(onboardingControllerProvider);
       final passphrase = state.passphrase;
       if (passphrase != null && passphrase.isNotEmpty) {
@@ -69,11 +73,19 @@ class _OnboardingBiometricsScreenState
         } catch (e) {
           // Keep state consistent: if we cannot wrap the passphrase, biometrics
           // cannot unlock the wallet, so roll back and surface a clear message.
-          await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: false);
-          ref.read(onboardingControllerProvider.notifier).setBiometrics(enabled: false);
+          await ref
+              .read(biometricsEnabledProvider.notifier)
+              .setEnabled(enabled: false);
+          ref
+              .read(onboardingControllerProvider.notifier)
+              .setBiometrics(enabled: false);
           try {
             await PassphraseCache.clear();
-          } catch (_) {}
+          } catch (clearError) {
+            debugPrint(
+              'Failed to clear passphrase cache after rollback: $clearError',
+            );
+          }
           if (mounted) {
             setState(() {
               _error =
@@ -106,25 +118,25 @@ class _OnboardingBiometricsScreenState
     });
 
     try {
-      try {
-        await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: false);
-      } catch (e) {
-        // Skip must remain non-blocking; proceed even if preference persistence
-        // fails on this device.
-        debugPrint('Failed to persist biometrics=false during onboarding skip: $e');
-      }
+      await ref
+          .read(biometricsEnabledProvider.notifier)
+          .setEnabled(enabled: false);
 
-      ref.read(onboardingControllerProvider.notifier).setBiometrics(enabled: false);
-
-      try {
-        await PassphraseCache.clear();
-      } catch (e) {
-        debugPrint('Failed to clear passphrase cache during onboarding skip: $e');
-      }
+      ref
+          .read(onboardingControllerProvider.notifier)
+          .setBiometrics(enabled: false);
 
       if (mounted) {
         _proceed();
       }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error =
+              'Unable to persist biometric preference right now. Please try again.';
+        });
+      }
+      debugPrint('Failed to complete onboarding biometric skip: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -135,7 +147,7 @@ class _OnboardingBiometricsScreenState
   void _proceed() {
     final state = ref.read(onboardingControllerProvider);
     ref.read(onboardingControllerProvider.notifier).nextStep();
-    
+
     // Route based on mode: create goes to backup warning, import shows birthday picker
     if (state.mode == OnboardingMode.create) {
       // For create mode, go to backup warning screen
@@ -227,8 +239,9 @@ class _OnboardingBiometricsScreenState
                     text: _isAvailable
                         ? 'Enable biometrics'
                         : 'Biometrics unavailable',
-                    onPressed:
-                        !_isAvailable || _isLoading ? null : _enableBiometrics,
+                    onPressed: !_isAvailable || _isLoading
+                        ? null
+                        : _enableBiometrics,
                     variant: PButtonVariant.primary,
                     size: PButtonSize.large,
                     isLoading: _isLoading,

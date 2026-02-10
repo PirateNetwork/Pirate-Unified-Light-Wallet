@@ -65,6 +65,8 @@
 	<!-- Privacy Descriptions -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Pirate Wallet needs network access to sync your blockchain data securely via Tor.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to unlock Pirate Wallet faster and protect sensitive actions.</string>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>Pirate Wallet does not track you. This permission is required by iOS but will never be used.</string>
 	

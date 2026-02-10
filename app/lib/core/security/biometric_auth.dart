@@ -2,6 +2,9 @@
 //
 // Uses local_auth package for fingerprint/Face ID/Touch ID
 
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -11,19 +14,47 @@ class BiometricAuth {
 
   /// Check if biometrics are available
   static Future<bool> isAvailable() async {
+    if (Platform.isLinux) {
+      // local_auth 3.x does not currently provide Linux support.
+      return false;
+    }
     try {
-      return await _auth.canCheckBiometrics || await _auth.isDeviceSupported();
+      final deviceSupported = await _auth.isDeviceSupported();
+      if (!deviceSupported) {
+        return false;
+      }
+      final canCheck = await _auth.canCheckBiometrics;
+      if (!canCheck) {
+        return false;
+      }
+      final enrolled = await _auth.getAvailableBiometrics();
+      return enrolled.isNotEmpty;
+    } on LocalAuthException catch (e) {
+      debugPrint(
+        'Biometric availability check failed (${e.code.name}): ${e.description ?? e}',
+      );
+      return false;
     } catch (e) {
+      debugPrint('Biometric availability check failed: $e');
       return false;
     }
   }
 
   /// Get available biometric types
   static Future<List<BiometricType>> getAvailableBiometrics() async {
+    if (Platform.isLinux) {
+      return const <BiometricType>[];
+    }
     try {
       return await _auth.getAvailableBiometrics();
+    } on LocalAuthException catch (e) {
+      debugPrint(
+        'Failed to query enrolled biometrics (${e.code.name}): ${e.description ?? e}',
+      );
+      return const <BiometricType>[];
     } catch (e) {
-      return [];
+      debugPrint('Failed to query enrolled biometrics: $e');
+      return const <BiometricType>[];
     }
   }
 
@@ -32,24 +63,45 @@ class BiometricAuth {
     String reason = 'Please authenticate to unlock wallet',
     bool biometricOnly = false,
   }) async {
+    if (Platform.isLinux) {
+      throw BiometricException(
+        'Biometric authentication is not supported on Linux builds yet.',
+      );
+    }
+
     try {
-      // local_auth 3.0.0 API - authenticate without options parameter
-      // The options parameter was removed in favor of direct named parameters
       return await _auth.authenticate(
         localizedReason: reason,
+        biometricOnly: biometricOnly,
+        persistAcrossBackgrounding: true,
+        sensitiveTransaction: true,
       );
-    } on PlatformException catch (e) {
-      // Handle specific errors
-      if (e.code == 'NotAvailable') {
-        throw BiometricException('Biometrics not available');
-      } else if (e.code == 'NotEnrolled') {
-        throw BiometricException('No biometrics enrolled');
-      } else if (e.code == 'LockedOut') {
-        throw BiometricException('Too many attempts, locked out');
+    } on LocalAuthException catch (e) {
+      if (_isUserCancellation(e.code)) {
+        return false;
       }
-      return false;
+      throw BiometricException(_messageForLocalAuthException(e));
+    } on PlatformException catch (e) {
+      // Compatibility fallback for platform implementations that still throw
+      // PlatformException directly.
+      final code = e.code.toLowerCase();
+      if (code.contains('cancel')) {
+        return false;
+      }
+      if (code.contains('notavailable') || code.contains('nohardware')) {
+        throw BiometricException('Biometric hardware is not available.');
+      }
+      if (code.contains('notenrolled')) {
+        throw BiometricException('No biometrics are enrolled on this device.');
+      }
+      if (code.contains('lockout')) {
+        throw BiometricException(
+          'Biometric authentication is locked. Unlock your device and try again.',
+        );
+      }
+      throw BiometricException(e.message ?? 'Biometric authentication failed.');
     } catch (e) {
-      return false;
+      throw BiometricException('Biometric authentication failed: $e');
     }
   }
 
@@ -95,15 +147,48 @@ class BiometricAuth {
         return 'Weak Biometric';
     }
   }
+
+  static bool _isUserCancellation(LocalAuthExceptionCode code) {
+    return code == LocalAuthExceptionCode.userCanceled ||
+        code == LocalAuthExceptionCode.systemCanceled ||
+        code == LocalAuthExceptionCode.timeout ||
+        code == LocalAuthExceptionCode.userRequestedFallback;
+  }
+
+  static String _messageForLocalAuthException(LocalAuthException error) {
+    switch (error.code) {
+      case LocalAuthExceptionCode.noBiometricHardware:
+      case LocalAuthExceptionCode.biometricHardwareTemporarilyUnavailable:
+        return 'Biometric hardware is not available.';
+      case LocalAuthExceptionCode.noBiometricsEnrolled:
+        return 'No biometrics are enrolled on this device.';
+      case LocalAuthExceptionCode.noCredentialsSet:
+        return 'Set up a device passcode/credentials first, then try again.';
+      case LocalAuthExceptionCode.temporaryLockout:
+      case LocalAuthExceptionCode.biometricLockout:
+        return 'Biometric authentication is locked. Unlock your device and try again.';
+      case LocalAuthExceptionCode.authInProgress:
+        return 'Another biometric authentication is already in progress.';
+      case LocalAuthExceptionCode.uiUnavailable:
+        return 'Biometric prompt is currently unavailable.';
+      case LocalAuthExceptionCode.deviceError:
+      case LocalAuthExceptionCode.unknownError:
+        return error.description ?? 'Biometric authentication failed.';
+      case LocalAuthExceptionCode.userCanceled:
+      case LocalAuthExceptionCode.systemCanceled:
+      case LocalAuthExceptionCode.timeout:
+      case LocalAuthExceptionCode.userRequestedFallback:
+        return 'Biometric authentication was cancelled.';
+    }
+  }
 }
 
 /// Biometric exception
 class BiometricException implements Exception {
   final String message;
-  
+
   BiometricException(this.message);
-  
+
   @override
   String toString() => 'BiometricException: $message';
 }
-

@@ -276,6 +276,17 @@ class MainActivity: FlutterFragmentActivity() {
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
+            if (requiresBiometric(alias)) {
+                fallbackBuilder.setUserAuthenticationRequired(true)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    fallbackBuilder.setUserAuthenticationParameters(
+                        0,
+                        KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL
+                    )
+                } else {
+                    fallbackBuilder.setUserAuthenticationValidityDurationSeconds(30)
+                }
+            }
             keyGenerator.init(fallbackBuilder.build())
         }
 
@@ -293,7 +304,26 @@ class MainActivity: FlutterFragmentActivity() {
 
     private fun setBiometricsEnabled(enabled: Boolean) {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        prefs.edit().putBoolean(PREFS_BIOMETRICS_ENABLED, enabled).apply()
+        val previous = prefs.getBoolean(PREFS_BIOMETRICS_ENABLED, false)
+        if (previous == enabled) {
+            return
+        }
+
+        val committed = prefs.edit().putBoolean(PREFS_BIOMETRICS_ENABLED, enabled).commit()
+        if (!committed) {
+            throw IllegalStateException("Failed to persist biometrics preference")
+        }
+
+        // Rotate the master key so biometric policy changes are enforced.
+        deleteSecretKey(MASTER_KEY_ALIAS)
+    }
+
+    private fun deleteSecretKey(alias: String) {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore")
+        keyStore.load(null)
+        if (keyStore.containsAlias(alias)) {
+            keyStore.deleteEntry(alias)
+        }
     }
 
     private fun encryptWithBiometric(alias: String, plaintext: ByteArray, result: MethodChannel.Result) {

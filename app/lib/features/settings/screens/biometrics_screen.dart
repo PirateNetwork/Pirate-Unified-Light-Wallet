@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/security/biometric_auth.dart';
+import '../../../core/security/passphrase_cache.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../features/settings/providers/preferences_providers.dart';
 import '../../../ui/molecules/p_card.dart';
@@ -52,7 +54,9 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
 
     try {
       if (!enable) {
-        await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: false);
+        await ref
+            .read(biometricsEnabledProvider.notifier)
+            .setEnabled(enabled: false);
         return;
       }
 
@@ -67,18 +71,148 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
         biometricOnly: true,
       );
       if (!authenticated) {
-        setState(() => _error = 'Biometric authentication failed.');
+        setState(() => _error = 'Biometric authentication was cancelled.');
         return;
       }
 
-      await ref.read(biometricsEnabledProvider.notifier).setEnabled(enabled: true);
+      await ref
+          .read(biometricsEnabledProvider.notifier)
+          .setEnabled(enabled: true);
+      final ready = await _ensurePassphraseCacheReady();
+      if (!ready) {
+        await ref
+            .read(biometricsEnabledProvider.notifier)
+            .setEnabled(enabled: false);
+        setState(() {
+          _error =
+              'Biometrics need your passphrase once to finish setup. Try enabling again.';
+        });
+        return;
+      }
+    } on BiometricException catch (e) {
+      setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Unable to update biometrics settings.');
+      setState(() => _error = 'Unable to update biometrics settings: $e');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<bool> _ensurePassphraseCacheReady() async {
+    if (await PassphraseCache.exists()) {
+      return true;
+    }
+
+    final passphrase = await _promptPassphraseForBiometrics();
+    if (passphrase == null || passphrase.isEmpty) {
+      return false;
+    }
+
+    final verified = await FfiBridge.verifyAppPassphrase(passphrase);
+    if (!verified) {
+      throw Exception('Passphrase verification failed.');
+    }
+
+    await PassphraseCache.store(passphrase);
+    return true;
+  }
+
+  Future<String?> _promptPassphraseForBiometrics() async {
+    final controller = TextEditingController();
+    String? errorText;
+    String? result;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: AppColors.backgroundElevated,
+              title: Text(
+                'Confirm passphrase',
+                style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Enter your passphrase once to finish biometric setup.',
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  TextField(
+                    controller: controller,
+                    obscureText: true,
+                    autofocus: true,
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Passphrase',
+                      hintStyle: AppTypography.body.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                      errorText: errorText,
+                    ),
+                    onSubmitted: (_) {
+                      final value = controller.text.trim();
+                      if (value.isEmpty) {
+                        setStateDialog(
+                          () => errorText = 'Passphrase is required.',
+                        );
+                        return;
+                      }
+                      result = value;
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final value = controller.text.trim();
+                    if (value.isEmpty) {
+                      setStateDialog(
+                        () => errorText = 'Passphrase is required.',
+                      );
+                      return;
+                    }
+                    result = value;
+                    Navigator.of(context).pop();
+                  },
+                  child: Text(
+                    'Confirm',
+                    style: AppTypography.bodyBold.copyWith(
+                      color: AppColors.accentPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+    return result;
   }
 
   @override
@@ -87,8 +221,9 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
     final typeLabels = _types
         .map(BiometricAuth.getBiometricName)
         .toList(growable: false);
-    final typeSummary =
-        typeLabels.isEmpty ? 'None detected' : typeLabels.join(', ');
+    final typeSummary = typeLabels.isEmpty
+        ? 'None detected'
+        : typeLabels.join(', ');
 
     return PScaffold(
       title: 'Biometrics',
@@ -103,15 +238,12 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-              PCard(
+            PCard(
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.fingerprint,
-                      color: AppColors.accentPrimary,
-                    ),
+                    Icon(Icons.fingerprint, color: AppColors.accentPrimary),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Column(
@@ -125,7 +257,9 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                           ),
                           const SizedBox(height: AppSpacing.xxs),
                           Text(
-                            _isAvailable ? 'Access your wallet faster' : typeSummary,
+                            _isAvailable
+                                ? 'Access your wallet faster'
+                                : typeSummary,
                             style: AppTypography.caption.copyWith(
                               color: AppColors.textSecondary,
                             ),
@@ -138,7 +272,9 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                       onChanged: !_isAvailable || _isLoading
                           ? null
                           : _toggleBiometrics,
-                      activeTrackColor: AppColors.accentPrimary.withValues(alpha: 0.4),
+                      activeTrackColor: AppColors.accentPrimary.withValues(
+                        alpha: 0.4,
+                      ),
                       activeThumbColor: AppColors.accentPrimary,
                     ),
                   ],

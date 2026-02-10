@@ -67,8 +67,8 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
       if (isDecoy) {
         try {
           await PassphraseCache.clear();
-        } catch (_) {
-          // Ignore; best-effort clear.
+        } catch (e) {
+          debugPrint('Failed to clear passphrase cache in decoy mode: $e');
         }
       } else {
         final biometricsEnabled = await _resolveBiometricsEnabled();
@@ -77,13 +77,33 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
           if (!hasWrapped) {
             try {
               await PassphraseCache.store(_passphraseController.text);
-            } catch (_) {
-              // Ignore; biometric wrap can be retried later.
+            } catch (e) {
+              debugPrint('Failed to initialize biometric passphrase cache: $e');
+              try {
+                await ref
+                    .read(biometricsEnabledProvider.notifier)
+                    .setEnabled(enabled: false);
+              } catch (disableError) {
+                debugPrint(
+                  'Failed to disable biometrics after cache init failure: $disableError',
+                );
+              }
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text(
+                      'Biometrics were turned off because secure setup failed. '
+                      'Re-enable in Settings after retrying.',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             }
           }
         }
       }
-      
+
       await _navigateAfterUnlock();
     } catch (e) {
       if (mounted) {
@@ -104,6 +124,9 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
 
     final hasWrapped = await PassphraseCache.exists();
     if (!hasWrapped) {
+      debugPrint(
+        'Biometrics enabled but no cached passphrase is available for auto-unlock.',
+      );
       return;
     }
 
@@ -119,14 +142,13 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
       return await ref
           .read(biometricsEnabledProvider.notifier)
           .readPersistedValue();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Failed to resolve persisted biometrics preference: $e');
       return false;
     }
   }
 
-  Future<void> _unlockWithBiometrics({
-    bool silentFailure = false,
-  }) async {
+  Future<void> _unlockWithBiometrics({bool silentFailure = false}) async {
     if (_isBiometricUnlocking) return;
     setState(() {
       _isBiometricUnlocking = true;
@@ -149,7 +171,14 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
       String? cached;
       try {
         cached = await PassphraseCache.read();
-      } catch (_) {
+      } catch (e) {
+        debugPrint('Failed to read cached passphrase for biometric unlock: $e');
+        if (mounted && !silentFailure) {
+          setState(() {
+            _error =
+                'Secure biometric data is unavailable. Use passphrase unlock.';
+          });
+        }
         return;
       }
 
@@ -197,7 +226,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
         _tryAutoBiometricUnlock();
       }
     });
-    
+
     return PScaffold(
       title: 'Unlock Wallet',
       appBar: const PAppBar(
@@ -210,22 +239,23 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
         builder: (context, constraints) {
           final size = MediaQuery.of(context).size;
           final isCompactHeight = constraints.maxHeight < 760;
-          final verticalPadding =
-              isCompactHeight ? AppSpacing.lg : AppSpacing.xl;
+          final verticalPadding = isCompactHeight
+              ? AppSpacing.lg
+              : AppSpacing.xl;
           final basePadding = AppSpacing.screenPadding(
             size.width,
             vertical: verticalPadding,
           );
           final contentPadding = basePadding.copyWith(
-            bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
+            bottom:
+                basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
           );
           final iconSize = isCompactHeight ? 52.0 : 64.0;
-          final iconSpacing =
-              isCompactHeight ? AppSpacing.lg : AppSpacing.xl;
-          final titleSpacing =
-              isCompactHeight ? AppSpacing.xs : AppSpacing.sm;
-          final sectionSpacing =
-              isCompactHeight ? AppSpacing.lg : AppSpacing.xl;
+          final iconSpacing = isCompactHeight ? AppSpacing.lg : AppSpacing.xl;
+          final titleSpacing = isCompactHeight ? AppSpacing.xs : AppSpacing.sm;
+          final sectionSpacing = isCompactHeight
+              ? AppSpacing.lg
+              : AppSpacing.xl;
           return CustomScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             slivers: [

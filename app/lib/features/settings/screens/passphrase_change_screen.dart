@@ -15,18 +15,9 @@ import '../../../ui/atoms/p_input.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 
-enum _PassphraseStrength {
-  weak,
-  fair,
-  good,
-  strong,
-  veryStrong,
-}
+enum _PassphraseStrength { weak, fair, good, strong, veryStrong }
 
-enum _AuthMethod {
-  passphrase,
-  biometrics,
-}
+enum _AuthMethod { passphrase, biometrics }
 
 class PassphraseChangeScreen extends ConsumerStatefulWidget {
   const PassphraseChangeScreen({super.key});
@@ -168,8 +159,9 @@ class _PassphraseChangeScreenState
     });
 
     try {
-      final isValid =
-          await FfiBridge.verifyAppPassphrase(_currentController.text.trim());
+      final isValid = await FfiBridge.verifyAppPassphrase(
+        _currentController.text.trim(),
+      );
       if (!isValid) {
         setState(() => _error = 'Current passphrase is incorrect.');
         return;
@@ -201,7 +193,7 @@ class _PassphraseChangeScreenState
         biometricOnly: true,
       );
       if (!authenticated) {
-        setState(() => _error = 'Biometric authentication failed.');
+        setState(() => _error = 'Biometric authentication was cancelled.');
         return;
       }
 
@@ -209,8 +201,10 @@ class _PassphraseChangeScreenState
         _authenticated = true;
         _authMethod = _AuthMethod.biometrics;
       });
+    } on BiometricException catch (e) {
+      setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Biometric authentication failed.');
+      setState(() => _error = 'Biometric authentication failed: $e');
     } finally {
       if (mounted) {
         setState(() => _isVerifying = false);
@@ -275,10 +269,9 @@ class _PassphraseChangeScreenState
   @override
   Widget build(BuildContext context) {
     final biometricsEnabled = ref.watch(biometricsEnabledProvider);
-    final biometricAvailable = ref.watch(biometricAvailabilityProvider).maybeWhen(
-      data: (available) => available,
-      orElse: () => false,
-    );
+    final biometricAvailable = ref
+        .watch(biometricAvailabilityProvider)
+        .maybeWhen(data: (available) => available, orElse: () => false);
     final showBiometric = biometricsEnabled && biometricAvailable;
     final basePadding = AppSpacing.screenPadding(
       MediaQuery.of(context).size.width,
@@ -303,9 +296,7 @@ class _PassphraseChangeScreenState
             if (!_authenticated) ...[
               Text(
                 'Verify your identity',
-                style: AppTypography.h2.copyWith(
-                  color: AppColors.textPrimary,
-                ),
+                style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
@@ -361,9 +352,7 @@ class _PassphraseChangeScreenState
             ] else ...[
               Text(
                 'Choose a new passphrase',
-                style: AppTypography.h2.copyWith(
-                  color: AppColors.textPrimary,
-                ),
+                style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
@@ -426,8 +415,8 @@ class _PassphraseChangeScreenState
                 obscureText: _obscureConfirm,
                 errorText:
                     _confirmController.text.isNotEmpty && !_passwordsMatch
-                        ? 'Passphrases do not match'
-                        : null,
+                    ? 'Passphrases do not match'
+                    : null,
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscureConfirm
