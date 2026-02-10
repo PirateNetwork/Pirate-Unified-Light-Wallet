@@ -33,6 +33,13 @@ SNOWFLAKE_COMMIT="${SNOWFLAKE_COMMIT:-6472bd86cdd5d13fe61dc851edcf83b03df7bda1}"
 OBFS4_REPO_URL="${OBFS4_REPO_URL:-https://gitlab.com/yawning/obfs4.git}"
 OBFS4_REF="${OBFS4_REF:-obfs4proxy-0.0.14}"
 OBFS4_COMMIT="${OBFS4_COMMIT:-336a71d6e4cfd2d33e9c57797828007ad74975e9}"
+SNOWFLAKE_GO_PACKAGE="${SNOWFLAKE_GO_PACKAGE:-gitlab.torproject.org/tpo/anti-censorship/pluggable-transports/snowflake/v2/client}"
+SNOWFLAKE_GO_VERSION="${SNOWFLAKE_GO_VERSION:-$SNOWFLAKE_REF}"
+OBFS4_GO_PACKAGE="${OBFS4_GO_PACKAGE:-gitlab.com/yawning/obfs4.git/obfs4proxy}"
+OBFS4_GO_VERSION="${OBFS4_GO_VERSION:-$OBFS4_COMMIT}"
+TOR_PT_GO_INSTALL_FALLBACK="${TOR_PT_GO_INSTALL_FALLBACK:-1}"
+FETCH_RETRY_ATTEMPTS="${FETCH_RETRY_ATTEMPTS:-4}"
+FETCH_RETRY_DELAY_SECONDS="${FETCH_RETRY_DELAY_SECONDS:-3}"
 
 log() {
   echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
@@ -69,6 +76,36 @@ esac
 
 have_cmd() {
   command -v "$1" >/dev/null 2>&1
+}
+
+retry_cmd() {
+  local attempts="$1"
+  local delay="$2"
+  local description="$3"
+  shift 3
+
+  local try=1
+  local current_delay="$delay"
+  while true; do
+    if "$@"; then
+      return 0
+    fi
+    if (( try >= attempts )); then
+      warn "$description failed after ${attempts} attempts."
+      return 1
+    fi
+    warn "$description failed (attempt ${try}/${attempts}); retrying in ${current_delay}s..."
+    sleep "$current_delay"
+    try=$((try + 1))
+    current_delay=$((current_delay * 2))
+  done
+}
+
+clone_repo() {
+  local url="$1"
+  local dest="$2"
+  rm -rf "$dest"
+  git clone "$url" "$dest"
 }
 
 normalize_mode() {
@@ -179,12 +216,12 @@ ensure_repo() {
 
   if [[ ! -d "$dest/.git" ]]; then
     log "Cloning $url"
-    if ! git clone "$url" "$dest"; then
+    if ! retry_cmd "$FETCH_RETRY_ATTEMPTS" "$FETCH_RETRY_DELAY_SECONDS" "clone $url" clone_repo "$url" "$dest"; then
       warn "Failed to clone $url"
       return 1
     fi
   fi
-  if ! (cd "$dest" && GIT_TERMINAL_PROMPT=0 git fetch --depth 1 origin "$commit" >/dev/null 2>&1); then
+  if ! (cd "$dest" && retry_cmd "$FETCH_RETRY_ATTEMPTS" "$FETCH_RETRY_DELAY_SECONDS" "fetch $commit from $url" env GIT_TERMINAL_PROMPT=0 git fetch --depth 1 origin "$commit" >/dev/null 2>&1); then
     warn "Failed to fetch $commit from $url"
     return 1
   fi
@@ -224,6 +261,90 @@ go_build_pt() {
   fi
   [[ -f "$output" ]] || return 1
   chmod +x "$output" || return 1
+}
+
+go_install_pt_binary() {
+  local package="$1"
+  local version="$2"
+  local binary_name="$3"
+  local goos="$4"
+  local goarch="$5"
+  local output="$6"
+
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  local gobin="$tmpdir/bin"
+  mkdir -p "$gobin"
+
+  if ! (cd "$tmpdir" && \
+    GOBIN="$gobin" CGO_ENABLED=0 GOWORK=off GOOS="$goos" GOARCH="$goarch" \
+    go install -trimpath -buildvcs=false -ldflags "-s -w -buildid=" \
+    "${package}@${version}"); then
+    rm -rf "$tmpdir"
+    return 1
+  fi
+
+  local built="$gobin/$binary_name"
+  if [[ ! -f "$built" && -f "$gobin/${binary_name}.exe" ]]; then
+    built="$gobin/${binary_name}.exe"
+  fi
+  [[ -f "$built" ]] || {
+    warn "Expected $binary_name from ${package}@${version}, but no binary was produced."
+    rm -rf "$tmpdir"
+    return 1
+  }
+
+  cp "$built" "$output"
+  chmod +x "$output"
+  rm -rf "$tmpdir"
+}
+
+build_tor_pt_via_go_install() {
+  if [[ "$TOR_PT_GO_INSTALL_FALLBACK" == "0" ]]; then
+    return 1
+  fi
+  if ! have_cmd go; then
+    return 1
+  fi
+
+  mkdir -p "$TOR_PT_DIR/$PLATFORM"
+
+  if [[ "$PLATFORM" == "linux" ]]; then
+    local goarch
+    case "$ARCH_LABEL" in
+      x86_64) goarch="amd64" ;;
+      aarch64) goarch="arm64" ;;
+      *) error "Unsupported arch for PT build: $ARCH_LABEL" ;;
+    esac
+    local label
+    label="$(go_arch_label "$goarch")"
+    log "Building Tor pluggable transports via Go module fallback (linux/$label)"
+    if ! go_install_pt_binary "$SNOWFLAKE_GO_PACKAGE" "$SNOWFLAKE_GO_VERSION" "client" "linux" "$goarch" "$TOR_PT_DIR/$PLATFORM/snowflake-client-$label"; then
+      return 1
+    fi
+    if ! go_install_pt_binary "$OBFS4_GO_PACKAGE" "$OBFS4_GO_VERSION" "obfs4proxy" "linux" "$goarch" "$TOR_PT_DIR/$PLATFORM/obfs4proxy-$label"; then
+      return 1
+    fi
+    return 0
+  fi
+
+  if [[ "$PLATFORM" == "macos" ]]; then
+    local goarch
+    for goarch in amd64 arm64; do
+      local label
+      label="$(go_arch_label "$goarch")"
+      log "Building Tor pluggable transports via Go module fallback (darwin/$label)"
+      if ! go_install_pt_binary "$SNOWFLAKE_GO_PACKAGE" "$SNOWFLAKE_GO_VERSION" "client" "darwin" "$goarch" "$TOR_PT_DIR/$PLATFORM/snowflake-client-$label"; then
+        return 1
+      fi
+      if ! go_install_pt_binary "$OBFS4_GO_PACKAGE" "$OBFS4_GO_VERSION" "obfs4proxy" "darwin" "$goarch" "$TOR_PT_DIR/$PLATFORM/obfs4proxy-$label"; then
+        return 1
+      fi
+    done
+    return 0
+  fi
+
+  return 1
 }
 
 build_tor_pt_from_source() {
@@ -410,8 +531,12 @@ fetch_tor_pt() {
     log "Tor pluggable transports built from source."
     return 0
   fi
+  if build_tor_pt_via_go_install; then
+    log "Tor pluggable transports built via Go module fallback."
+    return 0
+  fi
   if tor_pt_source_only; then
-    error "Tor PT source build requested but failed. Install Go and Git or set TOR_PT_SOURCE=off."
+    error "Tor PT source build requested but failed. Check upstream availability or set TOR_PT_SOURCE=off."
   fi
 
   local tmpdir
