@@ -5,7 +5,6 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/ffi/ffi_bridge.dart';
@@ -23,14 +22,12 @@ import 'core/providers/rust_init_provider.dart';
 SingleInstanceLock? _singleInstanceLock;
 
 bool _appInitialized = false;
+const Size _desktopInitialSize = Size(1100, 640);
+const Size _desktopMinimumSize = Size(960, 600);
 
 void main() async {
   if (_appInitialized) {
-    runApp(
-      const ProviderScope(
-        child: PirateWalletApp(),
-      ),
-    );
+    runApp(const ProviderScope(child: PirateWalletApp()));
     return;
   }
   _appInitialized = true;
@@ -55,35 +52,23 @@ void main() async {
     final useCustomTitleBar = shouldUseCustomTitleBar();
 
     final windowOptions = WindowOptions(
-      size: Size(1200, 800),
-      minimumSize: Size(960, 600),
+      size: _desktopInitialSize,
+      minimumSize: _desktopMinimumSize,
       center: true,
       title: 'Pirate Wallet',
       backgroundColor: Color(0xFF0B0F14),
-      titleBarStyle:
-          useCustomTitleBar ? TitleBarStyle.hidden : TitleBarStyle.normal,
+      titleBarStyle: useCustomTitleBar
+          ? TitleBarStyle.hidden
+          : TitleBarStyle.normal,
     );
 
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
       await windowManager.focus();
     });
-
-    // Bitsdojo window sizing as an extra safety to surface the window
-    doWhenWindowReady(() {
-      appWindow.minSize = const Size(960, 600);
-      appWindow.size = const Size(1200, 800);
-      appWindow.alignment = Alignment.center;
-      appWindow.title = 'Pirate Wallet';
-      appWindow.show();
-    });
   }
 
-  runApp(
-    const ProviderScope(
-      child: PirateWalletApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: PirateWalletApp()));
 }
 
 void _installFlutterErrorLogging(String logPath) {
@@ -117,6 +102,7 @@ void _installFlutterErrorLogging(String logPath) {
     return true;
   };
 }
+
 class PirateWalletApp extends ConsumerStatefulWidget {
   const PirateWalletApp({super.key});
 
@@ -210,7 +196,6 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     }
   }
 
-
   @override
   void onWindowFocus() {
     FfiBridge.setAppActive(true);
@@ -233,8 +218,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
   Future<void> _shutdownTransports() async {
     try {
-      await FfiBridge.shutdownTransport()
-          .timeout(const Duration(seconds: 2));
+      await FfiBridge.shutdownTransport().timeout(const Duration(seconds: 2));
     } catch (_) {}
   }
 
@@ -256,52 +240,51 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeModeSetting = ref.watch(appThemeModeProvider);
-    
+
     // Determine brightness based on theme mode
     // For system mode, we'll sync in the builder after MaterialApp is built
     final brightness = themeModeSetting.themeMode == ThemeMode.dark
         ? Brightness.dark
         : themeModeSetting.themeMode == ThemeMode.light
-            ? Brightness.light
-            : Brightness.dark; // Default to dark, will be updated in builder for system mode
+        ? Brightness.light
+        : Brightness
+              .dark; // Default to dark, will be updated in builder for system mode
     AppColors.syncWithTheme(brightness);
 
     return MaterialApp.router(
       key: ValueKey(themeModeSetting.themeMode),
       title: 'Pirate Wallet',
       debugShowCheckedModeBanner: false,
-      
+
       // Theme
       theme: PTheme.light(),
       darkTheme: PTheme.dark(),
       themeMode: themeModeSetting.themeMode,
 
-        builder: (context, child) {
-          // Sync colors with current theme brightness on every build
-          // This ensures AppColors stays in sync when theme changes
-          // For system mode, this will use the actual resolved brightness
-          final currentBrightness = Theme.of(context).brightness;
-          AppColors.syncWithTheme(currentBrightness);
+      builder: (context, child) {
+        // Sync colors with current theme brightness on every build
+        // This ensures AppColors stays in sync when theme changes
+        // For system mode, this will use the actual resolved brightness
+        final currentBrightness = Theme.of(context).brightness;
+        AppColors.syncWithTheme(currentBrightness);
 
-          if (Platform.isWindows) {
-            _syncWindowBackground(AppColors.backgroundBase);
-          }
-          
-          // Return a widget that forces rebuild when theme changes
-          // This ensures all child widgets rebuild when AppColors changes
-          return Theme(
+        if (Platform.isWindows) {
+          _syncWindowBackground(AppColors.backgroundBase);
+        }
+
+        // Return a widget that forces rebuild when theme changes
+        // This ensures all child widgets rebuild when AppColors changes
+        return Theme(
           data: Theme.of(context),
           child: child ?? const SizedBox.shrink(),
         );
       },
-      
+
       // Routing
       routerConfig: router,
-      
+
       // Locale
-      supportedLocales: const [
-        Locale('en', 'US'),
-      ],
+      supportedLocales: const [Locale('en', 'US')],
     );
   }
 }
