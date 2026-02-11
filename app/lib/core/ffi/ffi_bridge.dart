@@ -1478,14 +1478,14 @@ class FfiBridge {
         // Get real sync status
         final status = await syncStatus(id);
 
-        // Auto-restart sync if it stopped while still behind target
-        if (status.targetHeight > BigInt.zero &&
-            status.localHeight < status.targetHeight) {
+        // Auto-restart sync whenever it stops after initial height discovery.
+        // Even when local == target, the running sync loop is what keeps the
+        // wallet tracking new blocks as they arrive.
+        if (!isRunning && status.targetHeight > BigInt.zero) {
           final now = DateTime.now();
-          final shouldRestart = !isRunning &&
-              (lastRestartAttempt == null ||
-                  now.difference(lastRestartAttempt!) >
-                      const Duration(minutes: 2));
+          final shouldRestart = lastRestartAttempt == null ||
+              now.difference(lastRestartAttempt!) >
+                  const Duration(minutes: 2);
           if (shouldRestart) {
             lastRestartAttempt = now;
             try {

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/ffi/generated/models.dart' show SyncMode;
 import '../../../core/providers/wallet_providers.dart';
 
 /// Tor status details for UI.
@@ -272,8 +273,8 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> _applyTunnel(TransportConfig config) async {
+    final shouldResumeSync = await _pauseActiveSync();
     try {
-      await _pauseActiveSync();
       final mode = config.mode.toLowerCase();
       final tunnelNotifier = ref.read(tunnelModeProvider.notifier);
       if (mode != 'i2p') {
@@ -304,6 +305,10 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
       await tunnelNotifier.setTor();
     } catch (_) {
       // Ignore errors when the FFI layer isn't ready yet.
+    } finally {
+      if (shouldResumeSync) {
+        await _resumeActiveSync();
+      }
     }
   }
 
@@ -360,11 +365,36 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
     );
   }
 
-  Future<void> _pauseActiveSync() async {
+  Future<bool> _pauseActiveSync() async {
+    final walletId = ref.read(activeWalletProvider);
+    if (walletId == null) return false;
+
+    var wasRunning = false;
+    try {
+      wasRunning = await FfiBridge.isSyncRunning(walletId);
+    } catch (_) {
+      // If we cannot query sync state, assume sync should be resumed.
+      wasRunning = true;
+    }
+
+    if (wasRunning) {
+      try {
+        await FfiBridge.cancelSync(walletId);
+      } catch (_) {}
+    }
+
+    ref
+      ..invalidate(syncStatusProvider)
+      ..invalidate(syncProgressStreamProvider)
+      ..invalidate(isSyncRunningProvider);
+    return wasRunning;
+  }
+
+  Future<void> _resumeActiveSync() async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) return;
     try {
-      await FfiBridge.cancelSync(walletId);
+      await FfiBridge.startSync(walletId, SyncMode.compact);
     } catch (_) {}
     ref
       ..invalidate(syncStatusProvider)
