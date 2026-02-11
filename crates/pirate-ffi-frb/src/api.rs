@@ -3966,6 +3966,89 @@ pub fn build_sweep_tx(
     )
 }
 
+fn sapling_anchor_for_selectable_note(
+    note: &pirate_core::selection::SelectableNote,
+) -> Option<[u8; 32]> {
+    if note.note_type != pirate_core::selection::NoteType::Sapling {
+        return None;
+    }
+    let merkle_path = note.merkle_path.as_ref()?;
+    let sapling_note = note.note.as_ref()?;
+    let leaf = zcash_primitives::sapling::Node::from_cmu(&sapling_note.cmu());
+    Some(merkle_path.root(leaf).to_bytes())
+}
+
+fn align_sapling_anchor_group(
+    notes: Vec<pirate_core::selection::SelectableNote>,
+    required_total: u64,
+) -> (
+    Vec<pirate_core::selection::SelectableNote>,
+    usize,
+    usize,
+    Option<String>,
+) {
+    let mut anchor_stats: HashMap<[u8; 32], (u128, usize, u64)> = HashMap::new();
+    for note in &notes {
+        if let Some(anchor) = sapling_anchor_for_selectable_note(note) {
+            let entry = anchor_stats.entry(anchor).or_insert((0u128, 0usize, 0u64));
+            entry.0 = entry.0.saturating_add(note.value as u128);
+            entry.1 += 1;
+            entry.2 = entry.2.max(note.height);
+        }
+    }
+
+    if anchor_stats.len() <= 1 {
+        return (notes, anchor_stats.len(), 0, None);
+    }
+
+    let mut chosen_anchor: Option<[u8; 32]> = None;
+    let mut chosen_metric: Option<(u8, u64, u128, usize)> = None;
+    for (anchor, (total, count, max_height)) in &anchor_stats {
+        let sufficient = if *total >= required_total as u128 {
+            1u8
+        } else {
+            0u8
+        };
+        let metric = (sufficient, *max_height, *total, *count);
+        let replace = match chosen_metric {
+            Some(current) => metric > current,
+            None => true,
+        };
+        if replace {
+            chosen_metric = Some(metric);
+            chosen_anchor = Some(*anchor);
+        }
+    }
+
+    let Some(chosen_anchor) = chosen_anchor else {
+        return (notes, anchor_stats.len(), 0, None);
+    };
+
+    let mut filtered = 0usize;
+    let mut aligned_notes = Vec::with_capacity(notes.len());
+    for note in notes {
+        if note.note_type != pirate_core::selection::NoteType::Sapling {
+            aligned_notes.push(note);
+            continue;
+        }
+        let keep = sapling_anchor_for_selectable_note(&note)
+            .map(|anchor| anchor == chosen_anchor)
+            .unwrap_or(false);
+        if keep {
+            aligned_notes.push(note);
+        } else {
+            filtered += 1;
+        }
+    }
+
+    (
+        aligned_notes,
+        anchor_stats.len(),
+        filtered,
+        Some(hex::encode(chosen_anchor)),
+    )
+}
+
 /// Sign pending transaction
 ///
 /// Loads wallet from secure storage, performs note selection,
@@ -4098,6 +4181,27 @@ fn sign_tx_internal(
         "load_selectable_notes_ok",
         &format!("notes={}", selectable_notes.len()),
     );
+    let required_total = pending
+        .total_amount
+        .checked_add(pending.fee)
+        .ok_or_else(|| anyhow!("Amount + fee overflow"))?;
+    let (
+        aligned_selectable_notes,
+        sapling_anchor_groups,
+        sapling_anchor_filtered,
+        sapling_anchor_chosen_hex,
+    ) = align_sapling_anchor_group(selectable_notes, required_total);
+    selectable_notes = aligned_selectable_notes;
+    if sapling_anchor_groups > 1 {
+        let detail = format!(
+            "groups={},filtered={},required={},chosen={}",
+            sapling_anchor_groups,
+            sapling_anchor_filtered,
+            required_total,
+            sapling_anchor_chosen_hex.as_deref().unwrap_or("unknown"),
+        );
+        log_step("sapling_anchor_group_aligned", &detail);
+    }
     if signing_key_id.is_some()
         && orchard_extsk_opt.is_none()
         && selectable_notes
@@ -4255,10 +4359,6 @@ fn sign_tx_internal(
     let mut note_refs: Vec<&pirate_core::selection::SelectableNote> =
         selectable_notes.iter().collect();
     note_refs.sort_by(|a, b| a.value.cmp(&b.value));
-    let required_total = pending
-        .total_amount
-        .checked_add(pending.fee)
-        .ok_or_else(|| anyhow!("Amount + fee overflow"))?;
     let mut total_selected = 0u64;
     let mut extra_selected = 0usize;
     let mut has_orchard_spends = false;
