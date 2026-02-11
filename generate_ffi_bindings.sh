@@ -22,7 +22,8 @@ cd "$PROJECT_ROOT"
 if [ -n "${FLUTTER_PATH:-}" ] && [ -x "$FLUTTER_PATH/flutter" ]; then
     : # Use provided FLUTTER_PATH
 elif command -v flutter &> /dev/null; then
-    FLUTTER_PATH="$(dirname "$(command -v flutter)")"
+    FLUTTER_BIN="$(readlink -f "$(command -v flutter)")"
+    FLUTTER_PATH="$(dirname "$FLUTTER_BIN")"
 else
     shopt -s nullglob
     for candidate in \
@@ -47,8 +48,14 @@ if [ -z "${FLUTTER_PATH:-}" ] || [ ! -x "$FLUTTER_PATH/flutter" ]; then
     exit 1
 fi
 
-# Add Flutter to PATH
-export PATH="$FLUTTER_PATH:$PATH"
+# Add Flutter + Dart SDK to PATH
+FLUTTER_SDK_ROOT="$(cd "$FLUTTER_PATH/.." && pwd)"
+DART_SDK_BIN="$FLUTTER_SDK_ROOT/bin/cache/dart-sdk/bin"
+if [ -x "$DART_SDK_BIN/dart" ]; then
+    export PATH="$DART_SDK_BIN:$FLUTTER_PATH:$PATH"
+else
+    export PATH="$FLUTTER_PATH:$PATH"
+fi
 
 # Verify Flutter is accessible
 if ! command -v flutter &> /dev/null; then
@@ -64,6 +71,15 @@ if [ ! -f "$FRB_CODEGEN" ]; then
     echo -e "${YELLOW}⚠️  flutter_rust_bridge_codegen not found, installing...${NC}"
     cargo install flutter_rust_bridge_codegen --locked --version "$FRB_VERSION"
     FRB_CODEGEN="$CARGO_BIN/flutter_rust_bridge_codegen"
+fi
+
+# Verify Dart is accessible (FRB uses `dart fix` and `dart format` internally)
+if ! command -v dart &> /dev/null; then
+    echo -e "${RED}❌ Dart SDK not found in PATH${NC}"
+    echo "   Expected at: $DART_SDK_BIN/dart"
+    echo "   This environment can run flutter, but FRB post-processing needs dart."
+    echo "   Set FLUTTER_PATH correctly or add Flutter's dart-sdk/bin to PATH."
+    exit 1
 fi
 
 # Verify Flutter works
@@ -138,7 +154,6 @@ else
 fi
 
 echo -e "${GREEN}✅ Done!${NC}"
-
 
 
 
