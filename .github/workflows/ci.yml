@@ -573,6 +573,11 @@ jobs:
         run: |
           REPRODUCIBLE=1 ./scripts/build-android.sh bundle
 
+      - name: Reclaim workspace disk
+        run: |
+          chmod +x scripts/cleanup-build-intermediates.sh
+          ./scripts/cleanup-build-intermediates.sh
+
       - name: Generate SBOM
         run: |
           chmod +x scripts/generate-sbom.sh
@@ -699,6 +704,11 @@ jobs:
           (cd build/ios/iphonesimulator && zip -X -r "$ZIP_PATH" Runner.app)
           (cd "$OUTPUT_DIR" && shasum -a 256 "$(basename "$ZIP_PATH")" > "$(basename "$ZIP_PATH").sha256")
 
+      - name: Reclaim workspace disk
+        run: |
+          chmod +x scripts/cleanup-build-intermediates.sh
+          ./scripts/cleanup-build-intermediates.sh
+
       - name: Generate SBOM
         run: |
           chmod +x scripts/generate-sbom.sh
@@ -792,6 +802,12 @@ jobs:
         run: |
           chmod +x scripts/build-windows.sh
           REPRODUCIBLE=1 ./scripts/build-windows.sh
+
+      - name: Reclaim workspace disk
+        shell: bash
+        run: |
+          chmod +x scripts/cleanup-build-intermediates.sh
+          ./scripts/cleanup-build-intermediates.sh
 
       - name: Generate SBOM
         shell: bash
@@ -888,6 +904,11 @@ jobs:
           for dmg in dist/macos/*.dmg; do
             scripts/verify-macos-dmg.sh "$dmg"
           done
+
+      - name: Reclaim workspace disk
+        run: |
+          chmod +x scripts/cleanup-build-intermediates.sh
+          ./scripts/cleanup-build-intermediates.sh
 
       - name: Generate SBOM
         run: |
@@ -999,6 +1020,11 @@ jobs:
       - name: Build Debian package
         run: |
           REPRODUCIBLE=1 ./scripts/build-linux.sh deb
+
+      - name: Reclaim workspace disk
+        run: |
+          chmod +x scripts/cleanup-build-intermediates.sh
+          ./scripts/cleanup-build-intermediates.sh
 
       - name: Generate SBOM
         run: |

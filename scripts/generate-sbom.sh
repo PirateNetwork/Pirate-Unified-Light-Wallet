@@ -71,19 +71,65 @@ log "Generating Rust SBOM..."
 
 cd "$PROJECT_ROOT/crates"
 
-# Check if cargo-auditable is installed
-if ! command -v cargo-auditable &> /dev/null; then
+ensure_rust_audit_info() {
+    if command -v rust-audit-info &> /dev/null; then
+        return 0
+    fi
+    log "Installing rust-audit-info..."
+    cargo install rust-audit-info --locked
+    command -v rust-audit-info &> /dev/null || error "rust-audit-info installation failed"
+}
+
+ensure_cargo_auditable() {
+    if command -v cargo-auditable &> /dev/null; then
+        return 0
+    fi
     log "Installing cargo-auditable..."
     cargo install cargo-auditable --locked --version "$CARGO_AUDITABLE_VERSION"
-fi
+}
 
-# Generate auditable build metadata
-cargo auditable build --release --locked
+find_rust_audit_target() {
+    local target_root="$PROJECT_ROOT/crates/target"
+    [[ -d "$target_root" ]] || return 1
 
-# Extract SBOM from binary
-if command -v rust-audit-info &> /dev/null; then
-    rust-audit-info "$PROJECT_ROOT/crates/target/release/pirate-ffi-frb" \
-        > "$OUTPUT_DIR/rust-sbom.json" 2>/dev/null || true
+    while IFS= read -r -d '' candidate; do
+        case "$candidate" in
+            */release/*)
+                echo "$candidate"
+                return 0
+                ;;
+        esac
+    done < <(
+        find "$target_root" -type f \
+            \( -name "pirate-ffi-frb" \
+            -o -name "libpirate_ffi_frb.so" \
+            -o -name "libpirate_ffi_frb.dylib" \
+            -o -name "libpirate_ffi_frb.a" \
+            -o -name "pirate_ffi_frb.dll" \) \
+            -print0 2>/dev/null
+    )
+
+    return 1
+}
+
+extract_rust_sbom() {
+    local target_file="$1"
+    log "Extracting Rust audit info from: $target_file"
+    rust-audit-info "$target_file" > "$OUTPUT_DIR/rust-sbom.json"
+}
+
+ensure_rust_audit_info
+
+RUST_TARGET_FILE="$(find_rust_audit_target || true)"
+if [[ -n "${RUST_TARGET_FILE:-}" ]] && extract_rust_sbom "$RUST_TARGET_FILE"; then
+    log "Rust audit info extracted without rebuild."
+else
+    warn "Rust audit extraction failed or no compatible artifact found. Triggering cargo auditable rebuild..."
+    ensure_cargo_auditable
+    cargo auditable build --release --locked
+    RUST_TARGET_FILE="$(find_rust_audit_target || true)"
+    [[ -n "${RUST_TARGET_FILE:-}" ]] || error "No compatible Rust artifact found after cargo auditable rebuild"
+    extract_rust_sbom "$RUST_TARGET_FILE" || error "rust-audit-info failed after cargo auditable rebuild"
 fi
 
 # Also generate Cargo.lock SBOM
