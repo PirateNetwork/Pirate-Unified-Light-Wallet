@@ -87,6 +87,7 @@ pub fn orchard_params() -> &'static OrchardParams {
 /// This is less efficient but required by the new API.
 pub fn sapling_prover() -> LocalTxProver {
     let (spend_path, output_path) = sapling_param_paths();
+    ensure_sapling_param_files(&spend_path, &output_path);
     LocalTxProver::new(&spend_path, &output_path)
 }
 
@@ -99,13 +100,28 @@ fn sapling_param_paths() -> (PathBuf, PathBuf) {
             let spend_path = temp_dir.join(format!("pirate-sapling-spend-{}.params", pid));
             let output_path = temp_dir.join(format!("pirate-sapling-output-{}.params", pid));
 
-            let (spend_bytes, output_bytes) = wagyu_zcash_parameters::load_sapling_parameters();
-            write_params_file(&spend_path, &spend_bytes);
-            write_params_file(&output_path, &output_bytes);
+            ensure_sapling_param_files(&spend_path, &output_path);
 
             (spend_path, output_path)
         })
         .clone()
+}
+
+fn ensure_sapling_param_files(spend_path: &PathBuf, output_path: &PathBuf) {
+    let (spend_bytes, output_bytes) = wagyu_zcash_parameters::load_sapling_parameters();
+    ensure_params_file(spend_path, &spend_bytes);
+    ensure_params_file(output_path, &output_bytes);
+}
+
+fn ensure_params_file(path: &PathBuf, bytes: &[u8]) {
+    let expected_len = bytes.len() as u64;
+    let needs_write = match std::fs::metadata(path) {
+        Ok(meta) => meta.len() != expected_len,
+        Err(_) => true,
+    };
+    if needs_write {
+        write_params_file(path, bytes);
+    }
 }
 
 fn write_params_file(path: &PathBuf, bytes: &[u8]) {

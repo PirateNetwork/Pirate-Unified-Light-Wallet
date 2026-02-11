@@ -58,7 +58,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 use zcash_client_backend::encoding::{
     encode_extended_full_viewing_key, encode_extended_spending_key,
 };
@@ -79,12 +79,14 @@ lazy_static::lazy_static! {
 }
 
 thread_local! {
-    // Avoid reopening (and leaking) a new Database handle on every FFI call.
-    // We keep one opened handle per wallet per thread.
-    static WALLET_DB_CACHE: RefCell<HashMap<String, &'static Database>> = RefCell::new(HashMap::new());
+    // Keep one opened Database handle per wallet per thread.
+    // Unlike the previous leaked static-pointer cache, entries are dropped when
+    // the thread exits, so file descriptors are reclaimed.
+    static WALLET_DB_CACHE: RefCell<HashMap<String, Box<Database>>> = RefCell::new(HashMap::new());
 }
 
 static REGISTRY_LOADED: AtomicBool = AtomicBool::new(false);
+static PANIC_HOOK_ONCE: Once = Once::new();
 const REGISTRY_APP_PASSPHRASE_KEY: &str = "app_passphrase_hash";
 const REGISTRY_DURESS_PASSPHRASE_HASH_KEY: &str = "duress_passphrase_hash";
 const REGISTRY_DURESS_USE_REVERSE_KEY: &str = "duress_passphrase_use_reverse";
@@ -108,6 +110,31 @@ fn debug_log_path() -> PathBuf {
         let _ = std::fs::create_dir_all(parent);
     }
     path
+}
+
+fn install_debug_panic_hook() {
+    PANIC_HOOK_ONCE.call_once(|| {
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let payload = panic_info.to_string().replace('\"', "\\\"");
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_rust_panic","timestamp":{},"location":"api.rs","message":"unhandled rust panic","data":{{"panic":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                    ts, payload
+                );
+            }
+            default_hook(panic_info);
+        }));
+    });
 }
 
 // ============================================================================
@@ -1524,6 +1551,7 @@ fn touch_wallet_last_synced(db: &Database, wallet_id: &str) -> Result<()> {
 }
 
 fn ensure_wallet_registry_loaded() -> Result<()> {
+    install_debug_panic_hook();
     if is_decoy_mode_active() {
         return Ok(());
     }
@@ -1720,17 +1748,43 @@ fn wallet_db_keys(wallet_id: &str) -> Result<(EncryptionKey, MasterKey)> {
 }
 
 fn open_wallet_db_for(wallet_id: &str) -> Result<(&'static Database, Repository<'static>)> {
-    if let Some(db_ref) = WALLET_DB_CACHE.with(|cache| cache.borrow().get(wallet_id).copied()) {
-        return Ok((db_ref, Repository::new(db_ref)));
+    if WALLET_DB_CACHE.with(|cache| cache.borrow().contains_key(wallet_id)) {
+        return WALLET_DB_CACHE.with(|cache| {
+            let borrowed = cache.borrow();
+            let db_ref = borrowed
+                .get(wallet_id)
+                .map(|db| db.as_ref())
+                .ok_or_else(|| anyhow!("Wallet database cache miss"))?;
+            // SAFETY: The Database is owned by thread-local storage and not removed from the
+            // map after insertion, so the pointee remains valid for the lifetime of this thread.
+            // We use a 'static reference only to satisfy existing Repository API signatures.
+            let db_static: &'static Database =
+                unsafe { std::mem::transmute::<&Database, &'static Database>(db_ref) };
+            Ok((db_static, Repository::new(db_static)))
+        });
     }
 
     let passphrase = app_passphrase()?;
     let (db, _key, _master_key) = open_wallet_db_with_passphrase(wallet_id, &passphrase)?;
-    let db_ref: &'static Database = Box::leak(Box::new(db));
     WALLET_DB_CACHE.with(|cache| {
-        cache.borrow_mut().insert(wallet_id.to_string(), db_ref);
+        cache
+            .borrow_mut()
+            .insert(wallet_id.to_string(), Box::new(db));
     });
-    Ok((db_ref, Repository::new(db_ref)))
+
+    WALLET_DB_CACHE.with(|cache| {
+        let borrowed = cache.borrow();
+        let db_ref = borrowed
+            .get(wallet_id)
+            .map(|db| db.as_ref())
+            .ok_or_else(|| anyhow!("Wallet database cache miss after insert"))?;
+        // SAFETY: The Database is owned by thread-local storage and not removed from the
+        // map after insertion, so the pointee remains valid for the lifetime of this thread.
+        // We use a 'static reference only to satisfy existing Repository API signatures.
+        let db_static: &'static Database =
+            unsafe { std::mem::transmute::<&Database, &'static Database>(db_ref) };
+        Ok((db_static, Repository::new(db_static)))
+    })
 }
 
 fn ensure_primary_account_key(
