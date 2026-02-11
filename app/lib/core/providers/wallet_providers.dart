@@ -787,8 +787,7 @@ class DecoyModeNotifier extends Notifier<bool> {
 /// Verify and unlock app with passphrase
 final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
   return (String passphrase) async {
-    final isValid = await FfiBridge.verifyAppPassphrase(passphrase);
-    if (isValid) {
+    try {
       await FfiBridge.unlockApp(passphrase);
       ref.read(decoyModeProvider.notifier).enabled = false;
       ref.read(appUnlockedProvider.notifier).unlocked = true;
@@ -802,24 +801,31 @@ final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
         ),
       );
       return;
-    }
-
-    final duressHash = await DuressPassphraseStore.read();
-    if (duressHash != null && duressHash.isNotEmpty) {
-      final isDuress = await FfiBridge.verifyDuressPassphrase(
-        passphrase: passphrase,
-        hash: duressHash,
-      );
-      if (isDuress) {
-        ref.read(decoyModeProvider.notifier).enabled = true;
-        ref.read(appUnlockedProvider.notifier).unlocked = true;
-        ref
-          ..invalidate(activeWalletProvider)
-          ..invalidate(walletsExistProvider);
-        return;
+    } catch (_) {
+      // unlockApp() already verifies passphrase internally. On failure, only
+      // attempt duress fallback if the passphrase is actually invalid.
+      final isValid = await FfiBridge.verifyAppPassphrase(passphrase);
+      if (isValid) {
+        rethrow;
       }
-    }
 
-    throw Exception('Invalid passphrase');
+      final duressHash = await DuressPassphraseStore.read();
+      if (duressHash != null && duressHash.isNotEmpty) {
+        final isDuress = await FfiBridge.verifyDuressPassphrase(
+          passphrase: passphrase,
+          hash: duressHash,
+        );
+        if (isDuress) {
+          ref.read(decoyModeProvider.notifier).enabled = true;
+          ref.read(appUnlockedProvider.notifier).unlocked = true;
+          ref
+            ..invalidate(activeWalletProvider)
+            ..invalidate(walletsExistProvider);
+          return;
+        }
+      }
+
+      throw Exception('Invalid passphrase');
+    }
   };
 });

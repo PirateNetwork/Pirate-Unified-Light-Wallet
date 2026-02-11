@@ -69,10 +69,16 @@ class BiometricAuth {
       );
     }
 
+    // Windows Hello via local_auth does not support biometricOnly=true.
+    // Keep biometric-only behavior on Android/iOS/macOS, and gracefully
+    // downgrade on platforms that don't support that flag.
+    final supportsBiometricOnly = !Platform.isWindows;
+    final effectiveBiometricOnly = biometricOnly && supportsBiometricOnly;
+
     try {
       return await _auth.authenticate(
         localizedReason: reason,
-        biometricOnly: biometricOnly,
+        biometricOnly: effectiveBiometricOnly,
         persistAcrossBackgrounding: true,
         sensitiveTransaction: true,
       );
