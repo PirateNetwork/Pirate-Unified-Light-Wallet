@@ -1,7 +1,7 @@
 name: pirate_wallet
 description: Pirate Unified Wallet - Privacy-first ARRR wallet
 publish_to: 'none'
-version: 1.0.4+4
+version: 1.0.6+6
 
 environment:
   sdk: '>=3.10.0 <4.0.0'
@@ -51,7 +51,7 @@ msix_config:
   publisher_display_name: Pirate Chain
   publisher: 'CN=PirateChain, O=PirateChain, L=Online, S=Global, C=US'
   identity_name: com.pirate.wallet
-  msix_version: 1.0.4.0
+  msix_version: 1.0.6.0
   signing_enabled: false
   install_certificate: false
   capabilities: internetClient

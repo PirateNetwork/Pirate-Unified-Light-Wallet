@@ -272,7 +272,7 @@ class SettingsScreen extends ConsumerWidget {
             PListTile(
               leading: const Icon(Icons.info_outlined),
               title: 'Version',
-              subtitle: '1.0.4',
+              subtitle: '1.0.6',
               trailing: null,
             ),
             PListTile(
