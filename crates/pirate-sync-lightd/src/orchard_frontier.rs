@@ -137,6 +137,90 @@ impl OrchardFrontier {
         Ok(Some(merkle_path))
     }
 
+    /// Attempt to recover mark metadata for an existing position.
+    ///
+    /// This is a best-effort repair path for wallets that have valid persisted notes
+    /// and frontiers but are missing saved mark entries for some positions.
+    pub fn recover_mark(&mut self, position: u64) -> Result<bool> {
+        let pos = Position::from(position);
+        // A position can remain in mark metadata while pointing at a stale index.
+        // Validate witness construction before trusting existing mark entries.
+        if self.marked_positions.contains_key(&pos) {
+            if let Ok(auth_path) = self.inner.witness(pos, 0) {
+                if MerklePath::<MerkleHashOrchard, NOTE_COMMITMENT_TREE_DEPTH>::from_parts(
+                    auth_path, pos,
+                )
+                .is_ok()
+                {
+                    return Ok(true);
+                }
+            }
+        }
+
+        if self
+            .inner
+            .current_position()
+            .is_some_and(|current| current == pos)
+        {
+            let _ = self.inner.mark();
+            self.marked_positions.insert(pos, true);
+            return Ok(true);
+        }
+
+        let range_idx = self.inner.prior_bridges().iter().position(|bridge| {
+            let range = bridge.position_range();
+            range.start <= pos && pos < range.end
+        });
+
+        let max_idx = self.inner.prior_bridges().len();
+        let mut candidates: Vec<usize> = Vec::new();
+
+        if let Some(existing_idx) = self.inner.marked_indices().get(&pos).copied() {
+            candidates.push(existing_idx);
+        }
+        if let Some(idx) = range_idx {
+            candidates.push(idx);
+            candidates.push(idx.saturating_sub(1));
+            candidates.push(idx.saturating_add(1));
+        }
+        candidates.push(max_idx);
+        for idx in 0..=max_idx {
+            candidates.push(idx);
+        }
+        candidates.sort_unstable();
+        candidates.dedup();
+
+        for idx in candidates.into_iter().filter(|idx| *idx <= max_idx) {
+            let mut saved = self.inner.marked_indices().clone();
+            saved.insert(pos, idx);
+
+            let rebuilt = match BridgeTree::from_parts(
+                self.inner.prior_bridges().to_vec(),
+                self.inner.current_bridge().clone(),
+                saved,
+                self.inner.checkpoints().clone(),
+                self.inner.max_checkpoints(),
+            ) {
+                Ok(tree) => tree,
+                Err(_) => continue,
+            };
+
+            if let Ok(auth_path) = rebuilt.witness(pos, 0) {
+                if MerklePath::<MerkleHashOrchard, NOTE_COMMITMENT_TREE_DEPTH>::from_parts(
+                    auth_path, pos,
+                )
+                .is_ok()
+                {
+                    self.inner = rebuilt;
+                    self.marked_positions.insert(pos, true);
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
     /// Get the current root hash
     pub fn root(&self) -> Option<[u8; 32]> {
         // In bridgetree 0.4, root() returns Option<MerkleHashOrchard>

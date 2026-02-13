@@ -15,7 +15,7 @@ use crate::frontier::SaplingFrontier;
 use crate::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes;
 use crate::orchard_frontier::OrchardFrontier;
 use crate::pipeline::NoteType;
-use crate::pipeline::{DecryptedNote, PerfCounters};
+use crate::pipeline::{DecryptedNote, OrchardDecryptedNoteInit, PerfCounters};
 use crate::progress::SyncStage;
 use crate::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes;
 use crate::{CancelToken, Error, LightClient, Result, SyncProgress};
@@ -729,6 +729,8 @@ impl SyncEngine {
         })?;
         tracing::debug!("Connected to lightwalletd");
 
+        let follow_tip = end_height.is_none();
+
         // Get latest block if end not specified
         let end = match end_height {
             Some(h) => {
@@ -850,7 +852,9 @@ impl SyncEngine {
             );
         }
         // #endregion
-        let result = self.sync_range_internal(start_height, end).await;
+        let result = self
+            .sync_range_internal(start_height, end, follow_tip)
+            .await;
         // #region agent log
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -883,6 +887,37 @@ impl SyncEngine {
         }
 
         result
+    }
+
+    /// Reset in-memory frontiers so a bounded replay can rebuild witness state
+    /// from authoritative tree state at `start_height - 1`.
+    pub async fn reset_frontiers_for_replay(&mut self, start_height: u64) -> Result<()> {
+        *self.frontier.write().await = SaplingFrontier::new();
+        *self.orchard_frontier.write().await = OrchardFrontier::new();
+        tracing::warn!(
+            "Frontiers reset for bounded replay start_height={}",
+            start_height
+        );
+
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let id = format!("{:08x}", ts);
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:338","message":"frontiers reset for replay","data":{{"start_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                id, ts, start_height
+            );
+        }
+
+        Ok(())
     }
 
     async fn restore_frontiers_from_storage(&self, height: u64) -> Result<Option<u64>> {
@@ -1198,7 +1233,12 @@ impl SyncEngine {
         }
     }
 
-    async fn sync_range_internal(&mut self, start: u64, mut end: u64) -> Result<()> {
+    async fn sync_range_internal(
+        &mut self,
+        start: u64,
+        mut end: u64,
+        follow_tip: bool,
+    ) -> Result<()> {
         let mut current_height = start;
         let mut last_checkpoint_height = start.saturating_sub(1);
         let mut last_major_checkpoint_height = start.saturating_sub(1);
@@ -1961,6 +2001,12 @@ impl SyncEngine {
                 // #endregion
             }
 
+            // For bounded ranges (e.g. witness repair replay), stop once we reach the
+            // requested end height instead of entering continuous tip monitoring.
+            if !follow_tip {
+                return Ok(());
+            }
+
             // After main sync loop completes, check if there are more blocks to sync
             // This handles the case where sync completed the initial range but blockchain moved forward
             // Keep checking and syncing until we're fully caught up, then keep monitoring for new blocks
@@ -2325,18 +2371,18 @@ impl SyncEngine {
             }
         }
 
-        let all_notes = trial_decrypt_batch_impl(
+        let all_notes = trial_decrypt_batch_impl(TrialDecryptBatchInputs {
             blocks,
-            &sapling_ivks,
-            &sapling_key_ids,
-            &sapling_scopes,
-            &orchard_ivks,
-            &orchard_key_ids,
-            &orchard_scopes,
-            &orchard_fvks,
-            self.decrypt_pool.as_ref(),
-            self.config.max_parallel_decrypt,
-        )?;
+            sapling_ivks: &sapling_ivks,
+            sapling_key_ids: &sapling_key_ids,
+            sapling_scopes: &sapling_scopes,
+            orchard_ivks: &orchard_ivks,
+            orchard_key_ids: &orchard_key_ids,
+            orchard_scopes: &orchard_scopes,
+            orchard_fvks: &orchard_fvks,
+            decrypt_pool: self.decrypt_pool.as_ref(),
+            max_parallel: self.config.max_parallel_decrypt,
+        })?;
 
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -3846,6 +3892,39 @@ impl SyncEngine {
         Ok(())
     }
 
+    /// Get witness for a Sapling note at a given position.
+    /// Returns None if position is not marked or witness cannot be computed.
+    pub async fn get_sapling_witness(
+        &self,
+        position: u64,
+    ) -> Result<
+        Option<
+            incrementalmerkletree::MerklePath<
+                zcash_primitives::sapling::Node,
+                { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
+            >,
+        >,
+    > {
+        let mut sapling_frontier = self.frontier.write().await;
+        if let Some(path) = sapling_frontier.witness(position)? {
+            return Ok(Some(path));
+        }
+
+        if sapling_frontier.recover_mark(position)? {
+            tracing::info!(
+                "Recovered missing Sapling mark metadata for position {}",
+                position
+            );
+            return sapling_frontier.witness(position);
+        }
+
+        tracing::warn!(
+            "Sapling witness unavailable for position {} (not marked and recovery failed)",
+            position
+        );
+        Ok(None)
+    }
+
     /// Get witness for an Orchard note at a given position
     /// Returns None if position is not marked or witness cannot be computed
     pub async fn get_orchard_witness(
@@ -3859,8 +3938,24 @@ impl SyncEngine {
             >,
         >,
     > {
-        let orchard_frontier = self.orchard_frontier.read().await;
-        orchard_frontier.witness(position)
+        let mut orchard_frontier = self.orchard_frontier.write().await;
+        if let Some(path) = orchard_frontier.witness(position)? {
+            return Ok(Some(path));
+        }
+
+        if orchard_frontier.recover_mark(position)? {
+            tracing::info!(
+                "Recovered missing Orchard mark metadata for position {}",
+                position
+            );
+            return orchard_frontier.witness(position);
+        }
+
+        tracing::warn!(
+            "Orchard witness unavailable for position {} (not marked and recovery failed)",
+            position
+        );
+        Ok(None)
     }
 
     /// Get current Orchard anchor from the frontier, if available.
@@ -4794,6 +4889,19 @@ type CompactDecryptResult<D> = Option<(
     usize,
 )>;
 
+struct TrialDecryptBatchInputs<'a> {
+    blocks: &'a [CompactBlockData],
+    sapling_ivks: &'a [PreparedIncomingViewingKey],
+    sapling_key_ids: &'a [i64],
+    sapling_scopes: &'a [AddressScope],
+    orchard_ivks: &'a [OrchardPreparedIncomingViewingKey],
+    orchard_key_ids: &'a [i64],
+    orchard_scopes: &'a [AddressScope],
+    orchard_fvks: &'a [orchard::keys::FullViewingKey],
+    decrypt_pool: &'a rayon::ThreadPool,
+    max_parallel: usize,
+}
+
 fn try_compact_note_decryption_parallel<D, Output>(
     pool: &rayon::ThreadPool,
     ivks: &[D::IncomingViewingKey],
@@ -4841,19 +4949,20 @@ where
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-fn trial_decrypt_batch_impl(
-    blocks: &[CompactBlockData],
-    sapling_ivks: &[PreparedIncomingViewingKey],
-    sapling_key_ids: &[i64],
-    sapling_scopes: &[AddressScope],
-    orchard_ivks: &[OrchardPreparedIncomingViewingKey],
-    orchard_key_ids: &[i64],
-    orchard_scopes: &[AddressScope],
-    orchard_fvks: &[orchard::keys::FullViewingKey],
-    decrypt_pool: &rayon::ThreadPool,
-    max_parallel: usize,
-) -> Result<Vec<DecryptedNote>> {
+fn trial_decrypt_batch_impl(inputs: TrialDecryptBatchInputs<'_>) -> Result<Vec<DecryptedNote>> {
+    let TrialDecryptBatchInputs {
+        blocks,
+        sapling_ivks,
+        sapling_key_ids,
+        sapling_scopes,
+        orchard_ivks,
+        orchard_key_ids,
+        orchard_scopes,
+        orchard_fvks,
+        decrypt_pool,
+        max_parallel,
+    } = inputs;
+
     let mut sapling_outputs: Vec<(SaplingDomain<PirateNetwork>, SaplingBatchOutput)> = Vec::new();
     let mut sapling_meta: Vec<SaplingOutputMeta> = Vec::new();
     let mut orchard_outputs: Vec<(OrchardDomain, CompactAction)> = Vec::new();
@@ -5018,17 +5127,17 @@ fn trial_decrypt_batch_impl(
                     .copied()
                     .unwrap_or(AddressScope::External);
 
-                let mut note_rec = DecryptedNote::new_orchard(
-                    meta.height,
-                    meta.tx_index,
-                    meta.output_index,
+                let mut note_rec = DecryptedNote::new_orchard(OrchardDecryptedNoteInit {
+                    height: meta.height,
+                    tx_index: meta.tx_index,
+                    output_index: meta.output_index,
                     value,
                     commitment,
-                    [0u8; 32],
-                    Vec::new(),
-                    None,
-                    Some(0),
-                );
+                    nullifier: [0u8; 32],
+                    encrypted_memo: Vec::new(),
+                    anchor: None,
+                    position: Some(0),
+                });
                 note_rec.set_tx_hash(meta.tx_hash.clone());
                 note_rec.key_id = key_id;
                 note_rec.address_scope = scope;
@@ -5083,18 +5192,18 @@ fn trial_decrypt_block(
             orchard_scopes.push(AddressScope::External);
         }
     }
-    trial_decrypt_batch_impl(
-        std::slice::from_ref(block),
-        &sapling_ivks,
-        &sapling_key_ids,
-        &sapling_scopes,
-        &orchard_ivks,
-        &orchard_key_ids,
-        &orchard_scopes,
-        &orchard_fvks,
-        &decrypt_pool,
-        1,
-    )
+    trial_decrypt_batch_impl(TrialDecryptBatchInputs {
+        blocks: std::slice::from_ref(block),
+        sapling_ivks: &sapling_ivks,
+        sapling_key_ids: &sapling_key_ids,
+        sapling_scopes: &sapling_scopes,
+        orchard_ivks: &orchard_ivks,
+        orchard_key_ids: &orchard_key_ids,
+        orchard_scopes: &orchard_scopes,
+        orchard_fvks: &orchard_fvks,
+        decrypt_pool: &decrypt_pool,
+        max_parallel: 1,
+    })
 }
 
 // DecryptedNote is imported from pipeline module - no need to redefine here
@@ -5141,5 +5250,35 @@ mod tests {
         let dummy_ivk = [0u8; 32];
         let notes = trial_decrypt_block(&block, Some(&dummy_ivk), None).unwrap();
         assert_eq!(notes.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_cancel_flag_reflects_engine_cancellation() {
+        let engine = SyncEngine::new("http://127.0.0.1:9067".to_string(), 3_800_000);
+        let cancel = engine.cancel_flag();
+        assert!(!cancel.is_cancelled());
+        engine.cancel().await;
+        assert!(cancel.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_blocks_with_retry_short_circuits_cancelled() {
+        let client = LightClient::new("http://127.0.0.1:1".to_string());
+        let cancel = CancelToken::new();
+        cancel.cancel();
+
+        let result = SyncEngine::fetch_blocks_with_retry_inner(client, 10, 20, cancel).await;
+        assert!(matches!(result, Err(Error::Cancelled)));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_blocks_with_retry_empty_range() {
+        let client = LightClient::new("http://127.0.0.1:1".to_string());
+        let cancel = CancelToken::new();
+
+        let blocks = SyncEngine::fetch_blocks_with_retry_inner(client, 20, 10, cancel)
+            .await
+            .unwrap();
+        assert!(blocks.is_empty());
     }
 }

@@ -30,7 +30,8 @@ pub use memo::{Memo, MAX_MEMO_LENGTH, MEMO_WARNING_LENGTH};
 pub use params::{orchard_params, sapling_params, sapling_prover};
 pub use selection::{NoteSelector, NoteType, SelectableNote, SelectionResult, SelectionStrategy};
 pub use shielded_builder::{
-    PendingShieldedTransaction, ShieldedBuilder, ShieldedOutput, SignedShieldedTransaction,
+    BuildAndSignMultiInputs, PendingShieldedTransaction, ShieldedBuilder, ShieldedOutput,
+    SignedShieldedTransaction,
 };
 pub use transaction::{
     PendingTransaction, SignedTransaction, TransactionBuilder, TransactionOutput,

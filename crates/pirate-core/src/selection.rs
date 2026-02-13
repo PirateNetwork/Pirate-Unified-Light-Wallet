@@ -32,11 +32,15 @@ pub struct SelectableNote {
     pub txid: Vec<u8>,
     /// Output index
     pub output_index: u32,
+    /// Owning key-group id (if known)
+    pub key_id: Option<i64>,
     /// Eligible for auto-consolidation (unlabeled/untagged address)
     pub auto_consolidation_eligible: bool,
     /// Optional merkle path for spends (Sapling)
     pub merkle_path:
         Option<MerklePath<Node, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>>,
+    /// Optional Sapling note position in the commitment tree (for witness refresh)
+    pub sapling_position: Option<u64>,
     /// Optional diversifier used to derive the address (Sapling)
     pub diversifier: Option<Diversifier>,
     /// Optional full Sapling note
@@ -68,8 +72,10 @@ impl SelectableNote {
             height,
             txid,
             output_index,
+            key_id: None,
             auto_consolidation_eligible: false,
             merkle_path: None,
+            sapling_position: None,
             diversifier: None,
             note: None,
             orchard_anchor: None,
@@ -95,8 +101,10 @@ impl SelectableNote {
             height,
             txid,
             output_index,
+            key_id: None,
             auto_consolidation_eligible: false,
             merkle_path: None,
+            sapling_position: None,
             diversifier: None,
             note: None,
             orchard_anchor: None,
@@ -109,6 +117,12 @@ impl SelectableNote {
     /// Set nullifier
     pub fn with_nullifier(mut self, nullifier: Vec<u8>) -> Self {
         self.nullifier = Some(nullifier);
+        self
+    }
+
+    /// Set owning key-group id
+    pub fn with_key_id(mut self, key_id: Option<i64>) -> Self {
+        self.key_id = key_id;
         self
     }
 
@@ -128,6 +142,12 @@ impl SelectableNote {
         self.merkle_path = Some(path);
         self.diversifier = Some(diversifier);
         self.note = Some(note);
+        self
+    }
+
+    /// Attach Sapling note position.
+    pub fn with_sapling_position(mut self, position: u64) -> Self {
+        self.sapling_position = Some(position);
         self
     }
 

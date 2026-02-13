@@ -13,6 +13,7 @@ use crate::params::sapling_prover;
 use crate::selection::{NoteSelector, SelectableNote, SelectionStrategy};
 use crate::{Error, Memo, Result};
 use pirate_params::{Network, NetworkType};
+use std::collections::HashMap;
 
 use incrementalmerkletree::MerklePath;
 use orchard::tree::Anchor as OrchardAnchor;
@@ -176,6 +177,29 @@ pub struct ShieldedBuilder {
     auto_consolidation_extra_limit: usize,
 }
 
+/// Inputs for multi-key-group shielded transaction signing.
+///
+/// This groups signing inputs into a single typed parameter, which makes the
+/// API clearer and avoids brittle long argument lists.
+pub struct BuildAndSignMultiInputs<'a> {
+    /// Default Sapling spending key used when a note has no `key_id` mapping.
+    pub default_sapling_spending_key: &'a ExtendedSpendingKey,
+    /// Default Orchard spending key used when a note has no `key_id` mapping.
+    pub default_orchard_spending_key: Option<&'a OrchardExtendedSpendingKey>,
+    /// Optional Sapling spending keys by key-group id.
+    pub sapling_spending_keys_by_id: HashMap<i64, ExtendedSpendingKey>,
+    /// Optional Orchard spending keys by key-group id.
+    pub orchard_spending_keys_by_id: HashMap<i64, OrchardExtendedSpendingKey>,
+    /// Candidate notes selected from wallet state.
+    pub available_notes: Vec<SelectableNote>,
+    /// Target chain height for transaction construction.
+    pub target_height: u32,
+    /// Optional Orchard anchor for Orchard spends/outputs.
+    pub orchard_anchor: Option<OrchardAnchor>,
+    /// Diversifier index for Sapling change address.
+    pub change_diversifier_index: u32,
+}
+
 impl ShieldedBuilder {
     /// Create new shielded transaction builder
     pub fn new() -> Self {
@@ -278,6 +302,39 @@ impl ShieldedBuilder {
         orchard_anchor: Option<OrchardAnchor>,
         change_diversifier_index: u32,
     ) -> Result<SignedShieldedTransaction> {
+        self.build_and_sign_multi(BuildAndSignMultiInputs {
+            default_sapling_spending_key: sapling_spending_key,
+            default_orchard_spending_key: orchard_spending_key,
+            sapling_spending_keys_by_id: HashMap::new(),
+            orchard_spending_keys_by_id: HashMap::new(),
+            available_notes,
+            target_height,
+            orchard_anchor,
+            change_diversifier_index,
+        })
+        .await
+    }
+
+    /// Build and sign shielded transaction with multi-key-group signing support.
+    ///
+    /// When `available_notes` contains notes from multiple key-groups, spend keys are
+    /// resolved by `SelectableNote.key_id` from the provided key maps. If a key id is
+    /// missing from the map, the default key is used.
+    pub async fn build_and_sign_multi(
+        &self,
+        inputs: BuildAndSignMultiInputs<'_>,
+    ) -> Result<SignedShieldedTransaction> {
+        let BuildAndSignMultiInputs {
+            default_sapling_spending_key,
+            default_orchard_spending_key,
+            sapling_spending_keys_by_id,
+            orchard_spending_keys_by_id,
+            available_notes,
+            target_height,
+            orchard_anchor,
+            change_diversifier_index,
+        } = inputs;
+
         // Calculate required output amount
         let output_sum: u64 =
             self.outputs
@@ -373,9 +430,14 @@ impl ShieldedBuilder {
                                 })?
                                 .clone();
 
+                        let sapling_key = note
+                            .key_id
+                            .and_then(|key_id| sapling_spending_keys_by_id.get(&key_id))
+                            .unwrap_or(default_sapling_spending_key);
+
                         tx_builder
                             .add_sapling_spend(
-                                sapling_spending_key.inner().clone(),
+                                sapling_key.inner().clone(),
                                 *diversifier,
                                 sapling_note.clone(),
                                 merkle_path,
@@ -396,11 +458,15 @@ impl ShieldedBuilder {
                     let orchard_merkle_path = note.orchard_merkle_path.ok_or_else(|| {
                         Error::TransactionBuild("Missing Orchard merkle path".to_string())
                     })?;
-                    let orchard_sk = orchard_spending_key.ok_or_else(|| {
-                        Error::TransactionBuild(
-                            "Orchard spending key required for Orchard spends".to_string(),
-                        )
-                    })?;
+                    let orchard_sk = note
+                        .key_id
+                        .and_then(|key_id| orchard_spending_keys_by_id.get(&key_id))
+                        .or(default_orchard_spending_key)
+                        .ok_or_else(|| {
+                            Error::TransactionBuild(
+                                "Orchard spending key required for Orchard spends".to_string(),
+                            )
+                        })?;
 
                     // Extract SpendingKey from OrchardExtendedSpendingKey
                     let sk = &orchard_sk.inner;
@@ -415,10 +481,10 @@ impl ShieldedBuilder {
         }
 
         // Add outputs
-        let sapling_ovk = sapling_spending_key
+        let sapling_ovk = default_sapling_spending_key
             .to_extended_fvk()
             .outgoing_viewing_key();
-        let orchard_ovk = orchard_spending_key.map(|sk| sk.to_extended_fvk().to_ovk());
+        let orchard_ovk = default_orchard_spending_key.map(|sk| sk.to_extended_fvk().to_ovk());
         for output in &self.outputs {
             match output {
                 ShieldedOutput::Sapling {
@@ -492,7 +558,7 @@ impl ShieldedBuilder {
 
             if use_orchard_change {
                 // Use Orchard change address
-                let orchard_fvk = orchard_spending_key
+                let orchard_fvk = default_orchard_spending_key
                     .ok_or_else(|| {
                         Error::TransactionBuild(
                             "Orchard spending key required for Orchard change".to_string(),
@@ -516,7 +582,7 @@ impl ShieldedBuilder {
                     })?;
             } else {
                 // Use Sapling change address
-                let change_addr = sapling_spending_key
+                let change_addr = default_sapling_spending_key
                     .to_internal_fvk()
                     .derive_address(change_diversifier_index)
                     .inner;

@@ -186,6 +186,29 @@ pub struct DecryptedNote {
     pub orchard_rseed: Option<[u8; 32]>,
 }
 
+/// Initialization data for an Orchard decrypted note record.
+#[derive(Debug)]
+pub struct OrchardDecryptedNoteInit {
+    /// Block height containing the note.
+    pub height: u64,
+    /// Transaction index inside the compact block.
+    pub tx_index: usize,
+    /// Output/action index inside the transaction.
+    pub output_index: usize,
+    /// Note value in zatoshis.
+    pub value: u64,
+    /// Orchard note commitment bytes.
+    pub commitment: [u8; 32],
+    /// Orchard note nullifier bytes (may be zero until later derivation).
+    pub nullifier: [u8; 32],
+    /// Encrypted memo payload (compact form).
+    pub encrypted_memo: Vec<u8>,
+    /// Optional Orchard anchor for the witness tree.
+    pub anchor: Option<[u8; 32]>,
+    /// Optional position in the Orchard note commitment tree.
+    pub position: Option<u64>,
+}
+
 impl DecryptedNote {
     /// Create new decrypted note with lazy memo (defaults to Sapling)
     pub fn new(
@@ -224,27 +247,16 @@ impl DecryptedNote {
     }
 
     /// Create new Orchard decrypted note
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_orchard(
-        height: u64,
-        tx_index: usize,
-        output_index: usize,
-        value: u64,
-        commitment: [u8; 32],
-        nullifier: [u8; 32],
-        encrypted_memo: Vec<u8>,
-        anchor: Option<[u8; 32]>,
-        position: Option<u64>,
-    ) -> Self {
+    pub fn new_orchard(init: OrchardDecryptedNoteInit) -> Self {
         Self {
             note_type: NoteType::Orchard,
-            height,
-            tx_index,
-            output_index,
-            value,
-            commitment,
-            nullifier,
-            encrypted_memo,
+            height: init.height,
+            tx_index: init.tx_index,
+            output_index: init.output_index,
+            value: init.value,
+            commitment: init.commitment,
+            nullifier: init.nullifier,
+            encrypted_memo: init.encrypted_memo,
             memo_cache: None,
             tx_hash: Vec::new(),
             txid: Vec::new(),
@@ -255,8 +267,8 @@ impl DecryptedNote {
             sapling_rseed: None,
             merkle_path: Vec::new(),
             note_bytes: Vec::new(),
-            anchor,
-            position,
+            anchor: init.anchor,
+            position: init.position,
             orchard_rho: None,
             orchard_rseed: None,
         }

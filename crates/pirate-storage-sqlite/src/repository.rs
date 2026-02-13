@@ -1244,6 +1244,12 @@ impl<'a> Repository<'a> {
                         n.txid.clone(),
                         n.output_index as u32,
                     );
+                    sn = sn.with_key_id(n.key_id);
+                    if let Some(position) = n.position {
+                        if position >= 0 {
+                            sn = sn.with_sapling_position(position as u64);
+                        }
+                    }
                     sn.auto_consolidation_eligible = n
                         .address_id
                         .is_some_and(|id| eligible_address_ids.contains(&id));
@@ -1323,6 +1329,7 @@ impl<'a> Repository<'a> {
                         n.txid.clone(),
                         n.output_index as u32,
                     );
+                    sn = sn.with_key_id(n.key_id);
                     sn.auto_consolidation_eligible = n
                         .address_id
                         .is_some_and(|id| eligible_address_ids.contains(&id));
