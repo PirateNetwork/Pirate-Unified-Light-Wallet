@@ -10,7 +10,7 @@ on:
 
 env:
   RUST_VERSION: "1.90.0"
-  FLUTTER_VERSION: "3.38.7"
+  FLUTTER_VERSION: "3.41.1"
   FRB_CODEGEN_VERSION: "2.11.1"
   GO_VERSION: "1.21.13"
   JAVA_VERSION: "25"
@@ -336,8 +336,7 @@ jobs:
       - name: Run tests
         run: |
           cd app
-          # Exclude security_screens_golden_test.dart which causes FFI segfaults in CI
-          flutter test --coverage $(find test -name '*_test.dart' ! -name 'security_screens_golden_test.dart')
+          flutter test --coverage $(find test -name '*_test.dart')
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -345,33 +344,6 @@ jobs:
           files: ./app/coverage/lcov.info
           flags: flutter
           fail_ci_if_error: false
-
-  flutter-golden-tests:
-    name: Flutter - Golden Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-
-      - name: Get dependencies
-        run: |
-          cd app
-          flutter pub get --enforce-lockfile
-
-      - name: Run golden tests
-        run: |
-          cd app
-          if find test/golden -name "*.png" | grep -q .; then
-            # Exclude security_screens_golden_test.dart which causes FFI segfaults in CI
-            flutter test $(find test/golden -name '*_test.dart' ! -name 'security_screens_golden_test.dart')
-          else
-            echo "No golden images found; skipping golden tests."
-          fi
 
   flutter-integration-tests:
     name: Flutter - Integration Tests
@@ -1821,7 +1793,6 @@ jobs:
       # security-semgrep-dart disabled due to CI memory constraints
       - flutter-analyze
       - flutter-test
-      - flutter-golden-tests
       - build-matrix
       - package-android
       - package-ios
