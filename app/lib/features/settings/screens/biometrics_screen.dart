@@ -1,6 +1,8 @@
 /// Biometrics settings screen
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
@@ -66,38 +68,52 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
         return;
       }
 
-      final authenticated = await BiometricAuth.authenticate(
-        reason: 'Enable biometric unlock for Pirate Wallet',
-        biometricOnly: true,
-      );
-      if (!authenticated) {
-        setState(() => _error = 'Biometric authentication was cancelled.');
-        return;
+      // macOS unlock cache reads are guarded by Keychain biometry ACL, so we
+      // avoid a redundant local_auth prompt during setup to keep UX single-step.
+      if (!Platform.isMacOS) {
+        final authenticated = await BiometricAuth.authenticate(
+          reason: 'Enable biometric unlock for Pirate Wallet',
+          biometricOnly: true,
+        );
+        if (!authenticated) {
+          setState(() => _error = 'Biometric authentication was cancelled.');
+          return;
+        }
       }
 
-      await ref
-          .read(biometricsEnabledProvider.notifier)
-          .setEnabled(enabled: true);
       final ready = await _ensurePassphraseCacheReady();
       if (!ready) {
-        await ref
-            .read(biometricsEnabledProvider.notifier)
-            .setEnabled(enabled: false);
         setState(() {
           _error =
               'Biometrics need your passphrase once to finish setup. Try enabling again.';
         });
         return;
       }
+
+      await ref
+          .read(biometricsEnabledProvider.notifier)
+          .setEnabled(enabled: true);
     } on BiometricException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Unable to update biometrics settings: $e');
+      setState(() => _error = _formatBiometricToggleError(e));
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  String _formatBiometricToggleError(Object error) {
+    final raw = error.toString();
+    final lowered = raw.toLowerCase();
+    if (lowered.contains('-34018') ||
+        lowered.contains('required entitlement') ||
+        lowered.contains('keychain')) {
+      return 'Secure storage is unavailable for this macOS build. '
+          'Install a build with Keychain entitlements and try again.';
+    }
+    return 'Unable to update biometrics settings: $raw';
   }
 
   Future<bool> _ensurePassphraseCacheReady() async {

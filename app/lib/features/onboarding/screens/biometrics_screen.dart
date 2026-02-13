@@ -59,47 +59,28 @@ class _OnboardingBiometricsScreenState
         setState(() => _error = 'Biometric authentication failed.');
         return;
       }
+
+      final state = ref.read(onboardingControllerProvider);
+      final passphrase = state.passphrase;
+      if (passphrase == null || passphrase.isEmpty) {
+        setState(() {
+          _error =
+              'Biometrics need your passphrase once to finish setup. You can enable it later in Settings.';
+        });
+        return;
+      }
+
+      await PassphraseCache.store(passphrase);
       await ref
           .read(biometricsEnabledProvider.notifier)
           .setEnabled(enabled: true);
       ref
           .read(onboardingControllerProvider.notifier)
           .setBiometrics(enabled: true);
-      final state = ref.read(onboardingControllerProvider);
-      final passphrase = state.passphrase;
-      if (passphrase != null && passphrase.isNotEmpty) {
-        try {
-          await PassphraseCache.store(passphrase);
-        } catch (e) {
-          // Keep state consistent: if we cannot wrap the passphrase, biometrics
-          // cannot unlock the wallet, so roll back and surface a clear message.
-          await ref
-              .read(biometricsEnabledProvider.notifier)
-              .setEnabled(enabled: false);
-          ref
-              .read(onboardingControllerProvider.notifier)
-              .setBiometrics(enabled: false);
-          try {
-            await PassphraseCache.clear();
-          } catch (clearError) {
-            debugPrint(
-              'Failed to clear passphrase cache after rollback: $clearError',
-            );
-          }
-          if (mounted) {
-            setState(() {
-              _error =
-                  'Biometrics could not be initialized on this device. '
-                  'You can continue with your passphrase.';
-            });
-          }
-          return;
-        }
-      }
       _proceed();
     } catch (e) {
       if (mounted) {
-        setState(() => _error = 'Unable to enable biometrics.');
+        setState(() => _error = _formatEnableError(e));
       }
       debugPrint('Failed to enable onboarding biometrics: $e');
     } finally {
@@ -107,6 +88,18 @@ class _OnboardingBiometricsScreenState
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  String _formatEnableError(Object error) {
+    final raw = error.toString();
+    final lowered = raw.toLowerCase();
+    if (lowered.contains('-34018') ||
+        lowered.contains('required entitlement') ||
+        lowered.contains('keychain')) {
+      return 'Secure storage is unavailable for this macOS build. '
+          'Install a build with Keychain entitlements and try again.';
+    }
+    return 'Unable to enable biometrics.';
   }
 
   Future<void> _skip() async {

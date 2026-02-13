@@ -233,7 +233,32 @@ class _PassphraseChangeScreenState
       }
 
       if (ref.read(biometricsEnabledProvider)) {
-        await PassphraseCache.store(_newController.text);
+        try {
+          await PassphraseCache.store(_newController.text);
+        } catch (e) {
+          debugPrint(
+            'Failed to refresh wrapped passphrase cache after passphrase change: $e',
+          );
+          try {
+            await ref
+                .read(biometricsEnabledProvider.notifier)
+                .setEnabled(enabled: false);
+          } catch (disableError) {
+            debugPrint(
+              'Failed to disable biometrics after cache refresh failure: $disableError',
+            );
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'Passphrase updated. Biometrics were turned off because secure setup failed.',
+                ),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
       }
 
       try {

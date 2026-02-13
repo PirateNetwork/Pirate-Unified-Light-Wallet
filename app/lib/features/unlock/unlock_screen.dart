@@ -162,7 +162,10 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
     });
 
     try {
-      if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      // On macOS, the cached passphrase read is protected by Keychain
+      // biometry ACL and will trigger the system biometric prompt itself.
+      // Keep an explicit local_auth prompt on other desktop platforms.
+      if (Platform.isWindows || Platform.isLinux) {
         final authenticated = await BiometricAuth.authenticate(
           reason: 'Unlock your wallet',
           biometricOnly: true,

@@ -7,6 +7,7 @@ import LocalAuthentication
 class AppDelegate: FlutterAppDelegate {
   private let keystoreService = "com.pirate.wallet.keystore"
   private let masterKeyAccount = "pirate_wallet_master_key"
+  private let masterKeyPrompt = "Authenticate to unlock Pirate Wallet"
   private let sealedKeyMarker = Data("macos-keychain-v1".utf8)
   private var securityChannel: FlutterMethodChannel?
 
@@ -112,7 +113,13 @@ class AppDelegate: FlutterAppDelegate {
         return
       }
       do {
-        try storeKeychainData(masterKey.data, account: masterKeyAccount)
+        // Bind the cached passphrase secret to biometric auth at the Keychain
+        // layer. This is defense-in-depth beyond app-level local_auth checks.
+        try storeKeychainData(
+          masterKey.data,
+          account: masterKeyAccount,
+          requireBiometric: true
+        )
         // Return a non-empty marker so Dart-side cache existence checks work.
         result(FlutterStandardTypedData(bytes: sealedKeyMarker))
       } catch {
@@ -125,7 +132,10 @@ class AppDelegate: FlutterAppDelegate {
         return
       }
       do {
-        if let data = try loadKeychainData(account: masterKeyAccount) {
+        if let data = try loadKeychainData(
+          account: masterKeyAccount,
+          requireBiometric: true
+        ) {
           result(FlutterStandardTypedData(bytes: data))
         } else {
           result(FlutterError(code: "UNSEAL_ERROR", message: "Master key not found", details: nil))
@@ -140,42 +150,67 @@ class AppDelegate: FlutterAppDelegate {
     }
   }
 
-  private func storeKeychainData(_ data: Data, account: String) throws {
-    let query: [String: Any] = [
+  private func storeKeychainData(
+    _ data: Data,
+    account: String,
+    requireBiometric: Bool = false
+  ) throws {
+    let baseQuery: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: keystoreService,
-      kSecAttrAccount as String: account,
-      kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-      kSecValueData as String: data
+      kSecAttrAccount as String: account
     ]
 
-    let status = SecItemAdd(query as CFDictionary, nil)
-    if status == errSecDuplicateItem {
-      let update: [String: Any] = [
-        kSecValueData as String: data
-      ]
-      let queryUpdate: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrService as String: keystoreService,
-        kSecAttrAccount as String: account
-      ]
-      let updateStatus = SecItemUpdate(queryUpdate as CFDictionary, update as CFDictionary)
-      if updateStatus != errSecSuccess {
-        throw NSError(domain: "KeystoreError", code: Int(updateStatus), userInfo: nil)
+    var addQuery = baseQuery
+    addQuery[kSecValueData as String] = data
+
+    if requireBiometric {
+      var accessError: Unmanaged<CFError>?
+      guard let accessControl = SecAccessControlCreateWithFlags(
+        nil,
+        kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        .biometryCurrentSet,
+        &accessError
+      ) else {
+        let code: Int
+        if let error = accessError?.takeRetainedValue() {
+          code = CFErrorGetCode(error)
+        } else {
+          code = Int(errSecParam)
+        }
+        throw NSError(domain: "KeystoreError", code: code, userInfo: nil)
       }
-    } else if status != errSecSuccess {
+      addQuery[kSecAttrAccessControl as String] = accessControl
+    } else {
+      addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    }
+
+    // Recreate item so its ACL matches current policy (biometric vs standard).
+    let deleteStatus = SecItemDelete(baseQuery as CFDictionary)
+    if deleteStatus != errSecSuccess && deleteStatus != errSecItemNotFound {
+      throw NSError(domain: "KeystoreError", code: Int(deleteStatus), userInfo: nil)
+    }
+
+    let status = SecItemAdd(addQuery as CFDictionary, nil)
+    if status != errSecSuccess {
       throw NSError(domain: "KeystoreError", code: Int(status), userInfo: nil)
     }
   }
 
-  private func loadKeychainData(account: String) throws -> Data? {
-    let query: [String: Any] = [
+  private func loadKeychainData(
+    account: String,
+    requireBiometric: Bool = false
+  ) throws -> Data? {
+    var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrService as String: keystoreService,
       kSecAttrAccount as String: account,
       kSecReturnData as String: true,
       kSecMatchLimit as String: kSecMatchLimitOne
     ]
+    if requireBiometric {
+      query[kSecUseOperationPrompt as String] = masterKeyPrompt
+    }
     var item: CFTypeRef?
     let status = SecItemCopyMatching(query as CFDictionary, &item)
     if status == errSecItemNotFound {

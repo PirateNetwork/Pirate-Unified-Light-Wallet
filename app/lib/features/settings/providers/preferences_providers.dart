@@ -250,16 +250,35 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
         );
         state = false;
         await _persistBestEffort(false);
+        return;
+      }
+
+      try {
+        final hasWrappedPassphrase = await PassphraseCache.exists();
+        if (!hasWrappedPassphrase) {
+          debugPrint(
+            'Biometrics preference was enabled but no wrapped passphrase cache exists. Resetting to disabled.',
+          );
+          state = false;
+          await _persistBestEffort(false);
+        }
+      } catch (e) {
+        debugPrint(
+          'Failed to verify wrapped passphrase cache for biometrics: $e',
+        );
+        state = false;
+        await _persistBestEffort(false);
       }
     }
   }
 
   Future<bool> readPersistedValue() async {
+    bool enabled = false;
     try {
       final raw = await _storage.read(key: _storageKey);
       final parsed = _parseBool(raw);
       if (parsed != null) {
-        return parsed;
+        enabled = parsed;
       }
     } catch (e) {
       debugPrint(
@@ -267,12 +286,38 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
       );
     }
 
-    final fallback = await _readFallbackValue();
-    if (fallback != null) {
-      return fallback;
+    if (!enabled) {
+      final fallback = await _readFallbackValue();
+      if (fallback != null) {
+        enabled = fallback;
+      }
     }
 
-    return false;
+    if (!enabled) {
+      return false;
+    }
+
+    final available = await BiometricAuth.isAvailable();
+    if (!available) {
+      await _persistBestEffort(false);
+      return false;
+    }
+
+    try {
+      final hasWrappedPassphrase = await PassphraseCache.exists();
+      if (!hasWrappedPassphrase) {
+        await _persistBestEffort(false);
+        return false;
+      }
+    } catch (e) {
+      debugPrint(
+        'Failed to verify wrapped passphrase cache for persisted biometrics preference: $e',
+      );
+      await _persistBestEffort(false);
+      return false;
+    }
+
+    return true;
   }
 
   bool? _parseBool(String? raw) {
