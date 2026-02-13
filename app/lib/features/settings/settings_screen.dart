@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
@@ -19,6 +20,15 @@ import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/logging/debug_log_path.dart';
+
+final appVersionProvider = FutureProvider<String>((ref) async {
+  final info = await PackageInfo.fromPlatform();
+  final version = info.version.trim();
+  if (version.isEmpty) {
+    return 'Unknown';
+  }
+  return 'v$version';
+});
 
 /// Settings screen
 class SettingsScreen extends ConsumerWidget {
@@ -269,11 +279,21 @@ class SettingsScreen extends ConsumerWidget {
         _SettingsSection(
           title: 'About',
           children: [
-            PListTile(
-              leading: const Icon(Icons.info_outlined),
-              title: 'Version',
-              subtitle: '1.0.6',
-              trailing: null,
+            Consumer(
+              builder: (context, ref, _) {
+                final versionAsync = ref.watch(appVersionProvider);
+                final subtitle = versionAsync.when(
+                  data: (value) => value,
+                  loading: () => 'Loading...',
+                  error: (_, _) => 'Unknown',
+                );
+                return PListTile(
+                  leading: const Icon(Icons.info_outlined),
+                  title: 'Version',
+                  subtitle: subtitle,
+                  trailing: null,
+                );
+              },
             ),
             PListTile(
               leading: const Icon(Icons.verified_user),
