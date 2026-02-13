@@ -65,6 +65,9 @@ fi
 
 cd "$APP_DIR"
 
+# On tag builds, align app version metadata with the git tag (vX.Y.Z).
+bash "$SCRIPT_DIR/sync-version-from-tag.sh"
+
 # Clean previous builds
 log "Cleaning previous builds..."
 flutter clean

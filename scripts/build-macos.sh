@@ -36,6 +36,18 @@ autofail() {
   exit 1
 }
 
+read_pubspec_version() {
+  local pubspec="$APP_DIR/pubspec.yaml"
+  local raw
+  raw="$(sed -nE 's/^version:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+).*/\1+\2/p' "$pubspec" | head -n1)"
+  if [[ -z "$raw" ]]; then
+    autofail "Unable to parse app version from $pubspec"
+  fi
+  APP_VERSION_SEMVER="${raw%%+*}"
+  APP_VERSION_BUILD="${raw##*+}"
+  APP_VERSION_FULL="$APP_VERSION_SEMVER+$APP_VERSION_BUILD"
+}
+
 # Check if running on macOS
 if [[ "$OSTYPE" != "darwin"* ]]; then
   autofail "macOS builds require macOS"
@@ -132,9 +144,9 @@ stage_rust_macos_universal() {
   <key>CFBundlePackageType</key>
   <string>FMWK</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0.4</string>
+  <string>${APP_VERSION_SEMVER}</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>${APP_VERSION_BUILD}</string>
 </dict>
 </plist>
 EOF
@@ -301,6 +313,11 @@ sign_app_bundle() {
 }
 
 cd "$APP_DIR"
+
+# On tag builds, align app version metadata with the git tag (vX.Y.Z).
+bash "$SCRIPT_DIR/sync-version-from-tag.sh"
+read_pubspec_version
+log "App version: $APP_VERSION_FULL"
 
 log "Cleaning previous builds..."
 flutter clean

@@ -24,6 +24,18 @@ warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+read_pubspec_version() {
+    local pubspec="$APP_DIR/pubspec.yaml"
+    local raw
+    raw="$(sed -nE 's/^version:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+).*/\1+\2/p' "$pubspec" | head -n1)"
+    if [[ -z "$raw" ]]; then
+        error "Unable to parse app version from $pubspec"
+    fi
+    APP_VERSION_SEMVER="${raw%%+*}"
+    APP_VERSION_BUILD="${raw##*+}"
+    APP_VERSION_FULL="$APP_VERSION_SEMVER+$APP_VERSION_BUILD"
+}
+
 # Parse arguments
 FORMAT="${1:-appimage}"  # appimage, flatpak, or deb
 
@@ -134,6 +146,11 @@ chmod +x "$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 "$SCRIPT_DIR/fetch-tor-i2p-assets.sh"
 
 cd "$APP_DIR"
+
+# On tag builds, align app version metadata with the git tag (vX.Y.Z).
+bash "$SCRIPT_DIR/sync-version-from-tag.sh"
+read_pubspec_version
+log "App version: $APP_VERSION_FULL"
 
 # Clean previous builds
 log "Cleaning previous builds..."
@@ -337,7 +354,7 @@ build_deb() {
     # Create control file
     cat > "$DEB_DIR/DEBIAN/control" <<EOF
 Package: pirate-unified-wallet
-Version: 1.0.4
+Version: $APP_VERSION_SEMVER
 Section: utils
 Priority: optional
 Architecture: amd64
