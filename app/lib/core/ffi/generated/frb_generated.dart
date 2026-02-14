@@ -65,7 +65,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 109145824;
+  int get rustContentHash => -1248550582;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -528,6 +528,8 @@ abstract class RustLibApi extends BaseApi {
   Future<bool> crateApiVerifyPanicPin({required String pin});
 
   Future<bool> crateApiWalletRegistryExists();
+
+  Future<WitnessRefreshOutcome> crateApiWitnessRefreshOutcomeDefault();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -3998,6 +4000,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiWalletRegistryExistsConstMeta =>
       const TaskConstMeta(debugName: "wallet_registry_exists", argNames: []);
 
+  @override
+  Future<WitnessRefreshOutcome> crateApiWitnessRefreshOutcomeDefault() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__witness_refresh_outcome_default(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_witness_refresh_outcome,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiWitnessRefreshOutcomeDefaultConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiWitnessRefreshOutcomeDefaultConstMeta =>
+      const TaskConstMeta(
+        debugName: "witness_refresh_outcome_default",
+        argNames: [],
+      );
+
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
@@ -4740,6 +4766,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       canExportSeed: dco_decode_bool(arr[3]),
       canGenerateAddresses: dco_decode_bool(arr[4]),
       isWatchOnly: dco_decode_bool(arr[5]),
+    );
+  }
+
+  @protected
+  WitnessRefreshOutcome dco_decode_witness_refresh_outcome(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return WitnessRefreshOutcome(
+      source: dco_decode_String(arr[0]),
+      saplingRequested: dco_decode_usize(arr[1]),
+      saplingUpdated: dco_decode_usize(arr[2]),
+      saplingMissing: dco_decode_usize(arr[3]),
+      saplingErrors: dco_decode_usize(arr[4]),
+      orchardRequested: dco_decode_usize(arr[5]),
+      orchardUpdated: dco_decode_usize(arr[6]),
+      orchardMissing: dco_decode_usize(arr[7]),
+      orchardErrors: dco_decode_usize(arr[8]),
     );
   }
 
@@ -5695,6 +5740,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  WitnessRefreshOutcome sse_decode_witness_refresh_outcome(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_source = sse_decode_String(deserializer);
+    var var_saplingRequested = sse_decode_usize(deserializer);
+    var var_saplingUpdated = sse_decode_usize(deserializer);
+    var var_saplingMissing = sse_decode_usize(deserializer);
+    var var_saplingErrors = sse_decode_usize(deserializer);
+    var var_orchardRequested = sse_decode_usize(deserializer);
+    var var_orchardUpdated = sse_decode_usize(deserializer);
+    var var_orchardMissing = sse_decode_usize(deserializer);
+    var var_orchardErrors = sse_decode_usize(deserializer);
+    return WitnessRefreshOutcome(
+      source: var_source,
+      saplingRequested: var_saplingRequested,
+      saplingUpdated: var_saplingUpdated,
+      saplingMissing: var_saplingMissing,
+      saplingErrors: var_saplingErrors,
+      orchardRequested: var_orchardRequested,
+      orchardUpdated: var_orchardUpdated,
+      orchardMissing: var_orchardMissing,
+      orchardErrors: var_orchardErrors,
+    );
+  }
+
+  @protected
   int cst_encode_address_book_color_tag(AddressBookColorTag raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return cst_encode_i_32(raw.index);
@@ -6539,5 +6611,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.canExportSeed, serializer);
     sse_encode_bool(self.canGenerateAddresses, serializer);
     sse_encode_bool(self.isWatchOnly, serializer);
+  }
+
+  @protected
+  void sse_encode_witness_refresh_outcome(
+    WitnessRefreshOutcome self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.source, serializer);
+    sse_encode_usize(self.saplingRequested, serializer);
+    sse_encode_usize(self.saplingUpdated, serializer);
+    sse_encode_usize(self.saplingMissing, serializer);
+    sse_encode_usize(self.saplingErrors, serializer);
+    sse_encode_usize(self.orchardRequested, serializer);
+    sse_encode_usize(self.orchardUpdated, serializer);
+    sse_encode_usize(self.orchardMissing, serializer);
+    sse_encode_usize(self.orchardErrors, serializer);
   }
 }

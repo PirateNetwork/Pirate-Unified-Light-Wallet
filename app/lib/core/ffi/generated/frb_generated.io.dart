@@ -264,6 +264,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  WitnessRefreshOutcome dco_decode_witness_refresh_outcome(dynamic raw);
+
+  @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
@@ -532,6 +535,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  WitnessRefreshOutcome sse_decode_witness_refresh_outcome(
     SseDeserializer deserializer,
   );
 
@@ -1292,6 +1300,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  void cst_api_fill_to_wire_witness_refresh_outcome(
+    WitnessRefreshOutcome apiObj,
+    wire_cst_witness_refresh_outcome wireObj,
+  ) {
+    wireObj.source = cst_encode_String(apiObj.source);
+    wireObj.sapling_requested = cst_encode_usize(apiObj.saplingRequested);
+    wireObj.sapling_updated = cst_encode_usize(apiObj.saplingUpdated);
+    wireObj.sapling_missing = cst_encode_usize(apiObj.saplingMissing);
+    wireObj.sapling_errors = cst_encode_usize(apiObj.saplingErrors);
+    wireObj.orchard_requested = cst_encode_usize(apiObj.orchardRequested);
+    wireObj.orchard_updated = cst_encode_usize(apiObj.orchardUpdated);
+    wireObj.orchard_missing = cst_encode_usize(apiObj.orchardMissing);
+    wireObj.orchard_errors = cst_encode_usize(apiObj.orchardErrors);
+  }
+
+  @protected
   int cst_encode_address_book_color_tag(AddressBookColorTag raw);
 
   @protected
@@ -1663,6 +1687,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_watch_only_capabilities_info(
     WatchOnlyCapabilitiesInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_witness_refresh_outcome(
+    WitnessRefreshOutcome self,
     SseSerializer serializer,
   );
 }
@@ -4607,6 +4637,18 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__wallet_registry_existsPtr
           .asFunction<void Function(int)>();
 
+  void wire__crate__api__witness_refresh_outcome_default(int port_) {
+    return _wire__crate__api__witness_refresh_outcome_default(port_);
+  }
+
+  late final _wire__crate__api__witness_refresh_outcome_defaultPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+        'frbgen_pirate_wallet_wire__crate__api__witness_refresh_outcome_default',
+      );
+  late final _wire__crate__api__witness_refresh_outcome_default =
+      _wire__crate__api__witness_refresh_outcome_defaultPtr
+          .asFunction<void Function(int)>();
+
   ffi.Pointer<ffi.Int32> cst_new_box_autoadd_address_book_color_tag(int value) {
     return _cst_new_box_autoadd_address_book_color_tag(value);
   }
@@ -5491,6 +5533,34 @@ final class wire_cst_watch_only_capabilities_info extends ffi.Struct {
 
   @ffi.Bool()
   external bool is_watch_only;
+}
+
+final class wire_cst_witness_refresh_outcome extends ffi.Struct {
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> source;
+
+  @ffi.UintPtr()
+  external int sapling_requested;
+
+  @ffi.UintPtr()
+  external int sapling_updated;
+
+  @ffi.UintPtr()
+  external int sapling_missing;
+
+  @ffi.UintPtr()
+  external int sapling_errors;
+
+  @ffi.UintPtr()
+  external int orchard_requested;
+
+  @ffi.UintPtr()
+  external int orchard_updated;
+
+  @ffi.UintPtr()
+  external int orchard_missing;
+
+  @ffi.UintPtr()
+  external int orchard_errors;
 }
 
 const int MAX_OUTPUTS_PER_TX = 50;

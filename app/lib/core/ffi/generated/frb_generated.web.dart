@@ -266,6 +266,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  WitnessRefreshOutcome dco_decode_witness_refresh_outcome(dynamic raw);
+
+  @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
@@ -534,6 +537,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  WitnessRefreshOutcome sse_decode_witness_refresh_outcome(
     SseDeserializer deserializer,
   );
 
@@ -1132,6 +1140,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  JSAny cst_encode_witness_refresh_outcome(WitnessRefreshOutcome raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.source),
+      cst_encode_usize(raw.saplingRequested),
+      cst_encode_usize(raw.saplingUpdated),
+      cst_encode_usize(raw.saplingMissing),
+      cst_encode_usize(raw.saplingErrors),
+      cst_encode_usize(raw.orchardRequested),
+      cst_encode_usize(raw.orchardUpdated),
+      cst_encode_usize(raw.orchardMissing),
+      cst_encode_usize(raw.orchardErrors),
+    ].jsify()!;
+  }
+
+  @protected
   int cst_encode_address_book_color_tag(AddressBookColorTag raw);
 
   @protected
@@ -1503,6 +1527,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_watch_only_capabilities_info(
     WatchOnlyCapabilitiesInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_witness_refresh_outcome(
+    WitnessRefreshOutcome self,
     SseSerializer serializer,
   );
 }
@@ -2350,6 +2380,10 @@ class RustLibWire implements BaseWire {
 
   void wire__crate__api__wallet_registry_exists(NativePortType port_) =>
       wasmModule.wire__crate__api__wallet_registry_exists(port_);
+
+  void wire__crate__api__witness_refresh_outcome_default(
+    NativePortType port_,
+  ) => wasmModule.wire__crate__api__witness_refresh_outcome_default(port_);
 }
 
 @JS('wasm_bindgen')
@@ -2992,4 +3026,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   );
 
   external void wire__crate__api__wallet_registry_exists(NativePortType port_);
+
+  external void wire__crate__api__witness_refresh_outcome_default(
+    NativePortType port_,
+  );
 }

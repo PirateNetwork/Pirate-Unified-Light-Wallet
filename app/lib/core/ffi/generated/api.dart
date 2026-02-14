@@ -7,9 +7,9 @@ import 'frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_book_entry_to_ffi`, `address_matches_type`, `address_prefix_network_type_for_endpoint`, `address_prefix_network_type`, `align_orchard_anchor_group`, `align_sapling_anchor_group`, `app_passphrase`, `auto_consolidation_enabled`, `auto_consolidation_setting_key`, `auto_select_spend_key_id_for_amount`, `broadcast_tx_inner`, `build_tx_internal`, `choose_multi_key_change_sink_key_id`, `current_linux_fd_count`, `debug_log_path`, `decode_frontier_snapshot`, `decode_orchard_address_bytes_from_note_bytes`, `decode_sapling_address_bytes_from_note_bytes`, `decoy_wallet_meta`, `delete_wallet_meta`, `derive_db_key`, `detect_network_from_endpoint`, `encode_orchard_extsk`, `encode_sapling_xfvk_from_bytes`, `ensure_decoy_wallet_state`, `ensure_not_decoy`, `ensure_primary_account_key`, `ensure_wallet_registry_loaded`, `ensure_wallet_registry_schema`, `escape_json`, `fetch_transaction_memo_inner`, `force_store_sealed_db_key`, `get_registry_setting`, `get_wallet_meta`, `infer_contributing_key_ids_for_amount`, `infer_key_network_type_from_addresses`, `install_debug_panic_hook`, `install_runtime_diagnostics`, `is_decoy_mode_active`, `key_type_to_info`, `load_registry_tunnel_mode`, `load_salt`, `load_sealed_key`, `load_wallet_registry_activity`, `load_wallet_registry_state`, `load_wallet_registry`, `log_orchard_address_samples`, `map_stage`, `mark_runtime_clean_shutdown`, `maybe_store_sealed_db_key`, `network_type_name`, `new`, `normalize_filter_ids`, `note_balances_by_key_id`, `open_encrypted_db_with_migration`, `open_wallet_db_for`, `open_wallet_db_with_passphrase`, `open_wallet_registry_with_passphrase`, `open_wallet_registry`, `orchard_activation_override`, `orchard_anchor_for_selectable_note`, `orchard_anchor_from_frontier_hex`, `parse_endpoint_url`, `parse_rfc3339_timestamp`, `parse_tunnel_mode_setting`, `persist_registry_tunnel_mode`, `persist_wallet_meta`, `read_runtime_marker`, `redact_socks5_url`, `rederive_wallet_keys_for_network`, `reencrypt_blob`, `reencrypt_optional_blob`, `reencrypt_wallet_tables`, `refresh_duress_reverse_hash`, `registry_master_key`, `reseal_registry_db_key`, `reseal_wallet_db_key`, `resolve_spend_key_id`, `resolve_wallet_birthday_height`, `resume_background_sync_after_sign`, `reverse_passphrase`, `run_on_runtime_blocking`, `run_on_runtime`, `run_sync_engine_task`, `runtime_marker_path`, `sapling_anchor_for_selectable_note`, `sapling_extfvk_hrp_for_network`, `sapling_extsk_hrp_for_network`, `scan_sequential_addresses`, `schedule_target_height_update`, `set_active_wallet_registry`, `set_registry_setting`, `should_generate_orchard`, `sign_tx_internal`, `spawn_bootstrap_transport`, `start_background_sync_inner`, `start_background_sync_round_robin_inner`, `store_sealed_key`, `sync_status_inner`, `test_node_inner`, `touch_wallet_last_synced`, `touch_wallet_last_used`, `truncate_for_log`, `try_unseal_db_key`, `tunnel_transport_config_for`, `tunnel_transport_config`, `unix_timestamp_millis`, `update_runtime_marker`, `validate_custom_duress_passphrase`, `validate_spendable_key`, `verify_app_passphrase_with_db`, `wait_for_sync_stop`, `wallet_base_dir`, `wallet_db_key_path`, `wallet_db_keys`, `wallet_db_path_for`, `wallet_db_salt_path`, `wallet_master_key`, `wallet_network_type`, `wallet_registry_key_path`, `wallet_registry_path`, `wallet_registry_salt_path`, `write_runtime_debug_event`, `write_runtime_marker`, `write_salt`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `DECOY_VAULT`, `LIGHTD_ENDPOINTS`, `PENDING_TUNNEL_MODE`, `SEED_EXPORT`, `SYNC_SESSIONS`, `SequentialAddressScan`, `SyncResumeGuard`, `SyncSession`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`, `WalletRegistryActivity`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `drop`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
+// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_book_entry_to_ffi`, `address_matches_type`, `address_prefix_network_type_for_endpoint`, `address_prefix_network_type`, `align_orchard_anchor_group`, `align_sapling_anchor_group`, `app_passphrase`, `apply_pending_sign_context`, `auto_consolidation_enabled`, `auto_consolidation_setting_key`, `auto_select_spend_key_id_for_amount`, `broadcast_tx_inner`, `build_tx_internal`, `choose_multi_key_change_sink_key_id`, `clear_pending_sign_context`, `current_linux_fd_count`, `debug_log_path`, `decode_frontier_snapshot`, `decode_orchard_address_bytes_from_note_bytes`, `decode_sapling_address_bytes_from_note_bytes`, `decoy_wallet_meta`, `delete_wallet_meta`, `derive_db_key`, `detect_network_from_endpoint`, `encode_orchard_extsk`, `encode_sapling_xfvk_from_bytes`, `ensure_decoy_wallet_state`, `ensure_not_decoy`, `ensure_primary_account_key`, `ensure_wallet_registry_loaded`, `ensure_wallet_registry_schema`, `escape_json`, `fetch_transaction_memo_inner`, `force_store_sealed_db_key`, `get_registry_setting`, `get_wallet_meta`, `infer_contributing_key_ids_for_amount`, `infer_key_network_type_from_addresses`, `install_debug_panic_hook`, `install_runtime_diagnostics`, `is_decoy_mode_active`, `key_type_to_info`, `load_pending_sign_context`, `load_registry_tunnel_mode`, `load_salt`, `load_sealed_key`, `load_wallet_registry_activity`, `load_wallet_registry_state`, `load_wallet_registry`, `log_orchard_address_samples`, `log_witness_repair_note_event`, `map_stage`, `mark_runtime_clean_shutdown`, `maybe_store_sealed_db_key`, `network_type_name`, `new`, `normalize_filter_ids`, `normalize_pending_sign_filter_ids`, `note_balances_by_key_id`, `open_encrypted_db_with_migration`, `open_wallet_db_for`, `open_wallet_db_with_passphrase`, `open_wallet_registry_with_passphrase`, `open_wallet_registry`, `orchard_activation_override`, `orchard_anchor_for_selectable_note`, `orchard_anchor_from_frontier_hex`, `parse_endpoint_url`, `parse_rfc3339_timestamp`, `parse_tunnel_mode_setting`, `pending_sign_note_id`, `pending_sign_note_snapshot`, `persist_registry_tunnel_mode`, `persist_wallet_meta`, `read_runtime_marker`, `redact_socks5_url`, `rederive_wallet_keys_for_network`, `reencrypt_blob`, `reencrypt_optional_blob`, `reencrypt_wallet_tables`, `refresh_duress_reverse_hash`, `refresh_selectable_note_positions_from_db`, `refresh_selectable_note_witnesses`, `registry_master_key`, `reseal_registry_db_key`, `reseal_wallet_db_key`, `resolve_spend_key_id`, `resolve_wallet_birthday_height`, `resume_background_sync_after_sign`, `reverse_passphrase`, `run_on_runtime_blocking`, `run_on_runtime`, `run_sync_engine_task`, `runtime_marker_path`, `sapling_anchor_for_selectable_note`, `sapling_extfvk_hrp_for_network`, `sapling_extsk_hrp_for_network`, `scan_sequential_addresses`, `schedule_target_height_update`, `selectable_note_lookup_key`, `set_active_wallet_registry`, `set_registry_setting`, `should_generate_orchard`, `sign_tx_internal`, `spawn_bootstrap_transport`, `start_background_sync_inner`, `start_background_sync_round_robin_inner`, `store_pending_sign_context`, `store_sealed_key`, `sync_status_inner`, `test_node_inner`, `touch_wallet_last_synced`, `touch_wallet_last_used`, `truncate_for_log`, `try_unseal_db_key`, `tunnel_transport_config_for`, `tunnel_transport_config`, `txid_prefix_hex`, `unix_timestamp_millis`, `update_runtime_marker`, `validate_custom_duress_passphrase`, `validate_spendable_key`, `verify_app_passphrase_with_db`, `wait_for_sync_stop`, `wallet_base_dir`, `wallet_db_key_path`, `wallet_db_keys`, `wallet_db_path_for`, `wallet_db_salt_path`, `wallet_master_key`, `wallet_network_type`, `wallet_registry_key_path`, `wallet_registry_path`, `wallet_registry_salt_path`, `witness_note_type_label`, `write_runtime_debug_event`, `write_runtime_marker`, `write_salt`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `DECOY_VAULT`, `LIGHTD_ENDPOINTS`, `PENDING_SIGN_CONTEXTS`, `PENDING_TUNNEL_MODE`, `PendingSignContext`, `PendingSignNoteId`, `PendingSignNoteSnapshot`, `SEED_EXPORT`, `SYNC_SESSIONS`, `SequentialAddressScan`, `SyncResumeGuard`, `SyncSession`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`, `WalletRegistryActivity`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_receiver_is_total_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `drop`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `hash`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
 // These functions are ignored (category: IgnoreBecauseOwnerTyShouldIgnore): `default`
 
 /// Create new wallet
@@ -1127,4 +1127,58 @@ class WatchOnlyCapabilitiesInfo {
           canExportSeed == other.canExportSeed &&
           canGenerateAddresses == other.canGenerateAddresses &&
           isWatchOnly == other.isWatchOnly;
+}
+
+class WitnessRefreshOutcome {
+  final String source;
+  final BigInt saplingRequested;
+  final BigInt saplingUpdated;
+  final BigInt saplingMissing;
+  final BigInt saplingErrors;
+  final BigInt orchardRequested;
+  final BigInt orchardUpdated;
+  final BigInt orchardMissing;
+  final BigInt orchardErrors;
+
+  const WitnessRefreshOutcome({
+    required this.source,
+    required this.saplingRequested,
+    required this.saplingUpdated,
+    required this.saplingMissing,
+    required this.saplingErrors,
+    required this.orchardRequested,
+    required this.orchardUpdated,
+    required this.orchardMissing,
+    required this.orchardErrors,
+  });
+
+  static Future<WitnessRefreshOutcome> default_() =>
+      RustLib.instance.api.crateApiWitnessRefreshOutcomeDefault();
+
+  @override
+  int get hashCode =>
+      source.hashCode ^
+      saplingRequested.hashCode ^
+      saplingUpdated.hashCode ^
+      saplingMissing.hashCode ^
+      saplingErrors.hashCode ^
+      orchardRequested.hashCode ^
+      orchardUpdated.hashCode ^
+      orchardMissing.hashCode ^
+      orchardErrors.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WitnessRefreshOutcome &&
+          runtimeType == other.runtimeType &&
+          source == other.source &&
+          saplingRequested == other.saplingRequested &&
+          saplingUpdated == other.saplingUpdated &&
+          saplingMissing == other.saplingMissing &&
+          saplingErrors == other.saplingErrors &&
+          orchardRequested == other.orchardRequested &&
+          orchardUpdated == other.orchardUpdated &&
+          orchardMissing == other.orchardMissing &&
+          orchardErrors == other.orchardErrors;
 }

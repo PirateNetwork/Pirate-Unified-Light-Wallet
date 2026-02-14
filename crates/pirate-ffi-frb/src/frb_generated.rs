@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 109145824;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1248550582;
 
 // Section: executor
 
@@ -3145,6 +3145,26 @@ fn wire__crate__api__wallet_registry_exists_impl(
         },
     )
 }
+fn wire__crate__api__witness_refresh_outcome_default_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "witness_refresh_outcome_default",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| {
+                transform_result_dco::<_, _, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::WitnessRefreshOutcome::default())?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 
 // Section: dart2rust
 
@@ -4185,6 +4205,32 @@ impl SseDecode for crate::api::WatchOnlyCapabilitiesInfo {
     }
 }
 
+impl SseDecode for crate::api::WitnessRefreshOutcome {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_source = <String>::sse_decode(deserializer);
+        let mut var_saplingRequested = <usize>::sse_decode(deserializer);
+        let mut var_saplingUpdated = <usize>::sse_decode(deserializer);
+        let mut var_saplingMissing = <usize>::sse_decode(deserializer);
+        let mut var_saplingErrors = <usize>::sse_decode(deserializer);
+        let mut var_orchardRequested = <usize>::sse_decode(deserializer);
+        let mut var_orchardUpdated = <usize>::sse_decode(deserializer);
+        let mut var_orchardMissing = <usize>::sse_decode(deserializer);
+        let mut var_orchardErrors = <usize>::sse_decode(deserializer);
+        return crate::api::WitnessRefreshOutcome {
+            source: var_source,
+            sapling_requested: var_saplingRequested,
+            sapling_updated: var_saplingUpdated,
+            sapling_missing: var_saplingMissing,
+            sapling_errors: var_saplingErrors,
+            orchard_requested: var_orchardRequested,
+            orchard_updated: var_orchardUpdated,
+            orchard_missing: var_orchardMissing,
+            orchard_errors: var_orchardErrors,
+        };
+    }
+}
+
 fn pde_ffi_dispatcher_primary_impl(
     func_id: i32,
     port: flutter_rust_bridge::for_generated::MessagePort,
@@ -4860,6 +4906,34 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::WatchOnlyCapabilitiesInfo>
     for crate::api::WatchOnlyCapabilitiesInfo
 {
     fn into_into_dart(self) -> crate::api::WatchOnlyCapabilitiesInfo {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::WitnessRefreshOutcome {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.source.into_into_dart().into_dart(),
+            self.sapling_requested.into_into_dart().into_dart(),
+            self.sapling_updated.into_into_dart().into_dart(),
+            self.sapling_missing.into_into_dart().into_dart(),
+            self.sapling_errors.into_into_dart().into_dart(),
+            self.orchard_requested.into_into_dart().into_dart(),
+            self.orchard_updated.into_into_dart().into_dart(),
+            self.orchard_missing.into_into_dart().into_dart(),
+            self.orchard_errors.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::WitnessRefreshOutcome
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::WitnessRefreshOutcome>
+    for crate::api::WitnessRefreshOutcome
+{
+    fn into_into_dart(self) -> crate::api::WitnessRefreshOutcome {
         self
     }
 }
@@ -5569,6 +5643,21 @@ impl SseEncode for crate::api::WatchOnlyCapabilitiesInfo {
     }
 }
 
+impl SseEncode for crate::api::WitnessRefreshOutcome {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.source, serializer);
+        <usize>::sse_encode(self.sapling_requested, serializer);
+        <usize>::sse_encode(self.sapling_updated, serializer);
+        <usize>::sse_encode(self.sapling_missing, serializer);
+        <usize>::sse_encode(self.sapling_errors, serializer);
+        <usize>::sse_encode(self.orchard_requested, serializer);
+        <usize>::sse_encode(self.orchard_updated, serializer);
+        <usize>::sse_encode(self.orchard_missing, serializer);
+        <usize>::sse_encode(self.orchard_errors, serializer);
+    }
+}
+
 #[cfg(not(target_family = "wasm"))]
 mod io {
     // This file is automatically generated, so please do not edit it.
@@ -6150,6 +6239,22 @@ mod io {
             }
         }
     }
+    impl CstDecode<crate::api::WitnessRefreshOutcome> for wire_cst_witness_refresh_outcome {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::api::WitnessRefreshOutcome {
+            crate::api::WitnessRefreshOutcome {
+                source: self.source.cst_decode(),
+                sapling_requested: self.sapling_requested.cst_decode(),
+                sapling_updated: self.sapling_updated.cst_decode(),
+                sapling_missing: self.sapling_missing.cst_decode(),
+                sapling_errors: self.sapling_errors.cst_decode(),
+                orchard_requested: self.orchard_requested.cst_decode(),
+                orchard_updated: self.orchard_updated.cst_decode(),
+                orchard_missing: self.orchard_missing.cst_decode(),
+                orchard_errors: self.orchard_errors.cst_decode(),
+            }
+        }
+    }
     impl NewWithNullPtr for wire_cst_address_balance_info {
         fn new_with_null_ptr() -> Self {
             Self {
@@ -6586,6 +6691,26 @@ mod io {
         }
     }
     impl Default for wire_cst_watch_only_capabilities_info {
+        fn default() -> Self {
+            Self::new_with_null_ptr()
+        }
+    }
+    impl NewWithNullPtr for wire_cst_witness_refresh_outcome {
+        fn new_with_null_ptr() -> Self {
+            Self {
+                source: core::ptr::null_mut(),
+                sapling_requested: Default::default(),
+                sapling_updated: Default::default(),
+                sapling_missing: Default::default(),
+                sapling_errors: Default::default(),
+                orchard_requested: Default::default(),
+                orchard_updated: Default::default(),
+                orchard_missing: Default::default(),
+                orchard_errors: Default::default(),
+            }
+        }
+    }
+    impl Default for wire_cst_witness_refresh_outcome {
         fn default() -> Self {
             Self::new_with_null_ptr()
         }
@@ -7655,6 +7780,13 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__witness_refresh_outcome_default(
+        port_: i64,
+    ) {
+        wire__crate__api__witness_refresh_outcome_default_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_cst_new_box_autoadd_address_book_color_tag(
         value: i32,
     ) -> *mut i32 {
@@ -8237,6 +8369,19 @@ mod io {
         can_export_seed: bool,
         can_generate_addresses: bool,
         is_watch_only: bool,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct wire_cst_witness_refresh_outcome {
+        source: *mut wire_cst_list_prim_u_8_strict,
+        sapling_requested: usize,
+        sapling_updated: usize,
+        sapling_missing: usize,
+        sapling_errors: usize,
+        orchard_requested: usize,
+        orchard_updated: usize,
+        orchard_missing: usize,
+        orchard_errors: usize,
     }
 }
 #[cfg(not(target_family = "wasm"))]
@@ -9033,6 +9178,33 @@ mod web {
                 can_export_seed: self_.get(3).cst_decode(),
                 can_generate_addresses: self_.get(4).cst_decode(),
                 is_watch_only: self_.get(5).cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::api::WitnessRefreshOutcome>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::api::WitnessRefreshOutcome {
+            let self_ = self
+                .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap();
+            assert_eq!(
+                self_.length(),
+                9,
+                "Expected 9 elements, got {}",
+                self_.length()
+            );
+            crate::api::WitnessRefreshOutcome {
+                source: self_.get(0).cst_decode(),
+                sapling_requested: self_.get(1).cst_decode(),
+                sapling_updated: self_.get(2).cst_decode(),
+                sapling_missing: self_.get(3).cst_decode(),
+                sapling_errors: self_.get(4).cst_decode(),
+                orchard_requested: self_.get(5).cst_decode(),
+                orchard_updated: self_.get(6).cst_decode(),
+                orchard_missing: self_.get(7).cst_decode(),
+                orchard_errors: self_.get(8).cst_decode(),
             }
         }
     }
@@ -10254,6 +10426,13 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
     ) {
         wire__crate__api__wallet_registry_exists_impl(port_)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__witness_refresh_outcome_default(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__witness_refresh_outcome_default_impl(port_)
     }
 }
 #[cfg(target_family = "wasm")]

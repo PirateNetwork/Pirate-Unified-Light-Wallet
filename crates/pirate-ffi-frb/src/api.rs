@@ -4101,16 +4101,16 @@ fn choose_multi_key_change_sink_key_id(
 }
 
 #[derive(Debug, Default)]
-struct WitnessRefreshOutcome {
-    source: String,
-    sapling_requested: usize,
-    sapling_updated: usize,
-    sapling_missing: usize,
-    sapling_errors: usize,
-    orchard_requested: usize,
-    orchard_updated: usize,
-    orchard_missing: usize,
-    orchard_errors: usize,
+pub(crate) struct WitnessRefreshOutcome {
+    pub(crate) source: String,
+    pub(crate) sapling_requested: usize,
+    pub(crate) sapling_updated: usize,
+    pub(crate) sapling_missing: usize,
+    pub(crate) sapling_errors: usize,
+    pub(crate) orchard_requested: usize,
+    pub(crate) orchard_updated: usize,
+    pub(crate) orchard_missing: usize,
+    pub(crate) orchard_errors: usize,
 }
 
 fn witness_note_type_label(note: &pirate_core::selection::SelectableNote) -> &'static str {
