@@ -1683,6 +1683,9 @@ pub fn change_app_passphrase(current_passphrase: String, new_passphrase: String)
 
     // Clear sync sessions to force re-open with new keys.
     SYNC_SESSIONS.write().clear();
+    SYNC_RUNTIME_HANDLES.write().clear();
+    SYNC_STATUS_SNAPSHOT_CACHE.write().clear();
+    TX_LIST_CACHE.write().clear();
     tracing::info!("App passphrase updated successfully");
     Ok(())
 }
@@ -2211,6 +2214,7 @@ pub fn delete_wallet(wallet_id: WalletId) -> Result<()> {
         let mut sessions = SYNC_SESSIONS.write();
         sessions.remove(&wallet_id);
     }
+    clear_sync_runtime_cache(&wallet_id);
 
     {
         let mut endpoints = LIGHTD_ENDPOINTS.write();
@@ -7045,6 +7049,74 @@ lazy_static::lazy_static! {
     // FRB calls are handled on a single thread by default.
     static ref SYNC_SESSIONS: Arc<RwLock<HashMap<WalletId, Arc<tokio::sync::Mutex<SyncSession>>>>> =
         Arc::new(RwLock::new(HashMap::new()));
+    /// Live runtime handles for sync status reads without locking `SyncSession`.
+    static ref SYNC_RUNTIME_HANDLES: Arc<RwLock<HashMap<WalletId, SyncRuntimeHandles>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+    /// Last computed sync status snapshot per wallet (used as lock-free fallback).
+    static ref SYNC_STATUS_SNAPSHOT_CACHE: Arc<RwLock<HashMap<WalletId, SyncStatus>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+    /// Stable transaction list cache used while sync is mutating notes/spends.
+    static ref TX_LIST_CACHE: Arc<RwLock<TxListCacheMap>> =
+        Arc::new(RwLock::new(HashMap::new()));
+}
+
+#[derive(Clone)]
+struct SyncRuntimeHandles {
+    progress: Arc<tokio::sync::RwLock<SyncProgress>>,
+    perf: Arc<PerfCounters>,
+}
+
+const TX_CACHE_NO_LIMIT_KEY: u32 = u32::MAX;
+type TxListCacheKey = (WalletId, u32);
+type TxListCacheMap = HashMap<TxListCacheKey, Vec<TxInfo>>;
+
+fn tx_cache_key(wallet_id: &WalletId, limit: Option<u32>) -> TxListCacheKey {
+    (wallet_id.clone(), limit.unwrap_or(TX_CACHE_NO_LIMIT_KEY))
+}
+
+fn get_cached_transactions(wallet_id: &WalletId, limit: Option<u32>) -> Option<Vec<TxInfo>> {
+    let key = tx_cache_key(wallet_id, limit);
+    TX_LIST_CACHE.read().get(&key).cloned()
+}
+
+fn put_cached_transactions(wallet_id: &WalletId, limit: Option<u32>, txs: &[TxInfo]) {
+    let key = tx_cache_key(wallet_id, limit);
+    TX_LIST_CACHE.write().insert(key, txs.to_vec());
+}
+
+fn should_suppress_live_tx_reads(wallet_id: &WalletId) -> bool {
+    let sessions = SYNC_SESSIONS.read();
+    let session_arc = match sessions.get(wallet_id) {
+        Some(session) => Arc::clone(session),
+        None => return false,
+    };
+    drop(sessions);
+
+    let suppress = if let Ok(session) = session_arc.try_lock() {
+        session.is_running && !matches!(session.last_status.stage, crate::models::SyncStage::Verify)
+    } else {
+        // Lock contention typically means sync mutation is active.
+        true
+    };
+    suppress
+}
+
+fn cache_sync_status(wallet_id: &WalletId, status: &SyncStatus) {
+    SYNC_STATUS_SNAPSHOT_CACHE
+        .write()
+        .insert(wallet_id.clone(), status.clone());
+}
+
+fn get_cached_sync_status(wallet_id: &WalletId) -> Option<SyncStatus> {
+    SYNC_STATUS_SNAPSHOT_CACHE.read().get(wallet_id).cloned()
+}
+
+fn clear_sync_runtime_cache(wallet_id: &WalletId) {
+    SYNC_RUNTIME_HANDLES.write().remove(wallet_id);
+    SYNC_STATUS_SNAPSHOT_CACHE.write().remove(wallet_id);
+    TX_LIST_CACHE
+        .write()
+        .retain(|(cached_wallet_id, _), _| cached_wallet_id != wallet_id);
 }
 
 /// Sync session state
@@ -7361,6 +7433,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             last_batch_ms: 0,
         };
         session.last_target_height_update = None;
+        cache_sync_status(&wallet_id, &session.last_status);
     }
 
     // Create sync engine with wallet context and proper client config
@@ -7376,6 +7449,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         Ok(sync) => sync,
         Err(e) => {
             session_arc.lock().await.is_running = false;
+            clear_sync_runtime_cache(&wallet_id);
             return Err(anyhow!("Failed to initialize sync engine: {}", e));
         }
     };
@@ -7388,6 +7462,8 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             engine.cancel_flag(),
         )
     };
+    let progress_handle = Arc::clone(&progress);
+    let perf_handle = Arc::clone(&perf);
 
     // Update the existing session entry with the live engine handles.
     {
@@ -7409,7 +7485,15 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         };
         // Keep is_running = true; the engine monitors for new blocks after catching up.
         session.last_target_height_update = None;
+        cache_sync_status(&wallet_id, &session.last_status);
     }
+    SYNC_RUNTIME_HANDLES.write().insert(
+        wallet_id.clone(),
+        SyncRuntimeHandles {
+            progress: progress_handle,
+            perf: perf_handle,
+        },
+    );
 
     // Start sync in background
     let wallet_id_for_task = wallet_id.clone();
@@ -7466,6 +7550,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         let mut session = session_arc_for_task.lock().await;
         if let Some(status) = status_opt {
             session.last_status = status;
+            cache_sync_status(&wallet_id_for_task, &session.last_status);
         }
         match &result {
             Ok(()) => {
@@ -7491,6 +7576,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                 tracing::error!("Sync error details: {}", e);
                 // Only set is_running = false on actual error
                 session.is_running = false;
+                clear_sync_runtime_cache(&wallet_id_for_task);
             }
         }
         // Don't set is_running = false here - sync continues monitoring even after catching up
@@ -7654,6 +7740,9 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 }
             }
             // #endregion
+            if let Some(status) = get_cached_sync_status(&wallet_id) {
+                return Ok(status);
+            }
             if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
                 let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
                 if let Ok(state) = sync_storage.load_sync_state() {
@@ -7682,7 +7771,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         }
                     }
                     // #endregion
-                    return Ok(SyncStatus {
+                    let status = SyncStatus {
                         local_height: state.local_height,
                         target_height: state.target_height,
                         percent,
@@ -7692,7 +7781,9 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         blocks_per_second: 0.0,
                         notes_decrypted: 0,
                         last_batch_ms: 0,
-                    });
+                    };
+                    cache_sync_status(&wallet_id, &status);
+                    return Ok(status);
                 }
             }
             // #region agent log
@@ -7734,7 +7825,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 );
             }
             // #endregion
-            return Ok(SyncStatus {
+            let status = SyncStatus {
                 local_height: 0,
                 target_height: 0,
                 percent: 0.0,
@@ -7744,7 +7835,9 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 blocks_per_second: 0.0,
                 notes_decrypted: 0,
                 last_batch_ms: 0,
-            });
+            };
+            cache_sync_status(&wallet_id, &status);
+            return Ok(status);
         }
     };
 
@@ -7782,7 +7875,30 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             }
         }
 
-        // Return persisted sync state as a stable fallback while lock contention clears.
+        if let Some(handles) = SYNC_RUNTIME_HANDLES.read().get(&wallet_id).cloned() {
+            if let Ok(progress) = handles.progress.try_read() {
+                let perf = handles.perf.snapshot();
+                let status = SyncStatus {
+                    local_height: progress.current_height(),
+                    target_height: progress.target_height(),
+                    percent: progress.percentage(),
+                    eta: progress.eta_seconds(),
+                    stage: map_stage(progress.stage()),
+                    last_checkpoint: progress.last_checkpoint(),
+                    blocks_per_second: perf.blocks_per_second,
+                    notes_decrypted: perf.notes_decrypted,
+                    last_batch_ms: perf.avg_batch_ms,
+                };
+                cache_sync_status(&wallet_id, &status);
+                return Ok(status);
+            }
+        }
+
+        if let Some(status) = get_cached_sync_status(&wallet_id) {
+            return Ok(status);
+        }
+
+        // Last fallback: persisted sync state while lock contention clears.
         if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
             let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
             if let Ok(state) = sync_storage.load_sync_state() {
@@ -7791,7 +7907,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 } else {
                     0.0
                 };
-                return Ok(SyncStatus {
+                let status = SyncStatus {
                     local_height: state.local_height,
                     target_height: state.target_height,
                     percent,
@@ -7801,11 +7917,13 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     blocks_per_second: 0.0,
                     notes_decrypted: 0,
                     last_batch_ms: 0,
-                });
+                };
+                cache_sync_status(&wallet_id, &status);
+                return Ok(status);
             }
         }
 
-        return Ok(SyncStatus {
+        let status = SyncStatus {
             local_height: 0,
             target_height: 0,
             percent: 0.0,
@@ -7815,7 +7933,9 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             blocks_per_second: 0.0,
             notes_decrypted: 0,
             last_batch_ms: 0,
-        });
+        };
+        cache_sync_status(&wallet_id, &status);
+        return Ok(status);
     };
 
     if let Some(progress) = progress_handle {
@@ -7848,6 +7968,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             if let Ok(mut session) = session_arc.try_lock() {
                 session.last_status = status.clone();
             }
+            cache_sync_status(&wallet_id, &status);
 
             // #region agent log
             use std::io::Write;
@@ -7906,6 +8027,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 if let Ok(mut session) = session_arc.try_lock() {
                     session.last_status = status.clone();
                 }
+                cache_sync_status(&wallet_id, &status);
 
                 // #region agent log
                 use std::io::Write;
@@ -7958,6 +8080,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
         );
     }
     // #endregion
+    cache_sync_status(&wallet_id, &last_status);
     Ok(last_status)
 }
 
@@ -8017,17 +8140,20 @@ pub struct CheckpointInfo {
 async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: std::time::Duration) -> bool {
     let deadline = std::time::Instant::now() + timeout;
     loop {
-        let running = {
+        let session_arc_opt = {
             let sessions = SYNC_SESSIONS.read();
-            if let Some(session_arc) = sessions.get(wallet_id) {
-                if let Ok(session) = session_arc.try_lock() {
-                    session.is_running
-                } else {
-                    true
-                }
-            } else {
-                false
+            sessions.get(wallet_id).cloned()
+        };
+
+        let running = if let Some(session_arc) = session_arc_opt {
+            match tokio::time::timeout(std::time::Duration::from_millis(120), session_arc.lock())
+                .await
+            {
+                Ok(session) => session.is_running,
+                Err(_) => true,
             }
+        } else {
+            false
         };
 
         if !running {
@@ -8100,67 +8226,81 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     // Stop any existing sync session to force a clean rescan.
     let was_syncing = is_sync_running(wallet_id.clone()).unwrap_or(false);
     if was_syncing {
-        let cancel_result = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            cancel_sync(wallet_id.clone()),
-        )
-        .await;
-        // #region agent log
-        {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
+        const MAX_STOP_ATTEMPTS: u32 = 3;
+        let mut stop_ok = false;
+
+        for attempt in 1..=MAX_STOP_ATTEMPTS {
+            let cancel_result = tokio::time::timeout(
+                std::time::Duration::from_secs(8),
+                cancel_sync(wallet_id.clone()),
+            )
+            .await;
+            // #region agent log
             {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let step = if cancel_result.is_ok() {
-                    "cancel_sync_done"
-                } else {
-                    "cancel_sync_timeout"
-                };
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3076","message":"rescan step","data":{{"wallet_id":"{}","step":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts, wallet_id, step
-                );
+                use std::io::Write;
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let step = if cancel_result.is_ok() {
+                        "cancel_sync_done"
+                    } else {
+                        "cancel_sync_timeout"
+                    };
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3076","message":"rescan step","data":{{"wallet_id":"{}","step":"{}","attempt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                        ts, wallet_id, step, attempt
+                    );
+                }
+            }
+            // #endregion
+
+            let wait_ok = wait_for_sync_stop(&wallet_id, std::time::Duration::from_secs(20)).await;
+            // #region agent log
+            {
+                use std::io::Write;
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let step = if wait_ok {
+                        "cancel_sync_wait_done"
+                    } else {
+                        "cancel_sync_wait_timeout"
+                    };
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"{}","attempt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                        ts, wallet_id, step, attempt
+                    );
+                }
+            }
+            // #endregion
+
+            if wait_ok {
+                stop_ok = true;
+                break;
+            }
+
+            if attempt < MAX_STOP_ATTEMPTS {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
         }
-        // #endregion
 
-        let wait_ok = wait_for_sync_stop(&wallet_id, std::time::Duration::from_secs(10)).await;
-        // #region agent log
-        {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let step = if wait_ok {
-                    "cancel_sync_wait_done"
-                } else {
-                    "cancel_sync_wait_timeout"
-                };
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
-                    ts, wallet_id, step
-                );
-            }
-        }
-        // #endregion
-
-        if !wait_ok {
+        if !stop_ok {
             return Err(anyhow!(
-                "Failed to stop existing sync session; please wait a moment and retry rescan"
+                "Failed to stop existing sync session after multiple attempts; please wait a moment and retry rescan"
             ));
         }
     } else {
@@ -8210,6 +8350,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         let mut sessions = SYNC_SESSIONS.write();
         sessions.remove(&wallet_id);
     }
+    clear_sync_runtime_cache(&wallet_id);
     // #region agent log
     {
         use std::io::Write;
@@ -8653,6 +8794,19 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             engine.cancel_flag(),
         )
     };
+    let progress_handle = Arc::clone(&progress);
+    let perf_handle = Arc::clone(&perf);
+    let initial_status = SyncStatus {
+        local_height: effective_from_height as u64,
+        target_height: 0,
+        percent: 0.0,
+        eta: None,
+        stage: crate::models::SyncStage::Headers,
+        last_checkpoint: None,
+        blocks_per_second: 0.0,
+        notes_decrypted: 0,
+        last_batch_ms: 0,
+    };
 
     // Store session
     {
@@ -8662,22 +8816,20 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             cancelled: Some(cancel_flag),
             progress: Some(progress),
             perf: Some(perf),
-            last_status: SyncStatus {
-                local_height: effective_from_height as u64,
-                target_height: 0,
-                percent: 0.0,
-                eta: None,
-                stage: crate::models::SyncStage::Headers,
-                last_checkpoint: None,
-                blocks_per_second: 0.0,
-                notes_decrypted: 0,
-                last_batch_ms: 0,
-            },
+            last_status: initial_status.clone(),
             is_running: true,
             last_target_height_update: None,
         }));
         sessions.insert(wallet_id.clone(), session);
     }
+    cache_sync_status(&wallet_id, &initial_status);
+    SYNC_RUNTIME_HANDLES.write().insert(
+        wallet_id.clone(),
+        SyncRuntimeHandles {
+            progress: progress_handle,
+            perf: perf_handle,
+        },
+    );
     // #region agent log
     {
         use std::io::Write;
@@ -8744,6 +8896,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 let mut session = session_arc.lock().await;
                 if let Some(status) = status_opt {
                     session.last_status = status;
+                    cache_sync_status(&wallet_id_for_task, &session.last_status);
                 }
                 match result {
                     Ok(()) => tracing::info!("Rescan completed for wallet {}", wallet_id_for_task),
@@ -8752,8 +8905,10 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     }
                 }
                 session.is_running = false;
+                clear_sync_runtime_cache(&wallet_id_for_task);
             } else {
                 session_arc.lock().await.is_running = false;
+                clear_sync_runtime_cache(&wallet_id_for_task);
             }
         }
     });
@@ -10087,6 +10242,31 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     if is_decoy_mode_active() {
         return Ok(Vec::new());
     }
+    let suppress_live_reads = should_suppress_live_tx_reads(&wallet_id);
+    if suppress_live_reads {
+        if let Some(cached) = get_cached_transactions(&wallet_id, limit) {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_list_transactions_cached","timestamp":{},"location":"api.rs:list_transactions","message":"returning cached tx list during active sync mutation","data":{{"wallet_id":"{}","limit":"{:?}","cached_count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    ts,
+                    wallet_id,
+                    limit,
+                    cached.len()
+                );
+            }
+            return Ok(cached);
+        }
+    }
     tracing::info!(
         "Listing transactions for wallet {} (limit: {:?})",
         wallet_id,
@@ -10198,6 +10378,10 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
         transactions.len(),
         wallet_id
     );
+
+    if !suppress_live_reads {
+        put_cached_transactions(&wallet_id, limit, &transactions);
+    }
 
     Ok(transactions)
 }
