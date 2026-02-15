@@ -24,22 +24,20 @@ class CurrencyScreen extends ConsumerWidget {
         subtitle: 'Choose the default display currency',
         showBackButton: true,
       ),
-      body: Padding(
+      body: ListView(
         padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
-        child: Column(
-          children: CurrencyPreference.values.map((preference) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: _CurrencyOption(
-                preference: preference,
-                selected: selected,
-                onTap: () => ref
-                    .read(currencyPreferenceProvider.notifier)
-                    .setCurrency(preference),
-              ),
-            );
-          }).toList(),
-        ),
+        children: CurrencyPreference.values.map((preference) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: _CurrencyOption(
+              preference: preference,
+              selected: selected,
+              onTap: () => ref
+                  .read(currencyPreferenceProvider.notifier)
+                  .setCurrency(preference),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -67,10 +65,7 @@ class _CurrencyOption extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
             border: isSelected
-                ? Border.all(
-                    color: AppColors.accentPrimary,
-                    width: 2,
-                  )
+                ? Border.all(color: AppColors.accentPrimary, width: 2)
                 : null,
             borderRadius: BorderRadius.circular(16),
           ),
@@ -107,7 +102,7 @@ class _CurrencyOption extends StatelessWidget {
                 onChanged: (_) => onTap(),
                 child: Radio<CurrencyPreference>(
                   value: preference,
-                activeColor: AppColors.accentPrimary,
+                  activeColor: AppColors.accentPrimary,
                 ),
               ),
             ],

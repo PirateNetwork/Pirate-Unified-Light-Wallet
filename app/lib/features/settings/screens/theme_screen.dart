@@ -23,7 +23,6 @@ class ThemeScreen extends ConsumerWidget {
         title: 'Theme',
         subtitle: 'Match your device or pick a fixed look',
         showBackButton: true,
-        centerTitle: true,
       ),
       body: Padding(
         padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
@@ -91,10 +90,7 @@ class _ThemeOption extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
             border: isSelected
-                ? Border.all(
-                    color: AppColors.accentPrimary,
-                    width: 2,
-                  )
+                ? Border.all(color: AppColors.accentPrimary, width: 2)
                 : null,
             borderRadius: BorderRadius.circular(16),
           ),
@@ -104,8 +100,8 @@ class _ThemeOption extends StatelessWidget {
                 mode == AppThemeMode.light
                     ? Icons.light_mode_outlined
                     : mode == AppThemeMode.dark
-                        ? Icons.dark_mode_outlined
-                        : Icons.brightness_auto_outlined,
+                    ? Icons.dark_mode_outlined
+                    : Icons.brightness_auto_outlined,
                 color: isSelected
                     ? AppColors.accentPrimary
                     : AppColors.textSecondary,
@@ -135,7 +131,7 @@ class _ThemeOption extends StatelessWidget {
                 onChanged: (_) => onTap(),
                 child: Radio<AppThemeMode>(
                   value: mode,
-                activeColor: AppColors.accentPrimary,
+                  activeColor: AppColors.accentPrimary,
                 ),
               ),
             ],

@@ -14,6 +14,7 @@ import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
 import 'providers/preferences_providers.dart';
+import 'providers/transport_providers.dart';
 import '../../ui/molecules/p_list_tile.dart';
 import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/wallet_switcher.dart';
@@ -65,12 +66,17 @@ class SettingsScreen extends ConsumerWidget {
             Consumer(
               builder: (context, ref, _) {
                 final enabled = ref.watch(biometricsEnabledProvider);
+                final resolved = ref.watch(resolvedBiometricsEnabledProvider);
                 final availability = ref.watch(biometricAvailabilityProvider);
-                final subtitle = availability.when(
-                  data: (available) {
-                    if (!available) return 'Unavailable';
-                    return enabled ? 'On' : 'Off';
-                  },
+                final subtitle = resolved.when(
+                  data: (_) => availability.when(
+                    data: (available) {
+                      if (!available) return 'Unavailable';
+                      return enabled ? 'On' : 'Off';
+                    },
+                    loading: () => 'Checking...',
+                    error: (_, _) => enabled ? 'On' : 'Off',
+                  ),
                   loading: () => 'Checking...',
                   error: (_, _) => enabled ? 'On' : 'Off',
                 );
@@ -120,11 +126,30 @@ class SettingsScreen extends ConsumerWidget {
                 );
               },
             ),
+            Consumer(
+              builder: (context, ref, _) {
+                final config = ref.watch(transportConfigProvider);
+                final subtitle = switch (config.mode) {
+                  'tor' => 'Current: Tor',
+                  'direct' => 'Current: Direct',
+                  'socks5' => 'Current: SOCKS5',
+                  'i2p' => 'Current: I2P',
+                  _ => 'Current: ${config.mode}',
+                };
+                return PListTile(
+                  leading: const Icon(Icons.shield_outlined),
+                  title: 'Transport',
+                  subtitle: subtitle,
+                  onTap: () => context.push('/settings/privacy-shield'),
+                  trailing: const Icon(Icons.chevron_right),
+                );
+              },
+            ),
             PListTile(
-              leading: const Icon(Icons.shield_outlined),
-              title: 'Transport',
-              subtitle: 'Tor (recommended)',
-              onTap: () => context.push('/settings/privacy-shield'),
+              leading: const Icon(Icons.wifi_tethering_off_outlined),
+              title: 'Outbound API Calls',
+              subtitle: 'Control non-lightserver requests',
+              onTap: () => context.push('/settings/outbound-apis'),
               trailing: const Icon(Icons.chevron_right),
             ),
           ],
@@ -138,7 +163,7 @@ class SettingsScreen extends ConsumerWidget {
                 final wallet = ref.watch(activeWalletMetaProvider);
                 return PListTile(
                   leading: Icon(Icons.key_outlined, color: AppColors.warning),
-                  title: 'Backup words',
+                  title: 'Backup seed phrase',
                   subtitle: wallet == null
                       ? 'No active wallet'
                       : 'View your recovery phrase',
@@ -409,11 +434,9 @@ class SettingsScreen extends ConsumerWidget {
                   });
                 }
               }
-              final helperText = isLoading
-                  ? 'Loading suggested height...'
-                  : (suggestedHeight == null
-                        ? 'Enter a block height to rescan from.'
-                        : 'Suggested: $suggestedHeight');
+              final helperText = suggestedHeight == null
+                  ? 'Enter a block height to rescan from.'
+                  : 'Suggested: $suggestedHeight';
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,

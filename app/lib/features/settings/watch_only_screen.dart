@@ -18,7 +18,8 @@ class WatchOnlyScreen extends ConsumerStatefulWidget {
   ConsumerState<WatchOnlyScreen> createState() => _WatchOnlyScreenState();
 }
 
-class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen> with SingleTickerProviderStateMixin {
+class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   @override
@@ -41,7 +42,6 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen> with SingleTi
         title: 'View Only Wallets',
         subtitle: 'View only',
         showBackButton: true,
-        centerTitle: true,
       ),
       body: ColoredBox(
         color: Colors.black,
@@ -63,10 +63,7 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen> with SingleTi
             Expanded(
               child: TabBarView(
                 controller: _tabController,
-                children: const [
-                  ExportIvkTab(),
-                  ImportIvkTab(),
-                ],
+                children: const [ExportIvkTab(), ImportIvkTab()],
               ),
             ),
           ],
@@ -120,11 +117,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            Icons.visibility,
-            size: 80,
-            color: PirateTheme.accentColor,
-          ),
+          Icon(Icons.visibility, size: 80, color: PirateTheme.accentColor),
           SizedBox(height: PirateSpacing.xl),
           Text(
             'Export incoming viewing key',
@@ -219,7 +212,9 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
           _buildInfoItem('View incoming transactions'),
           _buildInfoItem('Cannot spend'),
           _buildInfoItem('Useful for accounting'),
-          _buildInfoItem('Keep viewing keys private. They reveal incoming history.'),
+          _buildInfoItem(
+            'Keep viewing keys private. They reveal incoming history.',
+          ),
         ],
       ),
     );
@@ -236,7 +231,9 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
           Expanded(
             child: Text(
               text,
-              style: PirateTypography.bodySmall.copyWith(color: Colors.grey[400]),
+              style: PirateTypography.bodySmall.copyWith(
+                color: Colors.grey[400],
+              ),
             ),
           ),
         ],
@@ -298,7 +295,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
     if (_ivk == null) return;
 
     await Clipboard.setData(ClipboardData(text: _ivk!));
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -355,11 +352,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            Icons.remove_red_eye,
-            size: 80,
-            color: Colors.orange,
-          ),
+          Icon(Icons.remove_red_eye, size: 80, color: Colors.orange),
           SizedBox(height: PirateSpacing.xl),
           Text(
             'Import view only wallet',
@@ -453,7 +446,9 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
                 SizedBox(height: PirateSpacing.xs),
                 Text(
                   'View only wallets cannot spend. They only show incoming activity.',
-                  style: PirateTypography.bodySmall.copyWith(color: Colors.grey[400]),
+                  style: PirateTypography.bodySmall.copyWith(
+                    color: Colors.grey[400],
+                  ),
                 ),
               ],
             ),
@@ -476,7 +471,8 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
     }
 
     final trimmed = _ivkController.text.trim();
-    if (!(trimmed.startsWith('zxviews') || trimmed.startsWith('pirate-extended-viewing-key'))) {
+    if (!(trimmed.startsWith('zxviews') ||
+        trimmed.startsWith('pirate-extended-viewing-key'))) {
       setState(() => _error = 'Invalid viewing key format.');
       return;
     }

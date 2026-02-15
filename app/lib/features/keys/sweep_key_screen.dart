@@ -9,6 +9,7 @@ import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
+import '../../ui/molecules/p_bottom_sheet.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/p_dialog.dart';
 import '../../ui/organisms/p_app_bar.dart';
@@ -78,8 +79,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
       _selectedAddressIds.removeWhere((id) => !addressIds.contains(id));
       if (_addressController.text.trim().isEmpty) {
         try {
-          _addressController.text =
-              await FfiBridge.currentReceiveAddress(walletId);
+          _addressController.text = await FfiBridge.currentReceiveAddress(
+            walletId,
+          );
         } catch (_) {
           // Ignore target address fallback errors.
         }
@@ -186,9 +188,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
             ),
           ],
         ),
-        actions: [
-          const PDialogAction(label: 'Close'),
-        ],
+        actions: [const PDialogAction(label: 'Close')],
       );
     } catch (e) {
       setState(() => _error = e.toString());
@@ -224,7 +224,6 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
         title: 'Sweep balance',
         subtitle: 'Send all funds to a chosen address',
         showBackButton: true,
-        centerTitle: true,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -291,7 +290,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                     PButton(
                       onPressed: _isSending ? null : _send,
                       variant: PButtonVariant.primary,
-                      child: Text(_isSending ? 'Sending...' : 'Confirm and send'),
+                      child: Text(
+                        _isSending ? 'Sending...' : 'Confirm and send',
+                      ),
                     ),
                   ],
                   if (_error != null) ...[
@@ -312,10 +313,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: PTypography.heading3(),
-        ),
+        Text(label, style: PTypography.heading3()),
         SizedBox(height: PSpacing.xs),
         Text(
           'Spendable ${_formatArrr(_selectedSpendable())}',
@@ -331,7 +329,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
         Expanded(
           child: PButton(
             onPressed: _useOrchard ? null : () => _setPool(true),
-            variant: _useOrchard ? PButtonVariant.primary : PButtonVariant.secondary,
+            variant: _useOrchard
+                ? PButtonVariant.primary
+                : PButtonVariant.secondary,
             child: const Text('Orchard'),
           ),
         ),
@@ -339,7 +339,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
         Expanded(
           child: PButton(
             onPressed: _useOrchard ? () => _setPool(false) : null,
-            variant: _useOrchard ? PButtonVariant.secondary : PButtonVariant.primary,
+            variant: _useOrchard
+                ? PButtonVariant.secondary
+                : PButtonVariant.primary,
             child: const Text('Sapling'),
           ),
         ),
@@ -368,7 +370,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
     if (_addresses.isEmpty) return;
     final pendingIds = Set<int>.from(_selectedAddressIds);
 
-    await showModalBottomSheet<void>(
+    await PBottomSheet.showAdaptive<void>(
       context: context,
       backgroundColor: AppColors.backgroundBase,
       shape: const RoundedRectangleBorder(
@@ -394,8 +396,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
               });
             }
 
-            final gutter =
-                PSpacing.responsiveGutter(MediaQuery.of(context).size.width);
+            final gutter = PSpacing.responsiveGutter(
+              MediaQuery.of(context).size.width,
+            );
 
             return SafeArea(
               child: Padding(
@@ -427,8 +430,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                               title: 'All addresses',
                               subtitle: 'Sweep every spendable note.',
                               selected: pendingIds.isEmpty,
-                              onTap: () =>
-                                  setModalState(pendingIds.clear),
+                              onTap: () => setModalState(pendingIds.clear),
                             );
                           }
                           cursor += 1;
@@ -439,8 +441,10 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                             }
                             cursor += 1;
                             if (index == cursor) {
-                              return Text('Addresses',
-                                  style: PTypography.labelMedium());
+                              return Text(
+                                'Addresses',
+                                style: PTypography.labelMedium(),
+                              );
                             }
                             cursor += 1;
                             if (index == cursor) {
@@ -454,8 +458,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                               final name =
                                   address.label ?? _truncate(address.address);
                               final balance = _formatArrr(address.spendable);
-                              final selected =
-                                  pendingIds.contains(address.addressId);
+                              final selected = pendingIds.contains(
+                                address.addressId,
+                              );
                               return _buildMultiSweepOption(
                                 title: name,
                                 subtitle:
@@ -541,15 +546,20 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
   }) {
     return PCard(
       onTap: onTap,
-      backgroundColor:
-          selected ? AppColors.selectedBackground : AppColors.backgroundSurface,
+      backgroundColor: selected
+          ? AppColors.selectedBackground
+          : AppColors.backgroundSurface,
       child: Padding(
         padding: EdgeInsets.all(PSpacing.md),
         child: Row(
           children: [
             Icon(
-              selected ? Icons.check_circle : Icons.account_balance_wallet_outlined,
-              color: selected ? AppColors.accentPrimary : AppColors.textSecondary,
+              selected
+                  ? Icons.check_circle
+                  : Icons.account_balance_wallet_outlined,
+              color: selected
+                  ? AppColors.accentPrimary
+                  : AppColors.textSecondary,
               size: 20,
             ),
             SizedBox(width: PSpacing.sm),
@@ -561,7 +571,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                   SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: PTypography.bodySmall(color: AppColors.textSecondary),
+                    style: PTypography.bodySmall(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -580,15 +592,18 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
   }) {
     return PCard(
       onTap: onTap,
-      backgroundColor:
-          selected ? AppColors.selectedBackground : AppColors.backgroundSurface,
+      backgroundColor: selected
+          ? AppColors.selectedBackground
+          : AppColors.backgroundSurface,
       child: Padding(
         padding: EdgeInsets.all(PSpacing.md),
         child: Row(
           children: [
             Icon(
               selected ? Icons.check_box : Icons.check_box_outline_blank,
-              color: selected ? AppColors.accentPrimary : AppColors.textSecondary,
+              color: selected
+                  ? AppColors.accentPrimary
+                  : AppColors.textSecondary,
               size: 20,
             ),
             SizedBox(width: PSpacing.sm),
@@ -600,7 +615,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                   SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: PTypography.bodySmall(color: AppColors.textSecondary),
+                    style: PTypography.bodySmall(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
+import '../../ui/organisms/p_app_bar.dart';
+import '../../ui/organisms/p_scaffold.dart';
 import '../../design/compat.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/security/screenshot_protection.dart';
@@ -38,7 +40,10 @@ class ClipboardCountdownNotifier extends Notifier<int?> {
   }
 }
 
-final _clipboardCountdownProvider = NotifierProvider<ClipboardCountdownNotifier, int?>(ClipboardCountdownNotifier.new);
+final _clipboardCountdownProvider =
+    NotifierProvider<ClipboardCountdownNotifier, int?>(
+      ClipboardCountdownNotifier.new,
+    );
 
 /// Export Seed Screen with security gating
 class ExportSeedScreen extends ConsumerStatefulWidget {
@@ -57,7 +62,7 @@ class ExportSeedScreen extends ConsumerStatefulWidget {
 
 class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   final _passphraseController = TextEditingController();
-  
+
   bool _step1Complete = false; // Warning acknowledged
   bool _step2Complete = false; // Biometric passed
   bool _step3Complete = false; // Passphrase verified
@@ -90,10 +95,25 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           _showExitConfirmation();
         }
       },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: SafeArea(
-          child: _buildContent(),
+      child: PScaffold(
+        title: 'Backup Seed Phrase',
+        appBar: PAppBar(
+          title: 'Backup Seed Phrase',
+          subtitle: 'Keep your recovery words offline and private',
+          showBackButton: true,
+          onBack: () async {
+            if (_seedRevealed) {
+              await _showExitConfirmation();
+              return;
+            }
+            if (mounted) {
+              await Navigator.of(context).maybePop();
+            }
+          },
+        ),
+        body: ColoredBox(
+          color: Colors.black,
+          child: SafeArea(top: false, child: _buildContent()),
         ),
       ),
     );
@@ -113,31 +133,32 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
   Widget _centeredStep(Widget child, {bool allowScroll = true}) {
     const maxWidth = 560.0;
-    return LayoutBuilder(builder: (context, constraints) {
-      final gutter = PirateSpacing.responsiveGutter(constraints.maxWidth);
-      const verticalPadding = PirateSpacing.xl;
-      final minHeight = (constraints.maxHeight - (verticalPadding * 2))
-          .clamp(0.0, double.infinity);
-      final centeredChild = ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: maxWidth,
-          minHeight: minHeight,
-        ),
-        child: child,
-      );
-      if (!allowScroll) {
-        return Center(child: centeredChild);
-      }
-      return SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          gutter,
-          verticalPadding,
-          gutter,
-          verticalPadding,
-        ),
-        child: Center(child: centeredChild),
-      );
-    });
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gutter = PirateSpacing.responsiveGutter(constraints.maxWidth);
+        const verticalPadding = PirateSpacing.xl;
+        final minHeight = (constraints.maxHeight - (verticalPadding * 2)).clamp(
+          0.0,
+          double.infinity,
+        );
+        final centeredChild = ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth, minHeight: minHeight),
+          child: child,
+        );
+        if (!allowScroll) {
+          return Center(child: centeredChild);
+        }
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            gutter,
+            verticalPadding,
+            gutter,
+            verticalPadding,
+          ),
+          child: Center(child: centeredChild),
+        );
+      },
+    );
   }
 
   /// Step 1: Full-screen warning
@@ -147,11 +168,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Spacer(),
-          Icon(
-            Icons.warning_rounded,
-            size: 80,
-            color: Colors.red[400],
-          ),
+          Icon(Icons.warning_rounded, size: 80, color: Colors.red[400]),
           SizedBox(height: PirateSpacing.xl),
           Text(
             'Reveal recovery phrase',
@@ -227,13 +244,17 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
               children: [
                 Text(
                   title,
-                  style: PirateTypography.bodyLarge
-                      .copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+                  style: PirateTypography.bodyLarge.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 SizedBox(height: PirateSpacing.xs),
                 Text(
                   description,
-                  style: PirateTypography.body.copyWith(color: Colors.grey[400]),
+                  style: PirateTypography.body.copyWith(
+                    color: Colors.grey[400],
+                  ),
                 ),
               ],
             ),
@@ -285,11 +306,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.fingerprint,
-            size: 100,
-            color: PirateTheme.accentColor,
-          ),
+          Icon(Icons.fingerprint, size: 100, color: PirateTheme.accentColor),
           SizedBox(height: PirateSpacing.xl),
           Text(
             'Confirm with biometrics',
@@ -335,11 +352,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(height: PirateSpacing.xxl),
-          Icon(
-            Icons.lock,
-            size: 80,
-            color: PirateTheme.accentColor,
-          ),
+          Icon(Icons.lock, size: 80, color: PirateTheme.accentColor),
           SizedBox(height: PirateSpacing.xl),
           Text(
             'Enter your passphrase',
@@ -431,7 +444,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
               children: [
                 Text(
                   'Write these words down in order.',
-                  style: PirateTypography.bodySmall.copyWith(color: Colors.grey[400]),
+                  style: PirateTypography.bodySmall.copyWith(
+                    color: Colors.grey[400],
+                  ),
                 ),
                 SizedBox(height: PirateSpacing.lg),
                 _buildMnemonicGrid(),
@@ -456,7 +471,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                       'Clipboard clears in ${countdown}s',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: PirateTypography.body.copyWith(color: Colors.orange),
+                      style: PirateTypography.body.copyWith(
+                        color: Colors.orange,
+                      ),
                     ),
                   ),
                 ],
@@ -470,7 +487,10 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
             SizedBox(height: PirateSpacing.md),
           ],
           SizedBox(height: PirateSpacing.md),
-          PButton(onPressed: _confirmSaved, child: const Text('Done, saved offline')),
+          PButton(
+            onPressed: _confirmSaved,
+            child: const Text('Done, saved offline'),
+          ),
         ],
       ),
     );
@@ -552,8 +572,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
       if (authenticated) {
         await FfiBridge.completeSeedBiometric(true);
-        final words =
-            await FfiBridge.exportSeedWithCachedPassphrase(widget.walletId);
+        final words = await FfiBridge.exportSeedWithCachedPassphrase(
+          widget.walletId,
+        );
         final mnemonic = words.join(' ');
 
         _disableScreenshots();
@@ -646,10 +667,10 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     if (_mnemonic == null) return;
 
     await Clipboard.setData(ClipboardData(text: _mnemonic!));
-    
+
     // Start 30-second countdown
     ref.read(_clipboardCountdownProvider.notifier).value = 30;
-    
+
     _clipboardTimer?.cancel();
     _clipboardTimer = Timer.periodic(Duration(seconds: 1), (timer) {
       final shouldStop = ref.read(_clipboardCountdownProvider.notifier).tick();
@@ -680,10 +701,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: Text(
-          'Confirm backup',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: Text('Confirm backup', style: TextStyle(color: Colors.white)),
         content: Text(
           'Have you written down your recovery phrase?',
           style: TextStyle(color: Colors.grey[300]),

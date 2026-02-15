@@ -33,7 +33,7 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Color? surfaceColor;
 
   @override
-  Size get preferredSize => const Size.fromHeight(88);
+  Size get preferredSize => const Size.fromHeight(82);
 
   bool _shouldShowBack(BuildContext context) {
     if (showBackButton != null) {
@@ -61,13 +61,16 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
     final topPadding = MediaQuery.of(context).padding.top;
-    final isNarrow = MediaQuery.of(context).size.width < 360;
-    final isMobile = PSpacing.isMobile(MediaQuery.of(context).size.width);
+    final isNarrow = mediaQuery.size.width < 360;
+    final isMobile = PSpacing.isMobile(mediaQuery.size.width);
+    final textScale = mediaQuery.textScaler.scale(1);
     final verticalPadding = isMobile ? PSpacing.sm : PSpacing.md;
     final resolvedLeading =
-        leading ?? (_shouldShowBack(context) ? _buildBackButton(context) : null);
-    
+        leading ??
+        (_shouldShowBack(context) ? _buildBackButton(context) : null);
+
     // Automatically add theme toggle to actions if not in onboarding
     final effectiveActions = <Widget>[];
     if (actions != null) {
@@ -89,11 +92,11 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
         : null;
 
     final decoration = BoxDecoration(
-      color: gradient == null ? (surfaceColor ?? AppColors.backgroundSurface) : null,
+      color: gradient == null
+          ? (surfaceColor ?? AppColors.backgroundSurface)
+          : null,
       gradient: gradient,
-      border: Border(
-        bottom: BorderSide(color: AppColors.borderSubtle),
-      ),
+      border: Border(bottom: BorderSide(color: AppColors.borderSubtle)),
       boxShadow: [
         BoxShadow(
           color: AppColors.shadow,
@@ -103,34 +106,36 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
       ],
     );
 
-    final titleStyle = PTypography.heading4(color: AppColors.textPrimary).copyWith(
-      fontSize: isMobile ? 20 : (isNarrow ? 18 : null),
-    );
-    final subtitleStyle = PTypography.bodySmall(color: AppColors.textSecondary).copyWith(
-      fontSize: isMobile ? 12 : (isNarrow ? 12 : null),
-    );
-    final titleMaxLines = isMobile ? 2 : (isNarrow ? 2 : 1);
-    final subtitleMaxLines = isMobile ? 2 : 2;
+    final titleStyle = PTypography.titleMedium(color: AppColors.textPrimary)
+        .copyWith(
+          fontSize: isMobile ? 16 : (isNarrow ? 15 : 17),
+          fontWeight: FontWeight.w600,
+        );
+    final subtitleStyle = PTypography.caption(
+      color: AppColors.textSecondary,
+    ).copyWith(fontSize: isMobile ? 10 : 11);
+    final showSubtitle = subtitle != null && textScale <= 1.3;
 
     final titleColumn = Column(
-      crossAxisAlignment:
-          centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: centerTitle
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           title,
           style: titleStyle,
           textAlign: centerTitle ? TextAlign.center : TextAlign.left,
-          maxLines: titleMaxLines,
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        if (subtitle != null) ...[
-          const SizedBox(height: PSpacing.xs),
+        if (showSubtitle) ...[
+          const SizedBox(height: 2),
           Text(
             subtitle!,
             style: subtitleStyle,
             textAlign: centerTitle ? TextAlign.center : TextAlign.left,
-            maxLines: subtitleMaxLines,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ],
@@ -151,6 +156,18 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
           )
         : null;
 
+    final estimatedLeadingWidth = resolvedLeading == null ? 0.0 : 56.0;
+    final estimatedActionWidth = trailing == null
+        ? 0.0
+        : (effectiveActions.length * 44.0);
+    final middleWidth =
+        mediaQuery.size.width -
+        (PSpacing.lg * 2) -
+        estimatedLeadingWidth -
+        estimatedActionWidth -
+        (centerTitle ? (PSpacing.sm * 2) : (PSpacing.md * 2));
+    final safeMiddleWidth = middleWidth < 140 ? 140.0 : middleWidth;
+
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -164,7 +181,7 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
         child: NavigationToolbar(
           leading: resolvedLeading,
-          middle: titleColumn,
+          middle: SizedBox(width: safeMiddleWidth, child: titleColumn),
           trailing: trailing,
           centerMiddle: centerTitle,
           middleSpacing: centerTitle ? PSpacing.sm : PSpacing.md,

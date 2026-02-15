@@ -5,8 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design/tokens/colors.dart';
-import '../../design/tokens/typography.dart';
 import '../../ui/molecules/connection_status_indicator.dart';
+import '../../ui/molecules/p_bottom_sheet.dart';
+import '../../ui/molecules/p_snack.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_nav.dart';
@@ -76,23 +77,16 @@ class AppShell extends ConsumerWidget {
   }
 
   void _showComingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            'Coming Soon',
-            style: PTypography.bodyMedium(color: AppColors.textPrimary),
-          ),
-          duration: const Duration(seconds: 1),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.backgroundElevated,
-        ),
-      );
+    PSnack.show(
+      context: context,
+      message: 'Coming Soon',
+      duration: const Duration(seconds: 1),
+      variant: PSnackVariant.info,
+    );
   }
 
   void _openPaySheet(BuildContext context) {
-    showModalBottomSheet<void>(
+    PBottomSheet.showAdaptive<void>(
       context: context,
       backgroundColor: Colors.transparent,
       useSafeArea: true,

@@ -1,24 +1,16 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pirate_wallet/features/settings/watch_only_screen.dart';
+import '../test_flags.dart';
 
-final bool _skipFfiTests =
-    Platform.environment['CI'] == 'true' ||
-    Platform.environment['GITHUB_ACTIONS'] == 'true' ||
-    Platform.environment['SKIP_FFI_TESTS'] == 'true';
+final bool _skipFfiTests = shouldSkipFfiTests();
 
 void main() {
   group('View Only Wallet Tests', () {
     testWidgets('Shows export and import tabs', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Should show both tabs
@@ -28,11 +20,7 @@ void main() {
 
     testWidgets('Export tab shows IVK info', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Should be on export tab by default
@@ -45,11 +33,7 @@ void main() {
 
     testWidgets('Export button reveals IVK', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Tap export button
@@ -59,18 +43,14 @@ void main() {
       // Should show IVK (after API call simulation)
       expect(find.text('Incoming viewing key'), findsOneWidget);
       expect(find.textContaining('zxviews'), findsOneWidget);
-      
+
       // Should show copy button
       expect(find.text('Copy to clipboard'), findsOneWidget);
     }, skip: _skipFfiTests);
 
     testWidgets('Can copy IVK to clipboard', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Export IVK
@@ -87,11 +67,7 @@ void main() {
 
     testWidgets('Import tab shows form fields', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Switch to import tab
@@ -105,13 +81,11 @@ void main() {
       expect(find.text('Birthday height (optional)'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Shows view only badge in import tab', (WidgetTester tester) async {
+    testWidgets('Shows view only badge in import tab', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Switch to import tab
@@ -124,13 +98,11 @@ void main() {
       expect(find.byIcon(Icons.visibility_off), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Validates wallet name is required', (WidgetTester tester) async {
+    testWidgets('Validates wallet name is required', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Switch to import tab
@@ -147,11 +119,7 @@ void main() {
 
     testWidgets('Validates IVK is required', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Switch to import tab
@@ -159,10 +127,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Enter name only
-      await tester.enterText(
-        find.byType(TextField).at(0),
-        'Test Wallet',
-      );
+      await tester.enterText(find.byType(TextField).at(0), 'Test Wallet');
 
       // Try to import
       await tester.tap(find.text('Import view only wallet'));
@@ -174,11 +139,7 @@ void main() {
 
     testWidgets('Validates IVK format', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Switch to import tab
@@ -186,14 +147,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Enter invalid IVK
-      await tester.enterText(
-        find.byType(TextField).at(0),
-        'Test Wallet',
-      );
-      await tester.enterText(
-        find.byType(TextField).at(1),
-        'invalid-ivk',
-      );
+      await tester.enterText(find.byType(TextField).at(0), 'Test Wallet');
+      await tester.enterText(find.byType(TextField).at(1), 'invalid-ivk');
 
       // Try to import
       await tester.tap(find.text('Import view only wallet'));
@@ -205,11 +160,7 @@ void main() {
 
     testWidgets('Birthday height is optional', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: WatchOnlyScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: WatchOnlyScreen())),
       );
 
       // Switch to import tab
@@ -217,14 +168,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // Enter valid data without birthday
-      await tester.enterText(
-        find.byType(TextField).at(0),
-        'Test Wallet',
-      );
-      await tester.enterText(
-        find.byType(TextField).at(1),
-        'zxviews1qtest',
-      );
+      await tester.enterText(find.byType(TextField).at(0), 'Test Wallet');
+      await tester.enterText(find.byType(TextField).at(1), 'zxviews1qtest');
 
       // Should not show error for missing birthday
       await tester.tap(find.text('Import view only wallet'));
@@ -235,4 +180,3 @@ void main() {
     }, skip: _skipFfiTests);
   });
 }
-

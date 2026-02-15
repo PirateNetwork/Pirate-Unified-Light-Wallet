@@ -754,23 +754,20 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           }),
         ),
         const SizedBox(height: PirateSpacing.sm),
-        DropdownButtonFormField<String>(
-          initialValue: _torBridgeTransport,
-          items: const [
-            DropdownMenuItem(value: 'snowflake', child: Text('Snowflake')),
-            DropdownMenuItem(value: 'obfs4', child: Text('obfs4')),
+        DropdownMenuFormField<String>(
+          initialSelection: _torBridgeTransport,
+          label: const Text('Fallback bridge transport'),
+          helperText: 'Only used if direct Tor fails.',
+          dropdownMenuEntries: const [
+            DropdownMenuEntry(value: 'snowflake', label: 'Snowflake'),
+            DropdownMenuEntry(value: 'obfs4', label: 'obfs4'),
           ],
-          onChanged: (value) {
+          onSelected: (value) {
             if (value == null) return;
             setState(() {
               _torBridgeTransport = value;
             });
           },
-          decoration: const InputDecoration(
-            labelText: 'Fallback bridge transport',
-            filled: true,
-            helperText: 'Only used if direct Tor fails.',
-          ),
         ),
         const SizedBox(height: PirateSpacing.sm),
         PInput(

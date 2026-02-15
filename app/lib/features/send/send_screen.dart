@@ -26,12 +26,14 @@ import '../../ui/molecules/p_dialog.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/molecules/watch_only_banner.dart';
 import '../../ui/organisms/p_app_bar.dart';
-import '../../ui/organisms/primary_action_dock.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/ffi/ffi_bridge.dart';
-import '../../core/ffi/generated/models.dart';
+import '../../core/ffi/generated/models.dart' hide AddressBookEntryFfi;
 import '../../core/providers/wallet_providers.dart';
+import '../../core/providers/price_providers.dart';
 import '../../core/errors/transaction_errors.dart';
+import '../../core/security/biometric_auth.dart';
+import '../settings/providers/preferences_providers.dart';
 
 /// Maximum memo length in bytes
 const int kMaxMemoBytes = 512;
@@ -100,6 +102,21 @@ String? _sanitizeRequestAmount(String? value) {
   final normalized = trimmed.replaceAll(',', '');
   if (!RegExp(r'^\d+(\.\d{0,8})?$').hasMatch(normalized)) return null;
   return normalized;
+}
+
+class _RecipientSuggestion {
+  const _RecipientSuggestion({
+    required this.address,
+    required this.isRecent,
+    this.label,
+  });
+
+  final String address;
+  final bool isRecent;
+  final String? label;
+
+  String get normalizedAddress => address.toLowerCase();
+  String get normalizedLabel => (label ?? '').toLowerCase();
 }
 
 /// Output entry for send-to-many
@@ -188,6 +205,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   SendStep _currentStep = SendStep.recipients;
 
   // Multiple outputs for send-to-many
+  final _sendFormKey = GlobalKey<FormState>();
   final List<OutputEntry> _outputs = [OutputEntry()];
   bool _isApplyingPaymentRequest = false;
 
@@ -204,6 +222,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   double _change = 0;
   bool _isValidating = false;
   bool _isSending = false;
+  bool _showFiatAmounts = false;
+  ArrrPriceQuote? _lastKnownQuote;
+  bool _isApplyingFiatFallback = false;
   String? _errorMessage;
   String? _txId;
   PendingTx? _pendingTx;
@@ -220,6 +241,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   List<KeyGroupInfo> _spendableKeys = [];
   List<KeyGroupInfo> _selectableKeys = [];
   List<AddressBalanceInfo> _addressBalances = [];
+  List<_RecipientSuggestion> _recipientSuggestions = const [];
   KeyGroupInfo? _selectedKey;
   List<AddressBalanceInfo> _selectedAddresses = [];
   List<int>? _pendingKeyIds;
@@ -242,6 +264,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       _walletId = walletId;
       _autoConsolidationPromptShown = false;
       _loadSpendSources();
+      _loadRecipientSuggestions();
     }
   }
 
@@ -347,6 +370,77 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       }
     }
     await _maybeShowAutoConsolidationPrompt();
+  }
+
+  Future<void> _loadRecipientSuggestions() async {
+    final walletId = _walletId;
+    if (walletId == null) return;
+
+    List<AddressBookEntryFfi> recent = const [];
+    List<AddressBookEntryFfi> addressBook = const [];
+
+    try {
+      recent = await AddressBookEntryFfi.getRecentlyUsedAddresses(walletId, 24);
+    } catch (_) {
+      // Ignore recent lookup failures.
+    }
+
+    try {
+      addressBook = await AddressBookEntryFfi.listAddressBook(walletId);
+    } catch (_) {
+      // Ignore address book lookup failures.
+    }
+
+    final merged = <String, _RecipientSuggestion>{};
+
+    void addEntry(AddressBookEntryFfi entry, {required bool isRecent}) {
+      final address = entry.address.trim();
+      if (address.isEmpty) return;
+
+      final normalizedLabel = entry.label.trim();
+      final existing = merged[address];
+      if (existing == null) {
+        merged[address] = _RecipientSuggestion(
+          address: address,
+          isRecent: isRecent,
+          label: normalizedLabel.isEmpty ? null : normalizedLabel,
+        );
+        return;
+      }
+
+      merged[address] = _RecipientSuggestion(
+        address: address,
+        isRecent: existing.isRecent || isRecent,
+        label:
+            (existing.label == null || existing.label!.isEmpty) &&
+                normalizedLabel.isNotEmpty
+            ? normalizedLabel
+            : existing.label,
+      );
+    }
+
+    for (final entry in recent) {
+      addEntry(entry, isRecent: true);
+    }
+    for (final entry in addressBook) {
+      addEntry(entry, isRecent: false);
+    }
+
+    final suggestions = merged.values.toList()
+      ..sort((a, b) {
+        final byRecent = (b.isRecent ? 1 : 0).compareTo(a.isRecent ? 1 : 0);
+        if (byRecent != 0) return byRecent;
+        final aLabel = (a.label ?? '').toLowerCase();
+        final bLabel = (b.label ?? '').toLowerCase();
+        final byLabel = aLabel.compareTo(bLabel);
+        if (byLabel != 0) return byLabel;
+        return a.normalizedAddress.compareTo(b.normalizedAddress);
+      });
+
+    if (!mounted) return;
+    setState(() {
+      _recipientSuggestions = suggestions;
+    });
   }
 
   Future<void> _maybeShowAutoConsolidationPrompt() async {
@@ -497,15 +591,23 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   }
 
   Future<void> _openSpendFromSelector() async {
-    final loadFuture = _isLoadingSpendSources ? null : _loadSpendSources();
+    if (_isLoadingSpendSources) {
+      while (_isLoadingSpendSources && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
+    } else if (_spendableKeys.isEmpty && _addressBalances.isEmpty) {
+      await _loadSpendSources();
+    }
     if (!mounted) return;
+
+    final loadFuture = _loadSpendSources();
 
     KeyGroupInfo? pendingKey = _selectedKey;
     final pendingAddressIds = _selectedAddresses
         .map((addr) => addr.addressId)
         .toSet();
 
-    await showModalBottomSheet<void>(
+    await PBottomSheet.showAdaptive<void>(
       context: context,
       backgroundColor: AppColors.backgroundBase,
       shape: const RoundedRectangleBorder(
@@ -586,14 +688,24 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                         Text('Spend from', style: AppTypography.h4),
                         const SizedBox(height: AppSpacing.md),
                         if (isRefreshing)
-                          const LinearProgressIndicator(minHeight: 2),
+                          Semantics(
+                            label: 'Refreshing spend sources',
+                            value: 'In progress',
+                            child: const LinearProgressIndicator(minHeight: 2),
+                          ),
                         if (isRefreshing) const SizedBox(height: AppSpacing.md),
                         if (showLoading)
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.symmetric(
                               vertical: AppSpacing.lg,
                             ),
-                            child: Center(child: CircularProgressIndicator()),
+                            child: Center(
+                              child: Semantics(
+                                label: 'Loading spendable keys and addresses',
+                                value: 'In progress',
+                                child: const CircularProgressIndicator(),
+                              ),
+                            ),
                           )
                         else
                           Flexible(
@@ -1060,6 +1172,172 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     return value.toDouble() / 100000000.0;
   }
 
+  String _formatDisplayAmount({
+    required double arrrAmount,
+    required CurrencyPreference currency,
+    required ArrrPriceQuote? quote,
+    required bool showFiat,
+  }) {
+    if (showFiat && quote != null && quote.pricePerArrr > 0) {
+      return ArrrPriceFormatter.formatCurrency(
+        currency,
+        arrrAmount * quote.pricePerArrr,
+      );
+    }
+    return ArrrPriceFormatter.formatArrr(arrrAmount);
+  }
+
+  ArrrPriceQuote? _currentQuoteForInput() {
+    final live = ref.read(arrrPriceQuoteProvider).asData?.value;
+    return live ?? _lastKnownQuote;
+  }
+
+  double _parseInputAmountToArrr(String raw) {
+    final normalized = raw.trim();
+    if (normalized.isEmpty) return 0.0;
+    final parsed = double.tryParse(normalized);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed <= 0) {
+      return 0.0;
+    }
+
+    if (!_showFiatAmounts) {
+      return parsed;
+    }
+
+    final quote = _currentQuoteForInput();
+    if (quote == null || quote.pricePerArrr <= 0) {
+      return 0.0;
+    }
+    return parsed / quote.pricePerArrr;
+  }
+
+  String _formatInputAmountFromArrr({
+    required double arrrAmount,
+    required CurrencyPreference currency,
+    required ArrrPriceQuote? quote,
+    required bool asFiat,
+  }) {
+    if (arrrAmount <= 0) return '';
+    if (asFiat && quote != null && quote.pricePerArrr > 0) {
+      final fiat = arrrAmount * quote.pricePerArrr;
+      return fiat.toStringAsFixed(currency.fractionDigits);
+    }
+    final arrrtoshis = (arrrAmount * 100000000.0).floor();
+    if (arrrtoshis <= 0) return '';
+    return (arrrtoshis / 100000000.0).toStringAsFixed(8);
+  }
+
+  void _convertAmountInputs({
+    required bool fromFiat,
+    required bool toFiat,
+    required CurrencyPreference currency,
+    required ArrrPriceQuote quote,
+  }) {
+    if (quote.pricePerArrr <= 0) return;
+
+    for (final output in _outputs) {
+      final raw = output.amountController.text.trim();
+      if (raw.isEmpty) continue;
+
+      final parsed = double.tryParse(raw);
+      if (parsed == null || parsed.isNaN || parsed.isInfinite || parsed <= 0) {
+        continue;
+      }
+
+      final amountArrr = fromFiat ? (parsed / quote.pricePerArrr) : parsed;
+      if (amountArrr <= 0 || amountArrr.isNaN || amountArrr.isInfinite) {
+        continue;
+      }
+
+      final replacement = _formatInputAmountFromArrr(
+        arrrAmount: amountArrr,
+        currency: currency,
+        quote: quote,
+        asFiat: toFiat,
+      );
+      output.amountController.value = output.amountController.value.copyWith(
+        text: replacement,
+        selection: TextSelection.collapsed(offset: replacement.length),
+      );
+      output.syncFromControllers();
+    }
+  }
+
+  void _toggleFiatAmountView({
+    required CurrencyPreference currency,
+    required ArrrPriceQuote? quote,
+  }) {
+    if (quote != null) {
+      _lastKnownQuote = quote;
+    }
+
+    if (!_showFiatAmounts && quote == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Live ${currency.code} price is unavailable right now. Showing ARRR amounts.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final nextShowFiat = !_showFiatAmounts;
+    final effectiveQuote = quote ?? _lastKnownQuote;
+    if (effectiveQuote != null && effectiveQuote.pricePerArrr > 0) {
+      _convertAmountInputs(
+        fromFiat: _showFiatAmounts,
+        toFiat: nextShowFiat,
+        currency: currency,
+        quote: effectiveQuote,
+      );
+    }
+
+    setState(() {
+      _showFiatAmounts = nextShowFiat;
+      _updateFeePreview();
+    });
+  }
+
+  void _maybeFallbackFromFiatInput({
+    required CurrencyPreference currency,
+    required ArrrPriceQuote? quote,
+  }) {
+    if (!_showFiatAmounts ||
+        quote != null ||
+        _lastKnownQuote == null ||
+        _isApplyingFiatFallback) {
+      return;
+    }
+    _isApplyingFiatFallback = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        if (!mounted || !_showFiatAmounts) {
+          return;
+        }
+        _convertAmountInputs(
+          fromFiat: true,
+          toFiat: false,
+          currency: currency,
+          quote: _lastKnownQuote!,
+        );
+        setState(() {
+          _showFiatAmounts = false;
+          _updateFeePreview();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Live price is unavailable. Amount entry switched back to ARRR.',
+            ),
+          ),
+        );
+      } finally {
+        _isApplyingFiatFallback = false;
+      }
+    });
+  }
+
   double _feeArrrFromArrrtoshis(int feeArrrtoshis) {
     return feeArrrtoshis / 100000000.0;
   }
@@ -1183,6 +1461,35 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     setState(_updateFeePreview);
   }
 
+  void _resetSendFormFields() {
+    if (_outputs.isEmpty) {
+      _outputs.add(OutputEntry());
+    }
+    while (_outputs.length > 1) {
+      _outputs.removeLast().dispose();
+    }
+    _outputs.first
+      ..addressController.clear()
+      ..amountController.clear()
+      ..memoController.clear()
+      ..syncFromControllers()
+      ..isValid = false
+      ..error = null;
+
+    setState(() {
+      _errorMessage = null;
+      _currentStep = SendStep.recipients;
+      _pendingTx = null;
+      _pendingKeyIds = null;
+      _pendingAddressIds = null;
+      _totalAmount = 0;
+      _change = 0;
+      _isValidating = false;
+      _isSending = false;
+    });
+    _updateFeePreview();
+  }
+
   void _applyPiratePaymentRequest(int index) {
     if (_isApplyingPaymentRequest) return;
     final output = _outputs[index];
@@ -1192,7 +1499,22 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     _isApplyingPaymentRequest = true;
     output.addressController.text = request.address;
     if (request.amount != null && request.amount!.isNotEmpty) {
-      output.amountController.text = request.amount!;
+      final requestedArrr = double.tryParse(request.amount!);
+      final quote = _currentQuoteForInput();
+      if (_showFiatAmounts &&
+          quote != null &&
+          quote.pricePerArrr > 0 &&
+          requestedArrr != null &&
+          requestedArrr > 0) {
+        output.amountController.text = _formatInputAmountFromArrr(
+          arrrAmount: requestedArrr,
+          currency: ref.read(currencyPreferenceProvider),
+          quote: quote,
+          asFiat: true,
+        );
+      } else {
+        output.amountController.text = request.amount!;
+      }
     }
     if (request.memo != null && request.memo!.isNotEmpty) {
       output.memoController.text = request.memo!;
@@ -1320,19 +1642,11 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       _customFeeArrrtoshis = selectedFee;
     }
 
-    double parseController(TextEditingController controller) {
-      final raw = controller.text.trim();
-      if (raw.isEmpty) return 0.0;
-      final value = double.tryParse(raw);
-      if (value == null || value.isNaN || value.isInfinite) return 0.0;
-      return value <= 0 ? 0.0 : value;
-    }
-
     _minFeeArrrtoshis = minFee;
     _selectedFeeArrrtoshis = selectedFee;
     _calculatedFee = _feeArrrFromArrrtoshis(selectedFee);
     _totalAmount = _outputs.fold(0.0, (sum, o) {
-      return sum + parseController(o.amountController);
+      return sum + _parseInputAmountToArrr(o.amountController.text);
     });
   }
 
@@ -1360,14 +1674,15 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       }
 
       // Validate amount
-      if (output.amount.isEmpty) {
+      final rawAmount = output.amountController.text.trim();
+      if (rawAmount.isEmpty) {
         output
           ..error = 'Amount is required'
           ..isValid = false;
         allValid = false;
       } else {
-        final value = double.tryParse(output.amount);
-        if (value == null || value <= 0) {
+        final value = _parseInputAmountToArrr(rawAmount);
+        if (value <= 0) {
           output
             ..error = 'Amount must be greater than zero'
             ..isValid = false;
@@ -1439,15 +1754,14 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       }
 
       // Convert outputs to FFI format
-      final ffiOutputs = _outputs
-          .map(
-            (o) => Output(
-              addr: o.address,
-              amount: BigInt.from(o.arrrtoshis),
-              memo: o.memo.isNotEmpty ? o.memo : null,
-            ),
-          )
-          .toList();
+      final ffiOutputs = _outputs.map((o) {
+        final amountArrr = _parseInputAmountToArrr(o.amountController.text);
+        return Output(
+          addr: o.address,
+          amount: BigInt.from((amountArrr * 100000000).round()),
+          memo: o.memo.isNotEmpty ? o.memo : null,
+        );
+      }).toList();
 
       final addressIds = _selectedAddresses.isNotEmpty
           ? _selectedAddresses.map((addr) => addr.addressId).toList()
@@ -1485,6 +1799,170 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         _isValidating = false;
       });
     }
+  }
+
+  Future<bool> _isBiometricsEnabledForSend() async {
+    if (ref.read(biometricsEnabledProvider)) {
+      return true;
+    }
+    try {
+      return await ref
+          .read(biometricsEnabledProvider.notifier)
+          .readPersistedValue();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String?> _promptSendPassphrase() async {
+    final controller = TextEditingController();
+    String? errorText;
+    String? passphrase;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.backgroundElevated,
+              title: Text(
+                'Confirm send',
+                style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Enter your passphrase to authorize this transaction.',
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  TextField(
+                    controller: controller,
+                    obscureText: true,
+                    autofocus: true,
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Passphrase',
+                      errorText: errorText,
+                    ),
+                    onSubmitted: (_) {
+                      final value = controller.text.trim();
+                      if (value.isEmpty) {
+                        setDialogState(
+                          () => errorText = 'Passphrase is required.',
+                        );
+                        return;
+                      }
+                      passphrase = value;
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: AppTypography.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final value = controller.text.trim();
+                    if (value.isEmpty) {
+                      setDialogState(
+                        () => errorText = 'Passphrase is required.',
+                      );
+                      return;
+                    }
+                    passphrase = value;
+                    Navigator.of(context).pop();
+                  },
+                  child: Text(
+                    'Confirm',
+                    style: AppTypography.bodyBold.copyWith(
+                      color: AppColors.accentPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+    return passphrase;
+  }
+
+  Future<bool> _authorizeSend() async {
+    final biometricsEnabled = await _isBiometricsEnabledForSend();
+    if (biometricsEnabled) {
+      try {
+        final available = await BiometricAuth.isAvailable();
+        if (available) {
+          final authenticated = await BiometricAuth.authenticate(
+            reason: 'Authenticate to send this transaction',
+            biometricOnly: true,
+          );
+          if (authenticated) {
+            return true;
+          }
+        }
+      } on BiometricException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(e.message)));
+        }
+      } catch (_) {
+        // Fall through to passphrase check.
+      }
+    }
+
+    final passphrase = await _promptSendPassphrase();
+    if (passphrase == null || passphrase.isEmpty) {
+      return false;
+    }
+
+    try {
+      final valid = await FfiBridge.verifyAppPassphrase(passphrase);
+      if (!valid) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Invalid passphrase.')));
+        }
+        return false;
+      }
+      return true;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not verify passphrase.')),
+        );
+      }
+      return false;
+    }
+  }
+
+  Future<void> _authorizeAndSendTransaction() async {
+    if (_isSending) return;
+    final authorized = await _authorizeSend();
+    if (!authorized) return;
+    await _sendTransaction();
   }
 
   /// Send transaction - sign and broadcast via FFI
@@ -1581,11 +2059,14 @@ class _SendScreenState extends ConsumerState<SendScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
-          SelectableText(
-            _txId ?? '',
-            style: AppTypography.mono.copyWith(
-              fontSize: 12,
-              color: AppColors.accentPrimary,
+          _SelectionAwareCopyBlock(
+            helperText: 'Selection active. Press Ctrl+C (or Cmd+C) to copy.',
+            child: SelectableText(
+              _txId ?? '',
+              style: AppTypography.mono.copyWith(
+                fontSize: 12,
+                color: AppColors.accentPrimary,
+              ),
             ),
           ),
         ],
@@ -1609,7 +2090,41 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       ],
     );
     if ((goHome ?? false) && mounted) {
+      _exitSendFlowAfterSuccess();
+    }
+  }
+
+  void _exitSendFlowAfterSuccess() {
+    final currentRoute = ModalRoute.of(context);
+    if (currentRoute?.isFirst ?? false) {
       context.go('/home');
+      return;
+    }
+    Navigator.popUntilWithResult<String>(
+      context,
+      (route) => route.isFirst,
+      _txId,
+    );
+  }
+
+  void _handleBackNavigation() {
+    if (_isSending) {
+      return;
+    }
+
+    if (_currentStep == SendStep.review || _currentStep == SendStep.error) {
+      setState(() {
+        _currentStep = SendStep.recipients;
+      });
+      return;
+    }
+
+    if (_currentStep == SendStep.sending) {
+      return;
+    }
+
+    if (context.canPop()) {
+      context.pop();
     }
   }
 
@@ -1622,55 +2137,108 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         : 'Send';
     final isMobile = PSpacing.isMobile(MediaQuery.of(context).size.width);
 
-    return PScaffold(
-      title: 'Send',
-      appBar: PAppBar(
-        title: title,
-        subtitle: _isWatchOnly
-            ? 'This is view only. Sending is off.'
-            : 'Paste an address.',
-        onBack: _isSending ? null : () => context.pop(),
-        showBackButton: true,
-        actions: [
-          if (_currentStep == SendStep.recipients &&
-              _outputs.length < kMaxRecipients)
-            PIconButton(
-              icon: const Icon(Icons.add_circle_outline),
-              tooltip: 'Add recipient',
-              onPressed: _addOutput,
+    return PopScope(
+      canPop: !_isSending && _currentStep == SendStep.recipients,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _isSending) {
+          return;
+        }
+        _handleBackNavigation();
+      },
+      child: PScaffold(
+        title: 'Send',
+        appBar: PAppBar(
+          title: title,
+          subtitle: _isWatchOnly
+              ? 'This is view only. Sending is off.'
+              : (_currentStep == SendStep.recipients
+                    ? 'Paste an address.'
+                    : null),
+          onBack: _isSending ? null : _handleBackNavigation,
+          showBackButton: true,
+          actions: [
+            if (_currentStep == SendStep.recipients &&
+                _outputs.length < kMaxRecipients)
+              PIconButton(
+                icon: const Icon(Icons.add_circle_outline),
+                tooltip: 'Add recipient',
+                onPressed: _addOutput,
+              ),
+            if (_currentStep == SendStep.recipients)
+              PIconButton(
+                icon: const Icon(Icons.restart_alt),
+                tooltip: 'Reset form',
+                onPressed: _isValidating || _isSending
+                    ? null
+                    : () => _sendFormKey.currentState?.reset(),
+              ),
+            ConnectionStatusIndicator(
+              full: !isMobile,
+              onTap: () => context.push('/settings/privacy-shield'),
             ),
-          ConnectionStatusIndicator(
-            full: !isMobile,
-            onTap: () => context.push('/settings/privacy-shield'),
-          ),
-          if (!isMobile) const WalletSwitcherButton(compact: true),
-        ],
+            if (!isMobile) const WalletSwitcherButton(compact: true),
+          ],
+        ),
+        body: _buildStepContent(),
       ),
-      body: _buildStepContent(),
     );
   }
 
   Widget _buildStepContent() {
+    final currency = ref.watch(currencyPreferenceProvider);
+    final quote = ref.watch(arrrPriceQuoteProvider).asData?.value;
+    if (quote != null) {
+      _lastKnownQuote = quote;
+    }
+    _maybeFallbackFromFiatInput(currency: currency, quote: quote);
+    final showFiat = _showFiatAmounts && quote != null;
+
     switch (_currentStep) {
       case SendStep.recipients:
-        return _RecipientsStep(
-          outputs: _outputs,
-          availableBalance: _availableBalanceForSelection,
-          calculatedFee: _calculatedFee,
-          totalAmount: _totalAmount,
-          errorMessage: _errorMessage,
-          isValidating: _isValidating,
-          spendFromLabel: _spendFromLabel,
-          feePreset: _feePreset,
-          spendFromEnabled: !_isSending,
-          onSelectSpendFrom: _openSpendFromSelector,
-          onEditFee: _openFeeSelector,
-          onRemoveOutput: _removeOutput,
-          onAddOutput: _addOutput,
-          onOutputChanged: _handleOutputChanged,
-          onScan: _supportsCameraScan ? _openQrScanner : null,
-          onImport: _supportsImageImport ? _importQrImage : null,
-          onContinue: _proceedToReview,
+        return Form(
+          key: _sendFormKey,
+          child: FormField<void>(
+            onReset: _resetSendFormFields,
+            builder: (_) => _RecipientsStep(
+              outputs: _outputs,
+              addressSuggestions: _recipientSuggestions,
+              availableBalance: _availableBalanceForSelection,
+              calculatedFee: _calculatedFee,
+              totalAmount: _totalAmount,
+              errorMessage: _errorMessage,
+              isValidating: _isValidating,
+              spendFromLabel: _spendFromLabel,
+              feePreset: _feePreset,
+              spendFromEnabled: !_isSending,
+              onSelectSpendFrom: _openSpendFromSelector,
+              onEditFee: _openFeeSelector,
+              onRemoveOutput: _removeOutput,
+              onAddOutput: _addOutput,
+              onOutputChanged: _handleOutputChanged,
+              onScan: _supportsCameraScan ? _openQrScanner : null,
+              onImport: _supportsImageImport ? _importQrImage : null,
+              showFiatAmounts: showFiat,
+              canToggleFiatAmounts: quote != null,
+              currency: currency,
+              quote: quote,
+              formatDisplayAmount: (amount) => _formatDisplayAmount(
+                arrrAmount: amount,
+                currency: currency,
+                quote: quote,
+                showFiat: showFiat,
+              ),
+              parseAmountInputToArrr: _parseInputAmountToArrr,
+              formatAmountInput: (amountArrr) => _formatInputAmountFromArrr(
+                arrrAmount: amountArrr,
+                currency: currency,
+                quote: quote,
+                asFiat: showFiat,
+              ),
+              onToggleFiatAmounts: () =>
+                  _toggleFiatAmountView(currency: currency, quote: quote),
+              onContinue: _proceedToReview,
+            ),
+          ),
         );
 
       case SendStep.review:
@@ -1681,7 +2249,16 @@ class _SendScreenState extends ConsumerState<SendScreen> {
           change: _change,
           pendingTx: _pendingTx,
           spendFromLabel: _spendFromLabel,
-          onConfirm: _sendTransaction,
+          quote: quote,
+          showFiatAmounts: showFiat,
+          parseAmountInputToArrr: _parseInputAmountToArrr,
+          formatDisplayAmount: (amount) => _formatDisplayAmount(
+            arrrAmount: amount,
+            currency: currency,
+            quote: quote,
+            showFiat: showFiat,
+          ),
+          onConfirm: _authorizeAndSendTransaction,
           onEdit: () => setState(() => _currentStep = SendStep.recipients),
         );
 
@@ -1703,6 +2280,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 /// Recipients input step with add/remove
 class _RecipientsStep extends StatelessWidget {
   final List<OutputEntry> outputs;
+  final List<_RecipientSuggestion> addressSuggestions;
   final double availableBalance;
   final double calculatedFee;
   final double totalAmount;
@@ -1718,10 +2296,19 @@ class _RecipientsStep extends StatelessWidget {
   final void Function(int) onOutputChanged;
   final void Function(int)? onScan;
   final void Function(int)? onImport;
+  final bool showFiatAmounts;
+  final bool canToggleFiatAmounts;
+  final CurrencyPreference currency;
+  final ArrrPriceQuote? quote;
+  final String Function(double amountArrr) formatDisplayAmount;
+  final double Function(String raw) parseAmountInputToArrr;
+  final String Function(double amountArrr) formatAmountInput;
+  final VoidCallback onToggleFiatAmounts;
   final VoidCallback onContinue;
 
   const _RecipientsStep({
     required this.outputs,
+    required this.addressSuggestions,
     required this.availableBalance,
     required this.calculatedFee,
     required this.totalAmount,
@@ -1737,15 +2324,19 @@ class _RecipientsStep extends StatelessWidget {
     required this.onOutputChanged,
     this.onScan,
     this.onImport,
+    required this.showFiatAmounts,
+    required this.canToggleFiatAmounts,
+    required this.currency,
+    required this.quote,
+    required this.formatDisplayAmount,
+    required this.parseAmountInputToArrr,
+    required this.formatAmountInput,
+    required this.onToggleFiatAmounts,
     required this.onContinue,
   });
 
   double _parseAmount(TextEditingController controller) {
-    final raw = controller.text.trim();
-    if (raw.isEmpty) return 0.0;
-    final value = double.tryParse(raw);
-    if (value == null || value.isNaN || value.isInfinite) return 0.0;
-    return value <= 0 ? 0.0 : value;
+    return parseAmountInputToArrr(controller.text);
   }
 
   double _totalOtherAmounts(int excludeIndex) {
@@ -1773,194 +2364,186 @@ class _RecipientsStep extends StatelessWidget {
         spendableAfterFee.isFinite && spendableAfterFee > 0
         ? spendableAfterFee
         : 0.0;
+    final availableText = formatDisplayAmount(availableBalance);
+    final feeText = formatDisplayAmount(calculatedFee);
+    final totalText = formatDisplayAmount(total);
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
-    return Column(
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md + bottomInset,
+      ),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            AppSpacing.md,
-            AppSpacing.md,
-            0,
-          ),
-          child: PCard(
-            onTap: spendFromEnabled ? onSelectSpendFrom : null,
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.account_balance_wallet_outlined,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Spend from', style: AppTypography.bodyMedium),
-                        const SizedBox(height: 2),
-                        Text(
-                          spendFromLabel,
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right, color: AppColors.textTertiary),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
+        PCard(
+          onTap: spendFromEnabled ? onSelectSpendFrom : null,
+          child: Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
-            itemCount: outputs.length + 1, // +1 for add button
-            itemBuilder: (context, index) {
-              if (index == outputs.length) {
-                // Add recipient button
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                  child: PButton(
-                    onPressed: outputs.length < kMaxRecipients
-                        ? onAddOutput
-                        : null,
-                    variant: PButtonVariant.outline,
-                    fullWidth: true,
-                    icon: const Icon(Icons.add),
-                    child: const Text('Add recipient'),
-                  ),
-                );
-              }
-
-              final scanHandler = onScan == null ? null : () => onScan!(index);
-              final importHandler = onImport == null
-                  ? null
-                  : () => onImport!(index);
-
-              return _OutputCard(
-                key: ObjectKey(outputs[index]),
-                index: index,
-                output: outputs[index],
-                maxAmount: _maxAmountForOutput(index),
-                spendableForPercent: spendableForPercent,
-                canRemove: outputs.length > 1,
-                onRemove: () => onRemoveOutput(index),
-                onChanged: () => onOutputChanged(index),
-                onScan: scanHandler,
-                onImport: importHandler,
-              );
-            },
-          ),
-        ),
-
-        // Footer with fee preview and continue button
-        PrimaryActionDock(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Fee preview
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Available:',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.caption,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    '${availableBalance.toStringAsFixed(8)} ARRR',
-                    style: AppTypography.mono.copyWith(fontSize: 12),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Network fee', style: AppTypography.caption),
-                        Text(
-                          feePreset.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.caption.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Wrap(
-                    spacing: AppSpacing.xs,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text('Spend from', style: AppTypography.bodyMedium),
+                      const SizedBox(height: 2),
                       Text(
-                        '${calculatedFee.toStringAsFixed(8)} ARRR',
-                        style: AppTypography.mono.copyWith(fontSize: 12),
-                      ),
-                      PTextButton(
-                        label: 'Edit',
-                        compact: true,
-                        variant: PTextButtonVariant.subtle,
-                        onPressed: onEditFee,
+                        spendFromLabel,
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),
-                ],
+                ),
+                Icon(Icons.chevron_right, color: AppColors.textTertiary),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        ...outputs.asMap().entries.map((entry) {
+          final index = entry.key;
+          final output = entry.value;
+          final scanHandler = onScan == null ? null : () => onScan!(index);
+          final importHandler = onImport == null
+              ? null
+              : () => onImport!(index);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: _OutputCard(
+              key: ObjectKey(output),
+              index: index,
+              output: output,
+              addressSuggestions: addressSuggestions,
+              maxAmount: _maxAmountForOutput(index),
+              spendableForPercent: spendableForPercent,
+              canRemove: outputs.length > 1,
+              onRemove: () => onRemoveOutput(index),
+              onChanged: () => onOutputChanged(index),
+              onScan: scanHandler,
+              onImport: importHandler,
+              showFiatAmounts: showFiatAmounts,
+              canToggleFiatAmounts: canToggleFiatAmounts,
+              currency: currency,
+              quote: quote,
+              parseAmountInputToArrr: parseAmountInputToArrr,
+              formatAmountInput: formatAmountInput,
+              onToggleFiatAmounts: onToggleFiatAmounts,
+            ),
+          );
+        }),
+        PButton(
+          onPressed: outputs.length < kMaxRecipients ? onAddOutput : null,
+          variant: PButtonVariant.outline,
+          fullWidth: true,
+          icon: const Icon(Icons.add),
+          child: const Text('Add recipient'),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Available:',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.caption,
               ),
-              const SizedBox(height: AppSpacing.xs),
-              Row(
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              availableText,
+              style: AppTypography.mono.copyWith(fontSize: 12),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Total:',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.caption.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
+                  Text('Network fee', style: AppTypography.caption),
                   Text(
-                    '${total.toStringAsFixed(8)} ARRR',
-                    style: AppTypography.mono.copyWith(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: hasEnough ? AppColors.success : AppColors.error,
+                    feePreset.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
               ),
-
-              if (errorMessage != null) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  errorMessage!,
-                  style: AppTypography.caption.copyWith(color: AppColors.error),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Wrap(
+              spacing: AppSpacing.xs,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(feeText, style: AppTypography.mono.copyWith(fontSize: 12)),
+                PTextButton(
+                  label: 'Edit',
+                  compact: true,
+                  variant: PTextButtonVariant.subtle,
+                  onPressed: onEditFee,
                 ),
               ],
-
-              const SizedBox(height: AppSpacing.md),
-
-              PButton(
-                text: isValidating ? 'Validating...' : 'Review',
-                onPressed: isValidating ? null : onContinue,
-                variant: PButtonVariant.primary,
-                size: PButtonSize.large,
-                loading: isValidating,
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Total:',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.caption.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ],
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Text(
+              totalText,
+              style: AppTypography.mono.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: hasEnough ? AppColors.success : AppColors.error,
+              ),
+            ),
+          ],
+        ),
+        if (errorMessage != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            errorMessage!,
+            style: AppTypography.caption.copyWith(color: AppColors.error),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.lg),
+        Semantics(
+          button: true,
+          label: isValidating
+              ? 'Validating transaction details'
+              : 'Review transaction',
+          value: isValidating ? 'In progress' : 'Ready',
+          child: PButton(
+            text: isValidating ? 'Validating...' : 'Review',
+            onPressed: isValidating ? null : onContinue,
+            variant: PButtonVariant.primary,
+            size: PButtonSize.large,
+            loading: isValidating,
           ),
         ),
       ],
@@ -1972,6 +2555,7 @@ class _RecipientsStep extends StatelessWidget {
 class _OutputCard extends StatelessWidget {
   final int index;
   final OutputEntry output;
+  final List<_RecipientSuggestion> addressSuggestions;
   final double maxAmount;
   final double spendableForPercent;
   final bool canRemove;
@@ -1979,11 +2563,19 @@ class _OutputCard extends StatelessWidget {
   final VoidCallback onChanged;
   final VoidCallback? onScan;
   final VoidCallback? onImport;
+  final bool showFiatAmounts;
+  final bool canToggleFiatAmounts;
+  final CurrencyPreference currency;
+  final ArrrPriceQuote? quote;
+  final double Function(String raw) parseAmountInputToArrr;
+  final String Function(double amountArrr) formatAmountInput;
+  final VoidCallback onToggleFiatAmounts;
 
   const _OutputCard({
     super.key,
     required this.index,
     required this.output,
+    required this.addressSuggestions,
     required this.maxAmount,
     required this.spendableForPercent,
     required this.canRemove,
@@ -1991,19 +2583,26 @@ class _OutputCard extends StatelessWidget {
     required this.onChanged,
     this.onScan,
     this.onImport,
+    required this.showFiatAmounts,
+    required this.canToggleFiatAmounts,
+    required this.currency,
+    required this.quote,
+    required this.parseAmountInputToArrr,
+    required this.formatAmountInput,
+    required this.onToggleFiatAmounts,
   });
-
-  static String _formatArrrFloor(double amount) {
-    if (amount <= 0) return '';
-    final arrrtoshis = (amount * 100000000.0).floor();
-    if (arrrtoshis <= 0) return '';
-    final floored = arrrtoshis / 100000000.0;
-    return floored.toStringAsFixed(8);
-  }
 
   @override
   Widget build(BuildContext context) {
     final canMax = maxAmount >= 0.00000001;
+    final amountLabel = showFiatAmounts
+        ? 'Amount (${currency.code})'
+        : 'Amount (ARRR)';
+    final amountHint = showFiatAmounts
+        ? (currency.fractionDigits == 0
+              ? '0'
+              : '0.${'0' * currency.fractionDigits}')
+        : '0.00000000';
 
     return PCard(
       child: Padding(
@@ -2071,41 +2670,12 @@ class _OutputCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.md),
 
             // Address input
-            PInput(
+            _RecipientAddressAutocompleteField(
               controller: output.addressController,
-              label: 'Recipient address',
-              hint: 'Paste address',
-              helperText: 'Paste an address.',
-              maxLines: 2,
+              suggestions: addressSuggestions,
               onChanged: (_) => onChanged(),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.content_paste, size: 20),
-                    onPressed: () async {
-                      final data = await Clipboard.getData('text/plain');
-                      if (data?.text != null) {
-                        output.addressController.text = data!.text!;
-                        onChanged();
-                      }
-                    },
-                    tooltip: 'Paste',
-                  ),
-                  if (onImport != null)
-                    IconButton(
-                      icon: const Icon(Icons.image_search, size: 20),
-                      onPressed: onImport,
-                      tooltip: 'Import QR image',
-                    ),
-                  if (onScan != null)
-                    IconButton(
-                      icon: const Icon(Icons.qr_code_scanner, size: 20),
-                      onPressed: onScan,
-                      tooltip: 'Scan QR',
-                    ),
-                ],
-              ),
+              onScan: onScan,
+              onImport: onImport,
             ),
 
             const SizedBox(height: AppSpacing.md),
@@ -2113,17 +2683,21 @@ class _OutputCard extends StatelessWidget {
             // Amount input
             PInput(
               controller: output.amountController,
-              label: 'Amount (ARRR)',
-              hint: '0.00000000',
+              label: amountLabel,
+              hint: amountHint,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
               onChanged: (_) => onChanged(),
-              suffixIcon: _AmountMaxButton(
-                enabled: canMax,
-                onTap: () {
+              suffixIcon: _AmountInputSuffix(
+                showFiatAmounts: showFiatAmounts,
+                canToggleFiatAmounts: canToggleFiatAmounts,
+                currencyCode: currency.code,
+                onToggleFiatAmounts: onToggleFiatAmounts,
+                canMax: canMax,
+                onMaxTap: () {
                   if (!canMax) return;
-                  output.amountController.text = _formatArrrFloor(maxAmount);
+                  output.amountController.text = formatAmountInput(maxAmount);
                   onChanged();
                 },
               ),
@@ -2136,7 +2710,8 @@ class _OutputCard extends StatelessWidget {
               controller: output.amountController,
               onCommit: onChanged,
               enabled: canMax,
-              formatter: _formatArrrFloor,
+              parseInputAmount: parseAmountInputToArrr,
+              formatInputAmount: formatAmountInput,
             ),
 
             const SizedBox(height: AppSpacing.md),
@@ -2167,6 +2742,214 @@ class _OutputCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RecipientAddressAutocompleteField extends StatefulWidget {
+  const _RecipientAddressAutocompleteField({
+    required this.controller,
+    required this.suggestions,
+    required this.onChanged,
+    this.onScan,
+    this.onImport,
+  });
+
+  final TextEditingController controller;
+  final List<_RecipientSuggestion> suggestions;
+  final ValueChanged<String> onChanged;
+  final VoidCallback? onScan;
+  final VoidCallback? onImport;
+
+  @override
+  State<_RecipientAddressAutocompleteField> createState() =>
+      _RecipientAddressAutocompleteFieldState();
+}
+
+class _RecipientAddressAutocompleteFieldState
+    extends State<_RecipientAddressAutocompleteField> {
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode(debugLabel: 'recipientAddressAutocomplete');
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  Iterable<_RecipientSuggestion> _filterSuggestions(String query) {
+    if (widget.suggestions.isEmpty) {
+      return const Iterable<_RecipientSuggestion>.empty();
+    }
+
+    final normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.isEmpty) {
+      return widget.suggestions.take(8);
+    }
+
+    return widget.suggestions
+        .where(
+          (option) =>
+              option.normalizedAddress.contains(normalizedQuery) ||
+              option.normalizedLabel.contains(normalizedQuery),
+        )
+        .take(8);
+  }
+
+  void _applyValue(String value) {
+    widget.controller
+      ..text = value
+      ..selection = TextSelection.collapsed(offset: value.length);
+    widget.onChanged(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RawAutocomplete<_RecipientSuggestion>(
+      textEditingController: widget.controller,
+      focusNode: _focusNode,
+      optionsViewOpenDirection: OptionsViewOpenDirection.mostSpace,
+      displayStringForOption: (option) => option.address,
+      optionsBuilder: (textEditingValue) =>
+          _filterSuggestions(textEditingValue.text),
+      onSelected: (selection) => _applyValue(selection.address),
+      fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+        return PInput(
+          controller: textController,
+          focusNode: focusNode,
+          label: 'Recipient address',
+          hint: 'Paste address',
+          maxLines: 1,
+          onChanged: widget.onChanged,
+          onSubmitted: (_) => onFieldSubmitted(),
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.content_paste, size: 20),
+                onPressed: () async {
+                  final data = await Clipboard.getData('text/plain');
+                  final pasted = data?.text?.trim();
+                  if (pasted != null && pasted.isNotEmpty) {
+                    _applyValue(pasted);
+                  }
+                },
+                tooltip: 'Paste',
+              ),
+              if (widget.onImport != null)
+                IconButton(
+                  icon: const Icon(Icons.image_search, size: 20),
+                  onPressed: widget.onImport,
+                  tooltip: 'Import QR image',
+                ),
+              if (widget.onScan != null)
+                IconButton(
+                  icon: const Icon(Icons.qr_code_scanner, size: 20),
+                  onPressed: widget.onScan,
+                  tooltip: 'Scan QR',
+                ),
+            ],
+          ),
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        final optionList = options.toList(growable: false);
+        if (optionList.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            color: Colors.transparent,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minWidth: 280,
+                maxWidth: 620,
+                maxHeight: 260,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundElevated,
+                  borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+                  border: Border.all(color: AppColors.borderDefault),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.shadowStrong,
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                  shrinkWrap: true,
+                  itemCount: optionList.length,
+                  separatorBuilder: (_, _) =>
+                      Divider(height: 1, color: AppColors.borderSubtle),
+                  itemBuilder: (context, index) {
+                    final option = optionList[index];
+                    final label = option.label;
+                    return InkWell(
+                      onTap: () => onSelected(option),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm,
+                          vertical: AppSpacing.xs,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              option.isRecent
+                                  ? Icons.history
+                                  : Icons.bookmark_border,
+                              size: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (label != null && label.isNotEmpty) ...[
+                                    Text(
+                                      label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTypography.labelSmall.copyWith(
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                  ],
+                                  Text(
+                                    option.address,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTypography.mono.copyWith(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -2203,9 +2986,56 @@ class _AmountMaxButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(PSpacing.radiusFull),
             border: Border.all(color: border),
           ),
-          child: Text('MAX', style: PTypography.labelSmall(color: textColor)),
+          child: Center(
+            child: Text(
+              'MAX',
+              textAlign: TextAlign.center,
+              style: PTypography.labelSmall(color: textColor),
+            ),
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _AmountInputSuffix extends StatelessWidget {
+  final bool showFiatAmounts;
+  final bool canToggleFiatAmounts;
+  final String currencyCode;
+  final VoidCallback onToggleFiatAmounts;
+  final bool canMax;
+  final VoidCallback onMaxTap;
+
+  const _AmountInputSuffix({
+    required this.showFiatAmounts,
+    required this.canToggleFiatAmounts,
+    required this.currencyCode,
+    required this.onToggleFiatAmounts,
+    required this.canMax,
+    required this.onMaxTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = canToggleFiatAmounts
+        ? AppColors.textSecondary
+        : AppColors.textTertiary;
+    final tooltip = showFiatAmounts
+        ? 'Enter amount in ARRR'
+        : 'Enter amount in $currencyCode';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.swap_horiz, size: 20),
+          color: iconColor,
+          tooltip: tooltip,
+          onPressed: canToggleFiatAmounts ? onToggleFiatAmounts : null,
+        ),
+        _AmountMaxButton(enabled: canMax, onTap: onMaxTap),
+      ],
     );
   }
 }
@@ -2216,7 +3046,8 @@ class _AmountPresetSlider extends StatefulWidget {
   final TextEditingController controller;
   final VoidCallback onCommit;
   final bool enabled;
-  final String Function(double) formatter;
+  final double Function(String raw) parseInputAmount;
+  final String Function(double amountArrr) formatInputAmount;
 
   const _AmountPresetSlider({
     required this.maxAmount,
@@ -2224,9 +3055,9 @@ class _AmountPresetSlider extends StatefulWidget {
     required this.controller,
     required this.onCommit,
     required this.enabled,
-    required this.formatter,
+    required this.parseInputAmount,
+    required this.formatInputAmount,
   });
-
   @override
   State<_AmountPresetSlider> createState() => _AmountPresetSliderState();
 }
@@ -2254,8 +3085,7 @@ class _AmountPresetSliderState extends State<_AmountPresetSlider> {
     final maxAmount = widget.maxAmount;
     if (maxAmount <= 0) return 0.0;
 
-    final raw = widget.controller.text.trim();
-    final amount = raw.isEmpty ? 0.0 : (double.tryParse(raw) ?? 0.0);
+    final amount = widget.parseInputAmount(widget.controller.text);
     if (amount <= 0) return 0.0;
     if (amount >= maxAmount) return 1.0;
 
@@ -2265,11 +3095,7 @@ class _AmountPresetSliderState extends State<_AmountPresetSlider> {
   }
 
   double _currentAmount() {
-    final raw = widget.controller.text.trim();
-    if (raw.isEmpty) return 0.0;
-    final value = double.tryParse(raw);
-    if (value == null || value.isNaN || value.isInfinite) return 0.0;
-    return value <= 0 ? 0.0 : value;
+    return widget.parseInputAmount(widget.controller.text);
   }
 
   String _percentLabel() {
@@ -2296,7 +3122,7 @@ class _AmountPresetSliderState extends State<_AmountPresetSlider> {
       widget.controller.text = '';
     } else {
       final amount = (widget.maxAmount * preset).clamp(0.0, widget.maxAmount);
-      widget.controller.text = widget.formatter(amount);
+      widget.controller.text = widget.formatInputAmount(amount);
     }
     if (commit) widget.onCommit();
   }
@@ -2613,7 +3439,11 @@ class _ReviewStep extends StatelessWidget {
   final double change;
   final PendingTx? pendingTx;
   final String spendFromLabel;
-  final VoidCallback onConfirm;
+  final ArrrPriceQuote? quote;
+  final bool showFiatAmounts;
+  final double Function(String raw) parseAmountInputToArrr;
+  final String Function(double amountArrr) formatDisplayAmount;
+  final Future<void> Function() onConfirm;
   final VoidCallback onEdit;
 
   const _ReviewStep({
@@ -2623,6 +3453,10 @@ class _ReviewStep extends StatelessWidget {
     this.change = 0,
     this.pendingTx,
     required this.spendFromLabel,
+    required this.quote,
+    required this.showFiatAmounts,
+    required this.parseAmountInputToArrr,
+    required this.formatDisplayAmount,
     required this.onConfirm,
     required this.onEdit,
   });
@@ -2668,8 +3502,23 @@ class _ReviewStep extends StatelessWidget {
                             style: AppTypography.labelMedium,
                           ),
                           const Spacer(),
+                          if (showFiatAmounts &&
+                              quote != null &&
+                              quote!.pricePerArrr > 0) ...[
+                            Text(
+                              '${parseAmountInputToArrr(output.amountController.text).toStringAsFixed(8)} ARRR',
+                              style: AppTypography.caption.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                          ],
                           Text(
-                            '${(double.tryParse(output.amount) ?? 0).toStringAsFixed(8)} ARRR',
+                            formatDisplayAmount(
+                              parseAmountInputToArrr(
+                                output.amountController.text,
+                              ),
+                            ),
                             style: AppTypography.mono.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
@@ -2677,11 +3526,13 @@ class _ReviewStep extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        '${output.address.substring(0, 16)}...${output.address.substring(output.address.length - 16)}',
-                        style: AppTypography.mono.copyWith(
-                          fontSize: 11,
-                          color: AppColors.textSecondary,
+                      _SelectionAwareCopyBlock(
+                        child: SelectableText(
+                          output.address,
+                          style: AppTypography.mono.copyWith(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ),
                       if (output.memo.isNotEmpty) ...[
@@ -2722,20 +3573,17 @@ class _ReviewStep extends StatelessWidget {
           // Totals
           const Divider(height: AppSpacing.xl),
 
-          _DetailRow(
-            label: 'Amount',
-            value: '${totalAmount.toStringAsFixed(8)} ARRR',
-          ),
+          _DetailRow(label: 'Amount', value: formatDisplayAmount(totalAmount)),
           const SizedBox(height: AppSpacing.sm),
           _DetailRow(
             label: 'Network Fee',
-            value: '${fee.toStringAsFixed(8)} ARRR',
+            value: formatDisplayAmount(fee),
             valueColor: AppColors.textSecondary,
           ),
           const SizedBox(height: AppSpacing.sm),
           _DetailRow(
             label: 'Total',
-            value: '${grandTotal.toStringAsFixed(8)} ARRR',
+            value: formatDisplayAmount(grandTotal),
             valueColor: AppColors.accentPrimary,
             bold: true,
           ),
@@ -2750,7 +3598,7 @@ class _ReviewStep extends StatelessWidget {
             const SizedBox(height: AppSpacing.sm),
             _DetailRow(
               label: 'Change (returned)',
-              value: '${change.toStringAsFixed(8)} ARRR',
+              value: formatDisplayAmount(change),
               valueColor: AppColors.success,
             ),
           ],
@@ -2880,6 +3728,92 @@ class _ReviewStep extends StatelessWidget {
   }
 }
 
+class _SelectionAwareCopyBlock extends StatefulWidget {
+  const _SelectionAwareCopyBlock({
+    required this.child,
+    this.helperText = 'Selection active. Press Ctrl+C (or Cmd+C) to copy.',
+  });
+
+  final Widget child;
+  final String helperText;
+
+  @override
+  State<_SelectionAwareCopyBlock> createState() =>
+      _SelectionAwareCopyBlockState();
+}
+
+class _SelectionAwareCopyBlockState extends State<_SelectionAwareCopyBlock> {
+  final SelectionListenerNotifier _selectionNotifier =
+      SelectionListenerNotifier();
+  bool _selectionActive = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectionNotifier.addListener(_handleSelectionChanged);
+  }
+
+  @override
+  void dispose() {
+    _selectionNotifier
+      ..removeListener(_handleSelectionChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleSelectionChanged() {
+    if (!_selectionNotifier.registered) {
+      return;
+    }
+    final details = _selectionNotifier.selection;
+    final range = details.range;
+    final nextActive = range != null && range.startOffset != range.endOffset;
+    if (nextActive == _selectionActive || !mounted) {
+      return;
+    }
+    setState(() => _selectionActive = nextActive);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectionArea(
+      child: SelectionListener(
+        selectionNotifier: _selectionNotifier,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xs,
+                vertical: AppSpacing.xxs,
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: _selectionActive
+                    ? Border.all(
+                        color: AppColors.accentPrimary.withValues(alpha: 0.5),
+                      )
+                    : null,
+              ),
+              child: widget.child,
+            ),
+            if (_selectionActive) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                widget.helperText,
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Detail row widget
 class _DetailRow extends StatelessWidget {
   final String label;
@@ -2945,18 +3879,29 @@ class _SendingStep extends StatelessWidget {
             SizedBox(
               width: 80,
               height: 80,
-              child: CircularProgressIndicator(
-                strokeWidth: 4,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  AppColors.accentPrimary,
+              child: Semantics(
+                label: 'Transaction send progress indicator',
+                value: stage,
+                liveRegion: true,
+                child: CircularProgressIndicator(
+                  strokeWidth: 4,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppColors.accentPrimary,
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: AppSpacing.xxl),
-            Text(
-              stage,
-              style: AppTypography.h4.copyWith(color: AppColors.textPrimary),
-              textAlign: TextAlign.center,
+            Semantics(
+              container: true,
+              liveRegion: true,
+              label: 'Transaction send stage',
+              value: stage,
+              child: Text(
+                stage,
+                style: AppTypography.h4.copyWith(color: AppColors.textPrimary),
+                textAlign: TextAlign.center,
+              ),
             ),
             const SizedBox(height: AppSpacing.md),
             Text(

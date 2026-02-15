@@ -4,6 +4,17 @@ import 'tokens/colors.dart';
 import 'tokens/spacing.dart';
 import 'tokens/typography.dart';
 
+const PageTransitionsTheme _piratePageTransitions = PageTransitionsTheme(
+  builders: {
+    TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+    TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+    TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
+    TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+    TargetPlatform.fuchsia: FadeUpwardsPageTransitionsBuilder(),
+  },
+);
+
 /// Pirate Wallet theme system
 /// 
 /// Builds Material ThemeData from design tokens with dark-first approach
@@ -22,6 +33,7 @@ class PTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
+      pageTransitionsTheme: _piratePageTransitions,
       
       // ========================================================================
       // Color Scheme
@@ -467,6 +479,7 @@ class PTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
+      pageTransitionsTheme: _piratePageTransitions,
 
       // ========================================================================
       // Color Scheme

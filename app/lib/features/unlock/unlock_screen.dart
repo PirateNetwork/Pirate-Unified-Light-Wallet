@@ -240,7 +240,6 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
         title: 'Unlock Wallet',
         subtitle: 'Enter your passphrase to access your wallets',
         showBackButton: false,
-        centerTitle: true,
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {

@@ -5,24 +5,18 @@ import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../ui/molecules/connection_status_indicator.dart';
+import '../../ui/molecules/p_snack.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 
 void _showComingSoon(BuildContext context) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: Text(
-          'Coming Soon',
-          style: PTypography.bodyMedium(color: AppColors.textPrimary),
-        ),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.backgroundElevated,
-      ),
-    );
+  PSnack.show(
+    context: context,
+    message: 'Coming Soon',
+    duration: const Duration(seconds: 1),
+    variant: PSnackVariant.info,
+  );
 }
 
 /// Pay entry screen for desktop and deep links.
@@ -245,144 +239,98 @@ class _PayContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tiles = [
+      _PayActionTile(
+        title: 'Send',
+        subtitle: 'Send ARRR',
+        icon: Icons.north_east,
+        gradient: LinearGradient(
+          colors: [AppColors.gradientAStart, AppColors.gradientAEnd],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        onTap: onSend,
+      ),
+      _PayActionTile(
+        title: 'Receive',
+        subtitle: 'Receive ARRR',
+        icon: Icons.south_west,
+        gradient: LinearGradient(
+          colors: [AppColors.gradientBStart, AppColors.gradientBEnd],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        onTap: onReceive,
+      ),
+      _PayActionTile(
+        title: 'Buy',
+        subtitle: 'Buy ARRR',
+        icon: Icons.shopping_bag,
+        gradient: LinearGradient(
+          colors: [AppColors.highlight, AppColors.warning],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        onTap: onBuy,
+      ),
+      _PayActionTile(
+        title: 'Spend',
+        subtitle: 'Spend ARRR',
+        icon: Icons.credit_card,
+        gradient: LinearGradient(
+          colors: [AppColors.info, AppColors.gradientAEnd],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        onTap: onSpend,
+      ),
+    ];
+
     return Padding(
       padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth >= 720;
-          if (isWide) {
-            // Desktop: Center the buttons with a max width and height constraints
-            final tiles = [
-              _PayActionTile(
-                title: 'Send',
-                subtitle: 'Send ARRR',
-                icon: Icons.north_east,
-                gradient: LinearGradient(
-                  colors: [AppColors.gradientAStart, AppColors.gradientAEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                onTap: onSend,
-                isDesktop: true,
-              ),
-              _PayActionTile(
-                title: 'Receive',
-                subtitle: 'Receive ARRR',
-                icon: Icons.south_west,
-                gradient: LinearGradient(
-                  colors: [AppColors.gradientBStart, AppColors.gradientBEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                onTap: onReceive,
-                isDesktop: true,
-              ),
-              _PayActionTile(
-                title: 'Buy',
-                subtitle: 'Buy ARRR',
-                icon: Icons.shopping_bag,
-                gradient: LinearGradient(
-                  colors: [AppColors.highlight, AppColors.warning],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                onTap: onBuy,
-                isDesktop: true,
-              ),
-              _PayActionTile(
-                title: 'Spend',
-                subtitle: 'Spend ARRR',
-                icon: Icons.credit_card,
-                gradient: LinearGradient(
-                  colors: [AppColors.info, AppColors.gradientAEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                onTap: onSpend,
-                isDesktop: true,
-              ),
-            ];
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600),
-                child: Wrap(
-                  spacing: PSpacing.lg,
-                  runSpacing: PSpacing.lg,
-                  children: tiles
-                      .map(
-                        (tile) =>
-                            SizedBox(width: 280, height: 240, child: tile),
-                      )
-                      .toList(),
-                ),
-              ),
-            );
-          }
+          final spacing = isWide ? PSpacing.lg : PSpacing.md;
+          final crossAxisCount = constraints.maxWidth >= 380 ? 2 : 1;
+          final maxContentWidth = crossAxisCount == 2
+              ? (constraints.maxWidth > 980 ? 980.0 : constraints.maxWidth)
+              : (constraints.maxWidth > 520 ? 520.0 : constraints.maxWidth);
+          final tileWidth =
+              (maxContentWidth - (spacing * (crossAxisCount - 1))) /
+              crossAxisCount;
+          final tileHeight = (tileWidth * (isWide ? 0.78 : 0.86)).clamp(
+            168.0,
+            248.0,
+          );
+          final aspectRatio = tileWidth / tileHeight;
 
-          const spacing = PSpacing.md;
-          final rawTileWidth = (constraints.maxWidth - spacing) / 2;
-          final tileWidth = rawTileWidth.clamp(150.0, 220.0);
-          final tileHeight = (tileWidth * 0.85).clamp(150.0, 210.0);
-          final tiles = [
-            _PayActionTile(
-              title: 'Send',
-              subtitle: 'Send ARRR',
-              icon: Icons.north_east,
-              gradient: LinearGradient(
-                colors: [AppColors.gradientAStart, AppColors.gradientAEnd],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              onTap: onSend,
-            ),
-            _PayActionTile(
-              title: 'Receive',
-              subtitle: 'Receive ARRR',
-              icon: Icons.south_west,
-              gradient: LinearGradient(
-                colors: [AppColors.gradientBStart, AppColors.gradientBEnd],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              onTap: onReceive,
-            ),
-            _PayActionTile(
-              title: 'Buy',
-              subtitle: 'Buy ARRR',
-              icon: Icons.shopping_bag,
-              gradient: LinearGradient(
-                colors: [AppColors.highlight, AppColors.warning],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              onTap: onBuy,
-            ),
-            _PayActionTile(
-              title: 'Spend',
-              subtitle: 'Spend ARRR',
-              icon: Icons.credit_card,
-              gradient: LinearGradient(
-                colors: [AppColors.info, AppColors.gradientAEnd],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              onTap: onSpend,
-            ),
-          ];
           return SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: PSpacing.xl),
             child: Center(
-              child: Wrap(
-                spacing: spacing,
-                runSpacing: spacing,
-                children: tiles
-                    .map(
-                      (tile) => SizedBox(
-                        width: tileWidth,
-                        height: tileHeight,
-                        child: tile,
-                      ),
-                    )
-                    .toList(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxContentWidth),
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: tiles.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    crossAxisSpacing: spacing,
+                    mainAxisSpacing: spacing,
+                    childAspectRatio: aspectRatio,
+                  ),
+                  itemBuilder: (context, index) {
+                    return _PayActionTile(
+                      title: tiles[index].title,
+                      subtitle: tiles[index].subtitle,
+                      icon: tiles[index].icon,
+                      gradient: tiles[index].gradient,
+                      onTap: tiles[index].onTap,
+                      isDesktop: isWide,
+                    );
+                  },
+                ),
               ),
             ),
           );
@@ -425,12 +373,12 @@ class _PayActionTile extends StatelessWidget {
         : 28.0;
     final iconContainerSize = isDesktop ? 56.0 : (compact ? 40.0 : 48.0);
     final titleStyle = isDesktop
-        ? PTypography.heading3(color: AppColors.textOnAccent)
+        ? PTypography.heading5(color: AppColors.textOnAccent)
         : compact
-        ? PTypography.titleLarge(color: AppColors.textOnAccent)
-        : PTypography.heading4(color: AppColors.textOnAccent);
+        ? PTypography.titleMedium(color: AppColors.textOnAccent)
+        : PTypography.heading6(color: AppColors.textOnAccent);
     final subtitleStyle = isDesktop
-        ? PTypography.bodyLarge(
+        ? PTypography.bodyMedium(
             color: AppColors.textOnAccent.withValues(alpha: 0.9),
           )
         : compact
@@ -465,7 +413,7 @@ class _PayActionTile extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.all(padding),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
@@ -489,16 +437,17 @@ class _PayActionTile extends StatelessWidget {
                       ? PSpacing.lg
                       : (compact ? PSpacing.sm : PSpacing.md),
                 ),
+                const Spacer(),
                 Text(
                   title,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: titleStyle,
                 ),
                 SizedBox(height: isDesktop ? PSpacing.sm : PSpacing.xs),
                 Text(
                   subtitle,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: subtitleStyle,
                 ),

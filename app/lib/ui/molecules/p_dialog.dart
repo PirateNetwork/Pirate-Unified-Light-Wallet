@@ -21,13 +21,14 @@ class PDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.84;
     return Dialog(
       backgroundColor: AppColors.backgroundElevated,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(PSpacing.radiusXL),
       ),
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 500),
+        constraints: BoxConstraints(maxWidth: 500, maxHeight: maxHeight),
         padding: EdgeInsets.all(PSpacing.dialogPadding),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -38,28 +39,28 @@ class PDialog extends StatelessWidget {
               style: PTypography.heading4(color: AppColors.textPrimary),
             ),
             SizedBox(height: PSpacing.md),
-            DefaultTextStyle(
-              style: PTypography.bodyMedium(color: AppColors.textSecondary),
-              child: content,
+            Flexible(
+              child: SingleChildScrollView(
+                child: DefaultTextStyle(
+                  style: PTypography.bodyMedium(color: AppColors.textSecondary),
+                  child: content,
+                ),
+              ),
             ),
             if (actions != null && actions!.isNotEmpty) ...[
               SizedBox(height: PSpacing.lg),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: PSpacing.sm,
+                runSpacing: PSpacing.sm,
                 children: actions!.map((action) {
-                  final index = actions!.indexOf(action);
-                  return Row(
-                    children: [
-                      if (index > 0) SizedBox(width: PSpacing.sm),
-                      PButton(
-                        onPressed: () {
-                          action.onPressed?.call();
-                          Navigator.of(context).pop(action.result);
-                        },
-                        variant: action.variant,
-                        child: Text(action.label),
-                      ),
-                    ],
+                  return PButton(
+                    onPressed: () {
+                      action.onPressed?.call();
+                      Navigator.of(context).pop(action.result);
+                    },
+                    variant: action.variant,
+                    child: Text(action.label),
                   );
                 }).toList(),
               ),
@@ -104,4 +105,3 @@ class PDialogAction<T> {
   final PButtonVariant variant;
   final T? result;
 }
-

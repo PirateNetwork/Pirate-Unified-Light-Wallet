@@ -2,6 +2,7 @@
 library;
 
 import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,7 +29,9 @@ import '../../core/ffi/generated/models.dart'
         TunnelMode_Tor,
         TxInfo;
 import '../../core/providers/wallet_providers.dart';
+import '../../core/providers/price_providers.dart';
 import '../settings/providers/transport_providers.dart';
+import '../settings/providers/preferences_providers.dart';
 
 /// Home screen
 class HomeScreen extends StatefulWidget {
@@ -50,8 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final textScale = MediaQuery.textScalerOf(context).scale(1.0);
     final gutter = PSpacing.responsiveGutter(screenWidth);
     final headerVerticalPadding = PSpacing.isDesktop(screenWidth)
-        ? PSpacing.lg
-        : PSpacing.md;
+        ? PSpacing.md
+        : PSpacing.sm;
     final baseHeaderExtent = PSpacing.isMobile(screenWidth)
         ? 280.0
         : PSpacing.isTablet(screenWidth)
@@ -206,6 +209,9 @@ class _HomeHeader extends ConsumerWidget {
     final torStatus = ref.watch(torStatusProvider);
     final transportConfig = ref.watch(transportConfigProvider);
     final isDecoy = ref.watch(decoyModeProvider);
+    final currency = ref.watch(currencyPreferenceProvider);
+    final priceQuote = ref.watch(arrrPriceQuoteProvider).asData?.value;
+    final primaryFiat = ref.watch(balancePrimaryFiatProvider);
     final decoyHeight = ref
         .watch(decoySyncHeightProvider)
         .maybeWhen(data: (height) => height, orElse: () => 0);
@@ -250,6 +256,18 @@ class _HomeHeader extends ConsumerWidget {
         : totalBalance;
     final balanceArrr = displayBalance.toDouble() / 100000000.0;
     final pendingArrr = pendingBalance.toDouble() / 100000000.0;
+    final arrrText = ArrrPriceFormatter.formatArrr(balanceArrr);
+    final fiatAmount = priceQuote == null
+        ? null
+        : balanceArrr * priceQuote.pricePerArrr;
+    final fiatText = fiatAmount == null
+        ? null
+        : ArrrPriceFormatter.formatCurrency(currency, fiatAmount);
+    final showFiatPrimary = primaryFiat && fiatText != null;
+    final primaryText = showFiatPrimary ? fiatText : arrrText;
+    final secondaryText = fiatText == null
+        ? null
+        : (showFiatPrimary ? arrrText : fiatText);
     String? balanceHelper;
     if (balanceArrr <= 0) {
       balanceHelper = 'Share your address to get paid.';
@@ -266,7 +284,7 @@ class _HomeHeader extends ConsumerWidget {
         child: Padding(
           padding: padding,
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -280,12 +298,40 @@ class _HomeHeader extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: PSpacing.md),
-              BalanceHero(
-                balanceText: '${balanceArrr.toStringAsFixed(8)} ARRR',
-                helperText: balanceHelper,
-                isHidden: hideBalance,
-                onToggleVisibility: onToggleVisibility,
+              const SizedBox(height: PSpacing.sm),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxHeight < 240;
+                    return Align(
+                      alignment: Alignment.topLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.topLeft,
+                        child: SizedBox(
+                          width: constraints.maxWidth,
+                          child: BalanceHero(
+                            compact: compact,
+                            balanceText: primaryText,
+                            secondaryText: secondaryText,
+                            helperText: balanceHelper,
+                            isHidden: hideBalance,
+                            onToggleVisibility: onToggleVisibility,
+                            onSwapDisplay: secondaryText == null
+                                ? null
+                                : () {
+                                    ref
+                                        .read(
+                                          balancePrimaryFiatProvider.notifier,
+                                        )
+                                        .setPrimaryFiat(enabled: !primaryFiat);
+                                  },
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -304,34 +350,11 @@ class _HomeHeader extends ConsumerWidget {
   }
 }
 
-class _HomeSyncIndicator extends ConsumerStatefulWidget {
+class _HomeSyncIndicator extends ConsumerWidget {
   const _HomeSyncIndicator();
 
   @override
-  ConsumerState<_HomeSyncIndicator> createState() => _HomeSyncIndicatorState();
-}
-
-class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _syncAnimationController;
-
-  @override
-  void initState() {
-    super.initState();
-    _syncAnimationController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
-  }
-
-  @override
-  void dispose() {
-    _syncAnimationController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final syncStatusAsync = ref.watch(syncProgressStreamProvider);
     final tunnelMode = ref.watch(tunnelModeProvider);
     final torStatus = ref.watch(torStatusProvider);
@@ -371,16 +394,6 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
     final isComplete =
         !tunnelBlocked && (displaySyncStatus?.isComplete ?? false);
 
-    if (reduceMotion) {
-      if (_syncAnimationController.isAnimating) {
-        _syncAnimationController.stop();
-      }
-    } else if (isSyncing && !_syncAnimationController.isAnimating) {
-      _syncAnimationController.repeat();
-    } else if (!isSyncing && _syncAnimationController.isAnimating) {
-      _syncAnimationController.stop();
-    }
-
     final rawPercent = displaySyncStatus?.percent ?? 0.0;
     final displayPercent = (targetHeight > BigInt.zero)
         ? (isComplete
@@ -405,9 +418,9 @@ class _HomeSyncIndicatorState extends ConsumerState<_HomeSyncIndicator>
         stage: stage,
         eta: eta,
         blocksPerSecond: displaySyncStatus?.blocksPerSecond ?? 0.0,
-        animation: _syncAnimationController,
         isSyncing: isSyncing,
         isComplete: isComplete,
+        reduceMotion: reduceMotion,
       ),
     );
   }
@@ -494,9 +507,9 @@ class _SyncIndicator extends StatelessWidget {
   final String stage;
   final String? eta;
   final double blocksPerSecond;
-  final Animation<double> animation;
   final bool isSyncing;
   final bool isComplete;
+  final bool reduceMotion;
 
   const _SyncIndicator({
     required this.progress,
@@ -505,9 +518,9 @@ class _SyncIndicator extends StatelessWidget {
     required this.stage,
     this.eta,
     required this.blocksPerSecond,
-    required this.animation,
     required this.isSyncing,
     required this.isComplete,
+    required this.reduceMotion,
   });
 
   @override
@@ -524,113 +537,126 @@ class _SyncIndicator extends StatelessWidget {
         ? AppColors.success
         : AppColors.textSecondary;
 
-    return PCard(
-      child: Padding(
-        padding: const EdgeInsets.all(PSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                // Animated icon only when syncing
-                if (isSyncing)
-                  RotationTransition(
-                    turns: animation,
-                    child: Icon(icon, size: 16, color: iconColor),
-                  )
-                else
-                  Icon(icon, size: 16, color: iconColor),
-                const SizedBox(width: PSpacing.sm),
-                Expanded(
-                  child: Text(
-                    stage,
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (isSyncing && blocksPerSecond > 0)
-                  Text(
-                    '${blocksPerSecond.toStringAsFixed(1)} blk/s',
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                // Show percentage whenever we have valid progress data (during sync or when monitoring)
-                if (targetHeight > 0) ...[
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: 'Wallet sync status',
+      value: '$stage, ${(progress * 100).toStringAsFixed(1)} percent complete',
+      child: PCard(
+        child: Padding(
+          padding: const EdgeInsets.all(PSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Animated icon only when syncing
+                  if (isSyncing)
+                    RepeatingAnimationBuilder<double>(
+                      animatable: Tween<double>(begin: 0, end: 1),
+                      duration: const Duration(seconds: 2),
+                      paused: reduceMotion || !isSyncing,
+                      builder: (context, value, child) {
+                        return Transform.rotate(
+                          angle: value * 2 * math.pi,
+                          child: child,
+                        );
+                      },
+                      child: Icon(icon, size: 16, color: iconColor),
+                    )
+                  else
+                    Icon(icon, size: 16, color: iconColor),
                   const SizedBox(width: PSpacing.sm),
-                  Text(
-                    '${(progress * 100).toStringAsFixed(1)}%',
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.accentPrimary,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      stage,
+                      style: PTypography.caption().copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
+                  if (isSyncing && blocksPerSecond > 0)
+                    Text(
+                      '${blocksPerSecond.toStringAsFixed(1)} blk/s',
+                      style: PTypography.caption().copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  // Show percentage whenever we have valid progress data (during sync or when monitoring)
+                  if (targetHeight > 0) ...[
+                    const SizedBox(width: PSpacing.sm),
+                    Text(
+                      '${(progress * 100).toStringAsFixed(1)}%',
+                      style: PTypography.caption().copyWith(
+                        color: AppColors.accentPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
-            ),
-            // Progress bar when actively syncing OR when monitoring (caught up but sync running)
-            if (isSyncing || isComplete) ...[
-              const SizedBox(height: PSpacing.sm),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: progress.clamp(0.0, 1.0),
-                  backgroundColor: AppColors.surfaceElevated,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    AppColors.accentPrimary,
+              ),
+              // Progress bar when actively syncing OR when monitoring (caught up but sync running)
+              if (isSyncing || isComplete) ...[
+                const SizedBox(height: PSpacing.sm),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress.clamp(0.0, 1.0),
+                    backgroundColor: AppColors.surfaceElevated,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppColors.accentPrimary,
+                    ),
+                    minHeight: 4,
+                    semanticsLabel: 'Sync progress',
                   ),
-                  minHeight: 4,
-                  semanticsLabel: 'Sync progress',
-                  semanticsValue: '${(progress * 100).toInt()}%',
                 ),
+              ],
+              const SizedBox(height: PSpacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      (targetHeight > 0 && currentHeight > 0)
+                          ? 'Block $currentHeight / $targetHeight'
+                          : (currentHeight > 0)
+                          ? 'Block $currentHeight'
+                          : (targetHeight > 0)
+                          ? 'Block 0 / $targetHeight'
+                          : 'Block 0',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PTypography.caption().copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                  if (eta != null)
+                    Text(
+                      eta!,
+                      style: PTypography.caption().copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    )
+                  else if (isComplete)
+                    Text(
+                      // Show "Up to date" when caught up - sync is still monitoring for new blocks
+                      stage == 'Monitoring' ? 'Up to date' : 'Synced',
+                      style: PTypography.caption().copyWith(
+                        color: AppColors.success,
+                      ),
+                    )
+                  else if (isSyncing)
+                    Text(
+                      'Calculating...',
+                      style: PTypography.caption().copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                ],
               ),
             ],
-            const SizedBox(height: PSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    (targetHeight > 0 && currentHeight > 0)
-                        ? 'Block $currentHeight / $targetHeight'
-                        : (currentHeight > 0)
-                        ? 'Block $currentHeight'
-                        : (targetHeight > 0)
-                        ? 'Block 0 / $targetHeight'
-                        : 'Block 0',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-                if (eta != null)
-                  Text(
-                    eta!,
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  )
-                else if (isComplete)
-                  Text(
-                    // Show "Up to date" when caught up - sync is still monitoring for new blocks
-                    stage == 'Monitoring' ? 'Up to date' : 'Synced',
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.success,
-                    ),
-                  )
-                else if (isSyncing)
-                  Text(
-                    'Calculating...',
-                    style: PTypography.caption().copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );

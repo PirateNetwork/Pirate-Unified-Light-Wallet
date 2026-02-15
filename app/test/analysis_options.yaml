@@ -1,0 +1,14 @@
+include: ../analysis_options.yaml
+
+analyzer:
+  errors:
+    avoid_types_on_closure_parameters: ignore
+    cascade_invocations: ignore
+    dangling_library_doc_comments: ignore
+    deprecated_member_use: ignore
+    inference_failure_on_instance_creation: ignore
+    no_leading_underscores_for_local_identifiers: ignore
+    unnecessary_raw_strings: ignore
+    unused_import: ignore
+    unused_local_variable: ignore
+    use_is_even_rather_than_modulo: ignore

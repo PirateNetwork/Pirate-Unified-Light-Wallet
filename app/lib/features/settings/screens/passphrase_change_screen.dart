@@ -12,6 +12,7 @@ import '../../../design/deep_space_theme.dart';
 import '../../../features/settings/providers/preferences_providers.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/atoms/p_input.dart';
+import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 
@@ -291,6 +292,18 @@ class _PassphraseChangeScreenState
     }
   }
 
+  Widget _actionButton({required Widget child, required bool isDesktop}) {
+    if (!isDesktop) {
+      return child;
+    }
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: child,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final biometricsEnabled = ref.watch(biometricsEnabledProvider);
@@ -298,6 +311,7 @@ class _PassphraseChangeScreenState
         .watch(biometricAvailabilityProvider)
         .maybeWhen(data: (available) => available, orElse: () => false);
     final showBiometric = biometricsEnabled && biometricAvailable;
+    final isDesktop = AppSpacing.isDesktop(MediaQuery.of(context).size.width);
     final basePadding = AppSpacing.screenPadding(
       MediaQuery.of(context).size.width,
       vertical: AppSpacing.xl,
@@ -315,182 +329,216 @@ class _PassphraseChangeScreenState
       ),
       body: SingleChildScrollView(
         padding: contentPadding,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (!_authenticated) ...[
-              Text(
-                'Verify your identity',
-                style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Confirm with biometrics or your current passphrase.',
-                style: AppTypography.body.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              if (showBiometric) ...[
-                PButton(
-                  text: 'Use biometrics',
-                  onPressed: _isVerifying ? null : _authenticateBiometric,
-                  variant: PButtonVariant.primary,
-                  size: PButtonSize.large,
-                  isLoading: _isVerifying,
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  'Or verify with passphrase',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.md),
-              ],
-              PInput(
-                controller: _currentController,
-                label: 'Current passphrase',
-                hint: 'Enter your current passphrase',
-                obscureText: _obscureCurrent,
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscureCurrent
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    color: AppColors.textSecondary,
-                  ),
-                  onPressed: () {
-                    setState(() => _obscureCurrent = !_obscureCurrent);
-                  },
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              PButton(
-                text: 'Continue',
-                onPressed: _isVerifying ? null : _verifyCurrentPassphrase,
-                variant: PButtonVariant.primary,
-                size: PButtonSize.large,
-                isLoading: _isVerifying,
-              ),
-            ] else ...[
-              Text(
-                'Choose a new passphrase',
-                style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Use at least 12 characters with letters, numbers, and symbols.',
-                style: AppTypography.body.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              PInput(
-                controller: _newController,
-                label: 'New passphrase',
-                hint: 'Enter a new passphrase',
-                obscureText: _obscureNew,
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscureNew
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    color: AppColors.textSecondary,
-                  ),
-                  onPressed: () {
-                    setState(() => _obscureNew = !_obscureNew);
-                  },
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              if (_newController.text.isNotEmpty) ...[
-                Row(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: isDesktop ? 760 : 640),
+            child: PCard(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: (_strength.index + 1) / 5,
-                          backgroundColor: AppColors.surfaceElevated,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            _strengthColor(),
-                          ),
-                          minHeight: 6,
+                    if (!_authenticated) ...[
+                      Text(
+                        'Verify your identity',
+                        style: AppTypography.h2.copyWith(
+                          color: AppColors.textPrimary,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Text(
-                      _strengthText(),
-                      style: AppTypography.caption.copyWith(
-                        color: _strengthColor(),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.lg),
-              ],
-              PInput(
-                controller: _confirmController,
-                label: 'Confirm new passphrase',
-                hint: 'Re-enter to confirm',
-                obscureText: _obscureConfirm,
-                errorText:
-                    _confirmController.text.isNotEmpty && !_passwordsMatch
-                    ? 'Passphrases do not match'
-                    : null,
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscureConfirm
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    color: AppColors.textSecondary,
-                  ),
-                  onPressed: () {
-                    setState(() => _obscureConfirm = !_obscureConfirm);
-                  },
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              PButton(
-                text: 'Update passphrase',
-                onPressed: _canSave && !_isSaving ? _savePassphrase : null,
-                variant: PButtonVariant.primary,
-                size: PButtonSize.large,
-                isLoading: _isSaving,
-              ),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: AppSpacing.lg),
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.error.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error_outline, color: AppColors.error, size: 18),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        _error!,
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Confirm with biometrics or your current passphrase.',
                         style: AppTypography.body.copyWith(
-                          color: AppColors.error,
+                          color: AppColors.textSecondary,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: AppSpacing.xl),
+                      if (showBiometric) ...[
+                        _actionButton(
+                          isDesktop: isDesktop,
+                          child: PButton(
+                            text: 'Use biometrics',
+                            onPressed: _isVerifying
+                                ? null
+                                : _authenticateBiometric,
+                            variant: PButtonVariant.primary,
+                            size: PButtonSize.large,
+                            isLoading: _isVerifying,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          'Or verify with passphrase',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                      ],
+                      PInput(
+                        controller: _currentController,
+                        label: 'Current passphrase',
+                        hint: 'Enter your current passphrase',
+                        obscureText: _obscureCurrent,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureCurrent
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            color: AppColors.textSecondary,
+                          ),
+                          onPressed: () {
+                            setState(() => _obscureCurrent = !_obscureCurrent);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _actionButton(
+                        isDesktop: isDesktop,
+                        child: PButton(
+                          text: 'Continue',
+                          onPressed: _isVerifying
+                              ? null
+                              : _verifyCurrentPassphrase,
+                          variant: PButtonVariant.primary,
+                          size: PButtonSize.large,
+                          isLoading: _isVerifying,
+                        ),
+                      ),
+                    ] else ...[
+                      Text(
+                        'Choose a new passphrase',
+                        style: AppTypography.h2.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Use at least 12 characters with letters, numbers, and symbols.',
+                        style: AppTypography.body.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      PInput(
+                        controller: _newController,
+                        label: 'New passphrase',
+                        hint: 'Enter a new passphrase',
+                        obscureText: _obscureNew,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureNew
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            color: AppColors.textSecondary,
+                          ),
+                          onPressed: () {
+                            setState(() => _obscureNew = !_obscureNew);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      if (_newController.text.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: (_strength.index + 1) / 5,
+                                  backgroundColor: AppColors.surfaceElevated,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    _strengthColor(),
+                                  ),
+                                  minHeight: 6,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Text(
+                              _strengthText(),
+                              style: AppTypography.caption.copyWith(
+                                color: _strengthColor(),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                      ],
+                      PInput(
+                        controller: _confirmController,
+                        label: 'Confirm new passphrase',
+                        hint: 'Re-enter to confirm',
+                        obscureText: _obscureConfirm,
+                        errorText:
+                            _confirmController.text.isNotEmpty &&
+                                !_passwordsMatch
+                            ? 'Passphrases do not match'
+                            : null,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscureConfirm
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            color: AppColors.textSecondary,
+                          ),
+                          onPressed: () {
+                            setState(() => _obscureConfirm = !_obscureConfirm);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      _actionButton(
+                        isDesktop: isDesktop,
+                        child: PButton(
+                          text: 'Update passphrase',
+                          onPressed: _canSave && !_isSaving
+                              ? _savePassphrase
+                              : null,
+                          variant: PButtonVariant.primary,
+                          size: PButtonSize.large,
+                          isLoading: _isSaving,
+                        ),
+                      ),
+                    ],
+                    if (_error != null) ...[
+                      const SizedBox(height: AppSpacing.lg),
+                      Container(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.error.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              color: AppColors.error,
+                              size: 18,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: AppTypography.body.copyWith(
+                                  color: AppColors.error,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-            ],
-          ],
+            ),
+          ),
         ),
       ),
     );

@@ -38,10 +38,9 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
   String? _error;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final walletId = ref.read(activeWalletProvider);
-    _setWallet(walletId);
+  void initState() {
+    super.initState();
+    _setWallet(ref.read(activeWalletProvider));
   }
 
   void _setWallet(WalletId? walletId) {
@@ -76,14 +75,15 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
       return _KeyDetailData(key: key, addresses: addresses);
     }
 
-    final keys = await FfiBridge.listKeyGroups(walletId);
+    final results = await Future.wait<Object>([
+      FfiBridge.listKeyGroups(walletId),
+      FfiBridge.listAddressBalances(walletId, keyId: widget.keyId),
+    ]);
+    final keys = results[0] as List<KeyGroupInfo>;
+    final addresses = results[1] as List<AddressBalanceInfo>;
     final key = keys.firstWhere(
       (k) => k.id == widget.keyId,
       orElse: () => throw StateError('Key group not found'),
-    );
-    final addresses = await FfiBridge.listAddressBalances(
-      walletId,
-      keyId: widget.keyId,
     );
     return _KeyDetailData(key: key, addresses: addresses);
   }
@@ -96,9 +96,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     });
   }
 
-  Future<void> _generateAddress({
-    required bool useOrchard,
-  }) async {
+  Future<void> _generateAddress({required bool useOrchard}) async {
     final walletId = _walletId;
     if (walletId == null) return;
     final isDecoy = ref.read(decoyModeProvider);
@@ -202,7 +200,10 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                 borderRadius: BorderRadius.circular(PSpacing.radiusXL),
               ),
               child: Container(
-                constraints: const BoxConstraints(maxWidth: 500),
+                constraints: BoxConstraints(
+                  maxWidth: 500,
+                  maxHeight: MediaQuery.of(context).size.height * 0.84,
+                ),
                 padding: EdgeInsets.all(PSpacing.dialogPadding),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -213,34 +214,45 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                       style: PTypography.heading4(color: AppColors.textPrimary),
                     ),
                     SizedBox(height: PSpacing.md),
-                    PInput(
-                      controller: controller,
-                      label: 'Passphrase',
-                      hint: 'Enter your wallet passphrase',
-                      obscureText: true,
-                    ),
-                    if (error != null) ...[
-                      SizedBox(height: PSpacing.sm),
-                      Text(
-                        error!,
-                        style: PTypography.bodySmall(color: AppColors.error),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            PInput(
+                              controller: controller,
+                              label: 'Passphrase',
+                              hint: 'Enter your wallet passphrase',
+                              obscureText: true,
+                            ),
+                            if (error != null) ...[
+                              SizedBox(height: PSpacing.sm),
+                              Text(
+                                error!,
+                                style: PTypography.bodySmall(
+                                  color: AppColors.error,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                    ],
+                    ),
                     SizedBox(height: PSpacing.lg),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: PSpacing.sm,
+                      runSpacing: PSpacing.sm,
                       children: [
                         PButton(
                           onPressed: () => Navigator.of(context).pop(false),
                           variant: PButtonVariant.secondary,
                           child: const Text('Cancel'),
                         ),
-                        SizedBox(width: PSpacing.sm),
                         PButton(
                           onPressed: isVerifying ? null : handleVerify,
                           variant: PButtonVariant.primary,
-                          child:
-                              Text(isVerifying ? 'Verifying...' : 'Verify'),
+                          child: Text(isVerifying ? 'Verifying...' : 'Verify'),
                         ),
                       ],
                     ),
@@ -275,8 +287,14 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
       final sections = <Widget?>[
         _buildKeyExportSection('Sapling viewing key', export.saplingViewingKey),
         _buildKeyExportSection('Orchard viewing key', export.orchardViewingKey),
-        _buildKeyExportSection('Sapling spending key', export.saplingSpendingKey),
-        _buildKeyExportSection('Orchard spending key', export.orchardSpendingKey),
+        _buildKeyExportSection(
+          'Sapling spending key',
+          export.saplingSpendingKey,
+        ),
+        _buildKeyExportSection(
+          'Orchard spending key',
+          export.orchardSpendingKey,
+        ),
       ].whereType<Widget>().toList();
 
       if (sections.isEmpty) {
@@ -300,9 +318,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
               ),
             ),
           ),
-          actions: const [
-            PDialogAction(label: 'Close'),
-          ],
+          actions: const [PDialogAction(label: 'Close')],
         );
       } finally {
         protection.dispose();
@@ -352,7 +368,6 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
         title: 'Key details',
         subtitle: 'Manage addresses for this key',
         showBackButton: true,
-        centerTitle: true,
       ),
       body: walletId == null
           ? _buildEmptyWallet()
@@ -386,14 +401,13 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                             SizedBox(height: PSpacing.md),
                             Text(
                               _error!,
-                              style: PTypography.bodySmall(color: AppColors.error),
+                              style: PTypography.bodySmall(
+                                color: AppColors.error,
+                              ),
                             ),
                           ],
                           SizedBox(height: PSpacing.lg),
-                          Text(
-                            'Addresses',
-                            style: PTypography.heading3(),
-                          ),
+                          Text('Addresses', style: PTypography.heading3()),
                           SizedBox(height: PSpacing.xs),
                           Text(
                             'All addresses derived from this key.',
@@ -413,23 +427,21 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                         PSpacing.lg,
                       ),
                       sliver: data.addresses.isEmpty
-                          ? const SliverToBoxAdapter(
-                              child: _AddressEmptyCard(),
-                            )
+                          ? const SliverToBoxAdapter(child: _AddressEmptyCard())
                           : SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) {
-                                  final address = data.addresses[index];
-                                  return Padding(
-                                    padding: EdgeInsets.only(bottom: PSpacing.sm),
-                                    child: _AddressListItem(
-                                      address: address,
-                                      onCopy: _copyAddress,
-                                    ),
-                                  );
-                                },
-                                childCount: data.addresses.length,
-                              ),
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                final address = data.addresses[index];
+                                return Padding(
+                                  padding: EdgeInsets.only(bottom: PSpacing.sm),
+                                  child: _AddressListItem(
+                                    address: address,
+                                    onCopy: _copyAddress,
+                                  ),
+                                );
+                              }, childCount: data.addresses.length),
                             ),
                     ),
                   ],
@@ -448,31 +460,30 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
         _ActionItem(
           label: 'New Sapling address',
           variant: PButtonVariant.secondary,
-          onPressed:
-              _isGenerating ? null : () => _generateAddress(useOrchard: false),
+          onPressed: _isGenerating
+              ? null
+              : () => _generateAddress(useOrchard: false),
         ),
       if (canGenerateOrchard)
         _ActionItem(
           label: 'New Orchard address',
           variant: PButtonVariant.secondary,
-          onPressed:
-              _isGenerating ? null : () => _generateAddress(useOrchard: true),
+          onPressed: _isGenerating
+              ? null
+              : () => _generateAddress(useOrchard: true),
         ),
       if (key.spendable)
         _ActionItem(
           label: 'Consolidate balances',
           variant: PButtonVariant.secondary,
-          onPressed: () => context.push(
-            '/settings/keys/consolidate?keyId=${key.id}',
-          ),
+          onPressed: () =>
+              context.push('/settings/keys/consolidate?keyId=${key.id}'),
         ),
       if (key.spendable)
         _ActionItem(
           label: 'Sweep balance',
           variant: PButtonVariant.primary,
-          onPressed: () => context.push(
-            '/settings/keys/sweep?keyId=${key.id}',
-          ),
+          onPressed: () => context.push('/settings/keys/sweep?keyId=${key.id}'),
         ),
       _ActionItem(
         label: 'Export keys',
@@ -495,8 +506,8 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
         final columns = width >= 900
             ? 3
             : width >= 600
-                ? 2
-                : 1;
+            ? 2
+            : 1;
         const spacing = PSpacing.sm;
         final rows = <Widget>[];
 
@@ -510,20 +521,23 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
           rows.add(
             Row(
               children: [
-                for (var columnIndex = 0; columnIndex < columns; columnIndex++)
-                  ...[
-                    if (columnIndex > 0) SizedBox(width: spacing),
-                    Expanded(
-                      child: columnIndex < rowItems.length
-                          ? PButton(
-                              onPressed: rowItems[columnIndex].onPressed,
-                              variant: rowItems[columnIndex].variant,
-                              fullWidth: true,
-                              child: Text(rowItems[columnIndex].label),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
+                for (
+                  var columnIndex = 0;
+                  columnIndex < columns;
+                  columnIndex++
+                ) ...[
+                  if (columnIndex > 0) SizedBox(width: spacing),
+                  Expanded(
+                    child: columnIndex < rowItems.length
+                        ? PButton(
+                            onPressed: rowItems[columnIndex].onPressed,
+                            variant: rowItems[columnIndex].variant,
+                            fullWidth: true,
+                            child: Text(rowItems[columnIndex].label),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ],
             ),
           );
@@ -545,10 +559,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     return Center(
       child: Padding(
         padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
-        child: Text(
-          'No active wallet.',
-          style: PTypography.bodyMedium(),
-        ),
+        child: Text('No active wallet.', style: PTypography.bodyMedium()),
       ),
     );
   }
@@ -607,10 +618,7 @@ class _KeySummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _displayLabel(keyInfo),
-            style: PTypography.heading3(),
-          ),
+          Text(_displayLabel(keyInfo), style: PTypography.heading3()),
           SizedBox(height: PSpacing.xs),
           Text(
             _subtitle(keyInfo),
@@ -624,9 +632,17 @@ class _KeySummaryCard extends StatelessWidget {
               if (keyInfo.hasSapling)
                 _chip('Sapling', AppColors.infoBackground, AppColors.info),
               if (keyInfo.hasOrchard)
-                _chip('Orchard', AppColors.successBackground, AppColors.success),
+                _chip(
+                  'Orchard',
+                  AppColors.successBackground,
+                  AppColors.success,
+                ),
               if (!keyInfo.spendable)
-                _chip('View only', AppColors.warningBackground, AppColors.warning),
+                _chip(
+                  'View only',
+                  AppColors.warningBackground,
+                  AppColors.warning,
+                ),
             ],
           ),
         ],
@@ -669,10 +685,7 @@ class _KeySummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(PSpacing.radiusSM),
         border: Border.all(color: foreground.withValues(alpha: 0.3)),
       ),
-      child: Text(
-        text,
-        style: PTypography.labelSmall(color: foreground),
-      ),
+      child: Text(text, style: PTypography.labelSmall(color: foreground)),
     );
   }
 }
@@ -689,10 +702,7 @@ class _AddressEmptyCard extends StatelessWidget {
           children: [
             Icon(Icons.history, color: AppColors.textTertiary, size: 40),
             SizedBox(height: PSpacing.sm),
-            Text(
-              'No addresses yet.',
-              style: PTypography.bodyMedium(),
-            ),
+            Text('No addresses yet.', style: PTypography.bodyMedium()),
             SizedBox(height: PSpacing.xs),
             Text(
               'Generate a new address to get started.',
@@ -706,10 +716,7 @@ class _AddressEmptyCard extends StatelessWidget {
 }
 
 class _AddressListItem extends StatelessWidget {
-  const _AddressListItem({
-    required this.address,
-    required this.onCopy,
-  });
+  const _AddressListItem({required this.address, required this.onCopy});
 
   final AddressBalanceInfo address;
   final ValueChanged<AddressBalanceInfo> onCopy;
@@ -768,7 +775,9 @@ class _AddressListItem extends StatelessWidget {
 
   String _formatTimestamp(int timestamp) {
     if (timestamp <= 0) return 'Unknown';
-    return timeago.format(DateTime.fromMillisecondsSinceEpoch(timestamp * 1000));
+    return timeago.format(
+      DateTime.fromMillisecondsSinceEpoch(timestamp * 1000),
+    );
   }
 
   Color _colorTag(AddressBalanceInfo address) {

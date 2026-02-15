@@ -1,18 +1,16 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pirate_wallet/features/settings/export_seed_screen.dart';
+import '../test_flags.dart';
 
-final bool _skipFfiTests =
-    Platform.environment['CI'] == 'true' ||
-    Platform.environment['GITHUB_ACTIONS'] == 'true' ||
-    Platform.environment['SKIP_FFI_TESTS'] == 'true';
+final bool _skipFfiTests = shouldSkipFfiTests();
 
 void main() {
   group('Seed Export Security Tests', () {
-    testWidgets('Shows full-screen warning before export', (WidgetTester tester) async {
+    testWidgets('Shows full-screen warning before export', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
@@ -29,10 +27,10 @@ void main() {
       expect(find.text('Never share your phrase'), findsOneWidget);
       expect(find.text('Store offline'), findsOneWidget);
       expect(find.text('We will never ask'), findsOneWidget);
-      
+
       // Should have continue button
       expect(find.text('I understand the risk'), findsOneWidget);
-      
+
       // Should have cancel button
       expect(find.text('Cancel'), findsOneWidget);
     }, skip: _skipFfiTests);
@@ -75,7 +73,9 @@ void main() {
       expect(find.text('Open'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Progresses to biometric step after warning', (WidgetTester tester) async {
+    testWidgets('Progresses to biometric step after warning', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
@@ -98,7 +98,9 @@ void main() {
       expect(find.text('Use passphrase instead'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Can skip biometric and use passphrase only', (WidgetTester tester) async {
+    testWidgets('Can skip biometric and use passphrase only', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
@@ -149,7 +151,9 @@ void main() {
       expect(find.text('Enter your passphrase'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Displays mnemonic grid after verification', (WidgetTester tester) async {
+    testWidgets('Displays mnemonic grid after verification', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
@@ -168,10 +172,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Enter passphrase
-      await tester.enterText(
-        find.byType(TextField),
-        'test-passphrase',
-      );
+      await tester.enterText(find.byType(TextField), 'test-passphrase');
       await tester.tap(find.text('Reveal recovery phrase'));
       await tester.pumpAndSettle(Duration(seconds: 1));
 
@@ -179,12 +180,14 @@ void main() {
       expect(find.text('Recovery phrase'), findsOneWidget);
       expect(find.text('Copy to clipboard (clears in 30s)'), findsOneWidget);
       expect(find.text('Done, saved offline'), findsOneWidget);
-      
+
       // Should show mnemonic words
       expect(find.textContaining('1. '), findsWidgets);
     }, skip: _skipFfiTests);
 
-    testWidgets('Copy button starts countdown timer', (WidgetTester tester) async {
+    testWidgets('Copy button starts countdown timer', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
@@ -214,7 +217,9 @@ void main() {
       expect(find.textContaining('30s'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Confirms before exit when seed is revealed', (WidgetTester tester) async {
+    testWidgets('Confirms before exit when seed is revealed', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
@@ -243,7 +248,9 @@ void main() {
       expect(find.text('Exit without saving?'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Confirms seed was saved before exit', (WidgetTester tester) async {
+    testWidgets('Confirms seed was saved before exit', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
@@ -270,8 +277,10 @@ void main() {
 
       // Should show confirmation
       expect(find.text('Confirm backup'), findsOneWidget);
-      expect(find.text('Have you written down your recovery phrase?'), findsOneWidget);
+      expect(
+        find.text('Have you written down your recovery phrase?'),
+        findsOneWidget,
+      );
     }, skip: _skipFfiTests);
   });
 }
-

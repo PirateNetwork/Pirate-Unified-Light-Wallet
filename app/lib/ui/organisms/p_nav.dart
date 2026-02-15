@@ -38,6 +38,7 @@ class PNav extends StatelessWidget {
       return NavigationRail(
         selectedIndex: currentIndex,
         onDestinationSelected: onDestinationSelected,
+        scrollable: true,
         backgroundColor: AppColors.backgroundSurface,
         indicatorColor: AppColors.selectedBackground,
         labelType: NavigationRailLabelType.all,

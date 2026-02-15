@@ -79,14 +79,16 @@ class _ImportSpendingKeyScreenState
       );
 
       if (!mounted) return;
-        unawaited(FfiBridge.rescan(walletId, birthday).catchError((Object error) {
+      unawaited(
+        FfiBridge.rescan(walletId, birthday).catchError((Object error) {
           if (mounted) {
             setState(() {
               _error = 'Rescan failed to start: $error';
             });
           }
-        }));
-        unawaited(context.push('/settings/keys/detail?keyId=$keyId'));
+        }),
+      );
+      unawaited(context.push('/settings/keys/detail?keyId=$keyId'));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Rescan started from block $birthday'),
@@ -104,7 +106,9 @@ class _ImportSpendingKeyScreenState
 
   @override
   Widget build(BuildContext context) {
-    final basePadding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final basePadding = PSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+    );
     final contentPadding = basePadding.copyWith(
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
@@ -113,7 +117,6 @@ class _ImportSpendingKeyScreenState
         title: 'Import spending key',
         subtitle: 'Add an existing key to this wallet',
         showBackButton: true,
-        centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: contentPadding,

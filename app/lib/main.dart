@@ -18,6 +18,7 @@ import 'features/settings/providers/preferences_providers.dart';
 import 'features/settings/providers/transport_providers.dart';
 import 'routes/app_router.dart';
 import 'core/providers/rust_init_provider.dart';
+import 'ui/molecules/p_overlay_toast.dart';
 
 SingleInstanceLock? _singleInstanceLock;
 
@@ -274,9 +275,12 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
         // Return a widget that forces rebuild when theme changes
         // This ensures all child widgets rebuild when AppColors changes
-        return Theme(
-          data: Theme.of(context),
-          child: child ?? const SizedBox.shrink(),
+        return POverlayToastHost(
+          key: rootOverlayToastHostKey,
+          child: Theme(
+            data: Theme.of(context),
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
 

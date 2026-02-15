@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import '../../design/tokens/colors.dart';
@@ -10,23 +9,31 @@ class BalanceHero extends StatelessWidget {
   const BalanceHero({
     required this.balanceText,
     this.label = 'Balance',
-    this.fiatText,
+    this.secondaryText,
     this.helperText,
+    this.compact = false,
     this.isHidden = false,
     this.onToggleVisibility,
+    this.onSwapDisplay,
     super.key,
   });
 
   final String balanceText;
   final String label;
-  final String? fiatText;
+  final String? secondaryText;
   final String? helperText;
+  final bool compact;
   final bool isHidden;
   final VoidCallback? onToggleVisibility;
+  final VoidCallback? onSwapDisplay;
 
   @override
   Widget build(BuildContext context) {
     final displayText = isHidden ? '********' : balanceText;
+    final cardPadding = compact ? PSpacing.md : PSpacing.lg;
+    final titleStyle = compact
+        ? PTypography.heading4(color: AppColors.textPrimary)
+        : PTypography.displaySmall(color: AppColors.textPrimary);
 
     return Container(
       decoration: BoxDecoration(
@@ -44,14 +51,15 @@ class BalanceHero extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: AppColors.shadow,
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+            blurRadius: compact ? 8 : 12,
+            offset: Offset(0, compact ? 4 : 6),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(PSpacing.lg),
+      padding: EdgeInsets.all(cardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
@@ -68,10 +76,13 @@ class BalanceHero extends StatelessWidget {
                   ),
                   onPressed: onToggleVisibility,
                   tooltip: isHidden ? 'Show balance' : 'Hide balance',
+                  size: compact
+                      ? PIconButtonSize.medium
+                      : PIconButtonSize.large,
                 ),
             ],
           ),
-          const SizedBox(height: PSpacing.sm),
+          SizedBox(height: compact ? PSpacing.xs : PSpacing.sm),
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 120),
             child: FittedBox(
@@ -80,26 +91,45 @@ class BalanceHero extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 displayText,
-                style: PTypography.displaySmall(
-                  color: AppColors.textPrimary,
-                ).copyWith(
+                style: titleStyle.copyWith(
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ),
           ),
-          if (!isHidden && fiatText != null) ...[
+          if (!isHidden && secondaryText != null) ...[
             const SizedBox(height: PSpacing.xs),
-            Text(
-              fiatText!,
-              style: PTypography.bodySmall(color: AppColors.textSecondary),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    secondaryText!,
+                    style: PTypography.labelSmall(
+                      color: AppColors.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (onSwapDisplay != null)
+                  PIconButton(
+                    icon: Icon(Icons.swap_vert, color: AppColors.textSecondary),
+                    onPressed: onSwapDisplay,
+                    tooltip: 'Swap balance display',
+                    size: compact
+                        ? PIconButtonSize.medium
+                        : PIconButtonSize.large,
+                  ),
+              ],
             ),
           ],
           if (helperText != null) ...[
-            const SizedBox(height: PSpacing.sm),
+            SizedBox(height: compact ? PSpacing.xs : PSpacing.sm),
             Text(
               helperText!,
               style: PTypography.bodySmall(color: AppColors.textSecondary),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ],

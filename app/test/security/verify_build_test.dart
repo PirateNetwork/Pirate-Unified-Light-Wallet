@@ -1,24 +1,16 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pirate_wallet/features/settings/verify_build_screen.dart';
+import '../test_flags.dart';
 
-final bool _skipFfiTests =
-    Platform.environment['CI'] == 'true' ||
-    Platform.environment['GITHUB_ACTIONS'] == 'true' ||
-    Platform.environment['SKIP_FFI_TESTS'] == 'true';
+final bool _skipFfiTests = shouldSkipFfiTests();
 
 void main() {
   group('Verify Build Screen Tests', () {
     testWidgets('Shows build information', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: VerifyBuildScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: VerifyBuildScreen())),
       );
 
       // Wait for loading
@@ -27,7 +19,7 @@ void main() {
       // Should show header
       expect(find.text('Reproducible Builds'), findsOneWidget);
       expect(find.byIcon(Icons.verified_user), findsOneWidget);
-      
+
       // Should show build info
       expect(find.text('Build Information'), findsOneWidget);
       expect(find.text('Version'), findsOneWidget);
@@ -39,11 +31,7 @@ void main() {
 
     testWidgets('Shows verification steps', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: VerifyBuildScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: VerifyBuildScreen())),
       );
 
       await tester.pumpAndSettle();
@@ -57,13 +45,11 @@ void main() {
       expect(find.text('Generate Provenance (Optional)'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Shows code snippets with copy buttons', (WidgetTester tester) async {
+    testWidgets('Shows code snippets with copy buttons', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: VerifyBuildScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: VerifyBuildScreen())),
       );
 
       await tester.pumpAndSettle();
@@ -71,18 +57,16 @@ void main() {
       // Should show code snippets
       expect(find.textContaining('curl -L -O'), findsWidgets);
       expect(find.textContaining('nix build'), findsWidgets);
-      
+
       // Should have copy buttons
       expect(find.byIcon(Icons.copy), findsWidgets);
     }, skip: _skipFfiTests);
 
-    testWidgets('Can copy code snippets to clipboard', (WidgetTester tester) async {
+    testWidgets('Can copy code snippets to clipboard', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: VerifyBuildScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: VerifyBuildScreen())),
       );
 
       await tester.pumpAndSettle();
@@ -98,11 +82,7 @@ void main() {
 
     testWidgets('Shows resource links', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: VerifyBuildScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: VerifyBuildScreen())),
       );
 
       await tester.pumpAndSettle();
@@ -121,13 +101,11 @@ void main() {
       expect(find.text('Security Practices'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Step numbers are displayed correctly', (WidgetTester tester) async {
+    testWidgets('Step numbers are displayed correctly', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: VerifyBuildScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: VerifyBuildScreen())),
       );
 
       await tester.pumpAndSettle();
@@ -140,13 +118,11 @@ void main() {
       expect(find.text('5'), findsOneWidget);
     }, skip: _skipFfiTests);
 
-    testWidgets('Shows platform-specific build commands', (WidgetTester tester) async {
+    testWidgets('Shows platform-specific build commands', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: VerifyBuildScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: VerifyBuildScreen())),
       );
 
       await tester.pumpAndSettle();
@@ -158,11 +134,7 @@ void main() {
 
     testWidgets('Can copy git commit hash', (WidgetTester tester) async {
       await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: VerifyBuildScreen(),
-          ),
-        ),
+        ProviderScope(child: MaterialApp(home: VerifyBuildScreen())),
       );
 
       await tester.pumpAndSettle();
@@ -178,4 +150,3 @@ void main() {
     }, skip: _skipFfiTests);
   });
 }
-

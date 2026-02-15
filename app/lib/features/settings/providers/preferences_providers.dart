@@ -36,7 +36,29 @@ extension AppThemeModeX on AppThemeMode {
   }
 }
 
-enum CurrencyPreference { arrr, usd, eur, gbp, btc }
+enum CurrencyPreference {
+  usd,
+  eur,
+  gbp,
+  btc,
+  cad,
+  aud,
+  jpy,
+  chf,
+  cny,
+  inr,
+  brl,
+  krw,
+  rub,
+  uah,
+  mxn,
+  ars,
+  aed,
+  bhd,
+  kwd,
+  sar,
+  tryCurrency,
+}
 
 extension CurrencyPreferenceX on CurrencyPreference {
   String get code {
@@ -49,8 +71,40 @@ extension CurrencyPreferenceX on CurrencyPreference {
         return 'GBP';
       case CurrencyPreference.btc:
         return 'BTC';
-      case CurrencyPreference.arrr:
-        return 'ARRR';
+      case CurrencyPreference.cad:
+        return 'CAD';
+      case CurrencyPreference.aud:
+        return 'AUD';
+      case CurrencyPreference.jpy:
+        return 'JPY';
+      case CurrencyPreference.chf:
+        return 'CHF';
+      case CurrencyPreference.cny:
+        return 'CNY';
+      case CurrencyPreference.inr:
+        return 'INR';
+      case CurrencyPreference.brl:
+        return 'BRL';
+      case CurrencyPreference.krw:
+        return 'KRW';
+      case CurrencyPreference.rub:
+        return 'RUB';
+      case CurrencyPreference.uah:
+        return 'UAH';
+      case CurrencyPreference.mxn:
+        return 'MXN';
+      case CurrencyPreference.ars:
+        return 'ARS';
+      case CurrencyPreference.aed:
+        return 'AED';
+      case CurrencyPreference.bhd:
+        return 'BHD';
+      case CurrencyPreference.kwd:
+        return 'KWD';
+      case CurrencyPreference.sar:
+        return 'SAR';
+      case CurrencyPreference.tryCurrency:
+        return 'TRY';
     }
   }
 
@@ -64,8 +118,118 @@ extension CurrencyPreferenceX on CurrencyPreference {
         return 'British Pound';
       case CurrencyPreference.btc:
         return 'Bitcoin';
-      case CurrencyPreference.arrr:
-        return 'Pirate Chain';
+      case CurrencyPreference.cad:
+        return 'Canadian Dollar';
+      case CurrencyPreference.aud:
+        return 'Australian Dollar';
+      case CurrencyPreference.jpy:
+        return 'Japanese Yen';
+      case CurrencyPreference.chf:
+        return 'Swiss Franc';
+      case CurrencyPreference.cny:
+        return 'Chinese Yuan';
+      case CurrencyPreference.inr:
+        return 'Indian Rupee';
+      case CurrencyPreference.brl:
+        return 'Brazilian Real';
+      case CurrencyPreference.krw:
+        return 'South Korean Won';
+      case CurrencyPreference.rub:
+        return 'Russian Ruble';
+      case CurrencyPreference.uah:
+        return 'Ukrainian Hryvnia';
+      case CurrencyPreference.mxn:
+        return 'Mexican Peso';
+      case CurrencyPreference.ars:
+        return 'Argentine Peso';
+      case CurrencyPreference.aed:
+        return 'UAE Dirham';
+      case CurrencyPreference.bhd:
+        return 'Bahraini Dinar';
+      case CurrencyPreference.kwd:
+        return 'Kuwaiti Dinar';
+      case CurrencyPreference.sar:
+        return 'Saudi Riyal';
+      case CurrencyPreference.tryCurrency:
+        return 'Turkish Lira';
+    }
+  }
+
+  String get symbol {
+    switch (this) {
+      case CurrencyPreference.usd:
+        return r'$';
+      case CurrencyPreference.eur:
+        return 'EUR ';
+      case CurrencyPreference.gbp:
+        return 'GBP ';
+      case CurrencyPreference.btc:
+        return 'BTC ';
+      case CurrencyPreference.cad:
+        return 'CAD ';
+      case CurrencyPreference.aud:
+        return 'AUD ';
+      case CurrencyPreference.jpy:
+        return 'JPY ';
+      case CurrencyPreference.chf:
+        return 'CHF ';
+      case CurrencyPreference.cny:
+        return 'CNY ';
+      case CurrencyPreference.inr:
+        return 'INR ';
+      case CurrencyPreference.brl:
+        return 'BRL ';
+      case CurrencyPreference.krw:
+        return 'KRW ';
+      case CurrencyPreference.rub:
+        return 'RUB ';
+      case CurrencyPreference.uah:
+        return 'UAH ';
+      case CurrencyPreference.mxn:
+        return 'MXN ';
+      case CurrencyPreference.ars:
+        return 'ARS ';
+      case CurrencyPreference.aed:
+        return 'AED ';
+      case CurrencyPreference.bhd:
+        return 'BHD ';
+      case CurrencyPreference.kwd:
+        return 'KWD ';
+      case CurrencyPreference.sar:
+        return 'SAR ';
+      case CurrencyPreference.tryCurrency:
+        return 'TRY ';
+    }
+  }
+
+  int get fractionDigits {
+    switch (this) {
+      case CurrencyPreference.usd:
+      case CurrencyPreference.eur:
+      case CurrencyPreference.gbp:
+        return 2;
+      case CurrencyPreference.btc:
+        return 8;
+      case CurrencyPreference.cad:
+      case CurrencyPreference.aud:
+      case CurrencyPreference.chf:
+      case CurrencyPreference.cny:
+      case CurrencyPreference.inr:
+      case CurrencyPreference.brl:
+      case CurrencyPreference.rub:
+      case CurrencyPreference.uah:
+      case CurrencyPreference.mxn:
+      case CurrencyPreference.ars:
+      case CurrencyPreference.aed:
+      case CurrencyPreference.sar:
+      case CurrencyPreference.tryCurrency:
+        return 2;
+      case CurrencyPreference.bhd:
+      case CurrencyPreference.kwd:
+        return 3;
+      case CurrencyPreference.jpy:
+      case CurrencyPreference.krw:
+        return 0;
     }
   }
 }
@@ -107,7 +271,7 @@ class CurrencyPreferenceNotifier extends Notifier<CurrencyPreference> {
   CurrencyPreference build() {
     _storage = const FlutterSecureStorage();
     _load();
-    return CurrencyPreference.arrr;
+    return CurrencyPreference.usd;
   }
 
   Future<void> setCurrency(CurrencyPreference preference) async {
@@ -118,12 +282,18 @@ class CurrencyPreferenceNotifier extends Notifier<CurrencyPreference> {
   Future<void> _load() async {
     final raw = await _storage.read(key: _storageKey);
     if (raw == null || raw.isEmpty) {
-      state = CurrencyPreference.arrr;
+      state = CurrencyPreference.usd;
+      return;
+    }
+    // Legacy migration: older builds stored `arrr` as the preference option.
+    // ARRR remains the base unit in UI, so default fiat display to USD.
+    if (raw == 'arrr') {
+      state = CurrencyPreference.usd;
       return;
     }
     state = CurrencyPreference.values.firstWhere(
       (pref) => pref.name == raw,
-      orElse: () => CurrencyPreference.arrr,
+      orElse: () => CurrencyPreference.usd,
     );
   }
 }
@@ -376,6 +546,79 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
   }
 }
 
+abstract class _SecureBoolPreferenceNotifier extends Notifier<bool> {
+  late final FlutterSecureStorage _storage;
+
+  String get storageKey;
+  bool get defaultValue;
+
+  @override
+  bool build() {
+    _storage = const FlutterSecureStorage();
+    _load();
+    return defaultValue;
+  }
+
+  Future<void> setValue({required bool value}) async {
+    state = value;
+    await _storage.write(key: storageKey, value: value.toString());
+  }
+
+  Future<void> _load() async {
+    try {
+      final raw = await _storage.read(key: storageKey);
+      if (raw == null || raw.isEmpty) {
+        state = defaultValue;
+        return;
+      }
+      state = raw.toLowerCase() == 'true';
+    } catch (_) {
+      state = defaultValue;
+    }
+  }
+}
+
+class BalancePrimaryFiatNotifier extends _SecureBoolPreferenceNotifier {
+  @override
+  String get storageKey => 'ui_balance_primary_fiat_v1';
+
+  @override
+  bool get defaultValue => false;
+
+  Future<void> setPrimaryFiat({required bool enabled}) =>
+      setValue(value: enabled);
+}
+
+class ExternalApiMasterNotifier extends _SecureBoolPreferenceNotifier {
+  @override
+  String get storageKey => 'ui_external_api_master_v1';
+
+  @override
+  bool get defaultValue => true;
+
+  Future<void> setEnabled({required bool enabled}) => setValue(value: enabled);
+}
+
+class ExternalPriceApiNotifier extends _SecureBoolPreferenceNotifier {
+  @override
+  String get storageKey => 'ui_external_api_prices_v1';
+
+  @override
+  bool get defaultValue => true;
+
+  Future<void> setEnabled({required bool enabled}) => setValue(value: enabled);
+}
+
+class ExternalGithubApiNotifier extends _SecureBoolPreferenceNotifier {
+  @override
+  String get storageKey => 'ui_external_api_github_v1';
+
+  @override
+  bool get defaultValue => true;
+
+  Future<void> setEnabled({required bool enabled}) => setValue(value: enabled);
+}
+
 final appThemeModeProvider = NotifierProvider<ThemeModeNotifier, AppThemeMode>(
   ThemeModeNotifier.new,
 );
@@ -385,10 +628,47 @@ final currencyPreferenceProvider =
       CurrencyPreferenceNotifier.new,
     );
 
+final balancePrimaryFiatProvider =
+    NotifierProvider<BalancePrimaryFiatNotifier, bool>(
+      BalancePrimaryFiatNotifier.new,
+    );
+
 final biometricsEnabledProvider =
     NotifierProvider<BiometricsPreferenceNotifier, bool>(
       BiometricsPreferenceNotifier.new,
     );
+
+final resolvedBiometricsEnabledProvider = FutureProvider<bool>((ref) async {
+  final notifier = ref.read(biometricsEnabledProvider.notifier);
+  return notifier.readPersistedValue();
+});
+
+final externalApiMasterProvider =
+    NotifierProvider<ExternalApiMasterNotifier, bool>(
+      ExternalApiMasterNotifier.new,
+    );
+
+final externalPriceApiProvider =
+    NotifierProvider<ExternalPriceApiNotifier, bool>(
+      ExternalPriceApiNotifier.new,
+    );
+
+final externalGithubApiProvider =
+    NotifierProvider<ExternalGithubApiNotifier, bool>(
+      ExternalGithubApiNotifier.new,
+    );
+
+final allowPriceApisProvider = Provider<bool>((ref) {
+  final master = ref.watch(externalApiMasterProvider);
+  final prices = ref.watch(externalPriceApiProvider);
+  return master && prices;
+});
+
+final allowGithubApisProvider = Provider<bool>((ref) {
+  final master = ref.watch(externalApiMasterProvider);
+  final github = ref.watch(externalGithubApiProvider);
+  return master && github;
+});
 
 final biometricAvailabilityProvider = FutureProvider<bool>((ref) async {
   return BiometricAuth.isAvailable();

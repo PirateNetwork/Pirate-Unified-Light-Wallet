@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
@@ -7,6 +8,52 @@ import '../../design/tokens/typography.dart';
 class PBottomSheet {
   PBottomSheet._();
 
+  static Future<T?> showAdaptive<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool isDismissible = true,
+    bool enableDrag = true,
+    bool isScrollControlled = false,
+    bool useSafeArea = false,
+    Color? backgroundColor,
+    Color? barrierColor,
+    ShapeBorder? shape,
+  }) {
+    final useCupertinoSheet = Theme.of(context).platform == TargetPlatform.iOS;
+    if (useCupertinoSheet) {
+      return showCupertinoSheet<T>(
+        context: context,
+        enableDrag: enableDrag,
+        showDragHandle: enableDrag,
+        builder: (sheetContext) {
+          var child = builder(sheetContext);
+          if (useSafeArea) {
+            child = SafeArea(top: false, child: child);
+          }
+          if (!isDismissible) {
+            child = PopScope(canPop: false, child: child);
+          }
+          return Material(
+            color: backgroundColor ?? Colors.transparent,
+            child: child,
+          );
+        },
+      );
+    }
+
+    return showModalBottomSheet<T>(
+      context: context,
+      isDismissible: isDismissible,
+      enableDrag: enableDrag,
+      isScrollControlled: isScrollControlled,
+      useSafeArea: useSafeArea,
+      backgroundColor: backgroundColor,
+      barrierColor: barrierColor,
+      shape: shape,
+      builder: builder,
+    );
+  }
+
   static Future<T?> show<T>({
     required BuildContext context,
     required String title,
@@ -14,7 +61,7 @@ class PBottomSheet {
     bool isDismissible = true,
     bool enableDrag = true,
   }) {
-    return showModalBottomSheet<T>(
+    return showAdaptive<T>(
       context: context,
       isDismissible: isDismissible,
       enableDrag: enableDrag,
@@ -31,7 +78,9 @@ class PBottomSheet {
           left: PSpacing.bottomSheetPadding,
           right: PSpacing.bottomSheetPadding,
           top: PSpacing.md,
-          bottom: MediaQuery.of(context).viewInsets.bottom + PSpacing.bottomSheetPadding,
+          bottom:
+              MediaQuery.of(context).viewInsets.bottom +
+              PSpacing.bottomSheetPadding,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -70,4 +119,3 @@ class PBottomSheet {
     );
   }
 }
-

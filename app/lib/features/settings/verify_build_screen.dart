@@ -14,6 +14,7 @@ import '../../design/tokens/typography.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/ffi/generated/api.dart' as api;
+import 'providers/preferences_providers.dart';
 
 /// Verify My Build Screen - Shows reproducible build verification steps
 class VerifyBuildScreen extends ConsumerStatefulWidget {
@@ -36,10 +37,7 @@ enum ReleaseVerificationStatus {
 }
 
 class _ReleaseAsset {
-  const _ReleaseAsset({
-    required this.name,
-    required this.url,
-  });
+  const _ReleaseAsset({required this.name, required this.url});
 
   final String name;
   final String url;
@@ -76,10 +74,7 @@ class _LocalArtifact {
 }
 
 class _ChecksumResult {
-  const _ChecksumResult({
-    required this.entries,
-    required this.sourceName,
-  });
+  const _ChecksumResult({required this.entries, required this.sourceName});
 
   final Map<String, String> entries;
   final String? sourceName;
@@ -139,6 +134,16 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       setState(() {
         _verificationStatus = ReleaseVerificationStatus.error;
         _verificationMessage = 'Release verification is not supported on web.';
+      });
+      return;
+    }
+
+    final allowGithubApis = ref.read(allowGithubApisProvider);
+    if (!allowGithubApis) {
+      setState(() {
+        _verificationStatus = ReleaseVerificationStatus.error;
+        _verificationMessage =
+            'Outbound GitHub checks are disabled in Settings > Outbound API Calls.';
       });
       return;
     }
@@ -289,9 +294,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         throw Exception('Unexpected GitHub API response');
       }
 
-      return data
-          .whereType<Map<String, dynamic>>()
-          .map<_ReleaseInfo>((entry) {
+      return data.whereType<Map<String, dynamic>>().map<_ReleaseInfo>((entry) {
         final assets = <_ReleaseAsset>[];
         final rawAssets = entry['assets'];
         if (rawAssets is List) {
@@ -363,7 +366,9 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
   }
 
   Future<_ChecksumResult> _fetchChecksums(List<_ReleaseAsset> assets) async {
-    final checksumAssets = assets.where((asset) => _isChecksumAsset(asset.name));
+    final checksumAssets = assets.where(
+      (asset) => _isChecksumAsset(asset.name),
+    );
     final entries = <String, String>{};
     String? sourceName;
 
@@ -405,8 +410,10 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
 
       final parts = trimmed.split(RegExp(r'\s+'));
       if (parts.length == 1) {
-        final fallbackName = assetName
-            .replaceAll(RegExp(r'\.sha256(sum)?$', caseSensitive: false), '');
+        final fallbackName = assetName.replaceAll(
+          RegExp(r'\.sha256(sum)?$', caseSensitive: false),
+          '',
+        );
         map[fallbackName] = parts.first;
         continue;
       }
@@ -507,8 +514,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                       ),
                       child: Text(
                         _error!,
-                        style:
-                            PTypography.bodyMedium(color: AppColors.error),
+                        style: PTypography.bodyMedium(color: AppColors.error),
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -536,11 +542,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
             shape: BoxShape.circle,
             border: Border.all(color: AppColors.successBorder, width: 2),
           ),
-          child: Icon(
-            Icons.verified_user,
-            size: 40,
-            color: AppColors.success,
-          ),
+          child: Icon(Icons.verified_user, size: 40, color: AppColors.success),
         ),
         SizedBox(height: PSpacing.lg),
         Text(
@@ -682,14 +684,14 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
             children: [
               Expanded(
                 child: PButton(
-                  onPressed: _verificationStatus ==
-                          ReleaseVerificationStatus.checking
+                  onPressed:
+                      _verificationStatus == ReleaseVerificationStatus.checking
                       ? null
                       : _checkReleaseVerification,
                   text: 'Check GitHub',
                   variant: PButtonVariant.outline,
-                  loading: _verificationStatus ==
-                      ReleaseVerificationStatus.checking,
+                  loading:
+                      _verificationStatus == ReleaseVerificationStatus.checking,
                   fullWidth: true,
                 ),
               ),
@@ -794,7 +796,11 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           ),
           SizedBox(height: PSpacing.md),
           _buildInfoRow('Version', _buildInfo!['version']!),
-          _buildInfoRow('Git Commit', _buildInfo!['gitCommit']!, copyable: true),
+          _buildInfoRow(
+            'Git Commit',
+            _buildInfo!['gitCommit']!,
+            copyable: true,
+          ),
           _buildInfoRow('Build Date', _buildInfo!['buildDate']!),
           _buildInfoRow('Rust Version', _buildInfo!['rustVersion']!),
           _buildInfoRow('Target', _buildInfo!['targetTriple']!),
@@ -846,9 +852,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       children: [
         Text(
           'Verification Steps',
-          style: PTypography.heading4(
-            color: AppColors.textPrimary,
-          ),
+          style: PTypography.heading4(color: AppColors.textPrimary),
         ),
         SizedBox(height: PSpacing.md),
         Text(
@@ -859,13 +863,15 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         _buildStep(
           number: 1,
           title: 'Download Release + Checksums',
-          description: 'Grab the official asset and its .sha256 file from GitHub Releases.',
+          description:
+              'Grab the official asset and its .sha256 file from GitHub Releases.',
           code: _getReleaseDownloadCommand(),
         ),
         _buildStep(
           number: 2,
           title: 'Verify Checksum',
-          description: 'Compare the downloaded hash with the published checksum.',
+          description:
+              'Compare the downloaded hash with the published checksum.',
           code: _getChecksumVerifyCommand(),
         ),
         _buildStep(
@@ -883,8 +889,10 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         _buildStep(
           number: 5,
           title: 'Generate Provenance (Optional)',
-          description: 'Generate provenance and signatures for a local artifact.',
-          code: 'scripts/generate-provenance.sh <artifact> dist/provenance\n'
+          description:
+              'Generate provenance and signatures for a local artifact.',
+          code:
+              'scripts/generate-provenance.sh <artifact> dist/provenance\n'
               'cosign verify-blob --bundle dist/provenance/<artifact>.sigstore.bundle <artifact>',
         ),
       ],
@@ -961,7 +969,11 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.copy, size: 18, color: AppColors.textTertiary),
+                        icon: Icon(
+                          Icons.copy,
+                          size: 18,
+                          color: AppColors.textTertiary,
+                        ),
                         onPressed: () => _copyToClipboard(code),
                       ),
                     ],
@@ -988,7 +1000,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           icon: Icons.article,
           title: 'Verification Guide',
           description: 'Complete documentation on reproducible builds',
-          url: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/main/docs/verify-build.md',
+          url:
+              'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/main/docs/verify-build.md',
         ),
         SizedBox(height: PSpacing.sm),
         _buildLinkCard(
@@ -1002,7 +1015,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           icon: Icons.security,
           title: 'Security Practices',
           description: 'Learn about our security model',
-          url: 'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/main/docs/security.md',
+          url:
+              'https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/blob/main/docs/security.md',
         ),
       ],
     );
@@ -1101,7 +1115,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
 
   Future<void> _copyToClipboard(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1129,7 +1143,10 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     }
 
     try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
       if (!launched) {
         await _copyToClipboard(url);
       }

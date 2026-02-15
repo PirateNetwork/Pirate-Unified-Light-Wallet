@@ -48,8 +48,12 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
 
   Future<void> _checkExisting() async {
     try {
-      final hasConfigured = await FfiBridge.hasDuressPassphrase();
-      final hasStored = await DuressPassphraseStore.exists();
+      final checks = await Future.wait<bool>([
+        FfiBridge.hasDuressPassphrase(),
+        DuressPassphraseStore.exists(),
+      ]);
+      final hasConfigured = checks[0];
+      final hasStored = checks[1];
       if (mounted) {
         setState(() {
           _hasExisting = hasConfigured && hasStored;

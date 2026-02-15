@@ -11,6 +11,7 @@ import '../../design/tokens/colors.dart' show AppColors;
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/molecules/p_card.dart';
+import '../../ui/molecules/p_bottom_sheet.dart';
 import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/wallet_switcher.dart';
@@ -145,7 +146,6 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
             if (!isMobile) const WalletSwitcherButton(compact: true),
           ],
           showBackButton: true,
-          centerTitle: true,
         ),
         body: Builder(
           builder: (context) {
@@ -708,7 +708,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     ReceiveViewModel viewModel,
     AddressInfo address,
   ) async {
-    final selection = await showModalBottomSheet<AddressBookColorTag>(
+    final selection = await PBottomSheet.showAdaptive<AddressBookColorTag>(
       context: context,
       backgroundColor: AppColors.backgroundSurface,
       shape: RoundedRectangleBorder(

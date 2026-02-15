@@ -7,10 +7,6 @@ analyzer:
     - "build/**"
     # FRB generated bindings (kept in-repo for app builds; exclude from linting)
     - "lib/core/ffi/generated/**"
-    # Temporarily exclude test suites from strict linting until they are updated to the new UI/routes.
-    - "test/**"
-    - "integration_test/**"
-    - "test_driver/**"
   
   errors:
     # Treat missing required parameters as errors

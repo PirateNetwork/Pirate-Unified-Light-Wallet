@@ -29,10 +29,11 @@ class SeedImportScreen extends ConsumerStatefulWidget {
 
 class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
   final _formKey = GlobalKey<FormState>();
-  final List<TextEditingController> _wordControllers =
-      List.generate(24, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes =
-      List.generate(24, (_) => FocusNode());
+  final List<TextEditingController> _wordControllers = List.generate(
+    24,
+    (_) => TextEditingController(),
+  );
+  final List<FocusNode> _focusNodes = List.generate(24, (_) => FocusNode());
   ScreenProtection? _screenProtection;
 
   bool _isValidating = false;
@@ -134,7 +135,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
     try {
       // Validate mnemonic via FFI
       final isValid = await FfiBridge.validateMnemonic(_mnemonic);
-      
+
       if (!isValid) {
         setState(() {
           _validationError = 'Invalid seed phrase. Check the words and order.';
@@ -159,7 +160,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
       ref.read(onboardingControllerProvider.notifier).nextStep();
 
       if (mounted) {
-      unawaited(context.push('/onboarding/birthday'));
+        unawaited(context.push('/onboarding/birthday'));
       }
     } catch (e) {
       setState(() {
@@ -177,7 +178,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
     _applyPastedWords(words);
   }
 
-  void _clearAll() {
+  void _resetSeedImportForm() {
     for (final controller in _wordControllers) {
       controller.clear();
     }
@@ -188,7 +189,9 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final gutter = AppSpacing.responsiveGutter(MediaQuery.of(context).size.width);
+    final gutter = AppSpacing.responsiveGutter(
+      MediaQuery.of(context).size.width,
+    );
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     return PScaffold(
       title: 'Import Seed',
@@ -196,7 +199,6 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
         title: 'Import Seed Phrase',
         subtitle: 'Restore a wallet with your seed phrase',
         onBack: () => context.pop(),
-        centerTitle: true,
         actions: [
           PIconButton(
             icon: const Icon(Icons.content_paste),
@@ -235,110 +237,151 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                   sliver: SliverToBoxAdapter(
                     child: Form(
                       key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Title
-                          Text(
-                            'Enter your seed phrase',
-                            style: AppTypography.h2.copyWith(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-
-                          const SizedBox(height: AppSpacing.sm),
-
-                          Text(
-                            'Enter the $_wordCount words in order.',
-                            style: AppTypography.body.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-
-                          const SizedBox(height: AppSpacing.md),
-
-                          // Word count toggle
-                          Row(
-                            children: [
-                              _WordCountChip(
-                                label: '12 words',
-                                selected: _wordCount == 12,
-                                onTap: () => setState(() => _wordCount = 12),
+                      child: FormField<void>(
+                        onReset: _resetSeedImportForm,
+                        builder: (_) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Title
+                            Text(
+                              'Enter your seed phrase',
+                              style: AppTypography.h2.copyWith(
+                                color: AppColors.textPrimary,
                               ),
-                              const SizedBox(width: AppSpacing.sm),
-                              _WordCountChip(
-                                label: '24 words',
-                                selected: _wordCount == 24,
-                                onTap: () => setState(() => _wordCount = 24),
-                              ),
-                              const Spacer(),
-                              PTextButton(
-                                label: 'Clear all',
-                                leadingIcon: Icons.clear,
-                                variant: PTextButtonVariant.subtle,
-                                onPressed: _clearAll,
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: AppSpacing.lg),
-
-                          // Word grid
-                          GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              childAspectRatio: 2.5,
-                              crossAxisSpacing: AppSpacing.sm,
-                              mainAxisSpacing: AppSpacing.sm,
                             ),
-                            itemCount: _wordCount,
-                            itemBuilder: (context, index) {
-                              return _WordInput(
-                                index: index,
-                                controller: _wordControllers[index],
-                                focusNode: _focusNodes[index],
-                                isLast: index == _wordCount - 1,
-                                onSubmitted: () {
-                                  if (index < _wordCount - 1) {
-                                    _focusNodes[index + 1].requestFocus();
-                                  } else {
-                                    _focusNodes[index].unfocus();
-                                    _validateAndProceed();
-                                  }
-                                },
-                              );
-                            },
-                          ),
 
-                          const SizedBox(height: AppSpacing.lg),
+                            const SizedBox(height: AppSpacing.sm),
 
-                          // Error message
-                          if (_validationError != null)
+                            Text(
+                              'Enter the $_wordCount words in order.',
+                              style: AppTypography.body.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+
+                            const SizedBox(height: AppSpacing.md),
+
+                            // Word count toggle
+                            Row(
+                              children: [
+                                _WordCountChip(
+                                  label: '12 words',
+                                  selected: _wordCount == 12,
+                                  onTap: () => setState(() => _wordCount = 12),
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                                _WordCountChip(
+                                  label: '24 words',
+                                  selected: _wordCount == 24,
+                                  onTap: () => setState(() => _wordCount = 24),
+                                ),
+                                const Spacer(),
+                                PTextButton(
+                                  label: 'Clear all',
+                                  leadingIcon: Icons.clear,
+                                  variant: PTextButtonVariant.subtle,
+                                  onPressed: () =>
+                                      _formKey.currentState?.reset(),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: AppSpacing.lg),
+
+                            // Word grid
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 3,
+                                    childAspectRatio: 2.5,
+                                    crossAxisSpacing: AppSpacing.sm,
+                                    mainAxisSpacing: AppSpacing.sm,
+                                  ),
+                              itemCount: _wordCount,
+                              itemBuilder: (context, index) {
+                                return _WordInput(
+                                  index: index,
+                                  controller: _wordControllers[index],
+                                  focusNode: _focusNodes[index],
+                                  isLast: index == _wordCount - 1,
+                                  onSubmitted: () {
+                                    if (index < _wordCount - 1) {
+                                      _focusNodes[index + 1].requestFocus();
+                                    } else {
+                                      _focusNodes[index].unfocus();
+                                      _validateAndProceed();
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+
+                            const SizedBox(height: AppSpacing.lg),
+
+                            // Error message
+                            if (_validationError != null)
+                              Container(
+                                padding: const EdgeInsets.all(AppSpacing.md),
+                                decoration: BoxDecoration(
+                                  color: AppColors.error.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppColors.error.withValues(
+                                      alpha: 0.3,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      color: AppColors.error,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: AppSpacing.sm),
+                                    Expanded(
+                                      child: Text(
+                                        _validationError!,
+                                        style: AppTypography.body.copyWith(
+                                          color: AppColors.error,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                            const SizedBox(height: AppSpacing.lg),
+
+                            // Security notice
                             Container(
                               padding: const EdgeInsets.all(AppSpacing.md),
                               decoration: BoxDecoration(
-                                color: AppColors.error.withValues(alpha: 0.1),
+                                color: AppColors.warning.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: AppColors.error.withValues(alpha: 0.3),
+                                  color: AppColors.warning.withValues(
+                                    alpha: 0.3,
+                                  ),
                                 ),
                               ),
                               child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Icon(
-                                    Icons.error_outline,
-                                    color: AppColors.error,
+                                    Icons.security,
+                                    color: AppColors.warning,
                                     size: 20,
                                   ),
                                   const SizedBox(width: AppSpacing.sm),
                                   Expanded(
                                     child: Text(
-                                      _validationError!,
-                                      style: AppTypography.body.copyWith(
-                                        color: AppColors.error,
+                                      'Keep this private. Anyone with your seed phrase '
+                                      'can access your funds.',
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.textPrimary,
                                       ),
                                     ),
                                   ),
@@ -346,52 +389,20 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                               ),
                             ),
 
-                          const SizedBox(height: AppSpacing.lg),
-
-                          // Security notice
-                          Container(
-                            padding: const EdgeInsets.all(AppSpacing.md),
-                            decoration: BoxDecoration(
-                              color: AppColors.warning.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: AppColors.warning.withValues(alpha: 0.3),
-                              ),
+                            PButton(
+                              text: _isValidating
+                                  ? 'Validating...'
+                                  : 'Continue',
+                              onPressed: _isComplete && !_isValidating
+                                  ? _validateAndProceed
+                                  : null,
+                              variant: PButtonVariant.primary,
+                              size: PButtonSize.large,
+                              isLoading: _isValidating,
                             ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  Icons.security,
-                                  color: AppColors.warning,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: AppSpacing.sm),
-                                Expanded(
-                                  child: Text(
-                                    'Keep this private. Anyone with your seed phrase '
-                                    'can access your funds.',
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          PButton(
-                            text:
-                                _isValidating ? 'Validating...' : 'Continue',
-                            onPressed: _isComplete && !_isValidating
-                                ? _validateAndProceed
-                            : null,
-                            variant: PButtonVariant.primary,
-                            size: PButtonSize.large,
-                            isLoading: _isValidating,
-                          ),
-                          const SizedBox(height: AppSpacing.sm),
-                        ],
+                            const SizedBox(height: AppSpacing.sm),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -482,8 +493,9 @@ class _WordInputState extends State<_WordInput> {
 
   void _updateMatches() {
     final query = widget.controller.text.trim().toLowerCase();
-    final nextMatches =
-        query.isEmpty ? const <String>[] : bip39Suggestions(query, limit: 6);
+    final nextMatches = query.isEmpty
+        ? const <String>[]
+        : bip39Suggestions(query, limit: 6);
     if (!_listEquals(_matches, nextMatches)) {
       _matches = nextMatches;
     }
@@ -514,21 +526,23 @@ class _WordInputState extends State<_WordInput> {
 
   void _showOverlay() {
     if (_overlay == null) {
-      _overlay = OverlayEntry(builder: (context) {
-        return Stack(
-          children: [
-            // Invisible barrier to catch taps outside
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: _removeOverlay,
-                behavior: HitTestBehavior.translucent,
-                child: Container(color: Colors.transparent),
+      _overlay = OverlayEntry(
+        builder: (context) {
+          return Stack(
+            children: [
+              // Invisible barrier to catch taps outside
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: _removeOverlay,
+                  behavior: HitTestBehavior.translucent,
+                  child: Container(color: Colors.transparent),
+                ),
               ),
-            ),
-            _buildOverlay(context),
-          ],
-        );
-      });
+              _buildOverlay(context),
+            ],
+          );
+        },
+      );
       Overlay.of(context, rootOverlay: false).insert(_overlay!);
     } else {
       _overlay?.markNeedsBuild();
@@ -541,16 +555,20 @@ class _WordInputState extends State<_WordInput> {
   }
 
   Widget _buildOverlay(BuildContext context) {
-    final renderBox = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final renderBox =
+        _fieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return const SizedBox.shrink();
 
     final fieldSize = renderBox.size;
     final width = fieldSize.width;
     final height = fieldSize.height;
     const itemHeight = 40.0;
-    final listHeight = (_matches.length * itemHeight + 8).clamp(itemHeight, itemHeight * 4.5 + 8);
+    final listHeight = (_matches.length * itemHeight + 8).clamp(
+      itemHeight,
+      itemHeight * 4.5 + 8,
+    );
     final typed = widget.controller.text.trim().toLowerCase();
-    
+
     final screenHeight = MediaQuery.of(context).size.height;
     final fieldOffset = renderBox.localToGlobal(Offset.zero);
     final spaceBelow = screenHeight - fieldOffset.dy - height;
@@ -568,7 +586,10 @@ class _WordInputState extends State<_WordInput> {
           decoration: BoxDecoration(
             color: AppColors.surfaceElevated,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.accentPrimary.withValues(alpha: 0.5), width: 1.5),
+            border: Border.all(
+              color: AppColors.accentPrimary.withValues(alpha: 0.5),
+              width: 1.5,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.4),
@@ -596,9 +617,15 @@ class _WordInputState extends State<_WordInput> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       alignment: Alignment.centerLeft,
                       decoration: BoxDecoration(
-                        border: index < _matches.length - 1 
-                          ? Border(bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.3)))
-                          : null,
+                        border: index < _matches.length - 1
+                            ? Border(
+                                bottom: BorderSide(
+                                  color: AppColors.border.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                ),
+                              )
+                            : null,
                       ),
                       child: RichText(
                         maxLines: 1,
@@ -648,8 +675,9 @@ class _WordInputState extends State<_WordInput> {
 
   void _applyUniqueCompletion() {
     final current = widget.controller.text.trim().toLowerCase();
-    final completionMatches =
-        current.isEmpty ? const <String>[] : bip39Suggestions(current, limit: 2);
+    final completionMatches = current.isEmpty
+        ? const <String>[]
+        : bip39Suggestions(current, limit: 2);
     if (completionMatches.length == 1 && completionMatches.first != current) {
       widget.controller.text = completionMatches.first;
       widget.controller.selection = TextSelection.fromPosition(
@@ -661,8 +689,9 @@ class _WordInputState extends State<_WordInput> {
   @override
   Widget build(BuildContext context) {
     final typed = widget.controller.text.trim().toLowerCase();
-    final matches =
-        typed.isEmpty ? const <String>[] : bip39Suggestions(typed, limit: 1);
+    final matches = typed.isEmpty
+        ? const <String>[]
+        : bip39Suggestions(typed, limit: 1);
     final hasPrefixMatch = typed.isEmpty || matches.isNotEmpty;
     final borderColor = hasPrefixMatch
         ? (_isFocused ? AppColors.accentPrimary : AppColors.border)
@@ -674,8 +703,9 @@ class _WordInputState extends State<_WordInput> {
     final reduceMotion = MediaQuery.of(context).disableAnimations;
 
     return AnimatedContainer(
-      duration:
-          reduceMotion ? Duration.zero : const Duration(milliseconds: 160),
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 160),
       decoration: BoxDecoration(
         color: AppColors.surfaceElevated,
         borderRadius: BorderRadius.circular(PSpacing.radiusInput),
@@ -780,7 +810,7 @@ class _WordCountChip extends StatelessWidget {
     final isDesktop = MediaQuery.of(context).size.width > 600;
     final horizontalPadding = isDesktop ? AppSpacing.sm : AppSpacing.md;
     final verticalPadding = isDesktop ? AppSpacing.xs : AppSpacing.sm;
-    
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -789,22 +819,18 @@ class _WordCountChip extends StatelessWidget {
           vertical: verticalPadding,
         ),
         decoration: BoxDecoration(
-          color: selected 
-              ? AppColors.accentPrimary.withValues(alpha: 0.1) 
+          color: selected
+              ? AppColors.accentPrimary.withValues(alpha: 0.1)
               : AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected 
-                ? AppColors.accentPrimary 
-                : AppColors.border,
+            color: selected ? AppColors.accentPrimary : AppColors.border,
           ),
         ),
         child: Text(
           label,
           style: AppTypography.caption.copyWith(
-            color: selected 
-                ? AppColors.accentPrimary 
-                : AppColors.textSecondary,
+            color: selected ? AppColors.accentPrimary : AppColors.textSecondary,
             fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),

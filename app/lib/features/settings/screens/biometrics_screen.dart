@@ -59,6 +59,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
         await ref
             .read(biometricsEnabledProvider.notifier)
             .setEnabled(enabled: false);
+        ref.invalidate(resolvedBiometricsEnabledProvider);
         return;
       }
 
@@ -93,6 +94,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
       await ref
           .read(biometricsEnabledProvider.notifier)
           .setEnabled(enabled: true);
+      ref.invalidate(resolvedBiometricsEnabledProvider);
     } on BiometricException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
@@ -234,6 +236,9 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
   @override
   Widget build(BuildContext context) {
     final biometricsEnabled = ref.watch(biometricsEnabledProvider);
+    final resolvedBiometricsEnabled = ref.watch(
+      resolvedBiometricsEnabledProvider,
+    );
     final typeLabels = _types
         .map(BiometricAuth.getBiometricName)
         .toList(growable: false);
@@ -247,7 +252,6 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
         title: 'Biometrics',
         subtitle: 'Use your device biometrics to unlock',
         showBackButton: true,
-        centerTitle: true,
       ),
       body: SingleChildScrollView(
         padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
@@ -283,15 +287,32 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                         ],
                       ),
                     ),
-                    Switch.adaptive(
-                      value: biometricsEnabled,
-                      onChanged: !_isAvailable || _isLoading
-                          ? null
-                          : _toggleBiometrics,
-                      activeTrackColor: AppColors.accentPrimary.withValues(
-                        alpha: 0.4,
+                    resolvedBiometricsEnabled.when(
+                      data: (_) => Switch.adaptive(
+                        value: biometricsEnabled,
+                        onChanged: !_isAvailable || _isLoading
+                            ? null
+                            : _toggleBiometrics,
+                        activeTrackColor: AppColors.accentPrimary.withValues(
+                          alpha: 0.4,
+                        ),
+                        activeThumbColor: AppColors.accentPrimary,
                       ),
-                      activeThumbColor: AppColors.accentPrimary,
+                      loading: () => const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      error: (_, _) => Switch.adaptive(
+                        value: biometricsEnabled,
+                        onChanged: !_isAvailable || _isLoading
+                            ? null
+                            : _toggleBiometrics,
+                        activeTrackColor: AppColors.accentPrimary.withValues(
+                          alpha: 0.4,
+                        ),
+                        activeThumbColor: AppColors.accentPrimary,
+                      ),
                     ),
                   ],
                 ),

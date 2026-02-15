@@ -19,21 +19,20 @@ import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 
-enum BirthdayHeightInputMode {
-  approxDate,
-  exactHeight,
-}
+enum BirthdayHeightInputMode { approxDate, exactHeight }
 
 class BirthdayHeightScreen extends ConsumerStatefulWidget {
   const BirthdayHeightScreen({super.key});
 
   @override
-  ConsumerState<BirthdayHeightScreen> createState() => _BirthdayHeightScreenState();
+  ConsumerState<BirthdayHeightScreen> createState() =>
+      _BirthdayHeightScreenState();
 }
 
 class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
-  static const int _blocksPerDay = 720;
+  static const int _blocksPerDay = 1440;
   static const int _minYear = 2018;
+  static final DateTime _pirateGenesisUtc = DateTime.utc(2018, 8, 29);
   static const List<String> _monthLabels = [
     'January',
     'February',
@@ -58,7 +57,6 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
   bool _isSaving = false;
   String? _heightError;
   String? _error;
-  ProviderSubscription<WalletMeta?>? _walletSubscription;
 
   @override
   void initState() {
@@ -68,7 +66,6 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
 
   @override
   void dispose() {
-    _walletSubscription?.close();
     _exactHeightController.dispose();
     super.dispose();
   }
@@ -88,12 +85,13 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
 
   int? _heightFromDate() {
     if (_latestHeight == null) return null;
-    final now = DateTime.now();
-    final selected = DateTime(_selectedYear, _selectedMonth, 1);
-    final daysAgo = now.difference(selected).inDays;
-    final safeDays = daysAgo < 0 ? 0 : daysAgo;
-    final offset = safeDays * _blocksPerDay;
-    return (_latestHeight! - offset).clamp(1, _latestHeight!);
+    final selected = DateTime.utc(_selectedYear, _selectedMonth, 1);
+    if (selected.isBefore(_pirateGenesisUtc)) {
+      return 1;
+    }
+    final daysFromGenesis = selected.difference(_pirateGenesisUtc).inDays;
+    final estimate = (daysFromGenesis * _blocksPerDay) + 1;
+    return estimate.clamp(1, _latestHeight!);
   }
 
   Future<void> _loadLatestHeight() async {
@@ -137,8 +135,11 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
     }
 
     final selectedHeight = _selectedHeight;
-    if (_inputMode == BirthdayHeightInputMode.approxDate && _latestHeight == null) {
-      setState(() => _error = 'Load the latest block height or enter one manually.');
+    if (_inputMode == BirthdayHeightInputMode.approxDate &&
+        _latestHeight == null) {
+      setState(
+        () => _error = 'Load the latest block height or enter one manually.',
+      );
       return;
     }
     if (selectedHeight == null || selectedHeight <= 0) {
@@ -146,7 +147,9 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
       return;
     }
     if (_latestHeight != null && selectedHeight > _latestHeight!) {
-      setState(() => _error = 'Block height cannot be higher than the network tip.');
+      setState(
+        () => _error = 'Block height cannot be higher than the network tip.',
+      );
       return;
     }
 
@@ -231,27 +234,26 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
   @override
   Widget build(BuildContext context) {
     // Listen for wallet changes and initialize height
-    ref.listen<WalletMeta?>(
-      activeWalletMetaProvider,
-      (previous, next) {
-        if (next != null && _exactHeightController.text.isEmpty) {
-          _exactHeightController.text = next.birthdayHeight.toString();
-        }
-      },
-    );
-    
+    ref.listen<WalletMeta?>(activeWalletMetaProvider, (previous, next) {
+      if (next != null && _exactHeightController.text.isEmpty) {
+        _exactHeightController.text = next.birthdayHeight.toString();
+      }
+    });
+
     final meta = ref.watch(activeWalletMetaProvider);
     // Initialize height if not set
     if (meta != null && _exactHeightController.text.isEmpty) {
       _exactHeightController.text = meta.birthdayHeight.toString();
     }
-    
+
     final selectedHeight = _selectedHeight;
     final tip = _latestHeight;
     final blocksToScan = (selectedHeight != null && tip != null)
         ? (tip - selectedHeight).clamp(0, tip)
         : null;
-    final basePadding = AppSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final basePadding = AppSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+    );
     final contentPadding = basePadding.copyWith(
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
@@ -268,32 +270,20 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (meta != null) ...[
-              Text(
-                'Current: Block ${_formatHeight(meta.birthdayHeight)}',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-            ],
             PCard(
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.public,
-                      color: AppColors.accentPrimary,
-                    ),
+                    Icon(Icons.public, color: AppColors.accentPrimary),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
                         _loadingHeight
                             ? 'Fetching latest block height...'
                             : tip == null
-                                ? 'Latest block height unavailable'
-                                : 'Network tip: ${_formatHeight(tip)}',
+                            ? 'Latest block height unavailable'
+                            : 'Network tip: ${_formatHeight(tip)}',
                         style: AppTypography.body.copyWith(
                           color: AppColors.textPrimary,
                         ),
@@ -312,9 +302,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
               const SizedBox(height: AppSpacing.sm),
               Text(
                 _heightError!,
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.error,
-                ),
+                style: AppTypography.caption.copyWith(color: AppColors.error),
               ),
             ],
             const SizedBox(height: AppSpacing.lg),
@@ -324,7 +312,9 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
               title: 'Exact block height',
               subtitle: 'Use the precise block height if you know it',
               icon: Icons.pin_outlined,
-              onTap: () => setState(() => _inputMode = BirthdayHeightInputMode.exactHeight),
+              onTap: () => setState(
+                () => _inputMode = BirthdayHeightInputMode.exactHeight,
+              ),
             ),
             const SizedBox(height: AppSpacing.sm),
             _ModeCard(
@@ -333,7 +323,9 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
               title: 'Approximate date',
               subtitle: 'Month and year before your first transaction',
               icon: Icons.calendar_today,
-              onTap: () => setState(() => _inputMode = BirthdayHeightInputMode.approxDate),
+              onTap: () => setState(
+                () => _inputMode = BirthdayHeightInputMode.approxDate,
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
             if (_inputMode == BirthdayHeightInputMode.exactHeight) ...[
@@ -348,22 +340,22 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<int>(
+                    child: DropdownMenuFormField<int>(
                       key: ValueKey(_selectedMonth),
-                      initialValue: _selectedMonth,
-                      decoration: InputDecoration(
-                        labelText: 'Month',
+                      initialSelection: _selectedMonth,
+                      label: const Text('Month'),
+                      inputDecorationTheme: InputDecorationTheme(
                         filled: true,
                         fillColor: AppColors.surfaceElevated,
                       ),
-                      items: List.generate(
+                      dropdownMenuEntries: List.generate(
                         _monthLabels.length,
-                        (index) => DropdownMenuItem(
+                        (index) => DropdownMenuEntry(
                           value: index + 1,
-                          child: Text(_monthLabels[index]),
+                          label: _monthLabels[index],
                         ),
                       ),
-                      onChanged: (value) {
+                      onSelected: (value) {
                         if (value == null) return;
                         setState(() => _selectedMonth = value);
                       },
@@ -371,23 +363,23 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
-                    child: DropdownButtonFormField<int>(
+                    child: DropdownMenuFormField<int>(
                       key: ValueKey(_selectedYear),
-                      initialValue: _selectedYear,
-                      decoration: InputDecoration(
-                        labelText: 'Year',
+                      initialSelection: _selectedYear,
+                      label: const Text('Year'),
+                      inputDecorationTheme: InputDecorationTheme(
                         filled: true,
                         fillColor: AppColors.surfaceElevated,
                       ),
-                      items: _yearOptions
+                      dropdownMenuEntries: _yearOptions
                           .map(
-                            (year) => DropdownMenuItem(
+                            (year) => DropdownMenuEntry(
                               value: year,
-                              child: Text(year.toString()),
+                              label: year.toString(),
                             ),
                           )
                           .toList(),
-                      onChanged: (value) {
+                      onSelected: (value) {
                         if (value == null) return;
                         setState(() => _selectedYear = value);
                       },
@@ -423,8 +415,9 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                       ],
                     );
                     final blocksScan = Column(
-                      crossAxisAlignment:
-                          isNarrow ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                      crossAxisAlignment: isNarrow
+                          ? CrossAxisAlignment.start
+                          : CrossAxisAlignment.end,
                       children: [
                         Text(
                           'Blocks to scan',
@@ -454,10 +447,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                     }
                     return Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        startBlock,
-                        blocksScan,
-                      ],
+                      children: [startBlock, blocksScan],
                     );
                   },
                 ),
@@ -540,10 +530,7 @@ class _ModeCard extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
             border: isSelected
-                ? Border.all(
-                    color: AppColors.accentPrimary,
-                    width: 2,
-                  )
+                ? Border.all(color: AppColors.accentPrimary, width: 2)
                 : null,
             borderRadius: BorderRadius.circular(16),
           ),
@@ -551,7 +538,9 @@ class _ModeCard extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: isSelected ? AppColors.accentPrimary : AppColors.textSecondary,
+                color: isSelected
+                    ? AppColors.accentPrimary
+                    : AppColors.textSecondary,
               ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(

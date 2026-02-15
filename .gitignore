@@ -387,3 +387,4 @@ fuzz/artifacts/
 !.github/
 
 .cursorignore
+run_windows_rust_build_and_copy.cmd

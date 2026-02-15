@@ -31,8 +31,12 @@ class PInput extends StatefulWidget {
     this.focusNode,
     this.autofocus = false,
     this.monospace = false,
+    this.textAlignVertical,
     super.key,
-  }) : assert(controller == null || value == null, 'Cannot provide both controller and value');
+  }) : assert(
+         controller == null || value == null,
+         'Cannot provide both controller and value',
+       );
 
   final TextEditingController? controller;
   final String? value;
@@ -58,6 +62,7 @@ class PInput extends StatefulWidget {
   final FocusNode? focusNode;
   final bool autofocus;
   final bool monospace;
+  final TextAlignVertical? textAlignVertical;
 
   @override
   State<PInput> createState() => _PInputState();
@@ -144,8 +149,9 @@ class _PInputState extends State<PInput> {
           SizedBox(height: PSpacing.xs),
         ],
         AnimatedContainer(
-          duration:
-              reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 200),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(PSpacing.radiusInput),
             boxShadow: _isFocused
@@ -159,7 +165,9 @@ class _PInputState extends State<PInput> {
                 : null,
           ),
           child: TextField(
-            controller: widget.controller ?? (_isInternalController ? _internalController : null),
+            controller:
+                widget.controller ??
+                (_isInternalController ? _internalController : null),
             focusNode: _focusNode,
             obscureText: widget.obscureText,
             enabled: widget.enabled,
@@ -174,6 +182,9 @@ class _PInputState extends State<PInput> {
             onSubmitted: widget.onSubmitted,
             inputFormatters: widget.inputFormatters,
             autofocus: widget.autofocus,
+            textAlignVertical:
+                widget.textAlignVertical ??
+                (widget.maxLines == 1 ? TextAlignVertical.center : null),
             style: widget.monospace
                 ? PTypography.codeMedium(color: AppColors.textPrimary)
                 : PTypography.bodyMedium(color: AppColors.textPrimary),

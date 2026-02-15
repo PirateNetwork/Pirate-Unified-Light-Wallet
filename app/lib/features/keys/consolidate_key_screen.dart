@@ -201,11 +201,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
             ),
           ],
         ),
-        actions: [
-          const PDialogAction(
-            label: 'Close',
-          ),
-        ],
+        actions: [const PDialogAction(label: 'Close')],
       );
     } catch (e) {
       setState(() => _error = e.toString());
@@ -224,7 +220,6 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
         title: 'Consolidate balances',
         subtitle: 'Repack funds into a wallet address',
         showBackButton: true,
-        centerTitle: true,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -250,7 +245,9 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
                   PButton(
                     onPressed: _isBuilding ? null : _buildConsolidation,
                     variant: PButtonVariant.primary,
-                    child: Text(_isBuilding ? 'Building...' : 'Preview consolidation'),
+                    child: Text(
+                      _isBuilding ? 'Building...' : 'Preview consolidation',
+                    ),
                   ),
                   if (_pending != null) ...[
                     SizedBox(height: PSpacing.lg),
@@ -259,7 +256,9 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
                     PButton(
                       onPressed: _isSending ? null : _send,
                       variant: PButtonVariant.primary,
-                      child: Text(_isSending ? 'Sending...' : 'Confirm and send'),
+                      child: Text(
+                        _isSending ? 'Sending...' : 'Confirm and send',
+                      ),
                     ),
                   ],
                   if (_error != null) ...[
@@ -280,10 +279,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: PTypography.heading3(),
-        ),
+        Text(label, style: PTypography.heading3()),
         SizedBox(height: PSpacing.xs),
         Text(
           'Birthday ${key.birthdayHeight}',
@@ -299,7 +295,9 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
         Expanded(
           child: PButton(
             onPressed: _useOrchard ? null : () => _setPool(true),
-            variant: _useOrchard ? PButtonVariant.primary : PButtonVariant.secondary,
+            variant: _useOrchard
+                ? PButtonVariant.primary
+                : PButtonVariant.secondary,
             child: const Text('Orchard'),
           ),
         ),
@@ -307,7 +305,9 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
         Expanded(
           child: PButton(
             onPressed: _useOrchard ? () => _setPool(false) : null,
-            variant: _useOrchard ? PButtonVariant.secondary : PButtonVariant.primary,
+            variant: _useOrchard
+                ? PButtonVariant.secondary
+                : PButtonVariant.primary,
             child: const Text('Sapling'),
           ),
         ),
@@ -331,26 +331,24 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       );
     }
 
-    return DropdownButtonFormField<AddressBalanceInfo>(
-      initialValue: _selectedTargetAddress,
-      isExpanded: true,
-      selectedItemBuilder: (context) => _addresses
-          .map(_buildAddressSelectedItem)
-          .toList(),
-      decoration: InputDecoration(
-        labelText: 'Target wallet address',
+    return DropdownMenuFormField<AddressBalanceInfo>(
+      key: ValueKey(_selectedTargetAddress?.addressId),
+      initialSelection: _selectedTargetAddress,
+      width: double.infinity,
+      label: const Text('Target wallet address'),
+      inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surfaceElevated,
       ),
-      items: _addresses
+      dropdownMenuEntries: _addresses
           .map(
-            (address) => DropdownMenuItem<AddressBalanceInfo>(
+            (address) => DropdownMenuEntry<AddressBalanceInfo>(
               value: address,
-              child: _buildAddressMenuItem(address),
+              label: _dropdownLabel(address),
             ),
           )
           .toList(),
-      onChanged: (value) {
+      onSelected: (value) {
         if (value == null) return;
         setState(() {
           _selectedTargetAddress = value;
@@ -361,74 +359,12 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
     );
   }
 
-  Widget _buildAddressMenuItem(AddressBalanceInfo address) {
+  String _dropdownLabel(AddressBalanceInfo address) {
     final label = address.label?.trim();
-    final title =
-        label == null || label.isEmpty ? _truncate(address.address) : label;
-    final created = _formatTimestamp(address.createdAt);
-    final subtitle = label == null || label.isEmpty
-        ? created
-        : '$created - ${_truncate(address.address)}';
-    return Row(
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: _colorTag(address),
-            shape: BoxShape.circle,
-          ),
-        ),
-        SizedBox(width: PSpacing.sm),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: PTypography.bodyMedium(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: PTypography.bodySmall(color: AppColors.textSecondary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAddressSelectedItem(AddressBalanceInfo address) {
-    final label = address.label?.trim();
-    final title =
-        label == null || label.isEmpty ? _truncate(address.address) : label;
-    return Row(
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: _colorTag(address),
-            shape: BoxShape.circle,
-          ),
-        ),
-        SizedBox(width: PSpacing.sm),
-        Expanded(
-          child: Text(
-            title,
-            style: PTypography.bodyMedium(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
+    if (label != null && label.isNotEmpty) {
+      return '$label • ${_truncate(address.address)}';
+    }
+    return _truncate(address.address);
   }
 
   Widget _buildSummary(PendingTx pending) {
@@ -498,23 +434,5 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
   String _truncate(String address) {
     if (address.length <= 20) return address;
     return '${address.substring(0, 10)}...${address.substring(address.length - 10)}';
-  }
-
-  String _formatTimestamp(int timestamp) {
-    if (timestamp <= 0) return 'Unknown';
-    final date =
-        DateTime.fromMillisecondsSinceEpoch(timestamp * 1000).toLocal();
-    final year = date.year.toString().padLeft(4, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
-  }
-
-  Color _colorTag(AddressBalanceInfo address) {
-    final colorTag = AddressBookColorTag.fromValue(address.colorTag.index);
-    if (colorTag == AddressBookColorTag.none) {
-      return AppColors.backgroundPanel;
-    }
-    return Color(colorTag.colorValue);
   }
 }

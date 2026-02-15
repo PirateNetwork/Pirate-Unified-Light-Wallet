@@ -1,29 +1,22 @@
-/// Accessibility tests (WCAG AA compliance)
+// Accessibility tests (WCAG AA compliance)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/features/home/home_screen.dart';
 import 'package:pirate_wallet/features/send/send_screen.dart';
-import 'package:pirate_wallet/features/address_book/address_book_screen.dart';
 import 'package:pirate_wallet/features/settings/settings_screen.dart';
-import 'dart:io';
+import '../test_flags.dart';
 
-final bool _skipFfiTests =
-    Platform.environment['CI'] == 'true' ||
-    Platform.environment['GITHUB_ACTIONS'] == 'true' ||
-    Platform.environment['SKIP_FFI_TESTS'] == 'true';
+final bool _skipFfiTests = shouldSkipFfiTests();
 
 void main() {
   group('Accessibility - Semantic Labels', () {
-    testWidgets('home screen - all interactive elements have labels',
-        (tester) async {
+    testWidgets('home screen - all interactive elements have labels', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: HomeScreen(),
-          ),
-        ),
+        const ProviderScope(child: MaterialApp(home: HomeScreen())),
       );
 
       // Find all buttons and ensure they have semantic labels
@@ -31,32 +24,29 @@ void main() {
       for (var i = 0; i < buttons.evaluate().length; i++) {
         final button = buttons.at(i);
         final widget = tester.widget<IconButton>(button);
-        
+
         expect(
           widget.tooltip != null || widget.icon is Icon,
           isTrue,
-          reason: 'IconButton at index $i should have tooltip or Icon with semanticLabel',
+          reason:
+              'IconButton at index $i should have tooltip or Icon with semanticLabel',
         );
       }
     }, skip: _skipFfiTests);
 
     testWidgets('send screen - form inputs have labels', (tester) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: SendScreen(),
-          ),
-        ),
+        const ProviderScope(child: MaterialApp(home: SendScreen())),
       );
 
       // All text fields should have labels
       final textFields = find.byType(TextField);
       expect(textFields, findsWidgets);
-      
+
       for (var i = 0; i < textFields.evaluate().length; i++) {
         final textField = textFields.at(i);
         final widget = tester.widget<TextField>(textField);
-        
+
         expect(
           widget.decoration?.labelText != null ||
               widget.decoration?.hintText != null,
@@ -70,38 +60,32 @@ void main() {
   group('Accessibility - Focus Order', () {
     testWidgets('send screen - logical tab order', (tester) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: SendScreen(),
-          ),
-        ),
+        const ProviderScope(child: MaterialApp(home: SendScreen())),
       );
 
       await tester.pumpAndSettle();
 
       // Simulate tab navigation
-      final focusNodes = <FocusNode>[];
-      
       // Find all focusable widgets
       final focusableWidgets = find.byWidgetPredicate(
         (widget) => widget is TextField || widget is ElevatedButton,
       );
 
       expect(focusableWidgets, findsWidgets);
-      
-      debugPrint('OK: Found ${focusableWidgets.evaluate().length} focusable widgets');
-      debugPrint('   Focus order should be: Recipient -> Amount -> Memo -> Continue');
+
+      debugPrint(
+        'OK: Found ${focusableWidgets.evaluate().length} focusable widgets',
+      );
+      debugPrint(
+        '   Focus order should be: Recipient -> Amount -> Memo -> Continue',
+      );
     }, skip: _skipFfiTests);
   });
 
   group('Accessibility - Color Contrast', () {
     testWidgets('verify text contrast ratios', (tester) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: HomeScreen(),
-          ),
-        ),
+        const ProviderScope(child: MaterialApp(home: HomeScreen())),
       );
 
       // Find all Text widgets and check contrast
@@ -111,12 +95,12 @@ void main() {
       // WCAG AA requires:
       // - Normal text: 4.5:1
       // - Large text (18pt+): 3:1
-      
+
       // Note: Actual contrast calculation would require:
       // 1. Getting text color from TextStyle
       // 2. Getting background color from parent
       // 3. Calculating luminance ratio
-      
+
       debugPrint('OK: Text contrast check (manual verification required)');
       debugPrint('   WCAG AA: 4.5:1 for normal text, 3:1 for large text');
     }, skip: _skipFfiTests);
@@ -125,11 +109,7 @@ void main() {
   group('Accessibility - Touch Target Size', () {
     testWidgets('all buttons meet minimum size', (tester) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: HomeScreen(),
-          ),
-        ),
+        const ProviderScope(child: MaterialApp(home: HomeScreen())),
       );
 
       await tester.pumpAndSettle();
@@ -147,11 +127,12 @@ void main() {
       for (var i = 0; i < buttons.evaluate().length; i++) {
         final button = buttons.at(i);
         final size = tester.getSize(button);
-        
+
         expect(
           size.width >= minSize && size.height >= minSize,
           isTrue,
-          reason: 'Button at index $i (${size.width}x${size.height}) should be at least ${minSize}x$minSize',
+          reason:
+              'Button at index $i (${size.width}x${size.height}) should be at least ${minSize}x$minSize',
         );
       }
     }, skip: _skipFfiTests);
@@ -160,20 +141,17 @@ void main() {
   group('Accessibility - Screen Reader Support', () {
     testWidgets('home screen - balance announced correctly', (tester) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: HomeScreen(),
-          ),
-        ),
+        const ProviderScope(child: MaterialApp(home: HomeScreen())),
       );
 
       await tester.pumpAndSettle();
 
       // Look for Semantics widgets
-      final rootNode = tester.binding.pipelineOwner.semanticsOwner?.rootSemanticsNode;
-      
+      final rootNode =
+          tester.binding.rootPipelineOwner.semanticsOwner?.rootSemanticsNode;
+
       expect(rootNode, isNotNull);
-      
+
       debugPrint('OK: Semantics tree generated');
       debugPrint('   Balance should be announced as "X.XX ARRR"');
     }, skip: _skipFfiTests);
@@ -186,10 +164,8 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             child: MediaQuery(
-              data: MediaQueryData(textScaleFactor: scale),
-              child: const MaterialApp(
-                home: HomeScreen(),
-              ),
+              data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+              child: const MaterialApp(home: HomeScreen()),
             ),
           ),
         );
@@ -197,9 +173,12 @@ void main() {
         await tester.pumpAndSettle();
 
         // Verify layout doesn't overflow
-        expect(tester.takeException(), isNull,
-            reason: 'Layout should handle text scale $scale without overflow');
-        
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: 'Layout should handle text scale $scale without overflow',
+        );
+
         debugPrint('OK: Text scale $scale passed');
       }
     }, skip: _skipFfiTests);
@@ -210,12 +189,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           child: MediaQuery(
-            data: const MediaQueryData(
-              disableAnimations: true,
-            ),
-            child: const MaterialApp(
-              home: HomeScreen(),
-            ),
+            data: const MediaQueryData(disableAnimations: true),
+            child: const MaterialApp(home: HomeScreen()),
           ),
         ),
       );
@@ -230,11 +205,7 @@ void main() {
   group('Accessibility - Keyboard Navigation', () {
     testWidgets('all actions accessible via keyboard', (tester) async {
       await tester.pumpWidget(
-        const ProviderScope(
-          child: MaterialApp(
-            home: SettingsScreen(),
-          ),
-        ),
+        const ProviderScope(child: MaterialApp(home: SettingsScreen())),
       );
 
       await tester.pumpAndSettle();
@@ -250,10 +221,11 @@ void main() {
       );
 
       expect(interactiveElements, findsWidgets);
-      
-      debugPrint('OK: Found ${interactiveElements.evaluate().length} interactive elements');
+
+      debugPrint(
+        'OK: Found ${interactiveElements.evaluate().length} interactive elements',
+      );
       debugPrint('   All should be keyboard-accessible');
     }, skip: _skipFfiTests);
   });
 }
-

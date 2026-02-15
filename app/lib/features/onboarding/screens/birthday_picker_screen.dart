@@ -334,22 +334,21 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: DropdownButtonFormField<int>(
-                            // ignore: deprecated_member_use
-                            value: _selectedMonth,
-                            decoration: InputDecoration(
-                              labelText: 'Month',
+                          child: DropdownMenuFormField<int>(
+                            initialSelection: _selectedMonth,
+                            label: const Text('Month'),
+                            inputDecorationTheme: InputDecorationTheme(
                               filled: true,
                               fillColor: AppColors.surfaceElevated,
                             ),
-                            items: List.generate(
+                            dropdownMenuEntries: List.generate(
                               _monthLabels.length,
-                              (index) => DropdownMenuItem(
+                              (index) => DropdownMenuEntry(
                                 value: index + 1,
-                                child: Text(_monthLabels[index]),
+                                label: _monthLabels[index],
                               ),
                             ),
-                            onChanged: (value) {
+                            onSelected: (value) {
                               if (value == null) return;
                               setState(() => _selectedMonth = value);
                             },
@@ -357,23 +356,22 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                         ),
                         const SizedBox(width: AppSpacing.md),
                         Expanded(
-                          child: DropdownButtonFormField<int>(
-                            // ignore: deprecated_member_use
-                            value: _selectedYear,
-                            decoration: InputDecoration(
-                              labelText: 'Year',
+                          child: DropdownMenuFormField<int>(
+                            initialSelection: _selectedYear,
+                            label: const Text('Year'),
+                            inputDecorationTheme: InputDecorationTheme(
                               filled: true,
                               fillColor: AppColors.surfaceElevated,
                             ),
-                            items: _yearOptions
+                            dropdownMenuEntries: _yearOptions
                                 .map(
-                                  (year) => DropdownMenuItem(
+                                  (year) => DropdownMenuEntry(
                                     value: year,
-                                    child: Text(year.toString()),
+                                    label: year.toString(),
                                   ),
                                 )
                                 .toList(),
-                            onChanged: (value) {
+                            onSelected: (value) {
                               if (value == null) return;
                               setState(() => _selectedYear = value);
                             },

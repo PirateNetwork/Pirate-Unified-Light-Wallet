@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
+import 'p_overlay_toast.dart';
 
 /// Pirate Wallet Snackbar
 class PSnack {
@@ -15,6 +16,21 @@ class PSnack {
     String? actionLabel,
     VoidCallback? onAction,
   }) {
+    if (POverlayToast.isReady) {
+      POverlayToast.show(
+        POverlayToastPayload(
+          message: message,
+          duration: duration,
+          borderColor: variant.borderColor,
+          icon: variant.icon,
+          iconColor: variant.iconColor,
+          actionLabel: actionLabel,
+          onAction: onAction,
+        ),
+      );
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(

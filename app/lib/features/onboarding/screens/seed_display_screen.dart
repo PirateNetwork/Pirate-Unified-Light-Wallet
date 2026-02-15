@@ -41,7 +41,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
 
   Future<void> _loadMnemonic() async {
     setState(() => _isLoading = true);
-    
+
     // Generate mnemonic (same as what create_wallet will use)
     // We generate it here so we can show it before creating the wallet
     try {
@@ -112,7 +112,6 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
         title: 'Backup Your Seed',
         subtitle: 'Write this down securely',
         showBackButton: true,
-        centerTitle: true,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -145,7 +144,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: AppSpacing.xl),
-                  
+
                   if (!_seedRevealed) ...[
                     // Hidden seed - show reveal button
                     Container(
@@ -153,9 +152,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSurface,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: AppColors.borderDefault,
-                        ),
+                        border: Border.all(color: AppColors.borderDefault),
                       ),
                       child: Column(
                         children: [
@@ -188,9 +185,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSurface,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: AppColors.borderDefault,
-                        ),
+                        border: Border.all(color: AppColors.borderDefault),
                       ),
                       child: _mnemonic == null
                           ? const Center(child: CircularProgressIndicator())
@@ -204,9 +199,9 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                       size: PButtonSize.medium,
                     ),
                   ],
-                  
+
                   const SizedBox(height: AppSpacing.xl),
-                  
+
                   if (_seedRevealed) ...[
                     Container(
                       padding: const EdgeInsets.all(AppSpacing.md),
@@ -282,9 +277,7 @@ class _SeedGrid extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.backgroundSurface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppColors.borderDefault,
-                ),
+                border: Border.all(color: AppColors.borderDefault),
               ),
               child: Row(
                 children: [

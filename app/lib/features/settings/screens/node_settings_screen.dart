@@ -319,19 +319,18 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       appBar: PAppBar(
         title: 'Node Configuration',
         subtitle: 'Choose your lightwalletd endpoint',
-        centerTitle: true,
         actions: [
           ConnectionStatusIndicator(full: !isMobile),
           if (isMobile)
             PIconButton(
               icon: Icon(Icons.refresh, color: AppColors.textSecondary),
-              onPressed: _resetToDefault,
+              onPressed: () => _formKey.currentState?.reset(),
               tooltip: 'Reset',
             )
           else
             PTextButton(
               label: 'Reset',
-              onPressed: _resetToDefault,
+              onPressed: () => _formKey.currentState?.reset(),
               variant: PTextButtonVariant.subtle,
             ),
         ],
@@ -340,212 +339,218 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         padding: contentPadding,
         child: Form(
           key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Current status card
-              endpointConfigAsync.when(
-                data: _buildStatusCard,
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => _buildErrorCard(e.toString()),
-              ),
-
-              const SizedBox(height: AppSpacing.xl),
-
-              // Suggested endpoints (Orchard-capable presets)
-              Text(
-                'SUGGESTED ENDPOINTS',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
+          child: FormField<void>(
+            onReset: _resetToDefault,
+            builder: (_) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Current status card
+                endpointConfigAsync.when(
+                  data: _buildStatusCard,
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => _buildErrorCard(e.toString()),
                 ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              Wrap(
-                spacing: AppSpacing.md,
-                runSpacing: AppSpacing.sm,
-                children: [
-                  for (final endpoint in endpoints.LightdEndpoint.suggested)
-                    PButton(
-                      text: endpoint.label ?? endpoint.displayString,
-                      variant: PButtonVariant.ghost,
-                      size: PButtonSize.small,
-                      onPressed: () => _applySuggested(endpoint),
-                    ),
-                ],
-              ),
 
-              const SizedBox(height: AppSpacing.xl),
+                const SizedBox(height: AppSpacing.xl),
 
-              // Endpoint input section
-              Text(
-                'LIGHTWALLETD ENDPOINT',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
+                // Suggested endpoints (Orchard-capable presets)
+                Text(
+                  'SUGGESTED ENDPOINTS',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              PCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: AppSpacing.md),
+                Wrap(
+                  spacing: AppSpacing.md,
+                  runSpacing: AppSpacing.sm,
                   children: [
-                    PInput(
-                      controller: _endpointController,
-                      label: 'Endpoint (host:port)',
-                      hint: 'lightd1.piratechain.com:9067',
-                      keyboardType: TextInputType.url,
-                      validator: _validateEndpoint,
-                      onChanged: _onEndpointChanged,
-                      prefixIcon: const Icon(Icons.dns_outlined),
-                    ),
-
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // TLS toggle
-                    SwitchListTile(
-                      title: const Text('Use TLS'),
-                      subtitle: Text(
-                        _useTls
-                            ? 'Encrypted connection (recommended)'
-                            : 'Unencrypted connection (not recommended)',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: _useTls
-                              ? AppColors.success
-                              : AppColors.warning,
-                        ),
+                    for (final endpoint in endpoints.LightdEndpoint.suggested)
+                      PButton(
+                        text: endpoint.label ?? endpoint.displayString,
+                        variant: PButtonVariant.ghost,
+                        size: PButtonSize.small,
+                        onPressed: () => _applySuggested(endpoint),
                       ),
-                      value: _useTls,
-                      onChanged: (value) {
-                        setState(() {
-                          _useTls = value;
-                          _hasChanges = true;
-                        });
-                      },
-                      activeTrackColor: AppColors.accentPrimary.withValues(
-                        alpha: 0.4,
-                      ),
-                      activeThumbColor: AppColors.accentPrimary,
-                      contentPadding: EdgeInsets.zero,
-                    ),
                   ],
                 ),
-              ),
 
-              const SizedBox(height: AppSpacing.xl),
+                const SizedBox(height: AppSpacing.xl),
 
-              // TLS pin section
-              Text(
-                'TLS CERTIFICATE PIN (OPTIONAL)',
-                style: AppTypography.caption.copyWith(
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
+                // Endpoint input section
+                Text(
+                  'LIGHTWALLETD ENDPOINT',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-              ),
-              const SizedBox(height: AppSpacing.md),
+                const SizedBox(height: AppSpacing.md),
 
-              PCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    PInput(
-                      controller: _tlsPinController,
-                      label: 'SPKI Pin (base64)',
-                      hint: 'Leave empty to skip certificate pinning',
-                      validator: _validateTlsPin,
-                      onChanged: _onTlsPinChanged,
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      maxLines: 2,
-                    ),
+                PCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      PInput(
+                        controller: _endpointController,
+                        label: 'Endpoint (host:port)',
+                        hint: 'lightd1.piratechain.com:9067',
+                        keyboardType: TextInputType.url,
+                        validator: _validateEndpoint,
+                        onChanged: _onEndpointChanged,
+                        prefixIcon: const Icon(Icons.dns_outlined),
+                      ),
 
-                    const SizedBox(height: AppSpacing.md),
+                      const SizedBox(height: AppSpacing.lg),
 
-                    PButton(
-                      text: _isFetchingSpkiPin ? 'Fetching...' : 'Fetch SPKI',
-                      onPressed: _useTls && !_isFetchingSpkiPin && !_isLoading
-                          ? _fetchSpkiPin
-                          : null,
-                      variant: PButtonVariant.secondary,
-                      fullWidth: true,
-                    ),
+                      // TLS toggle
+                      SwitchListTile(
+                        title: const Text('Use TLS'),
+                        subtitle: Text(
+                          _useTls
+                              ? 'Encrypted connection (recommended)'
+                              : 'Unencrypted connection (not recommended)',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: _useTls
+                                ? AppColors.success
+                                : AppColors.warning,
+                          ),
+                        ),
+                        value: _useTls,
+                        onChanged: (value) {
+                          setState(() {
+                            _useTls = value;
+                            _hasChanges = true;
+                          });
+                        },
+                        activeTrackColor: AppColors.accentPrimary.withValues(
+                          alpha: 0.4,
+                        ),
+                        activeThumbColor: AppColors.accentPrimary,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ],
+                  ),
+                ),
 
-                    if (_spkiPinMessage != null) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        _spkiPinMessage!,
-                        style: AppTypography.bodySmall.copyWith(
-                          color: _spkiPinMessageIsError
-                              ? AppColors.error
-                              : AppColors.success,
+                const SizedBox(height: AppSpacing.xl),
+
+                // TLS pin section
+                Text(
+                  'TLS CERTIFICATE PIN (OPTIONAL)',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+
+                PCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      PInput(
+                        controller: _tlsPinController,
+                        label: 'SPKI Pin (base64)',
+                        hint: 'Leave empty to skip certificate pinning',
+                        validator: _validateTlsPin,
+                        onChanged: _onTlsPinChanged,
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        maxLines: 2,
+                      ),
+
+                      const SizedBox(height: AppSpacing.md),
+
+                      PButton(
+                        text: _isFetchingSpkiPin ? 'Fetching...' : 'Fetch SPKI',
+                        onPressed: _useTls && !_isFetchingSpkiPin && !_isLoading
+                            ? _fetchSpkiPin
+                            : null,
+                        variant: PButtonVariant.secondary,
+                        fullWidth: true,
+                      ),
+
+                      if (_spkiPinMessage != null) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          _spkiPinMessage!,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: _spkiPinMessageIsError
+                                ? AppColors.error
+                                : AppColors.success,
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: AppSpacing.md),
+
+                      Container(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppColors.warning.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: AppColors.warning,
+                              size: 20,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                "TLS pinning adds extra security by verifying the server's certificate. "
+                                'Use Fetch SPKI to grab the pin from the current endpoint.',
+                                style: AppTypography.bodySmall.copyWith(
+                                  color: AppColors.warning,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-
-                    const SizedBox(height: AppSpacing.md),
-
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: AppColors.warning.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: AppColors.warning,
-                            size: 20,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              "TLS pinning adds extra security by verifying the server's certificate. "
-                              'Use Fetch SPKI to grab the pin from the current endpoint.',
-                              style: AppTypography.bodySmall.copyWith(
-                                color: AppColors.warning,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: AppSpacing.xxl),
+                const SizedBox(height: AppSpacing.xxl),
 
-              // Save button
-              SizedBox(
-                width: double.infinity,
-                child: PButton(
-                  onPressed: _hasChanges && !_isLoading ? _saveEndpoint : null,
-                  isLoading: _isLoading,
-                  child: const Text('Save Changes'),
+                // Save button
+                SizedBox(
+                  width: double.infinity,
+                  child: PButton(
+                    onPressed: _hasChanges && !_isLoading
+                        ? _saveEndpoint
+                        : null,
+                    isLoading: _isLoading,
+                    child: const Text('Save Changes'),
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: AppSpacing.lg),
+                const SizedBox(height: AppSpacing.lg),
 
-              // Help text
-              Text(
-                'Changes will take effect immediately. The wallet will reconnect to the new endpoint.',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
+                // Help text
+                Text(
+                  'Changes will take effect immediately. The wallet will reconnect to the new endpoint.',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
 
-              const SizedBox(height: AppSpacing.xxl),
-            ],
+                const SizedBox(height: AppSpacing.xxl),
+              ],
+            ),
           ),
         ),
       ),

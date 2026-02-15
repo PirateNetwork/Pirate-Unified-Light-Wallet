@@ -41,6 +41,7 @@ import '../features/settings/screens/biometrics_screen.dart';
 import '../features/settings/screens/passphrase_change_screen.dart';
 import '../features/settings/screens/theme_screen.dart';
 import '../features/settings/screens/currency_screen.dart';
+import '../features/settings/screens/outbound_api_screen.dart';
 import '../features/settings/screens/birthday_height_screen.dart';
 import '../features/settings/screens/terms_screen.dart';
 import '../features/settings/screens/licenses_screen.dart';
@@ -63,11 +64,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isOnboarding = state.uri.path.startsWith('/onboarding');
       final isUnlock = state.uri.path == '/unlock';
       final isSplash = state.uri.path == '/splash';
-      
+
       // Get walletsExist value (if available)
       final walletsExistValue = walletsExistAsync.value;
       final hasPassphraseValue = hasPassphraseAsync.value;
-      
+
       // If still loading, don't redirect yet (let initialLocation handle it)
       if (!walletsExistAsync.hasValue || !hasPassphraseAsync.hasValue) {
         return null;
@@ -86,24 +87,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         return null;
       }
-      
+
       // If wallets exist and we're on onboarding, redirect to unlock
       if ((walletsExistValue ?? false) && isOnboarding && !appUnlockedValue) {
         return '/unlock';
       }
-      
+
       // If wallets exist and app is not unlocked, redirect to unlock (unless already there)
-      if ((walletsExistValue ?? false) && !appUnlockedValue && !isUnlock && !isOnboarding) {
+      if ((walletsExistValue ?? false) &&
+          !appUnlockedValue &&
+          !isUnlock &&
+          !isOnboarding) {
         return '/unlock';
       }
-      
+
       return null;
     },
     routes: [
       // ========================================================================
       // SPLASH/LOADING SCREEN
       // ========================================================================
-      
       GoRoute(
         path: '/splash',
         name: 'splash',
@@ -113,11 +116,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const SplashScreen(),
         ),
       ),
-      
+
       // ========================================================================
       // UNLOCK SCREEN
       // ========================================================================
-      
       GoRoute(
         path: '/unlock',
         name: 'unlock',
@@ -129,11 +131,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ),
       ),
-      
+
       // ========================================================================
       // ONBOARDING FLOW
       // ========================================================================
-      
+
       // Welcome screen - entry point
       GoRoute(
         path: '/onboarding/welcome',
@@ -144,7 +146,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const WelcomeScreen(),
         ),
       ),
-      
+
       // Create or Import selection
       GoRoute(
         path: '/onboarding/create-or-import',
@@ -155,7 +157,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const CreateOrImportScreen(),
         ),
       ),
-      
+
       // Passphrase setup (create flow)
       GoRoute(
         path: '/onboarding/passphrase',
@@ -177,7 +179,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const OnboardingBiometricsScreen(),
         ),
       ),
-      
+
       // Backup warning (create flow)
       GoRoute(
         path: '/onboarding/backup-warning',
@@ -188,7 +190,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const BackupWarningScreen(),
         ),
       ),
-      
+
       // Seed display (create flow)
       GoRoute(
         path: '/onboarding/seed-display',
@@ -199,7 +201,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const SeedDisplayScreen(),
         ),
       ),
-      
+
       // Seed confirm (create flow)
       GoRoute(
         path: '/onboarding/seed-confirm',
@@ -210,7 +212,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const SeedConfirmScreen(),
         ),
       ),
-      
+
       // Seed import (restore flow)
       GoRoute(
         path: '/onboarding/import-seed',
@@ -221,7 +223,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const SeedImportScreen(),
         ),
       ),
-      
+
       // Viewing key import (watch-only flow)
       GoRoute(
         path: '/onboarding/import-ivk',
@@ -232,7 +234,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const IvkImportScreen(),
         ),
       ),
-      
+
       // Birthday picker (restore/create finalization)
       GoRoute(
         path: '/onboarding/birthday',
@@ -243,15 +245,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const BirthdayPickerScreen(),
         ),
       ),
-      
+
       // ========================================================================
       // MAIN APP
       // ========================================================================
       ShellRoute(
-        builder: (context, state, child) => AppShell(
-          location: state.uri.path,
-          child: child,
-        ),
+        builder: (context, state, child) =>
+            AppShell(location: state.uri.path, child: child),
         routes: [
           // Home screen - main wallet dashboard
           GoRoute(
@@ -345,7 +345,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ),
       ),
-      
+
       // Settings - Security Features
       GoRoute(
         path: '/settings/export-seed',
@@ -468,6 +468,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/settings/outbound-apis',
+        name: 'settings-outbound-apis',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const OutboundApiScreen(),
+        ),
+      ),
+      GoRoute(
         path: '/settings/birthday-height',
         name: 'settings-birthday-height',
         pageBuilder: (context, state) => _buildPageWithTransition(
@@ -503,7 +512,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const LicensesScreen(),
         ),
       ),
-      
+
       // Node Settings
       GoRoute(
         path: '/settings/node-picker',
@@ -523,7 +532,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: const PrivacyShieldScreen(),
         ),
       ),
-      
+
       // Design System Showcase
       GoRoute(
         path: '/showcase',

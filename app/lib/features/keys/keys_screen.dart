@@ -20,7 +20,8 @@ class KeyManagementScreen extends ConsumerStatefulWidget {
   const KeyManagementScreen({super.key});
 
   @override
-  ConsumerState<KeyManagementScreen> createState() => _KeyManagementScreenState();
+  ConsumerState<KeyManagementScreen> createState() =>
+      _KeyManagementScreenState();
 }
 
 class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
@@ -44,8 +45,9 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
       _loadFuture = null;
       return;
     }
-    _loadFuture =
-        isDecoy ? Future.value(DecoyData.keyGroups()) : _fetchKeys(walletId);
+    _loadFuture = isDecoy
+        ? Future.value(DecoyData.keyGroups())
+        : _fetchKeys(walletId);
   }
 
   Future<List<KeyGroupInfo>> _fetchKeys(WalletId walletId) {
@@ -147,7 +149,10 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 borderRadius: BorderRadius.circular(PSpacing.radiusXL),
               ),
               child: Container(
-                constraints: const BoxConstraints(maxWidth: 520),
+                constraints: BoxConstraints(
+                  maxWidth: 520,
+                  maxHeight: MediaQuery.of(context).size.height * 0.88,
+                ),
                 padding: EdgeInsets.all(PSpacing.dialogPadding),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -158,49 +163,61 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                       style: PTypography.heading4(color: AppColors.textPrimary),
                     ),
                     SizedBox(height: PSpacing.md),
-                    PInput(
-                      controller: nameController,
-                      label: 'Wallet name',
-                      hint: 'e.g. View only wallet',
-                    ),
-                    SizedBox(height: PSpacing.md),
-                    PInput(
-                      controller: saplingController,
-                      label: 'Sapling viewing key (optional)',
-                      hint: 'Paste your Sapling viewing key',
-                      maxLines: 3,
-                    ),
-                    SizedBox(height: PSpacing.md),
-                    PInput(
-                      controller: orchardController,
-                      label: 'Orchard viewing key (optional)',
-                      hint: 'Paste your Orchard viewing key',
-                      maxLines: 3,
-                    ),
-                    SizedBox(height: PSpacing.md),
-                    PInput(
-                      controller: birthdayController,
-                      label: 'Birthday height',
-                      hint: 'Block height to start scanning',
-                      keyboardType: TextInputType.number,
-                    ),
-                    if (error != null) ...[
-                      SizedBox(height: PSpacing.sm),
-                      Text(
-                        error!,
-                        style: PTypography.bodySmall(color: AppColors.error),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            PInput(
+                              controller: nameController,
+                              label: 'Wallet name',
+                              hint: 'e.g. View only wallet',
+                            ),
+                            SizedBox(height: PSpacing.md),
+                            PInput(
+                              controller: saplingController,
+                              label: 'Sapling viewing key (optional)',
+                              hint: 'Paste your Sapling viewing key',
+                              maxLines: 4,
+                            ),
+                            SizedBox(height: PSpacing.md),
+                            PInput(
+                              controller: orchardController,
+                              label: 'Orchard viewing key (optional)',
+                              hint: 'Paste your Orchard viewing key',
+                              maxLines: 4,
+                            ),
+                            SizedBox(height: PSpacing.md),
+                            PInput(
+                              controller: birthdayController,
+                              label: 'Birthday height',
+                              hint: 'Block height to start scanning',
+                              keyboardType: TextInputType.number,
+                            ),
+                            if (error != null) ...[
+                              SizedBox(height: PSpacing.sm),
+                              Text(
+                                error!,
+                                style: PTypography.bodySmall(
+                                  color: AppColors.error,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                    ],
+                    ),
                     SizedBox(height: PSpacing.lg),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: PSpacing.sm,
+                      runSpacing: PSpacing.sm,
                       children: [
                         PButton(
                           onPressed: () => Navigator.of(context).pop(false),
                           variant: PButtonVariant.secondary,
                           child: const Text('Cancel'),
                         ),
-                        SizedBox(width: PSpacing.sm),
                         PButton(
                           onPressed: isLoading ? null : handleImport,
                           variant: PButtonVariant.primary,
@@ -244,8 +261,9 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
             runSpacing: PSpacing.sm,
             children: [
               PButton(
-                onPressed:
-                    isDecoy ? null : () => context.push('/settings/keys/import'),
+                onPressed: isDecoy
+                    ? null
+                    : () => context.push('/settings/keys/import'),
                 variant: PButtonVariant.secondary,
                 child: const Text('Import private key'),
               ),
@@ -272,7 +290,6 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
         title: 'Keys & Addresses',
         subtitle: 'Manage imported keys and addresses',
         showBackButton: true,
-        centerTitle: true,
         actions: [
           IconButton(
             tooltip: 'Import spending key',
@@ -310,15 +327,17 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                         _buildNoKeysCard(),
                       ] else ...[
                         SizedBox(height: PSpacing.lg),
-                        ...keys.map((key) => Padding(
-                              padding: EdgeInsets.only(bottom: PSpacing.md),
-                              child: _KeyCard(
-                                keyInfo: key,
-                                onTap: () => context.push(
-                                  '/settings/keys/detail?keyId=${key.id}',
-                                ),
+                        ...keys.map(
+                          (key) => Padding(
+                            padding: EdgeInsets.only(bottom: PSpacing.md),
+                            child: _KeyCard(
+                              keyInfo: key,
+                              onTap: () => context.push(
+                                '/settings/keys/detail?keyId=${key.id}',
                               ),
-                            )),
+                            ),
+                          ),
+                        ),
                       ],
                     ],
                   ),
@@ -332,10 +351,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     return Center(
       child: Padding(
         padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
-        child: Text(
-          'No active wallet.',
-          style: PTypography.bodyMedium(),
-        ),
+        child: Text('No active wallet.', style: PTypography.bodyMedium()),
       ),
     );
   }
@@ -373,10 +389,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
         children: [
           Icon(Icons.vpn_key_outlined, color: AppColors.textTertiary, size: 44),
           SizedBox(height: PSpacing.sm),
-          Text(
-            'No keys yet',
-            style: PTypography.heading3(),
-          ),
+          Text('No keys yet', style: PTypography.heading3()),
           SizedBox(height: PSpacing.xs),
           Text(
             'Import a spending key to manage legacy addresses.',
@@ -412,7 +425,9 @@ class _KeyCard extends StatelessWidget {
             children: [
               Icon(
                 keyInfo.spendable ? Icons.key : Icons.visibility_outlined,
-                color: keyInfo.spendable ? AppColors.accentPrimary : AppColors.textSecondary,
+                color: keyInfo.spendable
+                    ? AppColors.accentPrimary
+                    : AppColors.textSecondary,
               ),
               SizedBox(width: PSpacing.sm),
               Expanded(
@@ -437,9 +452,17 @@ class _KeyCard extends StatelessWidget {
               if (keyInfo.hasSapling)
                 _chip('Sapling', AppColors.infoBackground, AppColors.info),
               if (keyInfo.hasOrchard)
-                _chip('Orchard', AppColors.successBackground, AppColors.success),
+                _chip(
+                  'Orchard',
+                  AppColors.successBackground,
+                  AppColors.success,
+                ),
               if (!keyInfo.spendable)
-                _chip('View only', AppColors.warningBackground, AppColors.warning),
+                _chip(
+                  'View only',
+                  AppColors.warningBackground,
+                  AppColors.warning,
+                ),
             ],
           ),
         ],
@@ -485,10 +508,7 @@ class _KeyCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(PSpacing.radiusSM),
         border: Border.all(color: foreground.withValues(alpha: 0.3)),
       ),
-      child: Text(
-        text,
-        style: PTypography.labelSmall(color: foreground),
-      ),
+      child: Text(text, style: PTypography.labelSmall(color: foreground)),
     );
   }
 }

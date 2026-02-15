@@ -74,32 +74,39 @@ class TransactionRowV2 extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: PSpacing.xxs),
-                  Row(
+                  Wrap(
+                    spacing: PSpacing.sm,
+                    runSpacing: PSpacing.xxs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: statusColor,
-                          shape: BoxShape.circle,
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: statusColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: PSpacing.xs),
+                          Text(
+                            statusText,
+                            style: PTypography.bodySmall(color: statusColor),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: PSpacing.xs),
-                      Text(
-                        statusText,
-                        style: PTypography.bodySmall(color: statusColor),
-                      ),
-                      const SizedBox(width: PSpacing.sm),
                       Text(
                         timeLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: PTypography.bodySmall(
                           color: AppColors.textSecondary,
                         ),
                       ),
-                      if (memo != null && memo!.isNotEmpty) ...[
-                        const SizedBox(width: PSpacing.sm),
+                      if (memo != null && memo!.isNotEmpty)
                         const _MemoIndicator(),
-                      ],
                     ],
                   ),
                 ],

@@ -392,7 +392,7 @@ Upstream-Name: pirate-unified-wallet
 Source: https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet
 
 Files: *
-Copyright: 2025 Pirate Chain
+Copyright: 2026 Pirate Chain
 License: MIT or Apache-2.0
 EOF
     
