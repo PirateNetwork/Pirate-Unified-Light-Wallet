@@ -26,7 +26,9 @@ class BirthdayUpdateService {
     await _writePending(pending);
   }
 
-  static Future<void> resumePendingUpdates({void Function()? onWalletsUpdated}) async {
+  static Future<void> resumePendingUpdates({
+    void Function()? onWalletsUpdated,
+  }) async {
     final pending = await _readPending();
     if (pending.isEmpty) {
       return;
@@ -53,11 +55,13 @@ class BirthdayUpdateService {
         continue;
       }
       retained[entry.key] = entry.value;
-      unawaited(updateWhenAvailable(
-        entry.key,
-        entry.value,
-        onWalletsUpdated: onWalletsUpdated,
-      ));
+      unawaited(
+        updateWhenAvailable(
+          entry.key,
+          entry.value,
+          onWalletsUpdated: onWalletsUpdated,
+        ),
+      );
     }
 
     await _writePending(retained);
@@ -76,8 +80,7 @@ class BirthdayUpdateService {
 
     try {
       while (true) {
-        final height =
-            await fetchLatestBirthdayHeight(walletId: walletId);
+        final height = await fetchLatestBirthdayHeight(walletId: walletId);
         if (height != null) {
           final currentHeight = await _getWalletBirthdayHeight(walletId);
           if (currentHeight == null || currentHeight != fallbackHeight) {

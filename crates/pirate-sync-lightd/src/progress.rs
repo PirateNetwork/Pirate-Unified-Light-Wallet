@@ -59,6 +59,8 @@ struct ProgressInner {
     stage: SyncStage,
     start_time: Option<Instant>,
     last_update: Option<Instant>,
+    eta_last_update: Option<Instant>,
+    eta_last_height: u64,
     eta_seconds: Option<u64>,
     blocks_per_second: f64,
     last_checkpoint: Option<u64>,
@@ -81,6 +83,8 @@ impl SyncProgress {
                 stage: SyncStage::Headers,
                 start_time: None,
                 last_update: None,
+                eta_last_update: None,
+                eta_last_height: 0,
                 eta_seconds: None,
                 blocks_per_second: 0.0,
                 last_checkpoint: None,
@@ -96,9 +100,14 @@ impl SyncProgress {
     /// Start tracking
     pub fn start(&self) {
         let mut inner = self.inner.write();
-        inner.start_time = Some(Instant::now());
-        inner.last_update = Some(Instant::now());
+        let now = Instant::now();
+        inner.start_time = Some(now);
+        inner.last_update = Some(now);
+        inner.eta_last_update = Some(now);
         inner.start_height = inner.current_height;
+        inner.eta_last_height = inner.current_height;
+        inner.eta_seconds = None;
+        inner.blocks_per_second = 0.0;
         // Reset perf counters
         inner.notes_decrypted = 0;
         inner.last_batch_ms = 0;
@@ -131,22 +140,46 @@ impl SyncProgress {
     pub fn update_eta(&self) {
         let mut inner = self.inner.write();
 
-        if let (Some(start_time), Some(_last_update)) = (inner.start_time, inner.last_update) {
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let blocks_synced = inner.current_height.saturating_sub(inner.start_height);
-            let blocks_remaining = inner.target_height.saturating_sub(inner.current_height);
-
-            if blocks_synced > 0 && elapsed > 0.0 {
-                inner.blocks_per_second = blocks_synced as f64 / elapsed;
-
-                if inner.blocks_per_second > 0.0 {
-                    inner.eta_seconds =
-                        Some((blocks_remaining as f64 / inner.blocks_per_second) as u64);
-                }
-            }
-
-            inner.last_update = Some(Instant::now());
+        let now = Instant::now();
+        if inner.eta_last_update.is_none() {
+            inner.eta_last_update = Some(now);
+            inner.eta_last_height = inner.current_height;
+            inner.last_update = Some(now);
+            return;
         }
+
+        let last_eta_update = inner.eta_last_update.unwrap_or(now);
+        let elapsed = now.duration_since(last_eta_update).as_secs_f64();
+        let blocks_advanced = inner.current_height.saturating_sub(inner.eta_last_height);
+
+        // Estimate throughput from recent progress deltas only, so ETA stays
+        // responsive and does not include idle/cancel-wait downtime.
+        if blocks_advanced > 0 && elapsed > 0.0 {
+            let instant_blocks_per_second = blocks_advanced as f64 / elapsed;
+            inner.blocks_per_second = if inner.blocks_per_second > 0.0 {
+                (inner.blocks_per_second * 0.7) + (instant_blocks_per_second * 0.3)
+            } else {
+                instant_blocks_per_second
+            };
+            inner.eta_last_height = inner.current_height;
+            inner.eta_last_update = Some(now);
+        } else if elapsed >= 5.0 {
+            // Avoid stale timestamps causing future ETA spikes.
+            inner.eta_last_height = inner.current_height;
+            inner.eta_last_update = Some(now);
+        }
+
+        let blocks_remaining = inner.target_height.saturating_sub(inner.current_height);
+        if blocks_remaining == 0 {
+            inner.eta_seconds = Some(0);
+        } else if inner.blocks_per_second > 0.0 {
+            inner.eta_seconds =
+                Some((blocks_remaining as f64 / inner.blocks_per_second).ceil() as u64);
+        } else {
+            inner.eta_seconds = None;
+        }
+
+        inner.last_update = Some(now);
     }
 
     /// Get progress percentage

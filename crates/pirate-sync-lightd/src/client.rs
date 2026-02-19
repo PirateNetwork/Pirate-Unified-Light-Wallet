@@ -22,6 +22,7 @@ use std::io::Write;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
@@ -108,6 +109,7 @@ struct GlobalTransportState {
 
 impl GlobalTransportState {
     async fn get_or_init(&self, config: NetTransportConfig) -> Result<Arc<NetTransportManager>> {
+        let config = resolve_transport_config(config);
         let existing = {
             let guard = self.manager.read().await;
             guard.as_ref().map(Arc::clone)
@@ -165,8 +167,44 @@ static GLOBAL_TRANSPORT: Lazy<GlobalTransportState> = Lazy::new(|| GlobalTranspo
     manager: RwLock::new(None),
 });
 
+static DESIRED_TRANSPORT_CONFIG: Lazy<StdRwLock<Option<NetTransportConfig>>> =
+    Lazy::new(|| StdRwLock::new(None));
+
 static TOR_CONFIG_OVERRIDE: Lazy<std::sync::RwLock<Option<NetTorConfig>>> =
     Lazy::new(|| std::sync::RwLock::new(None));
+
+fn set_desired_transport_config(config: NetTransportConfig) {
+    if let Ok(mut guard) = DESIRED_TRANSPORT_CONFIG.write() {
+        *guard = Some(config);
+    }
+}
+
+fn clear_desired_transport_config() {
+    if let Ok(mut guard) = DESIRED_TRANSPORT_CONFIG.write() {
+        *guard = None;
+    }
+}
+
+fn desired_transport_config() -> Option<NetTransportConfig> {
+    DESIRED_TRANSPORT_CONFIG
+        .read()
+        .ok()
+        .and_then(|guard| (*guard).clone())
+}
+
+fn resolve_transport_config(requested: NetTransportConfig) -> NetTransportConfig {
+    if let Some(desired) = desired_transport_config() {
+        if requested.mode != desired.mode || requested.socks5 != desired.socks5 {
+            debug!(
+                "Overriding stale transport request mode={:?} with desired mode={:?}",
+                requested.mode, desired.mode
+            );
+        }
+        desired
+    } else {
+        requested
+    }
+}
 
 /// Override the embedded Tor configuration for this process.
 pub fn set_tor_config_override(config: NetTorConfig) {
@@ -631,9 +669,17 @@ fn jitter_duration(duration: Duration) -> Duration {
     Duration::from_millis(jittered.max(1))
 }
 
+fn is_transport_not_ready_error(err: &Error) -> bool {
+    let msg = err.to_string().to_lowercase();
+    msg.contains("service was not ready")
+        || msg.contains("transport error")
+        || msg.contains("not connected")
+}
+
 /// Bootstrap transport early (Tor/I2P/SOCKS5) without touching wallet state.
 pub async fn bootstrap_transport(mode: TransportMode, socks5_url: Option<String>) -> Result<()> {
     let config = build_transport_config_from_mode(mode, socks5_url.as_deref())?;
+    set_desired_transport_config(config.clone());
     GLOBAL_TRANSPORT.get_or_init(config).await?;
     Ok(())
 }
@@ -679,6 +725,7 @@ pub async fn i2p_status() -> Option<pirate_net::I2pStatus> {
 
 /// Shutdown any active transport manager.
 pub async fn shutdown_transport() {
+    clear_desired_transport_config();
     GLOBAL_TRANSPORT.shutdown().await;
 }
 
@@ -1038,6 +1085,11 @@ impl LightClient {
         &self.config.endpoint
     }
 
+    /// Get current transport mode.
+    pub fn transport_mode(&self) -> TransportMode {
+        self.config.transport
+    }
+
     /// Check if client is connected
     pub fn is_connected(&self) -> bool {
         // Channel exists (actual connectivity tested on RPC call)
@@ -1275,6 +1327,28 @@ impl LightClient {
         Ok(CompactTxStreamerClient::new(channel))
     }
 
+    async fn get_latest_block_internal(&self) -> Result<u64> {
+        self.with_retry(|| async {
+            let mut client = self.get_client().await?;
+
+            let request = tonic::Request::new(ChainSpec {
+                network: String::new(), // Empty for default network
+            });
+
+            let response = client.get_latest_block(request).await?;
+            let block_id = response.into_inner();
+
+            debug!(
+                "Latest block: height={}, hash={}",
+                block_id.height,
+                hex::encode(&block_id.hash)
+            );
+
+            Ok(block_id.height)
+        })
+        .await
+    }
+
     /// Get the latest block height from the server
     ///
     /// Returns the current blockchain tip height.
@@ -1297,26 +1371,24 @@ impl LightClient {
             );
         }
         // #endregion
-        let result = self
-            .with_retry(|| async {
-                let mut client = self.get_client().await?;
 
-                let request = tonic::Request::new(ChainSpec {
-                    network: String::new(), // Empty for default network
-                });
+        let mut result = self.get_latest_block_internal().await;
 
-                let response = client.get_latest_block(request).await?;
-                let block_id = response.into_inner();
-
-                debug!(
-                    "Latest block: height={}, hash={}",
-                    block_id.height,
-                    hex::encode(&block_id.hash)
+        if let Err(err) = &result {
+            if is_transport_not_ready_error(err) {
+                warn!(
+                    "Latest-block call hit transient transport readiness issue, reconnecting and retrying once: {:?}",
+                    err
                 );
+                self.disconnect().await;
+                if let Err(conn_err) = self.connect().await {
+                    warn!("Reconnect before latest-block retry failed: {:?}", conn_err);
+                } else {
+                    result = self.get_latest_block_internal().await;
+                }
+            }
+        }
 
-                Ok(block_id.height)
-            })
-            .await;
         // #region agent log
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -1619,25 +1691,11 @@ impl LightClient {
         .await
     }
 
-    /// Get tree state (Sapling and Orchard anchors) at a specific block height
-    ///
-    /// If `height` is 0, returns the latest tree state.
-    /// Returns TreeState with saplingTree and orchardTree (hex-encoded strings).
-    /// Uses legacy z_gettreestatelegacy RPC for backward compatibility.
-    ///
-    /// # Arguments
-    /// * `height` - Block height (0 for latest)
-    ///
-    /// # Returns
-    /// TreeState containing network, height, hash, time, saplingTree, saplingFrontier, and orchardTree
-    pub async fn get_tree_state(&self, height: u64) -> Result<TreeState> {
+    async fn get_tree_state_by_block_id(&self, block_id: BlockId) -> Result<TreeState> {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
 
-            let mut request = tonic::Request::new(BlockId {
-                height,
-                hash: Vec::new(),
-            });
+            let mut request = tonic::Request::new(block_id.clone());
             request.set_timeout(self.config.request_timeout);
 
             let response = client.get_tree_state(request).await?;
@@ -1665,6 +1723,31 @@ impl LightClient {
         .await
     }
 
+    /// Get tree state (Sapling and Orchard anchors) at a specific block height
+    ///
+    /// If `height` is 0, returns the latest tree state.
+    /// Returns TreeState with saplingTree and orchardTree (hex-encoded strings).
+    /// Uses legacy z_gettreestatelegacy RPC for backward compatibility.
+    ///
+    /// # Arguments
+    /// * `height` - Block height (0 for latest)
+    ///
+    /// # Returns
+    /// TreeState containing network, height, hash, time, saplingTree, saplingFrontier, and orchardTree
+    pub async fn get_tree_state(&self, height: u64) -> Result<TreeState> {
+        self.get_tree_state_by_block_id(BlockId {
+            height,
+            hash: Vec::new(),
+        })
+        .await
+    }
+
+    /// Get legacy tree state by block hash.
+    pub async fn get_tree_state_by_hash(&self, hash: Vec<u8>) -> Result<TreeState> {
+        self.get_tree_state_by_block_id(BlockId { height: 0, hash })
+            .await
+    }
+
     /// Get tree state with bridge tree support (improved long-range sync performance)
     ///
     /// Uses updated z_gettreestate RPC with bridge trees format.
@@ -1677,14 +1760,11 @@ impl LightClient {
     /// # Returns
     /// TreeState containing network, height, hash, time, saplingTree, saplingFrontier, and orchardTree
     /// in bridge tree format for improved long-range sync performance
-    pub async fn get_bridge_tree_state(&self, height: u64) -> Result<TreeState> {
+    async fn get_bridge_tree_state_by_block_id(&self, block_id: BlockId) -> Result<TreeState> {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
 
-            let mut request = tonic::Request::new(BlockId {
-                height,
-                hash: Vec::new(),
-            });
+            let mut request = tonic::Request::new(block_id.clone());
             request.set_timeout(self.config.request_timeout);
 
             let response = client.get_bridge_tree_state(request).await?;
@@ -1709,6 +1789,21 @@ impl LightClient {
                 orchard_tree: tree_state.orchard_tree,
             })
         }).await
+    }
+
+    /// Get bridge tree state at a specific block height.
+    pub async fn get_bridge_tree_state(&self, height: u64) -> Result<TreeState> {
+        self.get_bridge_tree_state_by_block_id(BlockId {
+            height,
+            hash: Vec::new(),
+        })
+        .await
+    }
+
+    /// Get bridge tree state by block hash.
+    pub async fn get_bridge_tree_state_by_hash(&self, hash: Vec<u8>) -> Result<TreeState> {
+        self.get_bridge_tree_state_by_block_id(BlockId { height: 0, hash })
+            .await
     }
 
     /// Get optimal block group end height for sync batching

@@ -107,7 +107,9 @@ class BackgroundSyncHandler {
       // Configure tunnel mode if specified
       final selection = switch (tunnelMode.toLowerCase()) {
         'tor' => const TunnelMode.tor(),
-        'socks5' => TunnelMode.socks5(url: socks5Url ?? 'socks5://localhost:1080'),
+        'socks5' => TunnelMode.socks5(
+          url: socks5Url ?? 'socks5://localhost:1080',
+        ),
         'direct' => const TunnelMode.direct(),
         _ => const TunnelMode.tor(),
       };
@@ -121,7 +123,8 @@ class BackgroundSyncHandler {
         if (!torWorking) {
           throw PlatformException(
             code: BackgroundSyncErrorCodes.torConnectionFailed,
-            message: 'Unable to establish Tor connection. Please check your network settings.',
+            message:
+                'Unable to establish Tor connection. Please check your network settings.',
           );
         }
       } else if (currentTunnel is TunnelMode_Socks5) {
@@ -130,12 +133,15 @@ class BackgroundSyncHandler {
         if (!socks5Working) {
           throw PlatformException(
             code: BackgroundSyncErrorCodes.socks5ConnectionFailed,
-            message: 'Unable to connect to SOCKS5 proxy at ${socks5Url ?? "unknown"}',
+            message:
+                'Unable to connect to SOCKS5 proxy at ${socks5Url ?? "unknown"}',
           );
         }
       }
 
-      if (useRoundRobin || resolvedWalletId == null || resolvedWalletId.isEmpty) {
+      if (useRoundRobin ||
+          resolvedWalletId == null ||
+          resolvedWalletId.isEmpty) {
         return await FfiBridge.executeBackgroundSyncRoundRobin(
           mode: syncMode,
           maxDurationSecs: maxDurationSecs,
@@ -151,7 +157,7 @@ class BackgroundSyncHandler {
       rethrow;
     } catch (e) {
       final errorMessage = e.toString();
-      
+
       // Categorize the error
       if (errorMessage.toLowerCase().contains('tor')) {
         throw PlatformException(
@@ -164,7 +170,7 @@ class BackgroundSyncHandler {
           message: errorMessage,
         );
       } else if (errorMessage.toLowerCase().contains('network') ||
-                 errorMessage.toLowerCase().contains('connection')) {
+          errorMessage.toLowerCase().contains('connection')) {
         throw PlatformException(
           code: BackgroundSyncErrorCodes.networkError,
           message: errorMessage,
@@ -198,13 +204,13 @@ class BackgroundSyncHandler {
     try {
       // In production, this would test the actual SOCKS5 connection
       await Future<void>.delayed(const Duration(milliseconds: 100));
-      
+
       // Parse and validate proxy URL
       final uri = Uri.tryParse(proxyUrl);
       if (uri == null || uri.host.isEmpty) {
         return false;
       }
-      
+
       return true;
     } catch (e) {
       debugPrint('[BackgroundSyncHandler] SOCKS5 connection test failed: $e');
@@ -226,7 +232,9 @@ class BackgroundSyncHandler {
 
     final tunnelMode = switch (mode.toLowerCase()) {
       'tor' => const TunnelMode.tor(),
-      'socks5' => TunnelMode.socks5(url: socks5Url ?? 'socks5://localhost:1080'),
+      'socks5' => TunnelMode.socks5(
+        url: socks5Url ?? 'socks5://localhost:1080',
+      ),
       'direct' => const TunnelMode.direct(),
       _ => const TunnelMode.tor(),
     };
@@ -284,4 +292,3 @@ void initializeBackgroundSyncHandler() {
 void disposeBackgroundSyncHandler() {
   BackgroundSyncHandler().dispose();
 }
-

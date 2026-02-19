@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{oneshot, Mutex};
-use tor_rtcompat::{BlockOn, PreferredRuntime};
+use tor_rtcompat::{PreferredRuntime, ToplevelBlockOn};
 use tracing::{info, warn};
 
 /// Tor bootstrap status

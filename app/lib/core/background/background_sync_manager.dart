@@ -35,13 +35,13 @@ class BackgroundSyncConfig {
   });
 
   Map<String, dynamic> toMap() => {
-        'compactIntervalMinutes': compactIntervalMinutes,
-        'deepIntervalHours': deepIntervalHours,
-        'useForegroundService': useForegroundService,
-        'notifyOnReceive': notifyOnReceive,
-        'maxCompactDurationSecs': maxCompactDurationSecs,
-        'maxDeepDurationSecs': maxDeepDurationSecs,
-      };
+    'compactIntervalMinutes': compactIntervalMinutes,
+    'deepIntervalHours': deepIntervalHours,
+    'useForegroundService': useForegroundService,
+    'notifyOnReceive': notifyOnReceive,
+    'maxCompactDurationSecs': maxCompactDurationSecs,
+    'maxDeepDurationSecs': maxDeepDurationSecs,
+  };
 }
 
 /// Background sync result
@@ -164,13 +164,14 @@ class BackgroundSyncManager {
   final BackgroundSyncConfig config;
 
   // Stream controller for sync events
-  final _syncEventController = StreamController<BackgroundSyncResult>.broadcast();
+  final _syncEventController =
+      StreamController<BackgroundSyncResult>.broadcast();
 
   // Stream controller for status updates
   final _statusController = StreamController<SyncStatus>.broadcast();
 
   BackgroundSyncManager({BackgroundSyncConfig? config})
-      : config = config ?? const BackgroundSyncConfig() {
+    : config = config ?? const BackgroundSyncConfig() {
     // Listen for platform events
     _channel.setMethodCallHandler(_handlePlatformCall);
   }
@@ -189,7 +190,9 @@ class BackgroundSyncManager {
           Map<String, dynamic>.from(call.arguments as Map),
         );
         _syncEventController.add(result);
-        debugPrint('[BackgroundSync] Sync complete: ${result.mode}, ${result.blocksSynced} blocks');
+        debugPrint(
+          '[BackgroundSync] Sync complete: ${result.mode}, ${result.blocksSynced} blocks',
+        );
         return null;
 
       case 'onSyncProgress':
@@ -210,14 +213,18 @@ class BackgroundSyncManager {
 
   /// Initialize background sync on the platform
   Future<void> initialize() async {
-    debugPrint('[BackgroundSync] Initializing for platform: ${Platform.operatingSystem}');
+    debugPrint(
+      '[BackgroundSync] Initializing for platform: ${Platform.operatingSystem}',
+    );
 
     if (Platform.isAndroid) {
       await _initializeAndroid();
     } else if (Platform.isIOS) {
       await _initializeIOS();
     } else {
-      debugPrint('[BackgroundSync] Background sync not supported on ${Platform.operatingSystem}');
+      debugPrint(
+        '[BackgroundSync] Background sync not supported on ${Platform.operatingSystem}',
+      );
     }
   }
 
@@ -245,7 +252,9 @@ class BackgroundSyncManager {
 
       debugPrint('[BackgroundSync] Android WorkManager initialized');
       debugPrint('  - Compact sync: every ${config.compactIntervalMinutes}m');
-      debugPrint('  - Deep sync: every ${config.deepIntervalHours}h (charging + WiFi)');
+      debugPrint(
+        '  - Deep sync: every ${config.deepIntervalHours}h (charging + WiFi)',
+      );
     } catch (e) {
       debugPrint('[BackgroundSync] Failed to initialize Android: $e');
     }
@@ -272,7 +281,9 @@ class BackgroundSyncManager {
       await _channel.invokeMethod('requestNotificationPermissions');
 
       debugPrint('[BackgroundSync] iOS BackgroundTasks initialized');
-      debugPrint('  - Compact sync: BGAppRefreshTask (~${config.compactIntervalMinutes}m)');
+      debugPrint(
+        '  - Compact sync: BGAppRefreshTask (~${config.compactIntervalMinutes}m)',
+      );
       debugPrint('  - Deep sync: BGProcessingTask (daily, charging + network)');
     } catch (e) {
       debugPrint('[BackgroundSync] Failed to initialize iOS: $e');
@@ -292,14 +303,17 @@ class BackgroundSyncManager {
       final result = await FfiBridge.executeBackgroundSync(
         walletId: walletId,
         mode: mode,
-        maxDurationSecs: maxDurationSecs ??
+        maxDurationSecs:
+            maxDurationSecs ??
             (mode == 'compact'
                 ? config.maxCompactDurationSecs
                 : config.maxDeepDurationSecs),
       );
 
       final syncResult = BackgroundSyncResult.fromMap(result);
-      debugPrint('[BackgroundSync] Sync completed: ${syncResult.blocksSynced} blocks via ${syncResult.tunnelUsed}');
+      debugPrint(
+        '[BackgroundSync] Sync completed: ${syncResult.blocksSynced} blocks via ${syncResult.tunnelUsed}',
+      );
 
       // Notify listeners
       _syncEventController.add(syncResult);
@@ -339,10 +353,7 @@ class BackgroundSyncManager {
       });
 
       // Also update FFI
-      await FfiBridge.setTunnelMode(
-        mode: mode.name,
-        socks5Url: socks5Url,
-      );
+      await FfiBridge.setTunnelMode(mode: mode.name, socks5Url: socks5Url);
     } catch (e) {
       debugPrint('[BackgroundSync] Failed to set tunnel mode: $e');
       rethrow;
@@ -363,7 +374,9 @@ class BackgroundSyncManager {
   /// Get sync status
   Future<SyncStatus> getSyncStatus() async {
     try {
-      final result = await _channel.invokeMethod<Map<String, dynamic>>('getSyncStatus');
+      final result = await _channel.invokeMethod<Map<String, dynamic>>(
+        'getSyncStatus',
+      );
       if (result != null) {
         return SyncStatus.fromMap(result);
       }
@@ -446,7 +459,9 @@ final syncStatusProvider = FutureProvider<SyncStatus>((ref) async {
 });
 
 /// Provider for tunnel mode
-final tunnelModeProvider = NotifierProvider<TunnelModeNotifier, TunnelMode>(TunnelModeNotifier.new);
+final tunnelModeProvider = NotifierProvider<TunnelModeNotifier, TunnelMode>(
+  TunnelModeNotifier.new,
+);
 
 /// Tunnel mode state notifier
 class TunnelModeNotifier extends Notifier<TunnelMode> {

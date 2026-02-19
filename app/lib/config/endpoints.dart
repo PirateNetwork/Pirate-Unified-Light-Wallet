@@ -3,6 +3,7 @@
 // Default endpoint and TLS settings for Pirate Chain lightwalletd servers.
 
 import 'package:flutter/foundation.dart';
+import '../core/i18n/arb_text_localizer.dart';
 
 /// Default lightwalletd server host (official mainnet)
 const String kDefaultLightdHost = '64.23.167.130';
@@ -54,32 +55,32 @@ class LightdEndpoint {
 
   /// Default Pirate Chain endpoint (Orchard-ready mainnet)
   /// This is the working endpoint that replaces the old lightd1.piratechain.com
-  static const LightdEndpoint defaultEndpoint = LightdEndpoint(
+  static final LightdEndpoint defaultEndpoint = LightdEndpoint(
     host: kOrchardMainnetHost,
     port: kOrchardMainnetPort,
     useTls: kDefaultUseTls,
-    label: 'Pirate Chain Official',
+    label: 'Pirate Chain Official'.tr,
   );
 
   /// Orchard-capable preset endpoints for quick selection
-  static const LightdEndpoint orchardMainnet = LightdEndpoint(
+  static final LightdEndpoint orchardMainnet = LightdEndpoint(
     host: kOrchardMainnetHost,
     port: kOrchardMainnetPort,
     useTls: kDefaultUseTls,
-    label: 'Pirate Chain Official',
+    label: 'Pirate Chain Official'.tr,
   );
 
-  static const LightdEndpoint orchardTestnet = LightdEndpoint(
+  static final LightdEndpoint orchardTestnet = LightdEndpoint(
     host: kOrchardTestnetHost,
     port: kOrchardTestnetPort,
     useTls: kDefaultUseTls,
-    label: 'Orchard Testnet',
+    label: 'Orchard Testnet'.tr,
   );
 
   /// Suggested endpoints presented in the node picker UI
   /// Note: Removed old "Pirate Chain Official" (lightd1.piratechain.com) as it doesn't work
-  static const List<LightdEndpoint> suggested = <LightdEndpoint>[
-    orchardMainnet,  // This is now the default and labeled "Pirate Chain Official"
+  static final List<LightdEndpoint> suggested = <LightdEndpoint>[
+    orchardMainnet, // This is now the default and labeled "Pirate Chain Official"
     orchardTestnet,
   ];
 
@@ -94,9 +95,14 @@ class LightdEndpoint {
 
   /// Parse endpoint from URL string
   /// Accepts formats: "host:port", "https://host:port", "http://host:port"
-  static LightdEndpoint? tryParse(String input, {String? tlsPin, String? label}) {
+  static LightdEndpoint? tryParse(
+    String input, {
+    String? tlsPin,
+    String? label,
+  }) {
     var normalized = input.trim();
-    var useTls = kDefaultUseTls; // Default to false (no TLS) since servers don't have certificates
+    var useTls =
+        kDefaultUseTls; // Default to false (no TLS) since servers don't have certificates
 
     // Handle scheme prefix
     if (normalized.startsWith('https://')) {
@@ -186,12 +192,12 @@ class LightdEndpoint {
 
   /// Convert to JSON for storage
   Map<String, dynamic> toJson() => {
-        'host': host,
-        'port': port,
-        'useTls': useTls,
-        if (tlsPin != null) 'tlsPin': tlsPin,
-        if (label != null) 'label': label,
-      };
+    'host': host,
+    'port': port,
+    'useTls': useTls,
+    if (tlsPin != null) 'tlsPin': tlsPin,
+    if (label != null) 'label': label,
+  };
 
   /// Create from JSON
   factory LightdEndpoint.fromJson(Map<String, dynamic> json) {
@@ -207,4 +213,3 @@ class LightdEndpoint {
 
 /// Secure storage key for persisted endpoint
 const String kEndpointStorageKey = 'lightd_endpoint';
-

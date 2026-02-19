@@ -106,6 +106,7 @@ pub struct TransportManager {
     tor_client: Arc<Mutex<Option<TorClient>>>,
     i2p_client: Arc<Mutex<Option<I2pClient>>>,
     dns_resolver: Arc<Mutex<DnsResolver>>,
+    update_lock: Arc<Mutex<()>>,
 }
 
 #[allow(dead_code)]
@@ -186,6 +187,7 @@ impl TransportManager {
             tor_client: Arc::new(Mutex::new(tor_client)),
             i2p_client: Arc::new(Mutex::new(i2p_client)),
             dns_resolver: Arc::new(Mutex::new(dns_resolver)),
+            update_lock: Arc::new(Mutex::new(())),
         })
     }
 
@@ -201,6 +203,9 @@ impl TransportManager {
 
     /// Update transport configuration
     pub async fn update_config(&self, config: TransportConfig) -> Result<()> {
+        // Serialize config mutations to avoid concurrent Tor/I2P re-initialization
+        // during rapid transport switches or parallel connection attempts.
+        let _update_guard = self.update_lock.lock().await;
         let current_config = { self.config.lock().await.clone() };
         if current_config == config {
             log_debug_event(

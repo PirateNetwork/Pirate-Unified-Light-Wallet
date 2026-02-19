@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/ffi/ffi_bridge.dart';
-import '../../../core/ffi/generated/models.dart' show SyncMode;
 import '../../../core/providers/wallet_providers.dart';
 
 /// Tor status details for UI.
@@ -40,7 +39,9 @@ class TorStatusNotifier extends Notifier<TorStatusDetails> {
   }
 }
 
-final torStatusProvider = NotifierProvider<TorStatusNotifier, TorStatusDetails>(TorStatusNotifier.new);
+final torStatusProvider = NotifierProvider<TorStatusNotifier, TorStatusDetails>(
+  TorStatusNotifier.new,
+);
 
 /// Transport configuration persistence
 class TorBridgeConfig {
@@ -87,12 +88,12 @@ class TorBridgeConfig {
     final bridgeLines = rawLines is List
         ? rawLines.map((line) => line.toString()).toList()
         : rawLines is String
-            ? rawLines
-                .split(RegExp(r'\r?\n'))
-                .map((line) => line.trim())
-                .where((line) => line.isNotEmpty)
-                .toList()
-            : <String>[];
+        ? rawLines
+              .split(RegExp(r'\r?\n'))
+              .map((line) => line.trim())
+              .where((line) => line.isNotEmpty)
+              .toList()
+        : <String>[];
     return TorBridgeConfig(
       useBridges: json['use_bridges'] as bool? ?? false,
       fallbackToBridges: json['fallback_to_bridges'] as bool? ?? true,
@@ -137,7 +138,10 @@ class TransportConfig {
       socks5Config: Map<String, String?>.from(json['socks5'] as Map? ?? {}),
       i2pEndpoint: json['i2p_endpoint'] as String? ?? '',
       tlsPins: List<Map<String, String>>.from(
-        (json['tls_pins'] as List?)?.map((pin) => Map<String, String>.from(pin as Map)) ?? [],
+        (json['tls_pins'] as List?)?.map(
+              (pin) => Map<String, String>.from(pin as Map),
+            ) ??
+            [],
       ),
       torBridge: TorBridgeConfig.fromJson(torBridgeJson),
     );
@@ -166,8 +170,11 @@ class TransportConfig {
 class TransportConfigNotifier extends Notifier<TransportConfig> {
   late final FlutterSecureStorage _storage;
   static const String _storageKey = 'transport_config_v1';
-  static const String _storageNonI2pEndpointKey = 'transport_non_i2p_endpoint_v1';
+  static const String _storageNonI2pEndpointKey =
+      'transport_non_i2p_endpoint_v1';
   static const String _storageNonI2pTlsPinKey = 'transport_non_i2p_tls_pin_v1';
+  Future<void> _applyQueue = Future.value();
+  int _applyRequestId = 0;
 
   @override
   TransportConfig build() {
@@ -196,8 +203,8 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
 
   Future<void> setMode(String mode) async {
     state = state.copyWith(mode: mode);
-    await _applyTunnel(state);
     await _persist();
+    await _applyTunnel(state);
   }
 
   Future<void> setDnsProvider(String provider) async {
@@ -207,10 +214,10 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
 
   Future<void> setSocks5Config(Map<String, String?> config) async {
     state = state.copyWith(socks5Config: config);
+    await _persist();
     if (state.mode == 'socks5') {
       await _applyTunnel(state);
     }
-    await _persist();
   }
 
   Future<void> setI2pEndpoint(String endpoint) async {
@@ -264,7 +271,10 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
     await _applyTunnel(state);
   }
 
-  Future<void> setTorBridgeConfig(TorBridgeConfig config, {bool apply = true}) async {
+  Future<void> setTorBridgeConfig(
+    TorBridgeConfig config, {
+    bool apply = true,
+  }) async {
     state = state.copyWith(torBridge: config);
     await _persist();
     if (apply && state.mode == 'tor') {
@@ -273,41 +283,86 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> _applyTunnel(TransportConfig config) async {
-    final shouldResumeSync = await _pauseActiveSync();
+    final requestId = ++_applyRequestId;
+    _applyQueue = _applyQueue.then((_) => _applyTunnelNow(requestId, config));
+    await _applyQueue;
+  }
+
+  Future<void> _applyTunnelNow(int requestId, TransportConfig config) async {
+    if (requestId != _applyRequestId) {
+      return;
+    }
+    var applied = false;
     try {
+      if (requestId != _applyRequestId) {
+        return;
+      }
       final mode = config.mode.toLowerCase();
       final tunnelNotifier = ref.read(tunnelModeProvider.notifier);
       if (mode != 'i2p') {
-        await _restoreNonI2pEndpointIfNeeded();
+        try {
+          await _restoreNonI2pEndpointIfNeeded();
+        } catch (_) {
+          // Endpoint restoration is best-effort; keep applying transport.
+        }
+        if (requestId != _applyRequestId) {
+          return;
+        }
       }
       if (mode == 'socks5') {
         final url = _buildSocks5Url(config.socks5Config);
         await tunnelNotifier.setSocks5(url);
+        applied = true;
         return;
       }
       if (mode == 'i2p') {
-        await _storeNonI2pEndpointIfNeeded();
-        await _applyI2pEndpoint(config.i2pEndpoint);
+        try {
+          await _storeNonI2pEndpointIfNeeded();
+        } catch (_) {
+          // Keep applying i2p mode even if endpoint snapshot fails.
+        }
+        if (requestId != _applyRequestId) {
+          return;
+        }
+        try {
+          await _applyI2pEndpoint(config.i2pEndpoint);
+        } catch (_) {
+          // Keep applying i2p mode even if endpoint apply fails.
+        }
+        if (requestId != _applyRequestId) {
+          return;
+        }
         await tunnelNotifier.setI2p();
+        applied = true;
         return;
       }
       if (mode == 'direct') {
         await tunnelNotifier.setDirect();
+        applied = true;
         return;
       }
-      await FfiBridge.setTorBridgeSettings(
-        useBridges: config.torBridge.useBridges,
-        fallbackToBridges: config.torBridge.fallbackToBridges,
-        transport: config.torBridge.transport,
-        bridgeLines: config.torBridge.bridgeLines,
-        transportPath: config.torBridge.transportPath,
-      );
+      try {
+        await FfiBridge.setTorBridgeSettings(
+          useBridges: config.torBridge.useBridges,
+          fallbackToBridges: config.torBridge.fallbackToBridges,
+          transport: config.torBridge.transport,
+          bridgeLines: config.torBridge.bridgeLines,
+          transportPath: config.torBridge.transportPath,
+        );
+      } catch (_) {
+        // Bridge settings are best-effort; still switch to Tor mode.
+      }
+      if (requestId != _applyRequestId) {
+        return;
+      }
       await tunnelNotifier.setTor();
+      applied = true;
     } catch (_) {
-      // Ignore errors when the FFI layer isn't ready yet.
+      // Keep silent to avoid UI noise during startup, but don't resume sync if
+      // the requested mode was not applied.
     } finally {
-      if (shouldResumeSync) {
-        await _resumeActiveSync();
+      if (applied && requestId == _applyRequestId) {
+        _invalidateSyncProviders();
       }
     }
   }
@@ -318,7 +373,9 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
       if (currentTunnel.name == 'i2p') {
         return;
       }
-      final endpointConfig = await ref.read(lightdEndpointConfigProvider.future);
+      final endpointConfig = await ref.read(
+        lightdEndpointConfigProvider.future,
+      );
       await _storage.write(
         key: _storageNonI2pEndpointKey,
         value: endpointConfig.url,
@@ -336,10 +393,12 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
       if (currentTunnel.name != 'i2p') {
         return;
       }
-      final endpoint =
-          (await _storage.read(key: _storageNonI2pEndpointKey))?.trim();
-      final tlsPin =
-          (await _storage.read(key: _storageNonI2pTlsPinKey))?.trim();
+      final endpoint = (await _storage.read(
+        key: _storageNonI2pEndpointKey,
+      ))?.trim();
+      final tlsPin = (await _storage.read(
+        key: _storageNonI2pTlsPinKey,
+      ))?.trim();
       final restoreUrl = (endpoint == null || endpoint.isEmpty)
           ? FfiBridge.defaultLightdUrl
           : endpoint;
@@ -359,43 +418,10 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
     if (walletId == null) {
       return;
     }
-    await ref.read(setLightdEndpointProvider)(
-      url: trimmed,
-      tlsPin: null,
-    );
+    await ref.read(setLightdEndpointProvider)(url: trimmed, tlsPin: null);
   }
 
-  Future<bool> _pauseActiveSync() async {
-    final walletId = ref.read(activeWalletProvider);
-    if (walletId == null) return false;
-
-    var wasRunning = false;
-    try {
-      wasRunning = await FfiBridge.isSyncRunning(walletId);
-    } catch (_) {
-      // If we cannot query sync state, assume sync should be resumed.
-      wasRunning = true;
-    }
-
-    if (wasRunning) {
-      try {
-        await FfiBridge.cancelSync(walletId);
-      } catch (_) {}
-    }
-
-    ref
-      ..invalidate(syncStatusProvider)
-      ..invalidate(syncProgressStreamProvider)
-      ..invalidate(isSyncRunningProvider);
-    return wasRunning;
-  }
-
-  Future<void> _resumeActiveSync() async {
-    final walletId = ref.read(activeWalletProvider);
-    if (walletId == null) return;
-    try {
-      await FfiBridge.startSync(walletId, SyncMode.compact);
-    } catch (_) {}
+  void _invalidateSyncProviders() {
     ref
       ..invalidate(syncStatusProvider)
       ..invalidate(syncProgressStreamProvider)
@@ -421,4 +447,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 }
 
-final transportConfigProvider = NotifierProvider<TransportConfigNotifier, TransportConfig>(TransportConfigNotifier.new);
+final transportConfigProvider =
+    NotifierProvider<TransportConfigNotifier, TransportConfig>(
+      TransportConfigNotifier.new,
+    );

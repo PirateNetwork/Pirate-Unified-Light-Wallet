@@ -7,6 +7,7 @@ library;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../design/deep_space_theme.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Sync stages matching Rust SyncStage enum
 enum SyncStage {
@@ -85,12 +86,12 @@ class SyncStatus {
 
   /// Create idle status
   factory SyncStatus.idle({int height = 0}) => SyncStatus(
-        localHeight: height,
-        targetHeight: height,
-        percent: 100,
-        stage: SyncStage.idle,
-        isSyncing: false,
-      );
+    localHeight: height,
+    targetHeight: height,
+    percent: 100,
+    stage: SyncStage.idle,
+    isSyncing: false,
+  );
 
   /// Blocks remaining
   int get blocksRemaining => targetHeight - localHeight;
@@ -274,18 +275,12 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
                 },
               )
             else
-              Icon(
-                Icons.check_circle,
-                size: 14,
-                color: AppColors.success,
-              ),
+              Icon(Icons.check_circle, size: 14, color: AppColors.success),
             const SizedBox(width: 6),
             Text(
               isActive ? '${status.percent.toStringAsFixed(0)}%' : 'Synced',
               style: AppTypography.caption.copyWith(
-                color: isActive
-                    ? AppColors.gradientAStart
-                    : AppColors.success,
+                color: isActive ? AppColors.gradientAStart : AppColors.success,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -379,14 +374,14 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
                         ],
                       )
                     : null,
-                color: isActive ? null : AppColors.success.withValues(alpha: 0.2),
+                color: isActive
+                    ? null
+                    : AppColors.success.withValues(alpha: 0.2),
               ),
               child: Icon(
                 status.stage.icon,
                 size: 20,
-                color: isActive
-                    ? AppColors.gradientAStart
-                    : AppColors.success,
+                color: isActive ? AppColors.gradientAStart : AppColors.success,
               ),
             );
           },
@@ -400,14 +395,14 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                isActive ? status.stage.label : 'Synced',
+                isActive ? status.stage.label : 'Synced'.tr,
                 style: AppTypography.body.copyWith(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               Text(
-                isActive ? status.stage.description : 'Up to date',
+                isActive ? status.stage.description : 'Up to date'.tr,
                 style: AppTypography.caption.copyWith(
                   color: AppColors.textMuted,
                 ),
@@ -420,9 +415,7 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
         Text(
           '${status.percent.toStringAsFixed(1)}%',
           style: AppTypography.h3.copyWith(
-            color: isActive
-                ? AppColors.gradientAStart
-                : AppColors.success,
+            color: isActive ? AppColors.gradientAStart : AppColors.success,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -436,9 +429,9 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
       children: [
         // Stage indicators
         Row(
-          children: SyncStage.values
-              .where((s) => s != SyncStage.idle)
-              .map((stage) {
+          children: SyncStage.values.where((s) => s != SyncStage.idle).map((
+            stage,
+          ) {
             final isComplete = stage.index < status.stage.index;
             final isCurrent = stage == status.stage;
 
@@ -451,8 +444,8 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
                   color: isComplete
                       ? AppColors.success
                       : isCurrent
-                          ? AppColors.gradientAStart
-                          : AppColors.nebula,
+                      ? AppColors.gradientAStart
+                      : AppColors.nebula,
                 ),
               ),
             );
@@ -489,8 +482,9 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
                     boxShadow: status.isSyncing
                         ? [
                             BoxShadow(
-                              color:
-                                  AppColors.gradientAStart.withValues(alpha: 0.5),
+                              color: AppColors.gradientAStart.withValues(
+                                alpha: 0.5,
+                              ),
                               blurRadius: 8,
                               spreadRadius: 1,
                             ),
@@ -510,17 +504,15 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
     return Row(
       children: [
         _StatItem(
-          label: 'Height',
-          value: '${_formatNumber(status.localHeight)} / ${_formatNumber(status.targetHeight)}',
+          label: 'Height'.tr,
+          value:
+              '${_formatNumber(status.localHeight)} / ${_formatNumber(status.targetHeight)}',
         ),
         const SizedBox(width: AppSpacing.lg),
-        _StatItem(
-          label: 'ETA',
-          value: status.etaFormatted,
-        ),
+        _StatItem(label: 'ETA'.tr, value: status.etaFormatted),
         const SizedBox(width: AppSpacing.lg),
         _StatItem(
-          label: 'Checkpoint',
+          label: 'Checkpoint'.tr,
           value: status.lastCheckpointFormatted,
         ),
       ],
@@ -538,22 +530,22 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _PerfCounter(
-            label: 'blk/s',
+            label: 'blk/s'.tr,
             value: status.blocksPerSecond.toStringAsFixed(1),
             icon: Icons.speed,
           ),
           _PerfCounter(
-            label: 'notes',
+            label: 'notes'.tr,
             value: _formatNumber(status.notesDecrypted),
             icon: Icons.note_outlined,
           ),
           _PerfCounter(
-            label: 'batch',
+            label: 'batch'.tr,
             value: '${status.lastBatchMs}ms',
             icon: Icons.timer_outlined,
           ),
           _PerfCounter(
-            label: 'commits',
+            label: 'commits'.tr,
             value: _formatNumber(status.commitmentsApplied),
             icon: Icons.commit,
           ),
@@ -619,11 +611,7 @@ class _PerfCounter extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          icon,
-          size: 12,
-          color: AppColors.textMuted,
-        ),
+        Icon(icon, size: 12, color: AppColors.textMuted),
         const SizedBox(width: 4),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -743,11 +731,7 @@ class _ParticlePainter extends CustomPainter {
 
 /// Compact sync indicator for home screen header
 class PSyncIndicatorCard extends StatelessWidget {
-  const PSyncIndicatorCard({
-    required this.status,
-    this.onTap,
-    super.key,
-  });
+  const PSyncIndicatorCard({required this.status, this.onTap, super.key});
 
   final SyncStatus status;
   final VoidCallback? onTap;
@@ -765,11 +749,7 @@ class PSyncIndicatorCard extends StatelessWidget {
 
 /// Mini sync badge for app bar
 class PSyncBadge extends StatelessWidget {
-  const PSyncBadge({
-    required this.status,
-    this.onTap,
-    super.key,
-  });
+  const PSyncBadge({required this.status, this.onTap, super.key});
 
   final SyncStatus status;
   final VoidCallback? onTap;
@@ -784,4 +764,3 @@ class PSyncBadge extends StatelessWidget {
     );
   }
 }
-

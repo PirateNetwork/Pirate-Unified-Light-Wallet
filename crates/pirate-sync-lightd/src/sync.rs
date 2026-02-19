@@ -10,7 +10,7 @@
 //! - Rollback on interruption/corruption/reorg
 
 use crate::block_cache::{acquire_inflight, BlockCache, InflightLease};
-use crate::client::CompactBlockData;
+use crate::client::{CompactBlockData, TransportMode};
 use crate::frontier::SaplingFrontier;
 use crate::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes;
 use crate::orchard_frontier::OrchardFrontier;
@@ -41,7 +41,7 @@ use pirate_core::keys::{
 };
 use pirate_core::transaction::PirateNetwork;
 use pirate_params::consensus::ConsensusParams;
-use pirate_params::NetworkType;
+use pirate_params::{Network as PirateParamsNetwork, NetworkType};
 use pirate_storage_sqlite::models::{AccountKey, AddressScope, KeyScope, KeyType};
 use pirate_storage_sqlite::repository::OrchardNoteRef;
 use pirate_storage_sqlite::security::MasterKey;
@@ -177,8 +177,9 @@ pub struct SyncConfig {
 /// Constants for retry logic
 const MAX_RETRY_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF_MS: u64 = 100;
-const FRONTIER_SNAPSHOT_RETAIN: usize = 10;
+const FRONTIER_SNAPSHOT_RETAIN: usize = 512;
 const MIN_PARALLEL_OUTPUTS: usize = 256;
+const MAX_WITNESS_MARK_REPAIR_NOTES: usize = 25_000;
 
 impl Default for SyncConfig {
     fn default() -> Self {
@@ -250,6 +251,42 @@ struct PrefetchTask {
     start: u64,
     end: u64,
     handle: tokio::task::JoinHandle<Result<Vec<CompactBlockData>>>,
+}
+
+#[derive(Clone, Copy)]
+struct TreeStateRetryProfile {
+    max_attempts: u32,
+    base_timeout: Duration,
+    timeout_step: Duration,
+    max_timeout: Duration,
+    initial_backoff: Duration,
+    max_backoff: Duration,
+    bridge_timeout_cap: Duration,
+    hash_timeout_cap: Duration,
+    enable_hash_fallback: bool,
+    extended_timeout: Duration,
+    extended_hash_timeout: Duration,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FrontierInitSource {
+    None,
+    LocalSnapshot,
+    LocalCacheReplay,
+    RemoteTreeState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FrontierIntegrityStatus {
+    Verified,
+    Mismatch,
+    Unverified,
+}
+
+#[derive(Clone, Debug)]
+struct FrontierIntegrityOutcome {
+    status: FrontierIntegrityStatus,
+    detail: String,
 }
 
 impl SyncEngine {
@@ -966,9 +1003,12 @@ impl SyncEngine {
         Ok(Some(snapshot_height as u64))
     }
 
-    async fn initialize_frontiers_from_tree_state(&self, start_height: u64) -> Result<()> {
+    async fn initialize_frontiers_from_tree_state(
+        &self,
+        start_height: u64,
+    ) -> Result<FrontierInitSource> {
         if start_height == 0 {
-            return Ok(());
+            return Ok(FrontierInitSource::None);
         }
 
         let tree_height = start_height.saturating_sub(1);
@@ -998,79 +1038,418 @@ impl SyncEngine {
                     "Restored frontier snapshots at height {} from storage",
                     snapshot_height
                 );
-                return Ok(());
+                return Ok(FrontierInitSource::LocalSnapshot);
             }
 
-            // Snapshot is older than required; reset before rebuilding from tree state.
+            // Snapshot is older than required. First try to replay from local compact-block cache
+            // to avoid slow/fragile remote tree-state bootstrap on old heights.
+            if snapshot_height < tree_height {
+                let rebuilt = self
+                    .rebuild_frontier_from_cache(snapshot_height, tree_height)
+                    .await
+                    .unwrap_or(false);
+                if rebuilt {
+                    tracing::debug!(
+                        "Rebuilt frontiers from cache {} -> {} (no remote tree-state needed)",
+                        snapshot_height,
+                        tree_height
+                    );
+                    return Ok(FrontierInitSource::LocalCacheReplay);
+                }
+            }
+
+            // Cache replay not available; reset and fall back to tree-state fetch.
             *self.frontier.write().await = SaplingFrontier::new();
             *self.orchard_frontier.write().await = OrchardFrontier::new();
         }
 
+        self.initialize_frontiers_from_remote_tree_state(tree_height)
+            .await?;
+
+        Ok(FrontierInitSource::RemoteTreeState)
+    }
+
+    async fn initialize_frontiers_from_remote_tree_state(&self, tree_height: u64) -> Result<()> {
         let tree_state = self.fetch_tree_state_with_retry(tree_height).await?;
 
-        fn parse_frontier_hex<H>(
-            label: &str,
-            hex_str: &str,
-        ) -> Result<
-            bridgetree::Frontier<H, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>,
-        >
-        where
-            H: bridgetree::Hashable + zcash_primitives::merkle_tree::HashSer + Clone,
-        {
-            let bytes = hex::decode(hex_str)
-                .map_err(|e| Error::Sync(format!("Failed to decode {} bytes: {}", label, e)))?;
+        let sapling_hex = if !tree_state.sapling_frontier.is_empty() {
+            (&tree_state.sapling_frontier, "sapling_frontier")
+        } else if !tree_state.sapling_tree.is_empty() {
+            (&tree_state.sapling_tree, "sapling_tree")
+        } else {
+            return Err(Error::Sync(
+                "Tree state missing Sapling frontier/tree data".to_string(),
+            ));
+        };
 
-            if let Ok(frontier) = read_frontier_v1::<H, _>(&bytes[..]) {
-                return Ok(frontier);
+        let sapling_inner = SyncEngine::parse_frontier_hex::<crate::frontier::SaplingCommitment>(
+            sapling_hex.1,
+            sapling_hex.0,
+        )?;
+        let mut sapling_frontier = SaplingFrontier::new();
+        sapling_frontier.init_from_frontier(sapling_inner);
+
+        let orchard_required = self.orchard_tree_required(tree_height);
+        let orchard_frontier = if tree_state.orchard_tree.is_empty() {
+            if orchard_required {
+                return Err(Error::Sync(format!(
+                    "Tree state missing Orchard tree data at height {}",
+                    tree_height
+                )));
             }
+            OrchardFrontier::new()
+        } else {
+            let orchard_inner = SyncEngine::parse_frontier_hex::<MerkleHashOrchard>(
+                "orchard_tree",
+                &tree_state.orchard_tree,
+            )?;
+            let mut frontier = OrchardFrontier::new();
+            frontier.init_from_frontier(orchard_inner);
+            frontier
+        };
 
-            read_frontier_v0::<H, _>(&bytes[..])
-                .map_err(|e| Error::Sync(format!("Failed to parse {} frontier: {}", label, e)))
+        let sapling_root = sapling_frontier.root();
+        let orchard_root = orchard_frontier.root();
+
+        *self.frontier.write().await = sapling_frontier;
+        *self.orchard_frontier.write().await = orchard_frontier;
+
+        tracing::info!(
+            "Initialized authoritative frontiers at {} (sapling_root={}, orchard_root={})",
+            tree_height,
+            hex::encode(sapling_root),
+            orchard_root
+                .map(hex::encode)
+                .unwrap_or_else(|| "none".to_string())
+        );
+        Ok(())
+    }
+
+    async fn spawn_frontier_integrity_check(
+        &self,
+        start_height: u64,
+    ) -> Option<tokio::task::JoinHandle<Result<FrontierIntegrityOutcome>>> {
+        let tree_height = start_height.saturating_sub(1);
+        if tree_height == 0 {
+            return None;
         }
 
-        {
-            let mut sapling_frontier = self.frontier.write().await;
-            if sapling_frontier.is_empty() {
-                if !tree_state.sapling_frontier.is_empty() {
-                    let frontier = parse_frontier_hex::<crate::frontier::SaplingCommitment>(
-                        "sapling_frontier",
-                        &tree_state.sapling_frontier,
-                    )?;
-                    sapling_frontier.init_from_frontier(frontier);
-                } else if !tree_state.sapling_tree.is_empty() {
-                    let frontier = parse_frontier_hex::<crate::frontier::SaplingCommitment>(
-                        "sapling_tree",
-                        &tree_state.sapling_tree,
-                    )?;
-                    sapling_frontier.init_from_frontier(frontier);
+        let local_sapling_root = { self.frontier.read().await.root() };
+        let local_orchard_root = { self.orchard_frontier.read().await.root() };
+        let client = self.client.clone();
+
+        Some(tokio::spawn(async move {
+            SyncEngine::verify_frontier_integrity(
+                client,
+                tree_height,
+                local_sapling_root,
+                local_orchard_root,
+            )
+            .await
+        }))
+    }
+
+    async fn verify_frontier_integrity(
+        client: LightClient,
+        tree_height: u64,
+        local_sapling_root: [u8; 32],
+        local_orchard_root: Option<[u8; 32]>,
+    ) -> Result<FrontierIntegrityOutcome> {
+        let mut tree_state = tokio::time::timeout(
+            Duration::from_secs(8),
+            client.get_bridge_tree_state(tree_height),
+        )
+        .await
+        .ok()
+        .and_then(|r| r.ok());
+
+        if tree_state.is_none() {
+            tree_state =
+                tokio::time::timeout(Duration::from_secs(10), client.get_tree_state(tree_height))
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok());
+        }
+
+        if tree_state.is_none() {
+            let hash = tokio::time::timeout(Duration::from_secs(8), async {
+                let h = u32::try_from(tree_height).map_err(|_| {
+                    Error::Sync(format!("Tree height {} exceeds u32 range", tree_height))
+                })?;
+                let block = client.get_block(h).await?;
+                Ok::<Vec<u8>, Error>(block.hash)
+            })
+            .await
+            .ok()
+            .and_then(|r| r.ok());
+
+            if let Some(hash) = hash {
+                tree_state = tokio::time::timeout(
+                    Duration::from_secs(8),
+                    client.get_bridge_tree_state_by_hash(hash.clone()),
+                )
+                .await
+                .ok()
+                .and_then(|r| r.ok());
+
+                if tree_state.is_none() {
+                    tree_state = tokio::time::timeout(
+                        Duration::from_secs(8),
+                        client.get_tree_state_by_hash(hash),
+                    )
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok());
                 }
             }
         }
 
-        {
-            let mut orchard_frontier = self.orchard_frontier.write().await;
-            if orchard_frontier.is_empty() && !tree_state.orchard_tree.is_empty() {
-                let frontier = parse_frontier_hex::<MerkleHashOrchard>(
-                    "orchard_tree",
-                    &tree_state.orchard_tree,
-                )?;
-                orchard_frontier.init_from_frontier(frontier);
+        let Some(tree_state) = tree_state else {
+            return Ok(FrontierIntegrityOutcome {
+                status: FrontierIntegrityStatus::Unverified,
+                detail: format!("unable to fetch tree state at {}", tree_height),
+            });
+        };
+
+        let remote_sapling_root = SyncEngine::sapling_root_from_tree_state(&tree_state)?;
+        let remote_orchard_root = SyncEngine::orchard_root_from_tree_state(&tree_state)?;
+
+        let sapling_match = remote_sapling_root == local_sapling_root;
+        let orchard_match = match (local_orchard_root, remote_orchard_root) {
+            (Some(local), Some(remote)) => local == remote,
+            (None, None) => true,
+            _ => false,
+        };
+
+        if sapling_match && orchard_match {
+            return Ok(FrontierIntegrityOutcome {
+                status: FrontierIntegrityStatus::Verified,
+                detail: format!("frontier integrity verified at {}", tree_height),
+            });
+        }
+
+        Ok(FrontierIntegrityOutcome {
+            status: FrontierIntegrityStatus::Mismatch,
+            detail: format!(
+                "frontier mismatch at {} (sapling_match={}, orchard_match={}, local_orchard_present={}, remote_orchard_present={})",
+                tree_height,
+                sapling_match,
+                orchard_match,
+                local_orchard_root.is_some(),
+                remote_orchard_root.is_some()
+            ),
+        })
+    }
+
+    fn parse_frontier_hex<H>(
+        label: &str,
+        hex_str: &str,
+    ) -> Result<bridgetree::Frontier<H, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>>
+    where
+        H: bridgetree::Hashable + zcash_primitives::merkle_tree::HashSer + Clone,
+    {
+        let bytes = hex::decode(hex_str)
+            .map_err(|e| Error::Sync(format!("Failed to decode {} bytes: {}", label, e)))?;
+
+        if let Ok(frontier) = read_frontier_v1::<H, _>(&bytes[..]) {
+            return Ok(frontier);
+        }
+
+        read_frontier_v0::<H, _>(&bytes[..])
+            .map_err(|e| Error::Sync(format!("Failed to parse {} frontier: {}", label, e)))
+    }
+
+    fn sapling_root_from_tree_state(tree_state: &crate::client::TreeState) -> Result<[u8; 32]> {
+        let sapling_hex = if !tree_state.sapling_frontier.is_empty() {
+            &tree_state.sapling_frontier
+        } else if !tree_state.sapling_tree.is_empty() {
+            &tree_state.sapling_tree
+        } else {
+            return Err(Error::Sync(
+                "Tree state missing sapling frontier/tree".to_string(),
+            ));
+        };
+
+        let frontier = SyncEngine::parse_frontier_hex::<crate::frontier::SaplingCommitment>(
+            "sapling_tree_state",
+            sapling_hex,
+        )?;
+        Ok(SaplingFrontier::from_inner(frontier).root())
+    }
+
+    fn orchard_root_from_tree_state(
+        tree_state: &crate::client::TreeState,
+    ) -> Result<Option<[u8; 32]>> {
+        if tree_state.orchard_tree.is_empty() {
+            return Ok(None);
+        }
+        let frontier = SyncEngine::parse_frontier_hex::<MerkleHashOrchard>(
+            "orchard_tree_state",
+            &tree_state.orchard_tree,
+        )?;
+        let mut orchard = OrchardFrontier::new();
+        orchard.init_from_frontier(frontier);
+        Ok(orchard.root())
+    }
+
+    async fn repair_witness_marks_from_unspent_notes(
+        &self,
+        max_notes: usize,
+    ) -> Result<(usize, usize)> {
+        let sink = match self.storage.as_ref() {
+            Some(s) => s,
+            None => return Ok((0, 0)),
+        };
+
+        let notes = {
+            let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            let repo = Repository::new(&db);
+            repo.get_unspent_notes(sink.account_id)?
+        };
+
+        let mut sapling_positions = HashSet::new();
+        let mut orchard_positions = HashSet::new();
+        for note in notes.into_iter().take(max_notes) {
+            let Some(pos) = note.position else { continue };
+            if pos < 0 {
+                continue;
+            }
+            match note.note_type {
+                pirate_storage_sqlite::models::NoteType::Sapling => {
+                    sapling_positions.insert(pos as u64);
+                }
+                pirate_storage_sqlite::models::NoteType::Orchard => {
+                    orchard_positions.insert(pos as u64);
+                }
             }
         }
 
-        Ok(())
+        let mut repaired_sapling = 0usize;
+        {
+            let mut sapling_frontier = self.frontier.write().await;
+            for pos in sapling_positions {
+                if sapling_frontier.recover_mark(pos)? {
+                    repaired_sapling += 1;
+                }
+            }
+        }
+
+        let mut repaired_orchard = 0usize;
+        {
+            let mut orchard_frontier = self.orchard_frontier.write().await;
+            for pos in orchard_positions {
+                if orchard_frontier.recover_mark(pos)? {
+                    repaired_orchard += 1;
+                }
+            }
+        }
+
+        Ok((repaired_sapling, repaired_orchard))
+    }
+
+    fn tree_state_retry_profile(&self) -> TreeStateRetryProfile {
+        match self.client.transport_mode() {
+            // Tor and I2P are privacy-preserving but can have higher latency and
+            // occasional circuit/bootstrap jitter. Keep retries bounded so rescan
+            // startup doesn't sit in Headers for multiple minutes.
+            TransportMode::Tor => TreeStateRetryProfile {
+                max_attempts: 4,
+                base_timeout: Duration::from_secs(10),
+                timeout_step: Duration::from_secs(10),
+                max_timeout: Duration::from_secs(50),
+                initial_backoff: Duration::from_secs(1),
+                max_backoff: Duration::from_secs(4),
+                bridge_timeout_cap: Duration::from_secs(40),
+                hash_timeout_cap: Duration::from_secs(20),
+                enable_hash_fallback: true,
+                extended_timeout: Duration::from_secs(75),
+                extended_hash_timeout: Duration::from_secs(45),
+            },
+            TransportMode::I2p => TreeStateRetryProfile {
+                max_attempts: 4,
+                base_timeout: Duration::from_secs(10),
+                timeout_step: Duration::from_secs(10),
+                max_timeout: Duration::from_secs(50),
+                initial_backoff: Duration::from_secs(1),
+                max_backoff: Duration::from_secs(4),
+                bridge_timeout_cap: Duration::from_secs(40),
+                hash_timeout_cap: Duration::from_secs(20),
+                enable_hash_fallback: true,
+                extended_timeout: Duration::from_secs(75),
+                extended_hash_timeout: Duration::from_secs(45),
+            },
+            TransportMode::Socks5 => TreeStateRetryProfile {
+                max_attempts: 4,
+                base_timeout: Duration::from_secs(10),
+                timeout_step: Duration::from_secs(10),
+                max_timeout: Duration::from_secs(50),
+                initial_backoff: Duration::from_secs(1),
+                max_backoff: Duration::from_secs(4),
+                bridge_timeout_cap: Duration::from_secs(40),
+                hash_timeout_cap: Duration::from_secs(20),
+                enable_hash_fallback: true,
+                extended_timeout: Duration::from_secs(75),
+                extended_hash_timeout: Duration::from_secs(45),
+            },
+            // Direct mode should remain responsive while retaining enough margin
+            // for transient lightwalletd load.
+            TransportMode::Direct => TreeStateRetryProfile {
+                max_attempts: 4,
+                base_timeout: Duration::from_secs(12),
+                timeout_step: Duration::from_secs(12),
+                max_timeout: Duration::from_secs(60),
+                initial_backoff: Duration::from_secs(1),
+                max_backoff: Duration::from_secs(4),
+                bridge_timeout_cap: Duration::from_secs(45),
+                hash_timeout_cap: Duration::from_secs(20),
+                enable_hash_fallback: true,
+                extended_timeout: Duration::from_secs(90),
+                extended_hash_timeout: Duration::from_secs(60),
+            },
+        }
+    }
+
+    fn orchard_tree_required(&self, tree_height: u64) -> bool {
+        let Ok(height_u32) = u32::try_from(tree_height) else {
+            // If we somehow exceed u32 range, prefer requiring Orchard tree data.
+            return true;
+        };
+        PirateParamsNetwork::from_type(self.network_type).is_orchard_active(height_u32)
     }
 
     async fn fetch_tree_state_with_retry(
         &self,
         tree_height: u64,
     ) -> Result<crate::client::TreeState> {
-        let max_attempts = 3u32;
-        let timeout = Duration::from_secs(120);
+        let profile = self.tree_state_retry_profile();
+        let max_attempts = profile.max_attempts;
+        let base_timeout = profile.base_timeout;
+        let timeout_step = profile.timeout_step;
+        let max_timeout = profile.max_timeout;
+        let max_backoff = profile.max_backoff;
+        let bridge_timeout_cap = profile.bridge_timeout_cap;
+        let hash_timeout_cap = profile.hash_timeout_cap;
+        let enable_hash_fallback = profile.enable_hash_fallback;
+        let extended_timeout = profile.extended_timeout;
+        let extended_hash_timeout = profile.extended_hash_timeout;
         let mut attempt = 0u32;
+        let mut backoff = profile.initial_backoff;
+        let mut last_block_hash: Option<Vec<u8>> = None;
+        let orchard_required = self.orchard_tree_required(tree_height);
 
         loop {
             attempt += 1;
+            if self.is_cancelled().await {
+                return Err(Error::Cancelled);
+            }
+
+            let timeout = std::cmp::min(
+                base_timeout.saturating_add(timeout_step.saturating_mul(attempt.saturating_sub(1))),
+                max_timeout,
+            );
+            let bridge_timeout = std::cmp::min(timeout, bridge_timeout_cap);
+            let hash_timeout = std::cmp::min(timeout, hash_timeout_cap);
+
             // #region agent log
             if let Ok(mut file) = std::fs::OpenOptions::new()
                 .create(true)
@@ -1095,141 +1474,306 @@ impl SyncEngine {
             }
             // #endregion
 
-            let bridge_future =
-                tokio::time::timeout(timeout, self.client.get_bridge_tree_state(tree_height));
-            let legacy_future =
-                tokio::time::timeout(timeout, self.client.get_tree_state(tree_height));
-            tokio::pin!(bridge_future);
-            tokio::pin!(legacy_future);
+            // Try bridge first, then legacy. Running both in parallel can overload some
+            // servers and cause both RPCs to time out simultaneously.
+            let mut hash_err: Option<String> = None;
+            let mut bridge_hash_err: Option<String> = None;
+            let mut legacy_hash_err: Option<String> = None;
 
-            let (bridge_err, legacy_err) = tokio::select! {
-                result = &mut bridge_future => {
-                    let bridge_err = match result {
-                        Ok(Ok(state)) => return Ok(state),
-                        Ok(Err(e)) => {
-                            if let Ok(mut file) = std::fs::OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(debug_log_path())
-                            {
-                                let ts = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_millis();
-                                let id = format!("{:08x}", ts);
-                                let _ = writeln!(
-                                    file,
-                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:535","message":"bridge tree state failed","data":{{"tree_height":{},"attempt":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                                    id,
-                                    ts,
-                                    tree_height,
-                                    attempt,
-                                    e
-                                );
-                            }
-                            Some(format!("{:?}", e))
-                        }
-                        Err(_) => {
-                            if let Ok(mut file) = std::fs::OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(debug_log_path())
-                            {
-                                let ts = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_millis();
-                                let id = format!("{:08x}", ts);
-                                let _ = writeln!(
-                                    file,
-                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:552","message":"bridge tree state timeout","data":{{"tree_height":{},"attempt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                                    id,
-                                    ts,
-                                    tree_height,
-                                    attempt
-                                );
-                            }
-                            Some("timeout".to_string())
-                        }
-                    };
+            let bridge_err = if orchard_required {
+                let bridge_result = tokio::select! {
+                    _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                    result = tokio::time::timeout(bridge_timeout, self.client.get_bridge_tree_state(tree_height)) => result,
+                };
 
-                    let legacy_err = match legacy_future.await {
-                        Ok(Ok(state)) => return Ok(state),
-                        Ok(Err(e)) => Some(format!("{:?}", e)),
-                        Err(_) => Some("timeout".to_string()),
-                    };
-                    (bridge_err, legacy_err)
+                match bridge_result {
+                    Ok(Ok(state)) => return Ok(state),
+                    Ok(Err(e)) => {
+                        if let Ok(mut file) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(debug_log_path())
+                        {
+                            let ts = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis();
+                            let id = format!("{:08x}", ts);
+                            let _ = writeln!(
+                                file,
+                                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:535","message":"bridge tree state failed","data":{{"tree_height":{},"attempt":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                                id, ts, tree_height, attempt, e
+                            );
+                        }
+                        Some(format!("{:?}", e))
+                    }
+                    Err(_) => {
+                        if let Ok(mut file) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(debug_log_path())
+                        {
+                            let ts = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis();
+                            let id = format!("{:08x}", ts);
+                            let _ = writeln!(
+                                file,
+                                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:552","message":"bridge tree state timeout","data":{{"tree_height":{},"attempt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                                id, ts, tree_height, attempt
+                            );
+                        }
+                        Some("timeout".to_string())
+                    }
                 }
-                result = &mut legacy_future => {
-                    let legacy_err = match result {
-                        Ok(Ok(state)) => return Ok(state),
-                        Ok(Err(e)) => Some(format!("{:?}", e)),
-                        Err(_) => Some("timeout".to_string()),
-                    };
-
-                    let bridge_err = match bridge_future.await {
-                        Ok(Ok(state)) => return Ok(state),
-                        Ok(Err(e)) => {
-                            if let Ok(mut file) = std::fs::OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(debug_log_path())
-                            {
-                                let ts = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_millis();
-                                let id = format!("{:08x}", ts);
-                                let _ = writeln!(
-                                    file,
-                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:535","message":"bridge tree state failed","data":{{"tree_height":{},"attempt":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                                    id,
-                                    ts,
-                                    tree_height,
-                                    attempt,
-                                    e
-                                );
-                            }
-                            Some(format!("{:?}", e))
-                        }
-                        Err(_) => {
-                            if let Ok(mut file) = std::fs::OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(debug_log_path())
-                            {
-                                let ts = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_millis();
-                                let id = format!("{:08x}", ts);
-                                let _ = writeln!(
-                                    file,
-                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:552","message":"bridge tree state timeout","data":{{"tree_height":{},"attempt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                                    id,
-                                    ts,
-                                    tree_height,
-                                    attempt
-                                );
-                            }
-                            Some("timeout".to_string())
-                        }
-                    };
-                    (bridge_err, legacy_err)
-                }
+            } else {
+                Some("not_required".to_string())
             };
 
+            let legacy_result = tokio::select! {
+                _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                result = tokio::time::timeout(timeout, self.client.get_tree_state(tree_height)) => result,
+            };
+
+            let legacy_err = match legacy_result {
+                Ok(Ok(state)) => {
+                    if orchard_required && state.orchard_tree.is_empty() {
+                        Some("missing_orchard_tree".to_string())
+                    } else {
+                        return Ok(state);
+                    }
+                }
+                Ok(Err(e)) => Some(format!("{:?}", e)),
+                Err(_) => Some("timeout".to_string()),
+            };
+
+            // Fallback: resolve block hash and retry tree-state by hash. Some servers
+            // handle hash-based lookups more reliably than height-based lookups.
+            let hash_lookup_attempted = enable_hash_fallback;
+            if hash_lookup_attempted {
+                let block_hash_result = tokio::select! {
+                    _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                    result = tokio::time::timeout(hash_timeout, async {
+                        let height_u32 = u32::try_from(tree_height)
+                            .map_err(|_| Error::Sync(format!("Tree height {} exceeds u32 range", tree_height)))?;
+                        let block = self.client.get_block(height_u32).await?;
+                        Ok::<Vec<u8>, Error>(block.hash)
+                    }) => result,
+                };
+
+                let block_hash = match block_hash_result {
+                    Ok(Ok(hash)) if hash.len() == 32 => {
+                        last_block_hash = Some(hash.clone());
+                        Some(hash)
+                    }
+                    Ok(Ok(hash)) => {
+                        hash_err = Some(format!("unexpected_hash_len_{}", hash.len()));
+                        None
+                    }
+                    Ok(Err(e)) => {
+                        hash_err = Some(format!("{:?}", e));
+                        None
+                    }
+                    Err(_) => {
+                        hash_err = Some("timeout".to_string());
+                        None
+                    }
+                };
+
+                if let Some(hash) = block_hash {
+                    if orchard_required {
+                        let bridge_hash_result = tokio::select! {
+                            _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                            result = tokio::time::timeout(hash_timeout, self.client.get_bridge_tree_state_by_hash(hash.clone())) => result,
+                        };
+
+                        match bridge_hash_result {
+                            Ok(Ok(state)) => return Ok(state),
+                            Ok(Err(e)) => bridge_hash_err = Some(format!("{:?}", e)),
+                            Err(_) => bridge_hash_err = Some("timeout".to_string()),
+                        }
+                    } else {
+                        bridge_hash_err = Some("not_required".to_string());
+                    }
+
+                    let legacy_hash_result = tokio::select! {
+                        _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                        result = tokio::time::timeout(hash_timeout, self.client.get_tree_state_by_hash(hash)) => result,
+                    };
+
+                    match legacy_hash_result {
+                        Ok(Ok(state)) => {
+                            if orchard_required && state.orchard_tree.is_empty() {
+                                legacy_hash_err = Some("missing_orchard_tree".to_string());
+                            } else {
+                                return Ok(state);
+                            }
+                        }
+                        Ok(Err(e)) => legacy_hash_err = Some(format!("{:?}", e)),
+                        Err(_) => legacy_hash_err = Some("timeout".to_string()),
+                    }
+                }
+            }
+
             if attempt >= max_attempts {
+                // One final extended pass for slow/lightly-loaded servers at old heights.
+                // This avoids endless short-timeout loops while keeping normal startup fast.
+                let mut extended_bridge_hash_err: Option<String> = None;
+                let mut extended_legacy_hash_err: Option<String> = None;
+                let mut extended_hash_err: Option<String> = None;
+
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:tree_state_extended","message":"extended tree state attempt","data":{{"tree_height":{},"timeout_secs":{},"hash_timeout_secs":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                        id,
+                        ts,
+                        tree_height,
+                        extended_timeout.as_secs(),
+                        extended_hash_timeout.as_secs()
+                    );
+                }
+
+                let extended_bridge_err = if orchard_required {
+                    let extended_bridge = tokio::select! {
+                        _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                        result = tokio::time::timeout(extended_timeout, self.client.get_bridge_tree_state(tree_height)) => result,
+                    };
+                    match extended_bridge {
+                        Ok(Ok(state)) => return Ok(state),
+                        Ok(Err(e)) => Some(format!("{:?}", e)),
+                        Err(_) => Some("timeout".to_string()),
+                    }
+                } else {
+                    Some("not_required".to_string())
+                };
+
+                let extended_legacy = tokio::select! {
+                    _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                    result = tokio::time::timeout(extended_timeout, self.client.get_tree_state(tree_height)) => result,
+                };
+                let extended_legacy_err = match extended_legacy {
+                    Ok(Ok(state)) => {
+                        if orchard_required && state.orchard_tree.is_empty() {
+                            Some("missing_orchard_tree".to_string())
+                        } else {
+                            return Ok(state);
+                        }
+                    }
+                    Ok(Err(e)) => Some(format!("{:?}", e)),
+                    Err(_) => Some("timeout".to_string()),
+                };
+
+                if enable_hash_fallback {
+                    let block_hash = if let Some(hash) = last_block_hash.clone() {
+                        Some(hash)
+                    } else {
+                        let block_hash_result = tokio::select! {
+                            _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                            result = tokio::time::timeout(extended_hash_timeout, async {
+                                let height_u32 = u32::try_from(tree_height)
+                                    .map_err(|_| Error::Sync(format!("Tree height {} exceeds u32 range", tree_height)))?;
+                                let block = self.client.get_block(height_u32).await?;
+                                Ok::<Vec<u8>, Error>(block.hash)
+                            }) => result,
+                        };
+                        match block_hash_result {
+                            Ok(Ok(hash)) if hash.len() == 32 => Some(hash),
+                            Ok(Ok(hash)) => {
+                                extended_hash_err =
+                                    Some(format!("unexpected_hash_len_{}", hash.len()));
+                                None
+                            }
+                            Ok(Err(e)) => {
+                                extended_hash_err = Some(format!("{:?}", e));
+                                None
+                            }
+                            Err(_) => {
+                                extended_hash_err = Some("timeout".to_string());
+                                None
+                            }
+                        }
+                    };
+
+                    if let Some(hash) = block_hash {
+                        if orchard_required {
+                            let extended_bridge_hash = tokio::select! {
+                                _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                                result = tokio::time::timeout(extended_timeout, self.client.get_bridge_tree_state_by_hash(hash.clone())) => result,
+                            };
+                            match extended_bridge_hash {
+                                Ok(Ok(state)) => return Ok(state),
+                                Ok(Err(e)) => extended_bridge_hash_err = Some(format!("{:?}", e)),
+                                Err(_) => extended_bridge_hash_err = Some("timeout".to_string()),
+                            }
+                        } else {
+                            extended_bridge_hash_err = Some("not_required".to_string());
+                        }
+
+                        let extended_legacy_hash = tokio::select! {
+                            _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                            result = tokio::time::timeout(extended_timeout, self.client.get_tree_state_by_hash(hash)) => result,
+                        };
+                        match extended_legacy_hash {
+                            Ok(Ok(state)) => {
+                                if orchard_required && state.orchard_tree.is_empty() {
+                                    extended_legacy_hash_err =
+                                        Some("missing_orchard_tree".to_string());
+                                } else {
+                                    return Ok(state);
+                                }
+                            }
+                            Ok(Err(e)) => extended_legacy_hash_err = Some(format!("{:?}", e)),
+                            Err(_) => extended_legacy_hash_err = Some("timeout".to_string()),
+                        }
+                    }
+                }
+
                 return Err(Error::Sync(format!(
-                    "Tree state fetch failed at {} after {} attempts (bridge: {}, legacy: {})",
+                    "Tree state fetch failed at {} after {} attempts + extended fallback (bridge: {}, legacy: {}, hash: {}, bridge_hash: {}, legacy_hash: {}, ext_bridge: {}, ext_legacy: {}, ext_hash: {}, ext_bridge_hash: {}, ext_legacy_hash: {})",
                     tree_height,
                     attempt,
                     bridge_err.unwrap_or_else(|| "unknown".to_string()),
-                    legacy_err.unwrap_or_else(|| "unknown".to_string())
+                    legacy_err.unwrap_or_else(|| "unknown".to_string()),
+                    hash_err.unwrap_or_else(|| {
+                        if hash_lookup_attempted {
+                            "ok".to_string()
+                        } else {
+                            "not_attempted".to_string()
+                        }
+                    }),
+                    bridge_hash_err.unwrap_or_else(|| "not_attempted".to_string()),
+                    legacy_hash_err.unwrap_or_else(|| "not_attempted".to_string()),
+                    extended_bridge_err.unwrap_or_else(|| "not_attempted".to_string()),
+                    extended_legacy_err.unwrap_or_else(|| "not_attempted".to_string()),
+                    extended_hash_err.unwrap_or_else(|| "not_attempted".to_string()),
+                    extended_bridge_hash_err.unwrap_or_else(|| "not_attempted".to_string()),
+                    extended_legacy_hash_err.unwrap_or_else(|| "not_attempted".to_string())
                 )));
             }
 
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            // Rebuild channel/transport state before retrying to recover from transient
+            // transport readiness and edge network errors.
+            self.client.disconnect().await;
+            let _ = self.client.connect().await;
+
+            tokio::select! {
+                _ = tokio::time::sleep(backoff) => {}
+                _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+            }
+
+            backoff = std::cmp::min(backoff.saturating_mul(2), max_backoff);
         }
     }
 
@@ -1250,6 +1794,10 @@ impl SyncEngine {
         let mut avg_block_size_estimate =
             (self.config.target_batch_bytes / self.config.batch_size.max(1)).max(1);
         let mut pending_fetch: Option<PrefetchTask> = None;
+        let mut frontier_integrity_guard: Option<
+            tokio::task::JoinHandle<Result<FrontierIntegrityOutcome>>,
+        > = None;
+        let mut frontier_integrity_retries = 0u8;
 
         // Reset perf counters
         self.perf.reset();
@@ -1258,6 +1806,7 @@ impl SyncEngine {
         self.cancel.reset();
 
         if start > 0 {
+            let mut init_source = FrontierInitSource::None;
             let needs_init = self.frontier.read().await.is_empty();
 
             if needs_init {
@@ -1283,7 +1832,41 @@ impl SyncEngine {
                     );
                 }
                 // #endregion
-                self.initialize_frontiers_from_tree_state(start).await?;
+                init_source = self.initialize_frontiers_from_tree_state(start).await?;
+            }
+
+            match self
+                .repair_witness_marks_from_unspent_notes(MAX_WITNESS_MARK_REPAIR_NOTES)
+                .await
+            {
+                Ok((sapling_repaired, orchard_repaired)) => {
+                    if sapling_repaired > 0 || orchard_repaired > 0 {
+                        tracing::info!(
+                            "Recovered stale witness marks (sapling={}, orchard={})",
+                            sapling_repaired,
+                            orchard_repaired
+                        );
+                        let repaired_checkpoint = start.saturating_sub(1);
+                        if start > 0 {
+                            self.create_checkpoint(repaired_checkpoint).await?;
+                            tracing::info!(
+                                "Persisted repaired witness/frontier state at checkpoint {}",
+                                repaired_checkpoint
+                            );
+                            last_checkpoint_height = repaired_checkpoint;
+                            last_major_checkpoint_height = repaired_checkpoint;
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Witness mark repair skipped due to error: {}", e);
+                }
+            }
+
+            let should_run_integrity_guard =
+                !matches!(init_source, FrontierInitSource::RemoteTreeState) && start > 0;
+            if should_run_integrity_guard {
+                frontier_integrity_guard = self.spawn_frontier_integrity_check(start).await;
             }
         }
 
@@ -1316,6 +1899,110 @@ impl SyncEngine {
                 if self.is_cancelled().await {
                     tracing::warn!("Sync cancelled at height {}", current_height);
                     return Err(Error::Cancelled);
+                }
+
+                let guard_finished = frontier_integrity_guard
+                    .as_ref()
+                    .map(|handle| handle.is_finished())
+                    .unwrap_or(false);
+                if guard_finished {
+                    let handle = frontier_integrity_guard.take().expect("guard should exist");
+                    match handle.await {
+                        Ok(Ok(outcome)) => match outcome.status {
+                            FrontierIntegrityStatus::Verified => {
+                                tracing::info!("{}", outcome.detail);
+                            }
+                            FrontierIntegrityStatus::Unverified => {
+                                tracing::warn!("{}", outcome.detail);
+                                if frontier_integrity_retries < 1 {
+                                    frontier_integrity_retries += 1;
+                                    frontier_integrity_guard =
+                                        self.spawn_frontier_integrity_check(start).await;
+                                }
+                            }
+                            FrontierIntegrityStatus::Mismatch => {
+                                tracing::warn!(
+                                    "{}; rolling back to {} and reinitializing from authoritative tree state",
+                                    outcome.detail,
+                                    start.saturating_sub(1)
+                                );
+
+                                if let Some(prefetch) = pending_fetch.take() {
+                                    prefetch.handle.abort();
+                                }
+
+                                let heal_checkpoint = start.saturating_sub(1);
+                                let rollback_height =
+                                    self.rollback_to_checkpoint(heal_checkpoint).await?;
+                                let restart_height = rollback_height.saturating_add(1).max(start);
+                                let healed_checkpoint = restart_height.saturating_sub(1);
+
+                                self.reset_frontiers_for_replay(restart_height).await?;
+                                if restart_height > 0 {
+                                    self.initialize_frontiers_from_remote_tree_state(
+                                        restart_height.saturating_sub(1),
+                                    )
+                                    .await?;
+                                }
+
+                                match self
+                                    .repair_witness_marks_from_unspent_notes(
+                                        MAX_WITNESS_MARK_REPAIR_NOTES,
+                                    )
+                                    .await
+                                {
+                                    Ok((sapling_repaired, orchard_repaired)) => {
+                                        if sapling_repaired > 0 || orchard_repaired > 0 {
+                                            tracing::info!(
+                                                "Post-heal witness repair (sapling={}, orchard={})",
+                                                sapling_repaired,
+                                                orchard_repaired
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "Post-heal witness repair skipped due to error: {}",
+                                            e
+                                        );
+                                    }
+                                }
+
+                                if restart_height > 0 {
+                                    self.create_checkpoint(healed_checkpoint).await?;
+                                    tracing::info!(
+                                        "Persisted post-heal frontier/witness checkpoint at {}",
+                                        healed_checkpoint
+                                    );
+                                }
+
+                                current_height = restart_height;
+                                last_checkpoint_height = healed_checkpoint;
+                                last_major_checkpoint_height = healed_checkpoint;
+                                batches_since_mini_checkpoint = 0;
+                                current_target_bytes = self.config.target_batch_bytes;
+                                consecutive_heavy_batches = 0;
+                                avg_block_size_estimate = (self.config.target_batch_bytes
+                                    / self.config.batch_size.max(1))
+                                .max(1);
+
+                                {
+                                    let progress = self.progress.write().await;
+                                    progress.set_stage(SyncStage::Headers);
+                                    progress.set_checkpoint(healed_checkpoint);
+                                    progress.set_current(restart_height.saturating_sub(1));
+                                }
+
+                                continue;
+                            }
+                        },
+                        Ok(Err(e)) => {
+                            tracing::warn!("Frontier integrity guard failed: {}", e);
+                        }
+                        Err(e) => {
+                            tracing::warn!("Frontier integrity task join failed: {}", e);
+                        }
+                    }
                 }
 
                 let batch_start_time = Instant::now();
@@ -1368,7 +2055,7 @@ impl SyncEngine {
 
                 let (blocks, fetch_wait_ms) = {
                     let mut backoff = Duration::from_secs(2);
-                    let max_backoff = Duration::from_secs(60);
+                    let max_backoff = Duration::from_secs(10);
                     let mut prefetch_handle = Some(handle);
 
                     loop {
@@ -2071,7 +2758,7 @@ impl SyncEngine {
                 }
                 Err(e) => {
                     tracing::warn!(
-                        "Failed to check for new blocks after sync: {}, reconnecting and retrying in 30s",
+                        "Failed to check for new blocks after sync: {}, reconnecting and retrying in 5s",
                         e
                     );
                     self.client.disconnect().await;
@@ -2079,7 +2766,7 @@ impl SyncEngine {
                         tracing::warn!("Reconnect failed: {}", conn_err);
                     }
                     tokio::select! {
-                        _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+                        _ = tokio::time::sleep(Duration::from_secs(5)) => {}
                         _ = self.cancel.cancelled() => return Err(Error::Cancelled),
                     }
                     continue; // Retry
@@ -4595,9 +5282,17 @@ impl StorageSink {
                     }
                 }
 
-                if existing.key_id.is_none() && n.key_id.is_some() {
+                if n.key_id.is_some() && existing.key_id != n.key_id {
+                    let previous = existing.key_id;
                     updated.key_id = n.key_id;
                     changed = true;
+                    tracing::info!(
+                        "Corrected note key_id for tx {} output {} from {:?} to {:?}",
+                        txid_hex,
+                        n.output_index,
+                        previous,
+                        n.key_id
+                    );
                 }
 
                 if !n.diversifier.is_empty() {
