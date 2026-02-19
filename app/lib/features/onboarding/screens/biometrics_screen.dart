@@ -15,6 +15,7 @@ import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 class OnboardingBiometricsScreen extends ConsumerStatefulWidget {
   const OnboardingBiometricsScreen({super.key});
@@ -97,7 +98,7 @@ class _OnboardingBiometricsScreenState
         lowered.contains('required entitlement') ||
         lowered.contains('keychain')) {
       return 'Secure storage is unavailable for this macOS build. '
-          'Install a build with Keychain entitlements and try again.';
+          'Install the latest build and try again.';
     }
     return 'Unable to enable biometrics.';
   }
@@ -157,99 +158,89 @@ class _OnboardingBiometricsScreenState
     final isImport = onboardingState.mode == OnboardingMode.import;
     final totalSteps = isImport ? 5 : 6;
     final currentStep = isImport ? 4 : 3;
+    final contentPadding = AppSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+      vertical: AppSpacing.xl,
+    );
 
     return PScaffold(
-      title: 'Biometrics',
-      appBar: const PAppBar(
-        title: 'Enable biometrics',
-        subtitle: 'Faster unlock with device security',
+      title: 'Biometrics'.tr,
+      appBar: PAppBar(
+        title: 'Enable biometrics'.tr,
+        subtitle: 'Faster unlock with device security'.tr,
         showBackButton: true,
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverPadding(
-            padding: AppSpacing.screenPadding(
-              MediaQuery.of(context).size.width,
-              vertical: AppSpacing.xl,
+      body: SingleChildScrollView(
+        padding: contentPadding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OnboardingProgressIndicator(
+              currentStep: currentStep,
+              totalSteps: totalSteps,
             ),
-            sliver: SliverFillRemaining(
-              hasScrollBody: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  OnboardingProgressIndicator(
-                    currentStep: currentStep,
-                    totalSteps: totalSteps,
-                  ),
-                  const SizedBox(height: AppSpacing.xxl),
-                  Text(
-                    'Use biometrics to unlock',
-                    style: AppTypography.h2.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'You can still unlock with your passphrase. '
-                    'Biometrics never leave your device.',
-                    style: AppTypography.body.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xxl),
-                  if (_error != null)
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-                      decoration: BoxDecoration(
-                        color: AppColors.error.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.error.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            color: AppColors.error,
-                            size: 18,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              _error!,
-                              style: AppTypography.body.copyWith(
-                                color: AppColors.error,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const Spacer(),
-                  PButton(
-                    text: _isAvailable
-                        ? 'Enable biometrics'
-                        : 'Biometrics unavailable',
-                    onPressed: !_isAvailable || _isLoading
-                        ? null
-                        : _enableBiometrics,
-                    variant: PButtonVariant.primary,
-                    size: PButtonSize.large,
-                    isLoading: _isLoading,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  PTextButton(
-                    label: 'Skip for now',
-                    onPressed: _isLoading ? null : _skip,
-                    variant: PTextButtonVariant.subtle,
-                  ),
-                ],
+            const SizedBox(height: AppSpacing.xxl),
+            Text(
+              'Use biometrics to unlock'.tr,
+              style: AppTypography.h2.copyWith(
+                color: AppColors.textPrimary,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'You can still unlock with your passphrase. '
+                      'Biometrics never leave your device.'
+                  .tr,
+              style: AppTypography.body.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xxl),
+            if (_error != null)
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: AppColors.error,
+                      size: 18,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: AppTypography.body.copyWith(
+                          color: AppColors.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            PButton(
+              text: _isAvailable ? 'Enable biometrics' : 'Biometrics unavailable',
+              onPressed: !_isAvailable || _isLoading ? null : _enableBiometrics,
+              variant: PButtonVariant.primary,
+              size: PButtonSize.large,
+              isLoading: _isLoading,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            PTextButton(
+              label: 'Skip for now'.tr,
+              onPressed: _isLoading ? null : _skip,
+              variant: PTextButtonVariant.subtle,
+            ),
+          ],
+        ),
       ),
     );
   }

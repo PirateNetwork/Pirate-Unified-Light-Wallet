@@ -12,7 +12,9 @@ import 'package:flutter/services.dart';
 
 /// OS Keystore manager
 class KeystoreChannel {
-  static const MethodChannel _channel = MethodChannel('com.pirate.wallet/keystore');
+  static const MethodChannel _channel = MethodChannel(
+    'com.pirate.wallet/keystore',
+  );
 
   /// Store sealed key in OS keystore
   static Future<bool> storeKey({
@@ -20,13 +22,10 @@ class KeystoreChannel {
     required List<int> encryptedKey,
   }) async {
     try {
-      final result = await _channel.invokeMethod<bool>(
-        'storeKey',
-        {
-          'keyId': keyId,
-          'encryptedKey': encryptedKey,
-        },
-      );
+      final result = await _channel.invokeMethod<bool>('storeKey', {
+        'keyId': keyId,
+        'encryptedKey': encryptedKey,
+      });
       return result ?? false;
     } on PlatformException catch (e) {
       throw KeystoreException('Failed to store key: ${e.message}');
@@ -36,10 +35,9 @@ class KeystoreChannel {
   /// Retrieve sealed key from OS keystore
   static Future<List<int>?> retrieveKey(String keyId) async {
     try {
-      final result = await _channel.invokeMethod<List<dynamic>>(
-        'retrieveKey',
-        {'keyId': keyId},
-      );
+      final result = await _channel.invokeMethod<List<dynamic>>('retrieveKey', {
+        'keyId': keyId,
+      });
       return result?.cast<int>();
     } on PlatformException catch (e) {
       throw KeystoreException('Failed to retrieve key: ${e.message}');
@@ -49,10 +47,9 @@ class KeystoreChannel {
   /// Delete key from OS keystore
   static Future<bool> deleteKey(String keyId) async {
     try {
-      final result = await _channel.invokeMethod<bool>(
-        'deleteKey',
-        {'keyId': keyId},
-      );
+      final result = await _channel.invokeMethod<bool>('deleteKey', {
+        'keyId': keyId,
+      });
       return result ?? false;
     } on PlatformException catch (e) {
       throw KeystoreException('Failed to delete key: ${e.message}');
@@ -62,10 +59,9 @@ class KeystoreChannel {
   /// Check if key exists
   static Future<bool> keyExists(String keyId) async {
     try {
-      final result = await _channel.invokeMethod<bool>(
-        'keyExists',
-        {'keyId': keyId},
-      );
+      final result = await _channel.invokeMethod<bool>('keyExists', {
+        'keyId': keyId,
+      });
       return result ?? false;
     } on PlatformException catch (e) {
       throw KeystoreException('Failed to check key: ${e.message}');
@@ -73,7 +69,7 @@ class KeystoreChannel {
   }
 
   /// Seal master key with OS keystore
-  /// 
+  ///
   /// On Android: Uses Keystore with StrongBox if available
   /// On iOS: Uses Secure Enclave if available, fallback to Keychain
   /// On macOS: Uses Keychain
@@ -116,11 +112,11 @@ class KeystoreChannel {
       final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
         'getCapabilities',
       );
-      
+
       if (result == null) {
         return KeystoreCapabilities.none();
       }
-      
+
       return KeystoreCapabilities(
         hasSecureHardware: result['hasSecureHardware'] as bool? ?? false,
         hasStrongBox: result['hasStrongBox'] as bool? ?? false,
@@ -138,10 +134,9 @@ class KeystoreChannel {
       return;
     }
     try {
-      await _channel.invokeMethod<bool>(
-        'setBiometricsEnabled',
-        {'enabled': enabled},
-      );
+      await _channel.invokeMethod<bool>('setBiometricsEnabled', {
+        'enabled': enabled,
+      });
     } on PlatformException catch (e) {
       throw KeystoreException('Failed to update biometrics: ${e.message}');
     }
@@ -161,13 +156,13 @@ class KeystoreChannel {
 class KeystoreCapabilities {
   /// Has secure hardware (TEE/Secure Enclave)
   final bool hasSecureHardware;
-  
+
   /// Has StrongBox (Android)
   final bool hasStrongBox;
-  
+
   /// Has Secure Enclave (iOS/macOS)
   final bool hasSecureEnclave;
-  
+
   /// Has biometric authentication
   final bool hasBiometrics;
 
@@ -193,7 +188,7 @@ class KeystoreCapabilities {
     if (hasSecureEnclave) features.add('Secure Enclave');
     if (hasSecureHardware) features.add('Secure Hardware');
     if (hasBiometrics) features.add('Biometrics');
-    
+
     return features.isEmpty ? 'No secure hardware' : features.join(', ');
   }
 }
@@ -201,10 +196,9 @@ class KeystoreCapabilities {
 /// Keystore exception
 class KeystoreException implements Exception {
   final String message;
-  
+
   KeystoreException(this.message);
-  
+
   @override
   String toString() => 'KeystoreException: $message';
 }
-

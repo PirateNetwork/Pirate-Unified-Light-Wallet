@@ -7,7 +7,6 @@ import LocalAuthentication
 class AppDelegate: FlutterAppDelegate {
   private let keystoreService = "com.pirate.wallet.keystore"
   private let masterKeyAccount = "pirate_wallet_master_key"
-  private let masterKeyPrompt = "Authenticate to unlock Pirate Wallet"
   private let sealedKeyMarker = Data("macos-keychain-v1".utf8)
   private var securityChannel: FlutterMethodChannel?
 
@@ -70,7 +69,7 @@ class AppDelegate: FlutterAppDelegate {
         try storeKeychainData(encryptedKey.data, account: keyId)
         result(true)
       } catch {
-        result(FlutterError(code: "KEYSTORE_ERROR", message: error.localizedDescription, details: nil))
+        result(FlutterError(code: "KEYSTORE_ERROR", message: formatKeystoreError(error), details: nil))
       }
     case "retrieveKey":
       guard let args = call.arguments as? [String: Any],
@@ -85,7 +84,7 @@ class AppDelegate: FlutterAppDelegate {
           result(nil)
         }
       } catch {
-        result(FlutterError(code: "KEYSTORE_ERROR", message: error.localizedDescription, details: nil))
+        result(FlutterError(code: "KEYSTORE_ERROR", message: formatKeystoreError(error), details: nil))
       }
     case "deleteKey":
       guard let args = call.arguments as? [String: Any],
@@ -97,7 +96,7 @@ class AppDelegate: FlutterAppDelegate {
         try deleteKeychainData(account: keyId)
         result(true)
       } catch {
-        result(FlutterError(code: "KEYSTORE_ERROR", message: error.localizedDescription, details: nil))
+        result(FlutterError(code: "KEYSTORE_ERROR", message: formatKeystoreError(error), details: nil))
       }
     case "keyExists":
       guard let args = call.arguments as? [String: Any],
@@ -113,8 +112,8 @@ class AppDelegate: FlutterAppDelegate {
         return
       }
       do {
-        // Bind the cached passphrase secret to biometric auth at the Keychain
-        // layer. This is defense-in-depth beyond app-level local_auth checks.
+        // Store wrapped passphrase secret in Keychain. Biometric enforcement
+        // is handled by local_auth in the unlock flow for desktop builds.
         try storeKeychainData(
           masterKey.data,
           account: masterKeyAccount,
@@ -123,7 +122,7 @@ class AppDelegate: FlutterAppDelegate {
         // Return a non-empty marker so Dart-side cache existence checks work.
         result(FlutterStandardTypedData(bytes: sealedKeyMarker))
       } catch {
-        result(FlutterError(code: "SEAL_ERROR", message: error.localizedDescription, details: nil))
+        result(FlutterError(code: "SEAL_ERROR", message: formatKeystoreError(error), details: nil))
       }
     case "unsealMasterKey":
       guard let args = call.arguments as? [String: Any],
@@ -141,7 +140,7 @@ class AppDelegate: FlutterAppDelegate {
           result(FlutterError(code: "UNSEAL_ERROR", message: "Master key not found", details: nil))
         }
       } catch {
-        result(FlutterError(code: "UNSEAL_ERROR", message: error.localizedDescription, details: nil))
+        result(FlutterError(code: "UNSEAL_ERROR", message: formatKeystoreError(error), details: nil))
       }
     case "getCapabilities":
       result(getCapabilities())
@@ -153,7 +152,7 @@ class AppDelegate: FlutterAppDelegate {
   private func storeKeychainData(
     _ data: Data,
     account: String,
-    requireBiometric: Bool = false
+    requireBiometric _: Bool = false
   ) throws {
     let baseQuery: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
@@ -164,28 +163,11 @@ class AppDelegate: FlutterAppDelegate {
     var addQuery = baseQuery
     addQuery[kSecValueData as String] = data
 
-    if requireBiometric {
-      var accessError: Unmanaged<CFError>?
-      guard let accessControl = SecAccessControlCreateWithFlags(
-        nil,
-        kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        .biometryCurrentSet,
-        &accessError
-      ) else {
-        let code: Int
-        if let error = accessError?.takeRetainedValue() {
-          code = CFErrorGetCode(error)
-        } else {
-          code = Int(errSecParam)
-        }
-        throw NSError(domain: "KeystoreError", code: code, userInfo: nil)
-      }
-      addQuery[kSecAttrAccessControl as String] = accessControl
-    } else {
-      addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-    }
+    // Keep macOS keychain mode stable across signed/unsigned desktop builds.
+    // Biometric gating is enforced at unlock time via local_auth.
+    addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 
-    // Recreate item so its ACL matches current policy (biometric vs standard).
+    // Recreate item to keep storage attributes consistent across updates.
     let deleteStatus = SecItemDelete(baseQuery as CFDictionary)
     if deleteStatus != errSecSuccess && deleteStatus != errSecItemNotFound {
       throw NSError(domain: "KeystoreError", code: Int(deleteStatus), userInfo: nil)
@@ -199,7 +181,7 @@ class AppDelegate: FlutterAppDelegate {
 
   private func loadKeychainData(
     account: String,
-    requireBiometric: Bool = false
+    requireBiometric _: Bool = false
   ) throws -> Data? {
     var query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
@@ -208,9 +190,6 @@ class AppDelegate: FlutterAppDelegate {
       kSecReturnData as String: true,
       kSecMatchLimit as String: kSecMatchLimitOne
     ]
-    if requireBiometric {
-      query[kSecUseOperationPrompt as String] = masterKeyPrompt
-    }
     var item: CFTypeRef?
     let status = SecItemCopyMatching(query as CFDictionary, &item)
     if status == errSecItemNotFound {
@@ -268,5 +247,13 @@ class AppDelegate: FlutterAppDelegate {
     ]
     var error: Unmanaged<CFError>?
     return SecKeyCreateRandomKey(attributes as CFDictionary, &error) != nil
+  }
+
+  private func formatKeystoreError(_ error: Error) -> String {
+    let nsError = error as NSError
+    if nsError.domain == NSOSStatusErrorDomain || nsError.domain == "KeystoreError" {
+      return "\(nsError.localizedDescription) (OSStatus: \(nsError.code))"
+    }
+    return nsError.localizedDescription
   }
 }

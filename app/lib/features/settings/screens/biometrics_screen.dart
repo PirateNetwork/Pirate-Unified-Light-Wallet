@@ -15,6 +15,7 @@ import '../../../features/settings/providers/preferences_providers.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 class BiometricsScreen extends ConsumerStatefulWidget {
   const BiometricsScreen({super.key});
@@ -69,8 +70,8 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
         return;
       }
 
-      // macOS unlock cache reads are guarded by Keychain biometry ACL, so we
-      // avoid a redundant local_auth prompt during setup to keep UX single-step.
+      // On macOS we keep setup single-step (passphrase confirmation only).
+      // Unlock still requires biometric auth on the unlock screen.
       if (!Platform.isMacOS) {
         final authenticated = await BiometricAuth.authenticate(
           reason: 'Enable biometric unlock for Pirate Wallet',
@@ -113,7 +114,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
         lowered.contains('required entitlement') ||
         lowered.contains('keychain')) {
       return 'Secure storage is unavailable for this macOS build. '
-          'Install a build with Keychain entitlements and try again.';
+          'Install the latest build and try again.';
     }
     return 'Unable to update biometrics settings: $raw';
   }
@@ -151,7 +152,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
             return AlertDialog(
               backgroundColor: AppColors.backgroundElevated,
               title: Text(
-                'Confirm passphrase',
+                'Confirm passphrase'.tr,
                 style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
               ),
               content: Column(
@@ -159,7 +160,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Enter your passphrase once to finish biometric setup.',
+                    'Enter your passphrase once to finish biometric setup.'.tr,
                     style: AppTypography.body.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -173,7 +174,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                       color: AppColors.textPrimary,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Passphrase',
+                      hintText: 'Passphrase'.tr,
                       hintStyle: AppTypography.body.copyWith(
                         color: AppColors.textSecondary,
                       ),
@@ -197,7 +198,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: Text(
-                    'Cancel',
+                    'Cancel'.tr,
                     style: AppTypography.body.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -216,7 +217,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                     Navigator.of(context).pop();
                   },
                   child: Text(
-                    'Confirm',
+                    'Confirm'.tr,
                     style: AppTypography.bodyBold.copyWith(
                       color: AppColors.accentPrimary,
                     ),
@@ -247,10 +248,10 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
         : typeLabels.join(', ');
 
     return PScaffold(
-      title: 'Biometrics',
-      appBar: const PAppBar(
-        title: 'Biometrics',
-        subtitle: 'Use your device biometrics to unlock',
+      title: 'Biometrics'.tr,
+      appBar: PAppBar(
+        title: 'Biometrics'.tr,
+        subtitle: 'Use your device biometrics to unlock'.tr,
         showBackButton: true,
       ),
       body: SingleChildScrollView(
@@ -347,7 +348,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
             ],
             const SizedBox(height: AppSpacing.lg),
             Text(
-              'Biometric data never leaves your device.',
+              'Biometric data never leaves your device.'.tr,
               style: AppTypography.caption.copyWith(
                 color: AppColors.textSecondary,
               ),
