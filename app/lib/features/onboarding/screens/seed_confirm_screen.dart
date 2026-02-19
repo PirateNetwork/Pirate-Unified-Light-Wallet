@@ -1,5 +1,7 @@
 // Seed Confirm Screen - Verify user has backed up their seed phrase
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,12 +11,14 @@ import '../../../core/crypto/bip39_wordlist.dart';
 import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../design/tokens/spacing.dart';
+import '../../../core/ffi/ffi_bridge.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
 import '../../../core/providers/wallet_providers.dart';
 import '../widgets/onboarding_progress_indicator.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 class SeedConfirmScreen extends ConsumerStatefulWidget {
   const SeedConfirmScreen({super.key});
@@ -24,8 +28,10 @@ class SeedConfirmScreen extends ConsumerStatefulWidget {
 }
 
 class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
-  final List<TextEditingController> _wordControllers =
-      List.generate(3, (_) => TextEditingController());
+  final List<TextEditingController> _wordControllers = List.generate(
+    3,
+    (_) => TextEditingController(),
+  );
   final List<FocusNode> _focusNodes = List.generate(3, (_) => FocusNode());
   List<int> _selectedIndices = [];
   bool _isVerifying = false;
@@ -77,7 +83,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
     final randomGenerator = random % 1000000;
     _selectedIndices = [];
     final used = <int>{};
-    
+
     while (_selectedIndices.length < 3) {
       final index = ((randomGenerator + _selectedIndices.length * 7) % 24) + 1;
       if (!used.contains(index)) {
@@ -94,6 +100,15 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
     return _wordControllers.every((c) => c.text.trim().isNotEmpty);
   }
 
+  Future<bool> _canReadWalletRegistry() async {
+    try {
+      final wallets = await FfiBridge.listWallets();
+      return wallets.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _verifyAndProceed() async {
     if (!_isComplete) return;
 
@@ -105,22 +120,23 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
     try {
       final state = ref.read(onboardingControllerProvider);
       final mnemonic = state.mnemonic;
-      
+
       if (mnemonic == null || mnemonic.isEmpty) {
         throw StateError('Mnemonic not found in onboarding state');
       }
 
       final words = mnemonic.split(' ');
-      
+
       // Verify each word
       for (int i = 0; i < _selectedIndices.length; i++) {
         final index = _selectedIndices[i] - 1; // Convert to 0-based
         final expectedWord = words[index].toLowerCase().trim();
         final enteredWord = _wordControllers[i].text.toLowerCase().trim();
-        
+
         if (expectedWord != enteredWord) {
           setState(() {
-            _error = 'Word ${_selectedIndices[i]} is incorrect. Please check and try again.';
+            _error =
+                'Word ${_selectedIndices[i]} is incorrect. Please check and try again.';
             _isVerifying = false;
           });
           return;
@@ -130,12 +146,16 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
       // Verification successful
       ref.read(onboardingControllerProvider.notifier).markSeedBackedUp();
       ref.read(onboardingControllerProvider.notifier).nextStep();
-      
+
       // Create wallet with the mnemonic we generated
-      await ref.read(onboardingControllerProvider.notifier).complete('My Pirate Wallet');
-      
+      await ref
+          .read(onboardingControllerProvider.notifier)
+          .complete('My Pirate Wallet');
+
       ref.invalidate(walletsExistProvider);
-      final walletsExist = await ref.read(walletsExistProvider.future);
+      final walletsExist = await ref
+          .read(walletsExistProvider.future)
+          .timeout(const Duration(seconds: 8), onTimeout: () => true);
       if (!mounted) return;
       if (!walletsExist) {
         setState(() {
@@ -144,17 +164,33 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
         });
         return;
       }
-      // Ensure app is marked as unlocked
-      ref.read(appUnlockedProvider.notifier).unlocked = true;
-      // Navigate to home
-      context.go('/home');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Wallet created. Syncing...'),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-        ),
+      final registryUnlocked = await _canReadWalletRegistry().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => false,
       );
+      if (!mounted) return;
+
+      if (registryUnlocked) {
+        ref.read(appUnlockedProvider.notifier).unlocked = true;
+        context.go('/home');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Wallet created. Syncing...'.tr),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        ref.read(appUnlockedProvider.notifier).unlocked = false;
+        context.go('/unlock?redirect=/home');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Wallet created. Unlock to continue.'.tr),
+            backgroundColor: AppColors.warning,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (e) {
       setState(() {
         _error = 'Verification failed: $e';
@@ -173,114 +209,100 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
     return PScaffold(
-      title: 'Confirm Seed',
-      appBar: const PAppBar(
-        title: 'Verify Your Backup',
-        subtitle: 'Confirm you wrote it down',
+      title: 'Confirm Seed'.tr,
+      appBar: PAppBar(
+        title: 'Verify Your Backup'.tr,
+        subtitle: 'Confirm you wrote it down'.tr,
         showBackButton: true,
       ),
-      body: CustomScrollView(
+      body: SingleChildScrollView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        slivers: [
-          SliverPadding(
-            padding: contentPadding,
-            sliver: SliverFillRemaining(
-              hasScrollBody: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const OnboardingProgressIndicator(
-                    currentStep: 6,
-                    totalSteps: 6,
-                  ),
-                  const SizedBox(height: AppSpacing.xxl),
-                  Text(
-                    'Enter these words from your seed phrase',
-                    style: AppTypography.h2.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    "This confirms you've written down your seed phrase correctly.",
-                    style: AppTypography.body.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
+        padding: contentPadding,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const OnboardingProgressIndicator(currentStep: 6, totalSteps: 6),
+            const SizedBox(height: AppSpacing.xxl),
+            Text(
+              'Enter these words from your seed phrase'.tr,
+              style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              "This confirms you've written down your seed phrase correctly.",
+              style: AppTypography.body.copyWith(
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.xl),
 
-                  // Word inputs
-                  ...List.generate(3, (i) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                      child: _SeedWordInput(
-                        controller: _wordControllers[i],
-                        focusNode: _focusNodes[i],
-                        label: 'Word ${_selectedIndices[i]}',
-                        hint: 'Enter word ${_selectedIndices[i]}',
-                        textInputAction:
-                            i < 2 ? TextInputAction.next : TextInputAction.done,
-                        autofocus: i == 0,
-                        onSubmitted: () {
-                          if (i < 2) {
-                            _focusNodes[i + 1].requestFocus();
-                          } else {
-                            _verifyAndProceed();
-                          }
-                        },
-                      ),
-                    );
-                  }),
+            // Word inputs
+            ...List.generate(3, (i) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: _SeedWordInput(
+                  controller: _wordControllers[i],
+                  focusNode: _focusNodes[i],
+                  label: 'Word ${_selectedIndices[i]}',
+                  hint: 'Enter word ${_selectedIndices[i]}',
+                  textInputAction: i < 2
+                      ? TextInputAction.next
+                      : TextInputAction.done,
+                  autofocus: i == 0,
+                  onSubmitted: () {
+                    if (i < 2) {
+                      _focusNodes[i + 1].requestFocus();
+                    } else {
+                      _verifyAndProceed();
+                    }
+                  },
+                ),
+              );
+            }),
 
-                  if (_error != null) ...[
-                    const SizedBox(height: AppSpacing.md),
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.error.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.error.withValues(alpha: 0.3),
+            if (_error != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: AppColors.error, size: 20),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: AppTypography.body.copyWith(
+                          color: AppColors.error,
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            color: AppColors.error,
-                            size: 20,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(
-                            child: Text(
-                              _error!,
-                              style: AppTypography.body.copyWith(
-                                color: AppColors.error,
-                              ),
-                            ),
-                          ),
-                        ],
                       ),
                     ),
                   ],
-
-                  const Spacer(),
-
-                  PButton(
-                    text: 'Verify & Create Wallet',
-                    onPressed:
-                        _isComplete && !_isVerifying ? _verifyAndProceed : null,
-                    variant: PButtonVariant.primary,
-                    size: PButtonSize.large,
-                    isLoading: _isVerifying,
-                  ),
-                ],
+                ),
               ),
+            ],
+
+            const SizedBox(height: AppSpacing.xl),
+
+            PButton(
+              text: 'Verify & Create Wallet',
+              onPressed: _isComplete && !_isVerifying
+                  ? _verifyAndProceed
+                  : null,
+              variant: PButtonVariant.primary,
+              size: PButtonSize.large,
+              isLoading: _isVerifying,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -365,8 +387,9 @@ class _SeedWordInputState extends State<_SeedWordInput> {
 
   void _updateMatches() {
     final query = widget.controller.text.trim().toLowerCase();
-    final nextMatches =
-        query.isEmpty ? const <String>[] : bip39Suggestions(query, limit: 6);
+    final nextMatches = query.isEmpty
+        ? const <String>[]
+        : bip39Suggestions(query, limit: 6);
     if (!_listEquals(_matches, nextMatches)) {
       _matches = nextMatches;
     }
@@ -397,21 +420,23 @@ class _SeedWordInputState extends State<_SeedWordInput> {
 
   void _showOverlay() {
     if (_overlay == null) {
-      _overlay = OverlayEntry(builder: (context) {
-        return Stack(
-          children: [
-            // Invisible barrier to catch taps outside
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: _removeOverlay,
-                behavior: HitTestBehavior.translucent,
-                child: Container(color: Colors.transparent),
+      _overlay = OverlayEntry(
+        builder: (context) {
+          return Stack(
+            children: [
+              // Invisible barrier to catch taps outside
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: _removeOverlay,
+                  behavior: HitTestBehavior.translucent,
+                  child: Container(color: Colors.transparent),
+                ),
               ),
-            ),
-            _buildOverlay(context),
-          ],
-        );
-      });
+              _buildOverlay(context),
+            ],
+          );
+        },
+      );
       Overlay.of(context, rootOverlay: false).insert(_overlay!);
     } else {
       _overlay?.markNeedsBuild();
@@ -424,16 +449,20 @@ class _SeedWordInputState extends State<_SeedWordInput> {
   }
 
   Widget _buildOverlay(BuildContext context) {
-    final renderBox = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final renderBox =
+        _fieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return const SizedBox.shrink();
 
     final fieldSize = renderBox.size;
     final width = fieldSize.width;
     final height = fieldSize.height;
     const itemHeight = 44.0;
-    final listHeight = (_matches.length * itemHeight + 8).clamp(itemHeight, itemHeight * 4.5 + 8);
+    final listHeight = (_matches.length * itemHeight + 8).clamp(
+      itemHeight,
+      itemHeight * 4.5 + 8,
+    );
     final typed = widget.controller.text.trim().toLowerCase();
-    
+
     final screenHeight = MediaQuery.of(context).size.height;
     final fieldOffset = renderBox.localToGlobal(Offset.zero);
     final spaceBelow = screenHeight - fieldOffset.dy - height;
@@ -451,7 +480,10 @@ class _SeedWordInputState extends State<_SeedWordInput> {
           decoration: BoxDecoration(
             color: AppColors.surfaceElevated,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.accentPrimary.withValues(alpha: 0.5), width: 1.5),
+            border: Border.all(
+              color: AppColors.accentPrimary.withValues(alpha: 0.5),
+              width: 1.5,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.4),
@@ -479,9 +511,15 @@ class _SeedWordInputState extends State<_SeedWordInput> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       alignment: Alignment.centerLeft,
                       decoration: BoxDecoration(
-                        border: index < _matches.length - 1 
-                          ? Border(bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.3)))
-                          : null,
+                        border: index < _matches.length - 1
+                            ? Border(
+                                bottom: BorderSide(
+                                  color: AppColors.border.withValues(
+                                    alpha: 0.3,
+                                  ),
+                                ),
+                              )
+                            : null,
                       ),
                       child: RichText(
                         maxLines: 1,
@@ -531,8 +569,9 @@ class _SeedWordInputState extends State<_SeedWordInput> {
 
   void _applyUniqueCompletion() {
     final current = widget.controller.text.trim().toLowerCase();
-    final matches =
-        current.isEmpty ? const <String>[] : bip39Suggestions(current, limit: 2);
+    final matches = current.isEmpty
+        ? const <String>[]
+        : bip39Suggestions(current, limit: 2);
     if (matches.length == 1 && matches.first != current) {
       widget.controller.text = matches.first;
       widget.controller.selection = TextSelection.fromPosition(
@@ -543,11 +582,12 @@ class _SeedWordInputState extends State<_SeedWordInput> {
 
   @override
   Widget build(BuildContext context) {
-    final inputStyle =
-        AppTypography.body.copyWith(color: AppColors.textPrimary);
+    final inputStyle = AppTypography.body.copyWith(
+      color: AppColors.textPrimary,
+    );
     final contentPadding =
         Theme.of(context).inputDecorationTheme.contentPadding ??
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14);
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 14);
     final reduceMotion = MediaQuery.of(context).disableAnimations;
 
     return Column(
@@ -562,8 +602,9 @@ class _SeedWordInputState extends State<_SeedWordInput> {
         ),
         const SizedBox(height: AppSpacing.xs),
         AnimatedContainer(
-          duration:
-              reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 200),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(PSpacing.radiusInput),
             boxShadow: _isFocused

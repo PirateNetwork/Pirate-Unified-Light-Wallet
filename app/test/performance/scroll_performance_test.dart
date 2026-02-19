@@ -33,24 +33,24 @@ class _TestTorStatusNotifier extends TorStatusNotifier {
 class _TestTransportConfigNotifier extends TransportConfigNotifier {
   @override
   TransportConfig build() => const TransportConfig(
-        mode: 'tor',
-        dnsProvider: 'cloudflare_doh',
-        socks5Config: {
-          'host': 'localhost',
-          'port': '1080',
-          'username': null,
-          'password': null,
-        },
-        i2pEndpoint: '',
-        tlsPins: [],
-        torBridge: TorBridgeConfig(
-          useBridges: false,
-          fallbackToBridges: true,
-          transport: 'snowflake',
-          bridgeLines: [],
-          transportPath: null,
-        ),
-      );
+    mode: 'tor',
+    dnsProvider: 'cloudflare_doh',
+    socks5Config: {
+      'host': 'localhost',
+      'port': '1080',
+      'username': null,
+      'password': null,
+    },
+    i2pEndpoint: '',
+    tlsPins: [],
+    torBridge: TorBridgeConfig(
+      useBridges: false,
+      fallbackToBridges: true,
+      transport: 'snowflake',
+      bridgeLines: [],
+      transportPath: null,
+    ),
+  );
 }
 
 List<TxInfo> _buildTestTransactions() {
@@ -127,19 +127,18 @@ Widget _buildTestApp({required Widget child, List<TxInfo>? transactions}) {
 
 void main() {
   group('Scroll Performance Tests', () {
-    testWidgets('home screen - transaction list scroll performance',
-        (tester) async {
+    testWidgets('home screen - transaction list scroll performance', (
+      tester,
+    ) async {
       if (_skipPerformanceTests) return;
-      await tester.pumpWidget(
-        _buildTestApp(child: const HomeScreen()),
-      );
+      await tester.pumpWidget(_buildTestApp(child: const HomeScreen()));
 
       // Wait for initial render
       await tester.pump(const Duration(milliseconds: 600));
 
       // Measure frame times during scroll
       final frameTimes = <Duration>[];
-      
+
       // Enable frame callback
       tester.binding.addTimingsCallback((timings) {
         for (final timing in timings) {
@@ -164,11 +163,9 @@ void main() {
         final averageFrameTime = Duration(
           microseconds:
               frameTimes.map((t) => t.inMicroseconds).reduce((a, b) => a + b) ~/
-                  frameTimes.length,
+              frameTimes.length,
         );
-        final maxFrameTime = frameTimes.reduce(
-          (a, b) => a > b ? a : b,
-        );
+        final maxFrameTime = frameTimes.reduce((a, b) => a > b ? a : b);
 
         // 60 FPS = 16.67ms per frame
         // 120 FPS = 8.33ms per frame
@@ -195,12 +192,11 @@ void main() {
       }
     });
 
-    testWidgets('activity screen - transaction list scroll performance',
-        (tester) async {
+    testWidgets('activity screen - transaction list scroll performance', (
+      tester,
+    ) async {
       if (_skipPerformanceTests) return;
-      await tester.pumpWidget(
-        _buildTestApp(child: const ActivityScreen()),
-      );
+      await tester.pumpWidget(_buildTestApp(child: const ActivityScreen()));
 
       await tester.pump(const Duration(milliseconds: 600));
 
@@ -224,7 +220,7 @@ void main() {
         final averageFrameTime = Duration(
           microseconds:
               frameTimes.map((t) => t.inMicroseconds).reduce((a, b) => a + b) ~/
-                  frameTimes.length,
+              frameTimes.length,
         );
         final maxFrameTime = frameTimes.reduce((a, b) => a > b ? a : b);
         const target60fps = Duration(microseconds: 16670);
@@ -246,12 +242,10 @@ void main() {
   group('Animation Performance Tests', () {
     testWidgets('home screen - sync indicator animation', (tester) async {
       if (_skipPerformanceTests) return;
-      await tester.pumpWidget(
-        _buildTestApp(child: const HomeScreen()),
-      );
+      await tester.pumpWidget(_buildTestApp(child: const HomeScreen()));
 
       final frameTimes = <Duration>[];
-      
+
       tester.binding.addTimingsCallback((timings) {
         for (final timing in timings) {
           frameTimes.add(timing.totalSpan);
@@ -267,14 +261,14 @@ void main() {
         final averageFrameTime = Duration(
           microseconds:
               frameTimes.map((t) => t.inMicroseconds).reduce((a, b) => a + b) ~/
-                  frameTimes.length,
+              frameTimes.length,
         );
-        
+
         const target60fps = Duration(microseconds: 16670);
-        
+
         debugPrint('Animation performance:');
         debugPrint('  Average frame time: us');
-        
+
         expect(
           averageFrameTime,
           lessThan(target60fps),
@@ -287,9 +281,7 @@ void main() {
   group('Memory Performance Tests', () {
     testWidgets('home screen - memory usage during scroll', (tester) async {
       if (_skipPerformanceTests) return;
-      await tester.pumpWidget(
-        _buildTestApp(child: const HomeScreen()),
-      );
+      await tester.pumpWidget(_buildTestApp(child: const HomeScreen()));
 
       await tester.pump(const Duration(milliseconds: 600));
 
@@ -299,10 +291,7 @@ void main() {
 
       // Perform scrolling
       for (var i = 0; i < 10; i++) {
-        await tester.drag(
-          find.byType(CustomScrollView),
-          const Offset(0, -500),
-        );
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
         await tester.pump();
       }
 

@@ -17,19 +17,18 @@ import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Birthday input mode
-enum BirthdayInputMode {
-  approxDate,
-  exactHeight,
-}
+enum BirthdayInputMode { approxDate, exactHeight }
 
 /// Birthday picker screen for wallet restoration
 class BirthdayPickerScreen extends ConsumerStatefulWidget {
   const BirthdayPickerScreen({super.key});
 
   @override
-  ConsumerState<BirthdayPickerScreen> createState() => _BirthdayPickerScreenState();
+  ConsumerState<BirthdayPickerScreen> createState() =>
+      _BirthdayPickerScreenState();
 }
 
 class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
@@ -85,6 +84,15 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     return _heightFromDate();
   }
 
+  Future<bool> _canReadWalletRegistry() async {
+    try {
+      final wallets = await FfiBridge.listWallets();
+      return wallets.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   int? _heightFromDate() {
     if (_latestHeight == null) return null;
     final now = DateTime.now();
@@ -138,7 +146,9 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
 
     final selectedHeight = _selectedHeight;
     if (_inputMode == BirthdayInputMode.approxDate && _latestHeight == null) {
-      setState(() => _error = 'Load the latest block height or enter one manually.');
+      setState(
+        () => _error = 'Load the latest block height or enter one manually.',
+      );
       return;
     }
     if (selectedHeight == null || selectedHeight <= 0) {
@@ -146,7 +156,9 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
       return;
     }
     if (_latestHeight != null && selectedHeight > _latestHeight!) {
-      setState(() => _error = 'Block height cannot be higher than the network tip.');
+      setState(
+        () => _error = 'Block height cannot be higher than the network tip.',
+      );
       return;
     }
 
@@ -189,19 +201,34 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
         });
         return;
       }
-      context.go('/home');
+      final registryUnlocked = await _canReadWalletRegistry();
+      if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            state.mode == OnboardingMode.create
-                ? 'Wallet created. Syncing...'
-                : 'Wallet restored. Syncing from block ${_formatHeight(selectedHeight)}...',
+      if (registryUnlocked) {
+        ref.read(appUnlockedProvider.notifier).unlocked = true;
+        context.go('/home');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              state.mode == OnboardingMode.create
+                  ? 'Wallet created. Syncing...'
+                  : 'Wallet restored. Syncing from block ${_formatHeight(selectedHeight)}...',
+            ),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
           ),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+        );
+      } else {
+        ref.read(appUnlockedProvider.notifier).unlocked = false;
+        context.go('/unlock?redirect=/home');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Wallet setup complete. Unlock to continue.'.tr),
+            backgroundColor: AppColors.warning,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (e) {
       setState(() {
         _error = 'Failed to create wallet: $e';
@@ -216,7 +243,9 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     final isRestore = onboardingState.mode == OnboardingMode.import;
     final totalSteps = isRestore ? 5 : 6;
     final currentStep = isRestore ? 5 : 5;
-    final gutter = AppSpacing.responsiveGutter(MediaQuery.of(context).size.width);
+    final gutter = AppSpacing.responsiveGutter(
+      MediaQuery.of(context).size.width,
+    );
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     final selectedHeight = _selectedHeight;
     final tip = _latestHeight;
@@ -225,7 +254,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
         : null;
 
     return PScaffold(
-      title: 'Birthday Picker',
+      title: 'Birthday Picker'.tr,
       appBar: PAppBar(
         title: isRestore ? 'Wallet birthday' : 'Almost done',
         subtitle: isRestore
@@ -276,18 +305,15 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                       padding: const EdgeInsets.all(AppSpacing.md),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.public,
-                            color: AppColors.accentPrimary,
-                          ),
+                          Icon(Icons.public, color: AppColors.accentPrimary),
                           const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: Text(
                               _loadingHeight
                                   ? 'Fetching latest block height...'
                                   : tip == null
-                                      ? 'Latest block height unavailable'
-                                      : 'Network tip: ${_formatHeight(tip)}',
+                                  ? 'Latest block height unavailable'
+                                  : 'Network tip: ${_formatHeight(tip)}',
                               style: AppTypography.body.copyWith(
                                 color: AppColors.textPrimary,
                               ),
@@ -295,7 +321,9 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                           ),
                           PTextButton(
                             label: _loadingHeight ? 'Loading' : 'Refresh',
-                            onPressed: _loadingHeight ? null : _loadLatestHeight,
+                            onPressed: _loadingHeight
+                                ? null
+                                : _loadLatestHeight,
                             variant: PTextButtonVariant.subtle,
                           ),
                         ],
@@ -315,19 +343,23 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                   _ModeCard(
                     mode: BirthdayInputMode.approxDate,
                     selected: _inputMode,
-                    title: 'Approximate date',
-                    subtitle: 'Month and year before your first transaction',
+                    title: 'Approximate date'.tr,
+                    subtitle: 'Month and year before your first transaction'.tr,
                     icon: Icons.calendar_today,
-                    onTap: () => setState(() => _inputMode = BirthdayInputMode.approxDate),
+                    onTap: () => setState(
+                      () => _inputMode = BirthdayInputMode.approxDate,
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   _ModeCard(
                     mode: BirthdayInputMode.exactHeight,
                     selected: _inputMode,
-                    title: 'Exact block height',
-                    subtitle: 'Use the precise block height if you know it',
+                    title: 'Exact block height'.tr,
+                    subtitle: 'Use the precise block height if you know it'.tr,
                     icon: Icons.pin_outlined,
-                    onTap: () => setState(() => _inputMode = BirthdayInputMode.exactHeight),
+                    onTap: () => setState(
+                      () => _inputMode = BirthdayInputMode.exactHeight,
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   if (_inputMode == BirthdayInputMode.approxDate) ...[
@@ -336,7 +368,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                         Expanded(
                           child: DropdownMenuFormField<int>(
                             initialSelection: _selectedMonth,
-                            label: const Text('Month'),
+                            label: Text('Month'.tr),
                             inputDecorationTheme: InputDecorationTheme(
                               filled: true,
                               fillColor: AppColors.surfaceElevated,
@@ -358,7 +390,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                         Expanded(
                           child: DropdownMenuFormField<int>(
                             initialSelection: _selectedYear,
-                            label: const Text('Year'),
+                            label: Text('Year'.tr),
                             inputDecorationTheme: InputDecorationTheme(
                               filled: true,
                               fillColor: AppColors.surfaceElevated,
@@ -382,7 +414,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                   ] else ...[
                     PInput(
                       controller: _exactHeightController,
-                      label: 'Block height',
+                      label: 'Block height'.tr,
                       hint: 'Enter the exact block height',
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -399,7 +431,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Start block',
+                                'Start block'.tr,
                                 style: AppTypography.caption.copyWith(
                                   color: AppColors.textSecondary,
                                 ),
@@ -415,11 +447,12 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                             ],
                           );
                           final blocksScan = Column(
-                            crossAxisAlignment:
-                                isNarrow ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+                            crossAxisAlignment: isNarrow
+                                ? CrossAxisAlignment.start
+                                : CrossAxisAlignment.end,
                             children: [
                               Text(
-                                'Blocks to scan',
+                                'Blocks to scan'.tr,
                                 style: AppTypography.caption.copyWith(
                                   color: AppColors.textSecondary,
                                 ),
@@ -446,10 +479,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                           }
                           return Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              startBlock,
-                              blocksScan,
-                            ],
+                            children: [startBlock, blocksScan],
                           );
                         },
                       ),
@@ -508,7 +538,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                           child: Text(
                             isRestore
                                 ? 'If you are unsure, choose an earlier start. '
-                                    'Sync takes longer but avoids missing activity.'
+                                      'Sync takes longer but avoids missing activity.'
                                 : 'You can use the app while it syncs in the background.',
                             style: AppTypography.caption.copyWith(
                               color: AppColors.textPrimary,
@@ -576,10 +606,7 @@ class _ModeCard extends StatelessWidget {
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
             border: isSelected
-                ? Border.all(
-                    color: AppColors.accentPrimary,
-                    width: 2,
-                  )
+                ? Border.all(color: AppColors.accentPrimary, width: 2)
                 : null,
             borderRadius: BorderRadius.circular(16),
           ),
@@ -587,7 +614,9 @@ class _ModeCard extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: isSelected ? AppColors.accentPrimary : AppColors.textSecondary,
+                color: isSelected
+                    ? AppColors.accentPrimary
+                    : AppColors.textSecondary,
               ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
@@ -614,7 +643,7 @@ class _ModeCard extends StatelessWidget {
                 onChanged: (_) => onTap(),
                 child: Radio<BirthdayInputMode>(
                   value: mode,
-                activeColor: AppColors.accentPrimary,
+                  activeColor: AppColors.accentPrimary,
                 ),
               ),
             ],

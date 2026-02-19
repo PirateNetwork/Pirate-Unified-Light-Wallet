@@ -8,8 +8,9 @@ import 'package:flutter/services.dart';
 
 /// Screenshot protection manager
 class ScreenshotProtection {
-  static const MethodChannel _channel =
-      MethodChannel('com.pirate.wallet/security');
+  static const MethodChannel _channel = MethodChannel(
+    'com.pirate.wallet/security',
+  );
 
   static bool _isProtected = false;
 
@@ -23,8 +24,9 @@ class ScreenshotProtection {
           Platform.isMacOS ||
           Platform.isWindows ||
           Platform.isLinux) {
-        final enabled =
-            await _channel.invokeMethod('enableScreenshotProtection');
+        final enabled = await _channel.invokeMethod(
+          'enableScreenshotProtection',
+        );
         _isProtected = enabled == true;
       }
     } on PlatformException catch (e) {
@@ -96,4 +98,3 @@ mixin ScreenshotProtectionMixin {
     _protection?.dispose();
   }
 }
-

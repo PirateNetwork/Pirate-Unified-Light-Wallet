@@ -14,6 +14,7 @@ import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/providers/wallet_providers.dart';
 import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Create or Import screen
 class CreateOrImportScreen extends ConsumerStatefulWidget {
@@ -38,14 +39,13 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
   @override
   Widget build(BuildContext context) {
     final onboardingState = ref.watch(onboardingControllerProvider);
-    final totalSteps =
-        onboardingState.mode == OnboardingMode.import ? 5 : 6;
+    final totalSteps = onboardingState.mode == OnboardingMode.import ? 5 : 6;
 
     return PScaffold(
-      title: 'New Wallet',
+      title: 'New Wallet'.tr,
       appBar: PAppBar(
-        title: 'New Wallet',
-        subtitle: 'Create or import a wallet',
+        title: 'New Wallet'.tr,
+        subtitle: 'Create or import a wallet'.tr,
         onBack: () {
           ref.read(onboardingControllerProvider.notifier).previousStep();
           context.pop();
@@ -66,10 +66,8 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
               ),
               const SizedBox(height: AppSpacing.xxl),
               Text(
-                'Create or Import Wallet',
-                style: AppTypography.h2.copyWith(
-                  color: AppColors.textPrimary,
-                ),
+                'Create or Import Wallet'.tr,
+                style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
@@ -79,255 +77,278 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.xxl),
-            PCard(
-              child: InkWell(
-                onTap: () async {
-                  ref.read(onboardingControllerProvider.notifier)
-                    ..reset(startAt: OnboardingStep.createOrImport)
-                    ..setMode(OnboardingMode.create)
-                    ..nextStep();
-                  final hasPassphrase = await FfiBridge.hasAppPassphrase();
-                  if (!context.mounted) return;
-                  if (hasPassphrase) {
-                    unawaited(context.push('/onboarding/backup-warning'));
-                    return;
-                  }
-                  unawaited(context.push('/onboarding/passphrase'));
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(AppSpacing.md),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  AppColors.accentPrimary,
-                                  AppColors.accentSecondary,
+              PCard(
+                child: InkWell(
+                  onTap: () async {
+                    ref.read(onboardingControllerProvider.notifier)
+                      ..reset(startAt: OnboardingStep.createOrImport)
+                      ..setMode(OnboardingMode.create)
+                      ..nextStep();
+                    final hasPassphrase = await FfiBridge.hasAppPassphrase();
+                    final isUnlocked = ref.read(appUnlockedProvider);
+                    if (!context.mounted) return;
+                    if (hasPassphrase && !isUnlocked) {
+                      unawaited(
+                        context.push(
+                          '/unlock?redirect=/onboarding/backup-warning',
+                        ),
+                      );
+                      return;
+                    }
+                    if (hasPassphrase) {
+                      unawaited(context.push('/onboarding/backup-warning'));
+                      return;
+                    }
+                    unawaited(context.push('/onboarding/passphrase'));
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(AppSpacing.md),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppColors.accentPrimary,
+                                    AppColors.accentSecondary,
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                Icons.add_circle_outline,
+                                color: Colors.white,
+                                size: 32,
+                                semanticLabel: 'Create new wallet'.tr,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Create New Wallet'.tr,
+                                    style: AppTypography.h4.copyWith(
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpacing.xs),
+                                  Text(
+                                    'Generate a new secure wallet'.tr,
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
                                 ],
                               ),
-                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(
-                              Icons.add_circle_outline,
-                              color: Colors.white,
-                              size: 32,
-                              semanticLabel: 'Create new wallet',
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              color: AppColors.textTertiary,
+                              size: 20,
                             ),
-                          ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Create New Wallet',
-                                  style: AppTypography.h4.copyWith(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: AppSpacing.xs),
-                                Text(
-                                  'Generate a new secure wallet',
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_forward_ios,
-                            color: AppColors.textTertiary,
-                            size: 20,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            PCard(
-              child: InkWell(
-                onTap: () {
-                  ref.read(onboardingControllerProvider.notifier)
-                    ..reset(startAt: OnboardingStep.createOrImport)
-                    ..setMode(OnboardingMode.import)
-                    ..nextStep();
-                  context.push('/onboarding/import-seed');
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(AppSpacing.md),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceElevated,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: AppColors.border,
-                                width: 2,
-                              ),
-                            ),
-                            child: Icon(
-                              Icons.file_download_outlined,
-                              color: AppColors.accentPrimary,
-                              size: 32,
-                              semanticLabel: 'Import existing wallet',
-                            ),
-                          ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Import Existing Wallet',
-                                  style: AppTypography.h4.copyWith(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: AppSpacing.xs),
-                                Text(
-                                  'Restore from 24-word seed phrase',
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_forward_ios,
-                            color: AppColors.textTertiary,
-                            size: 20,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            PCard(
-              child: InkWell(
-                onTap: () async {
-                  ref.read(onboardingControllerProvider.notifier)
-                    ..reset(startAt: OnboardingStep.createOrImport)
-                    ..setMode(OnboardingMode.watchOnly);
-                  final hasPassphrase = await FfiBridge.hasAppPassphrase();
-                  final isUnlocked = ref.read(appUnlockedProvider);
-                  if (hasPassphrase && !isUnlocked) {
-                    if (!context.mounted) return;
-                    unawaited(
-                      context.push('/unlock?redirect=/onboarding/import-ivk'),
-                    );
-                    return;
-                  }
-                  if (!context.mounted) return;
-                  unawaited(context.push('/onboarding/import-ivk'));
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(AppSpacing.md),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceElevated,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: AppColors.border.withValues(alpha: 0.5),
-                                width: 1,
-                              ),
-                            ),
-                            child: Icon(
-                              Icons.visibility_outlined,
-                              color: AppColors.textSecondary,
-                              size: 32,
-                              semanticLabel: 'Import view only wallet',
-                            ),
-                          ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'View only',
-                                  style: AppTypography.h4.copyWith(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: AppSpacing.xs),
-                                Text(
-                                  'Import viewing key',
-                                  style: AppTypography.caption.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_forward_ios,
-                            color: AppColors.textTertiary,
-                            size: 20,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xxl),
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppColors.warning.withValues(alpha: 0.3),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: AppColors.warning,
-                    size: 20,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      'Your seed phrase is the only way to recover your wallet. Keep it safe!',
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
+              const SizedBox(height: AppSpacing.lg),
+              PCard(
+                child: InkWell(
+                  onTap: () async {
+                    ref.read(onboardingControllerProvider.notifier)
+                      ..reset(startAt: OnboardingStep.createOrImport)
+                      ..setMode(OnboardingMode.import)
+                      ..nextStep();
+                    final hasPassphrase = await FfiBridge.hasAppPassphrase();
+                    final isUnlocked = ref.read(appUnlockedProvider);
+                    if (!context.mounted) return;
+                    if (hasPassphrase && !isUnlocked) {
+                      unawaited(
+                        context.push(
+                          '/unlock?redirect=/onboarding/import-seed',
+                        ),
+                      );
+                      return;
+                    }
+                    unawaited(context.push('/onboarding/import-seed'));
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(AppSpacing.md),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceElevated,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppColors.border,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.file_download_outlined,
+                                color: AppColors.accentPrimary,
+                                size: 32,
+                                semanticLabel: 'Import existing wallet'.tr,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Import Existing Wallet'.tr,
+                                    style: AppTypography.h4.copyWith(
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpacing.xs),
+                                  Text(
+                                    'Restore from 24-word seed phrase'.tr,
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              color: AppColors.textTertiary,
+                              size: 20,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              PCard(
+                child: InkWell(
+                  onTap: () async {
+                    ref.read(onboardingControllerProvider.notifier)
+                      ..reset(startAt: OnboardingStep.createOrImport)
+                      ..setMode(OnboardingMode.watchOnly);
+                    final hasPassphrase = await FfiBridge.hasAppPassphrase();
+                    final isUnlocked = ref.read(appUnlockedProvider);
+                    if (hasPassphrase && !isUnlocked) {
+                      if (!context.mounted) return;
+                      unawaited(
+                        context.push('/unlock?redirect=/onboarding/import-ivk'),
+                      );
+                      return;
+                    }
+                    if (!context.mounted) return;
+                    unawaited(context.push('/onboarding/import-ivk'));
+                  },
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(AppSpacing.md),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceElevated,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppColors.border.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.visibility_outlined,
+                                color: AppColors.textSecondary,
+                                size: 32,
+                                semanticLabel: 'Import view only wallet'.tr,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'View only'.tr,
+                                    style: AppTypography.h4.copyWith(
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpacing.xs),
+                                  Text(
+                                    'Import viewing key'.tr,
+                                    style: AppTypography.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              color: AppColors.textTertiary,
+                              size: 20,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppColors.warning.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: AppColors.warning,
+                      size: 20,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'Your seed phrase is the only way to recover your wallet. Keep it safe!'
+                            .tr,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
             ],
           ),
         ),
@@ -335,4 +356,3 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
     );
   }
 }
-

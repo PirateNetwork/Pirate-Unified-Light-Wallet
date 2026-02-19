@@ -1,3 +1,4 @@
+
 // BIP-39 English wordlist (2048 words).
 // Sourced from the standard BIP-39 English wordlist.
 const List<String> bip39EnglishWords = <String>[

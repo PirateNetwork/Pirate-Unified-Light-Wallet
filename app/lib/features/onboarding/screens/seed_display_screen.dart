@@ -13,6 +13,7 @@ import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 class SeedDisplayScreen extends ConsumerStatefulWidget {
   const SeedDisplayScreen({super.key});
@@ -73,7 +74,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Seed phrase copied to clipboard'),
+          content: Text('Seed phrase copied to clipboard'.tr),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
@@ -107,10 +108,10 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Your Seed Phrase',
-      appBar: const PAppBar(
-        title: 'Backup Your Seed',
-        subtitle: 'Write this down securely',
+      title: 'Your Seed Phrase'.tr,
+      appBar: PAppBar(
+        title: 'Backup Your Seed'.tr,
+        subtitle: 'Write this down securely'.tr,
         showBackButton: true,
       ),
       body: _isLoading
@@ -129,7 +130,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                   ),
                   const SizedBox(height: AppSpacing.xxl),
                   Text(
-                    'Write down these 24 words',
+                    'Write down these 24 words'.tr,
                     style: AppTypography.h2.copyWith(
                       color: AppColors.textPrimary,
                     ),
@@ -137,7 +138,8 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'Store them in a safe place. Anyone with these words can access your wallet.',
+                    'Store them in a safe place. Anyone with these words can access your wallet.'
+                        .tr,
                     style: AppTypography.body.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -163,7 +165,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                           ),
                           const SizedBox(height: AppSpacing.md),
                           Text(
-                            'Tap to reveal your seed phrase',
+                            'Tap to reveal your seed phrase'.tr,
                             style: AppTypography.body.copyWith(
                               color: AppColors.textSecondary,
                             ),

@@ -15,15 +15,10 @@ import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Passphrase strength
-enum PassphraseStrength {
-  weak,
-  fair,
-  good,
-  strong,
-  veryStrong,
-}
+enum PassphraseStrength { weak, fair, good, strong, veryStrong }
 
 /// Passphrase setup screen
 class PassphraseSetupScreen extends ConsumerStatefulWidget {
@@ -34,8 +29,7 @@ class PassphraseSetupScreen extends ConsumerStatefulWidget {
       _PassphraseSetupScreenState();
 }
 
-class _PassphraseSetupScreenState
-    extends ConsumerState<PassphraseSetupScreen> {
+class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
   final _passphraseController = TextEditingController();
   final _confirmController = TextEditingController();
   bool _obscurePassphrase = true;
@@ -141,10 +135,10 @@ class _PassphraseSetupScreenState
 
   bool _canProceed() {
     return _passphraseController.text.isNotEmpty &&
-           _confirmController.text.isNotEmpty &&
-           _passwordsMatch &&
-           _strength.index >= PassphraseStrength.good.index &&
-           !_isPalindrome(_passphraseController.text);
+        _confirmController.text.isNotEmpty &&
+        _passwordsMatch &&
+        _strength.index >= PassphraseStrength.good.index &&
+        !_isPalindrome(_passphraseController.text);
   }
 
   bool _isPalindrome(String value) {
@@ -163,7 +157,8 @@ class _PassphraseSetupScreenState
 
     try {
       await FfiBridge.setAppPassphrase(_passphraseController.text);
-      ref.read(onboardingControllerProvider.notifier)
+      ref
+          .read(onboardingControllerProvider.notifier)
           .setPassphrase(_passphraseController.text);
       ref.read(onboardingControllerProvider.notifier).nextStep();
       if (mounted) {
@@ -195,10 +190,10 @@ class _PassphraseSetupScreenState
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
     return PScaffold(
-      title: 'Set a passphrase',
-      appBar: const PAppBar(
-        title: 'Set a passphrase',
-        subtitle: 'Unlocks this wallet on this device',
+      title: 'Set a passphrase'.tr,
+      appBar: PAppBar(
+        title: 'Set a passphrase'.tr,
+        subtitle: 'Unlocks this wallet on this device'.tr,
         showBackButton: true,
       ),
       body: SingleChildScrollView(
@@ -212,14 +207,13 @@ class _PassphraseSetupScreenState
             ),
             const SizedBox(height: AppSpacing.xxl),
             Text(
-              'Choose a strong passphrase',
-              style: AppTypography.h2.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              'Choose a strong passphrase'.tr,
+              style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'This encrypts your wallet on this device. You will need it each time you open the app.',
+              'This encrypts your wallet on this device. You will need it each time you open the app.'
+                  .tr,
               style: AppTypography.body.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -229,7 +223,7 @@ class _PassphraseSetupScreenState
             // Passphrase input
             PInput(
               controller: _passphraseController,
-              label: 'Passphrase',
+              label: 'Passphrase'.tr,
               hint: 'Enter a passphrase',
               obscureText: _obscurePassphrase,
               autocorrect: false,
@@ -243,8 +237,9 @@ class _PassphraseSetupScreenState
                     _obscurePassphrase = !_obscurePassphrase;
                   });
                 },
-                tooltip:
-                    _obscurePassphrase ? 'Show passphrase' : 'Hide passphrase',
+                tooltip: _obscurePassphrase
+                    ? 'Show passphrase'
+                    : 'Hide passphrase',
               ),
             ),
 
@@ -287,7 +282,7 @@ class _PassphraseSetupScreenState
             // Confirm passphrase input
             PInput(
               controller: _confirmController,
-              label: 'Confirm passphrase',
+              label: 'Confirm passphrase'.tr,
               hint: 'Re-enter to confirm',
               obscureText: _obscureConfirm,
               autocorrect: false,
@@ -304,17 +299,16 @@ class _PassphraseSetupScreenState
                     _obscureConfirm = !_obscureConfirm;
                   });
                 },
-                tooltip:
-                    _obscureConfirm ? 'Show passphrase' : 'Hide passphrase',
+                tooltip: _obscureConfirm
+                    ? 'Show passphrase'
+                    : 'Hide passphrase',
               ),
             ),
 
             const SizedBox(height: AppSpacing.xl),
 
             // Requirements checklist
-            _RequirementsList(
-              passphrase: _passphraseController.text,
-            ),
+            _RequirementsList(passphrase: _passphraseController.text),
 
             const SizedBox(height: AppSpacing.xxl),
 
@@ -339,7 +333,7 @@ class _PassphraseSetupScreenState
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Never share your passphrase. We cannot recover it.',
+                      'Never share your passphrase. We cannot recover it.'.tr,
                       style: AppTypography.body.copyWith(
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w600,
@@ -388,10 +382,10 @@ class _PassphraseSetupScreenState
               size: PButtonSize.large,
               isLoading: _isSaving,
             ),
-            ],
-          ),
+          ],
         ),
-      );
+      ),
+    );
   }
 }
 
@@ -408,10 +402,8 @@ class _RequirementsList extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Requirements',
-          style: AppTypography.bodyBold.copyWith(
-            color: AppColors.textPrimary,
-          ),
+          'Requirements'.tr,
+          style: AppTypography.bodyBold.copyWith(color: AppColors.textPrimary),
         ),
         const SizedBox(height: AppSpacing.sm),
         _RequirementItem(
@@ -448,10 +440,7 @@ class _RequirementItem extends StatelessWidget {
   final String text;
   final bool met;
 
-  const _RequirementItem({
-    required this.text,
-    required this.met,
-  });
+  const _RequirementItem({required this.text, required this.met});
 
   @override
   Widget build(BuildContext context) {

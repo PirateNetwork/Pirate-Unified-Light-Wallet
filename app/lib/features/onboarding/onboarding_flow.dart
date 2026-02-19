@@ -198,7 +198,7 @@ class OnboardingController extends Notifier<OnboardingState> {
           birthday = resolution.height;
           state = state.copyWith(birthdayHeight: birthday);
         }
-        
+
         // If we have a mnemonic in state (from seed display), use restore_wallet
         // to create wallet with that specific mnemonic. Otherwise, use create_wallet
         // which generates a new mnemonic.
@@ -218,11 +218,13 @@ class OnboardingController extends Notifier<OnboardingState> {
         }
         if (resolution?.timedOut ?? false) {
           await BirthdayUpdateService.markPending(walletId, birthday);
-          unawaited(BirthdayUpdateService.updateWhenAvailable(
-            walletId,
-            birthday,
-            onWalletsUpdated: ref.read(refreshWalletsProvider),
-          ));
+          unawaited(
+            BirthdayUpdateService.updateWhenAvailable(
+              walletId,
+              birthday,
+              onWalletsUpdated: ref.read(refreshWalletsProvider),
+            ),
+          );
         }
         break;
       case OnboardingMode.import:
@@ -238,9 +240,11 @@ class OnboardingController extends Notifier<OnboardingState> {
         );
         break;
       case OnboardingMode.watchOnly:
-        throw StateError('Watch-only onboarding must use viewing key import flow');
+        throw StateError(
+          'Watch-only onboarding must use viewing key import flow',
+        );
     }
-    
+
     // After wallet creation, unlock the app with the passphrase
     // The passphrase was set during onboarding, so we just need to mark as unlocked
     if (state.passphrase != null && state.passphrase!.isNotEmpty) {
@@ -252,40 +256,61 @@ class OnboardingController extends Notifier<OnboardingState> {
         debugPrint('Failed to unlock app after wallet creation: $e');
       }
     }
-    
+
     state = state.copyWith(currentStep: OnboardingStep.complete);
   }
 
   Future<_BirthdayResolution> _resolveBirthdayHeight() async {
-    const maxWait = Duration(minutes: 10);
+    const maxWait = Duration(seconds: 25);
+    const fetchTimeout = Duration(seconds: 8);
+    final fallbackHeight = await _resolveBirthdayFallbackHeight();
     var attempt = 0;
     final start = DateTime.now();
 
     while (DateTime.now().difference(start) < maxWait) {
-      final height = await BirthdayUpdateService.fetchLatestBirthdayHeight();
+      int? height;
+      try {
+        height = await BirthdayUpdateService.fetchLatestBirthdayHeight()
+            .timeout(fetchTimeout);
+      } catch (_) {
+        height = null;
+      }
       if (height != null) {
         return _BirthdayResolution(height: height, timedOut: false);
       }
       attempt += 1;
-      final delaySeconds = attempt < 3 ? 5 : (attempt < 6 ? 10 : 20);
+      final elapsed = DateTime.now().difference(start);
+      if (elapsed >= maxWait) {
+        break;
+      }
+      final delaySeconds = attempt < 3 ? 2 : (attempt < 6 ? 4 : 6);
       await Future<void>.delayed(Duration(seconds: delaySeconds));
     }
 
-    return const _BirthdayResolution(height: 1, timedOut: true);
+    return _BirthdayResolution(height: fallbackHeight, timedOut: true);
   }
 
+  Future<int> _resolveBirthdayFallbackHeight() async {
+    try {
+      final fallback = await FfiBridge.getDefaultBirthdayHeight().timeout(
+        const Duration(seconds: 3),
+      );
+      return fallback > 0 ? fallback : 1;
+    } catch (_) {
+      return 1;
+    }
+  }
 }
 
 class _BirthdayResolution {
   final int height;
   final bool timedOut;
 
-  const _BirthdayResolution({
-    required this.height,
-    required this.timedOut,
-  });
+  const _BirthdayResolution({required this.height, required this.timedOut});
 }
 
 /// Provider for onboarding controller
 final onboardingControllerProvider =
-    NotifierProvider<OnboardingController, OnboardingState>(OnboardingController.new);
+    NotifierProvider<OnboardingController, OnboardingState>(
+      OnboardingController.new,
+    );

@@ -14,6 +14,7 @@ import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/providers/wallet_providers.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Viewing key import screen for creating watch-only wallets
 class IvkImportScreen extends ConsumerStatefulWidget {
@@ -56,11 +57,12 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
   }
 
   bool get _isValid {
-    final hasKey = _saplingIvkController.text.trim().isNotEmpty ||
+    final hasKey =
+        _saplingIvkController.text.trim().isNotEmpty ||
         _orchardIvkController.text.trim().isNotEmpty;
     return _nameController.text.trim().isNotEmpty &&
-           hasKey &&
-           _birthdayController.text.trim().isNotEmpty;
+        hasKey &&
+        _birthdayController.text.trim().isNotEmpty;
   }
 
   void _onFieldChanged() {
@@ -75,8 +77,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
       if (_birthdayController.text.trim().isEmpty) {
         _birthdayController.text = defaultBirthday.toString();
       }
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   Future<void> _pasteIvk(TextEditingController controller) async {
@@ -125,8 +126,10 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
       );
 
       // Set as active wallet
-      unawaited(ref.read(activeWalletProvider.notifier).setActiveWallet(walletId));
-      
+      unawaited(
+        ref.read(activeWalletProvider.notifier).setActiveWallet(walletId),
+      );
+
       // Refresh wallets list
       ref.read(refreshWalletsProvider)();
 
@@ -143,18 +146,14 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
         }
         // Navigate to home with success message
         context.go('/home');
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
                 const Icon(Icons.visibility, color: Colors.white, size: 20),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'View only wallet created.',
-                  ),
-                ),
+                Expanded(child: Text('View only wallet created.'.tr)),
               ],
             ),
             backgroundColor: AppColors.success,
@@ -180,10 +179,10 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
     return PScaffold(
-      title: 'Import Viewing Key',
+      title: 'Import Viewing Key'.tr,
       appBar: PAppBar(
-        title: 'Import Viewing Key',
-        subtitle: 'Create a view only wallet',
+        title: 'Import Viewing Key'.tr,
+        subtitle: 'Create a view only wallet'.tr,
         onBack: () => context.pop(),
       ),
       body: SingleChildScrollView(
@@ -234,7 +233,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
                               ),
                             ),
                             Text(
-                              'View only',
+                              'View only'.tr,
                               style: AppTypography.caption.copyWith(
                                 color: AppColors.textSecondary,
                               ),
@@ -271,7 +270,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
             // Wallet name input
             PInput(
               controller: _nameController,
-              label: 'Wallet name',
+              label: 'Wallet name'.tr,
               hint: 'e.g., View only wallet',
             ),
 
@@ -280,13 +279,13 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
             // Viewing key input
             PInput(
               controller: _saplingIvkController,
-              label: 'Sapling viewing key (optional)',
+              label: 'Sapling viewing key (optional)'.tr,
               hint: 'Starts with zxviews1…',
               maxLines: 3,
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste),
                 onPressed: () => _pasteIvk(_saplingIvkController),
-                tooltip: 'Paste from clipboard',
+                tooltip: 'Paste from clipboard'.tr,
               ),
             ),
 
@@ -294,13 +293,13 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
 
             PInput(
               controller: _orchardIvkController,
-              label: 'Orchard viewing key (optional)',
+              label: 'Orchard viewing key (optional)'.tr,
               hint: 'Starts with pirate-extended-viewing-key1…',
               maxLines: 3,
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste),
                 onPressed: () => _pasteIvk(_orchardIvkController),
-                tooltip: 'Paste from clipboard',
+                tooltip: 'Paste from clipboard'.tr,
               ),
             ),
 
@@ -309,10 +308,10 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
             // Birthday height input
             PInput(
               controller: _birthdayController,
-              label: 'Birthday height',
+              label: 'Birthday height'.tr,
               hint: 'Block height when the wallet was created',
               keyboardType: TextInputType.number,
-              helperText: 'Lower values scan more blocks and take longer.',
+              helperText: 'Lower values scan more blocks and take longer.'.tr,
             ),
 
             const SizedBox(height: AppSpacing.lg),
@@ -331,11 +330,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: AppColors.error,
-                      size: 20,
-                    ),
+                    Icon(Icons.error_outline, color: AppColors.error, size: 20),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
@@ -362,16 +357,13 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: AppColors.warning,
-                    size: 20,
-                  ),
+                  Icon(Icons.info_outline, color: AppColors.warning, size: 20),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'A viewing key can view incoming activity but cannot spend. '
-                      'Keep your full seed backed up separately.',
+                      'A viewing key can view incoming activity but cannot '
+                              'spend. Keep your full seed backed up separately.'
+                          .tr,
                       style: AppTypography.caption.copyWith(
                         color: AppColors.textPrimary,
                       ),

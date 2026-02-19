@@ -18,6 +18,7 @@ import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/security/screenshot_protection.dart';
 import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Seed import screen for wallet restoration
 class SeedImportScreen extends ConsumerStatefulWidget {
@@ -194,15 +195,15 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
     );
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     return PScaffold(
-      title: 'Import Seed',
+      title: 'Import Seed'.tr,
       appBar: PAppBar(
-        title: 'Import Seed Phrase',
-        subtitle: 'Restore a wallet with your seed phrase',
+        title: 'Import Seed Phrase'.tr,
+        subtitle: 'Restore a wallet with your seed phrase'.tr,
         onBack: () => context.pop(),
         actions: [
           PIconButton(
             icon: const Icon(Icons.content_paste),
-            tooltip: 'Paste from clipboard',
+            tooltip: 'Paste from clipboard'.tr,
             onPressed: _pasteFromClipboard,
           ),
         ],
@@ -244,7 +245,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                           children: [
                             // Title
                             Text(
-                              'Enter your seed phrase',
+                              'Enter your seed phrase'.tr,
                               style: AppTypography.h2.copyWith(
                                 color: AppColors.textPrimary,
                               ),
@@ -265,19 +266,19 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                             Row(
                               children: [
                                 _WordCountChip(
-                                  label: '12 words',
+                                  label: '12 words'.tr,
                                   selected: _wordCount == 12,
                                   onTap: () => setState(() => _wordCount = 12),
                                 ),
                                 const SizedBox(width: AppSpacing.sm),
                                 _WordCountChip(
-                                  label: '24 words',
+                                  label: '24 words'.tr,
                                   selected: _wordCount == 24,
                                   onTap: () => setState(() => _wordCount = 24),
                                 ),
                                 const Spacer(),
                                 PTextButton(
-                                  label: 'Clear all',
+                                  label: 'Clear all'.tr,
                                   leadingIcon: Icons.clear,
                                   variant: PTextButtonVariant.subtle,
                                   onPressed: () =>
@@ -378,8 +379,9 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                                   const SizedBox(width: AppSpacing.sm),
                                   Expanded(
                                     child: Text(
-                                      'Keep this private. Anyone with your seed phrase '
-                                      'can access your funds.',
+                                      'Keep this private. Anyone with your '
+                                              'seed phrase can access your funds.'
+                                          .tr,
                                       style: AppTypography.caption.copyWith(
                                         color: AppColors.textPrimary,
                                       ),
