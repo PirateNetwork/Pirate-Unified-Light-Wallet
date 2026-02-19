@@ -13,6 +13,7 @@ import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 class ImportSpendingKeyScreen extends ConsumerStatefulWidget {
   const ImportSpendingKeyScreen({super.key});
@@ -113,9 +114,9 @@ class _ImportSpendingKeyScreenState
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
     return PScaffold(
-      appBar: const PAppBar(
-        title: 'Import spending key',
-        subtitle: 'Add an existing key to this wallet',
+      appBar: PAppBar(
+        title: 'Import spending key'.tr,
+        subtitle: 'Add an existing key to this wallet'.tr,
         showBackButton: true,
       ),
       body: SingleChildScrollView(
@@ -125,33 +126,33 @@ class _ImportSpendingKeyScreenState
           children: [
             PInput(
               controller: _labelController,
-              label: 'Label (optional)',
+              label: 'Label (optional)'.tr,
               hint: 'Example: Legacy wallet',
             ),
             SizedBox(height: PSpacing.md),
             PInput(
               controller: _birthdayController,
-              label: 'Birthday height',
+              label: 'Birthday height'.tr,
               hint: 'Block height to start scanning',
               keyboardType: TextInputType.number,
             ),
             SizedBox(height: PSpacing.md),
             PInput(
               controller: _saplingKeyController,
-              label: 'Sapling spending key (optional)',
+              label: 'Sapling spending key (optional)'.tr,
               hint: 'Paste your Sapling spending key',
               maxLines: 2,
             ),
             SizedBox(height: PSpacing.md),
             PInput(
               controller: _orchardKeyController,
-              label: 'Orchard spending key (optional)',
+              label: 'Orchard spending key (optional)'.tr,
               hint: 'Paste your Orchard spending key',
               maxLines: 2,
             ),
             SizedBox(height: PSpacing.md),
             Text(
-              'A rescan will start automatically from the birthday height.',
+              'A rescan will start automatically from the birthday height.'.tr,
               style: PTypography.bodySmall(color: AppColors.textSecondary),
             ),
             if (_error != null) ...[

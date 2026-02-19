@@ -4,6 +4,7 @@ import '../../../design/tokens/colors.dart';
 import '../../../design/tokens/spacing.dart';
 import '../../../design/tokens/typography.dart';
 import '../../../ui/molecules/p_card.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Widget displaying address as QR code
 class AddressQRWidget extends StatelessWidget {
@@ -56,10 +57,7 @@ class AddressQRWidget extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.backgroundPanel,
                 borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-                border: Border.all(
-                  color: AppColors.borderSubtle,
-                  width: 1,
-                ),
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
               ),
               child: SelectableText(
                 address,
@@ -110,9 +108,7 @@ class AddressQRWidget extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.selectedBackground,
                 borderRadius: BorderRadius.circular(PSpacing.radiusFull),
-                border: Border.all(
-                  color: AppColors.selectedBorder,
-                ),
+                border: Border.all(color: AppColors.selectedBorder),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -124,7 +120,7 @@ class AddressQRWidget extends StatelessWidget {
                   ),
                   SizedBox(width: PSpacing.xs),
                   Text(
-                    'Shielded address',
+                    'Shielded address'.tr,
                     style: PTypography.labelSmall().copyWith(
                       color: AppColors.focusRing,
                       fontWeight: FontWeight.w600,

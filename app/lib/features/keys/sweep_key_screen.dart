@@ -14,6 +14,7 @@ import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/p_dialog.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 class SweepKeyScreen extends ConsumerStatefulWidget {
   const SweepKeyScreen({super.key, required this.keyId});
@@ -172,13 +173,13 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
       if (!mounted) return;
       await PDialog.show<void>(
         context: context,
-        title: 'Sweep sent',
+        title: 'Sweep sent'.tr,
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Your sweep transaction has been broadcast.',
+              'Your sweep transaction has been broadcast.'.tr,
               style: PTypography.bodyMedium(),
             ),
             SizedBox(height: PSpacing.sm),
@@ -188,7 +189,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
             ),
           ],
         ),
-        actions: [const PDialogAction(label: 'Close')],
+        actions: [PDialogAction(label: 'Close'.tr)],
       );
     } catch (e) {
       setState(() => _error = e.toString());
@@ -220,9 +221,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
   Widget build(BuildContext context) {
     final padding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
     return PScaffold(
-      appBar: const PAppBar(
-        title: 'Sweep balance',
-        subtitle: 'Send all funds to a chosen address',
+      appBar: PAppBar(
+        title: 'Sweep balance'.tr,
+        subtitle: 'Send all funds to a chosen address'.tr,
         showBackButton: true,
       ),
       body: _isLoading
@@ -242,7 +243,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                   SizedBox(height: PSpacing.md),
                   PInput(
                     controller: _addressController,
-                    label: 'Target address',
+                    label: 'Target address'.tr,
                     hint: 'Any address (external or wallet)',
                     maxLines: 2,
                   ),
@@ -261,7 +262,8 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                           SizedBox(width: PSpacing.sm),
                           Expanded(
                             child: Text(
-                              'Sweep can send funds to addresses not owned by this wallet.',
+                              'Sweep can send funds to addresses not owned by this wallet.'
+                                  .tr,
                               style: PTypography.bodySmall(
                                 color: AppColors.warning,
                               ),
@@ -275,7 +277,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                   PButton(
                     onPressed: _isBuilding ? null : _generateAddress,
                     variant: PButtonVariant.secondary,
-                    child: const Text('Generate new address'),
+                    child: Text('Generate new address'.tr),
                   ),
                   SizedBox(height: PSpacing.md),
                   PButton(
@@ -332,7 +334,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
             variant: _useOrchard
                 ? PButtonVariant.primary
                 : PButtonVariant.secondary,
-            child: const Text('Orchard'),
+            child: Text('Orchard'.tr),
           ),
         ),
         SizedBox(width: PSpacing.sm),
@@ -342,7 +344,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
             variant: _useOrchard
                 ? PButtonVariant.secondary
                 : PButtonVariant.primary,
-            child: const Text('Sapling'),
+            child: Text('Sapling'.tr),
           ),
         ),
       ],
@@ -412,7 +414,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Sweep from', style: PTypography.heading3()),
+                    Text('Sweep from'.tr, style: PTypography.heading3()),
                     const SizedBox(height: PSpacing.md),
                     Flexible(
                       child: ListView.builder(
@@ -427,8 +429,8 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                           var cursor = 0;
                           if (index == cursor) {
                             return _buildSweepOption(
-                              title: 'All addresses',
-                              subtitle: 'Sweep every spendable note.',
+                              title: 'All addresses'.tr,
+                              subtitle: 'Sweep every spendable note.'.tr,
                               selected: pendingIds.isEmpty,
                               onTap: () => setModalState(pendingIds.clear),
                             );
@@ -442,7 +444,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                             cursor += 1;
                             if (index == cursor) {
                               return Text(
-                                'Addresses',
+                                'Addresses'.tr,
                                 style: PTypography.labelMedium(),
                               );
                             }
@@ -482,7 +484,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                         Navigator.of(context).pop();
                       },
                       variant: PButtonVariant.primary,
-                      child: const Text('Done'),
+                      child: Text('Done'.tr),
                     ),
                   ],
                 ),
@@ -497,7 +499,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
   Widget _buildSweepSourceSelector() {
     if (_addresses.isEmpty) {
       return Text(
-        'No addresses available for this key.',
+        'No addresses available for this key.'.tr,
         style: PTypography.bodySmall(color: AppColors.textSecondary),
       );
     }
@@ -505,7 +507,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Sweep from', style: PTypography.labelMedium()),
+        Text('Sweep from'.tr, style: PTypography.labelMedium()),
         SizedBox(height: PSpacing.xs),
         PCard(
           onTap: _openSweepSourceSelector,
@@ -521,7 +523,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                       Text(_sweepFromLabel, style: PTypography.bodyMedium()),
                       SizedBox(height: 2),
                       Text(
-                        'Tap to choose addresses',
+                        'Tap to choose addresses'.tr,
                         style: PTypography.bodySmall(
                           color: AppColors.textSecondary,
                         ),
@@ -639,7 +641,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Preview', style: PTypography.heading4()),
+          Text('Preview'.tr, style: PTypography.heading4()),
           SizedBox(height: PSpacing.sm),
           _summaryRow('Amount', _formatArrr(pending.totalAmount)),
           _summaryRow('Fee', _formatArrr(pending.fee)),

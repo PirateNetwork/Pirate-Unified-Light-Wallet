@@ -18,6 +18,7 @@ import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../ui/organisms/p_skeleton.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Transaction detail screen.
 class TransactionDetailScreen extends ConsumerWidget {
@@ -52,9 +53,9 @@ class TransactionDetailScreen extends ConsumerWidget {
     );
 
     return PScaffold(
-      title: 'Transaction',
-      appBar: const PAppBar(
-        title: 'Transaction',
+      title: 'Transaction'.tr,
+      appBar: PAppBar(
+        title: 'Transaction'.tr,
         actions: [WalletSwitcherButton(compact: true)],
       ),
       body: content,
@@ -100,15 +101,16 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
       _memoFuture = null;
       return;
     }
-    _memoFuture = FfiBridge.fetchTransactionMemo(
-      walletId: walletId,
-      txid: widget.tx.txid,
-    ).then((memo) {
-      if (mounted && memo != null && memo.isNotEmpty) {
-        ref.invalidate(transactionsProvider);
-      }
-      return memo;
-    });
+    _memoFuture =
+        FfiBridge.fetchTransactionMemo(
+          walletId: walletId,
+          txid: widget.tx.txid,
+        ).then((memo) {
+          if (mounted && memo != null && memo.isNotEmpty) {
+            ref.invalidate(transactionsProvider);
+          }
+          return memo;
+        });
   }
 
   /// Convert PlatformInt64 timestamp to DateTime
@@ -117,15 +119,62 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
     return DateTime.fromMillisecondsSinceEpoch(timestampValue * 1000);
   }
 
+  int _confirmationsFor({
+    required int? txHeight,
+    required int? currentHeight,
+    required bool confirmed,
+  }) {
+    if (!confirmed ||
+        txHeight == null ||
+        txHeight <= 0 ||
+        currentHeight == null) {
+      return 0;
+    }
+    if (currentHeight < txHeight) {
+      return 0;
+    }
+    return (currentHeight - txHeight) + 1;
+  }
+
+  int _displayFeeArrrtoshis(TxInfo tx) {
+    final recordedFee = tx.fee.toInt();
+    if (recordedFee > 0) {
+      return recordedFee;
+    }
+    // Some historic records have missing stored fees for outgoing txs.
+    // Pirate uses a fixed minimum fee, so show that instead of 0.
+    if (tx.amount < 0) {
+      return FfiBridge.minFee;
+    }
+    return 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final padding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
     final tx = widget.tx;
     final isReceived = tx.amount >= 0;
     final amountArrr = _formatArrr(tx.amount.abs());
-    final feeArrr = _formatArrr(tx.fee.toInt());
+    final displayFeeArrrtoshis = _displayFeeArrrtoshis(tx);
+    final feeArrr = _formatArrr(displayFeeArrrtoshis);
     final statusText = tx.confirmed ? 'Confirmed' : 'Pending';
     final statusColor = tx.confirmed ? AppColors.success : AppColors.warning;
+    final syncProgressStatus = ref
+        .watch(syncProgressStreamProvider)
+        .asData
+        ?.value;
+    final syncStatus = ref.watch(syncStatusProvider).asData?.value;
+    final currentHeight =
+        (syncProgressStatus?.targetHeight ??
+                syncProgressStatus?.localHeight ??
+                syncStatus?.targetHeight ??
+                syncStatus?.localHeight)
+            ?.toInt();
+    final confirmations = _confirmationsFor(
+      txHeight: tx.height,
+      currentHeight: currentHeight,
+      confirmed: tx.confirmed,
+    );
     final timestamp = _convertTimestamp(tx.timestamp);
     final localizations = MaterialLocalizations.of(context);
     final dateText = localizations.formatFullDate(timestamp);
@@ -180,30 +229,33 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Summary',
+                  'Summary'.tr,
                   style: PTypography.titleMedium(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: PSpacing.md),
-                _DetailRow(label: 'Amount', value: amountArrr),
+                _DetailRow(label: 'Amount'.tr, value: amountArrr),
                 const SizedBox(height: PSpacing.sm),
-                _DetailRow(label: 'Network fee', value: feeArrr),
+                _DetailRow(label: 'Network fee'.tr, value: feeArrr),
                 const SizedBox(height: PSpacing.sm),
-                _DetailRow(
-                  label: 'Date and time',
-                  value: timestampValue,
-                ),
+                _DetailRow(label: 'Date and time'.tr, value: timestampValue),
                 if (tx.height != null) ...[
                   const SizedBox(height: PSpacing.sm),
                   _DetailRow(
-                    label: 'Block height',
+                    label: 'Block height'.tr,
                     value: tx.height.toString(),
+                  ),
+                  const SizedBox(height: PSpacing.sm),
+                  _DetailRow(
+                    label: 'Confirmations'.tr,
+                    value: confirmations.toString(),
                   ),
                 ],
               ],
             ),
           ),
         ),
-        if (tx.fee > BigInt.zero && BigInt.from(tx.amount.abs()) == tx.fee) ...[
+        if (displayFeeArrrtoshis > 0 &&
+            tx.amount.abs() == displayFeeArrrtoshis) ...[
           const SizedBox(height: PSpacing.lg),
           PCard(
             child: Padding(
@@ -219,7 +271,8 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
                   const SizedBox(width: PSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Internal transfer between your addresses. Net change equals the network fee.',
+                      'Internal transfer between your addresses. Net change equals the network fee.'
+                          .tr,
                       style: PTypography.bodySmall(
                         color: AppColors.textSecondary,
                       ),
@@ -280,7 +333,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Transaction ID',
+                  'Transaction ID'.tr,
                   style: PTypography.titleMedium(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: PSpacing.sm),
@@ -297,9 +350,9 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
           text: 'Copy transaction ID',
           onPressed: () {
             Clipboard.setData(ClipboardData(text: tx.txid));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Transaction ID copied')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('Transaction ID copied'.tr)));
           },
           variant: PButtonVariant.secondary,
           fullWidth: true,
@@ -362,19 +415,19 @@ class _MemoCard extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  'Memo',
+                  'Memo'.tr,
                   style: PTypography.titleMedium(color: AppColors.textPrimary),
                 ),
                 const Spacer(),
                 IconButton(
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: memo));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Memo copied')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Memo copied'.tr)));
                   },
                   icon: const Icon(Icons.copy, size: 18),
-                  tooltip: 'Copy memo',
+                  tooltip: 'Copy memo'.tr,
                   color: AppColors.textSecondary,
                 ),
               ],
@@ -430,14 +483,10 @@ class _TransactionMissing extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.receipt_long,
-              size: 48,
-              color: AppColors.textTertiary,
-            ),
+            Icon(Icons.receipt_long, size: 48, color: AppColors.textTertiary),
             const SizedBox(height: PSpacing.md),
             Text(
-              'Transaction not found',
+              'Transaction not found'.tr,
               style: PTypography.titleMedium(color: AppColors.textPrimary),
             ),
             const SizedBox(height: PSpacing.xs),
@@ -469,14 +518,10 @@ class _TransactionError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: AppColors.error,
-            ),
+            Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: PSpacing.md),
             Text(
-              'Unable to load transaction',
+              'Unable to load transaction'.tr,
               style: PTypography.titleMedium(color: AppColors.textPrimary),
             ),
             const SizedBox(height: PSpacing.xs),

@@ -11,6 +11,7 @@ import '../../ui/atoms/p_button.dart';
 import '../../ui/molecules/p_dialog.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 class ConsolidateKeyScreen extends ConsumerStatefulWidget {
   const ConsolidateKeyScreen({super.key, required this.keyId});
@@ -185,13 +186,13 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       if (!mounted) return;
       await PDialog.show<void>(
         context: context,
-        title: 'Consolidation sent',
+        title: 'Consolidation sent'.tr,
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Your consolidation transaction has been broadcast.',
+              'Your consolidation transaction has been broadcast.'.tr,
               style: PTypography.bodyMedium(),
             ),
             SizedBox(height: PSpacing.sm),
@@ -201,7 +202,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
             ),
           ],
         ),
-        actions: [const PDialogAction(label: 'Close')],
+        actions: [PDialogAction(label: 'Close'.tr)],
       );
     } catch (e) {
       setState(() => _error = e.toString());
@@ -216,9 +217,9 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
   Widget build(BuildContext context) {
     final padding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
     return PScaffold(
-      appBar: const PAppBar(
-        title: 'Consolidate balances',
-        subtitle: 'Repack funds into a wallet address',
+      appBar: PAppBar(
+        title: 'Consolidate balances'.tr,
+        subtitle: 'Repack funds into a wallet address'.tr,
         showBackButton: true,
       ),
       body: _isLoading
@@ -239,7 +240,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
                   PButton(
                     onPressed: _isBuilding ? null : _generateAddress,
                     variant: PButtonVariant.secondary,
-                    child: const Text('Generate new address'),
+                    child: Text('Generate new address'.tr),
                   ),
                   SizedBox(height: PSpacing.md),
                   PButton(
@@ -298,7 +299,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
             variant: _useOrchard
                 ? PButtonVariant.primary
                 : PButtonVariant.secondary,
-            child: const Text('Orchard'),
+            child: Text('Orchard'.tr),
           ),
         ),
         SizedBox(width: PSpacing.sm),
@@ -308,7 +309,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
             variant: _useOrchard
                 ? PButtonVariant.secondary
                 : PButtonVariant.primary,
-            child: const Text('Sapling'),
+            child: Text('Sapling'.tr),
           ),
         ),
       ],
@@ -326,7 +327,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
   Widget _buildTargetAddressSelector() {
     if (_addresses.isEmpty) {
       return Text(
-        'No wallet addresses available yet.',
+        'No wallet addresses available yet.'.tr,
         style: PTypography.bodySmall(color: AppColors.textSecondary),
       );
     }
@@ -335,7 +336,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       key: ValueKey(_selectedTargetAddress?.addressId),
       initialSelection: _selectedTargetAddress,
       width: double.infinity,
-      label: const Text('Target wallet address'),
+      label: Text('Target wallet address'.tr),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surfaceElevated,
@@ -378,7 +379,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Preview', style: PTypography.heading4()),
+          Text('Preview'.tr, style: PTypography.heading4()),
           SizedBox(height: PSpacing.sm),
           _summaryRow('Amount', _formatArrr(pending.totalAmount)),
           _summaryRow('Fee', _formatArrr(pending.fee)),

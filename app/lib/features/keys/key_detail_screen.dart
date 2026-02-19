@@ -6,7 +6,7 @@ import 'package:timeago/timeago.dart' as timeago;
 
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart'
-    show AddressBalanceInfo, KeyGroupInfo, KeyTypeInfo;
+    show AddressBalanceInfo, KeyAddressInfo, KeyGroupInfo, KeyTypeInfo;
 import '../../core/security/biometric_auth.dart';
 import '../../core/security/decoy_data.dart';
 import '../../core/security/screenshot_protection.dart';
@@ -21,6 +21,7 @@ import '../../ui/molecules/p_dialog.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../settings/providers/preferences_providers.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 class KeyDetailScreen extends ConsumerStatefulWidget {
   const KeyDetailScreen({super.key, required this.keyId});
@@ -72,20 +73,31 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
           diversifierIndex: entry.index,
         ),
       ];
-      return _KeyDetailData(key: key, addresses: addresses);
+      return _KeyDetailData(
+        key: key,
+        addresses: addresses,
+        externalAddresses: {entry.address},
+      );
     }
 
     final results = await Future.wait<Object>([
       FfiBridge.listKeyGroups(walletId),
       FfiBridge.listAddressBalances(walletId, keyId: widget.keyId),
+      FfiBridge.listAddressesForKey(walletId, widget.keyId),
     ]);
     final keys = results[0] as List<KeyGroupInfo>;
     final addresses = results[1] as List<AddressBalanceInfo>;
+    final keyAddresses = results[2] as List<KeyAddressInfo>;
+    final externalAddresses = keyAddresses.map((addr) => addr.address).toSet();
     final key = keys.firstWhere(
       (k) => k.id == widget.keyId,
       orElse: () => throw StateError('Key group not found'),
     );
-    return _KeyDetailData(key: key, addresses: addresses);
+    return _KeyDetailData(
+      key: key,
+      addresses: addresses,
+      externalAddresses: externalAddresses,
+    );
   }
 
   Future<void> _refresh() async {
@@ -210,7 +222,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Verify passphrase',
+                      'Verify passphrase'.tr,
                       style: PTypography.heading4(color: AppColors.textPrimary),
                     ),
                     SizedBox(height: PSpacing.md),
@@ -221,7 +233,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                           children: [
                             PInput(
                               controller: controller,
-                              label: 'Passphrase',
+                              label: 'Passphrase'.tr,
                               hint: 'Enter your wallet passphrase',
                               obscureText: true,
                             ),
@@ -247,7 +259,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                         PButton(
                           onPressed: () => Navigator.of(context).pop(false),
                           variant: PButtonVariant.secondary,
-                          child: const Text('Cancel'),
+                          child: Text('Cancel'.tr),
                         ),
                         PButton(
                           onPressed: isVerifying ? null : handleVerify,
@@ -305,7 +317,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
       try {
         await PDialog.show<void>(
           context: context,
-          title: 'Export keys',
+          title: 'Export keys'.tr,
           content: ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * 0.6,
@@ -318,7 +330,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
               ),
             ),
           ),
-          actions: const [PDialogAction(label: 'Close')],
+          actions: [PDialogAction(label: 'Close'.tr)],
         );
       } finally {
         protection.dispose();
@@ -348,7 +360,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
               IconButton(
                 icon: const Icon(Icons.copy, size: 18),
                 onPressed: () => Clipboard.setData(ClipboardData(text: value)),
-                tooltip: 'Copy',
+                tooltip: 'Copy'.tr,
               ),
             ],
           ),
@@ -364,9 +376,9 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     _setWallet(walletId);
 
     return PScaffold(
-      appBar: const PAppBar(
-        title: 'Key details',
-        subtitle: 'Manage addresses for this key',
+      appBar: PAppBar(
+        title: 'Key details'.tr,
+        subtitle: 'Manage addresses for this key'.tr,
         showBackButton: true,
       ),
       body: walletId == null
@@ -407,10 +419,10 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                             ),
                           ],
                           SizedBox(height: PSpacing.lg),
-                          Text('Addresses', style: PTypography.heading3()),
+                          Text('Addresses'.tr, style: PTypography.heading3()),
                           SizedBox(height: PSpacing.xs),
                           Text(
-                            'All addresses derived from this key.',
+                            'All addresses derived from this key.'.tr,
                             style: PTypography.bodySmall(
                               color: AppColors.textSecondary,
                             ),
@@ -434,10 +446,13 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                                 index,
                               ) {
                                 final address = data.addresses[index];
+                                final isInternal = !data.externalAddresses
+                                    .contains(address.address);
                                 return Padding(
                                   padding: EdgeInsets.only(bottom: PSpacing.sm),
                                   child: _AddressListItem(
                                     address: address,
+                                    isInternal: isInternal,
                                     onCopy: _copyAddress,
                                   ),
                                 );
@@ -458,7 +473,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     final actions = <_ActionItem>[
       if (canGenerateSapling)
         _ActionItem(
-          label: 'New Sapling address',
+          label: 'New Sapling address'.tr,
           variant: PButtonVariant.secondary,
           onPressed: _isGenerating
               ? null
@@ -466,7 +481,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
         ),
       if (canGenerateOrchard)
         _ActionItem(
-          label: 'New Orchard address',
+          label: 'New Orchard address'.tr,
           variant: PButtonVariant.secondary,
           onPressed: _isGenerating
               ? null
@@ -474,19 +489,19 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
         ),
       if (key.spendable)
         _ActionItem(
-          label: 'Consolidate balances',
+          label: 'Consolidate balances'.tr,
           variant: PButtonVariant.secondary,
           onPressed: () =>
               context.push('/settings/keys/consolidate?keyId=${key.id}'),
         ),
       if (key.spendable)
         _ActionItem(
-          label: 'Sweep balance',
+          label: 'Sweep balance'.tr,
           variant: PButtonVariant.primary,
           onPressed: () => context.push('/settings/keys/sweep?keyId=${key.id}'),
         ),
       _ActionItem(
-        label: 'Export keys',
+        label: 'Export keys'.tr,
         variant: PButtonVariant.secondary,
         onPressed: () => _exportKeys(key),
       ),
@@ -559,7 +574,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     return Center(
       child: Padding(
         padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
-        child: Text('No active wallet.', style: PTypography.bodyMedium()),
+        child: Text('No active wallet.'.tr, style: PTypography.bodyMedium()),
       ),
     );
   }
@@ -582,7 +597,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
             PButton(
               onPressed: _refresh,
               variant: PButtonVariant.secondary,
-              child: const Text('Retry'),
+              child: Text('Retry'.tr),
             ),
           ],
         ),
@@ -702,10 +717,10 @@ class _AddressEmptyCard extends StatelessWidget {
           children: [
             Icon(Icons.history, color: AppColors.textTertiary, size: 40),
             SizedBox(height: PSpacing.sm),
-            Text('No addresses yet.', style: PTypography.bodyMedium()),
+            Text('No addresses yet.'.tr, style: PTypography.bodyMedium()),
             SizedBox(height: PSpacing.xs),
             Text(
-              'Generate a new address to get started.',
+              'Generate a new address to get started.'.tr,
               style: PTypography.bodySmall(color: AppColors.textSecondary),
             ),
           ],
@@ -716,9 +731,14 @@ class _AddressEmptyCard extends StatelessWidget {
 }
 
 class _AddressListItem extends StatelessWidget {
-  const _AddressListItem({required this.address, required this.onCopy});
+  const _AddressListItem({
+    required this.address,
+    required this.isInternal,
+    required this.onCopy,
+  });
 
   final AddressBalanceInfo address;
+  final bool isInternal;
   final ValueChanged<AddressBalanceInfo> onCopy;
 
   @override
@@ -745,6 +765,14 @@ class _AddressListItem extends StatelessWidget {
                   address.label ?? _truncate(address.address),
                   style: PTypography.bodyMedium(),
                 ),
+                if (isInternal) ...[
+                  SizedBox(height: PSpacing.xs),
+                  _chip(
+                    'Internal change'.tr,
+                    AppColors.warning.withValues(alpha: 0.14),
+                    AppColors.warning,
+                  ),
+                ],
                 SizedBox(height: PSpacing.xs),
                 Text(
                   'Index ${address.diversifierIndex} | ${_formatTimestamp(address.createdAt)}',
@@ -761,7 +789,7 @@ class _AddressListItem extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.copy, size: 18),
             onPressed: () => onCopy(address),
-            tooltip: 'Copy address',
+            tooltip: 'Copy address'.tr,
           ),
         ],
       ),
@@ -792,11 +820,28 @@ class _AddressListItem extends StatelessWidget {
     final amount = value.toDouble() / 100000000.0;
     return '${amount.toStringAsFixed(8)} ARRR';
   }
+
+  Widget _chip(String text, Color background, Color foreground) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: PSpacing.sm, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(PSpacing.radiusSM),
+        border: Border.all(color: foreground.withValues(alpha: 0.3)),
+      ),
+      child: Text(text, style: PTypography.labelSmall(color: foreground)),
+    );
+  }
 }
 
 class _KeyDetailData {
-  const _KeyDetailData({required this.key, required this.addresses});
+  const _KeyDetailData({
+    required this.key,
+    required this.addresses,
+    required this.externalAddresses,
+  });
 
   final KeyGroupInfo key;
   final List<AddressBalanceInfo> addresses;
+  final Set<String> externalAddresses;
 }

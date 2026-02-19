@@ -20,6 +20,7 @@ import '../../ui/organisms/p_scaffold.dart';
 import 'widgets/address_qr_widget.dart';
 import 'widgets/address_history_list.dart';
 import 'receive_viewmodel.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Receive screen for displaying payment addresses with QR codes
 class ReceiveScreen extends ConsumerStatefulWidget {
@@ -136,8 +137,8 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
 
       return PScaffold(
         appBar: PAppBar(
-          title: 'Receive',
-          subtitle: 'Share a QR code to get paid.',
+          title: 'Receive'.tr,
+          subtitle: 'Share a QR code to get paid.'.tr,
           actions: [
             ConnectionStatusIndicator(
               full: !isMobile,
@@ -187,7 +188,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                   ),
                                   SizedBox(height: PSpacing.sm),
                                   Text(
-                                    'Error loading address',
+                                    'Error loading address'.tr,
                                     style: PTypography.heading3(),
                                   ),
                                   SizedBox(height: PSpacing.xs),
@@ -200,7 +201,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                   PButton(
                                     onPressed: viewModel.loadCurrentAddress,
                                     variant: PButtonVariant.secondary,
-                                    child: const Text('Retry'),
+                                    child: Text('Retry'.tr),
                                   ),
                                 ],
                               ),
@@ -220,12 +221,13 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                   ),
                                   SizedBox(height: PSpacing.sm),
                                   Text(
-                                    'No address loaded',
+                                    'No address loaded'.tr,
                                     style: PTypography.heading3(),
                                   ),
                                   SizedBox(height: PSpacing.xs),
                                   Text(
-                                    'Tap the button below to generate a receive address',
+                                    'Tap the button below to generate a receive address'
+                                        .tr,
                                     style: PTypography.bodySmall(),
                                     textAlign: TextAlign.center,
                                   ),
@@ -233,7 +235,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                   PButton(
                                     onPressed: viewModel.loadCurrentAddress,
                                     variant: PButtonVariant.primary,
-                                    child: const Text('Load Address'),
+                                    child: Text('Load Address'.tr),
                                   ),
                                 ],
                               ),
@@ -279,7 +281,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Payment request (optional)',
+                                    'Payment request (optional)'.tr,
                                     style: PTypography.labelMedium(
                                       color: AppColors.textSecondary,
                                     ),
@@ -287,14 +289,14 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                   SizedBox(height: PSpacing.sm),
                                   PInput(
                                     controller: _amountController,
-                                    label: 'Amount',
+                                    label: 'Amount'.tr,
                                     hint: '0.00 ARRR',
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
                                           decimal: true,
                                         ),
                                     inputFormatters: [_amountFormatter],
-                                    helperText: 'Adds amount to the QR code',
+                                    helperText: 'Adds amount to the QR code'.tr,
                                     autocorrect: false,
                                     enableSuggestions: false,
                                     textInputAction: TextInputAction.next,
@@ -302,12 +304,12 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                   SizedBox(height: PSpacing.md),
                                   PInput(
                                     controller: _memoController,
-                                    label: 'Memo (optional)',
+                                    label: 'Memo (optional)'.tr,
                                     hint: 'Optional note for the sender',
                                     maxLines: 3,
                                     maxLength: 512,
                                     helperText:
-                                        'Included in the payment request',
+                                        'Included in the payment request'.tr,
                                   ),
                                 ],
                               ),
@@ -339,7 +341,8 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                     SizedBox(width: PSpacing.xs),
                                     Expanded(
                                       child: Text(
-                                        'Address shared. Generate a new one for privacy.',
+                                        'Address shared. Generate a new one for privacy.'
+                                            .tr,
                                         style: PTypography.bodySmall().copyWith(
                                           color: AppColors.warning,
                                         ),
@@ -360,7 +363,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                   variant: state.addressWasShared
                                       ? PButtonVariant.primary
                                       : PButtonVariant.secondary,
-                                  child: const Text('New address'),
+                                  child: Text('New address'.tr),
                                 ),
                               ),
                               SizedBox(width: PSpacing.md),
@@ -403,7 +406,8 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                   ),
                                   SizedBox(height: PSpacing.sm),
                                   Text(
-                                    'Each address is fresh and unlinkable for maximum privacy',
+                                    'Each address is fresh and unlinkable for maximum privacy'
+                                        .tr,
                                     style: PTypography.bodySmall().copyWith(
                                       color: AppColors.textSecondary,
                                     ),
@@ -416,7 +420,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
 
                           SizedBox(height: PSpacing.xl),
                           PTextButton(
-                            label: 'Manage keys & addresses',
+                            label: 'Manage keys & addresses'.tr,
                             leadingIcon: Icons.vpn_key_outlined,
                             onPressed: () => context.push('/settings/keys'),
                             variant: PTextButtonVariant.subtle,
@@ -428,29 +432,29 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  'Previous addresses',
+                                  'Previous addresses'.tr,
                                   style: PTypography.heading3(),
                                 ),
                               ),
                               PopupMenuButton<_AddressSort>(
                                 onSelected: (value) =>
                                     setState(() => _addressSort = value),
-                                itemBuilder: (context) => const [
+                                itemBuilder: (context) => [
                                   PopupMenuItem(
                                     value: _AddressSort.newest,
-                                    child: Text('Newest to oldest'),
+                                    child: Text('Newest to oldest'.tr),
                                   ),
                                   PopupMenuItem(
                                     value: _AddressSort.oldest,
-                                    child: Text('Oldest to newest'),
+                                    child: Text('Oldest to newest'.tr),
                                   ),
                                   PopupMenuItem(
                                     value: _AddressSort.balanceHigh,
-                                    child: Text('Highest balance'),
+                                    child: Text('Highest balance'.tr),
                                   ),
                                   PopupMenuItem(
                                     value: _AddressSort.balanceLow,
-                                    child: Text('Lowest balance'),
+                                    child: Text('Lowest balance'.tr),
                                   ),
                                 ],
                                 child: Container(
@@ -503,7 +507,8 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                           ),
                           SizedBox(height: PSpacing.sm),
                           Text(
-                            'Your previously generated addresses. All remain valid.',
+                            'Your previously generated addresses. All remain valid.'
+                                .tr,
                             style: PTypography.bodySmall().copyWith(
                               color: AppColors.textSecondary,
                             ),
@@ -543,7 +548,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                         ),
                         child: Center(
                           child: PTextButton(
-                            label: 'Back to top',
+                            label: 'Back to top'.tr,
                             onPressed: () {
                               if (_scrollController.hasClients) {
                                 _scrollController.animateTo(
@@ -580,7 +585,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                       ),
                       const SizedBox(height: PSpacing.md),
                       Text(
-                        'Error rendering content',
+                        'Error rendering content'.tr,
                         style: PTypography.heading3(),
                         textAlign: TextAlign.center,
                       ),
@@ -596,7 +601,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                           ref.invalidate(receiveViewModelProvider);
                         },
                         variant: PButtonVariant.primary,
-                        child: const Text('Retry'),
+                        child: Text('Retry'.tr),
                       ),
                     ],
                   ),
@@ -623,7 +628,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                 Icon(Icons.error_outline, size: 64, color: AppColors.error),
                 const SizedBox(height: PSpacing.md),
                 Text(
-                  'Error loading receive screen',
+                  'Error loading receive screen'.tr,
                   style: PTypography.heading3(),
                   textAlign: TextAlign.center,
                 ),
@@ -640,7 +645,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                     ref.invalidate(receiveViewModelProvider);
                   },
                   variant: PButtonVariant.primary,
-                  child: const Text('Retry'),
+                  child: Text('Retry'.tr),
                 ),
               ],
             ),
@@ -662,13 +667,13 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.backgroundElevated,
-        title: Text('Label address', style: PTypography.heading3()),
+        title: Text('Label address'.tr, style: PTypography.heading3()),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Add a label to remember this address',
+              'Add a label to remember this address'.tr,
               style: PTypography.bodySmall().copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -676,8 +681,8 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
             SizedBox(height: PSpacing.md),
             TextField(
               controller: controller,
-              decoration: const InputDecoration(
-                hintText: 'e.g., Exchange Payment',
+              decoration: InputDecoration(
+                hintText: 'e.g., Exchange Payment'.tr,
                 border: OutlineInputBorder(),
               ),
               maxLength: 50,
@@ -686,7 +691,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
         ),
         actions: [
           PTextButton(
-            label: 'Cancel',
+            label: 'Cancel'.tr,
             onPressed: () => Navigator.pop(context),
             variant: PTextButtonVariant.subtle,
           ),
@@ -696,7 +701,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
               Navigator.pop(context);
             },
             size: PButtonSize.small,
-            child: const Text('Save'),
+            child: Text('Save'.tr),
           ),
         ],
       ),
@@ -723,7 +728,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Color tag', style: PTypography.heading4()),
+              Text('Color tag'.tr, style: PTypography.heading4()),
               SizedBox(height: PSpacing.md),
               Wrap(
                 spacing: PSpacing.sm,

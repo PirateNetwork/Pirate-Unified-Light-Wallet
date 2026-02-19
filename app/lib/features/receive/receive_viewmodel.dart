@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/ffi/ffi_bridge.dart';
-import '../../core/ffi/generated/models.dart'
-    show AddressBalanceInfo, KeyGroupInfo, KeyTypeInfo;
+import '../../core/ffi/generated/models.dart' show KeyGroupInfo, KeyTypeInfo;
 import '../../core/providers/wallet_providers.dart';
 import '../../core/security/decoy_data.dart';
 import '../../core/security/clipboard_manager.dart';
@@ -74,9 +72,9 @@ class AddressInfo {
     BigInt? balance,
     BigInt? spendable,
     BigInt? pending,
-  })  : balance = balance ?? BigInt.zero,
-        spendable = spendable ?? BigInt.zero,
-        pending = pending ?? BigInt.zero;
+  }) : balance = balance ?? BigInt.zero,
+       spendable = spendable ?? BigInt.zero,
+       pending = pending ?? BigInt.zero;
 
   AddressInfo copyWith({
     String? address,
@@ -105,7 +103,7 @@ class AddressInfo {
       pending: pending ?? this.pending,
     );
   }
-  
+
   /// Get truncated address for display
   String get truncatedAddress {
     if (address.length < 20) return address;
@@ -114,7 +112,7 @@ class AddressInfo {
 }
 
 /// ViewModel for receive screen
-/// 
+///
 /// Enforces diversifier rotation:
 /// - New Address button always generates fresh address
 /// - Current address is never reused after being shared
@@ -124,11 +122,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   bool _initialized = false;
   ReceiveState? _lastState;
   bool _isDecoy = false;
-  String? _activeImportedAddress;
-  static const String _importedAddressStorageKeyPrefix =
-      'ui_receive_active_imported_address_v1_';
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
-  
+
   /// Track if current address was shared (copied/shared)
   bool _currentAddressShared = false;
 
@@ -137,19 +131,18 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
     try {
       // Keep provider alive during initialization
       ref.keepAlive();
-      
+
       // Watch active wallet provider
       final walletId = ref.watch(activeWalletProvider);
       final isDecoy = ref.watch(decoyModeProvider);
-      
+
       // Handle wallet changes - reset initialization when wallet changes
       if (walletId != _walletId || isDecoy != _isDecoy) {
         _walletId = walletId;
         _isDecoy = isDecoy;
         _initialized = false;
         _lastState = null;
-        _activeImportedAddress = null;
-        
+
         // If wallet changed, reset and reinitialize
         if (walletId != null) {
           Future.microtask(_init);
@@ -161,7 +154,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
           );
         }
       }
-      
+
       // Initialize if wallet is set and we haven't initialized yet
       if (walletId != null && !_initialized) {
         _initialized = true;
@@ -170,7 +163,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         // Return loading state while initializing
         return const ReceiveState(isLoading: true);
       }
-      
+
       // If no wallet, return error state
       if (walletId == null) {
         return const ReceiveState(
@@ -178,7 +171,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
           isLoading: false,
         );
       }
-      
+
       // If we reach here, wallet exists and we've initialized
       // Return last known state if available, otherwise return loading state
       // This handles the case where we're waiting for _init to complete
@@ -186,10 +179,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
     } catch (e, stackTrace) {
       debugPrint('Error in ReceiveViewModel.build(): $e');
       debugPrint('Stack trace: $stackTrace');
-      return ReceiveState(
-        error: 'Error initializing: $e',
-        isLoading: false,
-      );
+      return ReceiveState(error: 'Error initializing: $e', isLoading: false);
     }
   }
 
@@ -204,7 +194,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       state = errorState;
       return;
     }
-    
+
     try {
       const loadingState = ReceiveState(isLoading: true, error: null);
       _lastState = loadingState;
@@ -216,17 +206,14 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       debugPrint('Error in _init(): $e');
       debugPrint('Stack trace: $stackTrace');
       // Ensure error is set if initialization fails
-      final errorState = ReceiveState(
-        error: e.toString(),
-        isLoading: false,
-      );
+      final errorState = ReceiveState(error: e.toString(), isLoading: false);
       _lastState = errorState;
       state = errorState;
     }
   }
 
   /// Load current receive address
-  /// 
+  ///
   /// If address was previously shared, automatically rotate to new one
   Future<void> loadCurrentAddress() async {
     state = state.copyWith(isLoading: true, error: null);
@@ -251,7 +238,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
 
       // Get current receive address from FFI
       final address = await FfiBridge.currentReceiveAddress(walletId);
-      
+
       // Reset shared flag for new address
       _currentAddressShared = false;
 
@@ -262,16 +249,13 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       );
       _lastState = state;
     } catch (e) {
-      state = state.copyWith(
-        error: e.toString(),
-        isLoading: false,
-      );
+      state = state.copyWith(error: e.toString(), isLoading: false);
       _lastState = state;
     }
   }
 
   /// Generate a new receive address via diversifier rotation
-  /// 
+  ///
   /// This ALWAYS generates a fresh address (no reuse)
   /// Automatically skips addresses that already have balances (important for recovery/rescan)
   /// Previous address is added to history
@@ -306,7 +290,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       // This automatically skips addresses with existing balances (prevents reuse after recovery)
       final rotationService = ref.read(addressRotationServiceProvider);
       final newAddress = await rotationService.manualRotate(walletId);
-      
+
       // Reset shared flag for fresh address
       _currentAddressShared = false;
 
@@ -325,14 +309,11 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       );
       _lastState = state;
     } catch (e) {
-      state = state.copyWith(
-        error: e.toString(),
-        isLoading: false,
-      );
+      state = state.copyWith(error: e.toString(), isLoading: false);
       _lastState = state;
     }
   }
-  
+
   /// Mark an address as shared in history
   void _markAddressAsShared(String address) {
     final updatedHistory = state.addressHistory.map((info) {
@@ -341,13 +322,13 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       }
       return info;
     }).toList();
-    
+
     state = state.copyWith(addressHistory: updatedHistory);
     _lastState = state;
   }
 
   /// Copy address to clipboard with protection
-  /// 
+  ///
   /// Also marks the address as shared (for privacy tracking)
   Future<void> copyAddress(
     BuildContext context, {
@@ -358,10 +339,8 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
     if (text == null || text.isEmpty) return;
 
     try {
-      await ClipboardManager.copyAddress(
-        text,
-      );
-      
+      await ClipboardManager.copyAddress(text);
+
       // Mark address as shared (for privacy awareness)
       _currentAddressShared = true;
       state = state.copyWith(addressWasShared: true);
@@ -391,11 +370,12 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   }
 
   /// Copy specific address from history
-  Future<void> copySpecificAddress(BuildContext context, AddressInfo info) async {
+  Future<void> copySpecificAddress(
+    BuildContext context,
+    AddressInfo info,
+  ) async {
     try {
-      await ClipboardManager.copyAddress(
-        info.address,
-      );
+      await ClipboardManager.copyAddress(info.address);
 
       if (context.mounted) {
         final label = info.label != null ? ' (${info.label})' : '';
@@ -420,7 +400,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   }
 
   /// Share address (opens share sheet)
-  /// 
+  ///
   /// Also marks the address as shared (for privacy tracking)
   Future<void> shareAddress(
     BuildContext context, {
@@ -432,12 +412,12 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
 
     try {
       await SharePlus.instance.share(ShareParams(text: text));
-      
+
       // Mark address as shared (for privacy awareness)
       _currentAddressShared = true;
       state = state.copyWith(addressWasShared: true);
       _lastState = state;
-      
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -477,7 +457,10 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   }
 
   /// Update address color tag
-  Future<void> setAddressColorTag(String address, AddressBookColorTag tag) async {
+  Future<void> setAddressColorTag(
+    String address,
+    AddressBookColorTag tag,
+  ) async {
     try {
       final walletId = _requireWallet();
       await FfiBridge.setAddressColorTag(walletId, address, tag);
@@ -502,16 +485,18 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         final currentEntry = DecoyData.currentAddress();
         final currentAddress = currentAddressOverride ?? currentEntry.address;
         final history = DecoyData.addressHistory()
-            .map((entry) => AddressInfo(
-                  address: entry.address,
-                  createdAt: entry.createdAt,
-                  isActive: entry.address == currentAddress,
-                  diversifierIndex: entry.index,
-                  wasShared: true,
-                  balance: BigInt.zero,
-                  spendable: BigInt.zero,
-                  pending: BigInt.zero,
-                ))
+            .map(
+              (entry) => AddressInfo(
+                address: entry.address,
+                createdAt: entry.createdAt,
+                isActive: entry.address == currentAddress,
+                diversifierIndex: entry.index,
+                wasShared: true,
+                balance: BigInt.zero,
+                spendable: BigInt.zero,
+                pending: BigInt.zero,
+              ),
+            )
             .toList();
 
         state = state.copyWith(
@@ -522,70 +507,45 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         return;
       }
 
-      var importedKeys = <KeyGroupInfo>[];
       if (!forceCurrentAddress) {
         try {
-          importedKeys = await _loadImportedSpendingKeys(walletId);
+          final importedKeys = await _loadImportedSpendingKeys(walletId);
           if (importedKeys.isNotEmpty) {
             await _ensureImportedKeyAddresses(walletId, importedKeys);
           }
-          if (_activeImportedAddress == null && importedKeys.isNotEmpty) {
-            _activeImportedAddress =
-                await _loadPersistedImportedAddress(walletId);
-          }
         } catch (e) {
           debugPrint('Failed to load imported keys: $e');
-          importedKeys = <KeyGroupInfo>[];
         }
       }
 
       // Get address balances from FFI
       final addresses = await FfiBridge.listAddressBalances(walletId);
-      if (forceCurrentAddress) {
-        await _persistImportedAddress(walletId, null);
-        _activeImportedAddress = null;
-      }
-      final seedCurrentAddress = forceCurrentAddress &&
-              currentAddressOverride != null
+      final currentAddress =
+          forceCurrentAddress && currentAddressOverride != null
           ? currentAddressOverride
           : await FfiBridge.currentReceiveAddress(walletId);
-      final importedCurrentAddress = forceCurrentAddress
-          ? null
-          : _selectImportedReceiveAddress(
-              addresses,
-              importedKeys,
-              preferredAddress: _activeImportedAddress,
-            );
-      final currentAddress = importedCurrentAddress ?? seedCurrentAddress;
-      _activeImportedAddress = importedCurrentAddress;
-      if (!forceCurrentAddress) {
-        await _persistImportedAddress(walletId, importedCurrentAddress);
-      }
 
       // Convert FFI AddressBalanceInfo to local AddressInfo with balance tracking
-      final history = addresses
-          .map((ffiAddr) {
-            final createdAt = ffiAddr.createdAt > 0
-                ? DateTime.fromMillisecondsSinceEpoch(
-                    ffiAddr.createdAt * 1000,
-                    isUtc: true,
-                  ).toLocal()
-                : DateTime.fromMillisecondsSinceEpoch(0, isUtc: true).toLocal();
-            return AddressInfo(
-              address: ffiAddr.address,
-              label: ffiAddr.label,
-              createdAt: createdAt,
-              isActive: ffiAddr.address == currentAddress,
-              diversifierIndex: ffiAddr.diversifierIndex,
-              wasShared: true, // Assume all historical addresses were shared
-              colorTag: AddressBookColorTag.fromValue(ffiAddr.colorTag.index),
-              balance: ffiAddr.balance,
-              spendable: ffiAddr.spendable,
-              pending: ffiAddr.pending,
-            );
-          })
-          .toList()
-        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final history = addresses.map((ffiAddr) {
+        final createdAt = ffiAddr.createdAt > 0
+            ? DateTime.fromMillisecondsSinceEpoch(
+                ffiAddr.createdAt * 1000,
+                isUtc: true,
+              ).toLocal()
+            : DateTime.fromMillisecondsSinceEpoch(0, isUtc: true).toLocal();
+        return AddressInfo(
+          address: ffiAddr.address,
+          label: ffiAddr.label,
+          createdAt: createdAt,
+          isActive: ffiAddr.address == currentAddress,
+          diversifierIndex: ffiAddr.diversifierIndex,
+          wasShared: true, // Assume all historical addresses were shared
+          colorTag: AddressBookColorTag.fromValue(ffiAddr.colorTag.index),
+          balance: ffiAddr.balance,
+          spendable: ffiAddr.spendable,
+          pending: ffiAddr.pending,
+        );
+      }).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
       state = state.copyWith(
         addressHistory: history,
@@ -597,7 +557,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       debugPrint('Failed to load address history: $e');
     }
   }
-  
+
   /// Check if we should suggest generating a new address
   /// (e.g., if current address was already shared)
   bool get shouldSuggestNewAddress {
@@ -645,81 +605,10 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       }
     }
   }
-
-  String? _selectImportedReceiveAddress(
-    List<AddressBalanceInfo> addresses,
-    List<KeyGroupInfo> importedKeys,
-    {String? preferredAddress}
-  ) {
-    if (importedKeys.isEmpty) return null;
-    final importedIds = importedKeys.map((key) => key.id).toSet();
-    if (preferredAddress != null && preferredAddress.isNotEmpty) {
-      for (final address in addresses) {
-        if (address.address != preferredAddress) {
-          continue;
-        }
-        final keyId = address.keyId;
-        if (keyId == null || !importedIds.contains(keyId)) {
-          return null;
-        }
-        final hasBalance = address.balance != BigInt.zero ||
-            address.pending != BigInt.zero ||
-            address.spendable != BigInt.zero;
-        if (!hasBalance) {
-          return address.address;
-        }
-        return null;
-      }
-    }
-    AddressBalanceInfo? candidate;
-    for (final address in addresses) {
-      final keyId = address.keyId;
-      if (keyId == null || !importedIds.contains(keyId)) {
-        continue;
-      }
-      if (address.balance != BigInt.zero ||
-          address.pending != BigInt.zero ||
-          address.spendable != BigInt.zero) {
-        continue;
-      }
-      if (candidate == null || address.createdAt > candidate.createdAt) {
-        candidate = address;
-      }
-    }
-    return candidate?.address;
-  }
-
-  Future<String?> _loadPersistedImportedAddress(WalletId walletId) async {
-    try {
-      final key = '$_importedAddressStorageKeyPrefix$walletId';
-      final raw = await _storage.read(key: key);
-      if (raw == null || raw.trim().isEmpty) {
-        return null;
-      }
-      return raw;
-    } catch (e) {
-      debugPrint('Failed to read imported address preference: $e');
-      return null;
-    }
-  }
-
-  Future<void> _persistImportedAddress(
-    WalletId walletId,
-    String? address,
-  ) async {
-    final key = '$_importedAddressStorageKeyPrefix$walletId';
-    try {
-      if (address == null || address.trim().isEmpty) {
-        await _storage.delete(key: key);
-      } else {
-        await _storage.write(key: key, value: address);
-      }
-    } catch (e) {
-      debugPrint('Failed to persist imported address preference: $e');
-    }
-  }
 }
 
 /// Provider for receive screen
 final receiveViewModelProvider =
-    NotifierProvider.autoDispose<ReceiveViewModel, ReceiveState>(ReceiveViewModel.new);
+    NotifierProvider.autoDispose<ReceiveViewModel, ReceiveState>(
+      ReceiveViewModel.new,
+    );

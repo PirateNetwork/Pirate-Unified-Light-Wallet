@@ -15,6 +15,7 @@ import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 class KeyManagementScreen extends ConsumerStatefulWidget {
   const KeyManagementScreen({super.key});
@@ -159,7 +160,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Import viewing key',
+                      'Import viewing key'.tr,
                       style: PTypography.heading4(color: AppColors.textPrimary),
                     ),
                     SizedBox(height: PSpacing.md),
@@ -170,27 +171,27 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                           children: [
                             PInput(
                               controller: nameController,
-                              label: 'Wallet name',
+                              label: 'Wallet name'.tr,
                               hint: 'e.g. View only wallet',
                             ),
                             SizedBox(height: PSpacing.md),
                             PInput(
                               controller: saplingController,
-                              label: 'Sapling viewing key (optional)',
+                              label: 'Sapling viewing key (optional)'.tr,
                               hint: 'Paste your Sapling viewing key',
                               maxLines: 4,
                             ),
                             SizedBox(height: PSpacing.md),
                             PInput(
                               controller: orchardController,
-                              label: 'Orchard viewing key (optional)',
+                              label: 'Orchard viewing key (optional)'.tr,
                               hint: 'Paste your Orchard viewing key',
                               maxLines: 4,
                             ),
                             SizedBox(height: PSpacing.md),
                             PInput(
                               controller: birthdayController,
-                              label: 'Birthday height',
+                              label: 'Birthday height'.tr,
                               hint: 'Block height to start scanning',
                               keyboardType: TextInputType.number,
                             ),
@@ -216,7 +217,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                         PButton(
                           onPressed: () => Navigator.of(context).pop(false),
                           variant: PButtonVariant.secondary,
-                          child: const Text('Cancel'),
+                          child: Text('Cancel'.tr),
                         ),
                         PButton(
                           onPressed: isLoading ? null : handleImport,
@@ -249,10 +250,11 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Key imports', style: PTypography.heading4()),
+          Text('Key imports'.tr, style: PTypography.heading4()),
           SizedBox(height: PSpacing.xs),
           Text(
-            'Import viewing keys for view only wallets or add a private key.',
+            'Import viewing keys for view only wallets or add a private key.'
+                .tr,
             style: PTypography.bodySmall(color: AppColors.textSecondary),
           ),
           SizedBox(height: PSpacing.md),
@@ -265,12 +267,12 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                     ? null
                     : () => context.push('/settings/keys/import'),
                 variant: PButtonVariant.secondary,
-                child: const Text('Import private key'),
+                child: Text('Import private key'.tr),
               ),
               PButton(
                 onPressed: isDecoy ? null : _showImportViewingKeyDialog,
                 variant: PButtonVariant.secondary,
-                child: const Text('Import viewing key'),
+                child: Text('Import viewing key'.tr),
               ),
             ],
           ),
@@ -287,12 +289,12 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
 
     return PScaffold(
       appBar: PAppBar(
-        title: 'Keys & Addresses',
-        subtitle: 'Manage imported keys and addresses',
+        title: 'Keys & Addresses'.tr,
+        subtitle: 'Manage imported keys and addresses'.tr,
         showBackButton: true,
         actions: [
           IconButton(
-            tooltip: 'Import spending key',
+            tooltip: 'Import spending key'.tr,
             icon: const Icon(Icons.add),
             onPressed: walletId == null || isDecoy
                 ? null
@@ -351,7 +353,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     return Center(
       child: Padding(
         padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
-        child: Text('No active wallet.', style: PTypography.bodyMedium()),
+        child: Text('No active wallet.'.tr, style: PTypography.bodyMedium()),
       ),
     );
   }
@@ -374,7 +376,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
             PButton(
               onPressed: _refresh,
               variant: PButtonVariant.secondary,
-              child: const Text('Retry'),
+              child: Text('Retry'.tr),
             ),
           ],
         ),
@@ -389,16 +391,16 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
         children: [
           Icon(Icons.vpn_key_outlined, color: AppColors.textTertiary, size: 44),
           SizedBox(height: PSpacing.sm),
-          Text('No keys yet', style: PTypography.heading3()),
+          Text('No keys yet'.tr, style: PTypography.heading3()),
           SizedBox(height: PSpacing.xs),
           Text(
-            'Import a spending key to manage legacy addresses.',
+            'Import a spending key to manage legacy addresses.'.tr,
             style: PTypography.bodySmall(color: AppColors.textSecondary),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PSpacing.md),
           PTextButton(
-            label: 'Import spending key',
+            label: 'Import spending key'.tr,
             leadingIcon: Icons.add,
             onPressed: () => context.push('/settings/keys/import'),
           ),

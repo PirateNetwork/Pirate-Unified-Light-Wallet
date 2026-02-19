@@ -6,6 +6,7 @@ import '../../../design/tokens/spacing.dart';
 import '../../../design/tokens/typography.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../receive_viewmodel.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Widget displaying list of previous addresses
 class AddressHistoryList extends StatelessWidget {
@@ -29,8 +30,9 @@ class AddressHistoryList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (addresses.isEmpty) {
-      final emptyTitle =
-          isFiltered ? 'No matches found.' : 'No previous addresses.';
+      final emptyTitle = isFiltered
+          ? 'No matches found.'
+          : 'No previous addresses.';
       final emptySubtitle = isFiltered
           ? 'Try a different label or address.'
           : 'Generate a new address to see it here.';
@@ -39,24 +41,16 @@ class AddressHistoryList extends StatelessWidget {
           padding: EdgeInsets.all(PSpacing.lg),
           child: Column(
             children: [
-              Icon(
-                Icons.history,
-                size: 48,
-                color: AppColors.textTertiary,
-              ),
+              Icon(Icons.history, size: 48, color: AppColors.textTertiary),
               SizedBox(height: PSpacing.sm),
               Text(
                 emptyTitle,
-                style: PTypography.bodyMedium(
-                  color: AppColors.textPrimary,
-                ),
+                style: PTypography.bodyMedium(color: AppColors.textPrimary),
               ),
               SizedBox(height: PSpacing.xs),
               Text(
                 emptySubtitle,
-                style: PTypography.bodySmall(
-                  color: AppColors.textSecondary,
-                ),
+                style: PTypography.bodySmall(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -106,8 +100,9 @@ class AddressHistorySliver extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (addresses.isEmpty) {
-      final emptyTitle =
-          isFiltered ? 'No matches found.' : 'No previous addresses.';
+      final emptyTitle = isFiltered
+          ? 'No matches found.'
+          : 'No previous addresses.';
       final emptySubtitle = isFiltered
           ? 'Try a different label or address.'
           : 'Generate a new address to see it here.';
@@ -117,24 +112,16 @@ class AddressHistorySliver extends StatelessWidget {
             padding: EdgeInsets.all(PSpacing.lg),
             child: Column(
               children: [
-                Icon(
-                  Icons.history,
-                  size: 48,
-                  color: AppColors.textTertiary,
-                ),
+                Icon(Icons.history, size: 48, color: AppColors.textTertiary),
                 SizedBox(height: PSpacing.sm),
                 Text(
                   emptyTitle,
-                  style: PTypography.bodyMedium(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: PTypography.bodyMedium(color: AppColors.textPrimary),
                 ),
                 SizedBox(height: PSpacing.xs),
                 Text(
                   emptySubtitle,
-                  style: PTypography.bodySmall(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: PTypography.bodySmall(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -145,22 +132,19 @@ class AddressHistorySliver extends StatelessWidget {
     }
 
     return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          final address = addresses[index];
-          return Padding(
-            padding: EdgeInsets.only(bottom: PSpacing.sm),
-            child: _AddressHistoryItem(
-              address: address,
-              onOpen: () => onOpen(address),
-              onCopy: () => onCopy(address),
-              onLabel: () => onLabel(address),
-              onColorTag: () => onColorTag(address),
-            ),
-          );
-        },
-        childCount: addresses.length,
-      ),
+      delegate: SliverChildBuilderDelegate((context, index) {
+        final address = addresses[index];
+        return Padding(
+          padding: EdgeInsets.only(bottom: PSpacing.sm),
+          child: _AddressHistoryItem(
+            address: address,
+            onOpen: () => onOpen(address),
+            onCopy: () => onCopy(address),
+            onLabel: () => onLabel(address),
+            onColorTag: () => onColorTag(address),
+          ),
+        );
+      }, childCount: addresses.length),
     );
   }
 }
@@ -189,11 +173,8 @@ class _AddressHistoryItem extends StatelessWidget {
         final actionButtons = [
           IconButton(
             onPressed: onColorTag,
-            icon: Icon(
-              Icons.palette_outlined,
-              size: isCompact ? 18 : 20,
-            ),
-            tooltip: 'Color tag',
+            icon: Icon(Icons.palette_outlined, size: isCompact ? 18 : 20),
+            tooltip: 'Color tag'.tr,
             visualDensity: VisualDensity.compact,
             style: IconButton.styleFrom(
               foregroundColor: AppColors.textSecondary,
@@ -207,7 +188,7 @@ class _AddressHistoryItem extends StatelessWidget {
               address.label != null ? Icons.edit : Icons.label_outline,
               size: isCompact ? 18 : 20,
             ),
-            tooltip: 'Label address',
+            tooltip: 'Label address'.tr,
             visualDensity: VisualDensity.compact,
             style: IconButton.styleFrom(
               foregroundColor: AppColors.textSecondary,
@@ -217,11 +198,8 @@ class _AddressHistoryItem extends StatelessWidget {
           ),
           IconButton(
             onPressed: onCopy,
-            icon: Icon(
-              Icons.copy,
-              size: isCompact ? 18 : 20,
-            ),
-            tooltip: 'Copy address',
+            icon: Icon(Icons.copy, size: isCompact ? 18 : 20),
+            tooltip: 'Copy address'.tr,
             visualDensity: VisualDensity.compact,
             style: IconButton.styleFrom(
               foregroundColor: AppColors.textSecondary,
@@ -245,10 +223,8 @@ class _AddressHistoryItem extends StatelessWidget {
                 border: Border.all(color: AppColors.successBorder),
               ),
               child: Text(
-                'Active',
-                style: PTypography.labelSmall(
-                  color: AppColors.success,
-                ),
+                'Active'.tr,
+                style: PTypography.labelSmall(color: AppColors.success),
               ),
             ),
           );
@@ -266,10 +242,8 @@ class _AddressHistoryItem extends StatelessWidget {
                 border: Border.all(color: AppColors.borderSubtle),
               ),
               child: Text(
-                'Shared',
-                style: PTypography.labelSmall(
-                  color: AppColors.textSecondary,
-                ),
+                'Shared'.tr,
+                style: PTypography.labelSmall(color: AppColors.textSecondary),
               ),
             ),
           );

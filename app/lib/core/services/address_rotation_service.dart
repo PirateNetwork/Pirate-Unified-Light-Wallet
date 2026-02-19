@@ -18,10 +18,7 @@ class AddressRotationService {
 
   AddressRotationService(this.ref);
 
-  Future<T> _runQueued<T>(
-    String walletId,
-    Future<T> Function() action,
-  ) async {
+  Future<T> _runQueued<T>(String walletId, Future<T> Function() action) async {
     return ref.read(_rotationQueueProvider).enqueue(walletId, action);
   }
 
@@ -34,7 +31,9 @@ class AddressRotationService {
   Future<void> checkAndRotateIfNeeded(String walletId) async {
     return _runQueued(walletId, () async {
       try {
-        debugPrint('[AddressRotation] Checking if rotation needed for wallet $walletId');
+        debugPrint(
+          '[AddressRotation] Checking if rotation needed for wallet $walletId',
+        );
 
         // Get current receive address
         final initialAddress = await FfiBridge.currentReceiveAddress(walletId);
@@ -42,7 +41,7 @@ class AddressRotationService {
         // Get all address balances (may be empty on brand-new wallets)
         final addressBalances = await FfiBridge.listAddressBalances(walletId);
 
-        // The backend may auto-rotate while loading balances; detect and refresh UI.
+        // Another queued rotation may have advanced the receive address meanwhile.
         final currentAddress = await FfiBridge.currentReceiveAddress(walletId);
         if (currentAddress != initialAddress) {
           debugPrint(
@@ -85,7 +84,9 @@ class AddressRotationService {
 
           await _rotateToNextAddress(walletId);
         } else {
-          debugPrint('[AddressRotation] Current address is unused, no rotation needed');
+          debugPrint(
+            '[AddressRotation] Current address is unused, no rotation needed',
+          );
         }
       } catch (e, stackTrace) {
         debugPrint('[AddressRotation] Error checking rotation: $e');
@@ -217,7 +218,9 @@ final syncCompletionRotationWatcherProvider = Provider<void>((ref) {
 
       // Sync just completed
       if (wasSyncing && !isSyncing) {
-        debugPrint('[SyncCompletionRotation] Sync completed, checking address rotation...');
+        debugPrint(
+          '[SyncCompletionRotation] Sync completed, checking address rotation...',
+        );
         await rotationService.checkAndRotateIfNeeded(walletId);
       }
 
@@ -238,7 +241,9 @@ final walletInitRotationWatcherProvider = Provider<void>((ref) {
 
   // Check rotation on wallet load
   Future.microtask(() async {
-    debugPrint('[WalletInitRotation] Wallet loaded, checking if rotation needed...');
+    debugPrint(
+      '[WalletInitRotation] Wallet loaded, checking if rotation needed...',
+    );
     await rotationService.checkAndRotateIfNeeded(walletId);
   });
 });
