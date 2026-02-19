@@ -79,12 +79,16 @@ class ClipboardManager {
 enum ClipboardDataType {
   /// Seed phrase
   seed,
+
   /// Private key
   privateKey,
+
   /// Address
   address,
+
   /// Transaction ID
   txid,
+
   /// General text
   text,
 }
@@ -122,4 +126,3 @@ extension ClipboardDataTypeExtension on ClipboardDataType {
     }
   }
 }
-
