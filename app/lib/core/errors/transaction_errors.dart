@@ -358,7 +358,9 @@ class TransactionErrorMapper {
 
   /// Validate amount
   static TransactionError? validateAmount(
-      int arrrtoshis, int availableBalance) {
+    int arrrtoshis,
+    int availableBalance,
+  ) {
     if (arrrtoshis <= 0) {
       return const TransactionError(
         type: TransactionErrorType.invalidAmount,

@@ -3,6 +3,7 @@
 use crate::address_book::ColorTag;
 use crate::{models::*, Database, Result};
 use directories::ProjectDirs;
+use pirate_core::DEFAULT_FEE;
 use pirate_params::consensus::ConsensusParams;
 use rusqlite::params_from_iter;
 use rusqlite::{params, OptionalExtension};
@@ -51,6 +52,26 @@ fn note_value_is_valid(value: i64) -> bool {
         return false;
     }
     value as u64 <= ConsensusParams::mainnet().max_money
+}
+
+/// Convert raw txid bytes (internal/little-endian) into canonical display hex.
+fn txid_hex_from_bytes(txid_bytes: &[u8]) -> String {
+    let mut display = txid_bytes.to_vec();
+    display.reverse();
+    hex::encode(display)
+}
+
+/// Reverse a txid hex string by bytes.
+fn reverse_txid_hex(txid_hex: &str) -> Option<String> {
+    if txid_hex.len() != 64 {
+        return None;
+    }
+    let mut bytes = hex::decode(txid_hex).ok()?;
+    if bytes.len() != 32 {
+        return None;
+    }
+    bytes.reverse();
+    Some(hex::encode(bytes))
 }
 
 impl<'a> Repository<'a> {
@@ -387,13 +408,21 @@ impl<'a> Repository<'a> {
 
     /// Fetch a transaction-level memo, if present.
     pub fn get_tx_memo(&self, txid_hex: &str) -> Result<Option<Vec<u8>>> {
-        let mut stmt = self.db.conn().prepare(
-            "SELECT m.memo FROM memos m INNER JOIN transactions t ON m.tx_id = t.id WHERE t.txid = ?1 ORDER BY m.id DESC LIMIT 1",
-        )?;
+        let lookup_memo = |lookup_txid: &str| -> Result<Option<Vec<u8>>> {
+            let mut stmt = self.db.conn().prepare(
+                "SELECT m.memo FROM memos m INNER JOIN transactions t ON m.tx_id = t.id WHERE t.txid = ?1 ORDER BY m.id DESC LIMIT 1",
+            )?;
+            let encrypted: Option<Vec<u8>> = stmt
+                .query_row(params![lookup_txid], |row| row.get(0))
+                .optional()?;
+            Ok(encrypted)
+        };
 
-        let encrypted: Option<Vec<u8>> = stmt
-            .query_row(params![txid_hex], |row| row.get(0))
-            .optional()?;
+        let encrypted = lookup_memo(txid_hex)?.or_else(|| {
+            reverse_txid_hex(txid_hex)
+                .and_then(|alt| if alt != txid_hex { Some(alt) } else { None })
+                .and_then(|alt| lookup_memo(&alt).ok().flatten())
+        });
 
         match encrypted {
             Some(enc) => self.decrypt_blob(&enc).map(Some),
@@ -1632,47 +1661,71 @@ impl<'a> Repository<'a> {
         Ok(result)
     }
 
-    /// Get address by diversifier index for a key group
+    /// Get address by diversifier index for a key group and scope.
+    pub fn get_address_by_index_for_scope(
+        &self,
+        account_id: i64,
+        key_id: i64,
+        diversifier_index: u32,
+        scope: crate::models::AddressScope,
+    ) -> Result<Option<Address>> {
+        let scope_str = match scope {
+            crate::models::AddressScope::External => "external",
+            crate::models::AddressScope::Internal => "internal",
+        };
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses 
+             WHERE account_id = ?1 AND key_id = ?2 AND diversifier_index = ?3 AND address_scope = ?4",
+        )?;
+
+        let result = stmt
+            .query_row(
+                params![account_id, key_id, diversifier_index as i64, scope_str],
+                |row| {
+                    let address_type_str: String =
+                        row.get(5).unwrap_or_else(|_| "Sapling".to_string());
+                    let address_type = match address_type_str.as_str() {
+                        "Orchard" => crate::models::AddressType::Orchard,
+                        _ => crate::models::AddressType::Sapling, // Default to Sapling
+                    };
+                    let address_scope_str: String =
+                        row.get(9).unwrap_or_else(|_| "external".to_string());
+                    let address_scope = match address_scope_str.as_str() {
+                        "internal" => crate::models::AddressScope::Internal,
+                        _ => crate::models::AddressScope::External,
+                    };
+                    Ok(Address {
+                        id: Some(row.get(0)?),
+                        account_id: row.get(1)?,
+                        key_id: row.get(2)?,
+                        diversifier_index: row.get::<_, i64>(3)? as u32,
+                        address: row.get(4)?,
+                        address_type,
+                        label: row.get(6)?,
+                        created_at: row.get(7)?,
+                        color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
+                        address_scope,
+                    })
+                },
+            )
+            .optional()?;
+
+        Ok(result)
+    }
+
+    /// Get external address by diversifier index for a key group.
     pub fn get_address_by_index(
         &self,
         account_id: i64,
         key_id: i64,
         diversifier_index: u32,
     ) -> Result<Option<Address>> {
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses 
-             WHERE account_id = ?1 AND key_id = ?2 AND diversifier_index = ?3",
-        )?;
-
-        let result = stmt
-            .query_row([account_id, key_id, diversifier_index as i64], |row| {
-                let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
-                let address_type = match address_type_str.as_str() {
-                    "Orchard" => crate::models::AddressType::Orchard,
-                    _ => crate::models::AddressType::Sapling, // Default to Sapling
-                };
-                let address_scope_str: String =
-                    row.get(9).unwrap_or_else(|_| "external".to_string());
-                let address_scope = match address_scope_str.as_str() {
-                    "internal" => crate::models::AddressScope::Internal,
-                    _ => crate::models::AddressScope::External,
-                };
-                Ok(Address {
-                    id: Some(row.get(0)?),
-                    account_id: row.get(1)?,
-                    key_id: row.get(2)?,
-                    diversifier_index: row.get::<_, i64>(3)? as u32,
-                    address: row.get(4)?,
-                    address_type,
-                    label: row.get(6)?,
-                    created_at: row.get(7)?,
-                    color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
-                    address_scope,
-                })
-            })
-            .optional()?;
-
-        Ok(result)
+        self.get_address_by_index_for_scope(
+            account_id,
+            key_id,
+            diversifier_index,
+            crate::models::AddressScope::External,
+        )
     }
 
     /// Get all addresses for an account
@@ -1807,7 +1860,6 @@ impl<'a> Repository<'a> {
         _min_depth: u64,
         split_transfers: bool,
     ) -> Result<Vec<TransactionRecord>> {
-        use hex;
         use std::collections::HashMap;
 
         // Since account_id is encrypted, we need to decrypt all notes and filter
@@ -1912,7 +1964,7 @@ impl<'a> Repository<'a> {
                 _ => crate::models::NoteType::Sapling,
             };
             let txid_bytes = self.decrypt_blob(&enc_txid)?;
-            let txid_hex = hex::encode(&txid_bytes);
+            let txid_hex = txid_hex_from_bytes(&txid_bytes);
             let output_index = self.decrypt_int64(&enc_output_index)?;
             let height = self.decrypt_int64(&enc_height)?;
             let value = self.decrypt_int64(&enc_value)?;
@@ -1932,7 +1984,7 @@ impl<'a> Repository<'a> {
                 *spent_missing_by_txid.entry(txid_hex.clone()).or_insert(0) += 1;
             }
             if let Some(spent_txid_bytes) = spent_txid.as_ref() {
-                let spent_txid_hex = hex::encode(spent_txid_bytes);
+                let spent_txid_hex = txid_hex_from_bytes(spent_txid_bytes);
                 *spent_target_counts.entry(spent_txid_hex).or_insert(0) += 1;
             }
 
@@ -1990,7 +2042,7 @@ impl<'a> Repository<'a> {
             if process_outgoing {
                 let spend_txid_hex = spent_txid
                     .as_ref()
-                    .map(hex::encode)
+                    .map(|bytes| txid_hex_from_bytes(bytes))
                     .unwrap_or_else(|| txid_hex.clone());
                 let entry_height = if spent_txid.is_some() { 0 } else { height };
                 let entry = tx_map
@@ -2006,10 +2058,21 @@ impl<'a> Repository<'a> {
         }
 
         let txid_keys: Vec<String> = tx_map.keys().cloned().collect();
-        let heights_map = self.get_transaction_heights(&txid_keys)?;
-        let ts_map = self.get_transaction_timestamps(&txid_keys)?;
-        let memo_map = self.get_transaction_memos(&txid_keys)?;
-        let fee_map = self.get_transaction_fees(&txid_keys)?;
+        let mut txid_lookup_keys = txid_keys.clone();
+        for txid in &txid_keys {
+            if let Some(reversed) = reverse_txid_hex(txid) {
+                if reversed != *txid {
+                    txid_lookup_keys.push(reversed);
+                }
+            }
+        }
+        txid_lookup_keys.sort_unstable();
+        txid_lookup_keys.dedup();
+
+        let heights_map = self.get_transaction_heights(&txid_lookup_keys)?;
+        let ts_map = self.get_transaction_timestamps(&txid_lookup_keys)?;
+        let memo_map = self.get_transaction_memos(&txid_lookup_keys)?;
+        let fee_map = self.get_transaction_fees(&txid_lookup_keys)?;
         struct TxDebugRow {
             txid: String,
             height: i64,
@@ -2032,9 +2095,13 @@ impl<'a> Repository<'a> {
         let mut debug_records: Vec<TxDebugRow> = Vec::new();
 
         for (txid, entry) in tx_map.iter_mut() {
-            if let Some(height) = heights_map.get(txid) {
-                if *height > 0 {
-                    entry.height = *height;
+            let stored_height = heights_map
+                .get(txid)
+                .copied()
+                .or_else(|| reverse_txid_hex(txid).and_then(|alt| heights_map.get(&alt).copied()));
+            if let Some(height) = stored_height {
+                if height > 0 {
+                    entry.height = height;
                 }
             }
         }
@@ -2047,16 +2114,31 @@ impl<'a> Repository<'a> {
                 .received_external
                 .saturating_add(entry.received_internal);
             let net_amount = total_received.saturating_sub(entry.sent);
-            let memo = entry.memo.or_else(|| memo_map.get(&txid).cloned());
+            let memo = entry.memo.or_else(|| {
+                memo_map
+                    .get(&txid)
+                    .cloned()
+                    .or_else(|| reverse_txid_hex(&txid).and_then(|alt| memo_map.get(&alt).cloned()))
+            });
 
             // Use stored transaction timestamp if available (first confirmation time).
             // Fallback: current time (unconfirmed or not yet populated).
             let timestamp = ts_map
                 .get(&txid)
                 .copied()
+                .or_else(|| reverse_txid_hex(&txid).and_then(|alt| ts_map.get(&alt).copied()))
                 .unwrap_or_else(|| chrono::Utc::now().timestamp());
 
-            let fee = fee_map.get(&txid).copied().unwrap_or(0);
+            let stored_fee = fee_map
+                .get(&txid)
+                .copied()
+                .or_else(|| reverse_txid_hex(&txid).and_then(|alt| fee_map.get(&alt).copied()))
+                .unwrap_or(0);
+            let fee = if stored_fee == 0 && entry.sent > 0 && net_amount < 0 {
+                DEFAULT_FEE
+            } else {
+                stored_fee
+            };
             let fee_i64 = i64::try_from(fee).unwrap_or(i64::MAX);
             let outgoing_amount = entry
                 .sent
@@ -2914,6 +2996,20 @@ mod tests {
     }
 
     #[test]
+    fn test_txid_hex_helpers_roundtrip() {
+        let txid = "4fbf4e590e65cadc7d46ad2221d3565fae4652135e0380db35207219f8bea833";
+        let reversed = reverse_txid_hex(txid).expect("valid txid");
+        assert_eq!(
+            reversed,
+            "33a8bef819722035db80035e135246ae5f56d32122ad467ddcca650e594ebf4f"
+        );
+
+        let raw = hex::decode(txid).expect("hex decode");
+        let display = txid_hex_from_bytes(&raw.iter().rev().copied().collect::<Vec<u8>>());
+        assert_eq!(display, txid);
+    }
+
+    #[test]
     fn test_wallet_secret_encryption() {
         let db = test_db();
         let repo = Repository::new(&db);
@@ -3141,6 +3237,71 @@ mod tests {
                 "Encrypted memo should be larger (includes metadata and nonce)"
             );
         }
+    }
+
+    #[test]
+    fn test_get_address_by_index_scope_is_explicit() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+
+        let account = Account {
+            id: None,
+            name: "Scope Test".to_string(),
+            created_at: chrono::Utc::now().timestamp(),
+        };
+        let account_id = repo.insert_account(&account).unwrap();
+        let key_id = 42_i64;
+        let created_at = chrono::Utc::now().timestamp();
+
+        let external = Address {
+            id: None,
+            key_id: Some(key_id),
+            account_id,
+            diversifier_index: 7,
+            address: "zs1scopeexternal000000000000000000000000000000000000000000".to_string(),
+            address_type: AddressType::Sapling,
+            label: None,
+            created_at,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        };
+        let internal = Address {
+            id: None,
+            key_id: Some(key_id),
+            account_id,
+            diversifier_index: 7,
+            address: "zs1scopeinternal000000000000000000000000000000000000000000".to_string(),
+            address_type: AddressType::Sapling,
+            label: None,
+            created_at,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::Internal,
+        };
+
+        repo.upsert_address(&external).unwrap();
+        repo.upsert_address(&internal).unwrap();
+
+        let external_lookup = repo
+            .get_address_by_index_for_scope(account_id, key_id, 7, AddressScope::External)
+            .unwrap()
+            .unwrap();
+        assert_eq!(external_lookup.address, external.address);
+        assert_eq!(external_lookup.address_scope, AddressScope::External);
+
+        let internal_lookup = repo
+            .get_address_by_index_for_scope(account_id, key_id, 7, AddressScope::Internal)
+            .unwrap()
+            .unwrap();
+        assert_eq!(internal_lookup.address, internal.address);
+        assert_eq!(internal_lookup.address_scope, AddressScope::Internal);
+
+        // Backward-compatible helper now resolves to external only.
+        let default_lookup = repo
+            .get_address_by_index(account_id, key_id, 7)
+            .unwrap()
+            .unwrap();
+        assert_eq!(default_lookup.address, external.address);
+        assert_eq!(default_lookup.address_scope, AddressScope::External);
     }
 
     #[test]

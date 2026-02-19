@@ -283,14 +283,15 @@ impl<'a> FrontierStorage<'a> {
 
     /// Count total snapshots
     pub fn count_snapshots(&self) -> Result<u64> {
-        let count: u64 =
+        let count: i64 =
             self.db
                 .conn()
                 .query_row("SELECT COUNT(*) FROM frontier_snapshots", [], |row| {
                     row.get(0)
                 })?;
 
-        Ok(count)
+        u64::try_from(count)
+            .map_err(|_| crate::Error::Storage(format!("Negative snapshot count: {}", count)))
     }
 
     /// Prune old snapshots, keeping only the most recent N

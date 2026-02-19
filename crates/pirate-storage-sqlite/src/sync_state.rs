@@ -59,6 +59,9 @@ impl<'a> SyncStateStorage<'a> {
         target_height: u64,
         last_checkpoint_height: u64,
     ) -> Result<()> {
+        let local_height = to_sql_i64(local_height)?;
+        let target_height = to_sql_i64(target_height)?;
+        let last_checkpoint_height = to_sql_i64(last_checkpoint_height)?;
         let updated_at = chrono::Utc::now().to_rfc3339();
 
         self.execute_with_retry(|| {
@@ -89,6 +92,9 @@ impl<'a> SyncStateStorage<'a> {
         target_height: u64,
         last_checkpoint_height: u64,
     ) -> Result<()> {
+        let local_height = to_sql_i64(local_height)?;
+        let target_height = to_sql_i64(target_height)?;
+        let last_checkpoint_height = to_sql_i64(last_checkpoint_height)?;
         let updated_at = chrono::Utc::now().to_rfc3339();
 
         tx.execute(
@@ -125,10 +131,23 @@ impl<'a> SyncStateStorage<'a> {
                     "#,
                     [],
                     |row| {
+                        let local_height_i64: i64 = row.get(0)?;
+                        let target_height_i64: i64 = row.get(1)?;
+                        let last_checkpoint_height_i64: i64 = row.get(2)?;
                         Ok(SyncStateRow {
-                            local_height: row.get(0)?,
-                            target_height: row.get(1)?,
-                            last_checkpoint_height: row.get(2)?,
+                            local_height: u64::try_from(local_height_i64).map_err(|_| {
+                                rusqlite::Error::IntegralValueOutOfRange(0, local_height_i64)
+                            })?,
+                            target_height: u64::try_from(target_height_i64).map_err(|_| {
+                                rusqlite::Error::IntegralValueOutOfRange(1, target_height_i64)
+                            })?,
+                            last_checkpoint_height: u64::try_from(last_checkpoint_height_i64)
+                                .map_err(|_| {
+                                    rusqlite::Error::IntegralValueOutOfRange(
+                                        2,
+                                        last_checkpoint_height_i64,
+                                    )
+                                })?,
                             updated_at: row.get(3)?,
                         })
                     },
@@ -141,6 +160,7 @@ impl<'a> SyncStateStorage<'a> {
 
     /// Reset sync state (for rescan)
     pub fn reset_sync_state(&self, start_height: u64) -> Result<()> {
+        let start_height = to_sql_i64(start_height)?;
         let updated_at = chrono::Utc::now().to_rfc3339();
 
         self.execute_with_retry(|| {
@@ -161,6 +181,7 @@ impl<'a> SyncStateStorage<'a> {
 
     /// Update only local height (for incremental progress)
     pub fn update_local_height(&self, height: u64) -> Result<()> {
+        let height = to_sql_i64(height)?;
         let updated_at = chrono::Utc::now().to_rfc3339();
 
         self.execute_with_retry(|| {
@@ -174,6 +195,7 @@ impl<'a> SyncStateStorage<'a> {
 
     /// Update target height
     pub fn update_target_height(&self, height: u64) -> Result<()> {
+        let height = to_sql_i64(height)?;
         let updated_at = chrono::Utc::now().to_rfc3339();
 
         self.execute_with_retry(|| {
@@ -187,6 +209,7 @@ impl<'a> SyncStateStorage<'a> {
 
     /// Update last checkpoint height
     pub fn update_checkpoint_height(&self, height: u64) -> Result<()> {
+        let height = to_sql_i64(height)?;
         let updated_at = chrono::Utc::now().to_rfc3339();
 
         self.execute_with_retry(|| {
@@ -302,6 +325,7 @@ pub fn atomic_sync_update(
 
 /// Truncate data above a specific height (for rollback)
 pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
+    let height = to_sql_i64(height)?;
     let tx = db.transaction()?;
 
     // Delete notes above height
@@ -335,6 +359,10 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
 
     tracing::info!("Truncated all data above height {}", height);
     Ok(())
+}
+
+fn to_sql_i64(value: u64) -> Result<i64> {
+    i64::try_from(value).map_err(|_| Error::Storage(format!("Height exceeds i64 range: {}", value)))
 }
 
 #[cfg(test)]
