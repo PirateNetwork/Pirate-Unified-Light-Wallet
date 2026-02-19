@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Windows MSIX build and signing script
+# Windows desktop build + packaging script (installer + portable).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,7 +36,7 @@ if [ -d "/c/Strawberry/perl/bin" ]; then
     export PERL="/c/Strawberry/perl/bin/perl"
 fi
 
-log "Building Windows MSIX (reproducible)"
+log "Building Windows desktop artifacts (reproducible)"
 log "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
 
 normalize_mtime() {
@@ -56,7 +56,7 @@ zip_dir_deterministic() {
     local dest="$2"
     (cd "$src" && normalize_mtime ".")
     if command -v zip &> /dev/null; then
-        (cd "$src" && LC_ALL=C find . -type f ! -name "*.msix" -print | sort | zip -X -@ "$dest")
+        (cd "$src" && LC_ALL=C find . -type f -print | sort | zip -X -@ "$dest")
         return 0
     fi
     if command -v python &> /dev/null; then
@@ -89,8 +89,6 @@ with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name in files:
             path = os.path.join(root, name)
             rel = os.path.relpath(path, src).replace(os.sep, "/")
-            if rel.endswith(".msix"):
-                continue
             info = zipfile.ZipInfo(rel, date_time=zip_dt)
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
@@ -238,98 +236,127 @@ else
     fi
 fi
 
-# Create MSIX package (optional)
-log "Creating MSIX package..."
+create_windows_installer() {
+    local source_dir="$1"
+    local output_dir="$2"
+    local output_name="$3"
 
-MSIX_FILE=""
-if grep -q "msix_config" "$APP_DIR/pubspec.yaml"; then
-    if command -v dart &> /dev/null; then
-        if ! dart pub global list | grep -q "msix"; then
-            if [ -n "${MSIX_VERSION:-}" ]; then
-                log "Installing msix $MSIX_VERSION..."
-                dart pub global activate msix "$MSIX_VERSION"
-            else
-                warn "msix tool not installed. Set MSIX_VERSION to install a pinned version."
-            fi
-        fi
-        if dart pub global list | grep -q "msix"; then
-            dart pub global run msix:create
-            MSIX_FILE="$(find "$RELEASE_DIR" -maxdepth 1 -name "*.msix" -print -quit)"
-            if [ -z "$MSIX_FILE" ]; then
-                warn "MSIX creation did not produce an output. Skipping."
-            fi
-        fi
-    else
-        warn "dart not found on PATH. Skipping MSIX packaging."
+    local iscc_cmd=""
+    if command -v iscc &> /dev/null; then
+        iscc_cmd="iscc"
+    elif command -v iscc.exe &> /dev/null; then
+        iscc_cmd="iscc.exe"
+    elif [ -n "${ISCC_PATH:-}" ] && [ -f "${ISCC_PATH:-}" ]; then
+        iscc_cmd="$ISCC_PATH"
     fi
-else
-    warn "msix_config not found in pubspec.yaml. Skipping MSIX packaging."
-fi
 
-MSIX_SIGNED=false
-if [ -n "$MSIX_FILE" ] && [ -f "$MSIX_FILE" ]; then
-    if [ "$REPRODUCIBLE" = "1" ]; then
-        warn "REPRODUCIBLE=1: skipping MSIX signing."
-    elif [ -n "$SIGN_CERT" ] && [ -f "$SIGN_CERT" ]; then
-        log "Signing MSIX..."
-        signtool_cmd="$(resolve_signtool || true)"
-        if [ -z "$signtool_cmd" ]; then
-            warn "signtool not found. Skipping MSIX signing."
-            warn "Install Windows SDK to enable signing."
-        else
-            if sign_windows_file "$MSIX_FILE" "$SIGN_CERT" "$SIGN_PASSWORD" "$signtool_cmd"; then
-                log "Signed successfully"
-                MSIX_SIGNED=true
-            else
-                warn "Failed to sign MSIX."
-            fi
-        fi
-    else
-        warn "No signing certificate configured."
-        warn "Set WINDOWS_SIGN_CERT and WINDOWS_SIGN_PASSWORD to sign."
+    if [ -z "$iscc_cmd" ]; then
+        warn "Inno Setup compiler (iscc) not found. Skipping installer build."
+        warn "Install Inno Setup or set ISCC_PATH to produce installer .exe."
+        return 1
     fi
-else
-    warn "MSIX not created. Skipping signing."
-fi
+
+    local app_exe_name
+    app_exe_name="$(find "$source_dir" -maxdepth 1 -type f -name "*.exe" -print | sed 's|.*/||' | LC_ALL=C sort | head -n 1)"
+    if [ -z "$app_exe_name" ]; then
+        warn "No runtime .exe found in $source_dir. Skipping installer build."
+        return 1
+    fi
+
+    local app_version
+    app_version="$(awk -F'[:+ ]+' '/^version:/ {print $2; exit}' "$APP_DIR/pubspec.yaml")"
+    if [ -z "$app_version" ]; then
+        app_version="0.0.0"
+    fi
+
+    local iss_file
+    iss_file="$(mktemp --suffix=.iss)"
+    cat > "$iss_file" <<'ISS'
+[Setup]
+AppId={{8A65B5A7-79A4-4EBF-A89E-9B8F745FA96F}
+AppName=Pirate Wallet
+AppVersion={#AppVersion}
+DefaultDirName={localappdata}\PirateWallet
+DefaultGroupName=Pirate Wallet
+OutputDir={#OutputDir}
+OutputBaseFilename={#OutputBaseFilename}
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+DisableProgramGroupPage=yes
+PrivilegesRequired=lowest
+UninstallDisplayIcon={app}\{#AppExeName}
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Files]
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+
+[Icons]
+Name: "{autoprograms}\Pirate Wallet"; Filename: "{app}\{#AppExeName}"
+Name: "{autodesktop}\Pirate Wallet"; Filename: "{app}\{#AppExeName}"
+
+[Run]
+Filename: "{app}\{#AppExeName}"; Description: "Launch Pirate Wallet"; Flags: nowait postinstall skipifsilent
+ISS
+
+    "$iscc_cmd" \
+        "/DSourceDir=$source_dir" \
+        "/DOutputDir=$output_dir" \
+        "/DOutputBaseFilename=$output_name" \
+        "/DAppVersion=$app_version" \
+        "/DAppExeName=$app_exe_name" \
+        "$iss_file"
+
+    rm -f "$iss_file"
+    return 0
+}
 
 # Create output directory
 OUTPUT_DIR="$PROJECT_ROOT/dist/windows"
 mkdir -p "$OUTPUT_DIR"
 
-MSIX_OUTPUT_NAME="pirate-unified-wallet-windows"
-if [ "$MSIX_SIGNED" != "true" ]; then
-    MSIX_OUTPUT_NAME="${MSIX_OUTPUT_NAME}-unsigned"
-fi
-MSIX_OUTPUT_NAME="${MSIX_OUTPUT_NAME}.msix"
 PORTABLE_OUTPUT_NAME="pirate-unified-wallet-windows-portable"
 if [ "$BINARIES_SIGNED" != "true" ]; then
     PORTABLE_OUTPUT_NAME="${PORTABLE_OUTPUT_NAME}-unsigned"
 fi
 PORTABLE_OUTPUT_NAME="${PORTABLE_OUTPUT_NAME}.zip"
+INSTALLER_OUTPUT_NAME="pirate-unified-wallet-windows-installer"
+if [ "$BINARIES_SIGNED" != "true" ]; then
+    INSTALLER_OUTPUT_NAME="${INSTALLER_OUTPUT_NAME}-unsigned"
+fi
+INSTALLER_OUTPUT_NAME="${INSTALLER_OUTPUT_NAME}.exe"
 
 # Copy artifacts
-log "Copying artifacts..."
-if [ -n "$MSIX_FILE" ] && [ -f "$MSIX_FILE" ]; then
-    cp "$MSIX_FILE" "$OUTPUT_DIR/$MSIX_OUTPUT_NAME"
-else
-    warn "MSIX not created. Skipping MSIX artifact copy."
-fi
-
-# Also copy portable version
 log "Creating portable version..."
 cd "$RELEASE_DIR"
 zip_dir_deterministic "." "$OUTPUT_DIR/$PORTABLE_OUTPUT_NAME"
 
+log "Creating installer..."
+if ! create_windows_installer "$RELEASE_DIR" "$OUTPUT_DIR" "${INSTALLER_OUTPUT_NAME%.exe}"; then
+    warn "Installer artifact was not generated."
+fi
+
 # Generate SHA-256 checksums
 log "Generating checksums..."
 cd "$OUTPUT_DIR"
-if [ -f "$MSIX_OUTPUT_NAME" ]; then
-    sha256sum "$MSIX_OUTPUT_NAME" > "$MSIX_OUTPUT_NAME.sha256"
+if [ -f "$INSTALLER_OUTPUT_NAME" ]; then
+    sha256sum "$INSTALLER_OUTPUT_NAME" > "$INSTALLER_OUTPUT_NAME.sha256"
 fi
 sha256sum "$PORTABLE_OUTPUT_NAME" > "$PORTABLE_OUTPUT_NAME.sha256"
 
+# Also publish checksums for top-level runtime executables so in-app
+# verification can compare directly against a running binary (e.g. app.exe).
+while IFS= read -r -d '' exe; do
+    exe_name="$(basename "$exe")"
+    sha256sum "$exe" | awk '{print $1}' > "$OUTPUT_DIR/$exe_name.sha256"
+done < <(find "$RELEASE_DIR" -maxdepth 1 -type f -name "*.exe" -print0)
+
 log "Build complete!"
-if [ -f "$MSIX_OUTPUT_NAME" ]; then
-    log "MSIX: $OUTPUT_DIR/$MSIX_OUTPUT_NAME"
+if [ -f "$INSTALLER_OUTPUT_NAME" ]; then
+    log "Installer: $OUTPUT_DIR/$INSTALLER_OUTPUT_NAME"
 fi
 log "Portable: $OUTPUT_DIR/$PORTABLE_OUTPUT_NAME"

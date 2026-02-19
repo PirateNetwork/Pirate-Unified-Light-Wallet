@@ -356,8 +356,8 @@ EOF
             '';
           };
           
-          # Windows MSIX
-          windows-msix = pkgs.stdenv.mkDerivation {
+          # Windows desktop build output
+          windows-desktop = pkgs.stdenv.mkDerivation {
             pname = "pirate-unified-wallet-windows";
             version = "1.0.4";
             
@@ -376,6 +376,11 @@ EOF
               cp -r build/windows/runner/Release $out/
             '';
           };
+
+          # Aliases for verification docs / CI naming.
+          windows-installer = windows-desktop;
+          windows-portable = windows-desktop;
+          windows-msix = windows-desktop; # Legacy alias.
           
           # Default to Linux
           default = linux-appimage;

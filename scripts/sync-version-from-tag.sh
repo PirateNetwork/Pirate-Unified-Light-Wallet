@@ -3,7 +3,6 @@
 #
 # Updates:
 # - app/pubspec.yaml `version: X.Y.Z+N`
-# - app/pubspec.yaml `msix_version: X.Y.Z.0`
 #
 # Rules:
 # - If no tag ref is available (non-tag builds), this script is a no-op.
@@ -53,29 +52,20 @@ PATCH="${BASH_REMATCH[3]}"
 SEMVER="${MAJOR}.${MINOR}.${PATCH}"
 BUILD_NUMBER="${VERSION_BUILD_NUMBER:-$PATCH}"
 PUBSPEC_VERSION="${SEMVER}+${BUILD_NUMBER}"
-MSIX_VERSION="${SEMVER}.0"
-
 if [[ ! -f "$PUBSPEC_PATH" ]]; then
   echo "[version-sync] pubspec not found: $PUBSPEC_PATH" >&2
   exit 1
 fi
 
 tmp_file="$(mktemp)"
-awk -v app_version="$PUBSPEC_VERSION" -v msix_version="$MSIX_VERSION" '
+awk -v app_version="$PUBSPEC_VERSION" '
   BEGIN {
     version_done = 0
-    msix_done = 0
   }
   {
     if (!version_done && $0 ~ /^version:[[:space:]]*/) {
       print "version: " app_version
       version_done = 1
-      next
-    }
-    if ($0 ~ /^[[:space:]]*msix_version:[[:space:]]*/) {
-      sub(/msix_version:[[:space:]]*.*/, "msix_version: " msix_version)
-      msix_done = 1
-      print
       next
     }
     print
@@ -90,4 +80,3 @@ awk -v app_version="$PUBSPEC_VERSION" -v msix_version="$MSIX_VERSION" '
 mv "$tmp_file" "$PUBSPEC_PATH"
 
 log "Synced pubspec version to ${PUBSPEC_VERSION} from tag ${TAG_NAME}"
-log "Synced msix_version to ${MSIX_VERSION}"

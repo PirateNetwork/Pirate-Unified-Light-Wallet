@@ -5,30 +5,27 @@ builds from source.
 
 ## Verify an official release
 
-1) Download the release asset and checksum file.
+1) Download the release asset and checksums.
 
 ```bash
 gh release download <tag> -R PirateNetwork/Pirate-Unified-Light-Wallet
-# Or download manually:
-curl -L -O <release-asset-url>
-curl -L -O <checksums-url>
+# If checksums are bundled in release metadata:
+unzip -o pirate-unified-wallet-release-metadata.zip "*.sha256"
 ```
 
 2) Verify the checksum.
 
 ```bash
-# Linux
-sha256sum -c <checksums-file>
-
-# macOS
-shasum -a 256 -c <checksums-file>
+# Linux/macOS
+EXPECTED="$(awk '{print $1}' <artifact>.sha256)"
+ACTUAL="$(sha256sum <artifact> | awk '{print $1}')"
+test "$EXPECTED" = "$ACTUAL" && echo MATCH || echo MISMATCH
 
 # Windows (PowerShell)
-Get-FileHash <artifact> -Algorithm SHA256
-Get-Content <checksums-file>
+$local = (Get-FileHash <artifact> -Algorithm SHA256).Hash.ToLower()
+$expected = (Get-Content <artifact>.sha256 | Select-Object -First 1).Split()[0].ToLower()
+if ($local -eq $expected) { "MATCH" } else { "MISMATCH" }
 ```
-
-Compare the hash for your artifact filename to the printed checksum.
 
 ## Unsigned vs signed artifacts
 
@@ -56,7 +53,9 @@ nix build .#ios-ipa
 nix build .#linux-appimage
 nix build .#linux-deb
 nix build .#macos-dmg
-nix build .#windows-msix
+nix build .#windows-installer
+# or
+nix build .#windows-portable
 ```
 
 The build output is available under the `result/` symlink.

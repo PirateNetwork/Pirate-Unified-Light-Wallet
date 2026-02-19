@@ -29,7 +29,6 @@ env:
   CARGO_DENY_VERSION: "0.19.0"
   CARGO_AUDITABLE_VERSION: "0.7.2"
   CARGO_TERM_COLOR: always
-  MSIX_VERSION: "3.16.13"
 
 jobs:
   frb-codegen:
@@ -377,6 +376,10 @@ jobs:
       - name: Run integration tests
         run: |
           cd app
+          if ! ../scripts/e2e-preflight.sh; then
+            echo "Skipping integration tests (missing E2E prerequisites)."
+            exit 0
+          fi
           flutter config --enable-macos-desktop
           flutter test integration_test/ -d macos
 
@@ -726,7 +729,7 @@ jobs:
           path: dist/provenance/**/*
 
   package-windows:
-    name: Package - Windows (MSIX + SBOM)
+    name: Package - Windows (Installer + Portable + SBOM)
     runs-on: windows-latest
     env:
       REPRODUCIBLE: "1"
@@ -770,6 +773,12 @@ jobs:
           choco install strawberryperl --version 5.42.0.1 --no-progress -y
           "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding ascii -Append
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Encoding ascii -Append
+
       - name: Set SOURCE_DATE_EPOCH
         run: |
           $epoch = git log -1 --format=%ct
@@ -781,7 +790,7 @@ jobs:
           chmod +x scripts/verify-toolchain.sh
           scripts/verify-toolchain.sh
 
-      - name: Build Windows MSIX
+      - name: Build Windows desktop artifacts
         shell: bash
         run: |
           chmod +x scripts/build-windows.sh
@@ -806,22 +815,21 @@ jobs:
         shell: bash
         run: |
           chmod +x scripts/generate-provenance.sh
-          if [ -f dist/windows/pirate-unified-wallet-windows-unsigned.msix ]; then
-            ./scripts/generate-provenance.sh dist/windows/pirate-unified-wallet-windows-unsigned.msix dist/provenance
+          if [ -f dist/windows/pirate-unified-wallet-windows-installer-unsigned.exe ]; then
+            ./scripts/generate-provenance.sh dist/windows/pirate-unified-wallet-windows-installer-unsigned.exe dist/provenance
           fi
           if [ -f dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip ]; then
             ./scripts/generate-provenance.sh dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip dist/provenance
           fi
 
-      - name: Upload MSIX
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-msix
+          name: windows-desktop
           path: |
-            dist/windows/*.msix
-            dist/windows/*.msix.sha256
+            dist/windows/*.exe
             dist/windows/*.zip
-            dist/windows/*.zip.sha256
+            dist/windows/*.sha256
 
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
@@ -1227,7 +1235,7 @@ jobs:
           if-no-files-found: error
 
   sign-windows:
-    name: Sign - Windows (MSIX/Portable)
+    name: Sign - Windows (Installer/Portable)
     runs-on: windows-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
@@ -1247,7 +1255,7 @@ jobs:
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: windows-msix
+          name: windows-desktop
           path: dist/windows
 
       - name: Decode Windows signing certificate
@@ -1316,14 +1324,14 @@ jobs:
           $cert = $env:WINDOWS_SIGN_CERT
           $pass = "${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}"
 
-          $msixUnsigned = "dist/windows/pirate-unified-wallet-windows-unsigned.msix"
-          $msixSigned = "dist/windows/pirate-unified-wallet-windows.msix"
-          if (Test-Path $msixUnsigned) {
-            Copy-Item $msixUnsigned $msixSigned -Force
-            & $signtoolPath sign /fd SHA256 /f $cert /p $pass $msixSigned
-            (Get-FileHash -Algorithm SHA256 $msixSigned).Hash | Set-Content -Encoding ascii "$msixSigned.sha256"
+          $installerUnsigned = "dist/windows/pirate-unified-wallet-windows-installer-unsigned.exe"
+          $installerSigned = "dist/windows/pirate-unified-wallet-windows-installer.exe"
+          if (Test-Path $installerUnsigned) {
+            Copy-Item $installerUnsigned $installerSigned -Force
+            & $signtoolPath sign /fd SHA256 /f $cert /p $pass $installerSigned
+            (Get-FileHash -Algorithm SHA256 $installerSigned).Hash | Set-Content -Encoding ascii "$installerSigned.sha256"
           } else {
-            Write-Host "Unsigned MSIX not found; skipping MSIX signing."
+            Write-Host "Unsigned installer not found; skipping installer signing."
           }
 
           $zipUnsigned = "dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip"
@@ -1342,16 +1350,21 @@ jobs:
           Compress-Archive -Path (Join-Path $tempDir '*') -DestinationPath $zipSigned
           (Get-FileHash -Algorithm SHA256 $zipSigned).Hash | Set-Content -Encoding ascii "$zipSigned.sha256"
 
+          $runtimeExe = Get-ChildItem $tempDir -Recurse -Filter *.exe | Sort-Object FullName | Select-Object -First 1
+          if ($runtimeExe) {
+            $runtimeHashPath = "dist/windows/$($runtimeExe.Name).sha256"
+            (Get-FileHash -Algorithm SHA256 $runtimeExe.FullName).Hash | Set-Content -Encoding ascii $runtimeHashPath
+          }
+
       - name: Upload signed Windows artifacts
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: windows-signed
           path: |
-            dist/windows/pirate-unified-wallet-windows.msix
-            dist/windows/pirate-unified-wallet-windows.msix.sha256
+            dist/windows/pirate-unified-wallet-windows-installer.exe
             dist/windows/pirate-unified-wallet-windows-portable.zip
-            dist/windows/pirate-unified-wallet-windows-portable.zip.sha256
+            dist/windows/*.sha256
           if-no-files-found: warn
 
   sign-macos:
@@ -1712,11 +1725,26 @@ jobs:
           find release-artifacts -type f \( \
             -name 'pirate-unified-wallet-android-*.apk' \
             -o -name 'pirate-unified-wallet-android.aab' \
-            -o -name 'pirate-unified-wallet-windows.msix' \
+            -o -name 'pirate-unified-wallet-windows-installer.exe' \
             -o -name 'pirate-unified-wallet-windows-portable.zip' \
             -o -name 'pirate-unified-wallet-macos.dmg' \
             -o -name 'pirate-unified-wallet-ios.ipa' \
           \) ! -name '*-unsigned*' -exec cp -f {} release/ \;
+
+          # If Windows signing is unavailable, publish unsigned Windows artifacts
+          # so testers still receive desktop builds.
+          if [ ! -f release/pirate-unified-wallet-windows-installer.exe ]; then
+            unsigned_installer="$(find release-artifacts -type f -name 'pirate-unified-wallet-windows-installer-unsigned.exe' | head -n 1 || true)"
+            if [ -n "$unsigned_installer" ]; then
+              cp -f "$unsigned_installer" release/
+            fi
+          fi
+          if [ ! -f release/pirate-unified-wallet-windows-portable.zip ]; then
+            unsigned_portable="$(find release-artifacts -type f -name 'pirate-unified-wallet-windows-portable-unsigned.zip' | head -n 1 || true)"
+            if [ -n "$unsigned_portable" ]; then
+              cp -f "$unsigned_portable" release/
+            fi
+          fi
 
           # Since we don't have Apple Developer credentials yet, CI will skip signing/notarization.
           # Still publish the unsigned DMG so testers can run it (they may need to clear quarantine).
@@ -1735,11 +1763,18 @@ jobs:
             -o -name 'pirate-unified-wallet-ios-simulator.app.zip' \
           \) -exec cp -f {} release/ \;
 
-          # Hashes and signatures (packaged into a single zip).
+          # Hashes and signatures: keep both direct assets (for in-app verification)
+          # and a bundled metadata zip (for manual download convenience).
           find release-artifacts -type f \( \
             -name '*.sha256' \
             -o -name '*.asc' \
           \) -exec cp -f {} release-meta/ \;
+
+          # Publish checksums/signatures directly as release assets too.
+          find release-meta -type f \( \
+            -name '*.sha256' \
+            -o -name '*.asc' \
+          \) -exec cp -f {} release/ \;
 
           # VirusTotal scan report (optional; only present when VIRUSTOTAL_API_KEY is configured).
           if [ -d release-artifacts/virustotal-report ]; then

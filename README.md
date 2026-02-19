@@ -94,8 +94,7 @@ Outputs
 
 Reproducible Packaging Notes
 ----------------------------
-- Windows MSIX packaging: requires `msix_config` in `app/pubspec.yaml`. Set
-  `MSIX_VERSION` to install a pinned `msix` tool if it is not already installed.
+- Windows packaging: produces a portable ZIP and installer EXE.
 - Linux AppImage packaging: install `appimagetool` or set `APPIMAGETOOL_URL` and
   `APPIMAGETOOL_SHA256` to download a pinned binary.
 - Android: release builds are unsigned by default for reproducibility. Use

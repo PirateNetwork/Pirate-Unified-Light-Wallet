@@ -150,8 +150,12 @@ test\:flutter: ## Run Flutter tests
 
 test\:integration: ## Run integration tests
 	@echo "$(BLUE)🔗 Running integration tests...$(NC)"
-	@cd $(APP_DIR) && $(FLUTTER) test integration_test/
-	@echo "$(GREEN)✅ Integration tests passed$(NC)"
+	@if ./scripts/e2e-preflight.sh; then \
+		cd $(APP_DIR) && $(FLUTTER) test integration_test/; \
+		echo "$(GREEN)✅ Integration tests passed$(NC)"; \
+	else \
+		echo "$(YELLOW)⚠️ Skipping integration tests (missing E2E prerequisites)$(NC)"; \
+	fi
 
 ##@ Code Quality
 

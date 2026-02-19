@@ -145,7 +145,8 @@ if ($Android -or $All) {
     # Ensure MSYS2 tools are on PATH for perl/make
     $msysBin = "C:\\msys64\\usr\\bin"
     if (Test-Path $msysBin) {
-        $env:PATH = "$msysBin;$env:PATH"
+        # Append MSYS2 so we can use perl/make without shadowing MSVC link.exe.
+        $env:PATH = "$env:PATH;$msysBin"
     }
 
     # Find Android NDK

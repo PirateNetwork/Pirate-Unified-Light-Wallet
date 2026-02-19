@@ -34,9 +34,9 @@ SCAN_SUFFIXES = {
     ".appimage",
     ".deb",
     ".dmg",
+    ".exe",
     ".flatpak",
     ".ipa",
-    ".msix",
     ".zip",
 }
 
