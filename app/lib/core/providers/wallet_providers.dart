@@ -522,6 +522,9 @@ void _prefetchRecentMemos(
         memoFetched = true;
       }
     }
+    if (!ref.mounted) {
+      return;
+    }
     if (memoFetched) {
       ref.invalidate(transactionsProvider);
     }

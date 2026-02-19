@@ -13,6 +13,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../l10n/app_localizations.dart';
 import 'providers/preferences_providers.dart';
 import 'providers/transport_providers.dart';
 import '../../ui/molecules/p_list_tile.dart';
@@ -21,6 +22,7 @@ import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/logging/debug_log_path.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 final appVersionProvider = FutureProvider<String>((ref) async {
   final info = await PackageInfo.fromPlatform();
@@ -52,6 +54,7 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final size = MediaQuery.of(context).size;
     final screenWidth = size.width;
     final isMobile = AppSpacing.isMobile(screenWidth);
@@ -60,7 +63,7 @@ class SettingsScreen extends ConsumerWidget {
       padding: EdgeInsets.zero,
       children: [
         _SettingsSection(
-          title: 'Security',
+          title: 'Security'.tr,
           topPadding: isMobile ? AppSpacing.lg : AppSpacing.xl,
           children: [
             Consumer(
@@ -82,7 +85,7 @@ class SettingsScreen extends ConsumerWidget {
                 );
                 return PListTile(
                   leading: const Icon(Icons.fingerprint),
-                  title: 'Biometrics',
+                  title: 'Biometrics'.tr,
                   subtitle: subtitle,
                   onTap: () => context.push('/settings/biometrics'),
                   trailing: const Icon(Icons.chevron_right),
@@ -91,15 +94,15 @@ class SettingsScreen extends ConsumerWidget {
             ),
             PListTile(
               leading: const Icon(Icons.lock_reset_outlined),
-              title: 'Change passphrase',
-              subtitle: 'Update your app unlock passphrase',
+              title: 'Change passphrase'.tr,
+              subtitle: 'Update your app unlock passphrase'.tr,
               onTap: () => context.push('/settings/passphrase'),
               trailing: const Icon(Icons.chevron_right),
             ),
             PListTile(
               leading: Icon(Icons.emergency, color: AppColors.warning),
-              title: 'Duress passphrase',
-              subtitle: 'Decoy wallet access',
+              title: 'Duress passphrase'.tr,
+              subtitle: 'Decoy wallet access'.tr,
               onTap: () => context.push('/settings/panic-pin'),
               trailing: const Icon(Icons.chevron_right),
             ),
@@ -107,7 +110,7 @@ class SettingsScreen extends ConsumerWidget {
         ),
 
         _SettingsSection(
-          title: 'Privacy and Network',
+          title: 'Privacy and Network'.tr,
           children: [
             Consumer(
               builder: (context, ref, _) {
@@ -119,7 +122,7 @@ class SettingsScreen extends ConsumerWidget {
                 );
                 return PListTile(
                   leading: const Icon(Icons.dns_outlined),
-                  title: 'Node',
+                  title: 'Node'.tr,
                   subtitle: subtitle,
                   onTap: () => context.push('/settings/node-picker'),
                   trailing: const Icon(Icons.chevron_right),
@@ -138,7 +141,7 @@ class SettingsScreen extends ConsumerWidget {
                 };
                 return PListTile(
                   leading: const Icon(Icons.shield_outlined),
-                  title: 'Transport',
+                  title: 'Transport'.tr,
                   subtitle: subtitle,
                   onTap: () => context.push('/settings/privacy-shield'),
                   trailing: const Icon(Icons.chevron_right),
@@ -147,8 +150,8 @@ class SettingsScreen extends ConsumerWidget {
             ),
             PListTile(
               leading: const Icon(Icons.wifi_tethering_off_outlined),
-              title: 'Outbound API Calls',
-              subtitle: 'Control non-lightserver requests',
+              title: 'Outbound API Calls'.tr,
+              subtitle: 'Control non-lightserver requests'.tr,
               onTap: () => context.push('/settings/outbound-apis'),
               trailing: const Icon(Icons.chevron_right),
             ),
@@ -156,14 +159,14 @@ class SettingsScreen extends ConsumerWidget {
         ),
 
         _SettingsSection(
-          title: 'Backups',
+          title: 'Backups'.tr,
           children: [
             Consumer(
               builder: (context, ref, _) {
                 final wallet = ref.watch(activeWalletMetaProvider);
                 return PListTile(
                   leading: Icon(Icons.key_outlined, color: AppColors.warning),
-                  title: 'Backup seed phrase',
+                  title: 'Backup seed phrase'.tr,
                   subtitle: wallet == null
                       ? 'No active wallet'
                       : 'View your recovery phrase',
@@ -182,12 +185,12 @@ class SettingsScreen extends ConsumerWidget {
         ),
 
         _SettingsSection(
-          title: 'Wallet',
+          title: 'Wallet'.tr,
           children: [
             PListTile(
               leading: const Icon(Icons.vpn_key_outlined),
-              title: 'Keys & addresses',
-              subtitle: 'Manage imported keys and addresses',
+              title: 'Keys & addresses'.tr,
+              subtitle: 'Manage imported keys and addresses'.tr,
               onTap: () => context.push('/settings/keys'),
               trailing: const Icon(Icons.chevron_right),
             ),
@@ -209,7 +212,7 @@ class SettingsScreen extends ConsumerWidget {
                       : '$status - Combine unlabeled notes during sends';
                   return PListTile(
                     leading: const Icon(Icons.merge_type_outlined),
-                    title: 'Auto consolidation',
+                    title: 'Auto consolidation'.tr,
                     subtitle: subtitle,
                     trailing: Switch(
                       value: enabled,
@@ -238,14 +241,14 @@ class SettingsScreen extends ConsumerWidget {
         ),
 
         _SettingsSection(
-          title: 'Appearance',
+          title: 'Appearance'.tr,
           children: [
             Consumer(
               builder: (context, ref, _) {
                 final themeMode = ref.watch(appThemeModeProvider);
                 return PListTile(
                   leading: const Icon(Icons.dark_mode_outlined),
-                  title: 'Theme',
+                  title: 'Theme'.tr,
                   subtitle: themeMode.label,
                   onTap: () => context.push('/settings/theme'),
                   trailing: const Icon(Icons.chevron_right),
@@ -257,9 +260,24 @@ class SettingsScreen extends ConsumerWidget {
                 final currency = ref.watch(currencyPreferenceProvider);
                 return PListTile(
                   leading: const Icon(Icons.currency_bitcoin),
-                  title: 'Currency',
+                  title: 'Currency'.tr,
                   subtitle: currency.code,
                   onTap: () => context.push('/settings/currency'),
+                  trailing: const Icon(Icons.chevron_right),
+                );
+              },
+            ),
+            Consumer(
+              builder: (context, ref, _) {
+                final locale = ref.watch(localePreferenceProvider);
+                final subtitle = locale == AppLocalePreference.english
+                    ? l10n.englishLanguage
+                    : locale.label;
+                return PListTile(
+                  leading: const Icon(Icons.language_outlined),
+                  title: l10n.languageSettingTitle,
+                  subtitle: subtitle,
+                  onTap: () => context.push('/settings/language'),
                   trailing: const Icon(Icons.chevron_right),
                 );
               },
@@ -268,7 +286,7 @@ class SettingsScreen extends ConsumerWidget {
         ),
 
         _SettingsSection(
-          title: 'Advanced',
+          title: 'Advanced'.tr,
           children: [
             Consumer(
               builder: (context, ref, _) {
@@ -278,7 +296,7 @@ class SettingsScreen extends ConsumerWidget {
                     : 'Block ${_formatHeight(meta.birthdayHeight)}';
                 return PListTile(
                   leading: const Icon(Icons.cake_outlined),
-                  title: 'Birthday height',
+                  title: 'Birthday height'.tr,
                   subtitle: subtitle,
                   onTap: () => context.push('/settings/birthday-height'),
                   trailing: const Icon(Icons.chevron_right),
@@ -289,8 +307,8 @@ class SettingsScreen extends ConsumerWidget {
               builder: (context, ref, _) {
                 return PListTile(
                   leading: const Icon(Icons.refresh_outlined),
-                  title: 'Rescan blockchain',
-                  subtitle: 'Rebuild wallet state',
+                  title: 'Rescan blockchain'.tr,
+                  subtitle: 'Rebuild wallet state'.tr,
                   onTap: () {
                     _showRescanDialog(context, ref);
                   },
@@ -302,7 +320,7 @@ class SettingsScreen extends ConsumerWidget {
         ),
 
         _SettingsSection(
-          title: 'About',
+          title: 'About'.tr,
           children: [
             Consumer(
               builder: (context, ref, _) {
@@ -314,7 +332,7 @@ class SettingsScreen extends ConsumerWidget {
                 );
                 return PListTile(
                   leading: const Icon(Icons.info_outlined),
-                  title: 'Version',
+                  title: 'Version'.tr,
                   subtitle: subtitle,
                   trailing: null,
                 );
@@ -322,20 +340,20 @@ class SettingsScreen extends ConsumerWidget {
             ),
             PListTile(
               leading: const Icon(Icons.verified_user),
-              title: 'Verify build',
-              subtitle: 'Reproducible build check',
+              title: 'Verify build'.tr,
+              subtitle: 'Reproducible build check'.tr,
               onTap: () => context.push('/settings/verify-build'),
               trailing: const Icon(Icons.chevron_right),
             ),
             PListTile(
               leading: const Icon(Icons.article_outlined),
-              title: 'Terms and privacy',
+              title: 'Terms and privacy'.tr,
               onTap: () => context.push('/settings/terms'),
               trailing: const Icon(Icons.chevron_right),
             ),
             PListTile(
               leading: const Icon(Icons.code_outlined),
-              title: 'Open source licenses',
+              title: 'Open source licenses'.tr,
               onTap: () => context.push('/settings/licenses'),
               trailing: const Icon(Icons.chevron_right),
             ),
@@ -359,11 +377,11 @@ class SettingsScreen extends ConsumerWidget {
         return content;
       }
       return PScaffold(
-        title: 'Settings',
+        title: l10n.settingsTitle,
         useSafeArea: false,
         appBar: PAppBar(
-          title: 'Settings',
-          subtitle: 'Security and privacy controls.',
+          title: l10n.settingsTitle,
+          subtitle: l10n.settingsSubtitle,
           actions: appBarActions,
         ),
         body: content,
@@ -371,12 +389,12 @@ class SettingsScreen extends ConsumerWidget {
     }
 
     return PScaffold(
-      title: 'Settings',
+      title: l10n.settingsTitle,
       appBar: isDesktop
           ? null
           : PAppBar(
-              title: 'Settings',
-              subtitle: 'Security and privacy controls.',
+              title: l10n.settingsTitle,
+              subtitle: l10n.settingsSubtitle,
               actions: appBarActions,
             ),
       body: content,
@@ -413,7 +431,7 @@ class SettingsScreen extends ConsumerWidget {
         barrierDismissible: true,
         builder: (dialogContext) => AlertDialog(
           backgroundColor: AppColors.surface,
-          title: const Text('Rescan Blockchain'),
+          title: Text('Rescan Blockchain'.tr),
           content: FutureBuilder(
             future: suggestedFuture,
             builder: (context, snapshot) {
@@ -441,8 +459,8 @@ class SettingsScreen extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'This will rebuild wallet state and may take a while.',
+                  Text(
+                    'This will rebuild wallet state and may take a while.'.tr,
                   ),
                   const SizedBox(height: AppSpacing.md),
                   TextField(
@@ -450,8 +468,8 @@ class SettingsScreen extends ConsumerWidget {
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
-                      labelText: 'Start height',
-                      hintText: 'e.g., 1',
+                      labelText: 'Start height'.tr,
+                      hintText: 'e.g., 1'.tr,
                       helperText: helperText,
                     ),
                   ),
@@ -465,13 +483,13 @@ class SettingsScreen extends ConsumerWidget {
                 controller.dispose();
                 Navigator.of(dialogContext).pop(false);
               },
-              child: const Text('Cancel'),
+              child: Text('Cancel'.tr),
             ),
             TextButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop(true);
               },
-              child: const Text('Rescan'),
+              child: Text('Rescan'.tr),
             ),
           ],
         ),
@@ -483,9 +501,7 @@ class SettingsScreen extends ConsumerWidget {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: const Text(
-                  'Enter a valid block height to rescan from.',
-                ),
+                content: Text('Enter a valid block height to rescan from.'.tr),
                 backgroundColor: AppColors.error,
               ),
             );

@@ -4,18 +4,22 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/ffi/ffi_bridge.dart';
 import 'core/ffi/generated/models.dart' show SyncMode;
 import 'core/desktop/single_instance.dart';
+import 'core/desktop/desktop_update_prompt_host.dart';
 import 'core/desktop/windows_version.dart';
+import 'core/i18n/arb_text_localizer.dart';
 import 'core/logging/debug_log_path.dart';
 import 'design/theme.dart';
 import 'design/tokens/colors.dart';
 import 'features/settings/providers/preferences_providers.dart';
 import 'features/settings/providers/transport_providers.dart';
+import 'l10n/app_localizations.dart';
 import 'routes/app_router.dart';
 import 'core/providers/rust_init_provider.dart';
 import 'ui/molecules/p_overlay_toast.dart';
@@ -56,7 +60,7 @@ void main() async {
       size: _desktopInitialSize,
       minimumSize: _desktopMinimumSize,
       center: true,
-      title: 'Pirate Wallet',
+      title: 'Pirate Wallet'.tr,
       backgroundColor: Color(0xFF0B0F14),
       titleBarStyle: useCustomTitleBar
           ? TitleBarStyle.hidden
@@ -104,6 +108,21 @@ void _installFlutterErrorLogging(String logPath) {
   };
 }
 
+/// Disable Android stretch/glow overscroll so mobile scrolling feels stable
+/// and consistent across screens.
+class PirateScrollBehavior extends MaterialScrollBehavior {
+  const PirateScrollBehavior();
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
+  }
+}
+
 class PirateWalletApp extends ConsumerStatefulWidget {
   const PirateWalletApp({super.key});
 
@@ -115,6 +134,8 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     with WindowListener, WidgetsBindingObserver {
   bool _closing = false;
   Color? _lastWindowBackground;
+  ProviderSubscription<AsyncValue<void>>? _rustInitSubscription;
+  String? _lastArbLocale;
 
   bool get _isDesktop =>
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
@@ -136,17 +157,22 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     FfiBridge.setAppActive(true);
+    unawaited(ArbTextLocalizer.instance.bootstrap());
     if (_isDesktop) {
       windowManager
         ..addListener(this)
         ..setPreventClose(true);
     }
 
-    ref.listen<AsyncValue<void>>(rustInitProvider, (_, next) {
-      if (next.hasValue) {
-        unawaited(ref.read(transportConfigProvider.notifier).refresh());
-      }
-    });
+    _rustInitSubscription = ref.listenManual<AsyncValue<void>>(
+      rustInitProvider,
+      (_, next) {
+        if (next.hasValue) {
+          unawaited(ref.read(transportConfigProvider.notifier).refresh());
+        }
+      },
+      fireImmediately: true,
+    );
   }
 
   @override
@@ -155,6 +181,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
     if (_isDesktop) {
       windowManager.removeListener(this);
     }
+    _rustInitSubscription?.close();
     final release = _singleInstanceLock?.release();
     if (release != null) {
       unawaited(release);
@@ -241,6 +268,19 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     final themeModeSetting = ref.watch(appThemeModeProvider);
+    final locale = ref.watch(localeProvider);
+    final arbLocale = locale.countryCode == null || locale.countryCode!.isEmpty
+        ? locale.languageCode
+        : '${locale.languageCode}_${locale.countryCode!}';
+    if (_lastArbLocale != arbLocale) {
+      _lastArbLocale = arbLocale;
+      unawaited(
+        ArbTextLocalizer.instance.setLocale(
+          locale.languageCode,
+          countryCode: locale.countryCode,
+        ),
+      );
+    }
 
     // Determine brightness based on theme mode
     // For system mode, we'll sync in the builder after MaterialApp is built
@@ -254,8 +294,9 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
     return MaterialApp.router(
       key: ValueKey(themeModeSetting.themeMode),
-      title: 'Pirate Wallet',
+      title: 'Pirate Wallet'.tr,
       debugShowCheckedModeBanner: false,
+      scrollBehavior: const PirateScrollBehavior(),
 
       // Theme
       theme: PTheme.light(),
@@ -275,12 +316,20 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
         // Return a widget that forces rebuild when theme changes
         // This ensures all child widgets rebuild when AppColors changes
-        return POverlayToastHost(
-          key: rootOverlayToastHostKey,
-          child: Theme(
-            data: Theme.of(context),
-            child: child ?? const SizedBox.shrink(),
-          ),
+        return AnimatedBuilder(
+          animation: ArbTextLocalizer.instance,
+          builder: (context, _) {
+            return POverlayToastHost(
+              key: rootOverlayToastHostKey,
+              child: DesktopUpdatePromptHost(
+                child: Theme(
+                  data: Theme.of(context),
+                  child: child ?? const SizedBox.shrink(),
+                ),
+              ),
+            );
+          },
+          child: child,
         );
       },
 
@@ -288,7 +337,14 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
       routerConfig: router,
 
       // Locale
-      supportedLocales: const [Locale('en', 'US')],
+      locale: locale,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
     );
   }
 }

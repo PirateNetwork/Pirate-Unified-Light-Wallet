@@ -16,6 +16,7 @@ import '../../core/providers/wallet_providers.dart';
 import '../../features/settings/providers/preferences_providers.dart';
 import '../../core/security/biometric_auth.dart';
 import '../../core/security/passphrase_cache.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Unlock screen for entering passphrase
 class UnlockScreen extends ConsumerStatefulWidget {
@@ -91,9 +92,10 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: const Text(
+                    content: Text(
                       'Biometrics were turned off because secure setup failed. '
-                      'Re-enable in Settings after retrying.',
+                              'Re-enable in Settings after retrying.'
+                          .tr,
                     ),
                     behavior: SnackBarBehavior.floating,
                   ),
@@ -162,10 +164,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
     });
 
     try {
-      // On macOS, the cached passphrase read is protected by Keychain
-      // biometry ACL and will trigger the system biometric prompt itself.
-      // Keep an explicit local_auth prompt on other desktop platforms.
-      if (Platform.isWindows || Platform.isLinux) {
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         final authenticated = await BiometricAuth.authenticate(
           reason: 'Unlock your wallet',
           biometricOnly: true,
@@ -211,11 +210,39 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
   }
 
   Future<void> _navigateAfterUnlock() async {
+    bool hasWallets = true;
+    try {
+      ref.invalidate(walletsProvider);
+      final wallets = await ref.read(walletsProvider.future);
+      hasWallets = wallets.isNotEmpty;
+    } catch (e) {
+      debugPrint('Failed to read wallets after unlock: $e');
+    }
+
+    if (!hasWallets) {
+      // Fall back to coarse existence check if wallet listing is empty or
+      // unavailable right after unlock to avoid false onboarding redirects.
+      ref.invalidate(walletsExistProvider);
+      hasWallets = await ref.read(walletsExistProvider.future);
+    }
+
+    if (!mounted) return;
+
+    if (!hasWallets) {
+      final redirect = widget.redirectTo;
+      if (redirect != null &&
+          redirect.isNotEmpty &&
+          redirect.startsWith('/onboarding/')) {
+        context.go(redirect);
+      } else {
+        context.go('/onboarding/welcome');
+      }
+      return;
+    }
+
     final redirect = widget.redirectTo;
     if (redirect != null && redirect.isNotEmpty) {
-      if (mounted) {
-        context.go(redirect);
-      }
+      context.go(redirect);
       return;
     }
 
@@ -235,10 +262,10 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
     });
 
     return PScaffold(
-      title: 'Unlock Wallet',
-      appBar: const PAppBar(
-        title: 'Unlock Wallet',
-        subtitle: 'Enter your passphrase to access your wallets',
+      title: 'Unlock Wallet'.tr,
+      appBar: PAppBar(
+        title: 'Unlock Wallet'.tr,
+        subtitle: 'Enter your passphrase to access your wallets'.tr,
         showBackButton: false,
       ),
       body: LayoutBuilder(
@@ -294,7 +321,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
 
                             // Title
                             Text(
-                              'Enter Passphrase',
+                              'Enter Passphrase'.tr,
                               style: AppTypography.h2.copyWith(
                                 color: AppColors.textPrimary,
                               ),
@@ -305,7 +332,8 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
 
                             // Subtitle
                             Text(
-                              'Enter your passphrase to unlock and access your wallets',
+                              'Enter your passphrase to unlock and access your wallets'
+                                  .tr,
                               style: AppTypography.body.copyWith(
                                 color: AppColors.textSecondary,
                               ),
@@ -317,7 +345,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
                             // Passphrase input
                             PInput(
                               controller: _passphraseController,
-                              label: 'Passphrase',
+                              label: 'Passphrase'.tr,
                               hint: 'Enter your passphrase',
                               obscureText: _obscurePassphrase,
                               textInputAction: TextInputAction.done,
@@ -425,14 +453,14 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
                             ),
                             const SizedBox(height: AppSpacing.md),
                             Text(
-                              'Authenticating...',
+                              'Authenticating...'.tr,
                               style: AppTypography.bodyBold.copyWith(
                                 color: AppColors.textPrimary,
                               ),
                             ),
                             const SizedBox(height: AppSpacing.xs),
                             Text(
-                              'Unlocking your wallet securely',
+                              'Unlocking your wallet securely'.tr,
                               style: AppTypography.bodySmall.copyWith(
                                 color: AppColors.textSecondary,
                               ),

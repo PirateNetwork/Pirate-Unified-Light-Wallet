@@ -36,6 +36,19 @@ extension AppThemeModeX on AppThemeMode {
   }
 }
 
+enum AppLocalePreference {
+  english;
+
+  Locale get locale => const Locale('en');
+
+  String get label {
+    switch (this) {
+      case AppLocalePreference.english:
+        return 'English';
+    }
+  }
+}
+
 enum CurrencyPreference {
   usd,
   eur,
@@ -252,6 +265,9 @@ class ThemeModeNotifier extends Notifier<AppThemeMode> {
 
   Future<void> _load() async {
     final raw = await _storage.read(key: _storageKey);
+    if (!ref.mounted) {
+      return;
+    }
     if (raw == null || raw.isEmpty) {
       state = AppThemeMode.system;
       return;
@@ -281,6 +297,9 @@ class CurrencyPreferenceNotifier extends Notifier<CurrencyPreference> {
 
   Future<void> _load() async {
     final raw = await _storage.read(key: _storageKey);
+    if (!ref.mounted) {
+      return;
+    }
     if (raw == null || raw.isEmpty) {
       state = CurrencyPreference.usd;
       return;
@@ -294,6 +313,38 @@ class CurrencyPreferenceNotifier extends Notifier<CurrencyPreference> {
     state = CurrencyPreference.values.firstWhere(
       (pref) => pref.name == raw,
       orElse: () => CurrencyPreference.usd,
+    );
+  }
+}
+
+class LocalePreferenceNotifier extends Notifier<AppLocalePreference> {
+  late final FlutterSecureStorage _storage;
+  static const String _storageKey = 'ui_locale_pref_v1';
+
+  @override
+  AppLocalePreference build() {
+    _storage = const FlutterSecureStorage();
+    _load();
+    return AppLocalePreference.english;
+  }
+
+  Future<void> setLocale(AppLocalePreference preference) async {
+    state = preference;
+    await _storage.write(key: _storageKey, value: preference.name);
+  }
+
+  Future<void> _load() async {
+    final raw = await _storage.read(key: _storageKey);
+    if (!ref.mounted) {
+      return;
+    }
+    if (raw == null || raw.isEmpty) {
+      state = AppLocalePreference.english;
+      return;
+    }
+    state = AppLocalePreference.values.firstWhere(
+      (locale) => locale.name == raw,
+      orElse: () => AppLocalePreference.english,
     );
   }
 }
@@ -396,6 +447,9 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
       final raw = await _storage.read(key: _storageKey);
       final parsed = _parseBool(raw);
       if (parsed != null) {
+        if (!ref.mounted) {
+          return;
+        }
         state = parsed;
         return;
       }
@@ -406,6 +460,9 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
     }
 
     final fallback = await _readFallbackValue();
+    if (!ref.mounted) {
+      return;
+    }
     if (fallback != null) {
       state = fallback;
     } else {
@@ -414,6 +471,9 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
 
     if (state) {
       final available = await BiometricAuth.isAvailable();
+      if (!ref.mounted) {
+        return;
+      }
       if (!available) {
         debugPrint(
           'Biometrics preference was enabled but no biometrics are currently available. Resetting to disabled.',
@@ -425,6 +485,9 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
 
       try {
         final hasWrappedPassphrase = await PassphraseCache.exists();
+        if (!ref.mounted) {
+          return;
+        }
         if (!hasWrappedPassphrase) {
           debugPrint(
             'Biometrics preference was enabled but no wrapped passphrase cache exists. Resetting to disabled.',
@@ -433,6 +496,9 @@ class BiometricsPreferenceNotifier extends Notifier<bool> {
           await _persistBestEffort(false);
         }
       } catch (e) {
+        if (!ref.mounted) {
+          return;
+        }
         debugPrint(
           'Failed to verify wrapped passphrase cache for biometrics: $e',
         );
@@ -567,6 +633,9 @@ abstract class _SecureBoolPreferenceNotifier extends Notifier<bool> {
   Future<void> _load() async {
     try {
       final raw = await _storage.read(key: storageKey);
+      if (!ref.mounted) {
+        return;
+      }
       if (raw == null || raw.isEmpty) {
         state = defaultValue;
         return;
@@ -619,6 +688,16 @@ class ExternalGithubApiNotifier extends _SecureBoolPreferenceNotifier {
   Future<void> setEnabled({required bool enabled}) => setValue(value: enabled);
 }
 
+class ExternalDesktopUpdateApiNotifier extends _SecureBoolPreferenceNotifier {
+  @override
+  String get storageKey => 'ui_external_api_desktop_updates_v1';
+
+  @override
+  bool get defaultValue => true;
+
+  Future<void> setEnabled({required bool enabled}) => setValue(value: enabled);
+}
+
 final appThemeModeProvider = NotifierProvider<ThemeModeNotifier, AppThemeMode>(
   ThemeModeNotifier.new,
 );
@@ -627,6 +706,15 @@ final currencyPreferenceProvider =
     NotifierProvider<CurrencyPreferenceNotifier, CurrencyPreference>(
       CurrencyPreferenceNotifier.new,
     );
+
+final localePreferenceProvider =
+    NotifierProvider<LocalePreferenceNotifier, AppLocalePreference>(
+      LocalePreferenceNotifier.new,
+    );
+
+final localeProvider = Provider<Locale>((ref) {
+  return ref.watch(localePreferenceProvider).locale;
+});
 
 final balancePrimaryFiatProvider =
     NotifierProvider<BalancePrimaryFiatNotifier, bool>(
@@ -658,6 +746,11 @@ final externalGithubApiProvider =
       ExternalGithubApiNotifier.new,
     );
 
+final externalDesktopUpdateApiProvider =
+    NotifierProvider<ExternalDesktopUpdateApiNotifier, bool>(
+      ExternalDesktopUpdateApiNotifier.new,
+    );
+
 final allowPriceApisProvider = Provider<bool>((ref) {
   final master = ref.watch(externalApiMasterProvider);
   final prices = ref.watch(externalPriceApiProvider);
@@ -668,6 +761,12 @@ final allowGithubApisProvider = Provider<bool>((ref) {
   final master = ref.watch(externalApiMasterProvider);
   final github = ref.watch(externalGithubApiProvider);
   return master && github;
+});
+
+final allowDesktopUpdateApisProvider = Provider<bool>((ref) {
+  final githubAllowed = ref.watch(allowGithubApisProvider);
+  final desktopUpdates = ref.watch(externalDesktopUpdateApiProvider);
+  return githubAllowed && desktopUpdates;
 });
 
 final biometricAvailabilityProvider = FutureProvider<bool>((ref) async {

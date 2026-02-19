@@ -41,6 +41,7 @@ import '../features/settings/screens/biometrics_screen.dart';
 import '../features/settings/screens/passphrase_change_screen.dart';
 import '../features/settings/screens/theme_screen.dart';
 import '../features/settings/screens/currency_screen.dart';
+import '../features/settings/screens/language_screen.dart';
 import '../features/settings/screens/outbound_api_screen.dart';
 import '../features/settings/screens/birthday_height_screen.dart';
 import '../features/settings/screens/terms_screen.dart';
@@ -59,6 +60,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     debugLogDiagnostics: true,
     redirect: (context, state) {
       final walletsExistAsync = ref.read(walletsExistProvider);
+      final walletsAsync = ref.read(walletsProvider);
       final hasPassphraseAsync = ref.read(hasAppPassphraseProvider);
       final appUnlockedValue = ref.read(appUnlockedProvider);
       final isOnboarding = state.uri.path.startsWith('/onboarding');
@@ -67,6 +69,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Get walletsExist value (if available)
       final walletsExistValue = walletsExistAsync.value;
+      final walletsValue = walletsAsync.value;
       final hasPassphraseValue = hasPassphraseAsync.value;
 
       // If still loading, don't redirect yet (let initialLocation handle it)
@@ -83,6 +86,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return '/onboarding/welcome';
         }
         if (!isOnboarding && !isUnlock && !isSplash) {
+          return '/onboarding/welcome';
+        }
+        return null;
+      }
+
+      // If app is unlocked but there are no wallet records, force onboarding.
+      // This avoids false positives from registry-file-only states.
+      if (appUnlockedValue &&
+          walletsValue != null &&
+          walletsValue.isEmpty &&
+          walletsExistValue == false) {
+        if (!isOnboarding && !isSplash) {
           return '/onboarding/welcome';
         }
         return null;
@@ -465,6 +480,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           context: context,
           state: state,
           child: const CurrencyScreen(),
+        ),
+      ),
+
+      // Language settings
+      GoRoute(
+        path: '/settings/language',
+        name: 'settings-language',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const LanguageScreen(),
         ),
       ),
       GoRoute(
