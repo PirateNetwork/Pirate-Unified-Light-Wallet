@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+build = "build.rs"
 
 [lib]
 crate-type = ["staticlib", "cdylib", "lib"]
@@ -44,3 +45,6 @@ rusqlite = { workspace = true }
 directories = "5.0"
 
 [dev-dependencies]
+
+[build-dependencies]
+chrono = { workspace = true }

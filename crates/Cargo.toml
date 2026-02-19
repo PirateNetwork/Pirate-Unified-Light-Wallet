@@ -75,11 +75,11 @@ hyper = { version = "1.5", features = ["full"] }
 tower = "0.5"
 
 # Tor/Arti for privacy
-arti-client = "0.22"
-tor-rtcompat = "0.22"
+arti-client = "0.39"
+tor-rtcompat = "0.39"
 
 # Storage
-rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl", "modern_sqlite"] }
+rusqlite = { version = "0.38", features = ["bundled-sqlcipher-vendored-openssl", "modern_sqlite"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

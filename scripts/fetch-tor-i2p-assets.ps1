@@ -3,9 +3,9 @@ param(
     [string]$TorBrowserBaseUrl = $(if ($env:TOR_BROWSER_BASE_URL) { $env:TOR_BROWSER_BASE_URL } else { "https://dist.torproject.org/torbrowser/$TorBrowserVersion" }),
     [string]$TorBrowserFile = $(if ($env:TOR_BROWSER_WINDOWS_FILE) { $env:TOR_BROWSER_WINDOWS_FILE } else { "tor-browser-windows-x86_64-portable-$TorBrowserVersion.exe" }),
     [string]$TorBrowserSha256 = $(if ($env:TOR_BROWSER_WINDOWS_SHA256) { $env:TOR_BROWSER_WINDOWS_SHA256 } else { "15448e951583b624c3f8fdfa8bc55fa9b65e1bcafd474f3f2dfd5444e4178846" }),
-    [string]$I2pdVersion = $(if ($env:I2PD_VERSION) { $env:I2PD_VERSION } else { "2.58.0" }),
+    [string]$I2pdVersion = $(if ($env:I2PD_VERSION) { $env:I2PD_VERSION } else { "2.59.0" }),
     [string]$I2pdBaseUrl = $env:I2PD_BASE_URL,
-    [string]$I2pdSha512 = $(if ($env:I2PD_WINDOWS_SHA512) { $env:I2PD_WINDOWS_SHA512 } else { "e0cdfa9e416f9580fd57a5466cd37f8a8d067b3602fa826b820bdbfa631a8bbbfa20a484db9641aab9855ac2799667b475fb5fe92cd1f11e26eef469279315a1" })
+    [string]$I2pdSha512 = $(if ($env:I2PD_WINDOWS_SHA512) { $env:I2PD_WINDOWS_SHA512 } else { "c5cae4b2b2166935f1bed9f302f5647e3c201c784a9cf7c4a605ca47906b57358ffe3ce6b45762d4857ce060299e17e1a3ea70f8f1e3f72472b87ea7bb96d0b5" })
 )
 
 if ($env:SKIP_TOR_I2P_FETCH -eq "1") {
