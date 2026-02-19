@@ -6,6 +6,7 @@ import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../atoms/p_icon_button.dart';
 import '../atoms/theme_toggle_button.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Premium app bar replacement with Pirate design language.
 class PAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -194,7 +195,7 @@ class PAppBar extends StatelessWidget implements PreferredSizeWidget {
     return PIconButton(
       icon: Icon(Icons.arrow_back, color: AppColors.textPrimary),
       onPressed: onBack ?? () => Navigator.of(context).maybePop(),
-      tooltip: 'Back',
+      tooltip: 'Back'.tr,
       size: PIconButtonSize.large,
     );
   }

@@ -30,7 +30,8 @@ class _PCardState extends State<PCard> {
   @override
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.of(context).disableAnimations;
-    final isDesktop = !kIsWeb &&
+    final isDesktop =
+        !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.macOS ||
             defaultTargetPlatform == TargetPlatform.linux);
@@ -38,7 +39,8 @@ class _PCardState extends State<PCard> {
     final isHovered = enableHover && _isHovered;
 
     final decoration = BoxDecoration(
-      color: widget.backgroundColor ??
+      color:
+          widget.backgroundColor ??
           (widget.elevated
               ? AppColors.backgroundElevated
               : AppColors.backgroundSurface),
@@ -61,11 +63,13 @@ class _PCardState extends State<PCard> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      cursor:
-          widget.onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: widget.onTap != null
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
       child: AnimatedContainer(
-        duration:
-            reduceMotion ? Duration.zero : const Duration(milliseconds: 200),
+        duration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 200),
         decoration: decoration,
         child: Material(
           color: Colors.transparent,

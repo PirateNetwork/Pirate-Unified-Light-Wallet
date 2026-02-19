@@ -7,6 +7,7 @@ import '../../../design/deep_space_theme.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 class TermsScreen extends StatelessWidget {
   const TermsScreen({super.key});
@@ -14,19 +15,15 @@ class TermsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Terms and Privacy',
-      appBar: const PAppBar(
-        title: 'Terms and Privacy',
-        subtitle: 'Self-custody wallet terms and privacy',
-        showBackButton: true,
-      ),
+      title: 'Terms and Privacy'.tr,
+      appBar: PAppBar(title: 'Terms and Privacy'.tr, showBackButton: true),
       body: SingleChildScrollView(
         padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _SectionCard(
-              title: 'Terms of Use',
+              title: 'Terms of Use'.tr,
               body: '''
 Pirate Wallet is self-custody software. You control your seed phrase, private keys, and funds.
 You are solely responsible for securing recovery material, choosing trusted devices, and confirming transaction details before sending.
@@ -37,7 +34,7 @@ The app is provided "as is" without warranty of uptime, fitness, or recovery gua
             ),
             const SizedBox(height: AppSpacing.md),
             _SectionCard(
-              title: 'Security Responsibility',
+              title: 'Security Responsibility'.tr,
               body: '''
 Never share your seed phrase or private keys.
 If recovery material is lost, funds may be permanently unrecoverable.
@@ -48,7 +45,7 @@ Before sending funds, verify the destination address and amount carefully.
             ),
             const SizedBox(height: AppSpacing.md),
             _SectionCard(
-              title: 'Privacy Policy',
+              title: 'Privacy Policy'.tr,
               body: '''
 Pirate Wallet is designed to minimize data collection.
 The app does not require account registration and does not send seed phrases, private keys, or plaintext passphrases to our servers.
@@ -61,14 +58,14 @@ You can disable optional outbound API calls in Settings.
             ),
             const SizedBox(height: AppSpacing.md),
             _SectionCard(
-              title: 'Compliance Notice',
+              title: 'Compliance Notice'.tr,
               body: '''
 You are responsible for complying with local laws and regulations when using this software.
 ''',
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              'Last updated: February 15, 2026',
+              'Last updated: February 15, 2026'.tr,
               style: AppTypography.caption.copyWith(
                 color: AppColors.textSecondary,
               ),

@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../ffi/generated/models.dart';
+import '../i18n/arb_text_localizer.dart';
 
 class DecoyAddressEntry {
   final String address;
@@ -391,7 +392,7 @@ class DecoyData {
     return [
       KeyGroupInfo(
         id: 1,
-        label: 'Default wallet keys',
+        label: 'Default wallet keys'.tr,
         keyType: KeyTypeInfo.seed,
         spendable: true,
         hasSapling: true,

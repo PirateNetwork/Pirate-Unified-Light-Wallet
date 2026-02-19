@@ -13,6 +13,7 @@ import '../../core/security/biometric_auth.dart';
 import '../../core/security/decoy_data.dart';
 import '../../core/providers/wallet_providers.dart';
 import 'dart:async';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Provider for clipboard countdown timer
 class ClipboardCountdownNotifier extends Notifier<int?> {
@@ -96,10 +97,10 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
         }
       },
       child: PScaffold(
-        title: 'Backup Seed Phrase',
+        title: 'Backup Seed Phrase'.tr,
         appBar: PAppBar(
-          title: 'Backup Seed Phrase',
-          subtitle: 'Keep your recovery words offline and private',
+          title: 'Backup Seed Phrase'.tr,
+          subtitle: 'Keep your recovery words offline and private'.tr,
           showBackButton: true,
           onBack: () async {
             if (_seedRevealed) {
@@ -171,41 +172,44 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           Icon(Icons.warning_rounded, size: 80, color: Colors.red[400]),
           SizedBox(height: PirateSpacing.xl),
           Text(
-            'Reveal recovery phrase',
+            'Reveal recovery phrase'.tr,
             style: PirateTypography.h2.copyWith(color: Colors.white),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.xl),
           _buildWarningCard(
             icon: Icons.security,
-            title: 'Never share your phrase',
+            title: 'Never share your phrase'.tr,
             description:
-                'Anyone with this phrase can spend your funds. Never share it.',
+                'Anyone with this phrase can spend your funds. Never share it.'
+                    .tr,
           ),
           SizedBox(height: PirateSpacing.lg),
           _buildWarningCard(
             icon: Icons.photo_camera,
-            title: 'Store offline',
+            title: 'Store offline'.tr,
             description:
-                'Write it down and store it offline. Avoid screenshots or digital copies.',
+                'Write it down and store it offline. Avoid screenshots or digital copies.'
+                    .tr,
           ),
           SizedBox(height: PirateSpacing.lg),
           _buildWarningCard(
             icon: Icons.verified_user,
-            title: 'We will never ask',
+            title: 'We will never ask'.tr,
             description:
-                'Support will never ask for your recovery phrase. Anyone asking is a scam.',
+                'Support will never ask for your recovery phrase. Anyone asking is a scam.'
+                    .tr,
           ),
           const Spacer(),
           PButton(
             variant: PButtonVariant.danger,
             onPressed: _isLoading ? null : _startSeedExport,
             loading: _isLoading,
-            child: const Text('I understand the risk'),
+            child: Text('I understand the risk'.tr),
           ),
           SizedBox(height: PirateSpacing.md),
           PTextButton(
-            label: 'Cancel',
+            label: 'Cancel'.tr,
             onPressed: () async {
               if (_exportStarted) {
                 await FfiBridge.cancelSeedExport();
@@ -309,13 +313,13 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           Icon(Icons.fingerprint, size: 100, color: PirateTheme.accentColor),
           SizedBox(height: PirateSpacing.xl),
           Text(
-            'Confirm with biometrics',
+            'Confirm with biometrics'.tr,
             style: PirateTypography.h2.copyWith(color: Colors.white),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
-            'Use biometrics to continue.',
+            'Use biometrics to continue.'.tr,
             style: PirateTypography.body.copyWith(color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),
@@ -332,11 +336,11 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           PButton(
             onPressed: _authenticateBiometric,
             loading: _isLoading,
-            child: const Text('Verify'),
+            child: Text('Verify'.tr),
           ),
           SizedBox(height: PirateSpacing.md),
           PTextButton(
-            label: 'Use passphrase instead',
+            label: 'Use passphrase instead'.tr,
             onPressed: _isLoading ? null : _skipBiometric,
             variant: PTextButtonVariant.subtle,
           ),
@@ -355,20 +359,20 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           Icon(Icons.lock, size: 80, color: PirateTheme.accentColor),
           SizedBox(height: PirateSpacing.xl),
           Text(
-            'Enter your passphrase',
+            'Enter your passphrase'.tr,
             style: PirateTypography.h2.copyWith(color: Colors.white),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
-            'Verify to reveal your recovery phrase.',
+            'Verify to reveal your recovery phrase.'.tr,
             style: PirateTypography.body.copyWith(color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.xxl),
           PInput(
             controller: _passphraseController,
-            label: 'Passphrase',
+            label: 'Passphrase'.tr,
             obscureText: true,
             autofocus: true,
             onSubmitted: (_) => _verifyPassphrase(),
@@ -385,11 +389,11 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           PButton(
             onPressed: _verifyPassphrase,
             loading: _isLoading,
-            child: const Text('Reveal recovery phrase'),
+            child: Text('Reveal recovery phrase'.tr),
           ),
           SizedBox(height: PirateSpacing.md),
           PTextButton(
-            label: 'Cancel',
+            label: 'Cancel'.tr,
             onPressed: () async {
               if (_exportStarted) {
                 await FfiBridge.cancelSeedExport();
@@ -419,7 +423,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
             children: [
               Expanded(
                 child: Text(
-                  'Recovery phrase',
+                  'Recovery phrase'.tr,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: PirateTypography.h3.copyWith(color: Colors.white),
@@ -443,7 +447,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Write these words down in order.',
+                  'Write these words down in order.'.tr,
                   style: PirateTypography.bodySmall.copyWith(
                     color: Colors.grey[400],
                   ),
@@ -482,14 +486,14 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           if (countdown == null) ...[
             PButton(
               onPressed: _copyToClipboard,
-              child: const Text('Copy to clipboard (clears in 30s)'),
+              child: Text('Copy to clipboard (clears in 30s)'.tr),
             ),
             SizedBox(height: PirateSpacing.md),
           ],
           SizedBox(height: PirateSpacing.md),
           PButton(
             onPressed: _confirmSaved,
-            child: const Text('Done, saved offline'),
+            child: Text('Done, saved offline'.tr),
           ),
         ],
       ),
@@ -683,7 +687,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Copied. Clears in 30 seconds.'),
+        content: Text('Copied. Clears in 30 seconds.'.tr),
         backgroundColor: Colors.orange[700],
       ),
     );
@@ -701,19 +705,19 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
-        title: Text('Confirm backup', style: TextStyle(color: Colors.white)),
+        title: Text('Confirm backup'.tr, style: TextStyle(color: Colors.white)),
         content: Text(
-          'Have you written down your recovery phrase?',
+          'Have you written down your recovery phrase?'.tr,
           style: TextStyle(color: Colors.grey[300]),
         ),
         actions: [
           PTextButton(
-            label: 'Not yet',
+            label: 'Not yet'.tr,
             onPressed: () => Navigator.pop(context, false),
             variant: PTextButtonVariant.subtle,
           ),
           PTextButton(
-            label: 'Yes, saved',
+            label: 'Yes, saved'.tr,
             onPressed: () => Navigator.pop(context, true),
           ),
         ],
@@ -737,21 +741,22 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: Colors.grey[900],
         title: Text(
-          'Exit without saving?',
+          'Exit without saving?'.tr,
           style: TextStyle(color: Colors.white),
         ),
         content: Text(
-          'Are you sure you want to exit? You will need this phrase to restore this wallet.',
+          'Are you sure you want to exit? You will need this phrase to restore this wallet.'
+              .tr,
           style: TextStyle(color: Colors.grey[300]),
         ),
         actions: [
           PTextButton(
-            label: 'Stay here',
+            label: 'Stay here'.tr,
             onPressed: () => Navigator.pop(context, false),
             variant: PTextButtonVariant.subtle,
           ),
           PTextButton(
-            label: 'Exit',
+            label: 'Exit'.tr,
             onPressed: () => Navigator.pop(context, true),
             variant: PTextButtonVariant.danger,
           ),

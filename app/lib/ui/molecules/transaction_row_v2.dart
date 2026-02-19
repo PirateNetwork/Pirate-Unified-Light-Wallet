@@ -5,6 +5,7 @@ import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import 'p_card.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 class TransactionRowV2 extends StatelessWidget {
   const TransactionRowV2({
@@ -142,7 +143,7 @@ class _MemoIndicator extends StatelessWidget {
         border: Border.all(color: AppColors.selectedBorder),
       ),
       child: Text(
-        'Has memo',
+        'Has memo'.tr,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: PTypography.labelSmall(color: AppColors.textSecondary),

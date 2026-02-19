@@ -23,7 +23,8 @@ class PNav extends StatelessWidget {
   final VoidCallback? onPayTap;
   final int? payIndex;
 
-  bool get _isDesktop => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+  bool get _isDesktop =>
+      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
   int? get _resolvedPayIndex {
     final explicit = payIndex;
@@ -89,7 +90,10 @@ class PNav extends StatelessWidget {
             top: BorderSide(color: AppColors.borderSubtle, width: 1.0),
           ),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: PSpacing.md, vertical: PSpacing.sm),
+        padding: const EdgeInsets.symmetric(
+          horizontal: PSpacing.md,
+          vertical: PSpacing.sm,
+        ),
         child: Row(
           children: [
             ...left.map(
@@ -97,7 +101,8 @@ class PNav extends StatelessWidget {
                 child: _NavItem(
                   destination: dest,
                   isSelected: destinations.indexOf(dest) == currentIndex,
-                  onTap: () => onDestinationSelected(destinations.indexOf(dest)),
+                  onTap: () =>
+                      onDestinationSelected(destinations.indexOf(dest)),
                 ),
               ),
             ),
@@ -113,7 +118,8 @@ class PNav extends StatelessWidget {
                 child: _NavItem(
                   destination: dest,
                   isSelected: destinations.indexOf(dest) == currentIndex,
-                  onTap: () => onDestinationSelected(destinations.indexOf(dest)),
+                  onTap: () =>
+                      onDestinationSelected(destinations.indexOf(dest)),
                 ),
               ),
             ),

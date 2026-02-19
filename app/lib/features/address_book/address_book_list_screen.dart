@@ -20,19 +20,21 @@ import '../../core/providers/wallet_providers.dart';
 import 'address_book_detail_screen.dart';
 import 'models/address_entry.dart';
 import 'providers/address_book_provider.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Address Book List Screen
 class AddressBookListScreen extends ConsumerStatefulWidget {
   const AddressBookListScreen({super.key});
 
   @override
-  ConsumerState<AddressBookListScreen> createState() => _AddressBookListScreenState();
+  ConsumerState<AddressBookListScreen> createState() =>
+      _AddressBookListScreenState();
 }
 
 class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
-  
+
   ColorTag? _filterColor;
 
   @override
@@ -51,11 +53,13 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
   List<AddressEntry> _applyFilter(List<AddressEntry> entries) {
     final query = _searchController.text.toLowerCase();
     return entries.where((entry) {
-      final matchesQuery = query.isEmpty ||
+      final matchesQuery =
+          query.isEmpty ||
           entry.label.toLowerCase().contains(query) ||
           entry.address.toLowerCase().contains(query) ||
           (entry.notes?.toLowerCase().contains(query) ?? false);
-      final matchesColor = _filterColor == null || entry.colorTag == _filterColor;
+      final matchesColor =
+          _filterColor == null || entry.colorTag == _filterColor;
       return matchesQuery && matchesColor;
     }).toList();
   }
@@ -122,11 +126,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
     if (walletId == null) {
       return Scaffold(
         backgroundColor: AppColors.deepSpace,
-        body: const SafeArea(
-          child: Center(
-            child: Text('No active wallet'),
-          ),
-        ),
+        body: SafeArea(child: Center(child: Text('No active wallet'.tr))),
       );
     }
 
@@ -140,7 +140,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
           children: [
             // Hero Header
             PGradientHeroHeader(
-              title: 'Address Book',
+              title: 'Address Book'.tr,
               subtitle: '${state.entries.length} saved addresses',
               actions: [
                 const WalletSwitcherButton(compact: true),
@@ -152,17 +152,15 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
                 ),
               ],
             ),
-            
+
             // Search and Filter Bar
             _buildSearchBar(),
-            
+
             // Color Filter Chips
             _buildColorFilters(),
-            
+
             // List
-            Expanded(
-              child: _buildContent(state, filteredEntries, walletId),
-            ),
+            Expanded(child: _buildContent(state, filteredEntries, walletId)),
           ],
         ),
       ),
@@ -175,10 +173,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
       decoration: BoxDecoration(
         color: AppColors.voidBlack,
         border: Border(
-          bottom: BorderSide(
-            color: AppColors.borderSubtle,
-            width: 1.0,
-          ),
+          bottom: BorderSide(color: AppColors.borderSubtle, width: 1.0),
         ),
       ),
       child: TextField(
@@ -186,12 +181,9 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
         focusNode: _searchFocusNode,
         style: AppTypography.body.copyWith(color: AppColors.textPrimary),
         decoration: InputDecoration(
-          hintText: 'Search name, address, or notes',
+          hintText: 'Search name, address, or notes'.tr,
           hintStyle: AppTypography.body.copyWith(color: AppColors.textMuted),
-          prefixIcon: Icon(
-            Icons.search,
-            color: AppColors.textMuted,
-          ),
+          prefixIcon: Icon(Icons.search, color: AppColors.textMuted),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
                   icon: Icon(Icons.clear, color: AppColors.textMuted),
@@ -206,10 +198,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12.0),
-            borderSide: BorderSide(
-              color: AppColors.gradientAStart,
-              width: 2.0,
-            ),
+            borderSide: BorderSide(color: AppColors.gradientAStart, width: 2.0),
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
@@ -228,19 +217,21 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
         scrollDirection: Axis.horizontal,
         children: [
           _ColorFilterChip(
-            label: 'All',
+            label: 'All'.tr,
             color: null,
             isSelected: _filterColor == null,
             onSelected: () => _setFilterColor(null),
           ),
           ...ColorTag.values
               .where((c) => c != ColorTag.none)
-              .map((color) => _ColorFilterChip(
-                    label: color.displayName,
-                    color: color,
-                    isSelected: _filterColor == color,
-                    onSelected: () => _setFilterColor(color),
-                  )),
+              .map(
+                (color) => _ColorFilterChip(
+                  label: color.displayName,
+                  color: color,
+                  isSelected: _filterColor == color,
+                  onSelected: () => _setFilterColor(color),
+                ),
+              ),
         ],
       ),
     );
@@ -253,9 +244,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
   ) {
     if (state.isLoading) {
       return Center(
-        child: CircularProgressIndicator(
-          color: AppColors.gradientAStart,
-        ),
+        child: CircularProgressIndicator(color: AppColors.gradientAStart),
       );
     }
 
@@ -291,7 +280,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
 
   Widget _buildEmptyState(String walletId) {
     final hasSearch = _searchController.text.isNotEmpty || _filterColor != null;
-    
+
     return Center(
       child: Padding(
         padding: AppSpacing.screenPadding(
@@ -325,9 +314,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
             const SizedBox(height: AppSpacing.lg),
             Text(
               hasSearch ? 'No matches found' : 'No saved addresses',
-              style: AppTypography.h3.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -363,17 +350,11 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: AppColors.error,
-            ),
+            Icon(Icons.error_outline, size: 64, color: AppColors.error),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              'Failed to load addresses',
-              style: AppTypography.h3.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              'Failed to load addresses'.tr,
+              style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -427,7 +408,9 @@ class _ColorFilterChip extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: isSelected
-                ? (color?.color ?? AppColors.gradientAStart).withValues(alpha: 0.2)
+                ? (color?.color ?? AppColors.gradientAStart).withValues(
+                    alpha: 0.2,
+                  )
                 : AppColors.surfaceElevated,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
@@ -491,11 +474,7 @@ class _AddressBookEntryCard extends StatelessWidget {
           color: AppColors.error.withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Icon(
-          Icons.delete_outline,
-          color: Colors.white,
-          size: 28,
-        ),
+        child: Icon(Icons.delete_outline, color: Colors.white, size: 28),
       ),
       confirmDismiss: (_) async {
         onDelete();
@@ -514,10 +493,7 @@ class _AddressBookEntryCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.surfaceElevated,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.borderSubtle,
-                  width: 1,
-                ),
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
               ),
               child: Row(
                 children: [
@@ -531,7 +507,7 @@ class _AddressBookEntryCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.md),
-                  
+
                   // Content
                   Expanded(
                     child: Column(
@@ -566,7 +542,7 @@ class _AddressBookEntryCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  
+
                   // Chevron
                   Icon(
                     Icons.chevron_right,
@@ -591,21 +567,19 @@ class _DeleteConfirmationDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PDialog(
-      title: 'Delete address?',
+      title: 'Delete address?'.tr,
       content: Text(
         'Remove "${entry.label}" from your address book? This cannot be undone.',
-        style: AppTypography.body.copyWith(
-          color: AppColors.textSecondary,
-        ),
+        style: AppTypography.body.copyWith(color: AppColors.textSecondary),
       ),
-      actions: const [
+      actions: [
         PDialogAction(
-          label: 'Cancel',
+          label: 'Cancel'.tr,
           variant: PButtonVariant.outline,
           result: false,
         ),
         PDialogAction(
-          label: 'Delete',
+          label: 'Delete'.tr,
           variant: PButtonVariant.danger,
           result: true,
         ),

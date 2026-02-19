@@ -4,11 +4,7 @@ import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 
-enum InlineExplainTone {
-  info,
-  warning,
-  success,
-}
+enum InlineExplainTone { info, warning, success }
 
 class InlineExplain extends StatelessWidget {
   const InlineExplain({
@@ -49,11 +45,7 @@ class InlineExplain extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            icon ?? Icons.info_outline,
-            color: color,
-            size: 18,
-          ),
+          Icon(icon ?? Icons.info_outline, color: color, size: 18),
           const SizedBox(width: PSpacing.sm),
           Expanded(
             child: Text(

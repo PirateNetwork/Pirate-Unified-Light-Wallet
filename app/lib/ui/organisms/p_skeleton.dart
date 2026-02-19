@@ -19,18 +19,17 @@ class PSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        borderRadius: BorderRadius.circular(borderRadius ?? PSpacing.radiusSM),
-      ),
-    )
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            borderRadius: BorderRadius.circular(
+              borderRadius ?? PSpacing.radiusSM,
+            ),
+          ),
+        )
         .animate(onPlay: (controller) => controller.repeat())
-        .shimmer(
-          duration: 1500.ms,
-          color: AppColors.borderDefault,
-        );
+        .shimmer(duration: 1500.ms, color: AppColors.borderDefault);
   }
 }
 
@@ -45,10 +44,7 @@ class PSkeletonCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         borderRadius: BorderRadius.circular(PSpacing.radiusLG),
-        border: Border.all(
-          color: AppColors.borderSubtle,
-          width: 1.0,
-        ),
+        border: Border.all(color: AppColors.borderSubtle, width: 1.0),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,4 +94,3 @@ class PSkeletonListTile extends StatelessWidget {
     );
   }
 }
-

@@ -50,7 +50,8 @@ class _PGradientButtonState extends State<PGradientButton>
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
 
-  bool get _isEnabled => widget.enabled && widget.onPressed != null && !widget.isLoading;
+  bool get _isEnabled =>
+      widget.enabled && widget.onPressed != null && !widget.isLoading;
 
   @override
   void initState() {
@@ -60,7 +61,10 @@ class _PGradientButtonState extends State<PGradientButton>
       vsync: this,
     );
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.96).animate(
-      CurvedAnimation(parent: _animationController, curve: DeepSpaceCurves.snap),
+      CurvedAnimation(
+        parent: _animationController,
+        curve: DeepSpaceCurves.snap,
+      ),
     );
   }
 
@@ -109,7 +113,9 @@ class _PGradientButtonState extends State<PGradientButton>
         child: MouseRegion(
           onEnter: (_) => setState(() => _isHovered = true),
           onExit: (_) => setState(() => _isHovered = false),
-          cursor: _isEnabled ? SystemMouseCursors.click : SystemMouseCursors.forbidden,
+          cursor: _isEnabled
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.forbidden,
           child: GestureDetector(
             onTapDown: _handleTapDown,
             onTapUp: _handleTapUp,
@@ -136,7 +142,8 @@ class _PGradientButtonState extends State<PGradientButton>
     final double height = widget.size.height;
     final EdgeInsets padding = widget.size.padding;
     final TextStyle textStyle = widget.size.textStyle;
-    final showShadow = _isEnabled && (_isHovered || _isPressed) && !reduceMotion;
+    final showShadow =
+        _isEnabled && (_isHovered || _isPressed) && !reduceMotion;
 
     return AnimatedContainer(
       duration: reduceMotion ? Duration.zero : DeepSpaceDurations.fast,
@@ -160,7 +167,9 @@ class _PGradientButtonState extends State<PGradientButton>
         boxShadow: showShadow
             ? [
                 BoxShadow(
-                  color: AppColors.glow.withValues(alpha: _isPressed ? 0.6 : 0.4),
+                  color: AppColors.glow.withValues(
+                    alpha: _isPressed ? 0.6 : 0.4,
+                  ),
                   blurRadius: _isPressed ? 24 : 16,
                   spreadRadius: _isPressed ? 2 : 0,
                   offset: const Offset(0, 4),
@@ -173,7 +182,9 @@ class _PGradientButtonState extends State<PGradientButton>
         child: Padding(
           padding: padding,
           child: Row(
-            mainAxisSize: widget.fullWidth ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisSize: widget.fullWidth
+                ? MainAxisSize.max
+                : MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (widget.isLoading) ...[
@@ -218,7 +229,7 @@ class _PGradientButtonState extends State<PGradientButton>
   LinearGradient _buildGradient() {
     // Shift gradient on hover for subtle effect
     final double shift = _isHovered ? 0.1 : 0.0;
-    
+
     return LinearGradient(
       colors: [
         Color.lerp(AppColors.gradientAStart, AppColors.gradientAMid, shift)!,
@@ -287,7 +298,10 @@ enum PGradientButtonSize {
       case PGradientButtonSize.medium:
         return AppTypography.body.copyWith(fontWeight: FontWeight.w600);
       case PGradientButtonSize.large:
-        return AppTypography.body.copyWith(fontWeight: FontWeight.w600, fontSize: 16);
+        return AppTypography.body.copyWith(
+          fontWeight: FontWeight.w600,
+          fontSize: 16,
+        );
     }
   }
 }
@@ -333,10 +347,7 @@ class PGradientHeroHeader extends StatelessWidget {
               )
             : null,
         border: Border(
-          bottom: BorderSide(
-            color: AppColors.borderSubtle,
-            width: 1.0,
-          ),
+          bottom: BorderSide(color: AppColors.borderSubtle, width: 1.0),
         ),
       ),
       child: Column(
@@ -352,7 +363,8 @@ class PGradientHeroHeader extends StatelessWidget {
                   children: [
                     // Gradient text effect for title
                     ShaderMask(
-                      shaderCallback: (bounds) => AppColors.gradientALinear.createShader(bounds),
+                      shaderCallback: (bounds) =>
+                          AppColors.gradientALinear.createShader(bounds),
                       blendMode: BlendMode.srcIn,
                       child: Text(
                         title,
@@ -379,10 +391,12 @@ class PGradientHeroHeader extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: actions!
-                      .map((action) => Padding(
-                            padding: const EdgeInsets.only(left: AppSpacing.sm),
-                            child: action,
-                          ))
+                      .map(
+                        (action) => Padding(
+                          padding: const EdgeInsets.only(left: AppSpacing.sm),
+                          child: action,
+                        ),
+                      )
                       .toList(),
                 ),
               ],
@@ -419,7 +433,8 @@ class PFocusRing extends StatefulWidget {
   State<PFocusRing> createState() => _PFocusRingState();
 }
 
-class _PFocusRingState extends State<PFocusRing> with SingleTickerProviderStateMixin {
+class _PFocusRingState extends State<PFocusRing>
+    with SingleTickerProviderStateMixin {
   bool _isFocused = false;
   late AnimationController _controller;
   late Animation<double> _opacityAnimation;
@@ -463,8 +478,9 @@ class _PFocusRingState extends State<PFocusRing> with SingleTickerProviderStateM
                       widget.borderRadius + widget.offset,
                     ),
                     border: Border.all(
-                      color: (widget.color ?? AppColors.focus)
-                          .withValues(alpha: _opacityAnimation.value),
+                      color: (widget.color ?? AppColors.focus).withValues(
+                        alpha: _opacityAnimation.value,
+                      ),
                       width: widget.width,
                     ),
                   )

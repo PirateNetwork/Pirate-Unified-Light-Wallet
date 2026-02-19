@@ -56,10 +56,7 @@ class PSnack {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusMD),
-          side: BorderSide(
-            color: variant.borderColor,
-            width: 1.0,
-          ),
+          side: BorderSide(color: variant.borderColor, width: 1.0),
         ),
         action: actionLabel != null
             ? SnackBarAction(
@@ -125,4 +122,3 @@ enum PSnackVariant {
     }
   }
 }
-

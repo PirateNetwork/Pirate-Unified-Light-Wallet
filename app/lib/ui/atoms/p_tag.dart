@@ -26,7 +26,9 @@ class PTag extends StatelessWidget {
         vertical: PSpacing.xs,
       ),
       decoration: BoxDecoration(
-        color: selected ? AppColors.selectedBackground : AppColors.backgroundSurface,
+        color: selected
+            ? AppColors.selectedBackground
+            : AppColors.backgroundSurface,
         borderRadius: BorderRadius.circular(PSpacing.radiusSM),
         border: Border.all(
           color: selected ? AppColors.selectedBorder : AppColors.borderDefault,
@@ -36,10 +38,7 @@ class PTag extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (avatar != null) ...[
-            avatar!,
-            SizedBox(width: PSpacing.xs),
-          ],
+          if (avatar != null) ...[avatar!, SizedBox(width: PSpacing.xs)],
           Text(
             label,
             style: PTypography.labelSmall(
@@ -62,4 +61,3 @@ class PTag extends StatelessWidget {
     );
   }
 }
-

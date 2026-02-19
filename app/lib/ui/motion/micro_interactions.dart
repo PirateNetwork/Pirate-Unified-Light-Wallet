@@ -12,13 +12,12 @@ extension MicroInteractions on Widget {
     Duration duration = PDurations.fast,
     Curve curve = PCurves.standard,
   }) {
-    return animate()
-        .scaleXY(
-          begin: 1.0,
-          end: scale,
-          duration: duration,
-          curve: curve,
-        );
+    return animate().scaleXY(
+      begin: 1.0,
+      end: scale,
+      duration: duration,
+      curve: curve,
+    );
   }
 
   /// Press scale effect
@@ -27,13 +26,12 @@ extension MicroInteractions on Widget {
     Duration duration = PDurations.extraFast,
     Curve curve = PCurves.snap,
   }) {
-    return animate()
-        .scaleXY(
-          begin: 1.0,
-          end: scale,
-          duration: duration,
-          curve: curve,
-        );
+    return animate().scaleXY(
+      begin: 1.0,
+      end: scale,
+      duration: duration,
+      curve: curve,
+    );
   }
 
   /// Fade in effect
@@ -42,11 +40,7 @@ extension MicroInteractions on Widget {
     Curve curve = PCurves.standard,
     Duration delay = Duration.zero,
   }) {
-    return animate(delay: delay)
-        .fadeIn(
-          duration: duration,
-          curve: curve,
-        );
+    return animate(delay: delay).fadeIn(duration: duration, curve: curve);
   }
 
   /// Slide in from bottom
@@ -56,41 +50,28 @@ extension MicroInteractions on Widget {
     Duration delay = Duration.zero,
   }) {
     return animate(delay: delay)
-        .slideY(
-          begin: 1.0,
-          end: 0.0,
-          duration: duration,
-          curve: curve,
-        )
+        .slideY(begin: 1.0, end: 0.0, duration: duration, curve: curve)
         .fadeIn(duration: duration, curve: curve);
   }
 
   /// Shimmer effect (loading)
-  Widget shimmer({
-    Duration duration = PDurations.verySlow,
-  }) {
-    return animate(onPlay: (controller) => controller.repeat())
-        .shimmer(duration: duration);
+  Widget shimmer({Duration duration = PDurations.verySlow}) {
+    return animate(
+      onPlay: (controller) => controller.repeat(),
+    ).shimmer(duration: duration);
   }
 
   /// Shake effect (error)
-  Widget shake({
-    Duration duration = PDurations.normal,
-  }) {
-    return animate()
-        .shake(
-          duration: duration,
-          hz: 4,
-        );
+  Widget shake({Duration duration = PDurations.normal}) {
+    return animate().shake(duration: duration, hz: 4);
   }
 
   /// Pulse effect (attention)
-  Widget pulse({
-    Duration duration = PDurations.verySlow,
-    int repeat = 3,
-  }) {
-    return animate(onPlay: (controller) {
-      controller.repeat(reverse: true, period: duration);
-    }).scaleXY(end: 1.1);
+  Widget pulse({Duration duration = PDurations.verySlow, int repeat = 3}) {
+    return animate(
+      onPlay: (controller) {
+        controller.repeat(reverse: true, period: duration);
+      },
+    ).scaleXY(end: 1.1);
   }
 }

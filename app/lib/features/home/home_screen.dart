@@ -32,6 +32,7 @@ import '../../core/providers/wallet_providers.dart';
 import '../../core/providers/price_providers.dart';
 import '../settings/providers/transport_providers.dart';
 import '../settings/providers/preferences_providers.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Home screen
 class HomeScreen extends StatefulWidget {
@@ -114,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: _QuickActionButton(
                     icon: Icons.arrow_upward,
-                    label: 'Send',
+                    label: 'Send'.tr,
                     color: AppColors.accentPrimary,
                     onTap: () => context.push('/send'),
                   ),
@@ -123,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: _QuickActionButton(
                     icon: Icons.arrow_downward,
-                    label: 'Receive',
+                    label: 'Receive'.tr,
                     color: AppColors.accentSecondary,
                     onTap: () => context.push('/receive'),
                   ),
@@ -144,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'Recent activity',
+                    'Recent activity'.tr,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: PTypography.heading3().copyWith(
@@ -153,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 PTextButton(
-                  label: 'View all',
+                  label: 'View all'.tr,
                   onPressed: () => context.push('/activity'),
                 ),
               ],
@@ -168,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return content;
     }
 
-    return PScaffold(title: 'Wallet Home', body: content);
+    return PScaffold(title: 'Wallet Home'.tr, body: content);
   }
 }
 
@@ -302,31 +303,30 @@ class _HomeHeader extends ConsumerWidget {
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
+                    final isMobile = PSpacing.isMobile(
+                      MediaQuery.sizeOf(context).width,
+                    );
                     final compact = constraints.maxHeight < 240;
                     return Align(
-                      alignment: Alignment.topLeft,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.topLeft,
-                        child: SizedBox(
-                          width: constraints.maxWidth,
-                          child: BalanceHero(
-                            compact: compact,
-                            balanceText: primaryText,
-                            secondaryText: secondaryText,
-                            helperText: balanceHelper,
-                            isHidden: hideBalance,
-                            onToggleVisibility: onToggleVisibility,
-                            onSwapDisplay: secondaryText == null
-                                ? null
-                                : () {
-                                    ref
-                                        .read(
-                                          balancePrimaryFiatProvider.notifier,
-                                        )
-                                        .setPrimaryFiat(enabled: !primaryFiat);
-                                  },
-                          ),
+                      alignment: isMobile
+                          ? Alignment.topCenter
+                          : Alignment.topLeft,
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        child: BalanceHero(
+                          compact: compact,
+                          balanceText: primaryText,
+                          secondaryText: secondaryText,
+                          helperText: balanceHelper,
+                          isHidden: hideBalance,
+                          onToggleVisibility: onToggleVisibility,
+                          onSwapDisplay: secondaryText == null
+                              ? null
+                              : () {
+                                  ref
+                                      .read(balancePrimaryFiatProvider.notifier)
+                                      .setPrimaryFiat(enabled: !primaryFiat);
+                                },
                         ),
                       ),
                     );
@@ -540,7 +540,7 @@ class _SyncIndicator extends StatelessWidget {
     return Semantics(
       container: true,
       liveRegion: true,
-      label: 'Wallet sync status',
+      label: 'Wallet sync status'.tr,
       value: '$stage, ${(progress * 100).toStringAsFixed(1)} percent complete',
       child: PCard(
         child: Padding(
@@ -648,7 +648,7 @@ class _SyncIndicator extends StatelessWidget {
                     )
                   else if (isSyncing)
                     Text(
-                      'Calculating...',
+                      'Calculating...'.tr,
                       style: PTypography.caption().copyWith(
                         color: AppColors.textSecondary,
                       ),

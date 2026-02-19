@@ -7,6 +7,7 @@ import '../../../ui/molecules/p_dialog.dart';
 import '../../../ui/molecules/p_bottom_sheet.dart';
 import '../../../ui/molecules/p_snack.dart';
 import '../../../ui/molecules/p_form_section.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Showcase Dialogs Screen
 class ShowcaseDialogsScreen extends StatelessWidget {
@@ -15,21 +16,21 @@ class ShowcaseDialogsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Dialogs Showcase',
+      title: 'Dialogs Showcase'.tr,
       body: SingleChildScrollView(
         padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             PHeroHeader(
-              title: 'Dialogs & Overlays',
-              subtitle: 'Modals, bottom sheets, and snackbars',
+              title: 'Dialogs & Overlays'.tr,
+              subtitle: 'Modals, bottom sheets, and snackbars'.tr,
             ),
             SizedBox(height: PSpacing.xl),
-            
+
             // Dialogs
             PFormSection(
-              title: 'Dialogs',
+              title: 'Dialogs'.tr,
               children: [
                 Wrap(
                   spacing: PSpacing.md,
@@ -37,36 +38,36 @@ class ShowcaseDialogsScreen extends StatelessWidget {
                   children: [
                     PButton(
                       onPressed: () => _showSimpleDialog(context),
-                      child: const Text('Simple Dialog'),
+                      child: Text('Simple Dialog'.tr),
                     ),
                     PButton(
                       onPressed: () => _showConfirmDialog(context),
                       variant: PButtonVariant.secondary,
-                      child: const Text('Confirm Dialog'),
+                      child: Text('Confirm Dialog'.tr),
                     ),
                   ],
                 ),
               ],
             ),
-            
+
             SizedBox(height: PSpacing.sectionGap),
-            
+
             // Bottom Sheets
             PFormSection(
-              title: 'Bottom Sheets',
+              title: 'Bottom Sheets'.tr,
               children: [
                 PButton(
                   onPressed: () => _showBottomSheet(context),
-                  child: const Text('Show Bottom Sheet'),
+                  child: Text('Show Bottom Sheet'.tr),
                 ),
               ],
             ),
-            
+
             SizedBox(height: PSpacing.sectionGap),
-            
+
             // Snackbars
             PFormSection(
-              title: 'Snackbars',
+              title: 'Snackbars'.tr,
               children: [
                 Wrap(
                   spacing: PSpacing.md,
@@ -78,7 +79,7 @@ class ShowcaseDialogsScreen extends StatelessWidget {
                         message: 'This is a neutral snackbar',
                       ),
                       variant: PButtonVariant.outline,
-                      child: const Text('Neutral'),
+                      child: Text('Neutral'.tr),
                     ),
                     PButton(
                       onPressed: () => PSnack.show(
@@ -87,7 +88,7 @@ class ShowcaseDialogsScreen extends StatelessWidget {
                         variant: PSnackVariant.success,
                       ),
                       variant: PButtonVariant.outline,
-                      child: const Text('Success'),
+                      child: Text('Success'.tr),
                     ),
                     PButton(
                       onPressed: () => PSnack.show(
@@ -96,7 +97,7 @@ class ShowcaseDialogsScreen extends StatelessWidget {
                         variant: PSnackVariant.warning,
                       ),
                       variant: PButtonVariant.outline,
-                      child: const Text('Warning'),
+                      child: Text('Warning'.tr),
                     ),
                     PButton(
                       onPressed: () => PSnack.show(
@@ -105,7 +106,7 @@ class ShowcaseDialogsScreen extends StatelessWidget {
                         variant: PSnackVariant.error,
                       ),
                       variant: PButtonVariant.outline,
-                      child: const Text('Error'),
+                      child: Text('Error'.tr),
                     ),
                     PButton(
                       onPressed: () => PSnack.show(
@@ -116,7 +117,7 @@ class ShowcaseDialogsScreen extends StatelessWidget {
                         onAction: () {},
                       ),
                       variant: PButtonVariant.outline,
-                      child: const Text('Info with Action'),
+                      child: Text('Info with Action'.tr),
                     ),
                   ],
                 ),
@@ -131,30 +132,27 @@ class ShowcaseDialogsScreen extends StatelessWidget {
   void _showSimpleDialog(BuildContext context) {
     PDialog.show<void>(
       context: context,
-      title: 'Simple Dialog',
-      content: const Text('This is a simple dialog with a message.'),
-      actions: [
-        PDialogAction(
-          label: 'OK',
-          onPressed: () {},
-        ),
-      ],
+      title: 'Simple Dialog'.tr,
+      content: Text('This is a simple dialog with a message.'.tr),
+      actions: [PDialogAction(label: 'OK'.tr, onPressed: () {})],
     );
   }
 
   void _showConfirmDialog(BuildContext context) {
     PDialog.show<void>(
       context: context,
-      title: 'Confirm Action',
-      content: const Text('Are you sure you want to proceed? This action cannot be undone.'),
+      title: 'Confirm Action'.tr,
+      content: Text(
+        'Are you sure you want to proceed? This action cannot be undone.'.tr,
+      ),
       actions: [
         PDialogAction(
-          label: 'Cancel',
+          label: 'Cancel'.tr,
           variant: PButtonVariant.ghost,
           onPressed: () {},
         ),
         PDialogAction(
-          label: 'Confirm',
+          label: 'Confirm'.tr,
           variant: PButtonVariant.danger,
           onPressed: () {},
         ),
@@ -165,22 +163,22 @@ class ShowcaseDialogsScreen extends StatelessWidget {
   void _showBottomSheet(BuildContext context) {
     PBottomSheet.show<void>(
       context: context,
-      title: 'Bottom Sheet Example',
+      title: 'Bottom Sheet Example'.tr,
       content: Column(
         children: [
           ListTile(
             leading: const Icon(Icons.share),
-            title: const Text('Share'),
+            title: Text('Share'.tr),
             onTap: () => Navigator.pop(context),
           ),
           ListTile(
             leading: const Icon(Icons.link),
-            title: const Text('Copy Link'),
+            title: Text('Copy Link'.tr),
             onTap: () => Navigator.pop(context),
           ),
           ListTile(
             leading: const Icon(Icons.edit),
-            title: const Text('Edit'),
+            title: Text('Edit'.tr),
             onTap: () => Navigator.pop(context),
           ),
         ],

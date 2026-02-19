@@ -17,6 +17,7 @@ import '../../../ui/molecules/connection_status_indicator.dart';
 import '../../../ui/molecules/p_snack.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Node settings screen for configuring lightwalletd endpoint
 class NodeSettingsScreen extends ConsumerStatefulWidget {
@@ -315,21 +316,21 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     );
 
     return PScaffold(
-      title: 'Node Configuration',
+      title: 'Node Configuration'.tr,
       appBar: PAppBar(
-        title: 'Node Configuration',
-        subtitle: 'Choose your lightwalletd endpoint',
+        title: 'Node Configuration'.tr,
+        subtitle: 'Choose your lightwalletd endpoint'.tr,
         actions: [
           ConnectionStatusIndicator(full: !isMobile),
           if (isMobile)
             PIconButton(
               icon: Icon(Icons.refresh, color: AppColors.textSecondary),
               onPressed: () => _formKey.currentState?.reset(),
-              tooltip: 'Reset',
+              tooltip: 'Reset'.tr,
             )
           else
             PTextButton(
-              label: 'Reset',
+              label: 'Reset'.tr,
               onPressed: () => _formKey.currentState?.reset(),
               variant: PTextButtonVariant.subtle,
             ),
@@ -356,7 +357,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
                 // Suggested endpoints (Orchard-capable presets)
                 Text(
-                  'SUGGESTED ENDPOINTS',
+                  'SUGGESTED ENDPOINTS'.tr,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.textSecondary,
                     fontWeight: FontWeight.w600,
@@ -382,7 +383,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
                 // Endpoint input section
                 Text(
-                  'LIGHTWALLETD ENDPOINT',
+                  'LIGHTWALLETD ENDPOINT'.tr,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.textSecondary,
                     fontWeight: FontWeight.w600,
@@ -397,7 +398,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                     children: [
                       PInput(
                         controller: _endpointController,
-                        label: 'Endpoint (host:port)',
+                        label: 'Endpoint (host:port)'.tr,
                         hint: 'lightd1.piratechain.com:9067',
                         keyboardType: TextInputType.url,
                         validator: _validateEndpoint,
@@ -409,7 +410,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
                       // TLS toggle
                       SwitchListTile(
-                        title: const Text('Use TLS'),
+                        title: Text('Use TLS'.tr),
                         subtitle: Text(
                           _useTls
                               ? 'Encrypted connection (recommended)'
@@ -441,7 +442,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
                 // TLS pin section
                 Text(
-                  'TLS CERTIFICATE PIN (OPTIONAL)',
+                  'TLS CERTIFICATE PIN (OPTIONAL)'.tr,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.textSecondary,
                     fontWeight: FontWeight.w600,
@@ -456,7 +457,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                     children: [
                       PInput(
                         controller: _tlsPinController,
-                        label: 'SPKI Pin (base64)',
+                        label: 'SPKI Pin (base64)'.tr,
                         hint: 'Leave empty to skip certificate pinning',
                         validator: _validateTlsPin,
                         onChanged: _onTlsPinChanged,
@@ -533,7 +534,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                         ? _saveEndpoint
                         : null,
                     isLoading: _isLoading,
-                    child: const Text('Save Changes'),
+                    child: Text('Save Changes'.tr),
                   ),
                 ),
 
@@ -541,7 +542,8 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
                 // Help text
                 Text(
-                  'Changes will take effect immediately. The wallet will reconnect to the new endpoint.',
+                  'Changes will take effect immediately. The wallet will reconnect to the new endpoint.'
+                      .tr,
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -581,7 +583,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
               ),
               const SizedBox(width: AppSpacing.sm),
               Text(
-                'Current Node',
+                'Current Node'.tr,
                 style: AppTypography.labelLarge.copyWith(
                   color: AppColors.textPrimary,
                 ),
@@ -617,7 +619,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                     variant: PSnackVariant.info,
                   );
                 },
-                tooltip: 'Copy endpoint',
+                tooltip: 'Copy endpoint'.tr,
                 visualDensity: VisualDensity.compact,
               ),
             ],
@@ -649,7 +651,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                   size: 16,
                 ),
                 Text(
-                  'Certificate Pinned',
+                  'Certificate Pinned'.tr,
                   style: AppTypography.bodySmall.copyWith(
                     color: AppColors.accentPrimary,
                   ),

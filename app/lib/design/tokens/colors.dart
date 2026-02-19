@@ -11,15 +11,15 @@ class PColors {
   // ============================================================================
   // Background Colors - Progressive depth system
   // ============================================================================
-  
+
   /// Base background - Deepest level (#0B0F14)
   /// Use for: App background, full-screen views
   static const Color backgroundBase = Color(0xFF0B0F14);
-  
+
   /// Surface background - First elevation (#111722)
   /// Use for: Cards, sheets, panels
   static const Color backgroundSurface = Color(0xFF111722);
-  
+
   /// Elevated background - Second elevation (#171F2B)
   /// Use for: Modals, dialogs, floating elements
   static const Color backgroundElevated = Color(0xFF171F2B);
@@ -27,152 +27,152 @@ class PColors {
   /// Panel background - Third elevation (#223044)
   /// Use for: Panels, emphasis surfaces
   static const Color backgroundPanel = Color(0xFF223044);
-  
+
   /// Overlay background - Semi-transparent
   /// Use for: Overlays, scrims, modal backgrounds
   static const Color backgroundOverlay = Color(0xCC000000);
-  
+
   // ============================================================================
   // Accent Gradients - Primary brand gradients
   // ============================================================================
-  
+
   /// Gradient A Start - Primary (#2B6FF7)
   static const Color gradientAStart = Color(0xFF2B6FF7);
-  
+
   /// Gradient A End - Primary Deep (#1E55C7)
   static const Color gradientAEnd = Color(0xFF1E55C7);
-  
+
   /// Gradient B Start - Secondary (#1FA971)
   static const Color gradientBStart = Color(0xFF1FA971);
-  
+
   /// Gradient B End - Secondary Deep
   static const Color gradientBEnd = Color(0xFF178A5E);
 
   /// Highlight - Attention without alarm (#F1B24A)
   static const Color highlight = Color(0xFFF1B24A);
-  
+
   // ============================================================================
   // Text Colors - Hierarchical text system
   // ============================================================================
-  
+
   /// Primary text - Highest emphasis (#F7F9FC)
   /// Use for: Headings, important content
   static const Color textPrimary = Color(0xFFF7F9FC);
-  
+
   /// Secondary text - Medium emphasis (#D0D6E0)
   /// Use for: Body text, descriptions
   static const Color textSecondary = Color(0xFFD0D6E0);
-  
+
   /// Tertiary text - Low emphasis (#9BA6B5)
   /// Use for: Labels, placeholders, hints
   static const Color textTertiary = Color(0xFF9BA6B5);
-  
+
   /// Disabled text - Minimal emphasis (#6D7888)
   /// Use for: Disabled states
   static const Color textDisabled = Color(0xFF6D7888);
-  
+
   /// On-accent text - Text on colored backgrounds
   /// Use for: Text on gradient buttons, badges
   static const Color textOnAccent = Color(0xFFFFFFFF);
-  
+
   // ============================================================================
   // Semantic Colors - Status and feedback
   // ============================================================================
-  
+
   /// Success color - Optimized for dark UI (#16A34A)
   static const Color success = Color(0xFF16A34A);
-  
+
   /// Success background - Subtle success background
   static const Color successBackground = Color(0x1A16A34A);
-  
+
   /// Success border - Success border/outline
   static const Color successBorder = Color(0x4016A34A);
-  
+
   /// Warning color - Optimized for dark UI (#F59E0B)
   static const Color warning = Color(0xFFF59E0B);
-  
+
   /// Warning background - Subtle warning background
   static const Color warningBackground = Color(0x1AF59E0B);
-  
+
   /// Warning border - Warning border/outline
   static const Color warningBorder = Color(0x40F59E0B);
-  
+
   /// Error color - Optimized for dark UI (#E24A4A)
   static const Color error = Color(0xFFE24A4A);
-  
+
   /// Error background - Subtle error background
   static const Color errorBackground = Color(0x1AE24A4A);
-  
+
   /// Error border - Error border/outline
   static const Color errorBorder = Color(0x40E24A4A);
-  
+
   /// Info color - Optimized for dark UI (#2B6FF7)
   static const Color info = Color(0xFF2B6FF7);
-  
+
   /// Info background - Subtle info background
   static const Color infoBackground = Color(0x1A2B6FF7);
-  
+
   /// Info border - Info border/outline
   static const Color infoBorder = Color(0x402B6FF7);
-  
+
   // ============================================================================
   // Interactive Colors - UI interaction states
   // ============================================================================
-  
+
   /// Focus ring - Primary for focus indicators
   static const Color focusRing = Color(0xFF2B6FF7);
-  
+
   /// Focus ring with opacity - For subtle focus states
   static const Color focusRingSubtle = Color(0x402B6FF7);
-  
+
   /// Hover overlay - Semi-transparent white for hover states
   static const Color hoverOverlay = Color(0x0DFFFFFF);
-  
+
   /// Pressed overlay - Semi-transparent white for pressed states
   static const Color pressedOverlay = Color(0x1AFFFFFF);
-  
+
   /// Selected background - For selected items
   static const Color selectedBackground = Color(0x1A2B6FF7);
-  
+
   /// Selected border - For selected item borders
   static const Color selectedBorder = Color(0x802B6FF7);
-  
+
   // ============================================================================
   // Border Colors - Dividers and borders
   // ============================================================================
-  
+
   /// Border default - Standard border color (rgba(255, 255, 255, 0.08))
   static const Color borderDefault = Color(0x14FFFFFF);
-  
+
   /// Border subtle - More subtle border (rgba(255, 255, 255, 0.04))
   static const Color borderSubtle = Color(0x0AFFFFFF);
-  
+
   /// Border strong - More prominent border (rgba(255, 255, 255, 0.14))
   static const Color borderStrong = Color(0x24FFFFFF);
-  
+
   /// Divider - Separator line color
   static const Color divider = Color(0x14FFFFFF);
-  
+
   // ============================================================================
   // Shadow Colors - Elevation and depth
   // ============================================================================
-  
+
   /// Shadow color - Base shadow color
   static const Color shadow = Color(0x40000000);
-  
+
   /// Shadow strong - Stronger shadow for higher elevation
   static const Color shadowStrong = Color(0x66000000);
-  
+
   // ============================================================================
   // Special Colors - App-specific use cases
   // ============================================================================
-  
+
   /// QR Code background - Optimized for QR scanning
   static const Color qrBackground = Color(0xFFFFFFFF);
-  
+
   /// QR Code foreground
   static const Color qrForeground = Color(0xFF000000);
-  
+
   /// Chart colors - For data visualization
   static const List<Color> chartColors = [
     Color(0xFF2B6FF7), // Primary
@@ -182,23 +182,23 @@ class PColors {
     Color(0xFF16A34A), // Success
     Color(0xFFF59E0B), // Warning
   ];
-  
+
   // ============================================================================
   // Utility Methods
   // ============================================================================
-  
+
   /// Creates a gradient from Gradient A colors
   static const gradientA = [gradientAStart, gradientAEnd];
-  
+
   /// Creates a gradient from Gradient B colors
   static const gradientB = [gradientBStart, gradientBEnd];
-  
+
   /// Returns appropriate text color for the given background
   static Color textOnBackground(Color background) {
     final luminance = background.computeLuminance();
     return luminance > 0.5 ? Color(0xFF000000) : Color(0xF2FFFFFF);
   }
-  
+
   /// Returns a color with specified opacity
   static Color withOpacity(Color color, double opacity) {
     return color.withValues(alpha: opacity);
@@ -208,7 +208,7 @@ class PColors {
 /// High contrast color overrides for accessibility
 class PColorsHighContrast {
   PColorsHighContrast._();
-  
+
   static const Color textPrimary = Color(0xFFFFFFFF);
   static const Color textSecondary = Color(0xFFF0F4F8);
   static const Color borderDefault = Color(0x33FFFFFF);
@@ -294,7 +294,6 @@ class AppColors {
       return;
     }
     _brightness = brightness;
-    WidgetsBinding.instance.rootElement?.markNeedsBuild();
   }
 
   static bool get _isLight => _brightness == Brightness.light;
@@ -336,26 +335,22 @@ class AppColors {
       _isLight ? PColorsLight.textOnAccent : PColors.textOnAccent;
 
   // Semantic
-  static Color get success =>
-      _isLight ? PColorsLight.success : PColors.success;
+  static Color get success => _isLight ? PColorsLight.success : PColors.success;
   static Color get successBackground =>
       _isLight ? PColorsLight.successBackground : PColors.successBackground;
   static Color get successBorder =>
       _isLight ? PColorsLight.successBorder : PColors.successBorder;
-  static Color get warning =>
-      _isLight ? PColorsLight.warning : PColors.warning;
+  static Color get warning => _isLight ? PColorsLight.warning : PColors.warning;
   static Color get warningBackground =>
       _isLight ? PColorsLight.warningBackground : PColors.warningBackground;
   static Color get warningBorder =>
       _isLight ? PColorsLight.warningBorder : PColors.warningBorder;
-  static Color get error =>
-      _isLight ? PColorsLight.error : PColors.error;
+  static Color get error => _isLight ? PColorsLight.error : PColors.error;
   static Color get errorBackground =>
       _isLight ? PColorsLight.errorBackground : PColors.errorBackground;
   static Color get errorBorder =>
       _isLight ? PColorsLight.errorBorder : PColors.errorBorder;
-  static Color get info =>
-      _isLight ? PColorsLight.info : PColors.info;
+  static Color get info => _isLight ? PColorsLight.info : PColors.info;
   static Color get infoBackground =>
       _isLight ? PColorsLight.infoBackground : PColors.infoBackground;
   static Color get infoBorder =>
@@ -404,10 +399,10 @@ class AppColors {
       _isLight ? PColorsLight.gradientB : PColors.gradientB;
 
   static LinearGradient get gradientALinear => LinearGradient(
-        colors: gradientA,
-        begin: Alignment.center,
-        end: Alignment.bottomRight,
-      );
+    colors: gradientA,
+    begin: Alignment.center,
+    end: Alignment.bottomRight,
+  );
 
   static Color textOnBackground(Color background) {
     final luminance = background.computeLuminance();

@@ -15,6 +15,7 @@ import '../../../ui/atoms/p_input.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 enum _PassphraseStrength { weak, fair, good, strong, veryStrong }
 
@@ -252,8 +253,9 @@ class _PassphraseChangeScreenState
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: const Text(
-                  'Passphrase updated. Biometrics were turned off because secure setup failed.',
+                content: Text(
+                  'Passphrase updated. Biometrics were turned off because secure setup failed.'
+                      .tr,
                 ),
                 behavior: SnackBarBehavior.floating,
               ),
@@ -276,7 +278,7 @@ class _PassphraseChangeScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Passphrase updated.'),
+            content: Text('Passphrase updated.'.tr),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
           ),
@@ -321,10 +323,10 @@ class _PassphraseChangeScreenState
     );
 
     return PScaffold(
-      title: 'Change passphrase',
-      appBar: const PAppBar(
-        title: 'Change passphrase',
-        subtitle: 'Update your app unlock passphrase',
+      title: 'Change passphrase'.tr,
+      appBar: PAppBar(
+        title: 'Change passphrase'.tr,
+        subtitle: 'Update your app unlock passphrase'.tr,
         showBackButton: true,
       ),
       body: SingleChildScrollView(
@@ -340,14 +342,15 @@ class _PassphraseChangeScreenState
                   children: [
                     if (!_authenticated) ...[
                       Text(
-                        'Verify your identity',
+                        'Verify your identity'.tr,
                         style: AppTypography.h2.copyWith(
                           color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: AppSpacing.sm),
                       Text(
-                        'Confirm with biometrics or your current passphrase.',
+                        'Confirm with biometrics or your current passphrase.'
+                            .tr,
                         style: AppTypography.body.copyWith(
                           color: AppColors.textSecondary,
                         ),
@@ -368,7 +371,7 @@ class _PassphraseChangeScreenState
                         ),
                         const SizedBox(height: AppSpacing.lg),
                         Text(
-                          'Or verify with passphrase',
+                          'Or verify with passphrase'.tr,
                           style: AppTypography.caption.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -378,7 +381,7 @@ class _PassphraseChangeScreenState
                       ],
                       PInput(
                         controller: _currentController,
-                        label: 'Current passphrase',
+                        label: 'Current passphrase'.tr,
                         hint: 'Enter your current passphrase',
                         obscureText: _obscureCurrent,
                         suffixIcon: IconButton(
@@ -408,14 +411,15 @@ class _PassphraseChangeScreenState
                       ),
                     ] else ...[
                       Text(
-                        'Choose a new passphrase',
+                        'Choose a new passphrase'.tr,
                         style: AppTypography.h2.copyWith(
                           color: AppColors.textPrimary,
                         ),
                       ),
                       const SizedBox(height: AppSpacing.sm),
                       Text(
-                        'Use at least 12 characters with letters, numbers, and symbols.',
+                        'Use at least 12 characters with letters, numbers, and symbols.'
+                            .tr,
                         style: AppTypography.body.copyWith(
                           color: AppColors.textSecondary,
                         ),
@@ -423,7 +427,7 @@ class _PassphraseChangeScreenState
                       const SizedBox(height: AppSpacing.xl),
                       PInput(
                         controller: _newController,
-                        label: 'New passphrase',
+                        label: 'New passphrase'.tr,
                         hint: 'Enter a new passphrase',
                         obscureText: _obscureNew,
                         suffixIcon: IconButton(
@@ -469,7 +473,7 @@ class _PassphraseChangeScreenState
                       ],
                       PInput(
                         controller: _confirmController,
-                        label: 'Confirm new passphrase',
+                        label: 'Confirm new passphrase'.tr,
                         hint: 'Re-enter to confirm',
                         obscureText: _obscureConfirm,
                         errorText:

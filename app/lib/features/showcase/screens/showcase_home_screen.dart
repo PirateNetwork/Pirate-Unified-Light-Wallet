@@ -5,6 +5,7 @@ import '../../../design/tokens/spacing.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_hero_header.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Showcase Home Screen - Landing page for design system showcase
 class ShowcaseHomeScreen extends StatelessWidget {
@@ -13,15 +14,15 @@ class ShowcaseHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Design System Showcase',
+      title: 'Design System Showcase'.tr,
       body: SingleChildScrollView(
         padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             PHeroHeader(
-              title: 'Pirate Wallet Design System',
-              subtitle: 'World-class components for premium dark UI',
+              title: 'Pirate Wallet Design System'.tr,
+              subtitle: 'World-class components for premium dark UI'.tr,
             ),
             SizedBox(height: PSpacing.xl),
             _buildGrid(context),
@@ -37,32 +38,32 @@ class ShowcaseHomeScreen extends StatelessWidget {
       runSpacing: PSpacing.md,
       children: [
         _ShowcaseCard(
-          title: 'Buttons',
-          description: 'Primary, secondary, outline, ghost variants',
+          title: 'Buttons'.tr,
+          description: 'Primary, secondary, outline, ghost variants'.tr,
           icon: Icons.smart_button,
           onTap: () => context.push('/buttons'),
         ),
         _ShowcaseCard(
-          title: 'Forms',
-          description: 'Inputs, checkboxes, radios, toggles',
+          title: 'Forms'.tr,
+          description: 'Inputs, checkboxes, radios, toggles'.tr,
           icon: Icons.edit_note,
           onTap: () => context.push('/forms'),
         ),
         _ShowcaseCard(
-          title: 'Cards',
-          description: 'Cards, list tiles, form sections',
+          title: 'Cards'.tr,
+          description: 'Cards, list tiles, form sections'.tr,
           icon: Icons.view_module,
           onTap: () => context.push('/cards'),
         ),
         _ShowcaseCard(
-          title: 'Dialogs',
-          description: 'Modals, bottom sheets, snackbars',
+          title: 'Dialogs'.tr,
+          description: 'Modals, bottom sheets, snackbars'.tr,
           icon: Icons.crop_square,
           onTap: () => context.push('/dialogs'),
         ),
         _ShowcaseCard(
-          title: 'Animations',
-          description: 'Transitions, micro-interactions, skeletons',
+          title: 'Animations'.tr,
+          description: 'Transitions, micro-interactions, skeletons'.tr,
           icon: Icons.animation,
           onTap: () => context.push('/animations'),
         ),
@@ -106,19 +107,12 @@ class _ShowcaseCard extends StatelessWidget {
               child: Icon(icon, color: AppColors.textOnAccent),
             ),
             SizedBox(height: PSpacing.md),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
             SizedBox(height: PSpacing.xs),
-            Text(
-              description,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            Text(description, style: Theme.of(context).textTheme.bodyMedium),
           ],
         ),
       ),
     );
   }
 }
-

@@ -26,9 +26,9 @@ class ThemeToggleButton extends ConsumerWidget {
         // Otherwise, toggle between light and dark based on current theme mode
         final newMode = currentTheme == AppThemeMode.system
             ? (isDark ? AppThemeMode.light : AppThemeMode.dark)
-            : (currentTheme == AppThemeMode.light 
-                ? AppThemeMode.dark 
-                : AppThemeMode.light);
+            : (currentTheme == AppThemeMode.light
+                  ? AppThemeMode.dark
+                  : AppThemeMode.light);
         ref.read(appThemeModeProvider.notifier).setThemeMode(newMode);
       },
       tooltip: isDark ? 'Switch to light mode' : 'Switch to dark mode',
@@ -36,4 +36,3 @@ class ThemeToggleButton extends ConsumerWidget {
     );
   }
 }
-

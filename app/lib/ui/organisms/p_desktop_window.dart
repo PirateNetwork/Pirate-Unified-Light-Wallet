@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../design/deep_space_theme.dart';
 import '../../design/tokens/spacing.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 // =============================================================================
 // Custom Titlebar
@@ -59,17 +60,12 @@ class PDesktopTitlebar extends StatelessWidget {
             ],
 
             // Leading widget
-            if (leading != null) ...[
-              const SizedBox(width: 8),
-              leading!,
-            ],
+            if (leading != null) ...[const SizedBox(width: 8), leading!],
 
             // Title (centered on macOS, left on others)
             Expanded(
               child: Platform.isMacOS
-                  ? Center(
-                      child: _buildTitle(),
-                    )
+                  ? Center(child: _buildTitle())
                   : Padding(
                       padding: const EdgeInsets.only(left: 16),
                       child: _buildTitle(),
@@ -78,14 +74,17 @@ class PDesktopTitlebar extends StatelessWidget {
 
             // Actions
             if (actions != null && actions!.isNotEmpty) ...[
-              ...actions!.map((action) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: action,
-              )),
+              ...actions!.map(
+                (action) => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: action,
+                ),
+              ),
             ],
 
             // Windows/Linux: Window controls on right
-            if ((Platform.isWindows || Platform.isLinux) && showWindowControls) ...[
+            if ((Platform.isWindows || Platform.isLinux) &&
+                showWindowControls) ...[
               const _WindowsWindowControls(),
             ],
           ],
@@ -141,7 +140,7 @@ class _MacOSWindowControlsState extends State<_MacOSWindowControls> {
             icon: Icons.close,
             showIcon: _isHovered,
             onTap: _closeWindow,
-            semanticLabel: 'Close window',
+            semanticLabel: 'Close window'.tr,
           ),
           const SizedBox(width: 8),
           _MacOSButton(
@@ -149,7 +148,7 @@ class _MacOSWindowControlsState extends State<_MacOSWindowControls> {
             icon: Icons.remove,
             showIcon: _isHovered,
             onTap: _minimizeWindow,
-            semanticLabel: 'Minimize window',
+            semanticLabel: 'Minimize window'.tr,
           ),
           const SizedBox(width: 8),
           _MacOSButton(
@@ -157,7 +156,7 @@ class _MacOSWindowControlsState extends State<_MacOSWindowControls> {
             icon: Icons.crop_square,
             showIcon: _isHovered,
             onTap: _maximizeWindow,
-            semanticLabel: 'Maximize window',
+            semanticLabel: 'Maximize window'.tr,
           ),
         ],
       ),
@@ -194,16 +193,9 @@ class _MacOSButton extends StatelessWidget {
         child: Container(
           width: 12,
           height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           child: showIcon
-              ? Icon(
-                  icon,
-                  size: 8,
-                  color: Colors.black.withValues(alpha: 0.5),
-                )
+              ? Icon(icon, size: 8, color: Colors.black.withValues(alpha: 0.5))
               : null,
         ),
       ),
@@ -223,18 +215,18 @@ class _WindowsWindowControls extends StatelessWidget {
         _WindowsButton(
           icon: Icons.remove,
           onTap: _minimizeWindow,
-          semanticLabel: 'Minimize',
+          semanticLabel: 'Minimize'.tr,
         ),
         _WindowsButton(
           icon: Icons.crop_square_outlined,
           onTap: _maximizeWindow,
-          semanticLabel: 'Maximize',
+          semanticLabel: 'Maximize'.tr,
         ),
         _WindowsButton(
           icon: Icons.close,
           onTap: _closeWindow,
           hoverColor: AppColors.error,
-          semanticLabel: 'Close',
+          semanticLabel: 'Close'.tr,
         ),
       ],
     );
@@ -372,21 +364,19 @@ class PDesktopScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width >= PSpacing.breakpointDesktop;
+    final isDesktop =
+        MediaQuery.of(context).size.width >= PSpacing.breakpointDesktop;
 
     if (!isDesktop) {
       // Mobile/tablet: No sidebar
-      return Scaffold(
-        body: body,
-      );
+      return Scaffold(body: body);
     }
 
     return Scaffold(
       body: Column(
         children: [
           // Titlebar
-          if (showTitlebar)
-            titlebar ?? const PDesktopTitlebar(),
+          if (showTitlebar) titlebar ?? const PDesktopTitlebar(),
 
           // Main content
           Expanded(
@@ -397,16 +387,15 @@ class PDesktopScaffold extends StatelessWidget {
                   AnimatedContainer(
                     duration: DeepSpaceDurations.medium,
                     curve: DeepSpaceCurves.emphasized,
-                    width: sidebarCollapsed ? collapsedSidebarWidth : sidebarWidth,
+                    width: sidebarCollapsed
+                        ? collapsedSidebarWidth
+                        : sidebarWidth,
                     child: sidebar,
                   ),
 
                 // Divider
                 if (sidebar != null)
-                  Container(
-                    width: 1,
-                    color: AppColors.divider,
-                  ),
+                  Container(width: 1, color: AppColors.divider),
 
                 // Body
                 Expanded(child: body),
@@ -442,9 +431,10 @@ class PIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
     final effectiveSize = size ?? 24.0;
-    
+
     // Ensure crisp rendering on high-DPI displays
-    final adjustedSize = (effectiveSize * devicePixelRatio).roundToDouble() / devicePixelRatio;
+    final adjustedSize =
+        (effectiveSize * devicePixelRatio).roundToDouble() / devicePixelRatio;
 
     return Semantics(
       label: semanticLabel,
@@ -490,4 +480,3 @@ class PImage extends StatelessWidget {
     );
   }
 }
-

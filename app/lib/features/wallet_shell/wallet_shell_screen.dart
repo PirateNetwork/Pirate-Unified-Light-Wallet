@@ -18,6 +18,7 @@ import '../../design/tokens/spacing.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 class WalletShellScreen extends ConsumerStatefulWidget {
   const WalletShellScreen({super.key});
@@ -36,7 +37,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     final tunnelMode = ref.watch(tunnelModeProvider);
 
     return PScaffold(
-      title: 'Pirate Wallet',
+      title: 'Pirate Wallet'.tr,
       body: ListView(
         padding: padding,
         children: [
@@ -48,7 +49,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Session Info',
+                    'Session Info'.tr,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: PSpacing.sm),
@@ -76,21 +77,18 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Balance',
+                      'Balance'.tr,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: PSpacing.sm),
                     balanceAsync.when(
                       data: (balance) {
                         if (balance == null) {
-                          return const Text('No balance data');
+                          return Text('No balance data'.tr);
                         }
                         return Column(
                           children: [
-                            _buildInfoRow(
-                              'Total',
-                              _formatArrr(balance.total),
-                            ),
+                            _buildInfoRow('Total', _formatArrr(balance.total)),
                             _buildInfoRow(
                               'Spendable',
                               _formatArrr(balance.spendable),
@@ -121,14 +119,14 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Sync Status',
+                      'Sync Status'.tr,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: PSpacing.sm),
                     syncStatusAsync.when(
                       data: (status) {
                         if (status == null) {
-                          return const Text('Not syncing');
+                          return Text('Not syncing'.tr);
                         }
                         return Column(
                           children: [
@@ -170,7 +168,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Actions',
+                    'Actions'.tr,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: PSpacing.md),
@@ -178,37 +176,37 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                     PButton(
                       onPressed: _createWallet,
                       variant: PButtonVariant.primary,
-                      child: const Text('Create Wallet'),
+                      child: Text('Create Wallet'.tr),
                     ),
                     const SizedBox(height: PSpacing.sm),
                     PButton(
                       onPressed: _restoreWallet,
                       variant: PButtonVariant.secondary,
-                      child: const Text('Restore Wallet'),
+                      child: Text('Restore Wallet'.tr),
                     ),
                   ] else ...[
                     PButton(
                       onPressed: () => _startSync(SyncMode.compact),
                       variant: PButtonVariant.primary,
-                      child: const Text('Start Sync (Compact)'),
+                      child: Text('Start Sync (Compact)'.tr),
                     ),
                     const SizedBox(height: PSpacing.sm),
                     PButton(
                       onPressed: () => _startSync(SyncMode.deep),
                       variant: PButtonVariant.secondary,
-                      child: const Text('Start Sync (Deep)'),
+                      child: Text('Start Sync (Deep)'.tr),
                     ),
                     const SizedBox(height: PSpacing.sm),
                     PButton(
                       onPressed: _generateAddress,
                       variant: PButtonVariant.outline,
-                      child: const Text('Generate New Address'),
+                      child: Text('Generate New Address'.tr),
                     ),
                     const SizedBox(height: PSpacing.sm),
                     PButton(
                       onPressed: _switchTunnelMode,
                       variant: PButtonVariant.ghost,
-                      child: const Text('Switch Tunnel Mode'),
+                      child: Text('Switch Tunnel Mode'.tr),
                     ),
                   ],
                 ],
@@ -229,7 +227,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Network Info',
+                        'Network Info'.tr,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: PSpacing.sm),
@@ -238,7 +236,9 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                           children: [
                             _buildInfoRow('Network', info.name),
                             _buildInfoRow(
-                                'Coin Type', info.coinType.toString()),
+                              'Coin Type',
+                              info.coinType.toString(),
+                            ),
                             _buildInfoRow('RPC Port', info.rpcPort.toString()),
                             _buildInfoRow(
                               'Default Birthday',
@@ -280,11 +280,10 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.7),
-                  ),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
           ),
           const SizedBox(width: PSpacing.sm),
@@ -294,9 +293,9 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -311,10 +310,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
   Future<void> _createWallet() async {
     try {
       final createWallet = ref.read(createWalletProvider);
-      final walletId = await createWallet(
-        name: 'My Wallet',
-        entropyLen: 256,
-      );
+      final walletId = await createWallet(name: 'My Wallet', entropyLen: 256);
 
       if (!mounted) return;
 
@@ -327,10 +323,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -357,10 +350,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -381,10 +371,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -405,10 +392,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -418,8 +402,9 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     final next = switch (current) {
       TunnelMode_Tor() => const TunnelMode.i2P(),
       TunnelMode_I2p() => const TunnelMode.direct(),
-      TunnelMode_Direct() =>
-        const TunnelMode.socks5(url: 'socks5://127.0.0.1:1080'),
+      TunnelMode_Direct() => const TunnelMode.socks5(
+        url: 'socks5://127.0.0.1:1080',
+      ),
       TunnelMode_Socks5() => const TunnelMode.tor(),
     };
 
@@ -428,10 +413,9 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
       _ => null,
     };
 
-    ref.read(tunnelModeProvider.notifier).setTunnelMode(
-          next,
-          socksUrl: socksUrl,
-        );
+    ref
+        .read(tunnelModeProvider.notifier)
+        .setTunnelMode(next, socksUrl: socksUrl);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

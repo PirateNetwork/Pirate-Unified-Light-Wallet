@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../design/compat.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Decoy wallet view shown when panic PIN is entered
 class DecoyView extends StatelessWidget {
@@ -15,9 +16,7 @@ class DecoyView extends StatelessWidget {
         child: Column(
           children: [
             _buildHeader(),
-            Expanded(
-              child: _buildContent(),
-            ),
+            Expanded(child: _buildContent()),
           ],
         ),
       ),
@@ -48,14 +47,14 @@ class DecoyView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'My Wallet',
+                  'My Wallet'.tr,
                   style: PirateTypography.bodyLarge.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
-                  'Tap to view details',
+                  'Tap to view details'.tr,
                   style: PirateTypography.bodySmall.copyWith(
                     color: Colors.grey[500],
                   ),
@@ -111,14 +110,12 @@ class DecoyView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Total Balance',
-            style: PirateTypography.bodySmall.copyWith(
-              color: Colors.grey[400],
-            ),
+            'Total Balance'.tr,
+            style: PirateTypography.bodySmall.copyWith(color: Colors.grey[400]),
           ),
           SizedBox(height: PirateSpacing.sm),
           Text(
-            '0.05234 ARRR',
+            '0.05234 ARRR'.tr,
             style: PirateTypography.h1.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -127,9 +124,7 @@ class DecoyView extends StatelessWidget {
           SizedBox(height: PirateSpacing.xs),
           Text(
             r'≈ $2.45 USD',
-            style: PirateTypography.body.copyWith(
-              color: Colors.grey[500],
-            ),
+            style: PirateTypography.body.copyWith(color: Colors.grey[500]),
           ),
         ],
       ),
@@ -142,7 +137,7 @@ class DecoyView extends StatelessWidget {
         Expanded(
           child: _buildActionButton(
             icon: Icons.arrow_upward,
-            label: 'Send',
+            label: 'Send'.tr,
             color: Colors.red,
           ),
         ),
@@ -150,7 +145,7 @@ class DecoyView extends StatelessWidget {
         Expanded(
           child: _buildActionButton(
             icon: Icons.arrow_downward,
-            label: 'Receive',
+            label: 'Receive'.tr,
             color: Colors.green,
           ),
         ),
@@ -158,7 +153,7 @@ class DecoyView extends StatelessWidget {
         Expanded(
           child: _buildActionButton(
             icon: Icons.swap_horiz,
-            label: 'Swap',
+            label: 'Swap'.tr,
             color: Colors.blue,
           ),
         ),
@@ -184,9 +179,7 @@ class DecoyView extends StatelessWidget {
           SizedBox(height: PSpacing.xs),
           Text(
             label,
-            style: PTypography.bodySmall().copyWith(
-              color: Colors.grey[400],
-            ),
+            style: PTypography.bodySmall().copyWith(color: Colors.grey[400]),
           ),
         ],
       ),
@@ -198,7 +191,7 @@ class DecoyView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Recent Activity',
+          'Recent Activity'.tr,
           style: PTypography.heading4().copyWith(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -247,7 +240,9 @@ class DecoyView extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: (isPositive ? Colors.green : Colors.red).withValues(alpha: 0.1),
+              color: (isPositive ? Colors.green : Colors.red).withValues(
+                alpha: 0.1,
+              ),
               shape: BoxShape.circle,
             ),
             child: Icon(

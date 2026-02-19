@@ -7,13 +7,16 @@ import 'package:flutter/material.dart';
 import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../atoms/p_text_button.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Banner style variants
 enum WatchOnlyBannerStyle {
   /// Full banner with icon and description
   full,
+
   /// Compact chip/badge
   chip,
+
   /// Minimal inline text
   inline,
 }
@@ -25,7 +28,7 @@ enum WatchOnlyBannerStyle {
 class WatchOnlyBanner extends StatelessWidget {
   final WatchOnlyBannerStyle style;
   final VoidCallback? onTap;
-  
+
   const WatchOnlyBanner({
     super.key,
     this.style = WatchOnlyBannerStyle.full,
@@ -48,7 +51,7 @@ class WatchOnlyBanner extends StatelessWidget {
 /// Full banner with icon and description
 class _FullBanner extends StatelessWidget {
   final VoidCallback? onTap;
-  
+
   const _FullBanner({this.onTap});
 
   @override
@@ -81,7 +84,7 @@ class _FullBanner extends StatelessWidget {
                 Icons.visibility,
                 color: AppColors.accentPrimary,
                 size: 20,
-                semanticLabel: 'View only wallet',
+                semanticLabel: 'View only wallet'.tr,
               ),
             ),
             const SizedBox(width: AppSpacing.md),
@@ -106,11 +109,7 @@ class _FullBanner extends StatelessWidget {
               ),
             ),
             if (onTap != null)
-              Icon(
-                Icons.info_outline,
-                color: AppColors.textTertiary,
-                size: 20,
-              ),
+              Icon(Icons.info_outline, color: AppColors.textTertiary, size: 20),
           ],
         ),
       ),
@@ -121,7 +120,7 @@ class _FullBanner extends StatelessWidget {
 /// Compact chip/badge banner
 class _ChipBanner extends StatelessWidget {
   final VoidCallback? onTap;
-  
+
   const _ChipBanner({this.onTap});
 
   @override
@@ -147,7 +146,7 @@ class _ChipBanner extends StatelessWidget {
               Icons.visibility,
               color: AppColors.accentPrimary,
               size: 16,
-              semanticLabel: 'View only',
+              semanticLabel: 'View only'.tr,
             ),
             const SizedBox(width: AppSpacing.xs),
             Text(
@@ -177,7 +176,7 @@ class _InlineBanner extends StatelessWidget {
           Icons.visibility,
           color: AppColors.textSecondary,
           size: 14,
-          semanticLabel: 'View only',
+          semanticLabel: 'View only'.tr,
         ),
         const SizedBox(width: 4),
         Text(
@@ -207,21 +206,14 @@ class WatchOnlyWarningDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Row(
         children: [
-          Icon(
-            Icons.visibility,
-            color: AppColors.accentPrimary,
-          ),
+          Icon(Icons.visibility, color: AppColors.accentPrimary),
           const SizedBox(width: AppSpacing.sm),
           Text(
             kWatchOnlyLabel,
-            style: AppTypography.h3.copyWith(
-              color: AppColors.textPrimary,
-            ),
+            style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
           ),
         ],
       ),
@@ -230,27 +222,24 @@ class WatchOnlyWarningDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'This is a view only wallet. It can only view incoming transactions.',
-            style: AppTypography.body.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            'This is a view only wallet. It can only view incoming transactions.'
+                .tr,
+            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            'To send funds, you need access to the full wallet with the spending key.',
-            style: AppTypography.body.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            'To send funds, you need access to the full wallet with the spending key.'
+                .tr,
+            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
           ),
         ],
       ),
       actions: [
         PTextButton(
-          label: 'Got it',
+          label: 'Got it'.tr,
           onPressed: () => Navigator.of(context).pop(),
         ),
       ],
     );
   }
 }
-

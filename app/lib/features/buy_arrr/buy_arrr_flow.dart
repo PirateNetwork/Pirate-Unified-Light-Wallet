@@ -6,14 +6,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Buy ARRR flow steps
-enum BuyArrrStep {
-  selectCoin,
-  enterAmount,
-  quote,
-  confirm,
-  progress,
-  receipt,
-}
+enum BuyArrrStep { selectCoin, enterAmount, quote, confirm, progress, receipt }
 
 /// Source coin option
 class SourceCoin {
@@ -51,7 +44,7 @@ class BuyQuote {
   });
 
   bool get isValid => DateTime.now().isBefore(validUntil);
-  
+
   int get remainingSeconds => validUntil.difference(DateTime.now()).inSeconds;
 }
 
@@ -81,7 +74,7 @@ class SwapProgressData {
   bool get isFailed => stage == SwapStage.failed;
   bool get isRefunded => stage == SwapStage.refunded;
   bool get isTerminal => isComplete || isFailed || isRefunded;
-  
+
   Duration get elapsed => DateTime.now().difference(startedAt);
 }
 
@@ -224,10 +217,7 @@ class BuyArrrController extends Notifier<BuyArrrState> {
       validUntil: DateTime.now().add(const Duration(seconds: 60)),
     );
 
-    state = state.copyWith(
-      quote: quote,
-      currentStep: BuyArrrStep.quote,
-    );
+    state = state.copyWith(quote: quote, currentStep: BuyArrrStep.quote);
   }
 
   Future<void> confirmSwap() async {
@@ -269,7 +259,7 @@ class BuyArrrController extends Notifier<BuyArrrState> {
     // TODO(pirate): Poll MM2 for swap status updates.
     // For now, simulate progress
     await Future<void>.delayed(const Duration(seconds: 2));
-    
+
     if (state.swapProgress != null) {
       state = state.copyWith(
         swapProgress: SwapProgressData(

@@ -19,8 +19,8 @@ class PTextButton extends StatefulWidget {
     this.compact = false,
     this.fullWidth = false,
     super.key,
-  })  : label = label ?? text ?? '',
-        assert(label != null || text != null, 'Provide label or text');
+  }) : label = label ?? text ?? '',
+       assert(label != null || text != null, 'Provide label or text');
 
   final String label;
   final VoidCallback? onPressed;
@@ -42,8 +42,9 @@ class _PTextButtonState extends State<PTextButton> {
 
   @override
   Widget build(BuildContext context) {
-    final textColor =
-        widget._isDisabled ? AppColors.textDisabled : widget.variant.textColor;
+    final textColor = widget._isDisabled
+        ? AppColors.textDisabled
+        : widget.variant.textColor;
     final hoverColor = widget.variant.hoverColor;
     final focusOutline = widget.variant.focusColor;
 
@@ -51,8 +52,7 @@ class _PTextButtonState extends State<PTextButton> {
     final verticalPadding = widget.compact ? PSpacing.xs : PSpacing.sm;
 
     final content = Row(
-      mainAxisSize:
-          widget.fullWidth ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisSize: widget.fullWidth ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: widget.fullWidth
           ? MainAxisAlignment.center
           : MainAxisAlignment.start,
@@ -67,8 +67,7 @@ class _PTextButtonState extends State<PTextButton> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: PTypography.labelLarge(color: textColor),
-            textAlign:
-                widget.fullWidth ? TextAlign.center : TextAlign.left,
+            textAlign: widget.fullWidth ? TextAlign.center : TextAlign.left,
           ),
         ),
         if (widget.trailingIcon != null) ...[
@@ -92,7 +91,9 @@ class _PTextButtonState extends State<PTextButton> {
           duration: const Duration(milliseconds: 150),
           constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
           decoration: BoxDecoration(
-            color: _isHovered && !widget._isDisabled ? hoverColor : Colors.transparent,
+            color: _isHovered && !widget._isDisabled
+                ? hoverColor
+                : Colors.transparent,
             borderRadius: borderRadius,
             border: _isFocused
                 ? Border.all(color: focusOutline, width: 1.5)
@@ -121,12 +122,7 @@ class _PTextButtonState extends State<PTextButton> {
 }
 
 /// Variants for text buttons that map to brand colors.
-enum PTextButtonVariant {
-  accent,
-  neutral,
-  subtle,
-  danger,
-}
+enum PTextButtonVariant { accent, neutral, subtle, danger }
 
 extension _VariantColorExtension on PTextButtonVariant {
   Color get textColor {
@@ -168,4 +164,3 @@ extension _VariantColorExtension on PTextButtonVariant {
     }
   }
 }
-

@@ -23,16 +23,11 @@ class PBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: variant.backgroundColor,
         borderRadius: BorderRadius.circular(PSpacing.radiusFull),
-        border: Border.all(
-          color: variant.borderColor,
-          width: 1.0,
-        ),
+        border: Border.all(color: variant.borderColor, width: 1.0),
       ),
       child: Text(
         label.toUpperCase(),
-        style: size.textStyle.copyWith(
-          color: variant.textColor,
-        ),
+        style: size.textStyle.copyWith(color: variant.textColor),
       ),
     );
   }
@@ -99,11 +94,20 @@ enum PBadgeSize {
   EdgeInsets get padding {
     switch (this) {
       case PBadgeSize.small:
-        return EdgeInsets.symmetric(horizontal: PSpacing.xs, vertical: PSpacing.xxs);
+        return EdgeInsets.symmetric(
+          horizontal: PSpacing.xs,
+          vertical: PSpacing.xxs,
+        );
       case PBadgeSize.medium:
-        return EdgeInsets.symmetric(horizontal: PSpacing.sm, vertical: PSpacing.xxs);
+        return EdgeInsets.symmetric(
+          horizontal: PSpacing.sm,
+          vertical: PSpacing.xxs,
+        );
       case PBadgeSize.large:
-        return EdgeInsets.symmetric(horizontal: PSpacing.md, vertical: PSpacing.xs);
+        return EdgeInsets.symmetric(
+          horizontal: PSpacing.md,
+          vertical: PSpacing.xs,
+        );
     }
   }
 
@@ -118,4 +122,3 @@ enum PBadgeSize {
     }
   }
 }
-

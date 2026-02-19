@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../design/deep_space_theme.dart';
 import '../../core/providers/rust_init_provider.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Splash/Loading screen shown while determining initial route
 class SplashScreen extends ConsumerStatefulWidget {
@@ -69,10 +70,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             ),
             SizedBox(height: AppSpacing.xl),
             Text(
-              'Pirate Wallet',
-              style: AppTypography.h1.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              'Pirate Wallet'.tr,
+              style: AppTypography.h1.copyWith(color: AppColors.textPrimary),
             ),
             SizedBox(height: AppSpacing.md),
             if (initError != null) ...[
@@ -80,22 +79,22 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: Text(
                   'Core failed to initialize.\n$initError',
-                  style: AppTypography.body.copyWith(
-                    color: Colors.redAccent,
-                  ),
+                  style: AppTypography.body.copyWith(color: Colors.redAccent),
                   textAlign: TextAlign.center,
                 ),
               ),
               SizedBox(height: AppSpacing.lg),
               TextButton(
                 onPressed: () => ref.invalidate(rustInitProvider),
-                child: const Text('Retry'),
+                child: Text('Retry'.tr),
               ),
             ] else ...[
               const CircularProgressIndicator(),
               SizedBox(height: AppSpacing.md),
               Text(
-                rustInit.isLoading ? 'Initializing core...' : 'Loading wallets...',
+                rustInit.isLoading
+                    ? 'Initializing core...'
+                    : 'Loading wallets...',
                 style: AppTypography.body.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -107,4 +106,3 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     );
   }
 }
-

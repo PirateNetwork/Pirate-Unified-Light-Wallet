@@ -17,6 +17,7 @@ import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/providers/wallet_providers.dart';
 import '../providers/transport_providers.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Privacy Shield settings screen
 ///
@@ -88,10 +89,10 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     }
 
     return PScaffold(
-      title: 'Privacy Shield',
+      title: 'Privacy Shield'.tr,
       appBar: PAppBar(
-        title: 'Privacy Shield',
-        subtitle: 'Network & tunneling',
+        title: 'Privacy Shield'.tr,
+        subtitle: 'Network & tunneling'.tr,
         actions: [ConnectionStatusIndicator(full: !isMobile)],
       ),
       body: SingleChildScrollView(
@@ -165,7 +166,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             const SizedBox(height: PirateSpacing.sm),
 
             Text(
-              'Tests connection to lightwalletd using current transport and TLS settings',
+              'Tests connection to lightwalletd using current transport and TLS settings'
+                  .tr,
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
               textAlign: TextAlign.center,
             ),
@@ -361,20 +363,21 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('I2P First Startup'),
-          content: const Text(
-            'The embedded I2P router uses a fresh, ephemeral identity each run. '
-            'The first startup can take a few minutes while it bootstraps. '
-            'Keep the app open until it connects.',
+          title: Text('I2P First Startup'.tr),
+          content: Text(
+            'The embedded I2P router uses a fresh, ephemeral identity each '
+                    'run. The first startup can take a few minutes while it '
+                    'bootstraps. Keep the app open until it connects.'
+                .tr,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'.tr),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Continue'),
+              child: Text('Continue'.tr),
             ),
           ],
         );
@@ -396,7 +399,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       child: Column(
         children: [
           PInput(
-            label: 'Host',
+            label: 'Host'.tr,
             value: config['host'] ?? '',
             onChanged: (value) {
               ref.read(transportConfigProvider.notifier).setSocks5Config({
@@ -407,7 +410,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           ),
           const SizedBox(height: 16),
           PInput(
-            label: 'Port',
+            label: 'Port'.tr,
             value: config['port'] ?? '1080',
             keyboardType: TextInputType.number,
             onChanged: (value) {
@@ -419,7 +422,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           ),
           const SizedBox(height: 16),
           PInput(
-            label: 'Username (Optional)',
+            label: 'Username (Optional)'.tr,
             value: config['username'] ?? '',
             onChanged: (value) {
               ref.read(transportConfigProvider.notifier).setSocks5Config({
@@ -430,7 +433,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           ),
           const SizedBox(height: 16),
           PInput(
-            label: 'Password (Optional)',
+            label: 'Password (Optional)'.tr,
             value: config['password'] ?? '',
             obscureText: true,
             onChanged: (value) {
@@ -454,15 +457,15 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'I2P endpoints use .i2p hostnames (often ending in .b32.i2p).',
+            'I2P endpoints use .i2p hostnames (often ending in .b32.i2p).'.tr,
             style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: PirateSpacing.sm),
           PInput(
             controller: _i2pEndpointController,
-            label: 'I2P Lightwalletd Endpoint',
+            label: 'I2P Lightwalletd Endpoint'.tr,
             hint: 'http://<base32>.b32.i2p:9067',
-            helperText: 'Example: http://<hash>.b32.i2p:9067',
+            helperText: 'Example: http://<hash>.b32.i2p:9067'.tr,
             errorText: _i2pEndpointError,
             autocorrect: false,
             enableSuggestions: false,
@@ -478,7 +481,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           if (showMissingWarning) ...[
             const SizedBox(height: PirateSpacing.xs),
             Text(
-              'No I2P endpoint set. I2P mode will stay offline until you add one.',
+              'No I2P endpoint set. I2P mode will stay offline until you add one.'
+                  .tr,
               style: TextStyle(color: AppColors.warning, fontSize: 12),
             ),
           ],
@@ -513,7 +517,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                             .setI2pEndpoint(candidate);
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('I2P endpoint saved.')),
+                          SnackBar(content: Text('I2P endpoint saved.'.tr)),
                         );
                       } catch (e) {
                         if (!context.mounted) return;
@@ -570,7 +574,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             children: [
               Expanded(
                 child: Text(
-                  'Tor Status',
+                  'Tor Status'.tr,
                   style: TextStyle(
                     color: AppColors.textPrimary,
                     fontSize: 14,
@@ -594,7 +598,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           ),
           const SizedBox(height: PirateSpacing.md),
           Text(
-            'Tor provides the strongest privacy by routing traffic through multiple relays, making it very difficult to trace.',
+            'Tor provides the strongest privacy by routing traffic through multiple relays, making it very difficult to trace.'
+                .tr,
             style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: PirateSpacing.xs),
@@ -688,9 +693,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       await FfiBridge.rotateTorExit();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Switched Tor exit node. Reconnecting...'),
-        ),
+        SnackBar(content: Text('Switched Tor exit node. Reconnecting...'.tr)),
       );
     } catch (e) {
       if (!mounted) return;
@@ -707,7 +710,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,
       title: Text(
-        'Advanced',
+        'Advanced'.tr,
         style: TextStyle(
           color: AppColors.textPrimary,
           fontSize: 14,
@@ -715,7 +718,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         ),
       ),
       subtitle: Text(
-        'Bridges and transport overrides',
+        'Bridges and transport overrides'.tr,
         style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
       ),
       children: [_buildTorBridgeControls(context, ref)],
@@ -728,7 +731,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Bridge transports (Snowflake/obfs4) are desktop-only.',
+            'Bridge transports (Snowflake/obfs4) are desktop-only.'.tr,
             style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
         ],
@@ -740,7 +743,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       children: [
         PToggle(
           value: _useTorBridges,
-          label: 'Use bridges immediately',
+          label: 'Use bridges immediately'.tr,
           onChanged: (value) => setState(() {
             _useTorBridges = value;
           }),
@@ -748,7 +751,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         const SizedBox(height: PirateSpacing.xs),
         PToggle(
           value: _fallbackToTorBridges,
-          label: 'Fallback to bridges if direct fails',
+          label: 'Fallback to bridges if direct fails'.tr,
           onChanged: (value) => setState(() {
             _fallbackToTorBridges = value;
           }),
@@ -756,11 +759,11 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         const SizedBox(height: PirateSpacing.sm),
         DropdownMenuFormField<String>(
           initialSelection: _torBridgeTransport,
-          label: const Text('Fallback bridge transport'),
-          helperText: 'Only used if direct Tor fails.',
-          dropdownMenuEntries: const [
-            DropdownMenuEntry(value: 'snowflake', label: 'Snowflake'),
-            DropdownMenuEntry(value: 'obfs4', label: 'obfs4'),
+          label: Text('Fallback bridge transport'.tr),
+          helperText: 'Only used if direct Tor fails.'.tr,
+          dropdownMenuEntries: [
+            DropdownMenuEntry(value: 'snowflake', label: 'Snowflake'.tr),
+            DropdownMenuEntry(value: 'obfs4', label: 'obfs4'.tr),
           ],
           onSelected: (value) {
             if (value == null) return;
@@ -772,18 +775,18 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         const SizedBox(height: PirateSpacing.sm),
         PInput(
           controller: _torBridgeLinesController,
-          label: 'Bridge lines',
+          label: 'Bridge lines'.tr,
           hint: _torBridgeTransport == 'snowflake'
               ? 'Leave blank to use bundled Snowflake bridges'
               : 'Paste one bridge line per row',
-          helperText: 'One bridge per line. Used only for bridges/fallback.',
+          helperText: 'One bridge per line. Used only for bridges/fallback.'.tr,
           maxLines: 4,
           monospace: true,
         ),
         const SizedBox(height: PirateSpacing.sm),
         PInput(
           controller: _torTransportPathController,
-          label: 'Transport binary path (optional)',
+          label: 'Transport binary path (optional)'.tr,
           hint: 'Leave blank to use PATH',
           monospace: true,
         ),
@@ -1047,7 +1050,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Connection Successful',
+                'Connection Successful'.tr,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: AppColors.textPrimary),
@@ -1090,7 +1093,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         ),
         actions: [
           PTextButton(
-            label: 'OK',
+            label: 'OK'.tr,
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],
@@ -1155,7 +1158,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '⚠️ Security Warning',
+                        '⚠️ Security Warning'.tr,
                         style: TextStyle(
                           color: Colors.red,
                           fontWeight: FontWeight.bold,
@@ -1164,11 +1167,12 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'The server certificate does not match the expected pin. '
-                        'This could indicate:\n'
-                        '• A man-in-the-middle attack\n'
-                        '• The server certificate has been rotated\n'
-                        '• An incorrect pin was entered',
+                        'The server certificate does not match the expected '
+                                'pin. This could indicate:\n'
+                                '• A man-in-the-middle attack\n'
+                                '• The server certificate has been rotated\n'
+                                '• An incorrect pin was entered'
+                            .tr,
                         style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 12,
@@ -1177,7 +1181,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                       if (result.expectedPin != null) ...[
                         const SizedBox(height: 8),
                         Text(
-                          'Expected:',
+                          'Expected:'.tr,
                           style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 11,
@@ -1196,7 +1200,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                       if (result.actualPin != null) ...[
                         const SizedBox(height: 8),
                         Text(
-                          'Actual (from server):',
+                          'Actual (from server):'.tr,
                           style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 11,
@@ -1247,7 +1251,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                       if (result.latestBlockHeight == null) ...[
                         const SizedBox(height: 8),
                         Text(
-                          '⚠️ Latest block height not retrieved - connection failed before data could be fetched.',
+                          '⚠️ Latest block height not retrieved - connection failed before data could be fetched.'
+                              .tr,
                           style: TextStyle(
                             color: Colors.orange,
                             fontSize: 11,
@@ -1265,20 +1270,18 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         actions: [
           if (isPinMismatch && result.actualPin != null)
             PTextButton(
-              label: 'Copy Actual Pin',
+              label: 'Copy Actual Pin'.tr,
               leadingIcon: Icons.copy,
               variant: PTextButtonVariant.subtle,
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: result.actualPin!));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Actual pin copied to clipboard'),
-                  ),
+                  SnackBar(content: Text('Actual pin copied to clipboard'.tr)),
                 );
               },
             ),
           PTextButton(
-            label: 'OK',
+            label: 'OK'.tr,
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],
@@ -1298,7 +1301,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Error',
+                'Error'.tr,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: AppColors.textPrimary),
@@ -1309,7 +1312,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         content: Text(error, style: TextStyle(color: AppColors.textSecondary)),
         actions: [
           PTextButton(
-            label: 'OK',
+            label: 'OK'.tr,
             onPressed: () => Navigator.of(context).pop(),
           ),
         ],

@@ -4,6 +4,7 @@ import '../../../ui/organisms/p_scaffold.dart';
 import '../../../ui/organisms/p_hero_header.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/molecules/p_form_section.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Showcase Buttons Screen
 class ShowcaseButtonsScreen extends StatelessWidget {
@@ -12,22 +13,22 @@ class ShowcaseButtonsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Buttons Showcase',
+      title: 'Buttons Showcase'.tr,
       body: SingleChildScrollView(
         padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             PHeroHeader(
-              title: 'Buttons',
-              subtitle: 'All button variants and states',
+              title: 'Buttons'.tr,
+              subtitle: 'All button variants and states'.tr,
             ),
             SizedBox(height: PSpacing.xl),
-            
+
             // Primary Buttons
             PFormSection(
-              title: 'Primary Buttons',
-              description: 'Main call-to-action buttons with gradient',
+              title: 'Primary Buttons'.tr,
+              description: 'Main call-to-action buttons with gradient'.tr,
               children: [
                 Wrap(
                   spacing: PSpacing.md,
@@ -36,42 +37,39 @@ class ShowcaseButtonsScreen extends StatelessWidget {
                     PButton(
                       onPressed: () {},
                       size: PButtonSize.small,
-                      child: const Text('Small'),
+                      child: Text('Small'.tr),
                     ),
                     PButton(
                       onPressed: () {},
                       size: PButtonSize.medium,
-                      child: const Text('Medium'),
+                      child: Text('Medium'.tr),
                     ),
                     PButton(
                       onPressed: () {},
                       size: PButtonSize.large,
-                      child: const Text('Large'),
+                      child: Text('Large'.tr),
                     ),
                     PButton(
                       onPressed: () {},
                       icon: const Icon(Icons.send),
-                      child: const Text('With Icon'),
+                      child: Text('With Icon'.tr),
                     ),
-                    PButton(
-                      onPressed: null,
-                      child: const Text('Disabled'),
-                    ),
+                    PButton(onPressed: null, child: Text('Disabled'.tr)),
                     PButton(
                       onPressed: () {},
                       loading: true,
-                      child: const Text('Loading'),
+                      child: Text('Loading'.tr),
                     ),
                   ],
                 ),
               ],
             ),
-            
+
             SizedBox(height: PSpacing.sectionGap),
-            
+
             // Secondary Buttons
             PFormSection(
-              title: 'Secondary Buttons',
+              title: 'Secondary Buttons'.tr,
               children: [
                 Wrap(
                   spacing: PSpacing.md,
@@ -80,33 +78,33 @@ class ShowcaseButtonsScreen extends StatelessWidget {
                     PButton(
                       onPressed: () {},
                       variant: PButtonVariant.secondary,
-                      child: const Text('Secondary'),
+                      child: Text('Secondary'.tr),
                     ),
                     PButton(
                       onPressed: () {},
                       variant: PButtonVariant.outline,
-                      child: const Text('Outline'),
+                      child: Text('Outline'.tr),
                     ),
                     PButton(
                       onPressed: () {},
                       variant: PButtonVariant.ghost,
-                      child: const Text('Ghost'),
+                      child: Text('Ghost'.tr),
                     ),
                     PButton(
                       onPressed: () {},
                       variant: PButtonVariant.danger,
-                      child: const Text('Danger'),
+                      child: Text('Danger'.tr),
                     ),
                   ],
                 ),
               ],
             ),
-            
+
             SizedBox(height: PSpacing.sectionGap),
-            
+
             // Icon Buttons
             PFormSection(
-              title: 'Icon Buttons',
+              title: 'Icon Buttons'.tr,
               children: [
                 Wrap(
                   spacing: PSpacing.md,
@@ -116,40 +114,40 @@ class ShowcaseButtonsScreen extends StatelessWidget {
                       icon: const Icon(Icons.favorite),
                       onPressed: () {},
                       size: PIconButtonSize.small,
-                      tooltip: 'Favorite',
+                      tooltip: 'Favorite'.tr,
                     ),
                     PIconButton(
                       icon: const Icon(Icons.share),
                       onPressed: () {},
                       size: PIconButtonSize.medium,
-                      tooltip: 'Share',
+                      tooltip: 'Share'.tr,
                     ),
                     PIconButton(
                       icon: const Icon(Icons.settings),
                       onPressed: () {},
                       size: PIconButtonSize.large,
-                      tooltip: 'Settings',
+                      tooltip: 'Settings'.tr,
                     ),
                     PIconButton(
                       icon: const Icon(Icons.delete),
                       onPressed: null,
-                      tooltip: 'Disabled',
+                      tooltip: 'Disabled'.tr,
                     ),
                   ],
                 ),
               ],
             ),
-            
+
             SizedBox(height: PSpacing.sectionGap),
-            
+
             // Full Width Button
             PFormSection(
-              title: 'Full Width',
+              title: 'Full Width'.tr,
               children: [
                 PButton(
                   onPressed: () {},
                   fullWidth: true,
-                  child: const Text('Full Width Button'),
+                  child: Text('Full Width Button'.tr),
                 ),
               ],
             ),
@@ -159,4 +157,3 @@ class ShowcaseButtonsScreen extends StatelessWidget {
     );
   }
 }
-

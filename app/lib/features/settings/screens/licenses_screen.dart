@@ -7,6 +7,7 @@ import '../../../design/deep_space_theme.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 class LicensesScreen extends StatelessWidget {
   const LicensesScreen({super.key});
@@ -38,12 +39,8 @@ SOFTWARE.
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Open Source Licenses',
-      appBar: const PAppBar(
-        title: 'Open Source Licenses',
-        subtitle: 'Project and dependency licenses',
-        showBackButton: true,
-      ),
+      title: 'Open Source Licenses'.tr,
+      appBar: PAppBar(title: 'Open Source Licenses'.tr, showBackButton: true),
       body: SingleChildScrollView(
         padding: AppSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
@@ -53,7 +50,8 @@ SOFTWARE.
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 child: Text(
-                  'Pirate Wallet is open-source and distributed under the MIT License.',
+                  'Pirate Wallet is open-source and distributed under the MIT License.'
+                      .tr,
                   style: AppTypography.body.copyWith(
                     color: AppColors.textPrimary,
                   ),

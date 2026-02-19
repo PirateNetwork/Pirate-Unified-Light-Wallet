@@ -18,6 +18,7 @@ import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 enum BirthdayHeightInputMode { approxDate, exactHeight }
 
@@ -213,18 +214,19 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceElevated,
-        title: const Text('Rescan now?'),
-        content: const Text(
-          'Rescanning applies the new birthday height and rebuilds wallet state.',
+        title: Text('Rescan now?'.tr),
+        content: Text(
+          'Rescanning applies the new birthday height and rebuilds wallet state.'
+              .tr,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Later'),
+            child: Text('Later'.tr),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Rescan'),
+            child: Text('Rescan'.tr),
           ),
         ],
       ),
@@ -259,10 +261,10 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
     );
 
     return PScaffold(
-      title: 'Birthday Height',
-      appBar: const PAppBar(
-        title: 'Birthday Height',
-        subtitle: 'Set the earliest block to scan',
+      title: 'Birthday Height'.tr,
+      appBar: PAppBar(
+        title: 'Birthday Height'.tr,
+        subtitle: 'Set the earliest block to scan'.tr,
         showBackButton: true,
       ),
       body: SingleChildScrollView(
@@ -309,8 +311,8 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
             _ModeCard(
               mode: BirthdayHeightInputMode.exactHeight,
               selected: _inputMode,
-              title: 'Exact block height',
-              subtitle: 'Use the precise block height if you know it',
+              title: 'Exact block height'.tr,
+              subtitle: 'Use the precise block height if you know it'.tr,
               icon: Icons.pin_outlined,
               onTap: () => setState(
                 () => _inputMode = BirthdayHeightInputMode.exactHeight,
@@ -320,8 +322,8 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
             _ModeCard(
               mode: BirthdayHeightInputMode.approxDate,
               selected: _inputMode,
-              title: 'Approximate date',
-              subtitle: 'Month and year before your first transaction',
+              title: 'Approximate date'.tr,
+              subtitle: 'Month and year before your first transaction'.tr,
               icon: Icons.calendar_today,
               onTap: () => setState(
                 () => _inputMode = BirthdayHeightInputMode.approxDate,
@@ -331,7 +333,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
             if (_inputMode == BirthdayHeightInputMode.exactHeight) ...[
               PInput(
                 controller: _exactHeightController,
-                label: 'Block height',
+                label: 'Block height'.tr,
                 hint: 'Enter the exact block height',
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -343,7 +345,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                     child: DropdownMenuFormField<int>(
                       key: ValueKey(_selectedMonth),
                       initialSelection: _selectedMonth,
-                      label: const Text('Month'),
+                      label: Text('Month'.tr),
                       inputDecorationTheme: InputDecorationTheme(
                         filled: true,
                         fillColor: AppColors.surfaceElevated,
@@ -366,7 +368,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                     child: DropdownMenuFormField<int>(
                       key: ValueKey(_selectedYear),
                       initialSelection: _selectedYear,
-                      label: const Text('Year'),
+                      label: Text('Year'.tr),
                       inputDecorationTheme: InputDecorationTheme(
                         filled: true,
                         fillColor: AppColors.surfaceElevated,
@@ -399,7 +401,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Start block',
+                          'Start block'.tr,
                           style: AppTypography.caption.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -420,7 +422,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                           : CrossAxisAlignment.end,
                       children: [
                         Text(
-                          'Blocks to scan',
+                          'Blocks to scan'.tr,
                           style: AppTypography.caption.copyWith(
                             color: AppColors.textSecondary,
                           ),

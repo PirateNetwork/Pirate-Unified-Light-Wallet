@@ -60,7 +60,9 @@ class _PListTileState extends State<PListTile> {
                   if (widget.leading != null) ...[
                     IconTheme(
                       data: IconThemeData(
-                        color: widget.enabled ? AppColors.textSecondary : AppColors.textDisabled,
+                        color: widget.enabled
+                            ? AppColors.textSecondary
+                            : AppColors.textDisabled,
                         size: PSpacing.iconLG,
                       ),
                       child: widget.leading!,
@@ -77,7 +79,9 @@ class _PListTileState extends State<PListTile> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: PTypography.titleSmall(
-                            color: widget.enabled ? AppColors.textPrimary : AppColors.textDisabled,
+                            color: widget.enabled
+                                ? AppColors.textPrimary
+                                : AppColors.textDisabled,
                           ),
                         ),
                         if (widget.subtitle != null) ...[
@@ -87,7 +91,9 @@ class _PListTileState extends State<PListTile> {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: PTypography.bodySmall(
-                              color: widget.enabled ? AppColors.textSecondary : AppColors.textDisabled,
+                              color: widget.enabled
+                                  ? AppColors.textSecondary
+                                  : AppColors.textDisabled,
                             ),
                           ),
                         ],
@@ -98,7 +104,9 @@ class _PListTileState extends State<PListTile> {
                     SizedBox(width: PSpacing.md),
                     IconTheme(
                       data: IconThemeData(
-                        color: widget.enabled ? AppColors.textSecondary : AppColors.textDisabled,
+                        color: widget.enabled
+                            ? AppColors.textSecondary
+                            : AppColors.textDisabled,
                         size: PSpacing.iconMD,
                       ),
                       child: widget.trailing!,
@@ -113,4 +121,3 @@ class _PListTileState extends State<PListTile> {
     );
   }
 }
-

@@ -176,15 +176,9 @@ class AddressBookNotifier extends Notifier<AddressBookState> {
       final ffiEntries = await AddressBookEntryFfi.listAddressBook(walletId);
       final entries = ffiEntries.map(_ffiEntryToModel).toList();
 
-      state = state.copyWith(
-        entries: entries,
-        isLoading: false,
-      );
+      state = state.copyWith(entries: entries, isLoading: false);
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -315,10 +309,11 @@ class AddressBookNotifier extends Notifier<AddressBookState> {
       );
 
       // Toggle via FFI
-      final newFavoriteState = await AddressBookEntryFfi.toggleAddressBookFavorite(
-        entry.walletId,
-        id,
-      );
+      final newFavoriteState =
+          await AddressBookEntryFfi.toggleAddressBookFavorite(
+            entry.walletId,
+            id,
+          );
 
       // Update local state
       final entries = state.entries.map((e) {
@@ -432,30 +427,35 @@ AddressBookNotifier _createAddressBookNotifier(String walletId) {
 
 final addressBookProvider =
     NotifierProvider.family<AddressBookNotifier, AddressBookState, String>(
-  _createAddressBookNotifier,
-);
+      _createAddressBookNotifier,
+    );
 
 /// Provider for recently used addresses
-final recentAddressesProvider =
-    Provider.family<List<AddressEntry>, String>((ref, walletId) {
+final recentAddressesProvider = Provider.family<List<AddressEntry>, String>((
+  ref,
+  walletId,
+) {
   final state = ref.watch(addressBookProvider(walletId));
-  return state.entries
-      .where((e) => e.lastUsedAt != null)
-      .toList()
-    ..sort((a, b) => (b.lastUsedAt ?? DateTime(0))
-        .compareTo(a.lastUsedAt ?? DateTime(0)));
+  return state.entries.where((e) => e.lastUsedAt != null).toList()..sort(
+    (a, b) =>
+        (b.lastUsedAt ?? DateTime(0)).compareTo(a.lastUsedAt ?? DateTime(0)),
+  );
 });
 
 /// Provider for favorites
-final favoriteAddressesProvider =
-    Provider.family<List<AddressEntry>, String>((ref, walletId) {
+final favoriteAddressesProvider = Provider.family<List<AddressEntry>, String>((
+  ref,
+  walletId,
+) {
   final state = ref.watch(addressBookProvider(walletId));
   return state.entries.where((e) => e.isFavorite).toList();
 });
 
 /// Provider for label lookup (for transaction history)
-final addressLabelProvider =
-    FutureProvider.family<String?, (String, String)>((ref, params) async {
+final addressLabelProvider = FutureProvider.family<String?, (String, String)>((
+  ref,
+  params,
+) async {
   final (walletId, address) = params;
   return AddressBookEntryFfi.getLabelForAddress(walletId, address);
 });

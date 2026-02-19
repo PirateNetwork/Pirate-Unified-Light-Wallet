@@ -9,6 +9,7 @@ import '../../../features/settings/providers/preferences_providers.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 class ThemeScreen extends ConsumerWidget {
   const ThemeScreen({super.key});
@@ -18,10 +19,10 @@ class ThemeScreen extends ConsumerWidget {
     final selected = ref.watch(appThemeModeProvider);
 
     return PScaffold(
-      title: 'Theme',
-      appBar: const PAppBar(
-        title: 'Theme',
-        subtitle: 'Match your device or pick a fixed look',
+      title: 'Theme'.tr,
+      appBar: PAppBar(
+        title: 'Theme'.tr,
+        subtitle: 'Match your device or pick a fixed look'.tr,
         showBackButton: true,
       ),
       body: Padding(
@@ -31,8 +32,8 @@ class ThemeScreen extends ConsumerWidget {
             _ThemeOption(
               mode: AppThemeMode.system,
               selected: selected,
-              title: 'System',
-              subtitle: 'Follow device light or dark mode',
+              title: 'System'.tr,
+              subtitle: 'Follow device light or dark mode'.tr,
               onTap: () => ref
                   .read(appThemeModeProvider.notifier)
                   .setThemeMode(AppThemeMode.system),
@@ -41,8 +42,8 @@ class ThemeScreen extends ConsumerWidget {
             _ThemeOption(
               mode: AppThemeMode.dark,
               selected: selected,
-              title: 'Dark',
-              subtitle: 'Deep Space',
+              title: 'Dark'.tr,
+              subtitle: 'Deep Space'.tr,
               onTap: () => ref
                   .read(appThemeModeProvider.notifier)
                   .setThemeMode(AppThemeMode.dark),
@@ -51,8 +52,8 @@ class ThemeScreen extends ConsumerWidget {
             _ThemeOption(
               mode: AppThemeMode.light,
               selected: selected,
-              title: 'Light',
-              subtitle: 'Ivory',
+              title: 'Light'.tr,
+              subtitle: 'Ivory'.tr,
               onTap: () => ref
                   .read(appThemeModeProvider.notifier)
                   .setThemeMode(AppThemeMode.light),

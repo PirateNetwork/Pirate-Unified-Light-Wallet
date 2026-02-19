@@ -1,21 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../ui/molecules/connection_status_indicator.dart';
-import '../../ui/molecules/p_snack.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/i18n/arb_text_localizer.dart';
+
+bool _isDesktopPlatform() {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+}
 
 void _showComingSoon(BuildContext context) {
-  PSnack.show(
+  showDialog<void>(
     context: context,
-    message: 'Coming Soon',
-    duration: const Duration(seconds: 1),
-    variant: PSnackVariant.info,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: AppColors.backgroundSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(PSpacing.radiusLG),
+      ),
+      title: Text(
+        'Coming Soon'.tr,
+        style: PTypography.heading5(color: AppColors.textPrimary),
+      ),
+      content: Text(
+        'This feature is under development.'.tr,
+        style: PTypography.bodyMedium(color: AppColors.textSecondary),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: Text(
+            'OK'.tr,
+            style: PTypography.labelMedium(color: AppColors.accentPrimary),
+          ),
+        ),
+      ],
+    ),
   );
 }
 
@@ -29,7 +57,6 @@ class PayScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isMobile = PSpacing.isMobile(size.width);
-    final isDesktop = PSpacing.isDesktop(size.width);
     final appBarActions = [
       ConnectionStatusIndicator(
         full: !isMobile,
@@ -43,17 +70,18 @@ class PayScreen extends StatelessWidget {
       onBuy: () => _showComingSoon(context),
       onSpend: () => _showComingSoon(context),
     );
+    final isDesktopPlatform = _isDesktopPlatform();
 
     if (!useScaffold) {
-      if (isDesktop) {
+      if (isDesktopPlatform) {
         return content;
       }
       return PScaffold(
-        title: 'Pay',
+        title: 'Pay'.tr,
         useSafeArea: false,
         appBar: PAppBar(
-          title: 'Pay',
-          subtitle: 'Send, receive, buy, or spend in a few taps.',
+          title: 'Pay'.tr,
+          subtitle: 'Send, receive, buy, or spend in a few taps.'.tr,
           actions: appBarActions,
         ),
         body: content,
@@ -61,12 +89,12 @@ class PayScreen extends StatelessWidget {
     }
 
     return PScaffold(
-      title: 'Pay',
-      appBar: isDesktop
+      title: 'Pay'.tr,
+      appBar: isDesktopPlatform
           ? null
           : PAppBar(
-              title: 'Pay',
-              subtitle: 'Send, receive, buy, or spend in a few taps.',
+              title: 'Pay'.tr,
+              subtitle: 'Send, receive, buy, or spend in a few taps.'.tr,
               actions: appBarActions,
             ),
       body: content,
@@ -117,8 +145,8 @@ class PaySheet extends StatelessWidget {
             final tileHeight = (tileWidth * 0.78).clamp(130.0, 170.0);
             final tiles = [
               _PayActionTile(
-                title: 'Send',
-                subtitle: 'Send ARRR',
+                title: 'Send'.tr,
+                subtitle: 'Send ARRR'.tr,
                 icon: Icons.north_east,
                 gradient: LinearGradient(
                   colors: [AppColors.gradientAStart, AppColors.gradientAEnd],
@@ -129,8 +157,8 @@ class PaySheet extends StatelessWidget {
                 compact: true,
               ),
               _PayActionTile(
-                title: 'Receive',
-                subtitle: 'Receive ARRR',
+                title: 'Receive'.tr,
+                subtitle: 'Receive ARRR'.tr,
                 icon: Icons.south_west,
                 gradient: LinearGradient(
                   colors: [AppColors.gradientBStart, AppColors.gradientBEnd],
@@ -141,8 +169,8 @@ class PaySheet extends StatelessWidget {
                 compact: true,
               ),
               _PayActionTile(
-                title: 'Buy',
-                subtitle: 'Buy ARRR',
+                title: 'Buy'.tr,
+                subtitle: 'Buy ARRR'.tr,
                 icon: Icons.shopping_bag,
                 gradient: LinearGradient(
                   colors: [AppColors.highlight, AppColors.warning],
@@ -153,8 +181,8 @@ class PaySheet extends StatelessWidget {
                 compact: true,
               ),
               _PayActionTile(
-                title: 'Spend',
-                subtitle: 'Spend ARRR',
+                title: 'Spend'.tr,
+                subtitle: 'Spend ARRR'.tr,
                 icon: Icons.credit_card,
                 gradient: LinearGradient(
                   colors: [AppColors.info, AppColors.gradientAEnd],
@@ -186,12 +214,12 @@ class PaySheet extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Pay',
+                    'Pay'.tr,
                     style: PTypography.heading4(color: AppColors.textPrimary),
                   ),
                   const SizedBox(height: PSpacing.xs),
                   Text(
-                    'Send, receive, buy, or spend ARRR.',
+                    'Send, receive, buy, or spend ARRR.'.tr,
                     style: PTypography.bodySmall(
                       color: AppColors.textSecondary,
                     ),
@@ -239,10 +267,11 @@ class _PayContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktopPlatform = _isDesktopPlatform();
     final tiles = [
       _PayActionTile(
-        title: 'Send',
-        subtitle: 'Send ARRR',
+        title: 'Send'.tr,
+        subtitle: 'Send ARRR'.tr,
         icon: Icons.north_east,
         gradient: LinearGradient(
           colors: [AppColors.gradientAStart, AppColors.gradientAEnd],
@@ -252,8 +281,8 @@ class _PayContent extends StatelessWidget {
         onTap: onSend,
       ),
       _PayActionTile(
-        title: 'Receive',
-        subtitle: 'Receive ARRR',
+        title: 'Receive'.tr,
+        subtitle: 'Receive ARRR'.tr,
         icon: Icons.south_west,
         gradient: LinearGradient(
           colors: [AppColors.gradientBStart, AppColors.gradientBEnd],
@@ -263,8 +292,8 @@ class _PayContent extends StatelessWidget {
         onTap: onReceive,
       ),
       _PayActionTile(
-        title: 'Buy',
-        subtitle: 'Buy ARRR',
+        title: 'Buy'.tr,
+        subtitle: 'Buy ARRR'.tr,
         icon: Icons.shopping_bag,
         gradient: LinearGradient(
           colors: [AppColors.highlight, AppColors.warning],
@@ -274,8 +303,8 @@ class _PayContent extends StatelessWidget {
         onTap: onBuy,
       ),
       _PayActionTile(
-        title: 'Spend',
-        subtitle: 'Spend ARRR',
+        title: 'Spend'.tr,
+        subtitle: 'Spend ARRR'.tr,
         icon: Icons.credit_card,
         gradient: LinearGradient(
           colors: [AppColors.info, AppColors.gradientAEnd],
@@ -290,48 +319,77 @@ class _PayContent extends StatelessWidget {
       padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 720;
-          final spacing = isWide ? PSpacing.lg : PSpacing.md;
-          final crossAxisCount = constraints.maxWidth >= 380 ? 2 : 1;
-          final maxContentWidth = crossAxisCount == 2
-              ? (constraints.maxWidth > 980 ? 980.0 : constraints.maxWidth)
-              : (constraints.maxWidth > 520 ? 520.0 : constraints.maxWidth);
+          final spacing = constraints.maxWidth >= 900
+              ? PSpacing.lg
+              : PSpacing.md;
+
+          if (isDesktopPlatform) {
+            const crossAxisCount = 2;
+            final tileWidth =
+                (constraints.maxWidth - spacing * (crossAxisCount - 1)) /
+                crossAxisCount;
+            final viewportHeight = constraints.hasBoundedHeight
+                ? constraints.maxHeight
+                : (tileWidth * 1.6) + spacing;
+            final tileHeight = ((viewportHeight - spacing) / 2).clamp(
+              150.0,
+              520.0,
+            );
+            final aspectRatio = tileWidth / tileHeight;
+            final compactDesktop = tileWidth < 280 || tileHeight < 190;
+
+            return GridView.builder(
+              padding: EdgeInsets.zero,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: tiles.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: spacing,
+                mainAxisSpacing: spacing,
+                childAspectRatio: aspectRatio,
+              ),
+              itemBuilder: (context, index) {
+                return _PayActionTile(
+                  title: tiles[index].title,
+                  subtitle: tiles[index].subtitle,
+                  icon: tiles[index].icon,
+                  gradient: tiles[index].gradient,
+                  onTap: tiles[index].onTap,
+                  compact: compactDesktop,
+                  isDesktop: !compactDesktop,
+                );
+              },
+            );
+          }
+
+          final crossAxisCount = constraints.maxWidth >= 560 ? 2 : 1;
           final tileWidth =
-              (maxContentWidth - (spacing * (crossAxisCount - 1))) /
+              (constraints.maxWidth - (spacing * (crossAxisCount - 1))) /
               crossAxisCount;
-          final tileHeight = (tileWidth * (isWide ? 0.78 : 0.86)).clamp(
-            168.0,
-            248.0,
-          );
+          final tileHeight = (tileWidth * 0.86).clamp(168.0, 360.0);
           final aspectRatio = tileWidth / tileHeight;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.only(bottom: PSpacing.xl),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxContentWidth),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: tiles.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    crossAxisSpacing: spacing,
-                    mainAxisSpacing: spacing,
-                    childAspectRatio: aspectRatio,
-                  ),
-                  itemBuilder: (context, index) {
-                    return _PayActionTile(
-                      title: tiles[index].title,
-                      subtitle: tiles[index].subtitle,
-                      icon: tiles[index].icon,
-                      gradient: tiles[index].gradient,
-                      onTap: tiles[index].onTap,
-                      isDesktop: isWide,
-                    );
-                  },
-                ),
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: tiles.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: spacing,
+                mainAxisSpacing: spacing,
+                childAspectRatio: aspectRatio,
               ),
+              itemBuilder: (context, index) {
+                return _PayActionTile(
+                  title: tiles[index].title,
+                  subtitle: tiles[index].subtitle,
+                  icon: tiles[index].icon,
+                  gradient: tiles[index].gradient,
+                  onTap: tiles[index].onTap,
+                );
+              },
             ),
           );
         },

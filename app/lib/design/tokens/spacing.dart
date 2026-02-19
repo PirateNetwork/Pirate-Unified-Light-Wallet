@@ -255,12 +255,8 @@ class PSpacing {
   }
 
   /// Returns standard screen padding with responsive gutters.
-  static EdgeInsets screenPadding(
-    double screenWidth, {
-    double vertical = lg,
-  }) {
+  static EdgeInsets screenPadding(double screenWidth, {double vertical = lg}) {
     final gutter = responsiveGutter(screenWidth);
     return EdgeInsets.fromLTRB(gutter, vertical, gutter, vertical);
   }
 }
-

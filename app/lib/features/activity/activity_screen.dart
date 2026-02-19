@@ -18,6 +18,7 @@ import '../../ui/molecules/transaction_row_v2.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 enum ActivityFilter { all, sent, received, pending }
 
@@ -129,7 +130,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             if (index == 0) {
               return PInput(
                 controller: _searchController,
-                label: 'Search',
+                label: 'Search'.tr,
                 hint: 'Search activity',
                 prefixIcon: const Icon(Icons.search),
                 textInputAction: TextInputAction.search,
@@ -193,18 +194,18 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
         return content;
       }
       return PScaffold(
-        title: 'Activity',
+        title: 'Activity'.tr,
         useSafeArea: false,
-        appBar: PAppBar(title: 'Activity', actions: appBarActions),
+        appBar: PAppBar(title: 'Activity'.tr, actions: appBarActions),
         body: content,
       );
     }
 
     return PScaffold(
-      title: 'Activity',
+      title: 'Activity'.tr,
       appBar: isDesktop
           ? null
-          : PAppBar(title: 'Activity', actions: appBarActions),
+          : PAppBar(title: 'Activity'.tr, actions: appBarActions),
       body: content,
     );
   }
@@ -297,7 +298,7 @@ class _ActivityEmptyState extends StatelessWidget {
             Icon(Icons.receipt_long, size: 48, color: AppColors.textTertiary),
             const SizedBox(height: PSpacing.md),
             Text(
-              'Nothing here yet.',
+              'Nothing here yet.'.tr,
               style: PTypography.titleMedium(color: AppColors.textPrimary),
             ),
           ],
@@ -326,7 +327,7 @@ class _ActivityErrorState extends StatelessWidget {
             Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: PSpacing.md),
             Text(
-              'Unable to load activity',
+              'Unable to load activity'.tr,
               style: PTypography.titleMedium(color: AppColors.textPrimary),
             ),
             const SizedBox(height: PSpacing.xs),

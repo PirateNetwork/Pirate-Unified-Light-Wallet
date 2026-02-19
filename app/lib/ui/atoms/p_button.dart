@@ -17,8 +17,8 @@ class PButton extends StatefulWidget {
     bool? isLoading,
     this.icon,
     super.key,
-  })  : loading = isLoading ?? loading ?? false,
-        assert(child != null || text != null, 'Provide child or text');
+  }) : loading = isLoading ?? loading ?? false,
+       assert(child != null || text != null, 'Provide child or text');
 
   final VoidCallback? onPressed;
   final Widget? child;
@@ -45,83 +45,94 @@ class _PButtonState extends State<PButton> {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
-      cursor: isDisabled ? SystemMouseCursors.forbidden : SystemMouseCursors.click,
+      cursor: isDisabled
+          ? SystemMouseCursors.forbidden
+          : SystemMouseCursors.click,
       child: GestureDetector(
         onTapDown: (_) => setState(() => _isPressed = true),
         onTapUp: (_) => setState(() => _isPressed = false),
         onTapCancel: () => setState(() => _isPressed = false),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: widget.fullWidth ? double.infinity : null,
-          height: widget.size.height,
-          decoration: BoxDecoration(
-          gradient: widget.variant.gradient(
-            isDisabled: isDisabled,
-            isHovered: _isHovered,
-            isPressed: _isPressed,
-          ),
-          border: widget.variant.border(isDisabled: isDisabled),
-            borderRadius: BorderRadius.circular(PSpacing.radiusMD),
-            boxShadow: _isHovered && !isDisabled
-                ? [
-                    BoxShadow(
-                      color: AppColors.shadow,
-                      blurRadius: 8.0,
-                      offset: const Offset(0, 4),
+        child:
+            AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: widget.fullWidth ? double.infinity : null,
+                  height: widget.size.height,
+                  decoration: BoxDecoration(
+                    gradient: widget.variant.gradient(
+                      isDisabled: isDisabled,
+                      isHovered: _isHovered,
+                      isPressed: _isPressed,
                     ),
-                  ]
-                : null,
-          ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: isDisabled ? null : widget.onPressed,
-              borderRadius: BorderRadius.circular(PSpacing.radiusMD),
-              splashColor: AppColors.pressedOverlay,
-              highlightColor: AppColors.hoverOverlay,
-              child: Padding(
-                padding: widget.size.padding,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (widget.loading)
-                      SizedBox(
-                        width: widget.size.iconSize,
-                        height: widget.size.iconSize,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.0,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            widget.variant.textColor(isDisabled: isDisabled),
-                          ),
+                    border: widget.variant.border(isDisabled: isDisabled),
+                    borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+                    boxShadow: _isHovered && !isDisabled
+                        ? [
+                            BoxShadow(
+                              color: AppColors.shadow,
+                              blurRadius: 8.0,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: isDisabled ? null : widget.onPressed,
+                      borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+                      splashColor: AppColors.pressedOverlay,
+                      highlightColor: AppColors.hoverOverlay,
+                      child: Padding(
+                        padding: widget.size.padding,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (widget.loading)
+                              SizedBox(
+                                width: widget.size.iconSize,
+                                height: widget.size.iconSize,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.0,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    widget.variant.textColor(
+                                      isDisabled: isDisabled,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            else if (widget.icon != null) ...[
+                              IconTheme(
+                                data: IconThemeData(
+                                  color: widget.variant.textColor(
+                                    isDisabled: isDisabled,
+                                  ),
+                                  size: widget.size.iconSize,
+                                ),
+                                child: widget.icon!,
+                              ),
+                              SizedBox(width: PSpacing.iconTextGap),
+                            ],
+                            DefaultTextStyle(
+                              style: widget.size.textStyle.copyWith(
+                                color: widget.variant.textColor(
+                                  isDisabled: isDisabled,
+                                ),
+                              ),
+                              child: contentChild,
+                            ),
+                          ],
                         ),
-                      )
-                    else if (widget.icon != null) ...[
-                      IconTheme(
-                        data: IconThemeData(
-          color: widget.variant.textColor(isDisabled: isDisabled),
-                          size: widget.size.iconSize,
-                        ),
-                        child: widget.icon!,
                       ),
-                      SizedBox(width: PSpacing.iconTextGap),
-                    ],
-                    DefaultTextStyle(
-                      style: widget.size.textStyle.copyWith(
-                        color: widget.variant.textColor(isDisabled: isDisabled),
-                      ),
-                      child: contentChild,
                     ),
-                  ],
+                  ),
+                )
+                .animate(target: _isPressed ? 1 : 0)
+                .scaleXY(
+                  begin: 1.0,
+                  end: 0.95,
+                  duration: const Duration(milliseconds: 100),
                 ),
-              ),
-            ),
-          ),
-        ).animate(target: _isPressed ? 1 : 0).scaleXY(
-          begin: 1.0,
-          end: 0.95,
-          duration: const Duration(milliseconds: 100),
-        ),
       ),
     );
   }
@@ -145,19 +156,13 @@ enum PButtonVariant {
     switch (this) {
       case PButtonVariant.primary:
         return LinearGradient(
-          colors: [
-            AppColors.gradientAStart,
-            AppColors.gradientAEnd,
-          ],
+          colors: [AppColors.gradientAStart, AppColors.gradientAEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
       case PButtonVariant.secondary:
         return LinearGradient(
-          colors: [
-            AppColors.gradientBStart,
-            AppColors.gradientBEnd,
-          ],
+          colors: [AppColors.gradientBStart, AppColors.gradientBEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
@@ -289,17 +294,16 @@ class _PIconButtonState extends State<PIconButton> {
           icon: widget.icon,
           onPressed: widget.onPressed,
           iconSize: widget.size.iconSize,
-          color: widget.onPressed == null ? AppColors.textDisabled : AppColors.textPrimary,
+          color: widget.onPressed == null
+              ? AppColors.textDisabled
+              : AppColors.textPrimary,
           padding: EdgeInsets.zero,
         ),
       ),
     );
 
     if (widget.tooltip != null) {
-      return Tooltip(
-        message: widget.tooltip,
-        child: button,
-      );
+      return Tooltip(message: widget.tooltip, child: button);
     }
 
     return button;
@@ -334,4 +338,3 @@ enum PIconButtonSize {
     }
   }
 }
-

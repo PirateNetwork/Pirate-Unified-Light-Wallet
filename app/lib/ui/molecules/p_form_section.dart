@@ -22,10 +22,7 @@ class PFormSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title,
-          style: PTypography.heading5(color: AppColors.textPrimary),
-        ),
+        Text(title, style: PTypography.heading5(color: AppColors.textPrimary)),
         if (description != null) ...[
           SizedBox(height: PSpacing.xs),
           Text(
@@ -39,7 +36,8 @@ class PFormSection extends StatelessWidget {
           return Column(
             children: [
               child,
-              if (index < children.length - 1) SizedBox(height: PSpacing.formFieldGap),
+              if (index < children.length - 1)
+                SizedBox(height: PSpacing.formFieldGap),
             ],
           );
         }),
@@ -47,4 +45,3 @@ class PFormSection extends StatelessWidget {
     );
   }
 }
-

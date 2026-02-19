@@ -5,6 +5,7 @@ import '../../../ui/organisms/p_hero_header.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/molecules/p_list_tile.dart';
 import '../../../ui/molecules/p_form_section.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Showcase Cards Screen
 class ShowcaseCardsScreen extends StatelessWidget {
@@ -13,33 +14,33 @@ class ShowcaseCardsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Cards Showcase',
+      title: 'Cards Showcase'.tr,
       body: SingleChildScrollView(
         padding: PSpacing.screenPadding(MediaQuery.of(context).size.width),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             PHeroHeader(
-              title: 'Cards & Lists',
-              subtitle: 'Card components and list tiles',
+              title: 'Cards & Lists'.tr,
+              subtitle: 'Card components and list tiles'.tr,
             ),
             SizedBox(height: PSpacing.xl),
-            
+
             // Basic Cards
             PFormSection(
-              title: 'Basic Cards',
+              title: 'Basic Cards'.tr,
               children: [
                 PCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Card Title',
+                        'Card Title'.tr,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       SizedBox(height: PSpacing.sm),
                       Text(
-                        'This is a basic card with some content inside.',
+                        'This is a basic card with some content inside.'.tr,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
@@ -51,12 +52,12 @@ class ShowcaseCardsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Elevated Card',
+                        'Elevated Card'.tr,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       SizedBox(height: PSpacing.sm),
                       Text(
-                        'This card has elevated background.',
+                        'This card has elevated background.'.tr,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
@@ -68,12 +69,12 @@ class ShowcaseCardsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Clickable Card',
+                        'Clickable Card'.tr,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       SizedBox(height: PSpacing.sm),
                       Text(
-                        'This card is interactive with hover effects.',
+                        'This card is interactive with hover effects.'.tr,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
@@ -81,34 +82,34 @@ class ShowcaseCardsScreen extends StatelessWidget {
                 ),
               ],
             ),
-            
+
             SizedBox(height: PSpacing.sectionGap),
-            
+
             // List Tiles
             PFormSection(
-              title: 'List Tiles',
+              title: 'List Tiles'.tr,
               children: [
                 PCard(
                   padding: EdgeInsets.zero,
                   child: Column(
                     children: [
                       PListTile(
-                        title: 'List Item 1',
-                        subtitle: 'With leading and trailing icons',
+                        title: 'List Item 1'.tr,
+                        subtitle: 'With leading and trailing icons'.tr,
                         leading: const Icon(Icons.inbox),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {},
                       ),
                       PListTile(
-                        title: 'List Item 2',
-                        subtitle: 'With subtitle text',
+                        title: 'List Item 2'.tr,
+                        subtitle: 'With subtitle text'.tr,
                         leading: const Icon(Icons.favorite),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {},
                       ),
-                      const PListTile(
-                        title: 'Disabled Item',
-                        subtitle: 'This item is disabled',
+                      PListTile(
+                        title: 'Disabled Item'.tr,
+                        subtitle: 'This item is disabled'.tr,
                         leading: Icon(Icons.block),
                         enabled: false,
                       ),
@@ -123,4 +124,3 @@ class ShowcaseCardsScreen extends StatelessWidget {
     );
   }
 }
-

@@ -30,28 +30,24 @@ class PHeroHeader extends StatelessWidget {
           ? BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  (gradientStart ?? AppColors.gradientAStart)
-                      .withValues(alpha: 0.1),
-                  (gradientEnd ?? AppColors.gradientAEnd)
-                      .withValues(alpha: 0.05),
+                  (gradientStart ?? AppColors.gradientAStart).withValues(
+                    alpha: 0.1,
+                  ),
+                  (gradientEnd ?? AppColors.gradientAEnd).withValues(
+                    alpha: 0.05,
+                  ),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               border: Border(
-                bottom: BorderSide(
-                  color: AppColors.borderSubtle,
-                  width: 1.0,
-                ),
+                bottom: BorderSide(color: AppColors.borderSubtle, width: 1.0),
               ),
             )
           : BoxDecoration(
               color: AppColors.backgroundSurface,
               border: Border(
-                bottom: BorderSide(
-                  color: AppColors.borderSubtle,
-                  width: 1.0,
-                ),
+                bottom: BorderSide(color: AppColors.borderSubtle, width: 1.0),
               ),
             ),
       child: Column(
@@ -65,13 +61,17 @@ class PHeroHeader extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: PTypography.displaySmall(color: AppColors.textPrimary),
+                      style: PTypography.displaySmall(
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                     if (subtitle != null) ...[
                       SizedBox(height: PSpacing.sm),
                       Text(
                         subtitle!,
-                        style: PTypography.bodyLarge(color: AppColors.textSecondary),
+                        style: PTypography.bodyLarge(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ],
@@ -98,4 +98,3 @@ class PHeroHeader extends StatelessWidget {
     );
   }
 }
-

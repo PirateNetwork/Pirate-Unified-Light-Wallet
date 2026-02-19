@@ -47,9 +47,7 @@ class _PRadioState<T> extends State<PRadio<T>> {
               child: RadioGroup<T>(
                 groupValue: widget.groupValue,
                 onChanged: widget.onChanged ?? (_) {},
-                child: Radio<T>(
-                  value: widget.value,
-                ),
+                child: Radio<T>(value: widget.value),
               ),
             ),
             if (widget.label != null) ...[
@@ -72,16 +70,14 @@ class _PRadioState<T> extends State<PRadio<T>> {
 
     if (widget.label != null) {
       return InkWell(
-        onTap: widget.onChanged == null ? null : () => widget.onChanged?.call(widget.value),
+        onTap: widget.onChanged == null
+            ? null
+            : () => widget.onChanged?.call(widget.value),
         borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-        child: Padding(
-          padding: EdgeInsets.all(PSpacing.xs),
-          child: radio,
-        ),
+        child: Padding(padding: EdgeInsets.all(PSpacing.xs), child: radio),
       );
     }
 
     return radio;
   }
 }
-

@@ -64,35 +64,35 @@ class PTypography {
   /// Display Large - 72px/semiBold/tight
   /// Use for: Hero headlines, splash screens
   static TextStyle displayLarge({Color? color}) => TextStyle(
-        fontSize: 72.0,
-        fontWeight: semiBold,
-        height: lineHeightTight,
-        letterSpacing: letterSpacingTight,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 72.0,
+    fontWeight: semiBold,
+    height: lineHeightTight,
+    letterSpacing: letterSpacingTight,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Display Medium - 60px/semiBold/tight
   /// Use for: Large section headers
   static TextStyle displayMedium({Color? color}) => TextStyle(
-        fontSize: 60.0,
-        fontWeight: semiBold,
-        height: lineHeightTight,
-        letterSpacing: letterSpacingTight,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 60.0,
+    fontWeight: semiBold,
+    height: lineHeightTight,
+    letterSpacing: letterSpacingTight,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Display Small - 48px/semiBold/tight
   /// Use for: Page titles, modal headers
   static TextStyle displaySmall({Color? color}) => TextStyle(
-        fontSize: 48.0,
-        fontWeight: semiBold,
-        height: lineHeightTight,
-        letterSpacing: letterSpacingTight,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 48.0,
+    fontWeight: semiBold,
+    height: lineHeightTight,
+    letterSpacing: letterSpacingTight,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   // ============================================================================
   // Heading Styles - Section headers
@@ -101,68 +101,68 @@ class PTypography {
   /// Heading 1 - 40px/semiBold/tight
   /// Use for: Main page headings
   static TextStyle heading1({Color? color}) => TextStyle(
-        fontSize: 40.0,
-        fontWeight: semiBold,
-        height: lineHeightTight,
-        letterSpacing: letterSpacingTight,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 40.0,
+    fontWeight: semiBold,
+    height: lineHeightTight,
+    letterSpacing: letterSpacingTight,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Heading 2 - 32px/semiBold/tight
   /// Use for: Section headings
   static TextStyle heading2({Color? color}) => TextStyle(
-        fontSize: 32.0,
-        fontWeight: semiBold,
-        height: lineHeightTight,
-        letterSpacing: letterSpacingTight,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 32.0,
+    fontWeight: semiBold,
+    height: lineHeightTight,
+    letterSpacing: letterSpacingTight,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Heading 3 - 28px/semiBold/normal
   /// Use for: Subsection headings
   static TextStyle heading3({Color? color}) => TextStyle(
-        fontSize: 28.0,
-        fontWeight: semiBold,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 28.0,
+    fontWeight: semiBold,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Heading 4 - 24px/semiBold/normal
   /// Use for: Card titles, dialog titles
   static TextStyle heading4({Color? color}) => TextStyle(
-        fontSize: 24.0,
-        fontWeight: semiBold,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 24.0,
+    fontWeight: semiBold,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Heading 5 - 20px/semiBold/normal
   /// Use for: List headers, form sections
   static TextStyle heading5({Color? color}) => TextStyle(
-        fontSize: 20.0,
-        fontWeight: semiBold,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 20.0,
+    fontWeight: semiBold,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Heading 6 - 18px/semiBold/normal
   /// Use for: Small section headers
   static TextStyle heading6({Color? color}) => TextStyle(
-        fontSize: 18.0,
-        fontWeight: semiBold,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 18.0,
+    fontWeight: semiBold,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   // ============================================================================
   // Title Styles - Inline emphasis
@@ -171,35 +171,35 @@ class PTypography {
   /// Title Large - 22px/medium/normal
   /// Use for: List item titles, prominent labels
   static TextStyle titleLarge({Color? color}) => TextStyle(
-        fontSize: 22.0,
-        fontWeight: medium,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 22.0,
+    fontWeight: medium,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Title Medium - 18px/medium/normal
   /// Use for: Card subtitles, secondary headers
   static TextStyle titleMedium({Color? color}) => TextStyle(
-        fontSize: 18.0,
-        fontWeight: medium,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 18.0,
+    fontWeight: medium,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Title Small - 16px/medium/normal
   /// Use for: List subtitles, form labels
   static TextStyle titleSmall({Color? color}) => TextStyle(
-        fontSize: 16.0,
-        fontWeight: medium,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 16.0,
+    fontWeight: medium,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   // ============================================================================
   // Body Styles - Content text
@@ -208,35 +208,35 @@ class PTypography {
   /// Body Large - 18px/regular/relaxed
   /// Use for: Long-form content, articles
   static TextStyle bodyLarge({Color? color}) => TextStyle(
-        fontSize: 18.0,
-        fontWeight: regular,
-        height: lineHeightRelaxed,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 18.0,
+    fontWeight: regular,
+    height: lineHeightRelaxed,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Body Medium - 16px/regular/normal
   /// Use for: Standard body text, descriptions
   static TextStyle bodyMedium({Color? color}) => TextStyle(
-        fontSize: 16.0,
-        fontWeight: regular,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 16.0,
+    fontWeight: regular,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Body Small - 14px/regular/normal
   /// Use for: Secondary text, captions
   static TextStyle bodySmall({Color? color}) => TextStyle(
-        fontSize: 14.0,
-        fontWeight: regular,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 14.0,
+    fontWeight: regular,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   // ============================================================================
   // Label Styles - UI elements
@@ -245,35 +245,35 @@ class PTypography {
   /// Label Large - 16px/medium/normal
   /// Use for: Button text, tab labels
   static TextStyle labelLarge({Color? color}) => TextStyle(
-        fontSize: 16.0,
-        fontWeight: medium,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingWide,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 16.0,
+    fontWeight: medium,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingWide,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Label Medium - 14px/medium/normal
   /// Use for: Input labels, chip labels
   static TextStyle labelMedium({Color? color}) => TextStyle(
-        fontSize: 14.0,
-        fontWeight: medium,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingWide,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 14.0,
+    fontWeight: medium,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingWide,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Label Small - 12px/medium/normal
   /// Use for: Badges, tags, metadata
   static TextStyle labelSmall({Color? color}) => TextStyle(
-        fontSize: 12.0,
-        fontWeight: medium,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingWide,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 12.0,
+    fontWeight: medium,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingWide,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   // ============================================================================
   // Caption Styles - Smallest text
@@ -282,24 +282,24 @@ class PTypography {
   /// Caption - 12px/regular/normal
   /// Use for: Helper text, footnotes
   static TextStyle caption({Color? color}) => TextStyle(
-        fontSize: 12.0,
-        fontWeight: regular,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingWide,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 12.0,
+    fontWeight: regular,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingWide,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Overline - 11px/medium/extraWide (ALL CAPS)
   /// Use for: Category labels, section markers
   static TextStyle overline({Color? color}) => TextStyle(
-        fontSize: 11.0,
-        fontWeight: medium,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingExtraWide,
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 11.0,
+    fontWeight: medium,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingExtraWide,
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   // ============================================================================
   // Monospace Styles - Code and data
@@ -308,35 +308,35 @@ class PTypography {
   /// Code Large - 16px/regular/relaxed
   /// Use for: Code blocks, terminal output
   static TextStyle codeLarge({Color? color}) => TextStyle(
-        fontSize: 16.0,
-        fontWeight: regular,
-        height: lineHeightRelaxed,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyMono,
-      );
+    fontSize: 16.0,
+    fontWeight: regular,
+    height: lineHeightRelaxed,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyMono,
+  );
 
   /// Code Medium - 14px/regular/relaxed
   /// Use for: Inline code, addresses, hashes
   static TextStyle codeMedium({Color? color}) => TextStyle(
-        fontSize: 14.0,
-        fontWeight: regular,
-        height: lineHeightRelaxed,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyMono,
-      );
+    fontSize: 14.0,
+    fontWeight: regular,
+    height: lineHeightRelaxed,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyMono,
+  );
 
   /// Code Small - 12px/regular/relaxed
   /// Use for: Small data displays, tooltips
   static TextStyle codeSmall({Color? color}) => TextStyle(
-        fontSize: 12.0,
-        fontWeight: regular,
-        height: lineHeightRelaxed,
-        letterSpacing: letterSpacingNormal,
-        color: color,
-        fontFamily: fontFamilyMono,
-      );
+    fontSize: 12.0,
+    fontWeight: regular,
+    height: lineHeightRelaxed,
+    letterSpacing: letterSpacingNormal,
+    color: color,
+    fontFamily: fontFamilyMono,
+  );
 
   // ============================================================================
   // Number Styles - Tabular figures
@@ -345,38 +345,38 @@ class PTypography {
   /// Number Large - 24px/semiBold/tight (tabular)
   /// Use for: Balance displays, large amounts
   static TextStyle numberLarge({Color? color}) => TextStyle(
-        fontSize: 24.0,
-        fontWeight: semiBold,
-        height: lineHeightTight,
-        letterSpacing: letterSpacingNormal,
-        fontFeatures: [FontFeature.tabularFigures()],
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 24.0,
+    fontWeight: semiBold,
+    height: lineHeightTight,
+    letterSpacing: letterSpacingNormal,
+    fontFeatures: [FontFeature.tabularFigures()],
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Number Medium - 18px/medium/normal (tabular)
   /// Use for: Transaction amounts, prices
   static TextStyle numberMedium({Color? color}) => TextStyle(
-        fontSize: 18.0,
-        fontWeight: medium,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        fontFeatures: [FontFeature.tabularFigures()],
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 18.0,
+    fontWeight: medium,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    fontFeatures: [FontFeature.tabularFigures()],
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   /// Number Small - 14px/medium/normal (tabular)
   /// Use for: Small amounts, percentages
   static TextStyle numberSmall({Color? color}) => TextStyle(
-        fontSize: 14.0,
-        fontWeight: medium,
-        height: lineHeightNormal,
-        letterSpacing: letterSpacingNormal,
-        fontFeatures: [FontFeature.tabularFigures()],
-        color: color,
-        fontFamily: fontFamilyUI,
-      );
+    fontSize: 14.0,
+    fontWeight: medium,
+    height: lineHeightNormal,
+    letterSpacing: letterSpacingNormal,
+    fontFeatures: [FontFeature.tabularFigures()],
+    color: color,
+    fontFamily: fontFamilyUI,
+  );
 
   // ============================================================================
   // Utility Methods
@@ -412,4 +412,3 @@ class PTypography {
     return style.copyWith(fontSize: (style.fontSize ?? 16.0) * factor);
   }
 }
-

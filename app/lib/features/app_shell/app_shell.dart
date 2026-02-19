@@ -15,6 +15,7 @@ import '../../ui/organisms/p_scaffold.dart';
 import '../pay/pay_screen.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/services/address_rotation_service.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// App shell with persistent navigation.
 class AppShell extends ConsumerWidget {
@@ -26,27 +27,27 @@ class AppShell extends ConsumerWidget {
   bool get _isDesktop =>
       Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
-  static const List<PNavDestination> _destinations = [
+  static final List<PNavDestination> _destinations = [
     PNavDestination(
       icon: Icons.home_outlined,
       selectedIcon: Icons.home,
-      label: 'Home',
+      label: 'Home'.tr,
     ),
     PNavDestination(
       icon: Icons.payments_outlined,
       selectedIcon: Icons.payments,
-      label: 'Pay',
+      label: 'Pay'.tr,
       isPay: true,
     ),
     PNavDestination(
       icon: Icons.receipt_long_outlined,
       selectedIcon: Icons.receipt_long,
-      label: 'Activity',
+      label: 'Activity'.tr,
     ),
     PNavDestination(
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings,
-      label: 'Settings',
+      label: 'Settings'.tr,
     ),
   ];
 
@@ -119,9 +120,9 @@ class AppShell extends ConsumerWidget {
       return null;
     }
     if (path.startsWith('/pay')) {
-      return const PAppBar(
-        title: 'Pay',
-        subtitle: 'Send, receive, buy, or spend in a few taps.',
+      return PAppBar(
+        title: 'Pay'.tr,
+        subtitle: 'Send, receive, buy, or spend in a few taps.'.tr,
         actions: [
           ConnectionStatusIndicator(full: true),
           WalletSwitcherButton(compact: true),
@@ -129,8 +130,8 @@ class AppShell extends ConsumerWidget {
       );
     }
     if (path.startsWith('/activity')) {
-      return const PAppBar(
-        title: 'Activity',
+      return PAppBar(
+        title: 'Activity'.tr,
         actions: [
           ConnectionStatusIndicator(full: true),
           WalletSwitcherButton(compact: true),
@@ -138,9 +139,9 @@ class AppShell extends ConsumerWidget {
       );
     }
     if (path.startsWith('/settings')) {
-      return const PAppBar(
-        title: 'Settings',
-        subtitle: 'Security and privacy controls.',
+      return PAppBar(
+        title: 'Settings'.tr,
+        subtitle: 'Security and privacy controls.'.tr,
         actions: [
           ConnectionStatusIndicator(full: true),
           WalletSwitcherButton(compact: true),
@@ -197,7 +198,7 @@ class AppShell extends ConsumerWidget {
           )
         : content;
     return PScaffold(
-      title: 'Pirate Wallet',
+      title: 'Pirate Wallet'.tr,
       useSafeArea: false,
       body: body,
       bottomNavigationBar: _isDesktop ? null : nav,

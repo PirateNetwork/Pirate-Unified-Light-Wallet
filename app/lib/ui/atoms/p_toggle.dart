@@ -29,7 +29,9 @@ class _PToggleState extends State<PToggle> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: InkWell(
-        onTap: widget.onChanged == null ? null : () => widget.onChanged?.call(!widget.value),
+        onTap: widget.onChanged == null
+            ? null
+            : () => widget.onChanged?.call(!widget.value),
         borderRadius: BorderRadius.circular(PSpacing.radiusSM),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
@@ -56,10 +58,7 @@ class _PToggleState extends State<PToggle> {
                 ),
                 SizedBox(width: PSpacing.md),
               ],
-              Switch(
-                value: widget.value,
-                onChanged: widget.onChanged,
-              ),
+              Switch(value: widget.value, onChanged: widget.onChanged),
             ],
           ),
         ),
@@ -67,4 +66,3 @@ class _PToggleState extends State<PToggle> {
     );
   }
 }
-

@@ -12,6 +12,7 @@ import '../../ui/atoms/p_text_button.dart';
 import '../../ui/molecules/p_dialog.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Duress passphrase setup screen (formerly panic PIN).
 class PanicPinScreen extends ConsumerStatefulWidget {
@@ -60,8 +61,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
           _showSetup = !_hasExisting;
           _isLoading = false;
           if (hasConfigured && !hasStored) {
-            _error =
-                'Duress passphrase needs reconfiguration on this device.';
+            _error = 'Duress passphrase needs reconfiguration on this device.';
           }
         });
       }
@@ -81,20 +81,20 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return PScaffold(
-        title: 'Duress Passphrase',
-        appBar: const PAppBar(
-          title: 'Duress Passphrase',
-          subtitle: 'Preparing decoy vault access',
+        title: 'Duress Passphrase'.tr,
+        appBar: PAppBar(
+          title: 'Duress Passphrase'.tr,
+          subtitle: 'Preparing decoy vault access'.tr,
         ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return PScaffold(
-      title: 'Duress Passphrase',
-      appBar: const PAppBar(
-        title: 'Duress Passphrase',
-        subtitle: 'Configure decoy vault access',
+      title: 'Duress Passphrase'.tr,
+      appBar: PAppBar(
+        title: 'Duress Passphrase'.tr,
+        subtitle: 'Configure decoy vault access'.tr,
         showBackButton: true,
       ),
       body: SafeArea(
@@ -114,20 +114,17 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            Icons.emergency,
-            size: 80,
-            color: AppColors.warning,
-          ),
+          Icon(Icons.emergency, size: 80, color: AppColors.warning),
           const SizedBox(height: PSpacing.xl),
           Text(
-            'Set duress passphrase',
+            'Set duress passphrase'.tr,
             style: PTypography.heading2(color: AppColors.textPrimary),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: PSpacing.md),
           Text(
-            'If forced to unlock your wallet, enter the duress passphrase to open an empty wallet.',
+            'If forced to unlock your wallet, enter the duress passphrase to open an empty wallet.'
+                .tr,
             style: PTypography.bodyMedium(color: AppColors.textSecondary),
             textAlign: TextAlign.center,
           ),
@@ -136,11 +133,11 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
           const SizedBox(height: PSpacing.lg),
           SwitchListTile(
             title: Text(
-              'Use a custom duress passphrase',
+              'Use a custom duress passphrase'.tr,
               style: PTypography.bodyLarge(color: AppColors.textPrimary),
             ),
             subtitle: Text(
-              'If off, your duress passphrase is your passphrase reversed.',
+              'If off, your duress passphrase is your passphrase reversed.'.tr,
               style: PTypography.bodySmall(color: AppColors.textSecondary),
             ),
             value: _useCustom,
@@ -159,7 +156,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
             const SizedBox(height: PSpacing.md),
             PInput(
               controller: _customController,
-              label: 'Custom duress passphrase',
+              label: 'Custom duress passphrase'.tr,
               hint: 'Enter a duress passphrase',
               obscureText: _obscureCustom,
               autocorrect: false,
@@ -179,12 +176,13 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
             const SizedBox(height: PSpacing.md),
             PInput(
               controller: _confirmController,
-              label: 'Confirm duress passphrase',
+              label: 'Confirm duress passphrase'.tr,
               hint: 'Re-enter to confirm',
               obscureText: _obscureConfirm,
               autocorrect: false,
               enableSuggestions: false,
-              errorText: _confirmController.text.isNotEmpty &&
+              errorText:
+                  _confirmController.text.isNotEmpty &&
                       _confirmController.text != _customController.text
                   ? 'Passphrases do not match'
                   : null,
@@ -227,7 +225,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
           if (_hasExisting) ...[
             const SizedBox(height: PSpacing.md),
             PTextButton(
-              label: 'Cancel',
+              label: 'Cancel'.tr,
               variant: PTextButtonVariant.subtle,
               fullWidth: true,
               onPressed: () {
@@ -266,21 +264,25 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.check_circle, color: AppColors.success, size: 32),
+                      Icon(
+                        Icons.check_circle,
+                        color: AppColors.success,
+                        size: 32,
+                      ),
                       const SizedBox(width: PSpacing.md),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Duress passphrase configured',
+                              'Duress passphrase configured'.tr,
                               style: PTypography.bodyLarge(
                                 color: AppColors.textPrimary,
                               ).copyWith(fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: PSpacing.xs),
                             Text(
-                              'Entering it opens a decoy wallet.',
+                              'Entering it opens a decoy wallet.'.tr,
                               style: PTypography.bodyMedium(
                                 color: AppColors.textSecondary,
                               ),
@@ -335,7 +337,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
               Icon(Icons.info_outline, color: AppColors.info, size: 24),
               const SizedBox(width: PSpacing.sm),
               Text(
-                'How it works',
+                'How it works'.tr,
                 style: PTypography.bodyLarge(
                   color: AppColors.textPrimary,
                 ).copyWith(fontWeight: FontWeight.w600),
@@ -358,7 +360,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('- ', style: TextStyle(color: AppColors.info, fontSize: 16)),
+          Text('-'.tr, style: TextStyle(color: AppColors.info, fontSize: 16)),
           Expanded(
             child: Text(
               text,
@@ -411,7 +413,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Duress passphrase configured'),
+            content: Text('Duress passphrase configured'.tr),
             backgroundColor: AppColors.success,
           ),
         );
@@ -451,18 +453,15 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
   Future<void> _removeDuressPassphrase() async {
     final confirmed = await PDialog.show<bool>(
       context: context,
-      title: 'Remove duress passphrase?',
+      title: 'Remove duress passphrase?'.tr,
       content: Text(
-        'This disables the decoy wallet shortcut on this device.',
+        'This disables the decoy wallet shortcut on this device.'.tr,
         style: PTypography.bodyMedium(color: AppColors.textSecondary),
       ),
-      actions: const [
+      actions: [
+        PDialogAction(label: 'Cancel'.tr, variant: PButtonVariant.outline),
         PDialogAction(
-          label: 'Cancel',
-          variant: PButtonVariant.outline,
-        ),
-        PDialogAction(
-          label: 'Remove',
+          label: 'Remove'.tr,
           variant: PButtonVariant.danger,
           result: true,
         ),
@@ -480,7 +479,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Duress passphrase removed'),
+              content: Text('Duress passphrase removed'.tr),
               backgroundColor: AppColors.warning,
             ),
           );

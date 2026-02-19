@@ -55,10 +55,7 @@ class WindowEffects {
   static Future<void> _initializeMacOS() async {
     try {
       // macOS vibrancy
-      await Window.setEffect(
-        effect: WindowEffect.sidebar,
-        dark: true,
-      );
+      await Window.setEffect(effect: WindowEffect.sidebar, dark: true);
     } catch (e) {
       debugPrint('Vibrancy not supported: $e');
     }
@@ -133,4 +130,3 @@ class WindowEffects {
     await windowManager.hide();
   }
 }
-

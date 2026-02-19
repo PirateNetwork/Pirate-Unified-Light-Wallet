@@ -9,6 +9,7 @@ import '../../../features/settings/providers/preferences_providers.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 class CurrencyScreen extends ConsumerWidget {
   const CurrencyScreen({super.key});
@@ -18,10 +19,10 @@ class CurrencyScreen extends ConsumerWidget {
     final selected = ref.watch(currencyPreferenceProvider);
 
     return PScaffold(
-      title: 'Currency',
-      appBar: const PAppBar(
-        title: 'Currency',
-        subtitle: 'Choose the default display currency',
+      title: 'Currency'.tr,
+      appBar: PAppBar(
+        title: 'Currency'.tr,
+        subtitle: 'Choose the default display currency'.tr,
         showBackButton: true,
       ),
       body: ListView(

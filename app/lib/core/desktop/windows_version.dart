@@ -2,8 +2,9 @@ import 'dart:io';
 
 int? windowsBuildNumber() {
   if (!Platform.isWindows) return null;
-  final match =
-      RegExp(r'(\d+)\.(\d+)\.(\d+)').firstMatch(Platform.operatingSystemVersion);
+  final match = RegExp(
+    r'(\d+)\.(\d+)\.(\d+)',
+  ).firstMatch(Platform.operatingSystemVersion);
   if (match == null) return null;
   return int.tryParse(match.group(3) ?? '');
 }

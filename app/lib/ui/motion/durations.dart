@@ -33,4 +33,3 @@ class PDurations {
   /// Very slow - 600ms (loading states)
   static const Duration verySlow = Duration(milliseconds: 600);
 }
-

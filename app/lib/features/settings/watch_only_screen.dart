@@ -9,6 +9,7 @@ import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/security/screenshot_protection.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Watch-Only Wallet Management Screen
 class WatchOnlyScreen extends ConsumerStatefulWidget {
@@ -37,10 +38,10 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'View Only Wallets',
-      appBar: const PAppBar(
-        title: 'View Only Wallets',
-        subtitle: 'View only',
+      title: 'View Only Wallets'.tr,
+      appBar: PAppBar(
+        title: 'View Only Wallets'.tr,
+        subtitle: 'View only'.tr,
         showBackButton: true,
       ),
       body: ColoredBox(
@@ -120,13 +121,14 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
           Icon(Icons.visibility, size: 80, color: PirateTheme.accentColor),
           SizedBox(height: PirateSpacing.xl),
           Text(
-            'Export incoming viewing key',
+            'Export incoming viewing key'.tr,
             style: PirateTypography.h2.copyWith(color: Colors.white),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
-            'Share this viewing key to view incoming activity without spending access.',
+            'Share this viewing key to view incoming activity without spending access.'
+                .tr,
             style: PirateTypography.body.copyWith(color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),
@@ -138,7 +140,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
               onPressed: _exportIvk,
               loading: _isLoading,
               icon: const Icon(Icons.key),
-              child: const Text('Export Viewing Key'),
+              child: Text('Export Viewing Key'.tr),
             ),
           ] else ...[
             _buildIvkDisplay(),
@@ -147,11 +149,11 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
               onPressed: _copyIvk,
               icon: const Icon(Icons.copy),
               variant: PButtonVariant.secondary,
-              child: const Text('Copy to clipboard'),
+              child: Text('Copy to clipboard'.tr),
             ),
             SizedBox(height: PirateSpacing.md),
             PTextButton(
-              label: 'Clear',
+              label: 'Clear'.tr,
               onPressed: () {
                 _enableScreenshots();
                 setState(() => _ivk = null);
@@ -197,7 +199,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
               SizedBox(width: PirateSpacing.sm),
               Expanded(
                 child: Text(
-                  'About viewing keys',
+                  'About viewing keys'.tr,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: PirateTypography.bodyLarge.copyWith(
@@ -253,7 +255,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Incoming viewing key',
+            'Incoming viewing key'.tr,
             style: PirateTypography.bodySmall.copyWith(color: Colors.grey[400]),
           ),
           SizedBox(height: PirateSpacing.sm),
@@ -299,7 +301,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Viewing key copied'),
+          content: Text('Viewing key copied'.tr),
           backgroundColor: Colors.green[700],
         ),
       );
@@ -355,13 +357,13 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
           Icon(Icons.remove_red_eye, size: 80, color: Colors.orange),
           SizedBox(height: PirateSpacing.xl),
           Text(
-            'Import view only wallet',
+            'Import view only wallet'.tr,
             style: PirateTypography.h2.copyWith(color: Colors.white),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
-            'Create a view only wallet to view incoming activity.',
+            'Create a view only wallet to view incoming activity.'.tr,
             style: PirateTypography.body.copyWith(color: Colors.grey[400]),
             textAlign: TextAlign.center,
           ),
@@ -370,26 +372,27 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
           SizedBox(height: PirateSpacing.xl),
           PInput(
             controller: _nameController,
-            label: 'Wallet name',
+            label: 'Wallet name'.tr,
             hint: 'e.g., Savings (view only)',
           ),
           SizedBox(height: PirateSpacing.lg),
           PInput(
             controller: _ivkController,
-            label: 'Incoming viewing key',
+            label: 'Incoming viewing key'.tr,
             hint: 'Paste your viewing key',
             maxLines: 3,
           ),
           SizedBox(height: PirateSpacing.lg),
           PInput(
             controller: _birthdayController,
-            label: 'Birthday height (optional)',
+            label: 'Birthday height (optional)'.tr,
             hint: 'e.g., 4000000',
             keyboardType: TextInputType.number,
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
-            'Birthday height helps speed up initial sync. Leave blank to use the default height.',
+            'Birthday height helps speed up initial sync. Leave blank to use the default height.'
+                .tr,
             style: PirateTypography.bodySmall.copyWith(color: Colors.grey[500]),
           ),
           if (_error != null) ...[
@@ -413,7 +416,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
             onPressed: _importWallet,
             loading: _isLoading,
             icon: const Icon(Icons.add),
-            child: const Text('Import view only wallet'),
+            child: Text('Import view only wallet'.tr),
           ),
         ],
       ),
@@ -437,7 +440,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'View only',
+                  'View only'.tr,
                   style: PirateTypography.bodyLarge.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -445,7 +448,8 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
                 ),
                 SizedBox(height: PirateSpacing.xs),
                 Text(
-                  'View only wallets cannot spend. They only show incoming activity.',
+                  'View only wallets cannot spend. They only show incoming activity.'
+                      .tr,
                   style: PirateTypography.bodySmall.copyWith(
                     color: Colors.grey[400],
                   ),
@@ -501,7 +505,7 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('View only wallet imported.'),
+            content: Text('View only wallet imported.'.tr),
             backgroundColor: Colors.green[700],
           ),
         );

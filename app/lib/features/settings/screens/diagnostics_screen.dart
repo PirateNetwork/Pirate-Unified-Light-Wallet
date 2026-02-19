@@ -20,6 +20,7 @@ import '../../../ui/atoms/p_icon_button.dart';
 import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Diagnostics screen with real FFI integration
 class DiagnosticsScreen extends ConsumerStatefulWidget {
@@ -62,14 +63,14 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
 
   Future<void> _copyRedactedLogs(List<SyncLogEntryFfi> logs) async {
     final filteredLogs = _filterLogs(logs);
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceElevated,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          'Copy Redacted Logs?',
+          'Copy Redacted Logs?'.tr,
           style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
         ),
         content: Column(
@@ -77,14 +78,28 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'The following data will be automatically redacted:',
-              style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+              'The following data will be automatically redacted:'.tr,
+              style: AppTypography.body.copyWith(
+                color: AppColors.textSecondary,
+              ),
             ),
             const SizedBox(height: AppSpacing.sm),
-            _RedactionItem(label: 'Addresses', example: 'zs1abc... → [REDACTED_ADDRESS]'),
-            _RedactionItem(label: 'Hashes', example: '0xabc... → [REDACTED_HASH]'),
-            _RedactionItem(label: 'IP addresses', example: '192.168.1.1 → [REDACTED_IP]'),
-            _RedactionItem(label: 'Emails', example: 'user@... → [REDACTED_EMAIL]'),
+            _RedactionItem(
+              label: 'Addresses'.tr,
+              example: 'zs1abc... → [REDACTED_ADDRESS]',
+            ),
+            _RedactionItem(
+              label: 'Hashes'.tr,
+              example: '0xabc... → [REDACTED_HASH]',
+            ),
+            _RedactionItem(
+              label: 'IP addresses'.tr,
+              example: '192.168.1.1 → [REDACTED_IP]',
+            ),
+            _RedactionItem(
+              label: 'Emails'.tr,
+              example: 'user@... → [REDACTED_EMAIL]',
+            ),
             const SizedBox(height: AppSpacing.md),
             Container(
               padding: const EdgeInsets.all(AppSpacing.sm),
@@ -101,7 +116,8 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Logs are never sent automatically. You control what you share.',
+                      'Logs are never sent automatically. You control what you share.'
+                          .tr,
                       style: AppTypography.caption.copyWith(
                         color: AppColors.warning,
                       ),
@@ -114,12 +130,12 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
         ),
         actions: [
           PTextButton(
-            label: 'Cancel',
+            label: 'Cancel'.tr,
             onPressed: () => Navigator.of(context).pop(false),
             variant: PTextButtonVariant.subtle,
           ),
           PTextButton(
-            label: 'Copy',
+            label: 'Copy'.tr,
             onPressed: () => Navigator.of(context).pop(true),
           ),
         ],
@@ -127,7 +143,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
     );
 
     if (confirmed ?? false) {
-      final redactedLogs = filteredLogs.map((l) => l.toRedactedString()).join('\n');
+      final redactedLogs = filteredLogs
+          .map((l) => l.toRedactedString())
+          .join('\n');
 
       await Clipboard.setData(ClipboardData(text: redactedLogs));
       DeepSpaceHaptics.lightImpact();
@@ -141,7 +159,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
             ),
             backgroundColor: AppColors.surfaceElevated,
             action: SnackBarAction(
-              label: 'Done',
+              label: 'Done'.tr,
               textColor: AppColors.gradientAStart,
               onPressed: () {},
             ),
@@ -160,7 +178,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'No checkpoint available',
+            'No checkpoint available'.tr,
             style: AppTypography.body.copyWith(color: AppColors.textPrimary),
           ),
           backgroundColor: AppColors.error,
@@ -177,7 +195,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
         backgroundColor: AppColors.surfaceElevated,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          'Rescan from Checkpoint?',
+          'Rescan from Checkpoint?'.tr,
           style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
         ),
         content: Column(
@@ -185,11 +203,16 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This will:',
-              style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+              'This will:'.tr,
+              style: AppTypography.body.copyWith(
+                color: AppColors.textSecondary,
+              ),
             ),
             const SizedBox(height: AppSpacing.sm),
-              _ActionItem(text: 'Restore wallet state to height ${_formatHeight(checkpointHeight)}'),
+            _ActionItem(
+              text:
+                  'Restore wallet state to height ${_formatHeight(checkpointHeight)}',
+            ),
             _ActionItem(text: 'Remove transactions after this height'),
             _ActionItem(text: 'Re-scan blocks from checkpoint'),
             const SizedBox(height: AppSpacing.md),
@@ -202,7 +225,11 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.access_time, color: AppColors.textSecondary, size: 16),
+                  Icon(
+                    Icons.access_time,
+                    color: AppColors.textSecondary,
+                    size: 16,
+                  ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
@@ -231,7 +258,8 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Use this if sync appears stuck or corrupted. Your funds are safe.',
+                      'Use this if sync appears stuck or corrupted. Your funds are safe.'
+                          .tr,
                       style: AppTypography.caption.copyWith(
                         color: AppColors.warning,
                       ),
@@ -244,12 +272,12 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
         ),
         actions: [
           PTextButton(
-            label: 'Cancel',
+            label: 'Cancel'.tr,
             onPressed: () => Navigator.of(context).pop(false),
             variant: PTextButtonVariant.subtle,
           ),
           PTextButton(
-            label: 'Rescan',
+            label: 'Rescan'.tr,
             onPressed: () => Navigator.of(context).pop(true),
             variant: PTextButtonVariant.danger,
           ),
@@ -291,7 +319,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
             SnackBar(
               content: Text(
                 'Rescan started from height ${_formatHeight(checkpointHeight)}',
-                style: AppTypography.body.copyWith(color: AppColors.textPrimary),
+                style: AppTypography.body.copyWith(
+                  color: AppColors.textPrimary,
+                ),
               ),
               backgroundColor: AppColors.surfaceElevated,
             ),
@@ -306,7 +336,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
             SnackBar(
               content: Text(
                 'Rescan failed: $e',
-                style: AppTypography.body.copyWith(color: AppColors.textPrimary),
+                style: AppTypography.body.copyWith(
+                  color: AppColors.textPrimary,
+                ),
               ),
               backgroundColor: AppColors.error,
             ),
@@ -325,10 +357,10 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
     final logsAsync = ref.watch(syncLogsProvider);
 
     return PScaffold(
-      title: 'Diagnostics',
+      title: 'Diagnostics'.tr,
       appBar: PAppBar(
-        title: 'Diagnostics',
-        subtitle: 'Sync health & logs',
+        title: 'Diagnostics'.tr,
+        subtitle: 'Sync health & logs'.tr,
         actions: [
           PIconButton(
             icon: Icon(Icons.refresh, color: AppColors.textSecondary),
@@ -336,7 +368,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
               ref.read(refreshSyncLogsProvider)();
               ref.invalidate(lastCheckpointProvider);
             },
-            tooltip: 'Refresh logs',
+            tooltip: 'Refresh logs'.tr,
           ),
         ],
       ),
@@ -370,12 +402,14 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                     Icon(Icons.error_outline, size: 48, color: AppColors.error),
                     const SizedBox(height: AppSpacing.md),
                     Text(
-                      'Failed to load logs',
-                      style: AppTypography.body.copyWith(color: AppColors.textMuted),
+                      'Failed to load logs'.tr,
+                      style: AppTypography.body.copyWith(
+                        color: AppColors.textMuted,
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     PTextButton(
-                      label: 'Retry',
+                      label: 'Retry'.tr,
                       onPressed: () => ref.read(refreshSyncLogsProvider)(),
                     ),
                   ],
@@ -462,7 +496,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
             child: LinearProgressIndicator(
               value: status.percent / 100,
               backgroundColor: AppColors.surfaceElevated,
-              valueColor: AlwaysStoppedAnimation<Color>(AppColors.gradientAStart),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                AppColors.gradientAStart,
+              ),
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
@@ -473,15 +509,17 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                   'Height: ${_formatHeight(status.localHeight.toInt())}',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTypography.caption
-                      .copyWith(color: AppColors.textSecondary),
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
               if (status.eta != null && !isComplete)
                 Text(
                   'ETA: ${status.etaFormatted}',
-                  style: AppTypography.caption
-                      .copyWith(color: AppColors.textSecondary),
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
             ],
           ),
@@ -500,7 +538,10 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
     );
   }
 
-  Widget _buildCheckpointCardContent(api.CheckpointInfo? checkpoint, {bool isLoading = false}) {
+  Widget _buildCheckpointCardContent(
+    api.CheckpointInfo? checkpoint, {
+    bool isLoading = false,
+  }) {
     return Container(
       margin: const EdgeInsets.all(AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -541,7 +582,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Last Checkpoint',
+                  'Last Checkpoint'.tr,
                   style: AppTypography.caption.copyWith(
                     color: AppColors.textMuted,
                   ),
@@ -557,7 +598,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                 ),
                 if (checkpoint != null)
                   Text(
-                    _formatCheckpointTime(DateTime.fromMillisecondsSinceEpoch(checkpoint.timestamp)),
+                    _formatCheckpointTime(
+                      DateTime.fromMillisecondsSinceEpoch(checkpoint.timestamp),
+                    ),
                     style: AppTypography.caption.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -576,7 +619,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                'Valid',
+                'Valid'.tr,
                 style: AppTypography.caption.copyWith(
                   color: AppColors.success,
                   fontWeight: FontWeight.w600,
@@ -596,7 +639,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
         style: AppTypography.body.copyWith(color: AppColors.textPrimary),
         onChanged: (v) => setState(() => _searchQuery = v),
         decoration: InputDecoration(
-          hintText: 'Search logs...',
+          hintText: 'Search logs...'.tr,
           hintStyle: AppTypography.body.copyWith(color: AppColors.textMuted),
           prefixIcon: Icon(Icons.search, color: AppColors.textMuted),
           suffixIcon: _searchQuery.isNotEmpty
@@ -632,16 +675,18 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
         children: [
           _FilterChip(
-            label: 'All',
+            label: 'All'.tr,
             isSelected: _filterLevel == null,
             onTap: () => setState(() => _filterLevel = null),
           ),
-          ...SyncLogLevel.values.map((level) => _FilterChip(
-                label: level.label,
-                color: _getLogLevelColor(level),
-                isSelected: _filterLevel == level,
-                onTap: () => setState(() => _filterLevel = level),
-              )),
+          ...SyncLogLevel.values.map(
+            (level) => _FilterChip(
+              label: level.label,
+              color: _getLogLevelColor(level),
+              isSelected: _filterLevel == level,
+              onTap: () => setState(() => _filterLevel = level),
+            ),
+          ),
         ],
       ),
     );
@@ -666,17 +711,11 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.article_outlined,
-              size: 48,
-              color: AppColors.textMuted,
-            ),
+            Icon(Icons.article_outlined, size: 48, color: AppColors.textMuted),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'No logs found',
-              style: AppTypography.body.copyWith(
-                color: AppColors.textMuted,
-              ),
+              'No logs found'.tr,
+              style: AppTypography.body.copyWith(color: AppColors.textMuted),
             ),
           ],
         ),
@@ -702,9 +741,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.voidBlack,
-        border: Border(
-          top: BorderSide(color: AppColors.borderSubtle),
-        ),
+        border: Border(top: BorderSide(color: AppColors.borderSubtle)),
       ),
       child: SafeArea(
         top: false,
@@ -714,7 +751,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
               child: OutlinedButton.icon(
                 onPressed: logs.isEmpty ? null : () => _copyRedactedLogs(logs),
                 icon: Icon(Icons.copy, size: 18),
-                label: const Text('Copy Redacted Logs'),
+                label: Text('Copy Redacted Logs'.tr),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.textSecondary,
                   side: BorderSide(color: AppColors.borderSubtle),
@@ -748,7 +785,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                   : OutlinedButton.icon(
                       onPressed: hasCheckpoint ? _rebuildFromCheckpoint : null,
                       icon: Icon(Icons.replay, size: 18),
-                      label: const Text('Rescan'),
+                      label: Text('Rescan'.tr),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: hasCheckpoint
                             ? AppColors.warning
@@ -819,8 +856,7 @@ class _FilterChip extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: isSelected
-                ? (color ?? AppColors.gradientAStart)
-                    .withValues(alpha: 0.2)
+                ? (color ?? AppColors.gradientAStart).withValues(alpha: 0.2)
                 : AppColors.surfaceElevated,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
@@ -884,8 +920,8 @@ class _LogEntryTile extends StatelessWidget {
         color: log.level == SyncLogLevel.error
             ? AppColors.error.withValues(alpha: 0.05)
             : log.level == SyncLogLevel.warn
-                ? AppColors.warning.withValues(alpha: 0.05)
-                : Colors.transparent,
+            ? AppColors.warning.withValues(alpha: 0.05)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
@@ -961,11 +997,7 @@ class _RedactionItem extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Icon(
-            Icons.check,
-            size: 14,
-            color: AppColors.success,
-          ),
+          Icon(Icons.check, size: 14, color: AppColors.success),
           const SizedBox(width: 8),
           Text(
             '$label: ',
@@ -1002,10 +1034,8 @@ class _ActionItem extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '•',
-            style: AppTypography.body.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            '•'.tr,
+            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(width: 8),
           Expanded(

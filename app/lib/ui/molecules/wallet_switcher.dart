@@ -17,12 +17,10 @@ import '../atoms/p_input.dart';
 import '../atoms/p_text_button.dart';
 import '../molecules/p_bottom_sheet.dart';
 import '../molecules/p_dialog.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 class WalletSwitcherButton extends ConsumerWidget {
-  const WalletSwitcherButton({
-    super.key,
-    this.compact = false,
-  });
+  const WalletSwitcherButton({super.key, this.compact = false});
 
   final bool compact;
 
@@ -63,15 +61,15 @@ class WalletSwitcherButton extends ConsumerWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: (compact ? PTypography.labelSmall : PTypography.labelMedium)(
-                  color: AppColors.textPrimary,
-                ),
+                style: (compact
+                    ? PTypography.labelSmall
+                    : PTypography.labelMedium)(color: AppColors.textPrimary),
               ),
             ),
             if (isWatchOnly && !compact) ...[
               const SizedBox(width: PSpacing.xs),
-              const PBadge(
-                label: 'View',
+              PBadge(
+                label: 'View'.tr,
                 variant: PBadgeVariant.info,
                 size: PBadgeSize.small,
               ),
@@ -92,13 +90,10 @@ class WalletSwitcherButton extends ConsumerWidget {
     if (_isDesktop) {
       await PDialog.show<void>(
         context: context,
-        title: 'Wallets',
+        title: 'Wallets'.tr,
         content: const _WalletSwitcherContent(),
         actions: [
-          PDialogAction(
-            label: 'Close',
-            variant: PButtonVariant.outline,
-          ),
+          PDialogAction(label: 'Close'.tr, variant: PButtonVariant.outline),
         ],
       );
       return;
@@ -106,7 +101,7 @@ class WalletSwitcherButton extends ConsumerWidget {
 
     await PBottomSheet.show<void>(
       context: context,
-      title: 'Wallets',
+      title: 'Wallets'.tr,
       content: const _WalletSwitcherContent(),
     );
   }
@@ -170,7 +165,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
             ),
             const SizedBox(height: PSpacing.sm),
             PTextButton(
-              label: 'Import view only wallet',
+              label: 'Import view only wallet'.tr,
               trailingIcon: Icons.visibility_outlined,
               onPressed: () => _startWatchOnlyFlow(context, ref),
               fullWidth: true,
@@ -205,22 +200,16 @@ class _WalletSwitcherContent extends ConsumerWidget {
 
     final confirmed = await PDialog.show<bool>(
       context: context,
-      title: 'Rename wallet',
+      title: 'Rename wallet'.tr,
       content: PInput(
         controller: controller,
-        label: 'Wallet name',
+        label: 'Wallet name'.tr,
         hint: 'e.g. Savings',
         autofocus: true,
       ),
       actions: [
-        const PDialogAction(
-          label: 'Cancel',
-          variant: PButtonVariant.outline,
-        ),
-        PDialogAction<bool>(
-          label: 'Save',
-          result: true,
-        ),
+        PDialogAction(label: 'Cancel'.tr, variant: PButtonVariant.outline),
+        PDialogAction<bool>(label: 'Save'.tr, result: true),
       ],
     );
 
@@ -250,18 +239,15 @@ class _WalletSwitcherContent extends ConsumerWidget {
   ) async {
     final confirmed = await PDialog.show<bool>(
       context: context,
-      title: 'Remove wallet?',
+      title: 'Remove wallet?'.tr,
       content: Text(
         'This deletes "${wallet.name}" from this device. Make sure you have the seed saved if you want it back.',
         style: PTypography.bodyMedium(color: AppColors.textSecondary),
       ),
       actions: [
-        const PDialogAction(
-          label: 'Cancel',
-          variant: PButtonVariant.outline,
-        ),
+        PDialogAction(label: 'Cancel'.tr, variant: PButtonVariant.outline),
         PDialogAction<bool>(
-          label: 'Remove',
+          label: 'Remove'.tr,
           variant: PButtonVariant.danger,
           result: true,
         ),
@@ -321,8 +307,9 @@ class _WalletRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final background =
-        isActive ? AppColors.selectedBackground : AppColors.backgroundSurface;
+    final background = isActive
+        ? AppColors.selectedBackground
+        : AppColors.backgroundSurface;
     final border = isActive ? AppColors.selectedBorder : AppColors.borderSubtle;
 
     return InkWell(
@@ -351,9 +338,7 @@ class _WalletRow extends StatelessWidget {
                 children: [
                   Text(
                     wallet.name,
-                    style: PTypography.labelLarge(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: PTypography.labelLarge(color: AppColors.textPrimary),
                   ),
                   const SizedBox(height: PSpacing.xxs),
                   Text(
@@ -366,17 +351,14 @@ class _WalletRow extends StatelessWidget {
               ),
             ),
             if (isActive)
-              const PBadge(
-                label: 'Active',
+              PBadge(
+                label: 'Active'.tr,
                 variant: PBadgeVariant.success,
                 size: PBadgeSize.small,
               ),
             const SizedBox(width: PSpacing.xs),
             PopupMenuButton<_WalletAction>(
-              icon: Icon(
-                Icons.more_horiz,
-                color: AppColors.textSecondary,
-              ),
+              icon: Icon(Icons.more_horiz, color: AppColors.textSecondary),
               color: AppColors.backgroundElevated,
               onSelected: (action) {
                 switch (action) {
@@ -389,14 +371,14 @@ class _WalletRow extends StatelessWidget {
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: _WalletAction.rename,
-                  child: Text('Rename'),
+                  child: Text('Rename'.tr),
                 ),
                 PopupMenuItem(
                   value: _WalletAction.delete,
                   child: Text(
-                    'Remove',
+                    'Remove'.tr,
                     style: TextStyle(color: AppColors.error),
                   ),
                 ),
@@ -409,10 +391,7 @@ class _WalletRow extends StatelessWidget {
   }
 }
 
-enum _WalletAction {
-  rename,
-  delete,
-}
+enum _WalletAction { rename, delete }
 
 class _EmptyWalletState extends StatelessWidget {
   const _EmptyWalletState({required this.onAddWallet});
@@ -425,12 +404,12 @@ class _EmptyWalletState extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'No wallets yet.',
+          'No wallets yet.'.tr,
           style: PTypography.heading4(color: AppColors.textPrimary),
         ),
         const SizedBox(height: PSpacing.xs),
         Text(
-          'Create a new wallet or import an existing one.',
+          'Create a new wallet or import an existing one.'.tr,
           style: PTypography.bodyMedium(color: AppColors.textSecondary),
         ),
         const SizedBox(height: PSpacing.lg),
@@ -446,10 +425,7 @@ class _EmptyWalletState extends StatelessWidget {
 }
 
 class _WalletErrorState extends StatelessWidget {
-  const _WalletErrorState({
-    required this.message,
-    required this.onRetry,
-  });
+  const _WalletErrorState({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;
@@ -460,7 +436,7 @@ class _WalletErrorState extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Could not load wallets.',
+          'Could not load wallets.'.tr,
           style: PTypography.heading4(color: AppColors.textPrimary),
         ),
         const SizedBox(height: PSpacing.xs),

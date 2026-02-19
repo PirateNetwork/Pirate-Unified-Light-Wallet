@@ -4,6 +4,7 @@ import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../atoms/p_icon_button.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 class BalanceHero extends StatelessWidget {
   const BalanceHero({
@@ -115,7 +116,7 @@ class BalanceHero extends StatelessWidget {
                   PIconButton(
                     icon: Icon(Icons.swap_vert, color: AppColors.textSecondary),
                     onPressed: onSwapDisplay,
-                    tooltip: 'Swap balance display',
+                    tooltip: 'Swap balance display'.tr,
                     size: compact
                         ? PIconButtonSize.medium
                         : PIconButtonSize.large,

@@ -21,13 +21,11 @@ import '../../ui/organisms/p_scaffold.dart';
 import '../../ui/organisms/p_sliver_header.dart';
 import 'models/address_entry.dart';
 import 'providers/address_book_provider.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Address Book Detail Screen
 class AddressBookDetailScreen extends ConsumerStatefulWidget {
-  const AddressBookDetailScreen({
-    required this.entry,
-    super.key,
-  });
+  const AddressBookDetailScreen({required this.entry, super.key});
 
   final AddressEntry entry;
 
@@ -36,7 +34,8 @@ class AddressBookDetailScreen extends ConsumerStatefulWidget {
       _AddressBookDetailScreenState();
 }
 
-class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScreen> {
+class _AddressBookDetailScreenState
+    extends ConsumerState<AddressBookDetailScreen> {
   bool _showQR = false;
   bool _addressCopied = false;
   late AddressEntry _entry;
@@ -50,20 +49,20 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
   void _copyAddress() {
     Clipboard.setData(ClipboardData(text: _entry.address));
     DeepSpaceHaptics.lightImpact();
-    
+
     setState(() => _addressCopied = true);
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Address copied',
+          'Address copied'.tr,
           style: AppTypography.body.copyWith(color: AppColors.textPrimary),
         ),
         backgroundColor: AppColors.surfaceElevated,
         duration: const Duration(seconds: 2),
       ),
     );
-    
+
     // Reset copied state after 2 seconds
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
@@ -85,10 +84,10 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
           ),
         )
         .then((result) {
-      if (result is AddressEntry) {
-        setState(() => _entry = result);
-      }
-    });
+          if (result is AddressEntry) {
+            setState(() => _entry = result);
+          }
+        });
   }
 
   Future<void> _deleteEntry() async {
@@ -109,9 +108,12 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
 
   @override
   Widget build(BuildContext context) {
-    final gutter = AppSpacing.responsiveGutter(MediaQuery.of(context).size.width);
-    final sectionPadding =
-        AppSpacing.screenPadding(MediaQuery.of(context).size.width);
+    final gutter = AppSpacing.responsiveGutter(
+      MediaQuery.of(context).size.width,
+    );
+    final sectionPadding = AppSpacing.screenPadding(
+      MediaQuery.of(context).size.width,
+    );
     return PScaffold(
       title: _entry.label,
       body: CustomScrollView(
@@ -122,8 +124,7 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
               maxExtentHeight: 180,
               minExtentHeight: 120,
               builder: (context, shrinkOffset, {required overlapsContent}) {
-                final progress =
-                    (shrinkOffset / (180 - 120)).clamp(0.0, 1.0);
+                final progress = (shrinkOffset / (180 - 120)).clamp(0.0, 1.0);
                 return ColoredBox(
                   color: AppColors.voidBlack,
                   child: SafeArea(
@@ -143,7 +144,7 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
                               color: AppColors.textPrimary,
                             ),
                             onPressed: () => Navigator.of(context).pop(),
-                            tooltip: 'Back',
+                            tooltip: 'Back'.tr,
                           ),
                           const SizedBox(width: AppSpacing.md),
                           Expanded(
@@ -166,7 +167,7 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
                               color: AppColors.textSecondary,
                             ),
                             onPressed: _editEntry,
-                            tooltip: 'Edit',
+                            tooltip: 'Edit'.tr,
                           ),
                           PIconButton(
                             icon: Icon(
@@ -174,7 +175,7 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
                               color: AppColors.error,
                             ),
                             onPressed: _deleteEntry,
-                            tooltip: 'Delete',
+                            tooltip: 'Delete'.tr,
                           ),
                         ],
                       ),
@@ -247,19 +248,14 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
       decoration: BoxDecoration(
         color: AppColors.surfaceElevated,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.borderSubtle,
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Shielded address',
-            style: AppTypography.caption.copyWith(
-              color: AppColors.textMuted,
-            ),
+            'Shielded address'.tr,
+            style: AppTypography.caption.copyWith(color: AppColors.textMuted),
           ),
           const SizedBox(height: AppSpacing.sm),
           SelectableText(
@@ -302,7 +298,9 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
   Widget _buildQRSection() {
     return AnimatedCrossFade(
       duration: DeepSpaceDurations.normal,
-      crossFadeState: _showQR ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+      crossFadeState: _showQR
+          ? CrossFadeState.showSecond
+          : CrossFadeState.showFirst,
       firstChild: const SizedBox.shrink(),
       secondChild: Container(
         width: double.infinity,
@@ -331,10 +329,8 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'Scan to send to this address',
-              style: AppTypography.caption.copyWith(
-                color: Colors.grey[600],
-              ),
+              'Scan to send to this address'.tr,
+              style: AppTypography.caption.copyWith(color: Colors.grey[600]),
             ),
           ],
         ),
@@ -347,10 +343,8 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Notes',
-          style: AppTypography.caption.copyWith(
-            color: AppColors.textMuted,
-          ),
+          'Notes'.tr,
+          style: AppTypography.caption.copyWith(color: AppColors.textMuted),
         ),
         const SizedBox(height: AppSpacing.sm),
         Container(
@@ -359,16 +353,11 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
           decoration: BoxDecoration(
             color: AppColors.surfaceElevated,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppColors.borderSubtle,
-              width: 1,
-            ),
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
           ),
           child: Text(
             _entry.notes!,
-            style: AppTypography.body.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            style: AppTypography.body.copyWith(color: AppColors.textSecondary),
           ),
         ),
       ],
@@ -388,12 +377,12 @@ class _AddressBookDetailScreenState extends ConsumerState<AddressBookDetailScree
       child: Column(
         children: [
           _MetadataRow(
-            label: 'Created on',
+            label: 'Created on'.tr,
             value: dateFormat(_entry.createdAt),
           ),
           const SizedBox(height: AppSpacing.sm),
           _MetadataRow(
-            label: 'Updated on',
+            label: 'Updated on'.tr,
             value: dateFormat(_entry.updatedAt),
           ),
         ],
@@ -443,19 +432,12 @@ class _ActionChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: color.withValues(alpha: 0.3),
-              width: 1,
-            ),
+            border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 18,
-                color: color,
-              ),
+              Icon(icon, size: 18, color: color),
               const SizedBox(width: AppSpacing.xs),
               Text(
                 label,
@@ -473,10 +455,7 @@ class _ActionChip extends StatelessWidget {
 }
 
 class _MetadataRow extends StatelessWidget {
-  const _MetadataRow({
-    required this.label,
-    required this.value,
-  });
+  const _MetadataRow({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -490,9 +469,7 @@ class _MetadataRow extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: AppTypography.caption.copyWith(
-              color: AppColors.textMuted,
-            ),
+            style: AppTypography.caption.copyWith(color: AppColors.textMuted),
           ),
         ),
         const SizedBox(width: AppSpacing.sm),
@@ -521,29 +498,23 @@ class _DeleteConfirmationDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surfaceElevated,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: Text(
-        'Delete address?',
-        style: AppTypography.h3.copyWith(
-          color: AppColors.textPrimary,
-        ),
+        'Delete address?'.tr,
+        style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
       ),
       content: Text(
         'Delete "${entry.label}"? This cannot be undone.',
-        style: AppTypography.body.copyWith(
-          color: AppColors.textSecondary,
-        ),
+        style: AppTypography.body.copyWith(color: AppColors.textSecondary),
       ),
       actions: [
         PTextButton(
-          label: 'Cancel',
+          label: 'Cancel'.tr,
           onPressed: () => Navigator.of(context).pop(false),
           variant: PTextButtonVariant.subtle,
         ),
         PTextButton(
-          label: 'Delete',
+          label: 'Delete'.tr,
           onPressed: () => Navigator.of(context).pop(true),
           variant: PTextButtonVariant.danger,
         ),
@@ -558,10 +529,10 @@ class _DeleteConfirmationDialog extends StatelessWidget {
 
 class AddressBookEditScreen extends ConsumerStatefulWidget {
   const AddressBookEditScreen({this.entry, this.walletId, super.key})
-      : assert(
-          entry != null || walletId != null,
-          'Either entry or walletId must be provided.',
-        );
+    : assert(
+        entry != null || walletId != null,
+        'Either entry or walletId must be provided.',
+      );
 
   final AddressEntry? entry;
   final String? walletId;
@@ -586,7 +557,9 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
   void initState() {
     super.initState();
     _labelController = TextEditingController(text: widget.entry?.label ?? '');
-    _addressController = TextEditingController(text: widget.entry?.address ?? '');
+    _addressController = TextEditingController(
+      text: widget.entry?.address ?? '',
+    );
     _notesController = TextEditingController(text: widget.entry?.notes ?? '');
     _selectedColor = widget.entry?.colorTag ?? ColorTag.none;
   }
@@ -651,10 +624,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
   void _showError(String? message) {
     final text = message ?? 'Failed to save address';
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-        backgroundColor: AppColors.error,
-      ),
+      SnackBar(content: Text(text), backgroundColor: AppColors.error),
     );
   }
 
@@ -663,7 +633,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
     return PScaffold(
       appBar: PAppBar(
         title: _isEditing ? 'Edit Address' : 'Add Address',
-        subtitle: 'Edit label, notes, and color',
+        subtitle: 'Edit label, notes, and color'.tr,
         onBack: () => Navigator.of(context).pop(),
         actions: [
           if (_isSaving)
@@ -676,10 +646,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
               ),
             )
           else
-            PTextButton(
-              label: 'Save',
-              onPressed: _save,
-            ),
+            PTextButton(label: 'Save'.tr, onPressed: _save),
         ],
       ),
       body: Form(
@@ -690,7 +657,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
             // Label field
             _buildTextField(
               controller: _labelController,
-              label: 'Label',
+              label: 'Label'.tr,
               hint: 'e.g., Alice, Cold Storage',
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
@@ -708,7 +675,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
             // Address field
             _buildTextField(
               controller: _addressController,
-              label: 'Shielded address',
+              label: 'Shielded address'.tr,
               hint: 'zs1...',
               maxLines: 3,
               enabled: !_isEditing,
@@ -731,7 +698,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
             // Notes field
             _buildTextField(
               controller: _notesController,
-              label: 'Notes (optional)',
+              label: 'Notes (optional)'.tr,
               hint: 'Add notes for this address',
               maxLines: 4,
               validator: (value) {
@@ -758,21 +725,16 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
                     _addressController.text = data!.text!;
                   }
                 },
-                icon: Icon(
-                  Icons.paste,
-                  color: AppColors.textSecondary,
-                ),
+                icon: Icon(Icons.paste, color: AppColors.textSecondary),
                 label: Text(
-                  'Paste from clipboard',
+                  'Paste from clipboard'.tr,
                   style: AppTypography.body.copyWith(
                     color: AppColors.textSecondary,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.all(AppSpacing.md),
-                  side: BorderSide(
-                    color: AppColors.borderSubtle,
-                  ),
+                  side: BorderSide(color: AppColors.borderSubtle),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -812,41 +774,28 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
                   color: AppColors.textPrimary,
                   fontSize: 14,
                 )
-              : AppTypography.body.copyWith(
-                  color: AppColors.textPrimary,
-                ),
+              : AppTypography.body.copyWith(color: AppColors.textPrimary),
           validator: validator,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: AppTypography.body.copyWith(
-              color: AppColors.textMuted,
-            ),
+            hintStyle: AppTypography.body.copyWith(color: AppColors.textMuted),
             filled: true,
             fillColor: AppColors.surfaceElevated,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.borderSubtle,
-              ),
+              borderSide: BorderSide(color: AppColors.borderSubtle),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.borderSubtle,
-              ),
+              borderSide: BorderSide(color: AppColors.borderSubtle),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.gradientAStart,
-                width: 2,
-              ),
+              borderSide: BorderSide(color: AppColors.gradientAStart, width: 2),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: AppColors.error,
-              ),
+              borderSide: BorderSide(color: AppColors.error),
             ),
             contentPadding: const EdgeInsets.all(AppSpacing.md),
           ),
@@ -860,7 +809,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Color Tag',
+          'Color Tag'.tr,
           style: AppTypography.caption.copyWith(
             color: AppColors.textSecondary,
             fontWeight: FontWeight.w600,
@@ -910,8 +859,9 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
                         color: isSelected
                             ? color.color
                             : AppColors.textSecondary,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.normal,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                     ),
                   ],

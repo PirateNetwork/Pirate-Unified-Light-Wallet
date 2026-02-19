@@ -8,6 +8,7 @@ import '../features/pay/pay_screen.dart';
 import '../ui/atoms/p_button.dart';
 import '../ui/atoms/p_input.dart';
 import '../ui/molecules/p_card.dart';
+import '../core/i18n/arb_text_localizer.dart';
 
 @Preview(name: 'Pay Sheet', group: 'Wallet Shell', size: Size(390, 780))
 Widget paySheetPreview() {
@@ -41,13 +42,13 @@ Widget sendCardPreview() {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               PInput(
-                label: 'Recipient address',
+                label: 'Recipient address'.tr,
                 hint: 'zs1...',
                 onChanged: (_) {},
               ),
               const SizedBox(height: PSpacing.md),
               PInput(
-                label: 'Amount (ARRR)',
+                label: 'Amount (ARRR)'.tr,
                 hint: '0.00000000',
                 onChanged: (_) {},
               ),

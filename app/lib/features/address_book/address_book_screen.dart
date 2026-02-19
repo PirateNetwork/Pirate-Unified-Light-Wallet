@@ -28,16 +28,14 @@ import '../../ui/organisms/p_scaffold.dart';
 import 'models/address_entry.dart';
 import 'providers/address_book_provider.dart';
 import '../../core/providers/wallet_providers.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Address Book screen
 class AddressBookScreen extends ConsumerStatefulWidget {
   /// Optional callback when address is selected (for send flow)
   final void Function(AddressEntry)? onSelectAddress;
 
-  const AddressBookScreen({
-    super.key,
-    this.onSelectAddress,
-  });
+  const AddressBookScreen({super.key, this.onSelectAddress});
 
   @override
   ConsumerState<AddressBookScreen> createState() => _AddressBookScreenState();
@@ -62,7 +60,8 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
   void _onSearchChanged() {
     final walletId = _walletId ?? ref.read(activeWalletProvider);
     if (walletId == null) return;
-    ref.read(addressBookProvider(walletId).notifier)
+    ref
+        .read(addressBookProvider(walletId).notifier)
         .setSearchQuery(_searchController.text);
   }
 
@@ -74,7 +73,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
     }
     PBottomSheet.show<void>(
       context: context,
-      title: 'Add Address',
+      title: 'Add Address'.tr,
       content: AddEditAddressSheet(
         walletId: walletId,
         onSave: (entry) {
@@ -93,7 +92,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
     }
     PBottomSheet.show<void>(
       context: context,
-      title: 'Edit Address',
+      title: 'Edit Address'.tr,
       content: AddEditAddressSheet(
         walletId: walletId,
         entry: entry,
@@ -108,7 +107,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
   void _showDetailsSheet(AddressEntry entry) {
     PBottomSheet.show<void>(
       context: context,
-      title: 'Address Details',
+      title: 'Address Details'.tr,
       content: AddressDetailsSheet(
         entry: entry,
         onEdit: () {
@@ -135,20 +134,20 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => PDialog(
-        title: 'Delete Address?',
+        title: 'Delete Address?'.tr,
         content: Text(
           'Are you sure you want to delete "${entry.label}" from your address book?',
           style: AppTypography.body,
         ),
         actions: [
           PDialogAction<bool>(
-            label: 'Cancel',
+            label: 'Cancel'.tr,
             onPressed: () => Navigator.of(context).pop(false),
             variant: PButtonVariant.secondary,
             result: false,
           ),
           PDialogAction<bool>(
-            label: 'Delete',
+            label: 'Delete'.tr,
             onPressed: () => Navigator.of(context).pop(true),
             variant: PButtonVariant.primary,
             result: true,
@@ -168,9 +167,9 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
   }
 
   void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _showFilterSheet() {
@@ -183,18 +182,20 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
 
     PBottomSheet.show<void>(
       context: context,
-      title: 'Filter',
+      title: 'Filter'.tr,
       content: FilterSheet(
         currentColor: state.filterColor,
         showFavoritesOnly: state.showFavoritesOnly,
         colorCounts: state.colorCounts,
         onColorChanged: (color) {
-          ref.read(addressBookProvider(walletId).notifier)
+          ref
+              .read(addressBookProvider(walletId).notifier)
               .setColorFilter(color);
           Navigator.of(context).pop();
         },
         onFavoritesToggled: () {
-          ref.read(addressBookProvider(walletId).notifier)
+          ref
+              .read(addressBookProvider(walletId).notifier)
               .toggleFavoritesFilter();
           Navigator.of(context).pop();
         },
@@ -208,10 +209,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
   }
 
   Widget _buildFilterIcon(bool hasFilters) {
-    final baseIcon = Icon(
-      Icons.filter_list,
-      color: AppColors.textPrimary,
-    );
+    final baseIcon = Icon(Icons.filter_list, color: AppColors.textPrimary);
 
     if (!hasFilters) return baseIcon;
 
@@ -242,40 +240,42 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
       if (!mounted || next == _walletId) return;
       setState(() => _walletId = next);
       if (next != null) {
-        ref.read(addressBookProvider(next).notifier)
+        ref
+            .read(addressBookProvider(next).notifier)
             .setSearchQuery(_searchController.text);
       }
     });
 
     // Read current wallet if not initialized
     _walletId ??= ref.read(activeWalletProvider);
-    
+
     final walletId = _walletId;
     if (walletId == null) {
       return PScaffold(
-        title: 'Address Book',
-        appBar: const PAppBar(
-          title: 'Address Book',
-          subtitle: 'Manage your trusted contacts',
+        title: 'Address Book'.tr,
+        appBar: PAppBar(
+          title: 'Address Book'.tr,
+          subtitle: 'Manage your trusted contacts'.tr,
           actions: [WalletSwitcherButton(compact: true)],
         ),
-        body: const Center(
-          child: Text('No active wallet'),
-        ),
+        body: Center(child: Text('No active wallet'.tr)),
       );
     }
 
     final state = ref.watch(addressBookProvider(walletId));
     final filteredEntries = state.filteredEntries;
-    final hasFilters = state.searchQuery.isNotEmpty ||
+    final hasFilters =
+        state.searchQuery.isNotEmpty ||
         state.filterColor != null ||
         state.showFavoritesOnly;
-    final gutter = AppSpacing.responsiveGutter(MediaQuery.of(context).size.width);
+    final gutter = AppSpacing.responsiveGutter(
+      MediaQuery.of(context).size.width,
+    );
 
     return PScaffold(
-      title: 'Address Book',
+      title: 'Address Book'.tr,
       appBar: PAppBar(
-        title: 'Address Book',
+        title: 'Address Book'.tr,
         subtitle: widget.onSelectAddress != null
             ? 'Tap an entry to autofill the send form'
             : 'Manage your trusted contacts',
@@ -284,7 +284,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
           PIconButton(
             icon: _buildFilterIcon(hasFilters),
             onPressed: _showFilterSheet,
-            tooltip: 'Filters',
+            tooltip: 'Filters'.tr,
           ),
         ],
       ),
@@ -306,7 +306,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
                   ? IconButton(
                       icon: const Icon(Icons.clear),
                       onPressed: _searchController.clear,
-                      tooltip: 'Clear',
+                      tooltip: 'Clear'.tr,
                     )
                   : null,
             ),
@@ -314,9 +314,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
 
           // Loading state
           if (state.isLoading)
-            const Expanded(
-              child: Center(child: CircularProgressIndicator()),
-            )
+            const Expanded(child: Center(child: CircularProgressIndicator()))
           // Error state
           else if (state.error != null)
             Expanded(
@@ -324,11 +322,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: AppColors.error,
-                    ),
+                    Icon(Icons.error_outline, size: 64, color: AppColors.error),
                     const SizedBox(height: AppSpacing.md),
                     Text(
                       state.error!,
@@ -341,7 +335,8 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
                     PButton(
                       text: 'Retry',
                       onPressed: () {
-                        ref.read(addressBookProvider(walletId).notifier)
+                        ref
+                            .read(addressBookProvider(walletId).notifier)
                             .refresh();
                       },
                       variant: PButtonVariant.secondary,
@@ -356,7 +351,8 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
               child: EmptyAddressBookState(
                 hasSearch: hasFilters,
                 onClearFilters: () {
-                  ref.read(addressBookProvider(walletId).notifier)
+                  ref
+                      .read(addressBookProvider(walletId).notifier)
                       .clearFilters();
                   _searchController.clear();
                 },
@@ -380,7 +376,8 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
                     entry: entry,
                     onTap: () => _showDetailsSheet(entry),
                     onFavoriteToggle: () {
-                      ref.read(addressBookProvider(walletId).notifier)
+                      ref
+                          .read(addressBookProvider(walletId).notifier)
                           .toggleFavorite(entry.id);
                     },
                   );
@@ -392,7 +389,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddSheet,
         icon: const Icon(Icons.add),
-        label: const Text('Add Address'),
+        label: Text('Add Address'.tr),
         backgroundColor: AppColors.accentPrimary,
       ),
     );
@@ -427,7 +424,9 @@ class AddressCard extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 24,
-                    backgroundColor: entry.colorTag.color.withValues(alpha: 0.2),
+                    backgroundColor: entry.colorTag.color.withValues(
+                      alpha: 0.2,
+                    ),
                     child: Text(
                       entry.avatarLetter,
                       style: AppTypography.h4.copyWith(
@@ -476,11 +475,7 @@ class AddressCard extends StatelessWidget {
                           ),
                         ),
                         if (entry.isFavorite)
-                          Icon(
-                            Icons.star,
-                            size: 16,
-                            color: AppColors.warning,
-                          ),
+                          Icon(Icons.star, size: 16, color: AppColors.warning),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -557,9 +552,7 @@ class EmptyAddressBookState extends StatelessWidget {
             const SizedBox(height: AppSpacing.lg),
             Text(
               hasSearch ? 'No Results Found' : 'No Saved Addresses',
-              style: AppTypography.h3.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.md),
@@ -601,7 +594,8 @@ class AddEditAddressSheet extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<AddEditAddressSheet> createState() => _AddEditAddressSheetState();
+  ConsumerState<AddEditAddressSheet> createState() =>
+      _AddEditAddressSheetState();
 }
 
 class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
@@ -620,7 +614,9 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
   void initState() {
     super.initState();
     _labelController = TextEditingController(text: widget.entry?.label ?? '');
-    _addressController = TextEditingController(text: widget.entry?.address ?? '');
+    _addressController = TextEditingController(
+      text: widget.entry?.address ?? '',
+    );
     _notesController = TextEditingController(text: widget.entry?.notes ?? '');
     _selectedColor = widget.entry?.colorTag ?? ColorTag.none;
   }
@@ -665,8 +661,8 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
     if (_supportsImageImport) {
       final file = await openFile(
         acceptedTypeGroups: [
-          const XTypeGroup(
-            label: 'Images',
+          XTypeGroup(
+            label: 'Images'.tr,
             extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'],
           ),
         ],
@@ -680,8 +676,8 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
       if (!mounted) return;
       if (result == null || result.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No QR code found in that image'),
+          SnackBar(
+            content: Text('No QR code found in that image'.tr),
             duration: Duration(seconds: 2),
           ),
         );
@@ -691,8 +687,8 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
       _addressController.text = _normalizeQrResult(result);
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('QR code imported'),
+        SnackBar(
+          content: Text('QR code imported'.tr),
           duration: Duration(seconds: 2),
         ),
       );
@@ -702,8 +698,9 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
   Future<String?> _decodeQrFromImageBytes(Uint8List bytes) async {
     try {
       final uiImage = await _decodeUiImage(bytes);
-      final byteData =
-          await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final byteData = await uiImage.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      );
       if (byteData == null) {
         uiImage.dispose();
         return null;
@@ -732,11 +729,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
     return completer.future;
   }
 
-  Int32List _rgbaToArgbPixels(
-    Uint8List rgbaBytes,
-    int width,
-    int height,
-  ) {
+  Int32List _rgbaToArgbPixels(Uint8List rgbaBytes, int width, int height) {
     final pixels = Int32List(width * height);
     for (int i = 0; i < pixels.length; i++) {
       final offset = i * 4;
@@ -814,9 +807,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
           children: [
             Text(
               _isEditing ? 'Edit Address' : 'Add Address',
-              style: AppTypography.h3.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
             ),
 
             const SizedBox(height: AppSpacing.xl),
@@ -848,7 +839,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
 
             PInput(
               controller: _labelController,
-              label: 'Label *',
+              label: 'Label *'.tr,
               hint: 'e.g., Alice, Coffee Shop',
               maxLength: kMaxLabelLength,
               onChanged: (_) => setState(() {}),
@@ -858,7 +849,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
 
             PInput(
               controller: _addressController,
-              label: 'Address *',
+              label: 'Address *'.tr,
               hint: 'zs1...',
               maxLines: 3,
               enabled: !_isEditing, // Can't change address when editing
@@ -877,12 +868,14 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
                               setState(() {});
                             }
                           },
-                          tooltip: 'Paste',
+                          tooltip: 'Paste'.tr,
                         ),
                         IconButton(
                           icon: const Icon(Icons.qr_code_scanner, size: 20),
                           onPressed: _scanQr,
-                          tooltip: _supportsCameraScan ? 'Scan QR' : 'Import QR',
+                          tooltip: _supportsCameraScan
+                              ? 'Scan QR'
+                              : 'Import QR',
                         ),
                       ],
                     ),
@@ -892,7 +885,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
 
             PInput(
               controller: _notesController,
-              label: 'Notes (Optional)',
+              label: 'Notes (Optional)'.tr,
               hint: 'Add a note about this address',
               maxLines: 2,
               maxLength: kMaxNotesLength,
@@ -902,7 +895,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
 
             // Color tag selector
             Text(
-              'Color Tag',
+              'Color Tag'.tr,
               style: AppTypography.labelMedium.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -930,7 +923,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
                                 color: color.color.withValues(alpha: 0.4),
                                 blurRadius: 8,
                                 spreadRadius: 2,
-                              )
+                              ),
                             ]
                           : null,
                     ),
@@ -1056,12 +1049,12 @@ class AddressDetailsSheet extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.edit_outlined),
                 onPressed: onEdit,
-                tooltip: 'Edit',
+                tooltip: 'Edit'.tr,
               ),
               IconButton(
                 icon: Icon(Icons.delete_outline, color: AppColors.error),
                 onPressed: onDelete,
-                tooltip: 'Delete',
+                tooltip: 'Delete'.tr,
               ),
             ],
           ),
@@ -1070,7 +1063,7 @@ class AddressDetailsSheet extends StatelessWidget {
 
           // Address
           _DetailItem(
-            label: 'Address',
+            label: 'Address'.tr,
             value: entry.address,
             mono: true,
             copyable: true,
@@ -1078,10 +1071,7 @@ class AddressDetailsSheet extends StatelessWidget {
 
           if (entry.notes != null && entry.notes!.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.md),
-            _DetailItem(
-              label: 'Notes',
-              value: entry.notes!,
-            ),
+            _DetailItem(label: 'Notes'.tr, value: entry.notes!),
           ],
 
           if (entry.useCount > 0) ...[
@@ -1090,14 +1080,14 @@ class AddressDetailsSheet extends StatelessWidget {
               children: [
                 Expanded(
                   child: _DetailItem(
-                    label: 'Times Used',
+                    label: 'Times Used'.tr,
                     value: entry.useCount.toString(),
                   ),
                 ),
                 if (entry.lastUsedAt != null)
                   Expanded(
                     child: _DetailItem(
-                      label: 'Last Used',
+                      label: 'Last Used'.tr,
                       value: _formatDate(entry.lastUsedAt!),
                     ),
                   ),
@@ -1158,9 +1148,7 @@ class _DetailItem extends StatelessWidget {
       children: [
         Text(
           label,
-          style: AppTypography.caption.copyWith(
-            color: AppColors.textSecondary,
-          ),
+          style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
         ),
         const SizedBox(height: 4),
         Row(
@@ -1181,10 +1169,10 @@ class _DetailItem extends StatelessWidget {
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: value));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Copied to clipboard')),
+                    SnackBar(content: Text('Copied to clipboard'.tr)),
                   );
                 },
-                tooltip: 'Copy',
+                tooltip: 'Copy'.tr,
                 color: AppColors.accentPrimary,
               ),
           ],
@@ -1226,7 +1214,7 @@ class FilterSheet extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Filters',
+                  'Filters'.tr,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.h3.copyWith(
@@ -1235,7 +1223,7 @@ class FilterSheet extends StatelessWidget {
                 ),
               ),
               PTextButton(
-                label: 'Clear All',
+                label: 'Clear All'.tr,
                 onPressed: onClear,
                 variant: PTextButtonVariant.subtle,
               ),
@@ -1249,9 +1237,11 @@ class FilterSheet extends StatelessWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(
               Icons.star,
-              color: showFavoritesOnly ? AppColors.warning : AppColors.textTertiary,
+              color: showFavoritesOnly
+                  ? AppColors.warning
+                  : AppColors.textTertiary,
             ),
-            title: const Text('Favorites Only'),
+            title: Text('Favorites Only'.tr),
             trailing: Switch(
               value: showFavoritesOnly,
               onChanged: (_) => onFavoritesToggled(),
@@ -1265,7 +1255,7 @@ class FilterSheet extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
 
           Text(
-            'Filter by Color',
+            'Filter by Color'.tr,
             style: AppTypography.labelMedium.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -1309,14 +1299,16 @@ class _AddressQrScannerScreen extends StatefulWidget {
   const _AddressQrScannerScreen();
 
   @override
-  State<_AddressQrScannerScreen> createState() => _AddressQrScannerScreenState();
+  State<_AddressQrScannerScreen> createState() =>
+      _AddressQrScannerScreenState();
 }
 
 class _AddressQrScannerScreenState extends State<_AddressQrScannerScreen> {
-  final mobile_scanner.MobileScannerController _controller = mobile_scanner.MobileScannerController(
-    detectionSpeed: mobile_scanner.DetectionSpeed.noDuplicates,
-    formats: [mobile_scanner.BarcodeFormat.qrCode],
-  );
+  final mobile_scanner.MobileScannerController _controller =
+      mobile_scanner.MobileScannerController(
+        detectionSpeed: mobile_scanner.DetectionSpeed.noDuplicates,
+        formats: [mobile_scanner.BarcodeFormat.qrCode],
+      );
   bool _handled = false;
 
   @override
@@ -1328,10 +1320,10 @@ class _AddressQrScannerScreenState extends State<_AddressQrScannerScreen> {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Scan QR',
-      appBar: const PAppBar(
-        title: 'Scan QR',
-        subtitle: 'Align the code in the frame',
+      title: 'Scan QR'.tr,
+      appBar: PAppBar(
+        title: 'Scan QR'.tr,
+        subtitle: 'Align the code in the frame'.tr,
         showBackButton: true,
       ),
       body: ColoredBox(

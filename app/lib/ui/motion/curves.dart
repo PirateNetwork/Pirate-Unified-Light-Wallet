@@ -29,4 +29,3 @@ class PCurves {
   /// Smooth curve - For smooth continuous motion
   static const Curve smooth = Curves.easeInOutQuart;
 }
-

@@ -16,7 +16,7 @@ const PageTransitionsTheme _piratePageTransitions = PageTransitionsTheme(
 );
 
 /// Pirate Wallet theme system
-/// 
+///
 /// Builds Material ThemeData from design tokens with dark-first approach
 class PTheme {
   PTheme._();
@@ -29,12 +29,12 @@ class PTheme {
   static ThemeData dark({bool highContrast = false}) {
     // ignore: unused_local_variable
     final colors = highContrast ? PColorsHighContrast : PColors;
-    
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       pageTransitionsTheme: _piratePageTransitions,
-      
+
       // ========================================================================
       // Color Scheme
       // ========================================================================
@@ -78,12 +78,12 @@ class PTheme {
       highlightColor: PColors.pressedOverlay,
       splashColor: PColors.pressedOverlay,
       disabledColor: PColors.textDisabled,
-      
+
       // ========================================================================
       // Typography
       // ========================================================================
       fontFamily: PTypography.fontFamilyUI,
-      
+
       textTheme: TextTheme(
         displayLarge: PTypography.displayLarge(color: PColors.textPrimary),
         displayMedium: PTypography.displayMedium(color: PColors.textPrimary),
@@ -101,7 +101,7 @@ class PTheme {
         labelMedium: PTypography.labelMedium(color: PColors.textSecondary),
         labelSmall: PTypography.labelSmall(color: PColors.textTertiary),
       ),
-      
+
       // ========================================================================
       // AppBar Theme
       // ========================================================================
@@ -119,7 +119,7 @@ class PTheme {
           size: PSpacing.iconLG,
         ),
       ),
-      
+
       // ========================================================================
       // Button Themes
       // ========================================================================
@@ -140,7 +140,7 @@ class PTheme {
           disabledBackgroundColor: PColors.backgroundSurface,
         ),
       ),
-      
+
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           elevation: 0,
@@ -156,7 +156,7 @@ class PTheme {
           backgroundColor: PColors.gradientAStart,
         ),
       ),
-      
+
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           padding: EdgeInsets.symmetric(
@@ -176,7 +176,7 @@ class PTheme {
           foregroundColor: PColors.textPrimary,
         ),
       ),
-      
+
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           padding: EdgeInsets.symmetric(
@@ -190,7 +190,7 @@ class PTheme {
           foregroundColor: PColors.gradientAStart,
         ),
       ),
-      
+
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           foregroundColor: PColors.textPrimary,
@@ -198,7 +198,7 @@ class PTheme {
           padding: EdgeInsets.all(PSpacing.sm),
         ),
       ),
-      
+
       // ========================================================================
       // Input Decoration Theme
       // ========================================================================
@@ -209,21 +209,15 @@ class PTheme {
           horizontal: PSpacing.inputPaddingHorizontal,
           vertical: PSpacing.inputPaddingVertical,
         ),
-        
+
         // Border styles
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-          borderSide: BorderSide(
-            color: PColors.borderDefault,
-            width: 1.0,
-          ),
+          borderSide: BorderSide(color: PColors.borderDefault, width: 1.0),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-          borderSide: BorderSide(
-            color: PColors.borderDefault,
-            width: 1.0,
-          ),
+          borderSide: BorderSide(color: PColors.borderDefault, width: 1.0),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusInput),
@@ -236,26 +230,17 @@ class PTheme {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-          borderSide: BorderSide(
-            color: PColors.error,
-            width: 1.0,
-          ),
+          borderSide: BorderSide(color: PColors.error, width: 1.0),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-          borderSide: BorderSide(
-            color: PColors.error,
-            width: 2.0,
-          ),
+          borderSide: BorderSide(color: PColors.error, width: 2.0),
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-          borderSide: BorderSide(
-            color: PColors.borderSubtle,
-            width: 1.0,
-          ),
+          borderSide: BorderSide(color: PColors.borderSubtle, width: 1.0),
         ),
-        
+
         // Text styles
         labelStyle: PTypography.labelMedium(color: PColors.textSecondary),
         floatingLabelStyle: PTypography.labelMedium(
@@ -266,12 +251,12 @@ class PTheme {
         hintStyle: PTypography.bodyMedium(color: PColors.textTertiary),
         errorStyle: PTypography.labelSmall(color: PColors.error),
         helperStyle: PTypography.caption(color: PColors.textTertiary),
-        
+
         // Icons
         prefixIconColor: PColors.textSecondary,
         suffixIconColor: PColors.textSecondary,
       ),
-      
+
       // ========================================================================
       // Card Theme
       // ========================================================================
@@ -281,14 +266,11 @@ class PTheme {
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusCard),
-          side: BorderSide(
-            color: PColors.borderSubtle,
-            width: 1.0,
-          ),
+          side: BorderSide(color: PColors.borderSubtle, width: 1.0),
         ),
         margin: EdgeInsets.all(PSpacing.sm),
       ),
-      
+
       // ========================================================================
       // Dialog Theme
       // ========================================================================
@@ -302,7 +284,7 @@ class PTheme {
         titleTextStyle: PTypography.heading4(color: PColors.textPrimary),
         contentTextStyle: PTypography.bodyMedium(color: PColors.textSecondary),
       ),
-      
+
       // ========================================================================
       // Bottom Sheet Theme
       // ========================================================================
@@ -317,7 +299,7 @@ class PTheme {
           ),
         ),
       ),
-      
+
       // ========================================================================
       // List Tile Theme
       // ========================================================================
@@ -336,7 +318,7 @@ class PTheme {
           borderRadius: BorderRadius.circular(PSpacing.radiusMD),
         ),
       ),
-      
+
       // ========================================================================
       // Chip Theme
       // ========================================================================
@@ -354,13 +336,10 @@ class PTheme {
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-          side: BorderSide(
-            color: PColors.borderDefault,
-            width: 1.0,
-          ),
+          side: BorderSide(color: PColors.borderDefault, width: 1.0),
         ),
       ),
-      
+
       // ========================================================================
       // Switch Theme
       // ========================================================================
@@ -384,7 +363,7 @@ class PTheme {
           return PColors.borderDefault;
         }),
       ),
-      
+
       // ========================================================================
       // Checkbox Theme
       // ========================================================================
@@ -396,15 +375,12 @@ class PTheme {
           return Colors.transparent;
         }),
         checkColor: WidgetStateProperty.all(PColors.textOnAccent),
-        side: BorderSide(
-          color: PColors.borderDefault,
-          width: 1.5,
-        ),
+        side: BorderSide(color: PColors.borderDefault, width: 1.5),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusXS),
         ),
       ),
-      
+
       // ========================================================================
       // Radio Theme
       // ========================================================================
@@ -416,7 +392,7 @@ class PTheme {
           return PColors.borderDefault;
         }),
       ),
-      
+
       // ========================================================================
       // Tooltip Theme
       // ========================================================================
@@ -424,10 +400,7 @@ class PTheme {
         decoration: BoxDecoration(
           color: PColors.backgroundElevated,
           borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-          border: Border.all(
-            color: PColors.borderDefault,
-            width: 1.0,
-          ),
+          border: Border.all(color: PColors.borderDefault, width: 1.0),
           boxShadow: [
             BoxShadow(
               color: PColors.shadowStrong,
@@ -440,7 +413,7 @@ class PTheme {
         padding: EdgeInsets.all(PSpacing.tooltipPadding),
         waitDuration: Duration(milliseconds: 500),
       ),
-      
+
       // ========================================================================
       // Snackbar Theme
       // ========================================================================
@@ -453,7 +426,7 @@ class PTheme {
         ),
         behavior: SnackBarBehavior.floating,
       ),
-      
+
       // ========================================================================
       // Progress Indicator Theme
       // ========================================================================
@@ -462,7 +435,7 @@ class PTheme {
         linearTrackColor: PColors.backgroundSurface,
         circularTrackColor: PColors.backgroundSurface,
       ),
-      
+
       // ========================================================================
       // Divider Theme
       // ========================================================================
@@ -473,7 +446,7 @@ class PTheme {
       ),
     );
   }
-  
+
   /// Light theme - Ivory
   static ThemeData light() {
     return ThemeData(
@@ -530,7 +503,9 @@ class PTheme {
 
       textTheme: TextTheme(
         displayLarge: PTypography.displayLarge(color: PColorsLight.textPrimary),
-        displayMedium: PTypography.displayMedium(color: PColorsLight.textPrimary),
+        displayMedium: PTypography.displayMedium(
+          color: PColorsLight.textPrimary,
+        ),
         displaySmall: PTypography.displaySmall(color: PColorsLight.textPrimary),
         headlineLarge: PTypography.heading1(color: PColorsLight.textPrimary),
         headlineMedium: PTypography.heading2(color: PColorsLight.textPrimary),
@@ -610,10 +585,7 @@ class PTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(PSpacing.radiusMD),
           ),
-          side: const BorderSide(
-            color: PColorsLight.borderDefault,
-            width: 1.5,
-          ),
+          side: const BorderSide(color: PColorsLight.borderDefault, width: 1.5),
           textStyle: PTypography.labelLarge(),
           foregroundColor: PColorsLight.textPrimary,
         ),
@@ -676,17 +648,11 @@ class PTheme {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-          borderSide: const BorderSide(
-            color: PColorsLight.error,
-            width: 1.0,
-          ),
+          borderSide: const BorderSide(color: PColorsLight.error, width: 1.0),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-          borderSide: const BorderSide(
-            color: PColorsLight.error,
-            width: 2.0,
-          ),
+          borderSide: const BorderSide(color: PColorsLight.error, width: 2.0),
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusInput),
@@ -719,10 +685,7 @@ class PTheme {
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusCard),
-          side: const BorderSide(
-            color: PColorsLight.borderSubtle,
-            width: 1.0,
-          ),
+          side: const BorderSide(color: PColorsLight.borderSubtle, width: 1.0),
         ),
         margin: EdgeInsets.all(PSpacing.sm),
       ),
@@ -738,7 +701,9 @@ class PTheme {
           borderRadius: BorderRadius.circular(PSpacing.radiusXL),
         ),
         titleTextStyle: PTypography.heading4(color: PColorsLight.textPrimary),
-        contentTextStyle: PTypography.bodyMedium(color: PColorsLight.textSecondary),
+        contentTextStyle: PTypography.bodyMedium(
+          color: PColorsLight.textSecondary,
+        ),
       ),
 
       // ========================================================================
@@ -765,7 +730,9 @@ class PTheme {
           vertical: PSpacing.listItemPaddingVertical,
         ),
         titleTextStyle: PTypography.titleSmall(color: PColorsLight.textPrimary),
-        subtitleTextStyle: PTypography.bodySmall(color: PColorsLight.textSecondary),
+        subtitleTextStyle: PTypography.bodySmall(
+          color: PColorsLight.textSecondary,
+        ),
         leadingAndTrailingTextStyle: PTypography.labelMedium(
           color: PColorsLight.textSecondary,
         ),
@@ -792,10 +759,7 @@ class PTheme {
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-          side: const BorderSide(
-            color: PColorsLight.borderDefault,
-            width: 1.0,
-          ),
+          side: const BorderSide(color: PColorsLight.borderDefault, width: 1.0),
         ),
       ),
 
@@ -834,10 +798,7 @@ class PTheme {
           return Colors.transparent;
         }),
         checkColor: WidgetStateProperty.all(PColorsLight.textOnAccent),
-        side: const BorderSide(
-          color: PColorsLight.borderDefault,
-          width: 1.5,
-        ),
+        side: const BorderSide(color: PColorsLight.borderDefault, width: 1.5),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusXS),
         ),
@@ -862,10 +823,7 @@ class PTheme {
         decoration: BoxDecoration(
           color: PColorsLight.backgroundElevated,
           borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-          border: Border.all(
-            color: PColorsLight.borderDefault,
-            width: 1.0,
-          ),
+          border: Border.all(color: PColorsLight.borderDefault, width: 1.0),
           boxShadow: const [
             BoxShadow(
               color: PColorsLight.shadowStrong,
@@ -885,7 +843,9 @@ class PTheme {
       snackBarTheme: SnackBarThemeData(
         elevation: 8,
         backgroundColor: PColorsLight.backgroundElevated,
-        contentTextStyle: PTypography.bodyMedium(color: PColorsLight.textPrimary),
+        contentTextStyle: PTypography.bodyMedium(
+          color: PColorsLight.textPrimary,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(PSpacing.radiusMD),
         ),
@@ -912,4 +872,3 @@ class PTheme {
     );
   }
 }
-

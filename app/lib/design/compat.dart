@@ -24,8 +24,7 @@ class PirateSpacing {
   static EdgeInsets screenPadding(
     double screenWidth, {
     double vertical = PSpacing.lg,
-  }) =>
-      PSpacing.screenPadding(screenWidth, vertical: vertical);
+  }) => PSpacing.screenPadding(screenWidth, vertical: vertical);
 
   static bool isMobile(double screenWidth) => PSpacing.isMobile(screenWidth);
 
@@ -47,28 +46,28 @@ class PirateTypography {
 
 class PirateColors {
   PirateColors._();
-  
+
   // Background colors
   static const Color backgroundBase = PColors.backgroundBase;
   static const Color backgroundSurface = PColors.backgroundSurface;
   static const Color backgroundElevated = PColors.backgroundElevated;
   static const Color backgroundPanel = PColors.backgroundPanel;
   static const Color backgroundOverlay = PColors.backgroundOverlay;
-  
+
   // Accent gradients
   static const Color gradientAStart = PColors.gradientAStart;
   static const Color gradientAEnd = PColors.gradientAEnd;
   static const Color gradientBStart = PColors.gradientBStart;
   static const Color gradientBEnd = PColors.gradientBEnd;
   static const Color highlight = PColors.highlight;
-  
+
   // Text colors
   static const Color textPrimary = PColors.textPrimary;
   static const Color textSecondary = PColors.textSecondary;
   static const Color textTertiary = PColors.textTertiary;
   static const Color textDisabled = PColors.textDisabled;
   static const Color textOnAccent = PColors.textOnAccent;
-  
+
   // Semantic colors
   static const Color success = PColors.success;
   static const Color successBackground = PColors.successBackground;
@@ -82,7 +81,7 @@ class PirateColors {
   static const Color info = PColors.info;
   static const Color infoBackground = PColors.infoBackground;
   static const Color infoBorder = PColors.infoBorder;
-  
+
   // Interactive colors
   static const Color focusRing = PColors.focusRing;
   static const Color focusRingSubtle = PColors.focusRingSubtle;
@@ -90,13 +89,13 @@ class PirateColors {
   static const Color pressedOverlay = PColors.pressedOverlay;
   static const Color selectedBackground = PColors.selectedBackground;
   static const Color selectedBorder = PColors.selectedBorder;
-  
+
   // Border colors
   static const Color borderDefault = PColors.borderDefault;
   static const Color borderSubtle = PColors.borderSubtle;
   static const Color borderStrong = PColors.borderStrong;
   static const Color border = PColors.borderDefault; // Alias for border
-  
+
   // Aliases for common usage
   static const Color accent1 = PColors.gradientAStart;
   static const Color accent2 = PColors.gradientBStart;
@@ -108,6 +107,3 @@ class PirateTheme {
   static const Color accentColor = PColors.gradientAStart;
   static const Color accentSecondary = PColors.gradientBStart;
 }
-
-
-

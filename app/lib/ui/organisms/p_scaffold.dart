@@ -46,14 +46,9 @@ class PScaffold extends StatelessWidget {
             _CustomTitleBar(title: title ?? 'Pirate Wallet'),
 
             if (appBar != null)
-              SizedBox(
-                height: appBar!.preferredSize.height,
-                child: appBar,
-              ),
+              SizedBox(height: appBar!.preferredSize.height, child: appBar),
             // Main content
-            Expanded(
-              child: content,
-            ),
+            Expanded(child: content),
           ],
         ),
         drawer: drawer,
@@ -97,10 +92,7 @@ class _CustomTitleBar extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.backgroundBase,
           border: Border(
-            bottom: BorderSide(
-              color: AppColors.borderSubtle,
-              width: 1.0,
-            ),
+            bottom: BorderSide(color: AppColors.borderSubtle, width: 1.0),
           ),
         ),
         child: Row(
@@ -114,7 +106,9 @@ class _CustomTitleBar extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       title,
-                      style: PTypography.labelLarge(color: AppColors.textPrimary),
+                      style: PTypography.labelLarge(
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
                 ),

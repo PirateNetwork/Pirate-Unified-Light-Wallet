@@ -86,14 +86,10 @@ class _PCheckboxState extends State<PCheckbox> {
                 }
               },
         borderRadius: BorderRadius.circular(PSpacing.radiusSM),
-        child: Padding(
-          padding: EdgeInsets.all(PSpacing.xs),
-          child: checkbox,
-        ),
+        child: Padding(padding: EdgeInsets.all(PSpacing.xs), child: checkbox),
       );
     }
 
     return checkbox;
   }
 }
-

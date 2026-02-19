@@ -203,4 +203,3 @@ class AddressEntry {
   @override
   String toString() => 'AddressEntry($label, $truncatedAddress)';
 }
-
