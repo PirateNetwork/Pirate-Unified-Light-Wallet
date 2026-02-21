@@ -4,7 +4,7 @@
 //! automatic retry logic for database contention.
 
 use crate::{Database, Error, Result};
-use rusqlite::{params, ErrorCode, OptionalExtension, Transaction};
+use rusqlite::{params, types::ValueRef, ErrorCode, OptionalExtension, Transaction};
 use std::thread;
 use std::time::Duration;
 
@@ -326,10 +326,62 @@ pub fn atomic_sync_update(
 /// Truncate data above a specific height (for rollback)
 pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
     let height = to_sql_i64(height)?;
+    let master_key = db.master_key().clone();
     let tx = db.transaction()?;
 
-    // Delete notes above height
-    tx.execute("DELETE FROM notes WHERE height > ?1", [height])?;
+    // Delete notes above height.
+    //
+    // NOTE: `notes.height` is stored encrypted in current schema. A direct
+    // SQL comparison (`WHERE height > ?`) on encrypted bytes can behave
+    // non-deterministically and wipe unrelated rows. We must decrypt each
+    // height before deciding whether to prune.
+    let mut note_ids_to_delete: Vec<i64> = Vec::new();
+    {
+        let mut stmt = tx.prepare("SELECT id, height FROM notes")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let note_id: i64 = row.get(0)?;
+            let height_cell = row.get_ref(1)?;
+            let note_height = match height_cell {
+                ValueRef::Integer(v) => Some(v),
+                ValueRef::Blob(bytes) => {
+                    let decrypted = master_key.decrypt(bytes).map_err(|e| {
+                        Error::Encryption(format!(
+                            "Failed to decrypt note height for note id {}: {}",
+                            note_id, e
+                        ))
+                    })?;
+                    if decrypted.len() == 8 {
+                        let mut arr = [0u8; 8];
+                        arr.copy_from_slice(&decrypted);
+                        Some(i64::from_le_bytes(arr))
+                    } else {
+                        tracing::warn!(
+                            "Skipping note id {} during truncate: invalid decrypted height length {}",
+                            note_id,
+                            decrypted.len()
+                        );
+                        None
+                    }
+                }
+                ValueRef::Null => None,
+                ValueRef::Real(v) => Some(v as i64),
+                ValueRef::Text(text) => std::str::from_utf8(text)
+                    .ok()
+                    .and_then(|s| s.parse::<i64>().ok()),
+            };
+
+            if note_height.is_some_and(|h| h > height) {
+                note_ids_to_delete.push(note_id);
+            }
+        }
+    }
+    if !note_ids_to_delete.is_empty() {
+        let mut delete_stmt = tx.prepare("DELETE FROM notes WHERE id = ?1")?;
+        for note_id in &note_ids_to_delete {
+            delete_stmt.execute([note_id])?;
+        }
+    }
 
     // Delete transactions above height
     tx.execute("DELETE FROM transactions WHERE height > ?1", [height])?;
@@ -357,7 +409,11 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
 
     tx.commit()?;
 
-    tracing::info!("Truncated all data above height {}", height);
+    tracing::info!(
+        "Truncated data above height {} (notes_deleted={})",
+        height,
+        note_ids_to_delete.len()
+    );
     Ok(())
 }
 
