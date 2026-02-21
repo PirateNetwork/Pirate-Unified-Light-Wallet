@@ -11,6 +11,12 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::PathBuf;
 
+type NullifierBytes = [u8; 32];
+type SpendingTxidBytes = [u8; 32];
+type TypedNullifier = (NoteType, NullifierBytes);
+type TypedUnlinkedSpend = (NoteType, NullifierBytes, SpendingTxidBytes);
+type TypedUnlinkedSpendMap = HashMap<TypedNullifier, SpendingTxidBytes>;
+
 /// Repository for database operations
 pub struct Repository<'a> {
     db: &'a Database,
@@ -2948,7 +2954,7 @@ impl<'a> Repository<'a> {
     pub fn list_unlinked_spend_nullifiers_with_txid(
         &self,
         account_id: i64,
-    ) -> Result<Vec<(NoteType, [u8; 32], [u8; 32])>> {
+    ) -> Result<Vec<TypedUnlinkedSpend>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT account_id, note_type, nullifier, spending_txid
              FROM unlinked_spend_nullifiers",
@@ -2964,7 +2970,7 @@ impl<'a> Repository<'a> {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
-        let mut out: Vec<(NoteType, [u8; 32], [u8; 32])> = Vec::new();
+        let mut out: Vec<TypedUnlinkedSpend> = Vec::new();
         for (enc_account_id, note_type_str, enc_nullifier, enc_spending_txid) in rows {
             let row_account_id = self.decrypt_int64(&enc_account_id)?;
             if row_account_id != account_id {
@@ -3030,7 +3036,7 @@ impl<'a> Repository<'a> {
         let updated_notes =
             self.mark_notes_spent_by_nullifiers_with_txid(account_id, &mark_entries)?;
 
-        let mut expected: HashMap<(NoteType, [u8; 32]), [u8; 32]> = HashMap::new();
+        let mut expected: TypedUnlinkedSpendMap = HashMap::new();
         for (note_type, nf, txid) in &entries {
             expected.insert((*note_type, *nf), *txid);
         }
@@ -3051,7 +3057,7 @@ impl<'a> Repository<'a> {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
-        let mut resolved: HashSet<(NoteType, [u8; 32])> = HashSet::new();
+        let mut resolved: HashSet<TypedNullifier> = HashSet::new();
         for (enc_account_id, note_type_str, enc_nullifier, enc_spent, enc_spent_txid) in note_rows {
             let row_account_id = self.decrypt_int64(&enc_account_id)?;
             if row_account_id != account_id {
@@ -3151,19 +3157,19 @@ impl<'a> Repository<'a> {
     pub fn consume_unlinked_spends_for_nullifiers(
         &self,
         account_id: i64,
-        nullifiers: &[(NoteType, [u8; 32])],
-    ) -> Result<HashMap<(NoteType, [u8; 32]), [u8; 32]>> {
+        nullifiers: &[TypedNullifier],
+    ) -> Result<TypedUnlinkedSpendMap> {
         if nullifiers.is_empty() {
-            return Ok(HashMap::new());
+            return Ok(TypedUnlinkedSpendMap::new());
         }
 
-        let wanted: HashSet<(NoteType, [u8; 32])> = nullifiers
+        let wanted: HashSet<TypedNullifier> = nullifiers
             .iter()
             .copied()
             .filter(|(_, nf)| !nf.iter().all(|b| *b == 0))
             .collect();
         if wanted.is_empty() {
-            return Ok(HashMap::new());
+            return Ok(TypedUnlinkedSpendMap::new());
         }
 
         let mut stmt = self.db.conn().prepare(
@@ -3183,7 +3189,7 @@ impl<'a> Repository<'a> {
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         let mut matching_ids: Vec<i64> = Vec::new();
-        let mut matched: HashMap<(NoteType, [u8; 32]), [u8; 32]> = HashMap::new();
+        let mut matched: TypedUnlinkedSpendMap = HashMap::new();
 
         for (id, enc_account_id, note_type_str, enc_nullifier, enc_spending_txid) in rows {
             let row_account_id = self.decrypt_int64(&enc_account_id)?;

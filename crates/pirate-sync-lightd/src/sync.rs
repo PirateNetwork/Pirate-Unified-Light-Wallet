@@ -73,6 +73,13 @@ use zcash_primitives::sapling::{PaymentAddress as SaplingPaymentAddress, Rseed, 
 use zcash_primitives::transaction::Transaction;
 use zcash_primitives::zip32::Scope as SaplingScope;
 
+type StorageNoteType = pirate_storage_sqlite::models::NoteType;
+type NullifierBytes = [u8; 32];
+type TxidBytes = [u8; 32];
+type TypedSpendEntry = (StorageNoteType, NullifierBytes, TxidBytes);
+type RecoveredSpend = (i64, NullifierBytes, TxidBytes);
+type TypedRecoveredSpend = (i64, StorageNoteType, NullifierBytes, TxidBytes);
+
 fn debug_log_path() -> PathBuf {
     let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
         PathBuf::from(path)
@@ -135,8 +142,8 @@ fn append_debug_log_line(line: &str) {
     }
 }
 
-fn log_idle_witness_maintenance_event(
-    event: &str,
+struct IdleWitnessMaintenanceEvent<'a> {
+    event: &'a str,
     current_height: u64,
     checkpoint_height: u64,
     sapling_repaired: usize,
@@ -144,8 +151,10 @@ fn log_idle_witness_maintenance_event(
     checkpoint_persisted: bool,
     yielded_to_tip: bool,
     duration_ms: u128,
-    detail: &str,
-) {
+    detail: &'a str,
+}
+
+fn log_idle_witness_maintenance_event(data: IdleWitnessMaintenanceEvent<'_>) {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -155,15 +164,15 @@ fn log_idle_witness_maintenance_event(
         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:idle_witness_maintenance","message":"idle witness maintenance","data":{{"event":"{}","current_height":{},"checkpoint_height":{},"sapling_repaired":{},"orchard_repaired":{},"checkpoint_persisted":{},"yielded_to_tip":{},"duration_ms":{},"detail":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
         id,
         ts,
-        event,
-        current_height,
-        checkpoint_height,
-        sapling_repaired,
-        orchard_repaired,
-        checkpoint_persisted,
-        yielded_to_tip,
-        duration_ms,
-        detail.replace('"', "'")
+        data.event,
+        data.current_height,
+        data.checkpoint_height,
+        data.sapling_repaired,
+        data.orchard_repaired,
+        data.checkpoint_persisted,
+        data.yielded_to_tip,
+        data.duration_ms,
+        data.detail.replace('"', "'")
     ));
 }
 
@@ -1574,51 +1583,51 @@ impl SyncEngine {
         checkpoint_height: u64,
     ) -> Result<(usize, usize, bool, bool)> {
         let started_at = Instant::now();
-        log_idle_witness_maintenance_event(
-            "start",
+        log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
+            event: "start",
             current_height,
             checkpoint_height,
-            0,
-            0,
-            false,
-            false,
-            0,
-            "cycle_start",
-        );
+            sapling_repaired: 0,
+            orchard_repaired: 0,
+            checkpoint_persisted: false,
+            yielded_to_tip: false,
+            duration_ms: 0,
+            detail: "cycle_start",
+        });
 
         // If a newer tip is already available, let sync process that first.
         if self
             .idle_maintenance_should_yield_to_new_tip(current_height)
             .await
         {
-            log_idle_witness_maintenance_event(
-                "yield_before",
+            log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
+                event: "yield_before",
                 current_height,
                 checkpoint_height,
-                0,
-                0,
-                false,
-                true,
-                started_at.elapsed().as_millis(),
-                "new_tip_detected_before_repair",
-            );
+                sapling_repaired: 0,
+                orchard_repaired: 0,
+                checkpoint_persisted: false,
+                yielded_to_tip: true,
+                duration_ms: started_at.elapsed().as_millis(),
+                detail: "new_tip_detected_before_repair",
+            });
             return Ok((0, 0, false, true));
         }
 
         let (sapling_repaired, orchard_repaired) = self
             .repair_witness_marks_from_unspent_notes(MAX_WITNESS_MARK_REPAIR_NOTES)
             .await?;
-        log_idle_witness_maintenance_event(
-            "repair_result",
+        log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
+            event: "repair_result",
             current_height,
             checkpoint_height,
             sapling_repaired,
             orchard_repaired,
-            false,
-            false,
-            started_at.elapsed().as_millis(),
-            "repair_completed",
-        );
+            checkpoint_persisted: false,
+            yielded_to_tip: false,
+            duration_ms: started_at.elapsed().as_millis(),
+            detail: "repair_completed",
+        });
 
         // If a new block arrived while maintenance ran, skip checkpointing and
         // return to sync loop immediately.
@@ -1626,17 +1635,17 @@ impl SyncEngine {
             .idle_maintenance_should_yield_to_new_tip(current_height)
             .await
         {
-            log_idle_witness_maintenance_event(
-                "yield_after",
+            log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
+                event: "yield_after",
                 current_height,
                 checkpoint_height,
                 sapling_repaired,
                 orchard_repaired,
-                false,
-                true,
-                started_at.elapsed().as_millis(),
-                "new_tip_detected_after_repair",
-            );
+                checkpoint_persisted: false,
+                yielded_to_tip: true,
+                duration_ms: started_at.elapsed().as_millis(),
+                detail: "new_tip_detected_after_repair",
+            });
             return Ok((sapling_repaired, orchard_repaired, false, true));
         }
 
@@ -1644,34 +1653,34 @@ impl SyncEngine {
         if checkpoint_height > 0 && (sapling_repaired > 0 || orchard_repaired > 0) {
             self.create_checkpoint(checkpoint_height).await?;
             checkpoint_persisted = true;
-            log_idle_witness_maintenance_event(
-                "checkpoint_persisted",
+            log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
+                event: "checkpoint_persisted",
                 current_height,
                 checkpoint_height,
                 sapling_repaired,
                 orchard_repaired,
-                true,
-                false,
-                started_at.elapsed().as_millis(),
-                "repair_checkpoint_saved",
-            );
+                checkpoint_persisted: true,
+                yielded_to_tip: false,
+                duration_ms: started_at.elapsed().as_millis(),
+                detail: "repair_checkpoint_saved",
+            });
         }
 
-        log_idle_witness_maintenance_event(
-            "done",
+        log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
+            event: "done",
             current_height,
             checkpoint_height,
             sapling_repaired,
             orchard_repaired,
             checkpoint_persisted,
-            false,
-            started_at.elapsed().as_millis(),
-            if sapling_repaired == 0 && orchard_repaired == 0 {
+            yielded_to_tip: false,
+            duration_ms: started_at.elapsed().as_millis(),
+            detail: if sapling_repaired == 0 && orchard_repaired == 0 {
                 "noop"
             } else {
                 "repaired"
             },
-        );
+        });
 
         Ok((
             sapling_repaired,
@@ -2411,29 +2420,20 @@ impl SyncEngine {
                 let batch_start_time = Instant::now();
                 let mut persist_ms: u128 = 0;
                 let mut apply_spends_ms: u128 = 0;
-                let prefetch_plan_ms: u128;
-                let batch_sizing_ms: u128;
-                let next_prefetch_ms: u128;
-                let note_post_ms: u128;
                 let mut tx_meta_prepare_ms: u128 = 0;
-                let perf_progress_ms: u128;
                 let mut checkpoint_ms: u128 = 0;
                 let mut checkpoint_written_this_batch = false;
-                let sync_state_ms: u128;
 
                 let prefetch_plan_start = Instant::now();
                 self.fill_prefetch_queue(
                     &mut prefetch_queue,
                     &mut queued_prefetch_bytes,
-                    current_height,
-                    end,
-                    current_target_bytes,
-                    avg_block_size_estimate,
-                    &mut server_group_end_hint,
-                    &mut pending_server_group_hint,
+                    (current_height, end),
+                    (current_target_bytes, avg_block_size_estimate),
+                    (&mut server_group_end_hint, &mut pending_server_group_hint),
                 )
                 .await?;
-                prefetch_plan_ms = prefetch_plan_start.elapsed().as_millis();
+                let prefetch_plan_ms = prefetch_plan_start.elapsed().as_millis();
 
                 let PrefetchTask {
                     start: batch_start,
@@ -2756,22 +2756,19 @@ impl SyncEngine {
                         );
                     }
                 }
-                batch_sizing_ms = batch_sizing_start.elapsed().as_millis();
+                let batch_sizing_ms = batch_sizing_start.elapsed().as_millis();
 
                 // Prefetch next batch while we process this one.
                 let next_prefetch_start = Instant::now();
                 self.fill_prefetch_queue(
                     &mut prefetch_queue,
                     &mut queued_prefetch_bytes,
-                    batch_end.saturating_add(1),
-                    end,
-                    current_target_bytes,
-                    avg_block_size_estimate,
-                    &mut server_group_end_hint,
-                    &mut pending_server_group_hint,
+                    (batch_end.saturating_add(1), end),
+                    (current_target_bytes, avg_block_size_estimate),
+                    (&mut server_group_end_hint, &mut pending_server_group_hint),
                 )
                 .await?;
-                next_prefetch_ms = next_prefetch_start.elapsed().as_millis();
+                let next_prefetch_ms = next_prefetch_start.elapsed().as_millis();
 
                 // Stage 2: Trial decryption (batched with parallelism)
                 self.progress.write().await.set_stage(SyncStage::Notes);
@@ -2917,7 +2914,7 @@ impl SyncEngine {
                         }
                     }
                 }
-                note_post_ms = note_post_start.elapsed().as_millis();
+                let note_post_ms = note_post_start.elapsed().as_millis();
 
                 // Persist decrypted notes if storage is configured (after frontier update to get positions)
                 if let Some(ref sink) = self.storage {
@@ -2989,8 +2986,8 @@ impl SyncEngine {
                     }
                 }
 
-                if !blocks.is_empty()
-                    && !(self.nullifier_cache.is_empty() && self.tracked_wallet_txids.is_empty())
+                if !(blocks.is_empty()
+                    || (self.nullifier_cache.is_empty() && self.tracked_wallet_txids.is_empty()))
                 {
                     // #region agent log
                     if verbose_sync_batch_logging_enabled() {
@@ -3048,7 +3045,7 @@ impl SyncEngine {
                         batch_processing_ms as u64,
                     );
                 }
-                perf_progress_ms = perf_progress_start.elapsed().as_millis();
+                let perf_progress_ms = perf_progress_start.elapsed().as_millis();
                 // #region agent log
                 if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
@@ -3135,18 +3132,19 @@ impl SyncEngine {
                     || batches_since_sync_state_flush >= self.config.sync_state_flush_every_batches
                     || last_sync_state_flush.elapsed().as_millis()
                         >= self.config.sync_state_flush_interval_ms as u128;
-                if should_flush_sync_state {
+                let sync_state_ms = if should_flush_sync_state {
                     let sync_state_start = Instant::now();
                     self.save_sync_state(batch_end, end, last_checkpoint_height)
                         .await?;
-                    sync_state_ms = sync_state_start.elapsed().as_millis();
+                    let elapsed_ms = sync_state_start.elapsed().as_millis();
                     batches_since_sync_state_flush = 0;
                     last_sync_state_flush = Instant::now();
+                    elapsed_ms
                 } else {
-                    sync_state_ms = 0;
                     batches_since_sync_state_flush =
                         batches_since_sync_state_flush.saturating_add(1);
-                }
+                    0
+                };
 
                 // #region agent log
                 {
@@ -3312,16 +3310,19 @@ impl SyncEngine {
                                         "Idle witness maintenance skipped due to error: {}",
                                         e
                                     );
+                                    let detail = e.to_string();
                                     log_idle_witness_maintenance_event(
-                                        "error",
-                                        current,
-                                        current,
-                                        0,
-                                        0,
-                                        false,
-                                        false,
-                                        0,
-                                        &e.to_string(),
+                                        IdleWitnessMaintenanceEvent {
+                                            event: "error",
+                                            current_height: current,
+                                            checkpoint_height: current,
+                                            sapling_repaired: 0,
+                                            orchard_repaired: 0,
+                                            checkpoint_persisted: false,
+                                            yielded_to_tip: false,
+                                            duration_ms: 0,
+                                            detail: &detail,
+                                        },
                                     );
                                 }
                             }
@@ -3730,13 +3731,14 @@ impl SyncEngine {
         &self,
         prefetch_queue: &mut VecDeque<PrefetchTask>,
         queued_prefetch_bytes: &mut u64,
-        start_height: u64,
-        end_height: u64,
-        current_target_bytes: u64,
-        avg_block_size_estimate: u64,
-        server_group_end_hint: &mut Option<u64>,
-        pending_server_group_hint: &mut Option<ServerBatchHintTask>,
+        sync_bounds: (u64, u64),
+        batch_tuning: (u64, u64),
+        hints: (&mut Option<u64>, &mut Option<ServerBatchHintTask>),
     ) -> Result<()> {
+        let (start_height, end_height) = sync_bounds;
+        let (current_target_bytes, avg_block_size_estimate) = batch_tuning;
+        let (server_group_end_hint, pending_server_group_hint) = hints;
+
         if start_height > end_height {
             return Ok(());
         }
@@ -5503,14 +5505,14 @@ impl SyncEngine {
 
     fn rederive_unmatched_sapling_spends(
         &self,
-        entries: &[(pirate_storage_sqlite::models::NoteType, [u8; 32], [u8; 32])],
-    ) -> Result<Vec<(i64, [u8; 32], [u8; 32])>> {
+        entries: &[TypedSpendEntry],
+    ) -> Result<Vec<RecoveredSpend>> {
         let sink = match self.storage.as_ref() {
             Some(s) => s,
             None => return Ok(Vec::new()),
         };
 
-        let mut spend_map: HashMap<[u8; 32], [u8; 32]> = HashMap::new();
+        let mut spend_map: HashMap<NullifierBytes, TxidBytes> = HashMap::new();
         for (note_type, nf, txid) in entries {
             if *note_type == pirate_storage_sqlite::models::NoteType::Sapling {
                 spend_map.entry(*nf).or_insert(*txid);
@@ -5534,7 +5536,7 @@ impl SyncEngine {
         let repo = Repository::new(&db);
         let notes = repo.get_spend_reconciliation_notes(sink.account_id)?;
 
-        let mut recovered: Vec<(i64, [u8; 32], [u8; 32])> = Vec::new();
+        let mut recovered: Vec<RecoveredSpend> = Vec::new();
         for mut note in notes {
             if note.note_type != pirate_storage_sqlite::models::NoteType::Sapling {
                 continue;
@@ -5647,14 +5649,14 @@ impl SyncEngine {
 
     fn rederive_unmatched_orchard_spends(
         &self,
-        entries: &[(pirate_storage_sqlite::models::NoteType, [u8; 32], [u8; 32])],
-    ) -> Result<Vec<(i64, [u8; 32], [u8; 32])>> {
+        entries: &[TypedSpendEntry],
+    ) -> Result<Vec<RecoveredSpend>> {
         let sink = match self.storage.as_ref() {
             Some(s) => s,
             None => return Ok(Vec::new()),
         };
 
-        let mut spend_map: HashMap<[u8; 32], [u8; 32]> = HashMap::new();
+        let mut spend_map: HashMap<NullifierBytes, TxidBytes> = HashMap::new();
         for (note_type, nf, txid) in entries {
             if *note_type == pirate_storage_sqlite::models::NoteType::Orchard {
                 spend_map.entry(*nf).or_insert(*txid);
@@ -5678,7 +5680,7 @@ impl SyncEngine {
         let repo = Repository::new(&db);
         let notes = repo.get_spend_reconciliation_notes(sink.account_id)?;
 
-        let mut recovered: Vec<(i64, [u8; 32], [u8; 32])> = Vec::new();
+        let mut recovered: Vec<RecoveredSpend> = Vec::new();
         for mut note in notes {
             if note.note_type != pirate_storage_sqlite::models::NoteType::Orchard {
                 continue;
@@ -5762,21 +5764,9 @@ impl SyncEngine {
 
     fn rederive_unmatched_spends(
         &self,
-        entries: &[(pirate_storage_sqlite::models::NoteType, [u8; 32], [u8; 32])],
-    ) -> Result<
-        Vec<(
-            i64,
-            pirate_storage_sqlite::models::NoteType,
-            [u8; 32],
-            [u8; 32],
-        )>,
-    > {
-        let mut recovered: Vec<(
-            i64,
-            pirate_storage_sqlite::models::NoteType,
-            [u8; 32],
-            [u8; 32],
-        )> = Vec::new();
+        entries: &[TypedSpendEntry],
+    ) -> Result<Vec<TypedRecoveredSpend>> {
+        let mut recovered: Vec<TypedRecoveredSpend> = Vec::new();
 
         for (id, nf, txid) in self.rederive_unmatched_sapling_spends(entries)? {
             recovered.push((
