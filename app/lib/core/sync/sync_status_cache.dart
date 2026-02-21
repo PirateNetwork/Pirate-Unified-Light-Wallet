@@ -11,7 +11,12 @@ class SyncStatusCache {
     if (_cachedHeight != null) {
       return _cachedHeight!;
     }
-    final raw = await _storage.read(key: _heightKey);
+    String? raw;
+    try {
+      raw = await _storage.read(key: _heightKey);
+    } catch (_) {
+      raw = null;
+    }
     if (raw == null || raw.isEmpty) {
       _cachedHeight = 0;
       return 0;
@@ -31,6 +36,10 @@ class SyncStatusCache {
       return;
     }
     _lastWrite = now;
-    await _storage.write(key: _heightKey, value: height.toString());
+    try {
+      await _storage.write(key: _heightKey, value: height.toString());
+    } catch (_) {
+      // Best-effort cache persistence.
+    }
   }
 }

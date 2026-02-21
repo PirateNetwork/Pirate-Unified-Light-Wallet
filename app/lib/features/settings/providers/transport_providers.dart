@@ -202,9 +202,10 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> setMode(String mode) async {
-    state = state.copyWith(mode: mode);
-    await _persist();
+    state = state.copyWith(mode: mode.toLowerCase());
     await _applyTunnel(state);
+    await _reconcileTunnelMode();
+    await _persist();
   }
 
   Future<void> setDnsProvider(String provider) async {
@@ -236,18 +237,31 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   Future<void> refresh() => _load();
 
   Future<void> _persist() async {
-    final encoded = jsonEncode(state.toJson());
-    await _storage.write(key: _storageKey, value: encoded);
+    try {
+      final encoded = jsonEncode(state.toJson());
+      await _storage.write(key: _storageKey, value: encoded);
+    } catch (_) {
+      // Secure storage may be unavailable on some unsigned macOS builds.
+      // Keep transport behavior functional even if persistence fails.
+    }
   }
 
   Future<void> _load() async {
-    final raw = await _storage.read(key: _storageKey);
+    var loadedFromStorage = false;
+    TransportConfig nextState = state;
+    String? raw;
+    try {
+      raw = await _storage.read(key: _storageKey);
+    } catch (_) {
+      raw = null;
+    }
     if (raw != null && raw.isNotEmpty) {
       try {
         final decoded = jsonDecode(raw) as Map<String, dynamic>;
-        state = TransportConfig.fromJson(decoded);
+        nextState = TransportConfig.fromJson(decoded);
+        loadedFromStorage = true;
       } catch (_) {
-        state = const TransportConfig(
+        nextState = const TransportConfig(
           mode: 'tor',
           dnsProvider: 'cloudflare_doh',
           socks5Config: {
@@ -268,7 +282,54 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
         );
       }
     }
-    await _applyTunnel(state);
+    if (!loadedFromStorage) {
+      nextState = const TransportConfig(
+        mode: 'tor',
+        dnsProvider: 'cloudflare_doh',
+        socks5Config: {
+          'host': 'localhost',
+          'port': '1080',
+          'username': null,
+          'password': null,
+        },
+        i2pEndpoint: '',
+        tlsPins: [],
+        torBridge: TorBridgeConfig(
+          useBridges: false,
+          fallbackToBridges: true,
+          transport: 'snowflake',
+          bridgeLines: [],
+          transportPath: null,
+        ),
+      );
+    }
+
+    state = nextState;
+
+    try {
+      // Backend is the single source of truth for active tunnel mode.
+      // Storage keeps supplemental config (SOCKS5/I2P/Tor bridge) only.
+      final backendMode = (await FfiBridge.getTunnel()).name.toLowerCase();
+      final backendState = nextState.copyWith(mode: backendMode);
+      state = backendState;
+      await _applyTunnel(backendState);
+      await _reconcileTunnelMode();
+      await _persist();
+    } catch (_) {
+      // Keep current backend untouched when mode cannot be resolved yet.
+    }
+  }
+
+  Future<void> _reconcileTunnelMode() async {
+    try {
+      final appliedMode = (await FfiBridge.getTunnel()).name.toLowerCase();
+      if (state.mode != appliedMode) {
+        state = state.copyWith(mode: appliedMode);
+        await _persist();
+      }
+    } catch (_) {
+      // Best-effort reconciliation only.
+    }
   }
 
   Future<void> setTorBridgeConfig(

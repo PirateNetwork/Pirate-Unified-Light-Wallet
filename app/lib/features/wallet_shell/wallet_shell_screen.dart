@@ -15,6 +15,7 @@ import '../../core/ffi/generated/models.dart'
         SyncMode;
 import '../../core/providers/wallet_providers.dart';
 import '../../design/tokens/spacing.dart';
+import '../settings/providers/transport_providers.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/organisms/p_scaffold.dart';
@@ -397,7 +398,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     }
   }
 
-  void _switchTunnelMode() {
+  Future<void> _switchTunnelMode() async {
     final current = ref.read(tunnelModeProvider);
     final next = switch (current) {
       TunnelMode_Tor() => const TunnelMode.i2P(),
@@ -408,15 +409,29 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
       TunnelMode_Socks5() => const TunnelMode.tor(),
     };
 
-    final socksUrl = switch (next) {
-      TunnelMode_Socks5(:final url) => url,
-      _ => null,
+    final transportNotifier = ref.read(transportConfigProvider.notifier);
+    final nextMode = switch (next) {
+      TunnelMode_Tor() => 'tor',
+      TunnelMode_I2p() => 'i2p',
+      TunnelMode_Direct() => 'direct',
+      TunnelMode_Socks5() => 'socks5',
     };
+    if (nextMode == 'socks5') {
+      final config = ref.read(transportConfigProvider).socks5Config;
+      final host = (config['host'] ?? '').trim();
+      final port = (config['port'] ?? '').trim();
+      if (host.isEmpty || port.isEmpty) {
+        await transportNotifier.setSocks5Config(const {
+          'host': 'localhost',
+          'port': '1080',
+          'username': null,
+          'password': null,
+        });
+      }
+    }
+    await transportNotifier.setMode(nextMode);
 
-    ref
-        .read(tunnelModeProvider.notifier)
-        .setTunnelMode(next, socksUrl: socksUrl);
-
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Tunnel mode: ${_getTunnelModeDisplayName(next)}'),
