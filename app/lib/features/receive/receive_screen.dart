@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/ffi/ffi_bridge.dart' show AddressBookColorTag;
+import '../../core/providers/wallet_providers.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart' show PTypography;
 import '../../design/tokens/colors.dart' show AppColors;
@@ -43,6 +44,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   _AddressSort? _lastSort;
   String? _lastQuery;
   List<AddressInfo> _sortedCache = const [];
+  int? _lastObservedSyncHeight;
 
   @override
   void initState() {
@@ -119,6 +121,20 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       // Safely watch the provider
       final state = ref.watch(receiveViewModelProvider);
       final viewModel = ref.read(receiveViewModelProvider.notifier);
+
+      ref
+        ..listen(transactionStreamProvider, (_, next) {
+          if (next.asData?.value == null) return;
+          unawaited(viewModel.refreshAddressHistory(force: true));
+        })
+        ..listen(syncProgressStreamProvider, (_, next) {
+          final localHeight = next.asData?.value?.localHeight.toInt();
+          if (localHeight == null) return;
+          if (_lastObservedSyncHeight == localHeight) return;
+          _lastObservedSyncHeight = localHeight;
+          if (!viewModel.hasPendingAddressBalances) return;
+          unawaited(viewModel.refreshAddressHistory());
+        });
 
       final screenWidth = MediaQuery.of(context).size.width;
       final isMobile = PSpacing.isMobile(screenWidth);

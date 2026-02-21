@@ -202,10 +202,29 @@ class _HomeHeader extends ConsumerWidget {
   final bool hideBalance;
   final VoidCallback onToggleVisibility;
 
+  int _confirmationsForTx(TxInfo tx, int? currentHeight) {
+    final txHeight = tx.height;
+    if (txHeight == null || txHeight <= 0 || currentHeight == null) {
+      return 0;
+    }
+    if (currentHeight < txHeight) {
+      return 0;
+    }
+    return (currentHeight - txHeight) + 1;
+  }
+
+  bool _isConfirmedTx(TxInfo tx, int? currentHeight) {
+    if (tx.confirmed) {
+      return true;
+    }
+    return _confirmationsForTx(tx, currentHeight) >= 10;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final syncStatusAsync = ref.watch(syncProgressStreamProvider);
     final balanceAsync = ref.watch(balanceStreamProvider);
+    final transactionsAsync = ref.watch(transactionsProvider);
     final tunnelMode = ref.watch(tunnelModeProvider);
     final torStatus = ref.watch(torStatusProvider);
     final transportConfig = ref.watch(transportConfigProvider);
@@ -243,6 +262,9 @@ class _HomeHeader extends ConsumerWidget {
     final isSyncing = !tunnelBlocked && (displaySyncStatus?.isSyncing ?? false);
     final isComplete =
         !tunnelBlocked && (displaySyncStatus?.isComplete ?? false);
+    final currentHeight =
+        (displaySyncStatus?.targetHeight ?? displaySyncStatus?.localHeight)
+            ?.toInt();
 
     final balanceData = balanceAsync.when(
       data: (b) => b,
@@ -251,7 +273,21 @@ class _HomeHeader extends ConsumerWidget {
     );
     final totalBalance = balanceData?.total ?? BigInt.zero;
     final spendableBalance = balanceData?.spendable ?? BigInt.zero;
-    final pendingBalance = balanceData?.pending ?? BigInt.zero;
+    final pendingBalanceFromBackend = balanceData?.pending ?? BigInt.zero;
+    final pendingBalance = transactionsAsync.when(
+      data: (txs) {
+        var pendingIncoming = BigInt.zero;
+        for (final tx in txs) {
+          final amountValue = tx.amount;
+          if (amountValue <= 0) continue;
+          if (_isConfirmedTx(tx, currentHeight)) continue;
+          pendingIncoming += BigInt.from(amountValue);
+        }
+        return pendingIncoming;
+      },
+      loading: () => pendingBalanceFromBackend,
+      error: (_, _) => pendingBalanceFromBackend,
+    );
     final displayBalance = (isSyncing || !isComplete)
         ? spendableBalance
         : totalBalance;
@@ -431,6 +467,24 @@ class _HomeTransactionsSection extends ConsumerWidget {
 
   final double gutter;
 
+  int _confirmationsForTx(TxInfo tx, int? currentHeight) {
+    final txHeight = tx.height;
+    if (txHeight == null || txHeight <= 0 || currentHeight == null) {
+      return 0;
+    }
+    if (currentHeight < txHeight) {
+      return 0;
+    }
+    return (currentHeight - txHeight) + 1;
+  }
+
+  bool _isConfirmedTx(TxInfo tx, int? currentHeight) {
+    if (tx.confirmed) {
+      return true;
+    }
+    return _confirmationsForTx(tx, currentHeight) >= 10;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final transactionsAsync = ref.watch(transactionsProvider);
@@ -442,6 +496,17 @@ class _HomeTransactionsSection extends ConsumerWidget {
         ),
       ),
     );
+    final syncProgressStatus = ref
+        .watch(syncProgressStreamProvider)
+        .asData
+        ?.value;
+    final syncStatus = ref.watch(syncStatusProvider).asData?.value;
+    final currentHeight =
+        (syncProgressStatus?.targetHeight ??
+                syncProgressStatus?.localHeight ??
+                syncStatus?.targetHeight ??
+                syncStatus?.localHeight)
+            ?.toInt();
 
     final transactions = transactionsAsync.when(
       data: (txs) => txs,
@@ -490,6 +555,7 @@ class _HomeTransactionsSection extends ConsumerWidget {
           return _TransactionItemWithLabel(
             key: ValueKey(tx.txid),
             tx: tx,
+            isConfirmed: _isConfirmedTx(tx, currentHeight),
             onTap: () =>
                 context.push('/transaction/${tx.txid}?amount=${tx.amount}'),
           );
@@ -717,9 +783,15 @@ class _QuickActionButton extends StatelessWidget {
 /// Transaction item with address book label lookup
 class _TransactionItemWithLabel extends ConsumerWidget {
   final TxInfo tx;
+  final bool isConfirmed;
   final VoidCallback? onTap;
 
-  const _TransactionItemWithLabel({super.key, required this.tx, this.onTap});
+  const _TransactionItemWithLabel({
+    super.key,
+    required this.tx,
+    required this.isConfirmed,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -747,7 +819,7 @@ class _TransactionItemWithLabel extends ConsumerWidget {
 
     return TransactionRowV2(
       isReceived: isReceived,
-      isConfirmed: tx.confirmed,
+      isConfirmed: isConfirmed,
       amountText: '${isReceived ? '+' : '-'}${amount.toStringAsFixed(4)} ARRR',
       timestamp: timestamp,
       memo: tx.memo,

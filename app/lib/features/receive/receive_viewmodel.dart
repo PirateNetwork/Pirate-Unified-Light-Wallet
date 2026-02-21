@@ -122,6 +122,8 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   bool _initialized = false;
   ReceiveState? _lastState;
   bool _isDecoy = false;
+  DateTime? _lastAddressRefreshAt;
+  bool _addressRefreshInFlight = false;
 
   /// Track if current address was shared (copied/shared)
   bool _currentAddressShared = false;
@@ -556,6 +558,37 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       // Silently fail for address history (non-critical)
       debugPrint('Failed to load address history: $e');
     }
+  }
+
+  /// Refresh address history (balances + pending status) with throttling.
+  ///
+  /// Use this for live UI updates while the receive page is open so pending
+  /// amounts clear automatically once confirmations reach spendable depth.
+  Future<void> refreshAddressHistory({
+    Duration minInterval = const Duration(seconds: 2),
+    bool force = false,
+  }) async {
+    if (_walletId == null) return;
+    if (_addressRefreshInFlight) return;
+
+    final now = DateTime.now();
+    if (!force && _lastAddressRefreshAt != null) {
+      if (now.difference(_lastAddressRefreshAt!) < minInterval) {
+        return;
+      }
+    }
+
+    _addressRefreshInFlight = true;
+    _lastAddressRefreshAt = now;
+    try {
+      await _loadAddressHistory(currentAddressOverride: state.currentAddress);
+    } finally {
+      _addressRefreshInFlight = false;
+    }
+  }
+
+  bool get hasPendingAddressBalances {
+    return state.addressHistory.any((address) => address.pending > BigInt.zero);
   }
 
   /// Check if we should suggest generating a new address

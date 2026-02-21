@@ -60,7 +60,25 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     super.dispose();
   }
 
-  List<TxInfo> _applyFilters(List<TxInfo> transactions) {
+  int _confirmationsForTx(TxInfo tx, int? currentHeight) {
+    final txHeight = tx.height;
+    if (txHeight == null || txHeight <= 0 || currentHeight == null) {
+      return 0;
+    }
+    if (currentHeight < txHeight) {
+      return 0;
+    }
+    return (currentHeight - txHeight) + 1;
+  }
+
+  bool _isConfirmedTx(TxInfo tx, int? currentHeight) {
+    if (tx.confirmed) {
+      return true;
+    }
+    return _confirmationsForTx(tx, currentHeight) >= 10;
+  }
+
+  List<TxInfo> _applyFilters(List<TxInfo> transactions, int? currentHeight) {
     Iterable<TxInfo> filtered = transactions;
 
     switch (_filter) {
@@ -71,7 +89,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
         filtered = filtered.where((tx) => tx.amount >= 0);
         break;
       case ActivityFilter.pending:
-        filtered = filtered.where((tx) => !tx.confirmed);
+        filtered = filtered.where((tx) => !_isConfirmedTx(tx, currentHeight));
         break;
       case ActivityFilter.all:
         break;
@@ -108,12 +126,23 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final transactionsAsync = ref.watch(transactionsProvider);
+    final syncProgressStatus = ref
+        .watch(syncProgressStreamProvider)
+        .asData
+        ?.value;
+    final syncStatus = ref.watch(syncStatusProvider).asData?.value;
+    final currentHeight =
+        (syncProgressStatus?.targetHeight ??
+                syncProgressStatus?.localHeight ??
+                syncStatus?.targetHeight ??
+                syncStatus?.localHeight)
+            ?.toInt();
     final screenWidth = size.width;
     final gutter = PSpacing.responsiveGutter(screenWidth);
 
     final content = transactionsAsync.when(
       data: (txs) {
-        final filtered = _applyFilters(txs);
+        final filtered = _applyFilters(txs, currentHeight);
         const headerCount = 4;
         final bodyCount = filtered.isEmpty ? 1 : filtered.length;
         final itemCount = headerCount + bodyCount;
@@ -162,7 +191,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
               padding: const EdgeInsets.only(bottom: PSpacing.md),
               child: TransactionRowV2(
                 isReceived: tx.amount >= 0,
-                isConfirmed: tx.confirmed,
+                isConfirmed: _isConfirmedTx(tx, currentHeight),
                 amountText:
                     '${tx.amount >= 0 ? '+' : '-'}${(tx.amount.abs() / 100000000.0).toStringAsFixed(4)} ARRR',
                 timestamp: _convertPlatformInt64ToDateTime(tx.timestamp),

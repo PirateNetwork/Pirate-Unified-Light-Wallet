@@ -122,12 +122,8 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
   int _confirmationsFor({
     required int? txHeight,
     required int? currentHeight,
-    required bool confirmed,
   }) {
-    if (!confirmed ||
-        txHeight == null ||
-        txHeight <= 0 ||
-        currentHeight == null) {
+    if (txHeight == null || txHeight <= 0 || currentHeight == null) {
       return 0;
     }
     if (currentHeight < txHeight) {
@@ -157,8 +153,6 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
     final amountArrr = _formatArrr(tx.amount.abs());
     final displayFeeArrrtoshis = _displayFeeArrrtoshis(tx);
     final feeArrr = _formatArrr(displayFeeArrrtoshis);
-    final statusText = tx.confirmed ? 'Confirmed' : 'Pending';
-    final statusColor = tx.confirmed ? AppColors.success : AppColors.warning;
     final syncProgressStatus = ref
         .watch(syncProgressStreamProvider)
         .asData
@@ -173,8 +167,10 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
     final confirmations = _confirmationsFor(
       txHeight: tx.height,
       currentHeight: currentHeight,
-      confirmed: tx.confirmed,
     );
+    final isConfirmed = tx.confirmed || confirmations >= 10;
+    final statusText = isConfirmed ? 'Confirmed' : 'Pending';
+    final statusColor = isConfirmed ? AppColors.success : AppColors.warning;
     final timestamp = _convertTimestamp(tx.timestamp);
     final localizations = MaterialLocalizations.of(context);
     final dateText = localizations.formatFullDate(timestamp);
