@@ -899,7 +899,13 @@ jobs:
       - name: Verify macOS DMG
         run: |
           chmod +x scripts/verify-macos-dmg.sh
-          for dmg in dist/macos/*.dmg; do
+          shopt -s nullglob
+          dmgs=(dist/macos/*.dmg)
+          if [ "${#dmgs[@]}" -eq 0 ]; then
+            echo "No DMG artifacts found in dist/macos/" >&2
+            exit 1
+          fi
+          for dmg in "${dmgs[@]}"; do
             scripts/verify-macos-dmg.sh "$dmg"
           done
 
