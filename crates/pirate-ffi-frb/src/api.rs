@@ -715,9 +715,58 @@ pub fn switch_wallet(wallet_id: WalletId) -> Result<()> {
         return Ok(());
     }
     ensure_wallet_registry_loaded()?;
-    let wallets = WALLETS.read();
-    if !wallets.iter().any(|w| w.id == wallet_id) {
-        return Err(anyhow!("Wallet not found: {}", wallet_id));
+    {
+        let wallets = WALLETS.read();
+        if !wallets.iter().any(|w| w.id == wallet_id) {
+            return Err(anyhow!("Wallet not found: {}", wallet_id));
+        }
+    }
+
+    let previous_active = ACTIVE_WALLET.read().clone();
+    if let Some(previous_wallet_id) = previous_active.as_ref() {
+        if previous_wallet_id != &wallet_id {
+            let previous_wallet_id = previous_wallet_id.clone();
+            let cancel_result = run_on_runtime_blocking({
+                let wallet_id_for_cancel = previous_wallet_id.clone();
+                move || async move {
+                    cancel_sync_internal(wallet_id_for_cancel.clone(), true).await?;
+                    Ok(())
+                }
+            });
+
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_wallet_switch_cancel","timestamp":{},"location":"api.rs:switch_wallet","message":"wallet switch previous sync cancel","data":{{"previous_wallet_id":"{}","next_wallet_id":"{}","success":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"W"}}"#,
+                    ts,
+                    previous_wallet_id,
+                    wallet_id,
+                    cancel_result.is_ok(),
+                    cancel_result
+                        .as_ref()
+                        .err()
+                        .map(|e| truncate_for_log(&e.to_string(), 180))
+                        .unwrap_or_default()
+                );
+            }
+
+            if let Err(e) = cancel_result {
+                tracing::warn!(
+                    "Failed to cancel previous wallet sync during switch ({} -> {}): {}",
+                    previous_wallet_id,
+                    wallet_id,
+                    e
+                );
+            }
+        }
     }
 
     *ACTIVE_WALLET.write() = Some(wallet_id);
@@ -1241,6 +1290,74 @@ fn spawn_bootstrap_transport(mode: TunnelMode) {
         if let Err(e) = pirate_sync_lightd::bootstrap_transport(transport, socks5_url).await {
             tracing::warn!("Failed to bootstrap transport: {}", e);
         }
+    };
+
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(task);
+    } else {
+        std::thread::spawn(move || {
+            if let Ok(runtime) = tokio::runtime::Runtime::new() {
+                runtime.block_on(task);
+            }
+        });
+    }
+}
+
+async fn disconnect_active_sync_channels(reason: &'static str) {
+    let sessions: Vec<(WalletId, Arc<tokio::sync::Mutex<SyncSession>>)> = {
+        let sessions = SYNC_SESSIONS.read();
+        sessions
+            .iter()
+            .map(|(wallet_id, session)| (wallet_id.clone(), Arc::clone(session)))
+            .collect()
+    };
+
+    write_runtime_debug_event(
+        "log_transport_sync_disconnect_start",
+        "disconnect active sync channels",
+        &format!(
+            r#"{{"reason":"{}","session_count":{}}}"#,
+            escape_json(reason),
+            sessions.len()
+        ),
+    );
+
+    for (wallet_id, session_arc) in sessions {
+        let sync_opt = { session_arc.lock().await.sync.clone() };
+        if let Some(sync) = sync_opt {
+            let wallet_id_for_log = wallet_id.clone();
+            let result = run_sync_engine_task(sync.clone(), move |engine| {
+                Box::pin(async move {
+                    engine.disconnect().await;
+                    Ok(())
+                })
+            })
+            .await;
+            if let Err(e) = result {
+                tracing::warn!(
+                    "Failed to disconnect sync engine for {} after {}: {}",
+                    wallet_id_for_log,
+                    reason,
+                    e
+                );
+                write_runtime_debug_event(
+                    "log_transport_sync_disconnect_error",
+                    "disconnect active sync channels failed",
+                    &format!(
+                        r#"{{"reason":"{}","wallet_id":"{}","error":"{}"}}"#,
+                        escape_json(reason),
+                        wallet_id_for_log,
+                        escape_json(&format!("{}", e))
+                    ),
+                );
+            }
+        }
+    }
+}
+
+fn spawn_disconnect_active_sync_channels(reason: &'static str) {
+    let task = async move {
+        disconnect_active_sync_channels(reason).await;
     };
 
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -2532,10 +2649,14 @@ pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+    let network_type = address_prefix_network_type(&wallet_id)?;
 
     // Load all addresses for this account
     let mut addresses = repo.get_all_addresses(secret.account_id)?;
     addresses.retain(|addr| addr.address_scope != pirate_storage_sqlite::AddressScope::Internal);
+    addresses.retain(|addr| {
+        address_matches_expected_network_prefix(&addr.address, addr.address_type, network_type)
+    });
 
     // Convert to AddressInfo with labels
     let address_infos: Vec<AddressInfo> = addresses
@@ -2567,7 +2688,8 @@ pub fn list_address_balances(
     let primary_key_id = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
     let network_type = address_prefix_network_type(&wallet_id)?;
     let orchard_active = should_generate_orchard(&wallet_id)?;
-    let scan_key_id = key_id.unwrap_or(primary_key_id);
+    let selected_key_id = key_id;
+    let scan_key_id = selected_key_id.unwrap_or(primary_key_id);
     let key_material = if let Some(id) = key_id {
         let key = repo
             .get_account_key_by_id(id)?
@@ -2585,6 +2707,15 @@ pub fn list_address_balances(
     };
 
     let mut notes = repo.get_unspent_notes(secret.account_id)?;
+    let has_orchard_note_bytes = notes.iter().any(|note| {
+        note.note_type == pirate_storage_sqlite::models::NoteType::Orchard
+            && note
+                .note
+                .as_ref()
+                .map(|bytes| !bytes.is_empty())
+                .unwrap_or(false)
+    });
+    let orchard_enabled_for_balance = orchard_active || has_orchard_note_bytes;
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height.max(sync_state.target_height);
@@ -2597,17 +2728,11 @@ pub fn list_address_balances(
         if note.value <= 0 {
             continue;
         }
-        let note_key_id = match note.key_id {
-            Some(id) => id,
-            None => {
-                if key_id.is_some() && scan_key_id != primary_key_id {
-                    continue;
-                }
-                scan_key_id
+        if let Some(selected) = selected_key_id {
+            let note_key_id = note.key_id.unwrap_or(primary_key_id);
+            if note_key_id != selected {
+                continue;
             }
-        };
-        if note_key_id != scan_key_id {
-            continue;
         }
         let Some(note_bytes) = note.note.as_deref() else {
             continue;
@@ -2619,7 +2744,7 @@ pub fn list_address_balances(
                     .map(|addr| PaymentAddress { inner: addr }.encode_for_network(network_type))
             }
             pirate_storage_sqlite::models::NoteType::Orchard => {
-                if !orchard_active {
+                if !orchard_enabled_for_balance {
                     None
                 } else {
                     decode_orchard_address_bytes_from_note_bytes(note_bytes)
@@ -2713,7 +2838,7 @@ pub fn list_address_balances(
             Some(fvk.derive_address(index).encode_for_network(network_type))
         })?;
     }
-    if orchard_active {
+    if orchard_enabled_for_balance {
         if let Some(fvk) = orchard_fvk.as_ref() {
             let mut scan_context = SequentialAddressScan {
                 repo: &repo,
@@ -2730,22 +2855,11 @@ pub fn list_address_balances(
         }
     }
     for note in notes.iter_mut() {
-        if key_id.is_some() {
-            let note_key_id = match note.key_id {
-                Some(id) => id,
-                None => {
-                    if scan_key_id != primary_key_id {
-                        continue;
-                    }
-                    scan_key_id
-                }
-            };
-            if note_key_id != scan_key_id {
+        if let Some(selected) = selected_key_id {
+            let note_key_id = note.key_id.unwrap_or(primary_key_id);
+            if note_key_id != selected {
                 continue;
             }
-        }
-        if note.address_id.is_some() {
-            continue;
         }
         let Some(note_bytes) = note.note.as_deref() else {
             continue;
@@ -2757,7 +2871,7 @@ pub fn list_address_balances(
                     .map(|addr| PaymentAddress { inner: addr }.encode_for_network(network_type))
             }
             pirate_storage_sqlite::models::NoteType::Orchard => {
-                if !orchard_active {
+                if !orchard_enabled_for_balance {
                     None
                 } else {
                     decode_orchard_address_bytes_from_note_bytes(note_bytes)
@@ -2798,8 +2912,10 @@ pub fn list_address_balances(
             .get_address_by_string(secret.account_id, &address_string)?
             .and_then(|addr| addr.id)
         {
-            note.address_id = Some(addr);
-            repo.update_note_by_id(note)?;
+            if note.address_id != Some(addr) {
+                note.address_id = Some(addr);
+                repo.update_note_by_id(note)?;
+            }
         }
     }
 
@@ -2808,9 +2924,12 @@ pub fn list_address_balances(
     } else {
         repo.get_all_addresses(secret.account_id)?
     };
-    if !orchard_active {
+    if !orchard_enabled_for_balance {
         addresses.retain(|addr| addr.address_type != AddressType::Orchard);
     }
+    addresses.retain(|addr| {
+        address_matches_expected_network_prefix(&addr.address, addr.address_type, network_type)
+    });
     // Keep wallet-wide receive/history views external-only, but include internal
     // (change) addresses when a specific key group is requested so users can
     // see and spend balances that currently live on change addresses.
@@ -2900,6 +3019,21 @@ fn address_matches_type(address: &str, address_type: AddressType) -> bool {
                 || address.starts_with("pirate-test1")
                 || address.starts_with("pirate-regtest1")
         }
+    }
+}
+
+fn address_matches_expected_network_prefix(
+    address: &str,
+    address_type: AddressType,
+    network_type: NetworkType,
+) -> bool {
+    match (address_type, network_type) {
+        (AddressType::Sapling, NetworkType::Mainnet) => address.starts_with("zs1"),
+        (AddressType::Sapling, NetworkType::Testnet) => address.starts_with("ztestsapling1"),
+        (AddressType::Sapling, NetworkType::Regtest) => address.starts_with("zregtestsapling1"),
+        (AddressType::Orchard, NetworkType::Mainnet) => address.starts_with("pirate1"),
+        (AddressType::Orchard, NetworkType::Testnet) => address.starts_with("pirate-test1"),
+        (AddressType::Orchard, NetworkType::Regtest) => address.starts_with("pirate-regtest1"),
     }
 }
 
@@ -3596,8 +3730,12 @@ pub fn list_addresses_for_key(wallet_id: WalletId, key_id: i64) -> Result<Vec<Ke
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
+    let network_type = address_prefix_network_type(&wallet_id)?;
     let mut addresses = repo.get_addresses_by_key(secret.account_id, key_id)?;
     addresses.retain(|addr| addr.address_scope != pirate_storage_sqlite::AddressScope::Internal);
+    addresses.retain(|addr| {
+        address_matches_expected_network_prefix(&addr.address, addr.address_type, network_type)
+    });
 
     let infos = addresses
         .into_iter()
@@ -4001,6 +4139,89 @@ fn note_balances_by_key_id(notes: &[pirate_core::selection::SelectableNote]) -> 
     balances
 }
 
+fn sapling_note_commitment_matches(note: &pirate_core::selection::SelectableNote) -> Option<bool> {
+    if note.note_type != pirate_core::selection::NoteType::Sapling {
+        return None;
+    }
+    let sapling_note = note.note.as_ref()?;
+    if note.commitment.len() != 32 {
+        return Some(false);
+    }
+    let mut stored = [0u8; 32];
+    stored.copy_from_slice(&note.commitment[..32]);
+    let computed = sapling_note.cmu().to_bytes();
+    Some(computed == stored)
+}
+
+fn orchard_note_commitment_matches(note: &pirate_core::selection::SelectableNote) -> Option<bool> {
+    if note.note_type != pirate_core::selection::NoteType::Orchard {
+        return None;
+    }
+    let orchard_note = note.orchard_note.as_ref()?;
+    if note.commitment.len() != 32 {
+        return Some(false);
+    }
+    let mut stored = [0u8; 32];
+    stored.copy_from_slice(&note.commitment[..32]);
+    let computed = OrchardExtractedNoteCommitment::from(orchard_note.commitment()).to_bytes();
+    Some(computed == stored)
+}
+
+fn resolve_sapling_key_id_for_note(
+    note: &pirate_core::selection::SelectableNote,
+    sapling_spend_keys_by_id: &HashMap<i64, ExtendedSpendingKey>,
+) -> Option<i64> {
+    if note.note_type != pirate_core::selection::NoteType::Sapling {
+        return None;
+    }
+    let sapling_note = note.note.as_ref()?;
+    let position = note.sapling_position?;
+    let nullifier_bytes = note.nullifier.as_ref()?;
+    if nullifier_bytes.len() != 32 {
+        return None;
+    }
+
+    for (key_id, extsk) in sapling_spend_keys_by_id {
+        let external_nk = extsk.to_extended_fvk().nullifier_deriving_key();
+        let external_derived = sapling_note.nf(&external_nk, position).0;
+        if external_derived.as_slice() == nullifier_bytes.as_slice() {
+            return Some(*key_id);
+        }
+
+        let internal_nk = extsk.to_internal_fvk().nullifier_deriving_key();
+        let internal_derived = sapling_note.nf(&internal_nk, position).0;
+        if internal_derived.as_slice() == nullifier_bytes.as_slice() {
+            return Some(*key_id);
+        }
+    }
+
+    None
+}
+
+fn resolve_orchard_key_id_for_note(
+    note: &pirate_core::selection::SelectableNote,
+    orchard_spend_keys_by_id: &HashMap<i64, OrchardExtendedSpendingKey>,
+) -> Option<i64> {
+    if note.note_type != pirate_core::selection::NoteType::Orchard {
+        return None;
+    }
+    let orchard_note = note.orchard_note.as_ref()?;
+    let nullifier_bytes = note.nullifier.as_ref()?;
+    if nullifier_bytes.len() != 32 {
+        return None;
+    }
+
+    for (key_id, extsk) in orchard_spend_keys_by_id {
+        let fvk = extsk.to_extended_fvk();
+        let derived = orchard_note.nullifier(&fvk.inner).to_bytes();
+        if derived.as_slice() == nullifier_bytes.as_slice() {
+            return Some(*key_id);
+        }
+    }
+
+    None
+}
+
 fn infer_contributing_key_ids_for_amount(
     notes: &[pirate_core::selection::SelectableNote],
     required_total: u64,
@@ -4216,6 +4437,136 @@ fn refresh_selectable_note_positions_from_db(
     Ok(refreshed)
 }
 
+fn is_guarded_witness_refresh_source(source: &str) -> bool {
+    matches!(
+        source,
+        "session_missing"
+            | "session_busy"
+            | "sync_missing"
+            | "engine_busy"
+            | "engine_busy_after_replay"
+            | "engine_lock_replay_failed"
+    )
+}
+
+const WITNESS_LOCK_ATTEMPTS: usize = 40;
+const WITNESS_RELOCK_ATTEMPTS: usize = 40;
+const WITNESS_LOCK_SLEEP_MS: u64 = 25;
+const WITNESS_PRIME_ATTEMPTS: usize = 40;
+const WITNESS_PRIME_SLEEP_MS: u64 = 15;
+const WITNESS_WAIT_FOR_STOP_TIMEOUT: Duration = Duration::from_millis(900);
+const SIGN_SYNC_ENGINE_IDLE_TIMEOUT: Duration = Duration::from_millis(900);
+const CANCEL_SYNC_ENGINE_REQUEST_TIMEOUT: Duration = Duration::from_millis(350);
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum SyncHandleProbe {
+    Present,
+    Missing,
+    Busy,
+}
+
+fn probe_sync_engine_handle(wallet_id: &WalletId) -> SyncHandleProbe {
+    let session_arc_opt = {
+        let sessions = SYNC_SESSIONS.read();
+        sessions.get(wallet_id).cloned()
+    };
+    if let Some(session_arc) = session_arc_opt {
+        for _ in 0..WITNESS_LOCK_ATTEMPTS {
+            if let Ok(session) = session_arc.try_lock() {
+                return if session.sync.is_some() {
+                    SyncHandleProbe::Present
+                } else {
+                    SyncHandleProbe::Missing
+                };
+            }
+            std::thread::sleep(Duration::from_millis(WITNESS_LOCK_SLEEP_MS));
+        }
+        return SyncHandleProbe::Busy;
+    }
+
+    SyncHandleProbe::Missing
+}
+
+fn has_sync_engine_handle(wallet_id: &WalletId) -> bool {
+    matches!(
+        probe_sync_engine_handle(wallet_id),
+        SyncHandleProbe::Present
+    )
+}
+
+fn prime_sync_engine_for_witness(wallet_id: &WalletId) -> bool {
+    let initial_probe = probe_sync_engine_handle(wallet_id);
+    if initial_probe == SyncHandleProbe::Present {
+        return true;
+    }
+
+    // Non-destructive recovery path: if a handle exists but is lock-contended,
+    // force-stop any running task while preserving the engine handle.
+    if matches!(
+        initial_probe,
+        SyncHandleProbe::Busy | SyncHandleProbe::Present
+    ) {
+        let _ = run_on_runtime_blocking({
+            let wallet_id = wallet_id.clone();
+            move || async move {
+                let _ = cancel_sync_internal(wallet_id.clone(), false).await;
+                let _ = wait_for_sync_stop(&wallet_id, WITNESS_WAIT_FOR_STOP_TIMEOUT).await;
+                Ok(())
+            }
+        });
+
+        match probe_sync_engine_handle(wallet_id) {
+            SyncHandleProbe::Present => return true,
+            SyncHandleProbe::Busy => return false,
+            SyncHandleProbe::Missing => {}
+        }
+    }
+
+    // Cold-start priming only when there is definitely no engine handle.
+    if probe_sync_engine_handle(wallet_id) != SyncHandleProbe::Missing {
+        return has_sync_engine_handle(wallet_id);
+    }
+
+    let wallet_id_cloned = wallet_id.clone();
+    let primed = run_on_runtime_blocking(move || async move {
+        // Create an engine handle quickly using compact mode, then stop the task
+        // while preserving the handle for witness refresh.
+        let _priming_guard = mark_sync_priming_active(&wallet_id_cloned);
+        if start_sync(wallet_id_cloned.clone(), SyncMode::Compact)
+            .await
+            .is_err()
+        {
+            return Ok(false);
+        }
+
+        let mut handle_ready = false;
+        for _ in 0..WITNESS_PRIME_ATTEMPTS {
+            let session_arc_opt = {
+                let sessions = SYNC_SESSIONS.read();
+                sessions.get(&wallet_id_cloned).cloned()
+            };
+            if let Some(session_arc) = session_arc_opt {
+                if let Ok(session) = session_arc.try_lock() {
+                    if session.sync.is_some() {
+                        handle_ready = true;
+                        break;
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(WITNESS_PRIME_SLEEP_MS)).await;
+        }
+
+        let _ = cancel_sync_internal(wallet_id_cloned.clone(), false).await;
+        let stopped = wait_for_sync_stop(&wallet_id_cloned, WITNESS_WAIT_FOR_STOP_TIMEOUT).await;
+        let task_cleared = !is_sync_running(wallet_id_cloned.clone()).unwrap_or(true);
+        let handle_present = has_sync_engine_handle(&wallet_id_cloned);
+        Ok(handle_ready && stopped && task_cleared && handle_present)
+    })
+    .unwrap_or(false);
+
+    primed || has_sync_engine_handle(wallet_id)
+}
+
 fn refresh_selectable_note_witnesses(
     wallet_id: &WalletId,
     selectable_notes: &mut [pirate_core::selection::SelectableNote],
@@ -4232,45 +4583,48 @@ fn refresh_selectable_note_witnesses(
     };
     if let Some(session_arc) = session_arc_opt {
         let mut session_guard = None;
-        for _ in 0..200 {
+        for _ in 0..WITNESS_LOCK_ATTEMPTS {
             if let Ok(guard) = session_arc.try_lock() {
                 session_guard = Some(guard);
                 break;
             }
-            std::thread::sleep(Duration::from_millis(25));
+            std::thread::sleep(Duration::from_millis(WITNESS_LOCK_SLEEP_MS));
         }
         if let Some(session) = session_guard {
             if let Some(sync_arc) = session.sync.clone() {
                 let mut engine_guard = None;
-                for _ in 0..200 {
+                for _ in 0..WITNESS_LOCK_ATTEMPTS {
                     if let Ok(guard) = sync_arc.try_lock() {
                         engine_guard = Some(guard);
                         break;
                     }
-                    std::thread::sleep(Duration::from_millis(25));
+                    std::thread::sleep(Duration::from_millis(WITNESS_LOCK_SLEEP_MS));
                 }
                 if engine_guard.is_none() && allow_wait_for_sync_stop {
                     let _ = run_on_runtime_blocking({
                         let wallet_id = wallet_id.clone();
                         move || async move {
                             let _ =
-                                wait_for_sync_stop(&wallet_id, std::time::Duration::from_secs(8))
-                                    .await;
+                                wait_for_sync_stop(&wallet_id, WITNESS_WAIT_FOR_STOP_TIMEOUT).await;
                             Ok(())
                         }
                     });
-                    for _ in 0..320 {
+                    for _ in 0..WITNESS_RELOCK_ATTEMPTS {
                         if let Ok(guard) = sync_arc.try_lock() {
                             engine_guard = Some(guard);
                             break;
                         }
-                        std::thread::sleep(Duration::from_millis(25));
+                        std::thread::sleep(Duration::from_millis(WITNESS_LOCK_SLEEP_MS));
                     }
                 }
                 if let Some(engine) = engine_guard {
                     outcome.source = "engine_lock".to_string();
                     let mut sapling_missing_indices: Vec<(usize, u64, u64)> = Vec::new();
                     let mut orchard_missing_indices: Vec<(usize, u64, u64)> = Vec::new();
+                    let expected_sapling_anchor =
+                        futures::executor::block_on(engine.get_sapling_anchor());
+                    let expected_orchard_anchor =
+                        futures::executor::block_on(engine.get_orchard_anchor());
                     for (note_idx, note) in selectable_notes.iter_mut().enumerate() {
                         match note.note_type {
                             pirate_core::selection::NoteType::Sapling => {
@@ -4281,6 +4635,98 @@ fn refresh_selectable_note_witnesses(
                                     );
                                     match witness_result {
                                         Ok(Some(merkle_path)) => {
+                                            let expected_anchor = match expected_sapling_anchor {
+                                                Some(anchor) => anchor,
+                                                None => {
+                                                    outcome.sapling_missing += 1;
+                                                    sapling_missing_indices.push((
+                                                        note_idx,
+                                                        position,
+                                                        note.height,
+                                                    ));
+                                                    log_witness_repair_note_event(
+                                                        wallet_id,
+                                                        "initial",
+                                                        "anchor_unavailable",
+                                                        note_idx,
+                                                        note,
+                                                        Some(position),
+                                                        None,
+                                                    );
+                                                    continue;
+                                                }
+                                            };
+                                            let computed_anchor = {
+                                                let leaf = if note.commitment.len() == 32 {
+                                                    let mut cmu_bytes = [0u8; 32];
+                                                    cmu_bytes
+                                                        .copy_from_slice(&note.commitment[..32]);
+                                                    if let Some(cmu) = Option::<
+                                                        SaplingExtractedNoteCommitment,
+                                                    >::from(
+                                                        SaplingExtractedNoteCommitment::from_bytes(
+                                                            &cmu_bytes,
+                                                        ),
+                                                    ) {
+                                                        Some(
+                                                            zcash_primitives::sapling::Node::from_cmu(
+                                                                &cmu,
+                                                            ),
+                                                        )
+                                                    } else {
+                                                        note.note.as_ref().map(|sapling_note| {
+                                                            zcash_primitives::sapling::Node::from_cmu(
+                                                                &sapling_note.cmu(),
+                                                            )
+                                                        })
+                                                    }
+                                                } else {
+                                                    note.note.as_ref().map(|sapling_note| {
+                                                        zcash_primitives::sapling::Node::from_cmu(
+                                                            &sapling_note.cmu(),
+                                                        )
+                                                    })
+                                                };
+                                                leaf.map(|node| merkle_path.root(node).to_bytes())
+                                            };
+                                            let computed_anchor = match computed_anchor {
+                                                Some(anchor) => anchor,
+                                                None => {
+                                                    outcome.sapling_errors += 1;
+                                                    log_witness_repair_note_event(
+                                                        wallet_id,
+                                                        "initial",
+                                                        "anchor_compute_failed",
+                                                        note_idx,
+                                                        note,
+                                                        Some(position),
+                                                        None,
+                                                    );
+                                                    continue;
+                                                }
+                                            };
+                                            if computed_anchor != expected_anchor {
+                                                outcome.sapling_missing += 1;
+                                                sapling_missing_indices.push((
+                                                    note_idx,
+                                                    position,
+                                                    note.height,
+                                                ));
+                                                log_witness_repair_note_event(
+                                                    wallet_id,
+                                                    "initial",
+                                                    "anchor_mismatch",
+                                                    note_idx,
+                                                    note,
+                                                    Some(position),
+                                                    Some(&format!(
+                                                        "expected={},computed={}",
+                                                        hex::encode(expected_anchor),
+                                                        hex::encode(computed_anchor)
+                                                    )),
+                                                );
+                                                continue;
+                                            }
                                             note.merkle_path = Some(merkle_path);
                                             outcome.sapling_updated += 1;
                                         }
@@ -4329,7 +4775,72 @@ fn refresh_selectable_note_witnesses(
                                     );
                                     match witness_result {
                                         Ok(Some(merkle_path)) => {
-                                            note.orchard_merkle_path = Some(merkle_path.into());
+                                            let expected_anchor = match expected_orchard_anchor {
+                                                Some(anchor) => anchor,
+                                                None => {
+                                                    outcome.orchard_missing += 1;
+                                                    orchard_missing_indices.push((
+                                                        note_idx,
+                                                        position,
+                                                        note.height,
+                                                    ));
+                                                    log_witness_repair_note_event(
+                                                        wallet_id,
+                                                        "initial",
+                                                        "anchor_unavailable",
+                                                        note_idx,
+                                                        note,
+                                                        Some(position),
+                                                        None,
+                                                    );
+                                                    continue;
+                                                }
+                                            };
+                                            let orchard_path: orchard::tree::MerklePath =
+                                                merkle_path.clone().into();
+                                            let computed_anchor =
+                                                match orchard_anchor_from_merkle_path(
+                                                    note,
+                                                    &orchard_path,
+                                                ) {
+                                                    Some(anchor) => anchor,
+                                                    None => {
+                                                        outcome.orchard_errors += 1;
+                                                        log_witness_repair_note_event(
+                                                            wallet_id,
+                                                            "initial",
+                                                            "anchor_compute_failed",
+                                                            note_idx,
+                                                            note,
+                                                            Some(position),
+                                                            None,
+                                                        );
+                                                        continue;
+                                                    }
+                                                };
+                                            if computed_anchor != expected_anchor {
+                                                outcome.orchard_missing += 1;
+                                                orchard_missing_indices.push((
+                                                    note_idx,
+                                                    position,
+                                                    note.height,
+                                                ));
+                                                log_witness_repair_note_event(
+                                                    wallet_id,
+                                                    "initial",
+                                                    "anchor_mismatch",
+                                                    note_idx,
+                                                    note,
+                                                    Some(position),
+                                                    Some(&format!(
+                                                        "expected={},computed={}",
+                                                        hex::encode(expected_anchor),
+                                                        hex::encode(computed_anchor)
+                                                    )),
+                                                );
+                                                continue;
+                                            }
+                                            note.orchard_merkle_path = Some(orchard_path);
                                             outcome.orchard_updated += 1;
                                         }
                                         Ok(None) => {
@@ -4476,12 +4987,14 @@ fn refresh_selectable_note_witnesses(
                                     }
 
                                     let mut replay_engine_guard = None;
-                                    for _ in 0..320 {
+                                    for _ in 0..WITNESS_RELOCK_ATTEMPTS {
                                         if let Ok(guard) = sync_arc.try_lock() {
                                             replay_engine_guard = Some(guard);
                                             break;
                                         }
-                                        std::thread::sleep(Duration::from_millis(25));
+                                        std::thread::sleep(Duration::from_millis(
+                                            WITNESS_LOCK_SLEEP_MS,
+                                        ));
                                     }
 
                                     if let Some(replay_engine) = replay_engine_guard {
@@ -5075,7 +5588,7 @@ fn build_tx_internal(
             let (cancel_ok, stopped) = run_on_runtime_blocking({
                 let wallet_id = wallet_id.clone();
                 move || async move {
-                    let cancel_ok = cancel_sync(wallet_id.clone()).await.is_ok();
+                    let cancel_ok = cancel_sync_internal(wallet_id.clone(), false).await.is_ok();
                     let stopped =
                         wait_for_sync_stop(&wallet_id, std::time::Duration::from_secs(20)).await;
                     Ok((cancel_ok, stopped))
@@ -5106,8 +5619,44 @@ fn build_tx_internal(
         }
 
         let _sync_resume_guard = SyncResumeGuard::new(wallet_id.clone(), resume_sync_after_build);
-        let refresh =
+        let mut refresh =
             refresh_selectable_note_witnesses(&wallet_id, &mut selectable_notes_raw, true);
+        if refresh.sapling_requested == 0 && refresh.orchard_requested == 0 {
+            if let Ok(refreshed_positions) =
+                refresh_selectable_note_positions_from_db(&wallet_id, &mut selectable_notes_raw)
+            {
+                if refreshed_positions > 0 {
+                    refresh = refresh_selectable_note_witnesses(
+                        &wallet_id,
+                        &mut selectable_notes_raw,
+                        true,
+                    );
+                }
+            }
+        }
+        if is_guarded_witness_refresh_source(&refresh.source) {
+            let primed = prime_sync_engine_for_witness(&wallet_id);
+            if primed {
+                refresh =
+                    refresh_selectable_note_witnesses(&wallet_id, &mut selectable_notes_raw, true);
+            }
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_build_tx_witness_preflight","timestamp":{},"location":"api.rs:build_tx_internal","message":"build_tx witness preflight","data":{{"wallet_id":"{}","source":"{}","primed":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                    ts, wallet_id, refresh.source, primed
+                );
+            }
+        }
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -5524,7 +6073,6 @@ fn sapling_anchor_for_selectable_note(
     if note.note_type != pirate_core::selection::NoteType::Sapling {
         return None;
     }
-
     let merkle_path = note.merkle_path.as_ref()?;
 
     // Prefer recomputing from persisted commitment bytes to avoid edge cases
@@ -5549,6 +6097,30 @@ fn sapling_anchor_for_selectable_note(
     Some(merkle_path.root(leaf).to_bytes())
 }
 
+fn orchard_anchor_from_merkle_path(
+    note: &pirate_core::selection::SelectableNote,
+    merkle_path: &orchard::tree::MerklePath,
+) -> Option<[u8; 32]> {
+    if note.note_type != pirate_core::selection::NoteType::Orchard {
+        return None;
+    }
+    if note.commitment.len() == 32 {
+        let mut cmx_bytes = [0u8; 32];
+        cmx_bytes.copy_from_slice(&note.commitment[..32]);
+        if let Some(cmx) = Option::from(OrchardExtractedNoteCommitment::from_bytes(&cmx_bytes)) {
+            return Some(merkle_path.root(cmx).to_bytes());
+        }
+    }
+    let orchard_note = note.orchard_note.as_ref()?;
+    Some(
+        merkle_path
+            .root(OrchardExtractedNoteCommitment::from(
+                orchard_note.commitment(),
+            ))
+            .to_bytes(),
+    )
+}
+
 fn align_sapling_anchor_group(
     notes: Vec<pirate_core::selection::SelectableNote>,
     required_total: u64,
@@ -5569,7 +6141,8 @@ fn align_sapling_anchor_group(
     }
 
     if anchor_stats.len() <= 1 {
-        return (notes, anchor_stats.len(), 0, None);
+        let chosen = anchor_stats.keys().next().copied().map(hex::encode);
+        return (notes, anchor_stats.len(), 0, chosen);
     }
 
     let mut sufficient_choice: Option<([u8; 32], u128, u64, usize)> = None;
@@ -5647,13 +6220,8 @@ fn orchard_anchor_for_selectable_note(
 
     // Prefer recomputing from witness when available to avoid stale persisted anchors.
     if let Some(merkle_path) = note.orchard_merkle_path.as_ref() {
-        if note.commitment.len() == 32 {
-            let mut cmx_bytes = [0u8; 32];
-            cmx_bytes.copy_from_slice(&note.commitment[..32]);
-            if let Some(cmx) = Option::from(OrchardExtractedNoteCommitment::from_bytes(&cmx_bytes))
-            {
-                return Some(merkle_path.root(cmx).to_bytes());
-            }
+        if let Some(anchor) = orchard_anchor_from_merkle_path(note, merkle_path) {
+            return Some(anchor);
         }
     }
 
@@ -5680,7 +6248,8 @@ fn align_orchard_anchor_group(
     }
 
     if anchor_stats.len() <= 1 {
-        return (notes, anchor_stats.len(), 0, None);
+        let chosen = anchor_stats.keys().next().copied().map(hex::encode);
+        return (notes, anchor_stats.len(), 0, chosen);
     }
 
     let mut sufficient_choice: Option<([u8; 32], u128, u64, usize)> = None;
@@ -5860,41 +6429,52 @@ fn sign_tx_internal(
         }
     };
 
-    // Pause background sync while signing so witness/anchor reads can lock the
-    // engine deterministically and not race with long-running sync tasks.
+    // Mark signing critical section to suppress auto-recovery restarts that can
+    // race transport/sync state while proving a transaction.
+    let _signing_guard = mark_signing_active(&wallet_id);
+
+    // Quiesce background sync before signing.
+    // This uses a fast stop path (task abort + cancel flag) so "Send" is snappy.
     let mut resume_sync_after_sign = false;
+    let mut sync_pause_elapsed_ms: u128 = 0;
+    let mut sync_engine_idle_before_sign = true;
     let sync_was_running = is_sync_running(wallet_id.clone()).unwrap_or(false);
     if sync_was_running {
-        log_step("sync_pause_start", "reason=sign_tx");
-        let (cancel_ok, stopped) = run_on_runtime_blocking({
+        let pause_started_at = std::time::Instant::now();
+        log_step("sync_quiesce_start", "reason=sign_tx");
+        let (was_running, task_aborted, cancel_requested) = run_on_runtime_blocking({
             let wallet_id = wallet_id.clone();
-            move || async move {
-                let cancel_ok = cancel_sync(wallet_id.clone()).await.is_ok();
-                let stopped =
-                    wait_for_sync_stop(&wallet_id, std::time::Duration::from_secs(20)).await;
-                Ok((cancel_ok, stopped))
-            }
+            move || async move { quiesce_sync_for_sign(wallet_id.clone()).await }
         })
         .unwrap_or_else(|e| {
             tracing::warn!(
-                "Failed to pause sync before signing for {}: {}",
+                "Failed to quiesce sync before signing for {}: {}",
                 wallet_id,
                 e
             );
-            (false, false)
+            (false, false, false)
         });
+        sync_pause_elapsed_ms = pause_started_at.elapsed().as_millis();
+        sync_engine_idle_before_sign = run_on_runtime_blocking({
+            let wallet_id = wallet_id.clone();
+            move || async move {
+                Ok(wait_for_sync_engine_idle(&wallet_id, SIGN_SYNC_ENGINE_IDLE_TIMEOUT).await)
+            }
+        })
+        .unwrap_or(false);
         log_step(
-            "sync_pause_done",
-            &format!("cancel_ok={},stopped={}", cancel_ok, stopped),
+            "sync_quiesce_done",
+            &format!(
+                "was_running={},task_aborted={},cancel_requested={},engine_idle={},elapsed_ms={}",
+                was_running,
+                task_aborted,
+                cancel_requested,
+                sync_engine_idle_before_sign,
+                sync_pause_elapsed_ms
+            ),
         );
-        if stopped {
+        if was_running {
             resume_sync_after_sign = true;
-        } else {
-            tracing::warn!(
-                "Could not fully stop sync before signing for {}; witness refresh may be limited",
-                wallet_id
-            );
-            log_step("sync_pause_timeout", "");
         }
     }
     let _sync_resume_guard = SyncResumeGuard::new(wallet_id.clone(), resume_sync_after_sign);
@@ -5940,6 +6520,17 @@ fn sign_tx_internal(
             log_step("auto_key_selected", &format!("key_id={}", key_id));
         }
     }
+    log_step(
+        "signing_key_resolution",
+        &format!(
+            "signing_key_id={},effective_key_ids_count={},address_ids_count={}",
+            signing_key_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            effective_key_ids_filter.as_ref().map_or(0, |ids| ids.len()),
+            address_ids_filter.as_ref().map_or(0, |ids| ids.len())
+        ),
+    );
 
     let (mut sapling_extsk_bytes, mut orchard_extsk_bytes, mut change_key_id) =
         if let Some(key_id) = signing_key_id {
@@ -5965,30 +6556,29 @@ fn sign_tx_internal(
             )
         };
 
-    // Build spend-key maps for multi-key-group signing when auto mode is active.
-    // In manual key/address filtered mode we keep maps empty and use the selected/default key.
+    // Build spend-key maps for per-note signing across all modes.
+    // This mirrors upstream behavior: each selected note should use its own
+    // spend key when key_id is available, with the selected/default key as fallback.
     let mut account_keys_by_id: HashMap<i64, AccountKey> = HashMap::new();
     let mut sapling_spend_keys_by_id: HashMap<i64, ExtendedSpendingKey> = HashMap::new();
     let mut orchard_spend_keys_by_id: HashMap<i64, OrchardExtendedSpendingKey> = HashMap::new();
-    if key_ids_filter.is_none() && address_ids_filter.is_none() {
-        if let Ok(account_keys) = repo.get_account_keys(secret.account_id) {
-            for key in account_keys {
-                if !key.spendable {
-                    continue;
+    if let Ok(account_keys) = repo.get_account_keys(secret.account_id) {
+        for key in account_keys {
+            if !key.spendable {
+                continue;
+            }
+            let Some(key_id) = key.id else {
+                continue;
+            };
+            account_keys_by_id.insert(key_id, key.clone());
+            if let Some(bytes) = key.sapling_extsk.as_ref() {
+                if let Ok(parsed) = ExtendedSpendingKey::from_bytes(bytes) {
+                    sapling_spend_keys_by_id.insert(key_id, parsed);
                 }
-                let Some(key_id) = key.id else {
-                    continue;
-                };
-                account_keys_by_id.insert(key_id, key.clone());
-                if let Some(bytes) = key.sapling_extsk.as_ref() {
-                    if let Ok(parsed) = ExtendedSpendingKey::from_bytes(bytes) {
-                        sapling_spend_keys_by_id.insert(key_id, parsed);
-                    }
-                }
-                if let Some(bytes) = key.orchard_extsk.as_ref() {
-                    if let Ok(parsed) = OrchardExtendedSpendingKey::from_bytes(bytes) {
-                        orchard_spend_keys_by_id.insert(key_id, parsed);
-                    }
+            }
+            if let Some(bytes) = key.orchard_extsk.as_ref() {
+                if let Ok(parsed) = OrchardExtendedSpendingKey::from_bytes(bytes) {
+                    orchard_spend_keys_by_id.insert(key_id, parsed);
                 }
             }
         }
@@ -6012,7 +6602,6 @@ fn sign_tx_internal(
     );
 
     let mut used_pending_context = false;
-    let mut pending_context: Option<PendingSignContext> = None;
     if let Some(context) = load_pending_sign_context(
         &pending.id,
         &wallet_id,
@@ -6020,7 +6609,6 @@ fn sign_tx_internal(
         effective_key_ids_filter.as_ref(),
         address_ids_filter.as_ref(),
     ) {
-        pending_context = Some(context.clone());
         let (context_notes, matched_count, snapshot_count, applied) =
             apply_pending_sign_context(selectable_notes, &context);
         selectable_notes = context_notes;
@@ -6046,115 +6634,196 @@ fn sign_tx_internal(
         log_step("pending_context_miss", "reason=not_found_or_stale");
     }
 
-    // Fast path: when build provided a matching pending context, avoid replay and
-    // try lock-only witness refresh first. Fall back to replay only if needed.
-    let mut refresh =
-        refresh_selectable_note_witnesses(&wallet_id, &mut selectable_notes, !used_pending_context);
-    if used_pending_context
-        && (refresh.sapling_missing > 0
-            || refresh.orchard_missing > 0
-            || refresh.sapling_errors > 0
-            || refresh.orchard_errors > 0)
-    {
-        log_step(
-            "witness_refresh_retry_replay",
-            &format!(
-                "source={},sapling_missing={},orchard_missing={},sapling_err={},orchard_err={}",
-                refresh.source,
-                refresh.sapling_missing,
-                refresh.orchard_missing,
-                refresh.sapling_errors,
-                refresh.orchard_errors
-            ),
-        );
-        refresh = refresh_selectable_note_witnesses(&wallet_id, &mut selectable_notes, true);
+    // Pre-proof integrity hardening:
+    // 1) Ensure selected Sapling note payload still matches its stored commitment.
+    // 2) Rebind Sapling note key_id via (nullifier, position) when metadata is stale.
+    let mut sapling_commitment_mismatch = 0usize;
+    let mut sapling_key_rebound = 0usize;
+    let mut sapling_key_unresolved = 0usize;
+    let mut orchard_commitment_mismatch = 0usize;
+    let mut orchard_key_rebound = 0usize;
+    let mut orchard_key_unresolved = 0usize;
+    for (idx, note) in selectable_notes.iter_mut().enumerate() {
+        match note.note_type {
+            pirate_core::selection::NoteType::Sapling => {
+                if let Some(matches) = sapling_note_commitment_matches(note) {
+                    if !matches {
+                        sapling_commitment_mismatch += 1;
+                        log_step(
+                            "sapling_note_commitment_mismatch",
+                            &format!(
+                                "note_idx={},key_id={:?},height={},output_index={},txid_prefix={}",
+                                idx,
+                                note.key_id,
+                                note.height,
+                                note.output_index,
+                                hex::encode(&note.txid[..note.txid.len().min(4)])
+                            ),
+                        );
+                    }
+                }
+
+                if let Some(resolved_key_id) =
+                    resolve_sapling_key_id_for_note(note, &sapling_spend_keys_by_id)
+                {
+                    if note.key_id != Some(resolved_key_id) {
+                        log_step(
+                            "sapling_note_key_rebound",
+                            &format!(
+                                "note_idx={},from={:?},to={}",
+                                idx, note.key_id, resolved_key_id
+                            ),
+                        );
+                        note.key_id = Some(resolved_key_id);
+                        sapling_key_rebound += 1;
+                    }
+                } else if note.sapling_position.is_some() && note.nullifier.is_some() {
+                    sapling_key_unresolved += 1;
+                }
+            }
+            pirate_core::selection::NoteType::Orchard => {
+                if let Some(matches) = orchard_note_commitment_matches(note) {
+                    if !matches {
+                        orchard_commitment_mismatch += 1;
+                        log_step(
+                            "orchard_note_commitment_mismatch",
+                            &format!(
+                                "note_idx={},key_id={:?},height={},output_index={},txid_prefix={}",
+                                idx,
+                                note.key_id,
+                                note.height,
+                                note.output_index,
+                                hex::encode(&note.txid[..note.txid.len().min(4)])
+                            ),
+                        );
+                    }
+                }
+
+                if let Some(resolved_key_id) =
+                    resolve_orchard_key_id_for_note(note, &orchard_spend_keys_by_id)
+                {
+                    if note.key_id != Some(resolved_key_id) {
+                        log_step(
+                            "orchard_note_key_rebound",
+                            &format!(
+                                "note_idx={},from={:?},to={}",
+                                idx, note.key_id, resolved_key_id
+                            ),
+                        );
+                        note.key_id = Some(resolved_key_id);
+                        orchard_key_rebound += 1;
+                    }
+                } else if note.nullifier.is_some() {
+                    orchard_key_unresolved += 1;
+                }
+            }
+        }
+    }
+    log_step(
+        "sapling_note_integrity_summary",
+        &format!(
+            "commitment_mismatch={},key_rebound={},key_unresolved={}",
+            sapling_commitment_mismatch, sapling_key_rebound, sapling_key_unresolved
+        ),
+    );
+    log_step(
+        "orchard_note_integrity_summary",
+        &format!(
+            "commitment_mismatch={},key_rebound={},key_unresolved={}",
+            orchard_commitment_mismatch, orchard_key_rebound, orchard_key_unresolved
+        ),
+    );
+    if sapling_commitment_mismatch > 0 {
+        return Err(anyhow!(
+            "Detected inconsistent Sapling note data for selected inputs. Please run Rescan and retry."
+        ));
+    }
+    if orchard_commitment_mismatch > 0 {
+        return Err(anyhow!(
+            "Detected inconsistent Orchard note data for selected inputs. Please run Rescan and retry."
+        ));
     }
 
-    let witness_refresh_source = refresh.source;
-    let sapling_witness_requested = refresh.sapling_requested;
-    let sapling_witness_updated = refresh.sapling_updated;
-    let sapling_witness_missing = refresh.sapling_missing;
-    let sapling_witness_errors = refresh.sapling_errors;
-    let orchard_witness_requested = refresh.orchard_requested;
-    let orchard_witness_updated = refresh.orchard_updated;
-    let orchard_witness_missing = refresh.orchard_missing;
-    let orchard_witness_errors = refresh.orchard_errors;
+    // Send path should be near-instant and must not run witness refresh/repair.
+    // Witness maintenance belongs to the sync/idle pipeline; here we only validate
+    // that selected notes already have locally-available witness payloads.
+    let mut sapling_requested = 0usize;
+    let mut sapling_missing = 0usize;
+    let mut orchard_requested = 0usize;
+    let mut orchard_missing = 0usize;
+    for note in &selectable_notes {
+        match note.note_type {
+            pirate_core::selection::NoteType::Sapling => {
+                if note.sapling_position.is_some() {
+                    sapling_requested += 1;
+                    let missing = note.note.is_none()
+                        || note.merkle_path.is_none()
+                        || note.diversifier.is_none();
+                    if missing {
+                        sapling_missing += 1;
+                    }
+                }
+            }
+            pirate_core::selection::NoteType::Orchard => {
+                // Orchard spends require note + position + witness path.
+                // `nullifier` may be absent during partial metadata recovery,
+                // so do not gate readiness exclusively on it.
+                if note.orchard_position.is_some()
+                    || note.orchard_merkle_path.is_some()
+                    || note.orchard_note.is_some()
+                {
+                    orchard_requested += 1;
+                    let missing = note.orchard_note.is_none()
+                        || note.orchard_position.is_none()
+                        || note.orchard_merkle_path.is_none();
+                    if missing {
+                        orchard_missing += 1;
+                    }
+                }
+            }
+        }
+    }
+    log_step(
+        "witness_refresh_mode",
+        &format!(
+            "send_fast_path=true,used_pending_context={},pause_ms={},engine_idle={}",
+            used_pending_context, sync_pause_elapsed_ms, sync_engine_idle_before_sign
+        ),
+    );
     log_step(
         "witness_refresh_summary",
         &format!(
             "source={},sapling_req={},sapling_upd={},sapling_missing={},sapling_err={},orchard_req={},orchard_upd={},orchard_missing={},orchard_err={}",
-            witness_refresh_source,
-            sapling_witness_requested,
-            sapling_witness_updated,
-            sapling_witness_missing,
-            sapling_witness_errors,
-            orchard_witness_requested,
-            orchard_witness_updated,
-            orchard_witness_missing,
-            orchard_witness_errors
+            "local_cached",
+            sapling_requested,
+            0,
+            sapling_missing,
+            0,
+            orchard_requested,
+            0,
+            orchard_missing,
+            0
         ),
     );
 
-    // If replay-based witness repair ran, reload selectable notes from storage to pick up
-    // any corrected note payload metadata (rseed/diversifier/key mapping) written during replay.
-    if witness_refresh_source.contains("replay")
-        && (sapling_witness_updated > 0 || orchard_witness_updated > 0)
-    {
+    let witness_unavailable = sapling_missing > 0 || orchard_missing > 0;
+    if witness_unavailable {
         log_step(
-            "post_replay_reload_start",
+            "witness_refresh_sync_required",
             &format!(
-                "sapling_upd={},orchard_upd={}",
-                sapling_witness_updated, orchard_witness_updated
+                "source={},sapling_req={},sapling_missing={},sapling_err={},orchard_req={},orchard_missing={},orchard_err={}",
+                "local_cached",
+                sapling_requested,
+                sapling_missing,
+                0,
+                orchard_requested,
+                orchard_missing,
+                0
             ),
         );
-        match repo.get_unspent_selectable_notes_filtered(
-            secret.account_id,
-            effective_key_ids_filter.clone(),
-            address_ids_filter.clone(),
-        ) {
-            Ok(reloaded_raw) => {
-                let mut reloaded_notes = reloaded_raw;
-                if let Some(context) = pending_context.as_ref() {
-                    let (context_notes, matched_count, snapshot_count, applied) =
-                        apply_pending_sign_context(reloaded_notes, context);
-                    reloaded_notes = context_notes;
-                    log_step(
-                        "post_replay_context_reapply",
-                        &format!(
-                            "applied={},matched_notes={},snapshot_notes={}",
-                            applied, matched_count, snapshot_count
-                        ),
-                    );
-                }
-
-                let reload_refresh =
-                    refresh_selectable_note_witnesses(&wallet_id, &mut reloaded_notes, false);
-                log_step(
-                    "post_replay_reload_witness",
-                    &format!(
-                        "source={},sapling_req={},sapling_upd={},sapling_missing={},sapling_err={},orchard_req={},orchard_upd={},orchard_missing={},orchard_err={}",
-                        reload_refresh.source,
-                        reload_refresh.sapling_requested,
-                        reload_refresh.sapling_updated,
-                        reload_refresh.sapling_missing,
-                        reload_refresh.sapling_errors,
-                        reload_refresh.orchard_requested,
-                        reload_refresh.orchard_updated,
-                        reload_refresh.orchard_missing,
-                        reload_refresh.orchard_errors
-                    ),
-                );
-
-                selectable_notes = reloaded_notes;
-                log_step(
-                    "post_replay_reload_applied",
-                    &format!("notes={}", selectable_notes.len()),
-                );
-            }
-            Err(e) => {
-                log_step("post_replay_reload_error", &format!("{:?}", e));
-            }
-        }
+        return Err(anyhow!(
+            "Sync required: witness data for selected notes is not ready yet. Let wallet sync complete, then retry."
+        ));
     }
 
     let raw_available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
@@ -6481,7 +7150,7 @@ fn sign_tx_internal(
         &format!("target_height={}", target_height),
     );
 
-    // Fetch Orchard anchor from frontier first, then lightwalletd if needed.
+    // Send path should not block on network anchor fetches; use local/frontier state only.
     let orchard_anchor_opt = if has_orchard_output || has_orchard_spends {
         log_step("orchard_anchor_fetch_start", "");
         let mut anchor_opt: Option<orchard::tree::Anchor> = None;
@@ -6538,72 +7207,15 @@ fn sign_tx_internal(
             }
         }
 
-        if anchor_opt.is_none() {
-            let endpoint = get_lightd_endpoint(wallet_id.clone())?;
-            let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
-
-            let client_config = LightClientConfig {
-                endpoint,
-                transport,
-                socks5_url,
-                tls: TlsConfig::default(),
-                retry: RetryConfig::default(),
-                connect_timeout: std::time::Duration::from_secs(30),
-                request_timeout: std::time::Duration::from_secs(60),
-                allow_direct_fallback,
-            };
-            let client = LightClient::with_config(client_config);
-
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_err(|e| anyhow!("Failed to build runtime: {}", e))?;
-
-            let anchor_result = rt.block_on(async move {
-                let fetch_height = target_height as u64;
-                let fetch = async move {
-                    client.connect().await.ok()?;
-                    let tree_state = match client.get_bridge_tree_state(fetch_height).await {
-                        Ok(ts) => ts,
-                        Err(_) => client.get_tree_state(fetch_height).await.ok()?,
-                    };
-
-                    if tree_state.orchard_tree.is_empty() {
-                        return None;
-                    }
-
-                    orchard_anchor_from_frontier_hex(&tree_state.orchard_tree)
-                        .ok()
-                        .flatten()
-                };
-
-                match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
-                    Ok(result) => Ok(result),
-                    Err(_) => Err(anyhow!("timeout")),
-                }
-            });
-
-            match anchor_result {
-                Ok(anchor) => {
-                    anchor_opt = anchor;
-                    let detail = if anchor_opt.is_some() {
-                        format!("some@{}", target_height)
-                    } else {
-                        format!("none@{}", target_height)
-                    };
-                    log_step("orchard_anchor_fetch_ok", &detail);
-                }
-                Err(e) => {
-                    log_step("orchard_anchor_fetch_error", &format!("{}", e));
-                }
-            }
-        } else {
+        if anchor_opt.is_some() {
             log_step("orchard_anchor_fetch_ok", "some");
         }
 
         if anchor_opt.is_none() {
-            log_step("orchard_anchor_fetch_error", "missing");
-            return Err(anyhow!("Failed to fetch Orchard anchor"));
+            log_step("orchard_anchor_sync_required", "missing_local_anchor");
+            return Err(anyhow!(
+                "Sync required: Orchard anchor is not available locally yet. Let wallet sync complete, then retry."
+            ));
         }
 
         anchor_opt
@@ -6653,6 +7265,60 @@ fn sign_tx_internal(
             address_scope: pirate_storage_sqlite::AddressScope::Internal,
         };
         let _ = repo.upsert_address(&address);
+    }
+
+    // Diagnostic-only pre-build sync state snapshot.
+    // Do not gate send on sync engine lock availability; send path should rely on
+    // local witness readiness already validated above.
+    let pre_build_idle = run_on_runtime_blocking({
+        let wallet_id = wallet_id.clone();
+        move || async move {
+            Ok(wait_for_sync_engine_idle(&wallet_id, SIGN_SYNC_ENGINE_IDLE_TIMEOUT).await)
+        }
+    })
+    .unwrap_or(false);
+    log_step(
+        "pre_build_sync_barrier",
+        &format!("engine_idle={}", pre_build_idle),
+    );
+
+    // Guard against signing with an incorrect fallback key when note key_id metadata
+    // points to a key group that is unavailable in this wallet session.
+    let mut missing_sapling_key_ids: HashSet<i64> = HashSet::new();
+    let mut missing_orchard_key_ids: HashSet<i64> = HashSet::new();
+    for note in &selectable_notes {
+        if let Some(key_id) = note.key_id {
+            match note.note_type {
+                pirate_core::selection::NoteType::Sapling => {
+                    if !sapling_spend_keys_by_id.contains_key(&key_id) {
+                        missing_sapling_key_ids.insert(key_id);
+                    }
+                }
+                pirate_core::selection::NoteType::Orchard => {
+                    if !orchard_spend_keys_by_id.contains_key(&key_id) {
+                        missing_orchard_key_ids.insert(key_id);
+                    }
+                }
+            }
+        }
+    }
+    if !missing_sapling_key_ids.is_empty() || !missing_orchard_key_ids.is_empty() {
+        let mut sapling_ids = missing_sapling_key_ids.into_iter().collect::<Vec<_>>();
+        let mut orchard_ids = missing_orchard_key_ids.into_iter().collect::<Vec<_>>();
+        sapling_ids.sort_unstable();
+        orchard_ids.sort_unstable();
+        log_step(
+            "spend_key_map_missing",
+            &format!(
+                "sapling_missing={:?},orchard_missing={:?}",
+                sapling_ids, orchard_ids
+            ),
+        );
+        return Err(anyhow!(
+            "Selected notes require unavailable spending keys (sapling={:?}, orchard={:?}). Re-import the missing key group(s) and retry.",
+            sapling_ids,
+            orchard_ids
+        ));
     }
 
     log_step("build_and_sign_start", "");
@@ -6775,6 +7441,23 @@ fn sign_tx_internal(
         );
     }
     // #endregion
+
+    // Persist first non-empty outgoing memo at sign time so transaction history can
+    // render sent memos immediately even when sync runs with lazy memo enrichment.
+    if let Some(outgoing_memo_text) = pending
+        .outputs
+        .iter()
+        .filter_map(|o| o.memo.as_ref())
+        .map(|s| s.trim())
+        .find(|s| !s.is_empty())
+    {
+        let txid_hex = signed_core.txid.to_string();
+        let memo_bytes =
+            pirate_core::memo::Memo::from_text_truncated(outgoing_memo_text.to_string()).encode();
+        if let Err(e) = repo.upsert_tx_memo(&txid_hex, &memo_bytes) {
+            tracing::warn!("Failed to persist outgoing tx memo for {}: {}", txid_hex, e);
+        }
+    }
 
     clear_pending_sign_context(&pending.id);
 
@@ -7101,6 +7784,55 @@ lazy_static::lazy_static! {
     /// Wallets currently running an active rescan task.
     static ref RESCAN_ACTIVE: Arc<RwLock<HashSet<WalletId>>> =
         Arc::new(RwLock::new(HashSet::new()));
+    /// Wallets currently performing sign/build critical sections where sync
+    /// recovery should not auto-restart in the background.
+    static ref SIGNING_ACTIVE: Arc<RwLock<HashSet<WalletId>>> =
+        Arc::new(RwLock::new(HashSet::new()));
+    /// Wallets performing intentional sync priming while signing.
+    static ref SYNC_PRIMING_ACTIVE: Arc<RwLock<HashSet<WalletId>>> =
+        Arc::new(RwLock::new(HashSet::new()));
+}
+
+struct SigningGuard {
+    wallet_id: WalletId,
+}
+
+impl Drop for SigningGuard {
+    fn drop(&mut self) {
+        SIGNING_ACTIVE.write().remove(&self.wallet_id);
+    }
+}
+
+fn mark_signing_active(wallet_id: &WalletId) -> SigningGuard {
+    SIGNING_ACTIVE.write().insert(wallet_id.clone());
+    SigningGuard {
+        wallet_id: wallet_id.clone(),
+    }
+}
+
+fn is_signing_active(wallet_id: &WalletId) -> bool {
+    SIGNING_ACTIVE.read().contains(wallet_id)
+}
+
+struct SyncPrimingGuard {
+    wallet_id: WalletId,
+}
+
+impl Drop for SyncPrimingGuard {
+    fn drop(&mut self) {
+        SYNC_PRIMING_ACTIVE.write().remove(&self.wallet_id);
+    }
+}
+
+fn mark_sync_priming_active(wallet_id: &WalletId) -> SyncPrimingGuard {
+    SYNC_PRIMING_ACTIVE.write().insert(wallet_id.clone());
+    SyncPrimingGuard {
+        wallet_id: wallet_id.clone(),
+    }
+}
+
+fn is_sync_priming_active(wallet_id: &WalletId) -> bool {
+    SYNC_PRIMING_ACTIVE.read().contains(wallet_id)
 }
 
 #[derive(Clone)]
@@ -7218,6 +7950,28 @@ impl Default for SyncSession {
 pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     ensure_not_decoy("Sync")?;
     tracing::info!("Starting sync for wallet {} in mode {:?}", wallet_id, mode);
+
+    // Prevent sync restarts from racing transaction proof generation.
+    // Witness priming uses an explicit bypass guard.
+    if is_signing_active(&wallet_id) && !is_sync_priming_active(&wallet_id) {
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_start_sync_skip_signing","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; signing active","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+                ts, wallet_id, mode
+            );
+        }
+        return Ok(());
+    }
 
     if RESCAN_IN_FLIGHT.read().contains(&wallet_id) || is_rescan_active(&wallet_id) {
         if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -7424,6 +8178,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     };
 
     let network_type = wallet_network_type(&wallet_id)?;
+    let address_network_type = address_prefix_network_type(&wallet_id)?;
     let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
     let (
         max_parallel_decrypt,
@@ -7431,10 +8186,28 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         target_batch_bytes,
         min_batch_bytes,
         max_batch_bytes,
+        prefetch_queue_depth,
+        prefetch_queue_max_bytes,
     ) = if is_mobile {
-        (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
+        (
+            8,
+            Some(100_000_000),
+            8_000_000,
+            2_000_000,
+            16_000_000,
+            2,
+            16_000_000,
+        )
     } else {
-        (32, Some(500_000_000), 32_000_000, 4_000_000, 64_000_000)
+        (
+            32,
+            Some(500_000_000),
+            32_000_000,
+            4_000_000,
+            64_000_000,
+            4,
+            96_000_000,
+        )
     };
 
     // Create sync config
@@ -7449,6 +8222,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         max_batch_size: 2_000, // Maximum batch size to prevent OOM (also caps server recommendations)
         use_server_batch_recommendations: true, // Use server's ~4MB chunk recommendations (typically ~199 blocks)
         mini_checkpoint_every: 5,               // Mini-checkpoint every 5 batches
+        mini_checkpoint_max_block_gap: 20_000,
         max_parallel_decrypt,
         lazy_memo_decode: true, // Default to lazy memo decoding
         defer_full_tx_fetch: true,
@@ -7457,6 +8231,10 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         max_batch_bytes,
         heavy_block_threshold_bytes: 500_000, // 500KB per block = heavy/spam
         max_batch_memory_bytes,
+        sync_state_flush_every_batches: if is_mobile { 3 } else { 2 },
+        sync_state_flush_interval_ms: 1_500,
+        prefetch_queue_depth,
+        prefetch_queue_max_bytes,
     };
 
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
@@ -7528,6 +8306,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         db_key,
         master_key,
         network_type,
+        address_network_type,
     ) {
         Ok(sync) => sync,
         Err(e) => {
@@ -7785,6 +8564,9 @@ fn maybe_schedule_sync_recovery(
     is_running: bool,
     has_task: bool,
 ) {
+    if is_signing_active(wallet_id) {
+        return;
+    }
     if has_task {
         return;
     }
@@ -8386,6 +9168,72 @@ async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: std::time::Duration) 
     }
 }
 
+async fn wait_for_sync_engine_idle(wallet_id: &WalletId, timeout: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let sync_arc_opt = {
+            let sessions = SYNC_SESSIONS.read();
+            sessions
+                .get(wallet_id)
+                .and_then(|session_arc| session_arc.try_lock().ok())
+                .and_then(|session| session.sync.clone())
+        };
+        match sync_arc_opt {
+            Some(sync_arc) => {
+                if sync_arc.try_lock().is_ok() {
+                    return true;
+                }
+            }
+            None => return true,
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+}
+
+/// Fast quiesce path for signing:
+/// - flips the session to idle immediately
+/// - aborts the background sync task
+/// - raises cancel flag
+///
+/// This avoids long graceful-stop delays in the UX-critical send flow.
+async fn quiesce_sync_for_sign(wallet_id: WalletId) -> Result<(bool, bool, bool)> {
+    let session_arc_opt = {
+        let sessions = SYNC_SESSIONS.read();
+        sessions.get(&wallet_id).cloned()
+    };
+    let Some(session_arc) = session_arc_opt else {
+        return Ok((false, false, false));
+    };
+
+    let (cancel_opt, task_opt, was_running) = {
+        let mut session = session_arc.lock().await;
+        let was_running = session.is_running || session.task.is_some();
+        let cancel_opt = session.cancelled.clone();
+        let task_opt = session.task.take();
+        session.is_running = false;
+        // Prevent immediate auto-recovery while signing; _SigningGuard_ also enforces this.
+        session.last_recovery_attempt = Some(std::time::Instant::now());
+        (cancel_opt, task_opt, was_running)
+    };
+
+    let mut task_aborted = false;
+    if let Some(task) = task_opt {
+        task.abort();
+        task_aborted = true;
+    }
+
+    let mut cancel_requested = false;
+    if let Some(cancel) = cancel_opt {
+        cancel.cancel();
+        cancel_requested = true;
+    }
+
+    Ok((was_running, task_aborted, cancel_requested))
+}
+
 /// Rescan wallet from specific height
 pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     ensure_not_decoy("Rescan")?;
@@ -8969,6 +9817,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     );
 
     let network_type = wallet_network_type(&wallet_id)?;
+    let address_network_type = address_prefix_network_type(&wallet_id)?;
     let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
     let (
         max_parallel_decrypt,
@@ -8976,10 +9825,28 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         target_batch_bytes,
         min_batch_bytes,
         max_batch_bytes,
+        prefetch_queue_depth,
+        prefetch_queue_max_bytes,
     ) = if is_mobile {
-        (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
+        (
+            8,
+            Some(100_000_000),
+            8_000_000,
+            2_000_000,
+            16_000_000,
+            2,
+            16_000_000,
+        )
     } else {
-        (32, Some(500_000_000), 32_000_000, 4_000_000, 64_000_000)
+        (
+            32,
+            Some(500_000_000),
+            32_000_000,
+            4_000_000,
+            64_000_000,
+            4,
+            96_000_000,
+        )
     };
 
     // Create sync config for rescan
@@ -8990,6 +9857,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         max_batch_size: 2_000,
         use_server_batch_recommendations: true,
         mini_checkpoint_every: 5,
+        mini_checkpoint_max_block_gap: 20_000,
         max_parallel_decrypt,
         lazy_memo_decode: true,
         defer_full_tx_fetch: true,
@@ -8998,13 +9866,23 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         max_batch_bytes,
         heavy_block_threshold_bytes: 500_000,
         max_batch_memory_bytes,
+        sync_state_flush_every_batches: if is_mobile { 3 } else { 2 },
+        sync_state_flush_interval_ms: 1_500,
+        prefetch_queue_depth,
+        prefetch_queue_max_bytes,
     };
 
     // Create sync engine with wallet context and proper client config
     let client = LightClient::with_config(client_config);
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
     let sync = SyncEngine::with_client_and_config(client, effective_from_height, config)
-        .with_wallet(wallet_id.clone(), db_key, master_key, network_type)
+        .with_wallet(
+            wallet_id.clone(),
+            db_key,
+            master_key,
+            network_type,
+            address_network_type,
+        )
         .map_err(|e| anyhow!("Failed to initialize sync engine: {}", e))?;
     let sync = Arc::new(Mutex::new(sync));
     let (progress, perf, cancel_flag) = {
@@ -9079,6 +9957,9 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     let wallet_id_for_task = wallet_id.clone();
     let session_arc_for_task = Arc::clone(&rescan_session_arc);
     let task_handle = tokio::spawn(async move {
+        // Keep rescan marked active for the full background task lifetime.
+        // If the task is aborted, dropping this guard clears the flag.
+        let _rescan_active_guard = rescan_active_guard;
         let sync_opt = { session_arc_for_task.lock().await.sync.clone() };
 
         if let Some(sync) = sync_opt {
@@ -9125,28 +10006,26 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             session.is_running = false;
             session.task = None;
             clear_sync_runtime_cache(&wallet_id_for_task);
-            RESCAN_ACTIVE.write().remove(&wallet_id_for_task);
         } else {
             let mut session = session_arc_for_task.lock().await;
             session.is_running = false;
             session.task = None;
             clear_sync_runtime_cache(&wallet_id_for_task);
-            RESCAN_ACTIVE.write().remove(&wallet_id_for_task);
         }
     });
     {
         let mut session = rescan_session_arc.lock().await;
         session.task = Some(task_handle);
     }
-    // Keep rescan marked active until the background task exits.
-    std::mem::forget(rescan_active_guard);
-
     Ok(())
 }
 
-/// Cancel ongoing sync for a wallet
-pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
-    ensure_not_decoy("Cancel sync")?;
+/// Cancel ongoing sync for a wallet.
+///
+/// When `clear_engine_handle` is false, we keep the stopped sync engine handle
+/// in the session so callers (sign/build) can still fetch witnesses without
+/// racing a live sync task.
+async fn cancel_sync_internal(wallet_id: WalletId, clear_engine_handle: bool) -> Result<()> {
     // Clone the session arc while holding the lock, then drop the lock unconditionally
     let session_arc_opt = {
         let sessions = SYNC_SESSIONS.read();
@@ -9163,6 +10042,7 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
                 session.last_status.clone(),
             )
         };
+        let sync_for_cancel = sync_opt.clone();
 
         if let Some(task) = task_opt {
             task.abort();
@@ -9212,20 +10092,33 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
             // #endregion
         }
 
-        if let Some(sync) = sync_opt {
+        if let Some(sync) = sync_for_cancel {
             // Also ask the engine to stop. This avoids lingering tasks that
             // can keep the session "running" during repeated rescan attempts.
-            let result = run_sync_engine_task(sync.clone(), |engine| {
-                Box::pin(async move {
-                    engine.cancel().await;
-                    Ok(())
-                })
-            })
+            let result = tokio::time::timeout(
+                CANCEL_SYNC_ENGINE_REQUEST_TIMEOUT,
+                run_sync_engine_task(sync.clone(), |engine| {
+                    Box::pin(async move {
+                        engine.cancel().await;
+                        Ok(())
+                    })
+                }),
+            )
             .await;
-            if result.is_ok() {
-                tracing::info!("Sync engine cancel requested for wallet {}", wallet_id);
-            } else if let Err(e) = result {
-                tracing::warn!("Failed to cancel sync for wallet {}: {}", wallet_id, e);
+            match result {
+                Ok(Ok(())) => {
+                    tracing::info!("Sync engine cancel requested for wallet {}", wallet_id);
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("Failed to cancel sync for wallet {}: {}", wallet_id, e);
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        "Timed out requesting sync engine cancel for wallet {} after {:?}",
+                        wallet_id,
+                        CANCEL_SYNC_ENGINE_REQUEST_TIMEOUT
+                    );
+                }
             }
 
             // #region agent log
@@ -9287,7 +10180,7 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
         {
             let mut session = session_arc.lock().await;
             session.is_running = false;
-            session.sync = None;
+            session.sync = if clear_engine_handle { None } else { sync_opt };
             session.cancelled = None;
             session.progress = None;
             session.perf = None;
@@ -9302,6 +10195,12 @@ pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Cancel ongoing sync for a wallet.
+pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
+    ensure_not_decoy("Cancel sync")?;
+    cancel_sync_internal(wallet_id, true).await
 }
 
 /// Check if sync is running for a wallet
@@ -9400,12 +10299,19 @@ async fn start_background_sync_inner(
     };
 
     let network_type = wallet_network_type(&wallet_id)?;
+    let address_network_type = address_prefix_network_type(&wallet_id)?;
     // Create sync engine for background sync
     let config = SyncConfig::default();
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
     let client = LightClient::with_config(client_config);
     let sync_engine = SyncEngine::with_client_and_config(client, birthday_height, config)
-        .with_wallet(wallet_id.clone(), db_key, master_key, network_type)
+        .with_wallet(
+            wallet_id.clone(),
+            db_key,
+            master_key,
+            network_type,
+            address_network_type,
+        )
         .map_err(|e| anyhow!("Failed to initialize background sync engine: {}", e))?;
 
     // Create orchestrator
@@ -10187,11 +11093,18 @@ pub fn set_tunnel(mode: TunnelMode) -> Result<()> {
         *PENDING_TUNNEL_MODE.write() = Some(mode.clone());
     }
     spawn_bootstrap_transport(mode);
+    // Force active sync channels to reconnect on the new transport immediately
+    // instead of waiting for long-lived gRPC streams to churn on their own.
+    spawn_disconnect_active_sync_channels("tunnel_mode_changed");
     Ok(())
 }
 
 /// Get current tunnel mode
 pub fn get_tunnel() -> Result<TunnelMode> {
+    // Ensure registry-backed settings are loaded before reading in-memory mode.
+    // Without this, startup reads can observe the default (Tor) and overwrite
+    // persisted user choice (e.g. Direct) in higher layers.
+    ensure_wallet_registry_loaded()?;
     Ok(TUNNEL_MODE.read().clone())
 }
 
@@ -10366,34 +11279,7 @@ pub async fn rotate_tor_exit() -> Result<()> {
     }
     // #endregion
 
-    let sessions: Vec<(WalletId, Arc<tokio::sync::Mutex<SyncSession>>)> = {
-        let sessions = SYNC_SESSIONS.read();
-        sessions
-            .iter()
-            .map(|(wallet_id, session)| (wallet_id.clone(), Arc::clone(session)))
-            .collect()
-    };
-
-    for (wallet_id, session_arc) in sessions {
-        let sync_opt = { session_arc.lock().await.sync.clone() };
-        if let Some(sync) = sync_opt {
-            let wallet_id_for_log = wallet_id.clone();
-            let result = run_sync_engine_task(sync.clone(), move |engine| {
-                Box::pin(async move {
-                    engine.disconnect().await;
-                    Ok(())
-                })
-            })
-            .await;
-            if let Err(e) = result {
-                tracing::warn!(
-                    "Failed to disconnect sync engine for {} after Tor exit rotation: {}",
-                    wallet_id_for_log,
-                    e
-                );
-            }
-        }
-    }
+    disconnect_active_sync_channels("tor_exit_rotate").await;
 
     Ok(())
 }
@@ -10653,14 +11539,11 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
                 false
             };
 
-            // Decode memo from bytes to string (if present)
+            // Decode memo from bytes to string (if present).
+            // Use protocol-aware decoder so both Sapling and Orchard memo bytes
+            // render consistently in the transaction list.
             let memo_str = tx.memo.and_then(|memo_bytes| {
-                // Memo is typically UTF-8, but may have null padding
-                // Remove null bytes and try to decode
-                let trimmed: Vec<u8> = memo_bytes.into_iter().take_while(|&b| b != 0).collect();
-
-                // Try UTF-8 decode
-                String::from_utf8(trimmed).ok().filter(|s| !s.is_empty())
+                pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_bytes)
             });
 
             TxInfo {
@@ -10726,15 +11609,15 @@ async fn fetch_transaction_memo_inner(
         output_index
     );
 
-    // Extract all data from DB in a block scope to ensure repo is dropped before async
+    // Extract all data from DB in a block scope to ensure repo is dropped before async.
     let (
         endpoint_config,
         account_id,
-        ivk_by_output,
-        output_indices,
-        notes_with_memos,
         txid_array,
         txid_bytes,
+        sapling_candidates,
+        orchard_candidates,
+        stored_memo,
     ) = {
         // Open encrypted wallet DB
         let (_db, repo) = open_wallet_db_for(&wallet_id)?;
@@ -10746,7 +11629,6 @@ async fn fetch_transaction_memo_inner(
 
         // Parse txid from hex and support either byte order.
         let parsed_txid = hex::decode(&txid).map_err(|e| anyhow!("Invalid txid hex: {}", e))?;
-
         if parsed_txid.len() != 32 {
             return Err(anyhow!(
                 "Invalid txid length: {} (expected 32 bytes)",
@@ -10756,7 +11638,6 @@ async fn fetch_transaction_memo_inner(
 
         let mut reversed_txid = parsed_txid.clone();
         reversed_txid.reverse();
-
         let notes_direct = repo.get_notes_by_txid(secret.account_id, &parsed_txid)?;
         let (txid_bytes, notes) = if notes_direct.is_empty() {
             let notes_reversed = repo.get_notes_by_txid(secret.account_id, &reversed_txid)?;
@@ -10772,7 +11653,7 @@ async fn fetch_transaction_memo_inner(
         let mut txid_array = [0u8; 32];
         txid_array.copy_from_slice(&txid_bytes[..32]);
 
-        let default_ivk_bytes = if !secret.extsk.is_empty() {
+        let default_sapling_ivk = if !secret.extsk.is_empty() {
             ExtendedSpendingKey::from_bytes(&secret.extsk)
                 .map(|extsk| extsk.to_extended_fvk().to_ivk().to_sapling_ivk_bytes())
                 .ok()
@@ -10791,83 +11672,146 @@ async fn fetch_transaction_memo_inner(
             None
         };
 
-        let mut ivk_by_key: HashMap<i64, [u8; 32]> = HashMap::new();
-        let mut ivk_by_output: HashMap<i64, [u8; 32]> = HashMap::new();
-        let mut output_indices: Vec<i64> = Vec::new();
+        let default_orchard_ivk = if let Some(ref extsk_bytes) = secret.orchard_extsk {
+            OrchardExtendedSpendingKey::from_bytes(extsk_bytes)
+                .map(|extsk| extsk.to_extended_fvk().to_ivk_bytes())
+                .ok()
+        } else if let Some(ref orchard_ivk_bytes) = secret.orchard_ivk {
+            if orchard_ivk_bytes.len() == 64 {
+                let mut ivk = [0u8; 64];
+                ivk.copy_from_slice(&orchard_ivk_bytes[..64]);
+                Some(ivk)
+            } else {
+                OrchardExtendedFullViewingKey::from_bytes(orchard_ivk_bytes)
+                    .ok()
+                    .map(|fvk| fvk.to_ivk_bytes())
+            }
+        } else {
+            None
+        };
+
+        let mut sapling_ivk_by_key: HashMap<i64, [u8; 32]> = HashMap::new();
+        let mut orchard_ivk_by_key: HashMap<i64, [u8; 64]> = HashMap::new();
+        let mut sapling_candidates: Vec<(i64, [u8; 32], Option<[u8; 32]>)> = Vec::new();
+        let mut orchard_candidates: Vec<(i64, [u8; 64], Option<[u8; 32]>)> = Vec::new();
+        let mut seen_sapling_output_indices: HashSet<i64> = HashSet::new();
+        let mut seen_orchard_output_indices: HashSet<i64> = HashSet::new();
+        let mut stored_memo: Option<Vec<u8>> = None;
 
         for note in &notes {
-            if note.note_type != pirate_storage_sqlite::models::NoteType::Sapling {
-                continue;
-            }
-            output_indices.push(note.output_index);
-            let ivk_bytes = if let Some(key_id) = note.key_id {
-                if let Some(cached) = ivk_by_key.get(&key_id) {
-                    Some(*cached)
-                } else {
-                    let key = repo
-                        .get_account_key_by_id(key_id)?
-                        .ok_or_else(|| anyhow!("Key group not found"))?;
-                    let ivk = if let Some(ref bytes) = key.sapling_extsk {
-                        let extsk = ExtendedSpendingKey::from_bytes(bytes)?;
-                        extsk.to_extended_fvk().to_ivk().to_sapling_ivk_bytes()
-                    } else if let Some(ref bytes) = key.sapling_dfvk {
-                        let dfvk = ExtendedFullViewingKey::from_bytes(bytes)
-                            .ok_or_else(|| anyhow!("Invalid Sapling viewing key bytes"))?;
-                        dfvk.to_ivk().to_sapling_ivk_bytes()
-                    } else {
-                        continue;
-                    };
-                    ivk_by_key.insert(key_id, ivk);
-                    Some(ivk)
+            if let Some(requested_idx) = output_index {
+                if note.output_index != requested_idx as i64 {
+                    continue;
                 }
+            }
+
+            if stored_memo.is_none() {
+                if let Some(memo) = note.memo.clone() {
+                    stored_memo = Some(memo);
+                }
+            }
+
+            let commitment = if note.commitment.len() == 32 {
+                let mut bytes = [0u8; 32];
+                bytes.copy_from_slice(&note.commitment[..32]);
+                Some(bytes)
             } else {
-                default_ivk_bytes
+                None
             };
 
-            if let Some(ivk_bytes) = ivk_bytes {
-                ivk_by_output.insert(note.output_index, ivk_bytes);
-            }
-        }
-
-        if let Some(idx) = output_index {
-            output_indices = vec![idx as i64];
-            let idx_i64 = idx as i64;
-            if let Some(default_ivk) = default_ivk_bytes {
-                ivk_by_output.entry(idx_i64).or_insert(default_ivk);
-            }
-        }
-
-        // Extract all needed data before async operations
-        let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
-        let account_id = secret.account_id;
-        // Collect all notes with memos before async operations
-        let mut notes_with_memos = Vec::new();
-        for idx in &output_indices {
-            if let Some(note) = repo.get_note_by_txid_and_index(account_id, &txid_bytes, *idx)? {
-                if let Some(ref stored_memo) = note.memo {
-                    let commitment = if note.commitment.len() == 32 {
-                        let mut cmu = [0u8; 32];
-                        cmu.copy_from_slice(&note.commitment[..32]);
-                        Some(cmu)
+            match note.note_type {
+                pirate_storage_sqlite::models::NoteType::Sapling => {
+                    if !seen_sapling_output_indices.insert(note.output_index) {
+                        continue;
+                    }
+                    let ivk_opt = if let Some(key_id) = note.key_id {
+                        if let Some(cached) = sapling_ivk_by_key.get(&key_id) {
+                            Some(*cached)
+                        } else {
+                            let key = repo
+                                .get_account_key_by_id(key_id)?
+                                .ok_or_else(|| anyhow!("Key group not found"))?;
+                            let ivk = if let Some(ref bytes) = key.sapling_extsk {
+                                let extsk = ExtendedSpendingKey::from_bytes(bytes)?;
+                                extsk.to_extended_fvk().to_ivk().to_sapling_ivk_bytes()
+                            } else if let Some(ref bytes) = key.sapling_dfvk {
+                                let dfvk = ExtendedFullViewingKey::from_bytes(bytes)
+                                    .ok_or_else(|| anyhow!("Invalid Sapling viewing key bytes"))?;
+                                dfvk.to_ivk().to_sapling_ivk_bytes()
+                            } else {
+                                continue;
+                            };
+                            sapling_ivk_by_key.insert(key_id, ivk);
+                            Some(ivk)
+                        }
                     } else {
-                        None
+                        default_sapling_ivk
                     };
-                    if let Some(ivk_bytes) = ivk_by_output.get(idx).copied() {
-                        notes_with_memos.push((*idx, stored_memo.clone(), commitment, ivk_bytes));
+
+                    if let Some(ivk) = ivk_opt {
+                        sapling_candidates.push((note.output_index, ivk, commitment));
+                    }
+                }
+                pirate_storage_sqlite::models::NoteType::Orchard => {
+                    if !seen_orchard_output_indices.insert(note.output_index) {
+                        continue;
+                    }
+                    let ivk_opt = if let Some(key_id) = note.key_id {
+                        if let Some(cached) = orchard_ivk_by_key.get(&key_id) {
+                            Some(*cached)
+                        } else {
+                            let key = repo
+                                .get_account_key_by_id(key_id)?
+                                .ok_or_else(|| anyhow!("Key group not found"))?;
+                            let ivk = if let Some(ref bytes) = key.orchard_extsk {
+                                OrchardExtendedSpendingKey::from_bytes(bytes)
+                                    .map(|extsk| extsk.to_extended_fvk().to_ivk_bytes())
+                                    .map_err(|e| anyhow!("Invalid Orchard spending key: {}", e))?
+                            } else if let Some(ref bytes) = key.orchard_fvk {
+                                OrchardExtendedFullViewingKey::from_bytes(bytes)
+                                    .map(|fvk| fvk.to_ivk_bytes())
+                                    .map_err(|e| anyhow!("Invalid Orchard viewing key: {}", e))?
+                            } else {
+                                continue;
+                            };
+                            orchard_ivk_by_key.insert(key_id, ivk);
+                            Some(ivk)
+                        }
+                    } else {
+                        default_orchard_ivk
+                    };
+
+                    if let Some(ivk) = ivk_opt {
+                        orchard_candidates.push((note.output_index, ivk, commitment));
                     }
                 }
             }
         }
 
-        // Return all extracted data (repo and _db are dropped here)
+        // If caller requested a specific output index and no matching local note was found,
+        // still try decrypting that index with the wallet-default viewing keys.
+        if let Some(requested_idx) = output_index {
+            let idx = requested_idx as i64;
+            if !seen_sapling_output_indices.contains(&idx) {
+                if let Some(ivk) = default_sapling_ivk {
+                    sapling_candidates.push((idx, ivk, None));
+                }
+            }
+            if !seen_orchard_output_indices.contains(&idx) {
+                if let Some(ivk) = default_orchard_ivk {
+                    orchard_candidates.push((idx, ivk, None));
+                }
+            }
+        }
+
         (
-            endpoint,
-            account_id,
-            ivk_by_output,
-            output_indices,
-            notes_with_memos,
+            get_lightd_endpoint_config(wallet_id.clone())?,
+            secret.account_id,
             txid_array,
             txid_bytes,
+            sapling_candidates,
+            orchard_candidates,
+            stored_memo,
         )
     };
 
@@ -10901,51 +11845,10 @@ async fn fetch_transaction_memo_inner(
         allow_direct_fallback,
     };
 
-    // Try validating stored memos
-    for (idx, stored_memo, cmu_opt, ivk_bytes) in notes_with_memos {
-        let client = pirate_sync_lightd::LightClient::with_config(client_config.clone());
-
-        match client.connect().await {
-            Ok(_) => {
-                match client.get_transaction(&txid_array).await {
-                    Ok(raw_tx_bytes) => {
-                        if let Some(cmu) = cmu_opt {
-                            match pirate_sync_lightd::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes(
-                                &raw_tx_bytes,
-                                idx as usize,
-                                &ivk_bytes,
-                                Some(&cmu),
-                            ) {
-                                Ok(Some(decrypted)) => {
-                                    if decrypted.memo == stored_memo {
-                                        let memo_str = pirate_sync_lightd::sapling::full_decrypt::decode_memo(&decrypted.memo);
-                                        tracing::debug!("Memo validated from database for tx {} output {}", txid, idx);
-                                        return Ok(memo_str);
-                                    } else {
-                                        // Memo is corrupted, update it (re-open DB)
-                                        let (_db2, repo2) = open_wallet_db_for(&wallet_id)?;
-                                        repo2.update_note_memo(account_id, &txid_bytes, idx, Some(&decrypted.memo))?;
-                                        let memo_str = pirate_sync_lightd::sapling::full_decrypt::decode_memo(&decrypted.memo);
-                                        return Ok(memo_str);
-                                    }
-                                }
-                                _ => continue,
-                            }
-                        }
-                    }
-                    _ => {
-                        // If validation fails, return stored memo anyway
-                        let memo_str =
-                            pirate_sync_lightd::sapling::full_decrypt::decode_memo(&stored_memo);
-                        return Ok(memo_str);
-                    }
-                }
-            }
-            _ => {
-                // If connection fails, return stored memo anyway
-                let memo_str = pirate_sync_lightd::sapling::full_decrypt::decode_memo(&stored_memo);
-                return Ok(memo_str);
-            }
+    if let Some(stored) = stored_memo {
+        let memo = pirate_sync_lightd::sapling::full_decrypt::decode_memo(&stored);
+        if memo.is_some() {
+            return Ok(memo);
         }
     }
 
@@ -10961,51 +11864,60 @@ async fn fetch_transaction_memo_inner(
         .await
         .map_err(|e| anyhow!("Failed to fetch transaction: {}", e))?;
 
-    // Get commitment from note if available (re-open DB) and decrypt
-    for idx in output_indices {
-        let ivk_bytes = match ivk_by_output.get(&idx) {
-            Some(bytes) => bytes,
-            None => continue,
-        };
-        let cmu_opt = {
-            let (_db2, repo2) = open_wallet_db_for(&wallet_id)?;
-            if let Some(note) = repo2.get_note_by_txid_and_index(account_id, &txid_bytes, idx)? {
-                if note.commitment.len() == 32 {
-                    let mut cmu = [0u8; 32];
-                    cmu.copy_from_slice(&note.commitment[..32]);
-                    Some(cmu)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        };
-
-        // Decrypt memo
+    // Decrypt Sapling memo candidates.
+    for (idx, ivk_bytes, cmu_opt) in &sapling_candidates {
         match pirate_sync_lightd::sapling::full_decrypt::decrypt_memo_from_raw_tx_with_ivk_bytes(
             &raw_tx_bytes,
-            idx as usize,
+            *idx as usize,
             ivk_bytes,
             cmu_opt.as_ref(),
         ) {
             Ok(Some(decrypted)) => {
                 // Store memo in database (re-open DB)
                 let (_db3, repo3) = open_wallet_db_for(&wallet_id)?;
-                repo3.update_note_memo(account_id, &txid_bytes, idx, Some(&decrypted.memo))?;
+                repo3.update_note_memo(account_id, &txid_bytes, *idx, Some(&decrypted.memo))?;
 
                 // Decode and return
                 let memo_str =
                     pirate_sync_lightd::sapling::full_decrypt::decode_memo(&decrypted.memo);
-                tracing::info!("Fetched and stored memo for tx {} output {}", txid, idx);
+                tracing::info!(
+                    "Fetched and stored Sapling memo for tx {} output {}",
+                    txid,
+                    idx
+                );
                 return Ok(memo_str);
             }
-            Ok(None) => {
-                // No memo for this output, try next
+            Ok(None) => continue,
+            Err(e) => {
+                tracing::warn!("Failed to decrypt Sapling memo for output {}: {}", idx, e);
                 continue;
             }
+        }
+    }
+
+    // Decrypt Orchard memo candidates.
+    for (idx, orchard_ivk, cmx_opt) in &orchard_candidates {
+        match pirate_sync_lightd::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
+            &raw_tx_bytes,
+            *idx as usize,
+            orchard_ivk,
+            cmx_opt.as_ref(),
+        ) {
+            Ok(Some(decrypted)) => {
+                let memo_bytes = decrypted.memo.to_vec();
+                // Store memo in database (re-open DB)
+                let (_db3, repo3) = open_wallet_db_for(&wallet_id)?;
+                repo3.update_note_memo(account_id, &txid_bytes, *idx, Some(&memo_bytes))?;
+
+                // Decode and return
+                let memo_str =
+                    pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_bytes);
+                tracing::info!("Fetched and stored Orchard memo for tx {} output {}", txid, idx);
+                return Ok(memo_str);
+            }
+            Ok(None) => continue,
             Err(e) => {
-                tracing::warn!("Failed to decrypt memo for output {}: {}", idx, e);
+                tracing::warn!("Failed to decrypt Orchard memo for output {}: {}", idx, e);
                 continue;
             }
         }
@@ -11754,8 +12666,8 @@ async fn test_node_inner(
     url: String,
     tls_pin: Option<String>,
 ) -> Result<crate::models::NodeTestResult> {
-    use pirate_sync_lightd::client::{LightClient, LightClientConfig};
-    use std::time::Instant;
+    use pirate_sync_lightd::client::{LightClient, LightClientConfig, RetryConfig};
+    use std::time::{Duration, Instant};
 
     let start_time = Instant::now();
 
@@ -11876,6 +12788,42 @@ async fn test_node_inner(
         _ => None,
     };
 
+    let (connect_timeout, request_timeout, retry, info_timeout) = match transport {
+        TransportMode::Direct => (
+            Duration::from_secs(8),
+            Duration::from_secs(10),
+            RetryConfig {
+                max_attempts: 1,
+                initial_backoff: Duration::from_millis(100),
+                max_backoff: Duration::from_millis(100),
+                backoff_multiplier: 1.0,
+            },
+            Duration::from_secs(2),
+        ),
+        TransportMode::Socks5 => (
+            Duration::from_secs(10),
+            Duration::from_secs(12),
+            RetryConfig {
+                max_attempts: 1,
+                initial_backoff: Duration::from_millis(150),
+                max_backoff: Duration::from_millis(150),
+                backoff_multiplier: 1.0,
+            },
+            Duration::from_secs(3),
+        ),
+        TransportMode::Tor | TransportMode::I2p => (
+            Duration::from_secs(20),
+            Duration::from_secs(25),
+            RetryConfig {
+                max_attempts: 2,
+                initial_backoff: Duration::from_millis(250),
+                max_backoff: Duration::from_secs(1),
+                backoff_multiplier: 2.0,
+            },
+            Duration::from_secs(6),
+        ),
+    };
+
     let config = LightClientConfig {
         endpoint: endpoint.clone(),
         transport,
@@ -11885,9 +12833,9 @@ async fn test_node_inner(
             spki_pin: tls_pin.clone(),
             server_name: tls_server_name,
         },
-        retry: Default::default(),
-        connect_timeout: std::time::Duration::from_secs(30),
-        request_timeout: std::time::Duration::from_secs(60),
+        retry,
+        connect_timeout,
+        request_timeout,
         allow_direct_fallback,
     };
 
@@ -11909,20 +12857,28 @@ async fn test_node_inner(
                         height
                     );
                     // Try to get server info if available
-                    let (server_version, chain_name) = match client.get_lightd_info().await {
-                        Ok(info) => {
-                            tracing::info!(
-                                "test_node: Server info - version: {}, chain: {}",
-                                info.version,
-                                info.chain_name
-                            );
-                            (Some(info.version), Some(info.chain_name))
-                        }
-                        Err(e) => {
-                            tracing::warn!("test_node: Failed to get server info: {}", e);
-                            (None, None)
-                        }
-                    };
+                    let (server_version, chain_name) =
+                        match tokio::time::timeout(info_timeout, client.get_lightd_info()).await {
+                            Ok(Ok(info)) => {
+                                tracing::info!(
+                                    "test_node: Server info - version: {}, chain: {}",
+                                    info.version,
+                                    info.chain_name
+                                );
+                                (Some(info.version), Some(info.chain_name))
+                            }
+                            Ok(Err(e)) => {
+                                tracing::warn!("test_node: Failed to get server info: {}", e);
+                                (None, None)
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    "test_node: Timed out fetching server info after {:?}",
+                                    info_timeout
+                                );
+                                (None, None)
+                            }
+                        };
 
                     let response_time = start_time.elapsed().as_millis() as u64;
 
