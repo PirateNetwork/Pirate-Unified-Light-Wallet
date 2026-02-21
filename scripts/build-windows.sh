@@ -166,11 +166,11 @@ sign_windows_file() {
 
 resolve_release_dir() {
     if [ -d "build/windows/runner/Release" ]; then
-        echo "build/windows/runner/Release"
+        (cd "build/windows/runner/Release" && pwd)
         return 0
     fi
     if [ -d "build/windows/x64/runner/Release" ]; then
-        echo "build/windows/x64/runner/Release"
+        (cd "build/windows/x64/runner/Release" && pwd)
         return 0
     fi
     return 1
