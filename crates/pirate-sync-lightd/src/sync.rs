@@ -50,14 +50,15 @@ use pirate_storage_sqlite::{
     SyncStateStorage,
 };
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use subtle::CtOption;
 use tokio::sync::RwLock;
+use tonic::Code;
 use zcash_note_encryption::try_output_recovery_with_ovk;
 use zcash_note_encryption::{
     batch as note_batch, EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE,
@@ -70,6 +71,7 @@ use zcash_primitives::sapling::keys::{
 use zcash_primitives::sapling::note_encryption::{try_sapling_output_recovery, SaplingDomain};
 use zcash_primitives::sapling::{PaymentAddress as SaplingPaymentAddress, Rseed, SaplingIvk};
 use zcash_primitives::transaction::Transaction;
+use zcash_primitives::zip32::Scope as SaplingScope;
 
 fn debug_log_path() -> PathBuf {
     let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
@@ -88,6 +90,88 @@ fn debug_log_path() -> PathBuf {
     }
     path
 }
+
+fn verbose_note_logging_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        if cfg!(debug_assertions) {
+            return true;
+        }
+        match env::var("PIRATE_VERBOSE_NOTE_LOGS") {
+            Ok(v) => {
+                let v = v.trim();
+                v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
+            }
+            Err(_) => false,
+        }
+    })
+}
+
+fn verbose_sync_batch_logging_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| match env::var("PIRATE_VERBOSE_SYNC_LOGS") {
+        Ok(v) => {
+            let v = v.trim();
+            v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
+        }
+        Err(_) => false,
+    })
+}
+
+fn append_debug_log_line(line: &str) {
+    static LOG_FILE: OnceLock<std::sync::Mutex<Option<std::fs::File>>> = OnceLock::new();
+    let lock = LOG_FILE.get_or_init(|| std::sync::Mutex::new(None));
+    if let Ok(mut guard) = lock.lock() {
+        if guard.is_none() {
+            *guard = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+                .ok();
+        }
+        if let Some(file) = guard.as_mut() {
+            let _ = writeln!(file, "{}", line);
+        }
+    }
+}
+
+fn log_idle_witness_maintenance_event(
+    event: &str,
+    current_height: u64,
+    checkpoint_height: u64,
+    sapling_repaired: usize,
+    orchard_repaired: usize,
+    checkpoint_persisted: bool,
+    yielded_to_tip: bool,
+    duration_ms: u128,
+    detail: &str,
+) {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let id = format!("{:08x}", ts);
+    append_debug_log_line(&format!(
+        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:idle_witness_maintenance","message":"idle witness maintenance","data":{{"event":"{}","current_height":{},"checkpoint_height":{},"sapling_repaired":{},"orchard_repaired":{},"checkpoint_persisted":{},"yielded_to_tip":{},"duration_ms":{},"detail":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+        id,
+        ts,
+        event,
+        current_height,
+        checkpoint_height,
+        sapling_repaired,
+        orchard_repaired,
+        checkpoint_persisted,
+        yielded_to_tip,
+        duration_ms,
+        detail.replace('"', "'")
+    ));
+}
+
+/// Prevent long startup stalls when replaying extremely large frontier gaps from cache.
+/// For larger gaps, fall back to authoritative tree-state bootstrap.
+const FRONTIER_CACHE_REPLAY_MAX_GAP: u64 = 250_000;
+/// Replay cached frontiers in chunks so cancellation can preempt quickly.
+const FRONTIER_CACHE_REPLAY_CHUNK_SIZE: u64 = 10_000;
 
 fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKeyGroup>> {
     let key_id = key.id.unwrap_or(0);
@@ -155,6 +239,8 @@ pub struct SyncConfig {
     pub use_server_batch_recommendations: bool,
     /// Number of batches between mini-checkpoints
     pub mini_checkpoint_every: u32,
+    /// Force a mini-checkpoint once this many blocks pass without any checkpoint.
+    pub mini_checkpoint_max_block_gap: u64,
     /// Maximum parallel trial decryptions
     pub max_parallel_decrypt: usize,
     /// Lazy memo decoding (only decode if needed)
@@ -172,6 +258,14 @@ pub struct SyncConfig {
     /// Maximum memory per batch in bytes (None = no limit)
     /// Helps prevent OOM on memory-constrained devices
     pub max_batch_memory_bytes: Option<u64>,
+    /// Persist sync_state at least every N processed batches (unless checkpoint/end flushes first).
+    pub sync_state_flush_every_batches: u32,
+    /// Persist sync_state at least every N milliseconds while syncing.
+    pub sync_state_flush_interval_ms: u64,
+    /// Maximum number of prefetched batches to keep queued.
+    pub prefetch_queue_depth: usize,
+    /// Approximate byte cap for queued prefetched batches.
+    pub prefetch_queue_max_bytes: u64,
 }
 
 /// Constants for retry logic
@@ -180,6 +274,11 @@ const RETRY_BACKOFF_MS: u64 = 100;
 const FRONTIER_SNAPSHOT_RETAIN: usize = 512;
 const MIN_PARALLEL_OUTPUTS: usize = 256;
 const MAX_WITNESS_MARK_REPAIR_NOTES: usize = 25_000;
+const IDLE_WITNESS_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(5);
+const IDLE_WITNESS_MAINTENANCE_TIP_CHECK_TIMEOUT: Duration = Duration::from_millis(1200);
+const PREFETCH_JOIN_TIMEOUT: Duration = Duration::from_secs(25);
+const LOW_HEIGHT_BATCH_CAP_HEIGHT: u64 = 10_000;
+const LOW_HEIGHT_BATCH_MAX_BLOCKS: u64 = 256;
 
 impl Default for SyncConfig {
     fn default() -> Self {
@@ -190,10 +289,28 @@ impl Default for SyncConfig {
             target_batch_bytes,
             min_batch_bytes,
             max_batch_bytes,
+            prefetch_queue_depth,
+            prefetch_queue_max_bytes,
         ) = if is_mobile {
-            (8, Some(100_000_000), 8_000_000, 2_000_000, 16_000_000)
+            (
+                8,
+                Some(100_000_000),
+                8_000_000,
+                2_000_000,
+                16_000_000,
+                2,
+                16_000_000,
+            )
         } else {
-            (32, Some(500_000_000), 32_000_000, 4_000_000, 64_000_000)
+            (
+                32,
+                Some(500_000_000),
+                32_000_000,
+                4_000_000,
+                64_000_000,
+                4,
+                96_000_000,
+            )
         };
 
         Self {
@@ -203,6 +320,7 @@ impl Default for SyncConfig {
             max_batch_size: 2_000, // Maximum batch size (caps server batches to prevent OOM)
             use_server_batch_recommendations: true, // Use server's ~4MB chunk recommendations (typically ~199 blocks)
             mini_checkpoint_every: 5,               // Mini-checkpoint every 5 batches
+            mini_checkpoint_max_block_gap: 20_000,  // Always checkpoint at least every 20k blocks
             max_parallel_decrypt,
             lazy_memo_decode: true,
             defer_full_tx_fetch: true,
@@ -211,6 +329,10 @@ impl Default for SyncConfig {
             max_batch_bytes,
             heavy_block_threshold_bytes: 500_000, // 500KB per block = heavy/spam (lowered for earlier detection)
             max_batch_memory_bytes,
+            sync_state_flush_every_batches: if is_mobile { 3 } else { 2 },
+            sync_state_flush_interval_ms: 1_500,
+            prefetch_queue_depth,
+            prefetch_queue_max_bytes,
         }
     }
 }
@@ -227,6 +349,7 @@ pub struct SyncEngine {
     keys: Vec<WalletKeyGroup>,
     nullifier_cache: HashMap<[u8; 32], i64>,
     nullifier_cache_loaded: bool,
+    tracked_wallet_txids: HashSet<[u8; 32]>,
     /// Sapling frontier for witness tree management
     frontier: Arc<RwLock<SaplingFrontier>>,
     /// Orchard frontier for witness tree management
@@ -250,7 +373,13 @@ fn _assert_sync_engine_send_sync() {
 struct PrefetchTask {
     start: u64,
     end: u64,
+    estimated_bytes: u64,
     handle: tokio::task::JoinHandle<Result<Vec<CompactBlockData>>>,
+}
+
+struct ServerBatchHintTask {
+    start: u64,
+    handle: tokio::task::JoinHandle<Option<u64>>,
 }
 
 #[derive(Clone, Copy)]
@@ -290,6 +419,34 @@ struct FrontierIntegrityOutcome {
 }
 
 impl SyncEngine {
+    fn is_non_retryable_fetch_error(error: &Error) -> bool {
+        match error {
+            Error::Status(status) => matches!(
+                status.code(),
+                Code::InvalidArgument
+                    | Code::Unimplemented
+                    | Code::FailedPrecondition
+                    | Code::PermissionDenied
+            ),
+            Error::Sync(msg) | Error::Network(msg) | Error::Connection(msg) => {
+                msg.starts_with("NON_RETRYABLE:")
+            }
+            _ => false,
+        }
+    }
+
+    async fn server_compact_floor_hint(&self) -> Option<u64> {
+        let info = tokio::time::timeout(Duration::from_secs(4), self.client.get_lightd_info())
+            .await
+            .ok()?
+            .ok()?;
+        if info.sapling_activation_height > 0 {
+            Some(info.sapling_activation_height)
+        } else {
+            None
+        }
+    }
+
     /// Create new sync engine
     pub fn new(endpoint: String, birthday_height: u32) -> Self {
         let config = SyncConfig::default();
@@ -312,6 +469,7 @@ impl SyncEngine {
             keys: Vec::new(),
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
+            tracked_wallet_txids: HashSet::new(),
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
@@ -326,23 +484,29 @@ impl SyncEngine {
             return Ok(());
         }
         let sink = match self.storage.as_ref() {
-            Some(s) => s,
+            Some(s) => s.clone(),
             None => return Ok(()),
         };
         let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
         let repo = Repository::new(&db);
-        let notes = repo.get_unspent_notes(sink.account_id)?;
+        let notes = repo.get_spend_reconciliation_notes(sink.account_id)?;
         let mut loaded = 0u64;
         for note in notes {
             let id = match note.id {
                 Some(v) => v,
                 None => continue,
             };
+            if note.spent && note.spent_txid.is_some() {
+                continue;
+            }
             if note.nullifier.len() != 32 {
                 continue;
             }
             let mut nf = [0u8; 32];
             nf.copy_from_slice(&note.nullifier[..32]);
+            if nf.iter().all(|b| *b == 0) {
+                continue;
+            }
             self.nullifier_cache.insert(nf, id);
             loaded += 1;
         }
@@ -374,6 +538,16 @@ impl SyncEngine {
         }
     }
 
+    fn track_wallet_txids_from_notes(&mut self, notes: &[DecryptedNote]) {
+        for note in notes {
+            if note.txid.len() == 32 {
+                let mut txid = [0u8; 32];
+                txid.copy_from_slice(&note.txid[..32]);
+                self.tracked_wallet_txids.insert(txid);
+            }
+        }
+    }
+
     /// Create with custom configuration
     pub fn with_config(endpoint: String, birthday_height: u32, config: SyncConfig) -> Self {
         let cpu_limit = num_cpus::get().max(1);
@@ -395,6 +569,7 @@ impl SyncEngine {
             keys: Vec::new(),
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
+            tracked_wallet_txids: HashSet::new(),
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
@@ -429,6 +604,7 @@ impl SyncEngine {
             keys: Vec::new(),
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
+            tracked_wallet_txids: HashSet::new(),
             frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
             orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
             perf: Arc::new(PerfCounters::new()),
@@ -466,6 +642,7 @@ impl SyncEngine {
         key: EncryptionKey,
         master_key: MasterKey,
         network_type: NetworkType,
+        address_network_type: NetworkType,
     ) -> Result<Self> {
         self.wallet_id = Some(wallet_id.clone());
         self.network_type = network_type;
@@ -544,7 +721,7 @@ impl SyncEngine {
             key,
             master_key,
             account_id: secret.account_id,
-            network_type: self.network_type,
+            address_network_type,
         };
         self.storage = Some(sink);
         self.keys = key_groups;
@@ -632,18 +809,46 @@ impl SyncEngine {
 
         let start = snapshot_height.saturating_add(1);
         let end = stored_height;
+        let gap = end.saturating_sub(start).saturating_add(1);
+        if gap > FRONTIER_CACHE_REPLAY_MAX_GAP {
+            tracing::info!(
+                "Skipping cache frontier replay for large gap (start={}, end={}, gap={}); using remote tree-state bootstrap",
+                start,
+                end,
+                gap
+            );
+            return Ok(false);
+        }
         let cache = match BlockCache::for_endpoint(self.client.endpoint()) {
             Ok(c) => c,
             Err(_) => return Ok(false),
         };
 
-        let blocks = cache.load_range(start, end).unwrap_or_default();
-        let expected = end.saturating_sub(start).saturating_add(1);
-        if blocks.len() as u64 != expected {
-            return Ok(false);
-        }
+        let mut chunk_start = start;
+        while chunk_start <= end {
+            if self.is_cancelled().await {
+                return Err(Error::Cancelled);
+            }
+            let chunk_end = std::cmp::min(
+                chunk_start.saturating_add(FRONTIER_CACHE_REPLAY_CHUNK_SIZE.saturating_sub(1)),
+                end,
+            );
+            let expected = chunk_end.saturating_sub(chunk_start).saturating_add(1);
+            let blocks = cache.load_range(chunk_start, chunk_end).unwrap_or_default();
+            if blocks.len() as u64 != expected {
+                tracing::warn!(
+                    "Cache frontier replay missing blocks (start={}, end={}, expected={}, got={})",
+                    chunk_start,
+                    chunk_end,
+                    expected,
+                    blocks.len()
+                );
+                return Ok(false);
+            }
 
-        let _ = self.update_frontier(&blocks, &[]).await?;
+            let _ = self.update_frontier(&blocks, &[]).await?;
+            chunk_start = chunk_end.saturating_add(1);
+        }
         Ok(true)
     }
 
@@ -1006,9 +1211,15 @@ impl SyncEngine {
     async fn initialize_frontiers_from_tree_state(
         &self,
         start_height: u64,
-    ) -> Result<FrontierInitSource> {
-        if start_height == 0 {
-            return Ok(FrontierInitSource::None);
+    ) -> Result<(FrontierInitSource, Option<u64>)> {
+        if start_height <= 1 {
+            // Some lightwalletd deployments reject tree-state lookups at height 0
+            // ("request for unspecified identifier"). For scans starting at
+            // block 1, the pre-state frontier is genesis-empty, so initialize
+            // locally and continue.
+            *self.frontier.write().await = SaplingFrontier::new();
+            *self.orchard_frontier.write().await = OrchardFrontier::new();
+            return Ok((FrontierInitSource::None, None));
         }
 
         let tree_height = start_height.saturating_sub(1);
@@ -1038,7 +1249,7 @@ impl SyncEngine {
                     "Restored frontier snapshots at height {} from storage",
                     snapshot_height
                 );
-                return Ok(FrontierInitSource::LocalSnapshot);
+                return Ok((FrontierInitSource::LocalSnapshot, None));
             }
 
             // Snapshot is older than required. First try to replay from local compact-block cache
@@ -1054,8 +1265,18 @@ impl SyncEngine {
                         snapshot_height,
                         tree_height
                     );
-                    return Ok(FrontierInitSource::LocalCacheReplay);
+                    return Ok((FrontierInitSource::LocalCacheReplay, None));
                 }
+
+                // Do not backfill from snapshot when cache replay is unavailable.
+                // Rescan/sync start height must remain authoritative.
+                tracing::info!(
+                    "Skipping local snapshot backfill: snapshot {} < tree_height {} and cache replay unavailable; using remote tree-state",
+                    snapshot_height,
+                    tree_height
+                );
+                *self.frontier.write().await = SaplingFrontier::new();
+                *self.orchard_frontier.write().await = OrchardFrontier::new();
             }
 
             // Cache replay not available; reset and fall back to tree-state fetch.
@@ -1066,7 +1287,7 @@ impl SyncEngine {
         self.initialize_frontiers_from_remote_tree_state(tree_height)
             .await?;
 
-        Ok(FrontierInitSource::RemoteTreeState)
+        Ok((FrontierInitSource::RemoteTreeState, None))
     }
 
     async fn initialize_frontiers_from_remote_tree_state(&self, tree_height: u64) -> Result<()> {
@@ -1347,46 +1568,168 @@ impl SyncEngine {
         Ok((repaired_sapling, repaired_orchard))
     }
 
+    async fn run_idle_witness_maintenance(
+        &self,
+        current_height: u64,
+        checkpoint_height: u64,
+    ) -> Result<(usize, usize, bool, bool)> {
+        let started_at = Instant::now();
+        log_idle_witness_maintenance_event(
+            "start",
+            current_height,
+            checkpoint_height,
+            0,
+            0,
+            false,
+            false,
+            0,
+            "cycle_start",
+        );
+
+        // If a newer tip is already available, let sync process that first.
+        if self
+            .idle_maintenance_should_yield_to_new_tip(current_height)
+            .await
+        {
+            log_idle_witness_maintenance_event(
+                "yield_before",
+                current_height,
+                checkpoint_height,
+                0,
+                0,
+                false,
+                true,
+                started_at.elapsed().as_millis(),
+                "new_tip_detected_before_repair",
+            );
+            return Ok((0, 0, false, true));
+        }
+
+        let (sapling_repaired, orchard_repaired) = self
+            .repair_witness_marks_from_unspent_notes(MAX_WITNESS_MARK_REPAIR_NOTES)
+            .await?;
+        log_idle_witness_maintenance_event(
+            "repair_result",
+            current_height,
+            checkpoint_height,
+            sapling_repaired,
+            orchard_repaired,
+            false,
+            false,
+            started_at.elapsed().as_millis(),
+            "repair_completed",
+        );
+
+        // If a new block arrived while maintenance ran, skip checkpointing and
+        // return to sync loop immediately.
+        if self
+            .idle_maintenance_should_yield_to_new_tip(current_height)
+            .await
+        {
+            log_idle_witness_maintenance_event(
+                "yield_after",
+                current_height,
+                checkpoint_height,
+                sapling_repaired,
+                orchard_repaired,
+                false,
+                true,
+                started_at.elapsed().as_millis(),
+                "new_tip_detected_after_repair",
+            );
+            return Ok((sapling_repaired, orchard_repaired, false, true));
+        }
+
+        let mut checkpoint_persisted = false;
+        if checkpoint_height > 0 && (sapling_repaired > 0 || orchard_repaired > 0) {
+            self.create_checkpoint(checkpoint_height).await?;
+            checkpoint_persisted = true;
+            log_idle_witness_maintenance_event(
+                "checkpoint_persisted",
+                current_height,
+                checkpoint_height,
+                sapling_repaired,
+                orchard_repaired,
+                true,
+                false,
+                started_at.elapsed().as_millis(),
+                "repair_checkpoint_saved",
+            );
+        }
+
+        log_idle_witness_maintenance_event(
+            "done",
+            current_height,
+            checkpoint_height,
+            sapling_repaired,
+            orchard_repaired,
+            checkpoint_persisted,
+            false,
+            started_at.elapsed().as_millis(),
+            if sapling_repaired == 0 && orchard_repaired == 0 {
+                "noop"
+            } else {
+                "repaired"
+            },
+        );
+
+        Ok((
+            sapling_repaired,
+            orchard_repaired,
+            checkpoint_persisted,
+            false,
+        ))
+    }
+
+    async fn idle_maintenance_should_yield_to_new_tip(&self, current_height: u64) -> bool {
+        let latest_result = tokio::time::timeout(
+            IDLE_WITNESS_MAINTENANCE_TIP_CHECK_TIMEOUT,
+            self.client.get_latest_block(),
+        )
+        .await;
+        matches!(latest_result, Ok(Ok(latest_height)) if latest_height > current_height)
+    }
+
     fn tree_state_retry_profile(&self) -> TreeStateRetryProfile {
         match self.client.transport_mode() {
             // Tor and I2P are privacy-preserving but can have higher latency and
             // occasional circuit/bootstrap jitter. Keep retries bounded so rescan
             // startup doesn't sit in Headers for multiple minutes.
             TransportMode::Tor => TreeStateRetryProfile {
-                max_attempts: 4,
-                base_timeout: Duration::from_secs(10),
-                timeout_step: Duration::from_secs(10),
-                max_timeout: Duration::from_secs(50),
-                initial_backoff: Duration::from_secs(1),
-                max_backoff: Duration::from_secs(4),
-                bridge_timeout_cap: Duration::from_secs(40),
-                hash_timeout_cap: Duration::from_secs(20),
+                max_attempts: 3,
+                base_timeout: Duration::from_secs(8),
+                timeout_step: Duration::from_secs(8),
+                max_timeout: Duration::from_secs(32),
+                initial_backoff: Duration::from_millis(500),
+                max_backoff: Duration::from_secs(2),
+                bridge_timeout_cap: Duration::from_secs(24),
+                hash_timeout_cap: Duration::from_secs(12),
                 enable_hash_fallback: true,
                 extended_timeout: Duration::from_secs(75),
                 extended_hash_timeout: Duration::from_secs(45),
             },
             TransportMode::I2p => TreeStateRetryProfile {
-                max_attempts: 4,
-                base_timeout: Duration::from_secs(10),
-                timeout_step: Duration::from_secs(10),
-                max_timeout: Duration::from_secs(50),
-                initial_backoff: Duration::from_secs(1),
-                max_backoff: Duration::from_secs(4),
-                bridge_timeout_cap: Duration::from_secs(40),
-                hash_timeout_cap: Duration::from_secs(20),
+                max_attempts: 3,
+                base_timeout: Duration::from_secs(8),
+                timeout_step: Duration::from_secs(8),
+                max_timeout: Duration::from_secs(32),
+                initial_backoff: Duration::from_millis(500),
+                max_backoff: Duration::from_secs(2),
+                bridge_timeout_cap: Duration::from_secs(24),
+                hash_timeout_cap: Duration::from_secs(12),
                 enable_hash_fallback: true,
                 extended_timeout: Duration::from_secs(75),
                 extended_hash_timeout: Duration::from_secs(45),
             },
             TransportMode::Socks5 => TreeStateRetryProfile {
-                max_attempts: 4,
-                base_timeout: Duration::from_secs(10),
-                timeout_step: Duration::from_secs(10),
-                max_timeout: Duration::from_secs(50),
-                initial_backoff: Duration::from_secs(1),
-                max_backoff: Duration::from_secs(4),
-                bridge_timeout_cap: Duration::from_secs(40),
-                hash_timeout_cap: Duration::from_secs(20),
+                max_attempts: 3,
+                base_timeout: Duration::from_secs(8),
+                timeout_step: Duration::from_secs(8),
+                max_timeout: Duration::from_secs(32),
+                initial_backoff: Duration::from_millis(500),
+                max_backoff: Duration::from_secs(2),
+                bridge_timeout_cap: Duration::from_secs(24),
+                hash_timeout_cap: Duration::from_secs(12),
                 enable_hash_fallback: true,
                 extended_timeout: Duration::from_secs(75),
                 extended_hash_timeout: Duration::from_secs(45),
@@ -1394,17 +1737,17 @@ impl SyncEngine {
             // Direct mode should remain responsive while retaining enough margin
             // for transient lightwalletd load.
             TransportMode::Direct => TreeStateRetryProfile {
-                max_attempts: 4,
-                base_timeout: Duration::from_secs(12),
-                timeout_step: Duration::from_secs(12),
-                max_timeout: Duration::from_secs(60),
-                initial_backoff: Duration::from_secs(1),
-                max_backoff: Duration::from_secs(4),
-                bridge_timeout_cap: Duration::from_secs(45),
-                hash_timeout_cap: Duration::from_secs(20),
+                max_attempts: 3,
+                base_timeout: Duration::from_secs(6),
+                timeout_step: Duration::from_secs(6),
+                max_timeout: Duration::from_secs(24),
+                initial_backoff: Duration::from_millis(250),
+                max_backoff: Duration::from_secs(1),
+                bridge_timeout_cap: Duration::from_secs(14),
+                hash_timeout_cap: Duration::from_secs(8),
                 enable_hash_fallback: true,
-                extended_timeout: Duration::from_secs(90),
-                extended_hash_timeout: Duration::from_secs(60),
+                extended_timeout: Duration::from_secs(60),
+                extended_hash_timeout: Duration::from_secs(30),
             },
         }
     }
@@ -1769,7 +2112,7 @@ impl SyncEngine {
             let _ = self.client.connect().await;
 
             tokio::select! {
-                _ = tokio::time::sleep(backoff) => {}
+                _ = tokio::time::sleep(backoff) => {},
                 _ = self.cancel.cancelled() => return Err(Error::Cancelled),
             }
 
@@ -1784,6 +2127,7 @@ impl SyncEngine {
         follow_tip: bool,
     ) -> Result<()> {
         let mut current_height = start;
+        let mut frontier_start = start;
         let mut last_checkpoint_height = start.saturating_sub(1);
         let mut last_major_checkpoint_height = start.saturating_sub(1);
         let mut batches_since_mini_checkpoint = 0u32;
@@ -1793,11 +2137,17 @@ impl SyncEngine {
         let mut consecutive_heavy_batches = 0u32;
         let mut avg_block_size_estimate =
             (self.config.target_batch_bytes / self.config.batch_size.max(1)).max(1);
-        let mut pending_fetch: Option<PrefetchTask> = None;
+        let mut prefetch_queue: VecDeque<PrefetchTask> = VecDeque::new();
+        let mut queued_prefetch_bytes: u64 = 0;
+        let mut server_group_end_hint: Option<u64> = None;
+        let mut pending_server_group_hint: Option<ServerBatchHintTask> = None;
+        let mut batches_since_sync_state_flush: u32 = 0;
+        let mut last_sync_state_flush = Instant::now();
         let mut frontier_integrity_guard: Option<
             tokio::task::JoinHandle<Result<FrontierIntegrityOutcome>>,
         > = None;
         let mut frontier_integrity_retries = 0u8;
+        let mut last_idle_witness_maintenance = Instant::now() - IDLE_WITNESS_MAINTENANCE_INTERVAL;
 
         // Reset perf counters
         self.perf.reset();
@@ -1832,7 +2182,46 @@ impl SyncEngine {
                     );
                 }
                 // #endregion
-                init_source = self.initialize_frontiers_from_tree_state(start).await?;
+                let (source, replay_start_override) =
+                    self.initialize_frontiers_from_tree_state(start).await?;
+                init_source = source;
+                if let Some(replay_start) = replay_start_override {
+                    if replay_start < current_height {
+                        tracing::info!(
+                            "Frontier startup fast-path selected: replay_start={} (requested_start={})",
+                            replay_start,
+                            start
+                        );
+                        current_height = replay_start;
+                        frontier_start = replay_start;
+                        last_checkpoint_height = frontier_start.saturating_sub(1);
+                        last_major_checkpoint_height = frontier_start.saturating_sub(1);
+                        self.progress
+                            .write()
+                            .await
+                            .set_current(frontier_start.saturating_sub(1));
+                    }
+                }
+            }
+
+            // Persist the freshly initialized pre-state frontier so repeated rescans from
+            // the same height can bootstrap from local snapshot instead of remote tree-state.
+            if matches!(
+                init_source,
+                FrontierInitSource::RemoteTreeState | FrontierInitSource::LocalCacheReplay
+            ) {
+                let bootstrap_checkpoint = frontier_start.saturating_sub(1);
+                if let Err(e) = self.create_checkpoint(bootstrap_checkpoint).await {
+                    tracing::warn!(
+                        "Failed to persist bootstrap frontier checkpoint at {}: {}",
+                        bootstrap_checkpoint,
+                        e
+                    );
+                } else {
+                    last_checkpoint_height = last_checkpoint_height.max(bootstrap_checkpoint);
+                    last_major_checkpoint_height =
+                        last_major_checkpoint_height.max(bootstrap_checkpoint);
+                }
             }
 
             match self
@@ -1846,8 +2235,8 @@ impl SyncEngine {
                             sapling_repaired,
                             orchard_repaired
                         );
-                        let repaired_checkpoint = start.saturating_sub(1);
-                        if start > 0 {
+                        let repaired_checkpoint = frontier_start.saturating_sub(1);
+                        if frontier_start > 0 {
                             self.create_checkpoint(repaired_checkpoint).await?;
                             tracing::info!(
                                 "Persisted repaired witness/frontier state at checkpoint {}",
@@ -1864,9 +2253,10 @@ impl SyncEngine {
             }
 
             let should_run_integrity_guard =
-                !matches!(init_source, FrontierInitSource::RemoteTreeState) && start > 0;
+                !matches!(init_source, FrontierInitSource::RemoteTreeState) && frontier_start > 0;
             if should_run_integrity_guard {
-                frontier_integrity_guard = self.spawn_frontier_integrity_check(start).await;
+                frontier_integrity_guard =
+                    self.spawn_frontier_integrity_check(frontier_start).await;
             }
         }
 
@@ -1894,10 +2284,12 @@ impl SyncEngine {
         // Outer loop: Keep syncing until we're fully caught up with no new blocks
         loop {
             // Main sync loop: sync from current_height to end
-            while current_height <= end {
+            'sync_main: while current_height <= end {
                 // Check for cancellation
                 if self.is_cancelled().await {
                     tracing::warn!("Sync cancelled at height {}", current_height);
+                    Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
+                    Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
                     return Err(Error::Cancelled);
                 }
 
@@ -1917,24 +2309,29 @@ impl SyncEngine {
                                 if frontier_integrity_retries < 1 {
                                     frontier_integrity_retries += 1;
                                     frontier_integrity_guard =
-                                        self.spawn_frontier_integrity_check(start).await;
+                                        self.spawn_frontier_integrity_check(frontier_start).await;
                                 }
                             }
                             FrontierIntegrityStatus::Mismatch => {
                                 tracing::warn!(
                                     "{}; rolling back to {} and reinitializing from authoritative tree state",
                                     outcome.detail,
-                                    start.saturating_sub(1)
+                                    frontier_start.saturating_sub(1)
                                 );
 
-                                if let Some(prefetch) = pending_fetch.take() {
-                                    prefetch.handle.abort();
-                                }
+                                Self::abort_prefetch_queue(
+                                    &mut prefetch_queue,
+                                    &mut queued_prefetch_bytes,
+                                );
+                                Self::abort_pending_server_batch_hint(
+                                    &mut pending_server_group_hint,
+                                );
 
-                                let heal_checkpoint = start.saturating_sub(1);
+                                let heal_checkpoint = frontier_start.saturating_sub(1);
                                 let rollback_height =
                                     self.rollback_to_checkpoint(heal_checkpoint).await?;
-                                let restart_height = rollback_height.saturating_add(1).max(start);
+                                let restart_height =
+                                    rollback_height.saturating_add(1).max(frontier_start);
                                 let healed_checkpoint = restart_height.saturating_sub(1);
 
                                 self.reset_frontiers_for_replay(restart_height).await?;
@@ -1980,8 +2377,14 @@ impl SyncEngine {
                                 last_checkpoint_height = healed_checkpoint;
                                 last_major_checkpoint_height = healed_checkpoint;
                                 batches_since_mini_checkpoint = 0;
+                                batches_since_sync_state_flush = 0;
                                 current_target_bytes = self.config.target_batch_bytes;
                                 consecutive_heavy_batches = 0;
+                                server_group_end_hint = None;
+                                Self::abort_pending_server_batch_hint(
+                                    &mut pending_server_group_hint,
+                                );
+                                last_sync_state_flush = Instant::now();
                                 avg_block_size_estimate = (self.config.target_batch_bytes
                                     / self.config.batch_size.max(1))
                                 .max(1);
@@ -2008,48 +2411,60 @@ impl SyncEngine {
                 let batch_start_time = Instant::now();
                 let mut persist_ms: u128 = 0;
                 let mut apply_spends_ms: u128 = 0;
+                let prefetch_plan_ms: u128;
+                let batch_sizing_ms: u128;
+                let next_prefetch_ms: u128;
+                let note_post_ms: u128;
+                let mut tx_meta_prepare_ms: u128 = 0;
+                let perf_progress_ms: u128;
+                let mut checkpoint_ms: u128 = 0;
+                let mut checkpoint_written_this_batch = false;
+                let sync_state_ms: u128;
 
-                if pending_fetch.is_none() {
-                    let (batch_end, _desired_blocks) = self
-                        .compute_batch_end(
-                            current_height,
-                            end,
-                            current_target_bytes,
-                            avg_block_size_estimate,
-                        )
-                        .await?;
-                    pending_fetch = Some(self.spawn_prefetch(current_height, batch_end));
-                }
+                let prefetch_plan_start = Instant::now();
+                self.fill_prefetch_queue(
+                    &mut prefetch_queue,
+                    &mut queued_prefetch_bytes,
+                    current_height,
+                    end,
+                    current_target_bytes,
+                    avg_block_size_estimate,
+                    &mut server_group_end_hint,
+                    &mut pending_server_group_hint,
+                )
+                .await?;
+                prefetch_plan_ms = prefetch_plan_start.elapsed().as_millis();
 
                 let PrefetchTask {
                     start: batch_start,
                     end: batch_end,
+                    estimated_bytes,
                     handle,
-                } = pending_fetch.take().unwrap();
+                } = prefetch_queue.pop_front().ok_or_else(|| {
+                    Error::Sync(format!(
+                        "Prefetch queue unexpectedly empty at height {}",
+                        current_height
+                    ))
+                })?;
+                queued_prefetch_bytes = queued_prefetch_bytes.saturating_sub(estimated_bytes);
 
                 // Stage 1: Fetch blocks (with retry logic)
                 self.progress.write().await.set_stage(SyncStage::Headers);
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
+                    append_debug_log_line(&format!(
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:505","message":"fetch_blocks_with_retry start","data":{{"current_height":{},"batch_end":{},"batch_size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                         id,
                         ts,
                         batch_start,
                         batch_end,
                         batch_end - batch_start + 1
-                    );
+                    ));
                 }
                 // #endregion
 
@@ -2064,12 +2479,32 @@ impl SyncEngine {
                                 let fetch_wait_start = Instant::now();
                                 let mut handle = handle;
                                 let res = tokio::select! {
-                                    joined = &mut handle => match joined {
-                                        Ok(inner) => inner,
-                                        Err(e) => Err(Error::Sync(e.to_string())),
-                                    },
+                                    joined = tokio::time::timeout(PREFETCH_JOIN_TIMEOUT, &mut handle) => {
+                                        match joined {
+                                            Ok(join_result) => match join_result {
+                                                Ok(inner) => inner,
+                                                Err(e) => Err(Error::Sync(e.to_string())),
+                                            },
+                                            Err(_) => {
+                                                handle.abort();
+                                                Err(Error::Network(format!(
+                                                    "Prefetch batch {}-{} timed out after {:?}",
+                                                    batch_start,
+                                                    batch_end,
+                                                    PREFETCH_JOIN_TIMEOUT
+                                                )))
+                                            }
+                                        }
+                                    }
                                     _ = self.cancel.cancelled() => {
                                         handle.abort();
+                                        Self::abort_prefetch_queue(
+                                            &mut prefetch_queue,
+                                            &mut queued_prefetch_bytes,
+                                        );
+                                        Self::abort_pending_server_batch_hint(
+                                            &mut pending_server_group_hint,
+                                        );
                                         return Err(Error::Cancelled);
                                     }
                                 };
@@ -2082,6 +2517,7 @@ impl SyncEngine {
                                     batch_start,
                                     batch_end,
                                     self.cancel.clone(),
+                                    self.wallet_id.clone(),
                                 )
                                 .await;
                                 let wait_ms = fetch_wait_start.elapsed().as_millis();
@@ -2090,8 +2526,80 @@ impl SyncEngine {
 
                         match blocks_res {
                             Ok(blocks) => break (blocks, wait_ms),
-                            Err(Error::Cancelled) => return Err(Error::Cancelled),
+                            Err(Error::Cancelled) => {
+                                Self::abort_prefetch_queue(
+                                    &mut prefetch_queue,
+                                    &mut queued_prefetch_bytes,
+                                );
+                                Self::abort_pending_server_batch_hint(
+                                    &mut pending_server_group_hint,
+                                );
+                                return Err(Error::Cancelled);
+                            }
                             Err(e) => {
+                                let ts = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis();
+                                let id = format!("{:08x}", ts);
+                                append_debug_log_line(&format!(
+                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_blocks","message":"fetch batch error","data":{{"start":{},"end":{},"error":"{}","non_retryable":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                                    id,
+                                    ts,
+                                    batch_start,
+                                    batch_end,
+                                    format!("{}", e).replace('"', "'"),
+                                    Self::is_non_retryable_fetch_error(&e)
+                                ));
+
+                                if Self::is_non_retryable_fetch_error(&e) {
+                                    if batch_start <= LOW_HEIGHT_BATCH_CAP_HEIGHT {
+                                        if let Some(floor) = self.server_compact_floor_hint().await
+                                        {
+                                            if floor > batch_start && floor <= end {
+                                                tracing::warn!(
+                                                    "Non-retryable block-range failure at {}-{}; jumping to server compact floor {}",
+                                                    batch_start,
+                                                    batch_end,
+                                                    floor
+                                                );
+                                                let ts = std::time::SystemTime::now()
+                                                    .duration_since(std::time::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_millis();
+                                                let id = format!("{:08x}", ts);
+                                                append_debug_log_line(&format!(
+                                                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_blocks","message":"apply compact floor fallback","data":{{"start":{},"end":{},"floor":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                                                    id, ts, batch_start, batch_end, floor
+                                                ));
+
+                                                Self::abort_prefetch_queue(
+                                                    &mut prefetch_queue,
+                                                    &mut queued_prefetch_bytes,
+                                                );
+                                                Self::abort_pending_server_batch_hint(
+                                                    &mut pending_server_group_hint,
+                                                );
+                                                server_group_end_hint = None;
+                                                current_height = floor;
+                                                {
+                                                    let progress = self.progress.write().await;
+                                                    progress.set_stage(SyncStage::Headers);
+                                                    progress.set_current(
+                                                        current_height.saturating_sub(1),
+                                                    );
+                                                }
+                                                continue 'sync_main;
+                                            }
+                                        }
+                                    }
+
+                                    return Err(Error::Sync(format!(
+                                        "NON_RETRYABLE: block fetch failed for {}-{}: {}",
+                                        batch_start, batch_end, e
+                                    )));
+                                }
+
                                 tracing::warn!(
                                     "Block fetch failed for {}-{}: {}. Reconnecting and retrying in {:?}...",
                                     batch_start,
@@ -2105,7 +2613,16 @@ impl SyncEngine {
                                 }
                                 tokio::select! {
                                     _ = tokio::time::sleep(backoff) => {},
-                                    _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                                    _ = self.cancel.cancelled() => {
+                                        Self::abort_prefetch_queue(
+                                            &mut prefetch_queue,
+                                            &mut queued_prefetch_bytes,
+                                        );
+                                        Self::abort_pending_server_batch_hint(
+                                            &mut pending_server_group_hint,
+                                        );
+                                        return Err(Error::Cancelled);
+                                    },
                                 }
                                 backoff = std::cmp::min(backoff.saturating_mul(2), max_backoff);
                                 // Retry using a direct fetch (no prefetch).
@@ -2116,19 +2633,13 @@ impl SyncEngine {
                 };
 
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
+                    append_debug_log_line(&format!(
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:506","message":"fetch_blocks_with_retry result","data":{{"current_height":{},"batch_end":{},"blocks_count":{},"wait_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                         id,
                         ts,
@@ -2136,7 +2647,7 @@ impl SyncEngine {
                         batch_end,
                         blocks.len(),
                         fetch_wait_ms
-                    );
+                    ));
                 }
                 // #endregion
 
@@ -2148,6 +2659,7 @@ impl SyncEngine {
 
                 // Detect heavy/spam blocks and adapt batch size
                 // Count actual bytes in outputs and actions
+                let batch_sizing_start = Instant::now();
                 let total_block_size: u64 = blocks
                     .iter()
                     .map(|b| {
@@ -2211,7 +2723,10 @@ impl SyncEngine {
                     // Create mini-checkpoint more frequently during spam blocks
                     // This prevents losing progress if connection is unstable
                     if consecutive_heavy_batches >= 2 {
+                        let emergency_checkpoint_start = Instant::now();
                         self.create_checkpoint(batch_end).await?;
+                        checkpoint_ms += emergency_checkpoint_start.elapsed().as_millis();
+                        checkpoint_written_this_batch = true;
                         batches_since_mini_checkpoint = 0;
                         last_checkpoint_height = batch_end;
 
@@ -2241,71 +2756,63 @@ impl SyncEngine {
                         );
                     }
                 }
+                batch_sizing_ms = batch_sizing_start.elapsed().as_millis();
 
                 // Prefetch next batch while we process this one.
-                let next_start = batch_end + 1;
-                if next_start <= end {
-                    let (next_end, _desired_blocks) = self
-                        .compute_batch_end(
-                            next_start,
-                            end,
-                            current_target_bytes,
-                            avg_block_size_estimate,
-                        )
-                        .await?;
-                    pending_fetch = Some(self.spawn_prefetch(next_start, next_end));
-                }
+                let next_prefetch_start = Instant::now();
+                self.fill_prefetch_queue(
+                    &mut prefetch_queue,
+                    &mut queued_prefetch_bytes,
+                    batch_end.saturating_add(1),
+                    end,
+                    current_target_bytes,
+                    avg_block_size_estimate,
+                    &mut server_group_end_hint,
+                    &mut pending_server_group_hint,
+                )
+                .await?;
+                next_prefetch_ms = next_prefetch_start.elapsed().as_millis();
 
                 // Stage 2: Trial decryption (batched with parallelism)
                 self.progress.write().await.set_stage(SyncStage::Notes);
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
+                    append_debug_log_line(&format!(
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:846","message":"trial_decrypt start","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                         id,
                         ts,
                         current_height,
                         batch_end,
                         blocks.len()
-                    );
+                    ));
                 }
                 // #endregion
                 let decrypt_start = Instant::now();
-                let mut notes = self.trial_decrypt_batch(&blocks).await?;
+                let (mut notes, decrypt_telemetry) = self.trial_decrypt_batch(&blocks).await?;
+                let decrypt_cpu_ms = decrypt_telemetry.cpu_ms;
                 let decrypt_ms = decrypt_start.elapsed().as_millis();
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:852","message":"trial_decrypt done","data":{{"start":{},"end":{},"notes":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    append_debug_log_line(&format!(
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:852","message":"trial_decrypt done","data":{{"start":{},"end":{},"notes":{},"ms":{},"cpu_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                         id,
                         ts,
                         current_height,
                         batch_end,
                         notes.len(),
-                        decrypt_ms
-                    );
+                        decrypt_ms,
+                        decrypt_cpu_ms
+                    ));
                 }
                 // #endregion
 
@@ -2320,22 +2827,16 @@ impl SyncEngine {
                 // so we can store positions in the database
                 self.progress.write().await.set_stage(SyncStage::Witness);
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
+                    append_debug_log_line(&format!(
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:862","message":"update_frontier start","data":{{"start":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                         id, ts, current_height, batch_end
-                    );
+                    ));
                 }
                 // #endregion
                 let frontier_start = Instant::now();
@@ -2343,27 +2844,24 @@ impl SyncEngine {
                     self.update_frontier(&blocks, &notes).await?;
                 let frontier_ms = frontier_start.elapsed().as_millis();
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
+                    append_debug_log_line(&format!(
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:866","message":"update_frontier done","data":{{"start":{},"end":{},"commitments":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                         id, ts, current_height, batch_end, commitments_applied, frontier_ms
-                    );
+                    ));
                 }
                 // #endregion
-                self.apply_positions(&mut notes, &position_mappings).await;
-                self.apply_sapling_nullifiers(&mut notes, &position_mappings)
-                    .await?;
+                let note_post_start = Instant::now();
+                if !notes.is_empty() {
+                    self.apply_positions(&mut notes, &position_mappings).await;
+                    self.apply_sapling_nullifiers(&mut notes, &position_mappings)
+                        .await?;
+                }
 
                 let require_memos = !self.config.lazy_memo_decode;
                 if !notes.is_empty() && !self.config.defer_full_tx_fetch {
@@ -2419,117 +2917,108 @@ impl SyncEngine {
                         }
                     }
                 }
+                note_post_ms = note_post_start.elapsed().as_millis();
 
                 // Persist decrypted notes if storage is configured (after frontier update to get positions)
                 if let Some(ref sink) = self.storage {
-                    let persist_start = Instant::now();
-                    // #region agent log
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
-                        let ts = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis();
-                        let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
-                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:881","message":"persist_notes start","data":{{"start":{},"end":{},"notes":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                            id,
-                            ts,
-                            current_height,
-                            batch_end,
-                            notes.len()
-                        );
-                    }
-                    // #endregion
-                    // Build txid->block_time map for this batch to persist accurate confirmation timestamps.
-                    let mut tx_times: HashMap<String, i64> = HashMap::new();
-                    let mut tx_fees: HashMap<String, i64> = HashMap::new();
-                    for b in &blocks {
-                        let ts = b.time as i64;
-                        for tx in &b.transactions {
-                            let txid_hex = hex::encode(&tx.hash);
-                            tx_times.insert(txid_hex.clone(), ts);
-                            tx_fees.insert(txid_hex, tx.fee.unwrap_or(0) as i64);
+                    if notes.is_empty() {
+                        persist_ms = 0;
+                    } else {
+                        let persist_start = Instant::now();
+                        // #region agent log
+                        if verbose_sync_batch_logging_enabled() {
+                            let ts = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis();
+                            let id = format!("{:08x}", ts);
+                            append_debug_log_line(&format!(
+                                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:881","message":"persist_notes start","data":{{"start":{},"end":{},"notes":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                                id,
+                                ts,
+                                current_height,
+                                batch_end,
+                                notes.len()
+                            ));
                         }
-                    }
+                        // #endregion
+                        // Build txid->block_time map for this batch to persist accurate confirmation timestamps.
+                        let tx_meta_prepare_start = Instant::now();
+                        let mut tx_times: HashMap<String, i64> = HashMap::new();
+                        let mut tx_fees: HashMap<String, i64> = HashMap::new();
+                        for b in &blocks {
+                            let ts = b.time as i64;
+                            for tx in &b.transactions {
+                                let txid_hex = hex::encode(&tx.hash);
+                                tx_times.insert(txid_hex.clone(), ts);
+                                tx_fees.insert(txid_hex, tx.fee.unwrap_or(0) as i64);
+                            }
+                        }
+                        tx_meta_prepare_ms = tx_meta_prepare_start.elapsed().as_millis();
 
-                    let inserted =
-                        sink.persist_notes(&notes, &tx_times, &tx_fees, &position_mappings)?;
-                    if !inserted.is_empty() {
-                        self.update_nullifier_cache(&inserted);
+                        let persist_result =
+                            sink.persist_notes(&notes, &tx_times, &tx_fees, &position_mappings)?;
+                        if !persist_result.inserted.is_empty() {
+                            self.update_nullifier_cache(&persist_result.inserted);
+                        }
+                        if !persist_result.remove_from_cache.is_empty() {
+                            for nf in &persist_result.remove_from_cache {
+                                self.nullifier_cache.remove(nf);
+                            }
+                        }
+                        self.track_wallet_txids_from_notes(&notes);
+                        persist_ms = persist_start.elapsed().as_millis();
+                        // #region agent log
+                        if verbose_sync_batch_logging_enabled() {
+                            let ts = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis();
+                            let id = format!("{:08x}", ts);
+                            append_debug_log_line(&format!(
+                                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:900","message":"persist_notes done","data":{{"start":{},"end":{},"notes":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                                id,
+                                ts,
+                                current_height,
+                                batch_end,
+                                notes.len(),
+                                persist_ms
+                            ));
+                        }
+                        // #endregion
                     }
-                    persist_ms = persist_start.elapsed().as_millis();
-                    // #region agent log
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
-                        let ts = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis();
-                        let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
-                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:900","message":"persist_notes done","data":{{"start":{},"end":{},"notes":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                            id,
-                            ts,
-                            current_height,
-                            batch_end,
-                            notes.len(),
-                            persist_ms
-                        );
-                    }
-                    // #endregion
                 }
 
-                if !blocks.is_empty() {
+                if !blocks.is_empty()
+                    && !(self.nullifier_cache.is_empty() && self.tracked_wallet_txids.is_empty())
+                {
                     // #region agent log
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
+                    if verbose_sync_batch_logging_enabled() {
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis();
                         let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
+                        append_debug_log_line(&format!(
                             r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:906","message":"apply_spends start","data":{{"start":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                             id, ts, current_height, batch_end
-                        );
+                        ));
                     }
                     // #endregion
                     let apply_start = Instant::now();
                     self.apply_spends(&blocks).await?;
                     apply_spends_ms = apply_start.elapsed().as_millis();
                     // #region agent log
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
+                    if verbose_sync_batch_logging_enabled() {
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis();
                         let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
+                        append_debug_log_line(&format!(
                             r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:909","message":"apply_spends done","data":{{"start":{},"end":{},"ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                             id, ts, current_height, batch_end, apply_spends_ms
-                        );
+                        ));
                     }
                     // #endregion
                 }
@@ -2538,50 +3027,17 @@ impl SyncEngine {
                     self.spawn_background_enrich(notes.clone(), require_memos);
                 }
 
-                // Record batch performance
-                let batch_duration = batch_start_time.elapsed();
+                // Record processing-only duration up to this point (legacy batch_total basis).
+                let batch_processing_ms = batch_start_time.elapsed().as_millis();
+
+                // Update progress with perf metrics
+                let perf_progress_start = Instant::now();
                 self.perf.record_batch(
                     blocks.len() as u64,
                     notes.len() as u64,
                     commitments_applied,
-                    batch_duration.as_millis() as u64,
+                    batch_processing_ms as u64,
                 );
-
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let id = format!("{:08x}", ts);
-                    let avg_block_size = total_block_size / blocks.len().max(1) as u64;
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:915","message":"batch_stage_timing","data":{{"start":{},"end":{},"blocks":{},"notes":{},"total_bytes":{},"avg_block_bytes":{},"fetch_wait_ms":{},"decrypt_ms":{},"frontier_ms":{},"persist_ms":{},"apply_spends_ms":{},"batch_total_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                        id,
-                        ts,
-                        current_height,
-                        batch_end,
-                        blocks.len(),
-                        notes.len(),
-                        total_block_size,
-                        avg_block_size,
-                        fetch_wait_ms,
-                        decrypt_ms,
-                        frontier_ms,
-                        persist_ms,
-                        apply_spends_ms,
-                        batch_duration.as_millis()
-                    );
-                }
-                // #endregion
-
-                // Update progress with perf metrics
                 {
                     let progress = self.progress.write().await;
                     progress.set_current(batch_end);
@@ -2589,16 +3045,12 @@ impl SyncEngine {
                     progress.record_batch(
                         notes.len() as u64,
                         commitments_applied,
-                        batch_duration.as_millis() as u64,
+                        batch_processing_ms as u64,
                     );
                 }
+                perf_progress_ms = perf_progress_start.elapsed().as_millis();
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -2606,8 +3058,7 @@ impl SyncEngine {
                     let id = format!("{:08x}", ts);
                     let progress = self.progress.read().await;
                     let wallet_id = self.wallet_id.as_deref().unwrap_or("unknown");
-                    let _ = writeln!(
-                        file,
+                    append_debug_log_line(&format!(
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:664","message":"progress updated","data":{{"current_height":{},"target_height":{},"percent":{:.2},"stage":"{:?}","wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}}"#,
                         id,
                         ts,
@@ -2616,16 +3067,27 @@ impl SyncEngine {
                         progress.percentage(),
                         progress.stage(),
                         wallet_id
-                    );
+                    ));
                 }
                 // #endregion
 
                 batches_since_mini_checkpoint += 1;
                 let blocks_since_major_checkpoint = batch_end - last_major_checkpoint_height;
+                let blocks_since_last_checkpoint = batch_end.saturating_sub(last_checkpoint_height);
+                let wallet_activity = !notes.is_empty() || persist_ms > 0 || apply_spends_ms > 0;
 
                 // Mini-checkpoint every N batches
-                if batches_since_mini_checkpoint >= self.config.mini_checkpoint_every {
-                    self.create_checkpoint(batch_end).await?;
+                if batches_since_mini_checkpoint >= self.config.mini_checkpoint_every
+                    && (wallet_activity
+                        || blocks_since_last_checkpoint
+                            >= self.config.mini_checkpoint_max_block_gap)
+                {
+                    if !checkpoint_written_this_batch {
+                        let mini_checkpoint_start = Instant::now();
+                        self.create_checkpoint(batch_end).await?;
+                        checkpoint_ms += mini_checkpoint_start.elapsed().as_millis();
+                        checkpoint_written_this_batch = true;
+                    }
                     batches_since_mini_checkpoint = 0;
                     last_checkpoint_height = batch_end;
 
@@ -2645,7 +3107,12 @@ impl SyncEngine {
 
                 // Major checkpoint every CHECKPOINT_INTERVAL blocks
                 if blocks_since_major_checkpoint >= self.config.checkpoint_interval as u64 {
-                    self.create_checkpoint(batch_end).await?;
+                    if !checkpoint_written_this_batch {
+                        let major_checkpoint_start = Instant::now();
+                        self.create_checkpoint(batch_end).await?;
+                        checkpoint_ms += major_checkpoint_start.elapsed().as_millis();
+                        checkpoint_written_this_batch = true;
+                    }
                     last_checkpoint_height = batch_end;
                     last_major_checkpoint_height = batch_end;
                     batches_since_mini_checkpoint = 0;
@@ -2663,27 +3130,94 @@ impl SyncEngine {
                 }
 
                 // Save sync state periodically
-                self.save_sync_state(batch_end, end, last_checkpoint_height)
-                    .await?;
+                let should_flush_sync_state = checkpoint_written_this_batch
+                    || batch_end >= end
+                    || batches_since_sync_state_flush >= self.config.sync_state_flush_every_batches
+                    || last_sync_state_flush.elapsed().as_millis()
+                        >= self.config.sync_state_flush_interval_ms as u128;
+                if should_flush_sync_state {
+                    let sync_state_start = Instant::now();
+                    self.save_sync_state(batch_end, end, last_checkpoint_height)
+                        .await?;
+                    sync_state_ms = sync_state_start.elapsed().as_millis();
+                    batches_since_sync_state_flush = 0;
+                    last_sync_state_flush = Instant::now();
+                } else {
+                    sync_state_ms = 0;
+                    batches_since_sync_state_flush =
+                        batches_since_sync_state_flush.saturating_add(1);
+                }
 
-                current_height = batch_end + 1;
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
                 {
-                    use std::io::Write;
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_millis();
                     let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
+                    let wallet_id = self.wallet_id.as_deref().unwrap_or("unknown");
+                    let avg_block_size = total_block_size / blocks.len().max(1) as u64;
+                    let known_processing_ms = fetch_wait_ms
+                        + decrypt_ms
+                        + frontier_ms
+                        + persist_ms
+                        + apply_spends_ms
+                        + prefetch_plan_ms
+                        + batch_sizing_ms
+                        + next_prefetch_ms
+                        + note_post_ms
+                        + tx_meta_prepare_ms;
+                    let residual_processing_other_ms =
+                        batch_processing_ms.saturating_sub(known_processing_ms);
+                    let batch_full_ms = batch_start_time.elapsed().as_millis();
+                    let known_full_ms =
+                        known_processing_ms + perf_progress_ms + checkpoint_ms + sync_state_ms;
+                    let residual_full_other_ms = batch_full_ms.saturating_sub(known_full_ms);
+                    append_debug_log_line(&format!(
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:915","message":"batch_stage_timing","data":{{"wallet_id":"{}","start":{},"end":{},"blocks":{},"notes":{},"total_bytes":{},"avg_block_bytes":{},"fetch_wait_ms":{},"decrypt_ms":{},"decrypt_cpu_ms":{},"frontier_ms":{},"persist_ms":{},"apply_spends_ms":{},"prefetch_plan_ms":{},"batch_sizing_ms":{},"next_prefetch_ms":{},"note_post_ms":{},"tx_meta_prepare_ms":{},"perf_progress_ms":{},"checkpoint_ms":{},"sync_state_ms":{},"residual_processing_other_ms":{},"residual_full_other_ms":{},"batch_total_ms":{},"batch_full_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        id,
+                        ts,
+                        wallet_id,
+                        current_height,
+                        batch_end,
+                        blocks.len(),
+                        notes.len(),
+                        total_block_size,
+                        avg_block_size,
+                        fetch_wait_ms,
+                        decrypt_ms,
+                        decrypt_cpu_ms,
+                        frontier_ms,
+                        persist_ms,
+                        apply_spends_ms,
+                        prefetch_plan_ms,
+                        batch_sizing_ms,
+                        next_prefetch_ms,
+                        note_post_ms,
+                        tx_meta_prepare_ms,
+                        perf_progress_ms,
+                        checkpoint_ms,
+                        sync_state_ms,
+                        residual_processing_other_ms,
+                        residual_full_other_ms,
+                        batch_processing_ms,
+                        batch_full_ms
+                    ));
+                }
+                // #endregion
+
+                current_height = batch_end + 1;
+                // #region agent log
+                if verbose_sync_batch_logging_enabled() {
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    append_debug_log_line(&format!(
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:709","message":"current_height updated","data":{{"new_current_height":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                         id, ts, current_height, end
-                    );
+                    ));
                 }
                 // #endregion
             }
@@ -2691,6 +3225,8 @@ impl SyncEngine {
             // For bounded ranges (e.g. witness repair replay), stop once we reach the
             // requested end height instead of entering continuous tip monitoring.
             if !follow_tip {
+                Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
+                Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
                 return Ok(());
             }
 
@@ -2704,6 +3240,8 @@ impl SyncEngine {
 
             if self.is_cancelled().await {
                 tracing::warn!("Sync cancelled while monitoring at height {}", current);
+                Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
+                Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
                 return Err(Error::Cancelled);
             }
 
@@ -2744,13 +3282,62 @@ impl SyncEngine {
                                 progress.complete();
                             }
                         }
+                        if last_idle_witness_maintenance.elapsed()
+                            >= IDLE_WITNESS_MAINTENANCE_INTERVAL
+                        {
+                            match self.run_idle_witness_maintenance(current, current).await {
+                                Ok((
+                                    sapling_repaired,
+                                    orchard_repaired,
+                                    checkpoint_persisted,
+                                    yielded_to_tip,
+                                )) => {
+                                    if yielded_to_tip {
+                                        tracing::debug!(
+                                            "Idle witness maintenance yielded to new tip at height {}",
+                                            current
+                                        );
+                                    }
+                                    if sapling_repaired > 0 || orchard_repaired > 0 {
+                                        tracing::info!(
+                                            "Idle witness maintenance repaired marks (sapling={}, orchard={}, checkpoint_persisted={})",
+                                            sapling_repaired,
+                                            orchard_repaired,
+                                            checkpoint_persisted
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Idle witness maintenance skipped due to error: {}",
+                                        e
+                                    );
+                                    log_idle_witness_maintenance_event(
+                                        "error",
+                                        current,
+                                        current,
+                                        0,
+                                        0,
+                                        false,
+                                        false,
+                                        0,
+                                        &e.to_string(),
+                                    );
+                                }
+                            }
+                            last_idle_witness_maintenance = Instant::now();
+                        }
                         tracing::debug!(
                             "Caught up to blockchain tip ({}), waiting for new blocks...",
                             current
                         );
                         tokio::select! {
                             _ = tokio::time::sleep(Duration::from_secs(10)) => {}
-                            _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                            _ = self.cancel.cancelled() => {
+                                Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
+                                Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                                return Err(Error::Cancelled);
+                            },
                         }
                         // Continue the outer loop to check again
                         continue;
@@ -2767,7 +3354,11 @@ impl SyncEngine {
                     }
                     tokio::select! {
                         _ = tokio::time::sleep(Duration::from_secs(5)) => {}
-                        _ = self.cancel.cancelled() => return Err(Error::Cancelled),
+                        _ = self.cancel.cancelled() => {
+                            Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
+                            Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                            return Err(Error::Cancelled);
+                        },
                     }
                     continue; // Retry
                 }
@@ -2780,6 +3371,7 @@ impl SyncEngine {
         start: u64,
         end: u64,
         cancel: CancelToken,
+        wallet_id: Option<String>,
     ) -> Result<Vec<CompactBlockData>> {
         if start > end {
             return Ok(Vec::new());
@@ -2800,26 +3392,20 @@ impl SyncEngine {
                         end,
                         expected_blocks
                     );
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
+                    if verbose_sync_batch_logging_enabled() {
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis();
                         let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
+                        append_debug_log_line(&format!(
                             r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache hit","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                             id,
                             ts,
                             start,
                             end,
                             blocks.len()
-                        );
+                        ));
                     }
                     return Ok(blocks);
                 }
@@ -2831,19 +3417,13 @@ impl SyncEngine {
                         blocks.len(),
                         expected_blocks
                     );
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
+                    if verbose_sync_batch_logging_enabled() {
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis();
                         let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
+                        append_debug_log_line(&format!(
                             r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache partial","data":{{"start":{},"end":{},"blocks":{},"expected":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                             id,
                             ts,
@@ -2851,28 +3431,22 @@ impl SyncEngine {
                             end,
                             blocks.len(),
                             expected_blocks
-                        );
+                        ));
                     }
                 }
                 Ok(_) => {}
                 Err(e) => {
                     tracing::debug!("Block cache read failed for {}-{}: {}", start, end, e);
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
+                    if verbose_sync_batch_logging_enabled() {
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis();
                         let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
+                        append_debug_log_line(&format!(
                             r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache read error","data":{{"start":{},"end":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                             id, ts, start, end, e
-                        );
+                        ));
                     }
                 }
             }
@@ -2901,7 +3475,10 @@ impl SyncEngine {
                     let result = loop {
                         // Use get_compact_block_range with retry logic
                         let fetch = tokio::select! {
-                            res = client.get_compact_block_range(start as u32..(end + 1) as u32) => res,
+                            res = client.get_compact_block_range_with_wallet(
+                                start as u32..(end + 1) as u32,
+                                wallet_id.as_deref()
+                            ) => res,
                             _ = cancel.cancelled() => Err(Error::Cancelled),
                         };
 
@@ -2915,26 +3492,20 @@ impl SyncEngine {
                                             end,
                                             e
                                         );
-                                    } else if let Ok(mut file) = std::fs::OpenOptions::new()
-                                        .create(true)
-                                        .append(true)
-                                        .open(debug_log_path())
-                                    {
-                                        use std::io::Write;
+                                    } else if verbose_sync_batch_logging_enabled() {
                                         let ts = std::time::SystemTime::now()
                                             .duration_since(std::time::UNIX_EPOCH)
                                             .unwrap_or_default()
                                             .as_millis();
                                         let id = format!("{:08x}", ts);
-                                        let _ = writeln!(
-                                            file,
+                                        append_debug_log_line(&format!(
                                             r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:block_cache","message":"block cache store","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                                             id,
                                             ts,
                                             start,
                                             end,
                                             blocks.len()
-                                        );
+                                        ));
                                     }
                                 }
                                 break Ok(blocks);
@@ -2965,7 +3536,10 @@ impl SyncEngine {
         }
     }
 
-    async fn trial_decrypt_batch(&self, blocks: &[CompactBlockData]) -> Result<Vec<DecryptedNote>> {
+    async fn trial_decrypt_batch(
+        &mut self,
+        blocks: &[CompactBlockData],
+    ) -> Result<(Vec<DecryptedNote>, TrialDecryptTelemetry)> {
         // Build IVK bundles from all key groups.
         let mut sapling_ivks = Vec::new();
         let mut sapling_key_ids = Vec::new();
@@ -3021,27 +3595,21 @@ impl SyncEngine {
 
         let has_sapling_ivk = !sapling_ivks.is_empty();
         let has_orchard_ivk = !orchard_ivks.is_empty();
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        if verbose_sync_batch_logging_enabled() {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(
-                file,
+            append_debug_log_line(&format!(
                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:trial_decrypt_batch","message":"trial_decrypt ivk availability","data":{{"sapling":{},"orchard":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                 id, ts, has_sapling_ivk, has_orchard_ivk
-            );
+            ));
         }
 
         if !has_sapling_ivk && !has_orchard_ivk {
             tracing::warn!("No Sapling or Orchard IVK available for trial decryption");
-            return Ok(Vec::new());
+            return Ok((Vec::new(), TrialDecryptTelemetry::default()));
         }
 
         let mut orchard_actions_total = 0usize;
@@ -3057,8 +3625,7 @@ impl SyncEngine {
                 sapling_outputs_total += tx.outputs.len();
             }
         }
-
-        let all_notes = trial_decrypt_batch_impl(TrialDecryptBatchInputs {
+        let decrypt_result = trial_decrypt_batch_impl(TrialDecryptBatchInputs {
             blocks,
             sapling_ivks: &sapling_ivks,
             sapling_key_ids: &sapling_key_ids,
@@ -3070,13 +3637,9 @@ impl SyncEngine {
             decrypt_pool: self.decrypt_pool.as_ref(),
             max_parallel: self.config.max_parallel_decrypt,
         })?;
+        let all_notes = decrypt_result.notes;
 
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        if verbose_sync_batch_logging_enabled() || !all_notes.is_empty() {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -3090,9 +3653,8 @@ impl SyncEngine {
                 .iter()
                 .filter(|note| note.note_type == crate::pipeline::NoteType::Sapling)
                 .count();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:trial_decrypt_batch","message":"trial_decrypt batch summary","data":{{"start":{},"end":{},"blocks":{},"sapling_outputs":{},"orchard_actions":{},"sapling_notes":{},"orchard_notes":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+            append_debug_log_line(&format!(
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:trial_decrypt_batch","message":"trial_decrypt batch summary","data":{{"start":{},"end":{},"blocks":{},"sapling_outputs":{},"orchard_actions":{},"sapling_notes":{},"orchard_notes":{},"decrypt_cpu_ms":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                 id,
                 ts,
                 min_height.unwrap_or(0),
@@ -3101,20 +3663,133 @@ impl SyncEngine {
                 sapling_outputs_total,
                 orchard_actions_total,
                 sapling_notes,
-                orchard_notes
-            );
+                orchard_notes,
+                decrypt_result.telemetry.cpu_ms
+            ));
         }
 
-        Ok(all_notes)
+        Ok((all_notes, decrypt_result.telemetry))
     }
 
-    fn spawn_prefetch(&self, start: u64, end: u64) -> PrefetchTask {
+    fn spawn_prefetch(&self, start: u64, end: u64, estimated_bytes: u64) -> PrefetchTask {
+        let client = self.client.clone();
+        let cancel = self.cancel.clone();
+        let wallet_id = self.wallet_id.clone();
+        let handle = tokio::spawn(async move {
+            SyncEngine::fetch_blocks_with_retry_inner(client, start, end, cancel, wallet_id).await
+        });
+        PrefetchTask {
+            start,
+            end,
+            estimated_bytes,
+            handle,
+        }
+    }
+
+    fn spawn_server_batch_hint_prefetch(&self, start: u64) -> ServerBatchHintTask {
         let client = self.client.clone();
         let cancel = self.cancel.clone();
         let handle = tokio::spawn(async move {
-            SyncEngine::fetch_blocks_with_retry_inner(client, start, end, cancel).await
+            tokio::select! {
+                _ = cancel.cancelled() => None,
+                result = client.get_lite_wallet_block_group(start) => {
+                    match result {
+                        Ok(value) if value >= start => Some(value),
+                        _ => None,
+                    }
+                }
+            }
         });
-        PrefetchTask { start, end, handle }
+        ServerBatchHintTask { start, handle }
+    }
+
+    fn abort_prefetch_queue(
+        prefetch_queue: &mut VecDeque<PrefetchTask>,
+        queued_prefetch_bytes: &mut u64,
+    ) {
+        while let Some(prefetch) = prefetch_queue.pop_front() {
+            prefetch.handle.abort();
+        }
+        *queued_prefetch_bytes = 0;
+    }
+
+    fn abort_pending_server_batch_hint(
+        pending_server_group_hint: &mut Option<ServerBatchHintTask>,
+    ) {
+        if let Some(task) = pending_server_group_hint.take() {
+            task.handle.abort();
+        }
+    }
+
+    fn estimate_prefetch_bytes(start: u64, end: u64, avg_block_size_estimate: u64) -> u64 {
+        let blocks = end.saturating_sub(start).saturating_add(1);
+        blocks.saturating_mul(avg_block_size_estimate.max(1))
+    }
+
+    async fn fill_prefetch_queue(
+        &self,
+        prefetch_queue: &mut VecDeque<PrefetchTask>,
+        queued_prefetch_bytes: &mut u64,
+        start_height: u64,
+        end_height: u64,
+        current_target_bytes: u64,
+        avg_block_size_estimate: u64,
+        server_group_end_hint: &mut Option<u64>,
+        pending_server_group_hint: &mut Option<ServerBatchHintTask>,
+    ) -> Result<()> {
+        if start_height > end_height {
+            return Ok(());
+        }
+
+        let max_depth = self.config.prefetch_queue_depth.max(1);
+        let max_bytes = self.config.prefetch_queue_max_bytes.max(1);
+        let mut next_start = prefetch_queue
+            .back()
+            .map(|task| task.end.saturating_add(1))
+            .unwrap_or(start_height);
+
+        while prefetch_queue.len() < max_depth && next_start <= end_height {
+            let (batch_end, _desired_blocks) = self
+                .compute_batch_end(
+                    next_start,
+                    end_height,
+                    current_target_bytes,
+                    avg_block_size_estimate,
+                    server_group_end_hint,
+                    pending_server_group_hint,
+                )
+                .await?;
+
+            if batch_end < next_start {
+                break;
+            }
+
+            let estimated_bytes =
+                Self::estimate_prefetch_bytes(next_start, batch_end, avg_block_size_estimate);
+            let would_exceed_bytes =
+                queued_prefetch_bytes.saturating_add(estimated_bytes) > max_bytes;
+            if would_exceed_bytes && !prefetch_queue.is_empty() {
+                break;
+            }
+
+            prefetch_queue.push_back(self.spawn_prefetch(next_start, batch_end, estimated_bytes));
+            *queued_prefetch_bytes = queued_prefetch_bytes.saturating_add(estimated_bytes);
+            next_start = batch_end.saturating_add(1);
+
+            if self.config.use_server_batch_recommendations && next_start <= end_height {
+                let replace_hint = match pending_server_group_hint.as_ref() {
+                    Some(task) => task.start != next_start,
+                    None => true,
+                };
+                if replace_hint {
+                    Self::abort_pending_server_batch_hint(pending_server_group_hint);
+                    *pending_server_group_hint =
+                        Some(self.spawn_server_batch_hint_prefetch(next_start));
+                }
+            }
+        }
+
+        Ok(())
     }
 
     async fn compute_batch_end(
@@ -3123,6 +3798,8 @@ impl SyncEngine {
         end: u64,
         current_target_bytes: u64,
         avg_block_size_estimate: u64,
+        server_group_end_hint: &mut Option<u64>,
+        pending_server_group_hint: &mut Option<ServerBatchHintTask>,
     ) -> Result<(u64, u64)> {
         let mut target_bytes =
             current_target_bytes.clamp(self.config.min_batch_bytes, self.config.max_batch_bytes);
@@ -3138,26 +3815,76 @@ impl SyncEngine {
         desired_blocks =
             desired_blocks.clamp(self.config.min_batch_size, self.config.max_batch_size);
 
-        let desired_end = std::cmp::min(current_height + desired_blocks - 1, end);
+        let low_height_cap_end = if current_height <= LOW_HEIGHT_BATCH_CAP_HEIGHT {
+            Some(std::cmp::min(
+                end,
+                current_height.saturating_add(LOW_HEIGHT_BATCH_MAX_BLOCKS.saturating_sub(1)),
+            ))
+        } else {
+            None
+        };
+
+        let mut desired_end = std::cmp::min(current_height + desired_blocks - 1, end);
+        if let Some(cap_end) = low_height_cap_end {
+            desired_end = std::cmp::min(desired_end, cap_end);
+        }
 
         if !self.config.use_server_batch_recommendations {
             return Ok((desired_end, desired_blocks));
         }
 
-        match self
-            .client
-            .get_lite_wallet_block_group(current_height)
-            .await
-        {
-            Ok(server_end) => {
+        let server_end = match *server_group_end_hint {
+            Some(cached_end) if cached_end >= current_height => cached_end,
+            _ => {
+                if let Some(task) = pending_server_group_hint.take() {
+                    if task.start == current_height {
+                        if task.handle.is_finished() {
+                            match task.handle.await {
+                                Ok(Some(value)) => {
+                                    *server_group_end_hint = Some(value);
+                                    value
+                                }
+                                _ => {
+                                    *server_group_end_hint = None;
+                                    *pending_server_group_hint =
+                                        Some(self.spawn_server_batch_hint_prefetch(current_height));
+                                    return Ok((desired_end, desired_blocks));
+                                }
+                            }
+                        } else {
+                            *pending_server_group_hint = Some(task);
+                            return Ok((desired_end, desired_blocks));
+                        }
+                    } else if task.start > current_height {
+                        *pending_server_group_hint = Some(task);
+                        return Ok((desired_end, desired_blocks));
+                    } else {
+                        task.handle.abort();
+                        *pending_server_group_hint =
+                            Some(self.spawn_server_batch_hint_prefetch(current_height));
+                        return Ok((desired_end, desired_blocks));
+                    }
+                } else {
+                    *pending_server_group_hint =
+                        Some(self.spawn_server_batch_hint_prefetch(current_height));
+                    return Ok((desired_end, desired_blocks));
+                }
+            }
+        };
+
+        match server_end {
+            server_end if server_end >= current_height => {
                 let optimal_end = std::cmp::min(server_end, end);
                 let server_batch_size =
                     optimal_end.saturating_sub(current_height).saturating_add(1);
                 let max_capped_end =
                     std::cmp::min(optimal_end, current_height + self.config.max_batch_size - 1);
-                let batch_end = std::cmp::max(desired_end, max_capped_end);
+                let mut batch_end = std::cmp::max(desired_end, max_capped_end);
+                if let Some(cap_end) = low_height_cap_end {
+                    batch_end = std::cmp::min(batch_end, cap_end);
+                }
 
-                if max_capped_end > current_height {
+                if max_capped_end > current_height && verbose_sync_batch_logging_enabled() {
                     // #region agent log
                     if let Ok(mut file) = std::fs::OpenOptions::new()
                         .create(true)
@@ -3192,12 +3919,8 @@ impl SyncEngine {
 
                 Ok((batch_end, desired_blocks))
             }
-            Err(e) => {
-                tracing::debug!(
-                    "Server batch grouping unavailable ({}), using byte-based batch size: {} blocks",
-                    e,
-                    desired_blocks
-                );
+            _ => {
+                *server_group_end_hint = None;
                 Ok((desired_end, desired_blocks))
             }
         }
@@ -3355,6 +4078,15 @@ impl SyncEngine {
             .iter()
             .filter(|note| note.note_type == NoteType::Orchard)
             .count();
+        let mut txids: std::collections::HashSet<[u8; 32]> = std::collections::HashSet::new();
+        for note in notes.iter() {
+            if note.txid.len() == 32 {
+                let mut txid = [0u8; 32];
+                txid.copy_from_slice(&note.txid[..32]);
+                txids.insert(txid);
+            }
+        }
+
         let has_sapling_ivk = keys.iter().any(|key| key.sapling_ivk.is_some())
             || fallback_group
                 .as_ref()
@@ -3421,8 +4153,6 @@ impl SyncEngine {
         }
 
         let mut tx_work: HashMap<[u8; 32], TxWork> = HashMap::new();
-        let mut failed_txids: HashSet<[u8; 32]> = HashSet::new();
-        let mut invalid_orchard_indices: HashSet<usize> = HashSet::new();
         let mut sapling_needs_tx = 0usize;
         let mut orchard_needs_tx = 0usize;
         let mut memo_needed = 0usize;
@@ -3637,7 +4367,6 @@ impl SyncEngine {
                             e
                         );
                     }
-                    failed_txids.insert(txid);
                     continue;
                 }
             };
@@ -3833,7 +4562,6 @@ impl SyncEngine {
                                 }
                             }
                             Ok(None) => {
-                                invalid_orchard_indices.insert(note_idx);
                                 if let Ok(mut file) = std::fs::OpenOptions::new()
                                     .create(true)
                                     .append(true)
@@ -3850,19 +4578,6 @@ impl SyncEngine {
                                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"orchard full decrypt none","data":{{"txid_prefix":"{}","cmx_prefix":"{}","output_index":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                                         id, ts, txid_prefix, cmx_prefix, note.output_index
                                     );
-                                }
-                                if note.tx_hash.len() == 32 {
-                                    if let Err(e) = sink.delete_note_by_txid_and_index(
-                                        &note.tx_hash,
-                                        note.output_index as i64,
-                                    ) {
-                                        tracing::warn!(
-                                            "Failed to delete invalid Orchard note {}:{}: {}",
-                                            hex::encode(&note.tx_hash),
-                                            note.output_index,
-                                            e
-                                        );
-                                    }
                                 }
                             }
                             Err(e) => {
@@ -3927,30 +4642,12 @@ impl SyncEngine {
             );
         }
 
-        if !invalid_orchard_indices.is_empty() {
-            for (idx, note) in notes.iter_mut().enumerate() {
-                if !invalid_orchard_indices.contains(&idx) || note.note_type != NoteType::Orchard {
-                    continue;
-                }
-                if note.tx_hash.len() == 32 {
-                    let mut txid = [0u8; 32];
-                    txid.copy_from_slice(&note.tx_hash[..32]);
-                    if failed_txids.contains(&txid) {
-                        continue;
-                    }
-                }
-                // Invalidate note so it won't be persisted.
-                note.tx_hash.clear();
-                note.txid.clear();
-            }
-        }
-
         Ok(())
     }
 
     async fn cleanup_orchard_false_positives(&self) -> Result<()> {
         let sink = match self.storage.as_ref() {
-            Some(s) => s,
+            Some(s) => s.clone(),
             None => return Ok(()),
         };
 
@@ -4047,8 +4744,11 @@ impl SyncEngine {
             ) {
                 Ok(Some(_)) => {}
                 Ok(None) => {
-                    let _ =
-                        sink.delete_note_by_txid_and_index(&note_ref.txid, note_ref.output_index);
+                    tracing::debug!(
+                        "Orchard cleanup: full decrypt returned none for tx {} output {}; keeping note",
+                        hex::encode(txid),
+                        action_index
+                    );
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -4150,7 +4850,7 @@ impl SyncEngine {
             .collect();
 
         for block in blocks {
-            for tx in &block.transactions {
+            let mut process_tx = |tx: &crate::client::CompactTx| -> Result<()> {
                 let txid = tx.hash.as_slice();
                 // Process Sapling outputs
                 for (output_idx, output) in tx.outputs.iter().enumerate() {
@@ -4199,6 +4899,33 @@ impl SyncEngine {
                             }
                         }
                     }
+                }
+
+                Ok(())
+            };
+
+            // Compact txs include an explicit in-block index. Preserve canonical order for
+            // commitment application, but avoid allocations when tx order is already monotonic.
+            let mut monotonic = true;
+            let mut last_idx = 0u64;
+            for (fallback_idx, tx) in block.transactions.iter().enumerate() {
+                let idx = tx.index.unwrap_or(fallback_idx as u64);
+                if fallback_idx > 0 && idx < last_idx {
+                    monotonic = false;
+                    break;
+                }
+                last_idx = idx;
+            }
+
+            if monotonic {
+                for tx in &block.transactions {
+                    process_tx(tx)?;
+                }
+            } else {
+                let mut txs: Vec<_> = block.transactions.iter().enumerate().collect();
+                txs.sort_by_key(|(fallback_idx, tx)| tx.index.unwrap_or(*fallback_idx as u64));
+                for (_, tx) in txs {
+                    process_tx(tx)?;
                 }
             }
         }
@@ -4318,50 +5045,12 @@ impl SyncEngine {
             if note.note_type != NoteType::Sapling {
                 continue;
             }
-            if !note.nullifier.iter().all(|b| *b == 0) {
+
+            let needs_nullifier = note.nullifier.iter().all(|b| *b == 0);
+            let needs_note_bytes = note.note_bytes.is_empty();
+            if !needs_nullifier && !needs_note_bytes {
                 continue;
             }
-
-            let key_id = note.key_id.unwrap_or(default_key_id);
-            let dfvk = match dfvk_by_id.get(&key_id) {
-                Some(dfvk) => dfvk,
-                None => match dfvk_by_id.get(&default_key_id) {
-                    Some(dfvk) => dfvk,
-                    None => continue,
-                },
-            };
-
-            let nk = dfvk.nullifier_deriving_key();
-            let sapling_ivk = if note.address_scope == AddressScope::Internal {
-                let internal_ivk_bytes = dfvk.to_internal_ivk_bytes();
-                match Option::from(jubjub::Fr::from_bytes(&internal_ivk_bytes)) {
-                    Some(ivk_fr) => SaplingIvk(ivk_fr),
-                    None => {
-                        tracing::warn!(
-                            "Invalid internal Sapling IVK for tx {} output {}",
-                            hex::encode(&note.tx_hash),
-                            note.output_index
-                        );
-                        continue;
-                    }
-                }
-            } else {
-                dfvk.sapling_ivk()
-            };
-
-            let position = TxOutputKey::new(&note.tx_hash, note.output_index)
-                .and_then(|key| position_mappings.sapling_by_tx.get(&key).copied());
-            let position = match position {
-                Some(pos) => pos,
-                None => {
-                    tracing::warn!(
-                        "Missing Sapling position for tx {} output {}",
-                        hex::encode(&note.tx_hash),
-                        note.output_index
-                    );
-                    continue;
-                }
-            };
 
             let leadbyte = match note.sapling_rseed_leadbyte {
                 Some(b) => b,
@@ -4385,17 +5074,6 @@ impl SyncEngine {
                     continue;
                 }
             };
-            if note.diversifier.len() != 11 {
-                tracing::warn!(
-                    "Invalid Sapling diversifier for tx {} output {}",
-                    hex::encode(&note.tx_hash),
-                    note.output_index
-                );
-                continue;
-            }
-            let mut diversifier = [0u8; 11];
-            diversifier.copy_from_slice(&note.diversifier[..11]);
-
             let rseed = if leadbyte == 0x02 {
                 zcash_primitives::sapling::Rseed::AfterZip212(rseed_bytes)
             } else {
@@ -4404,11 +5082,128 @@ impl SyncEngine {
                 zcash_primitives::sapling::Rseed::BeforeZip212(rcm)
             };
 
-            let payment_address = match sapling_ivk
-                .to_payment_address(zcash_primitives::sapling::Diversifier(diversifier))
-            {
-                Some(addr) => addr,
-                None => {
+            let position = TxOutputKey::new(&note.tx_hash, note.output_index)
+                .and_then(|key| position_mappings.sapling_by_tx.get(&key).copied());
+            if needs_nullifier && position.is_none() {
+                tracing::warn!(
+                    "Missing Sapling position for tx {} output {}",
+                    hex::encode(&note.tx_hash),
+                    note.output_index
+                );
+                continue;
+            }
+
+            let decoded_address = decode_sapling_address_bytes_from_note_bytes(&note.note_bytes)
+                .and_then(|address_bytes| SaplingPaymentAddress::from_bytes(&address_bytes));
+
+            let mut candidate_keys: Vec<(i64, &ExtendedFullViewingKey)> = Vec::new();
+            let mut seen_key_ids: HashSet<i64> = HashSet::new();
+            if let Some(key_id) = note.key_id {
+                if let Some(dfvk) = dfvk_by_id.get(&key_id) {
+                    candidate_keys.push((key_id, dfvk));
+                    seen_key_ids.insert(key_id);
+                }
+            }
+            if let Some(dfvk) = dfvk_by_id.get(&default_key_id) {
+                if !seen_key_ids.contains(&default_key_id) {
+                    candidate_keys.push((default_key_id, dfvk));
+                    seen_key_ids.insert(default_key_id);
+                }
+            }
+            for (key_id, dfvk) in &dfvk_by_id {
+                if !seen_key_ids.contains(key_id) {
+                    candidate_keys.push((*key_id, dfvk));
+                }
+            }
+
+            let diversifier = if note.diversifier.len() == 11 {
+                let mut d = [0u8; 11];
+                d.copy_from_slice(&note.diversifier[..11]);
+                Some(zcash_primitives::sapling::Diversifier(d))
+            } else {
+                None
+            };
+
+            let mut selected: Option<(i64, SaplingPaymentAddress, Option<[u8; 32]>)> = None;
+            for (candidate_key_id, dfvk) in &candidate_keys {
+                let payment_address = if let Some(addr) = decoded_address {
+                    addr
+                } else {
+                    let diversifier = match diversifier {
+                        Some(d) => d,
+                        None => continue,
+                    };
+                    let sapling_ivk = if note.address_scope == AddressScope::Internal {
+                        let internal_ivk_bytes = dfvk.to_internal_ivk_bytes();
+                        match Option::from(jubjub::Fr::from_bytes(&internal_ivk_bytes)) {
+                            Some(ivk_fr) => SaplingIvk(ivk_fr),
+                            None => continue,
+                        }
+                    } else {
+                        dfvk.sapling_ivk()
+                    };
+                    match sapling_ivk.to_payment_address(diversifier) {
+                        Some(addr) => addr,
+                        None => continue,
+                    }
+                };
+
+                let mut external_nf: Option<[u8; 32]> = None;
+                let mut internal_nf: Option<[u8; 32]> = None;
+                if let Some(pos) = position {
+                    let note_value =
+                        zcash_primitives::sapling::value::NoteValue::from_raw(note.value);
+                    let sapling_note = zcash_primitives::sapling::Note::from_parts(
+                        payment_address,
+                        note_value,
+                        rseed,
+                    );
+                    external_nf = Some(
+                        sapling_note
+                            .nf(
+                                &dfvk.nullifier_deriving_key_for_scope(SaplingScope::External),
+                                pos,
+                            )
+                            .0,
+                    );
+                    internal_nf = Some(
+                        sapling_note
+                            .nf(
+                                &dfvk.nullifier_deriving_key_for_scope(SaplingScope::Internal),
+                                pos,
+                            )
+                            .0,
+                    );
+                }
+
+                let preferred_nf = if note.address_scope == AddressScope::Internal {
+                    internal_nf.or(external_nf)
+                } else {
+                    external_nf.or(internal_nf)
+                };
+
+                if !needs_nullifier {
+                    if let Some(nf) = external_nf {
+                        if note.nullifier.len() == 32 && note.nullifier.as_slice() == nf {
+                            selected = Some((*candidate_key_id, payment_address, Some(nf)));
+                            break;
+                        }
+                    }
+                    if let Some(nf) = internal_nf {
+                        if note.nullifier.len() == 32 && note.nullifier.as_slice() == nf {
+                            selected = Some((*candidate_key_id, payment_address, Some(nf)));
+                            break;
+                        }
+                    }
+                } else if selected.is_none() {
+                    selected = Some((*candidate_key_id, payment_address, preferred_nf));
+                }
+            }
+
+            if selected.is_none() {
+                if let Some(addr) = decoded_address {
+                    selected = Some((note.key_id.unwrap_or(default_key_id), addr, None));
+                } else {
                     tracing::warn!(
                         "Failed to derive Sapling address for tx {} output {}",
                         hex::encode(&note.tx_hash),
@@ -4416,16 +5211,22 @@ impl SyncEngine {
                     );
                     continue;
                 }
-            };
+            }
 
-            let note_value = zcash_primitives::sapling::value::NoteValue::from_raw(note.value);
-            let sapling_note =
-                zcash_primitives::sapling::Note::from_parts(payment_address, note_value, rseed);
-            let nf = sapling_note.nf(&nk, position);
-            note.nullifier = nf.0;
-            if note.note_bytes.is_empty() {
+            let (selected_key_id, selected_address, selected_nf) = selected.unwrap();
+            if note.key_id != Some(selected_key_id) {
+                note.key_id = Some(selected_key_id);
+            }
+
+            if needs_note_bytes {
                 note.note_bytes =
-                    encode_sapling_note_bytes(sapling_note.recipient(), leadbyte, rseed_bytes);
+                    encode_sapling_note_bytes(selected_address, leadbyte, rseed_bytes);
+            }
+
+            if needs_nullifier {
+                if let Some(nf) = selected_nf {
+                    note.nullifier = nf;
+                }
             }
         }
 
@@ -4434,18 +5235,31 @@ impl SyncEngine {
 
     async fn apply_spends(&mut self, blocks: &[CompactBlockData]) -> Result<()> {
         let sink = match self.storage.as_ref() {
-            Some(s) => s,
+            Some(s) => s.clone(),
             None => return Ok(()),
         };
+        if self.nullifier_cache.is_empty() && self.tracked_wallet_txids.is_empty() {
+            return Ok(());
+        }
         let mut spend_updates: Vec<(i64, [u8; 32])> = Vec::new();
-        let mut spend_nullifiers: Vec<([u8; 32], [u8; 32])> = Vec::new();
-        let mut matched_nullifiers: std::collections::HashSet<[u8; 32]> =
-            std::collections::HashSet::new();
+        let mut spend_nullifiers: Vec<(
+            pirate_storage_sqlite::models::NoteType,
+            [u8; 32],
+            [u8; 32],
+        )> = Vec::new();
+        let mut matched_nullifiers: std::collections::HashSet<(
+            pirate_storage_sqlite::models::NoteType,
+            [u8; 32],
+        )> = std::collections::HashSet::new();
         let mut sapling_spends = 0u64;
         let mut orchard_spends = 0u64;
         let mut matched_spends = 0u64;
         let mut min_height: Option<u64> = None;
         let mut max_height: Option<u64> = None;
+        let mut matched_spend_txids: HashSet<[u8; 32]> = HashSet::new();
+        let mut spend_tx_meta: HashMap<[u8; 32], (i64, i64, i64)> = HashMap::new();
+        let mut recovered_nullifiers: Vec<[u8; 32]> = Vec::new();
+        let mut matched_cache_nullifiers: Vec<[u8; 32]> = Vec::new();
 
         for block in blocks {
             min_height = Some(min_height.map_or(block.height, |h| h.min(block.height)));
@@ -4464,19 +5278,26 @@ impl SyncEngine {
                 let mut txid = [0u8; 32];
                 txid.copy_from_slice(&tx.hash[..32]);
                 let mut has_spend = false;
+                let mut saw_any_spend = false;
+                let track_unmatched_for_tx = self.tracked_wallet_txids.contains(&txid);
 
                 for spend in &tx.spends {
                     if spend.nf.len() == 32 {
                         sapling_spends += 1;
+                        saw_any_spend = true;
                         let mut nf = [0u8; 32];
                         nf.copy_from_slice(&spend.nf[..32]);
                         if !nf.iter().all(|b| *b == 0) {
-                            spend_nullifiers.push((nf, txid));
-                            if let Some(id) = self.nullifier_cache.remove(&nf) {
+                            let note_type = pirate_storage_sqlite::models::NoteType::Sapling;
+                            if let Some(id) = self.nullifier_cache.get(&nf).copied() {
                                 spend_updates.push((id, txid));
-                                matched_nullifiers.insert(nf);
+                                matched_cache_nullifiers.push(nf);
+                                matched_nullifiers.insert((note_type, nf));
                                 has_spend = true;
+                                matched_spend_txids.insert(txid);
                                 matched_spends += 1;
+                            } else if track_unmatched_for_tx {
+                                spend_nullifiers.push((note_type, nf, txid));
                             }
                         }
                     }
@@ -4485,84 +5306,184 @@ impl SyncEngine {
                 for action in &tx.actions {
                     if action.nullifier.len() == 32 {
                         orchard_spends += 1;
+                        saw_any_spend = true;
                         let mut nf = [0u8; 32];
                         nf.copy_from_slice(&action.nullifier[..32]);
                         if !nf.iter().all(|b| *b == 0) {
-                            spend_nullifiers.push((nf, txid));
-                            if let Some(id) = self.nullifier_cache.remove(&nf) {
+                            let note_type = pirate_storage_sqlite::models::NoteType::Orchard;
+                            if let Some(id) = self.nullifier_cache.get(&nf).copied() {
                                 spend_updates.push((id, txid));
-                                matched_nullifiers.insert(nf);
+                                matched_cache_nullifiers.push(nf);
+                                matched_nullifiers.insert((note_type, nf));
                                 has_spend = true;
+                                matched_spend_txids.insert(txid);
                                 matched_spends += 1;
+                            } else if track_unmatched_for_tx {
+                                spend_nullifiers.push((note_type, nf, txid));
                             }
                         }
                     }
                 }
 
+                if saw_any_spend {
+                    spend_tx_meta
+                        .insert(txid, (block_height, block_time, tx.fee.unwrap_or(0) as i64));
+                }
+
                 if has_spend {
-                    let txid_hex = hex::encode(txid);
-                    let tx_fee = tx.fee.unwrap_or(0) as i64;
-                    let _ = sink.upsert_transaction(&txid_hex, block_height, block_time, tx_fee);
+                    self.tracked_wallet_txids.insert(txid);
                 }
             }
         }
 
+        let has_wallet_relevant_candidates =
+            !spend_updates.is_empty() || !spend_nullifiers.is_empty();
+        if !has_wallet_relevant_candidates {
+            if verbose_sync_batch_logging_enabled() {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let id = format!("{:08x}", ts);
+                append_debug_log_line(&format!(
+                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:apply_spends","message":"apply_spends skipped","data":{{"start":{},"end":{},"sapling_spends":{},"orchard_spends":{},"reason":"no_wallet_relevant_candidates","cache_size":{},"tracked_wallet_txids":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    id,
+                    ts,
+                    min_height.unwrap_or(0),
+                    max_height.unwrap_or(0),
+                    sapling_spends,
+                    orchard_spends,
+                    self.nullifier_cache.len(),
+                    self.tracked_wallet_txids.len()
+                ));
+            }
+            return Ok(());
+        }
+
         let mut updated_count = 0u64;
         let mut fallback_updates = 0u64;
-        if !spend_updates.is_empty() {
-            let start = Instant::now();
-            match sink.mark_notes_spent_by_ids_with_txid(&spend_updates) {
-                Ok(updated) => {
-                    updated_count = updated;
-                    tracing::debug!(
-                        "Marked {} notes spent ({} nullifiers) in {}ms",
-                        updated,
-                        spend_updates.len(),
-                        start.elapsed().as_millis()
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to mark notes spent for batch: {}", e);
-                }
-            }
-        }
+        let mut fallback_entries: Vec<([u8; 32], [u8; 32])> = Vec::new();
         if !spend_nullifiers.is_empty() {
-            let mut fallback_entries: Vec<([u8; 32], [u8; 32])> = Vec::new();
-            for (nf, txid) in &spend_nullifiers {
-                if !matched_nullifiers.contains(nf) {
-                    fallback_entries.push((*nf, *txid));
+            let has_sapling_rederive_keys = self.keys.iter().any(|k| k.sapling_dfvk.is_some());
+            let has_orchard_rederive_keys = self.keys.iter().any(|k| k.orchard_fvk.is_some());
+            let mut unlinked_entries: Vec<(
+                pirate_storage_sqlite::models::NoteType,
+                [u8; 32],
+                [u8; 32],
+            )> = Vec::new();
+            for (note_type, nf, txid) in &spend_nullifiers {
+                if !matched_nullifiers.contains(&(*note_type, *nf)) {
+                    unlinked_entries.push((*note_type, *nf, *txid));
                 }
             }
-            if !fallback_entries.is_empty() {
-                match sink.mark_notes_spent_by_nullifiers_with_txid(&fallback_entries) {
-                    Ok(updated) => {
-                        if updated > 0 {
-                            fallback_updates = updated;
-                            self.nullifier_cache.clear();
-                            self.nullifier_cache_loaded = false;
-                            let _ = self.ensure_nullifier_cache();
+            if !unlinked_entries.is_empty() {
+                let should_attempt_rederive =
+                    unlinked_entries
+                        .iter()
+                        .any(|(note_type, _, _)| match note_type {
+                            pirate_storage_sqlite::models::NoteType::Sapling => {
+                                has_sapling_rederive_keys
+                            }
+                            pirate_storage_sqlite::models::NoteType::Orchard => {
+                                has_orchard_rederive_keys
+                            }
+                        });
+                if should_attempt_rederive {
+                    match self.rederive_unmatched_spends(&unlinked_entries)? {
+                        recovered if !recovered.is_empty() => {
+                            let recover_updates: Vec<(i64, [u8; 32])> = recovered
+                                .iter()
+                                .map(|(id, _, _, txid)| (*id, *txid))
+                                .collect();
+                            if !recover_updates.is_empty() {
+                                spend_updates.extend(recover_updates);
+                                for (_, _, nf, _) in &recovered {
+                                    recovered_nullifiers.push(*nf);
+                                }
+                            }
+
+                            let recovered_keys: HashSet<(
+                                pirate_storage_sqlite::models::NoteType,
+                                [u8; 32],
+                            )> = recovered
+                                .iter()
+                                .map(|(_, note_type, nf, _)| (*note_type, *nf))
+                                .collect();
+                            for (_, _, _, txid) in &recovered {
+                                matched_spend_txids.insert(*txid);
+                            }
+                            unlinked_entries.retain(|(note_type, nf, _)| {
+                                !recovered_keys.contains(&(*note_type, *nf))
+                            });
                         }
+                        _ => {}
                     }
-                    Err(e) => {
-                        tracing::warn!("Fallback spend match failed: {}", e);
-                    }
+                }
+            }
+
+            for (_, nf, txid) in &unlinked_entries {
+                fallback_entries.push((*nf, *txid));
+            }
+            if !unlinked_entries.is_empty() {
+                if let Err(e) = sink.upsert_unlinked_spend_nullifiers_with_txid(&unlinked_entries) {
+                    tracing::warn!("Failed to store unlinked spend nullifiers: {}", e);
                 }
             }
         }
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
+
+        let mut tx_updates: Vec<(String, i64, i64, i64)> =
+            Vec::with_capacity(matched_spend_txids.len());
+        for txid in matched_spend_txids.iter().copied() {
+            if let Some((height, timestamp, fee)) = spend_tx_meta.get(&txid) {
+                tx_updates.push((hex::encode(txid), *height, *timestamp, *fee));
+            }
+        }
+        if !tx_updates.is_empty() {
+            tx_updates.sort_by(|a, b| a.0.cmp(&b.0));
+            tx_updates.dedup_by(|a, b| a.0 == b.0);
+        }
+
+        let spend_apply_start = Instant::now();
+        match sink.apply_spend_updates_with_txmeta(&spend_updates, &fallback_entries, &tx_updates) {
+            Ok((updated, fallback)) => {
+                updated_count = updated;
+                fallback_updates = fallback;
+                if updated_count > 0 || fallback_updates > 0 {
+                    for nf in matched_cache_nullifiers {
+                        self.nullifier_cache.remove(&nf);
+                    }
+                    for nf in recovered_nullifiers {
+                        self.nullifier_cache.remove(&nf);
+                    }
+                    for (nf, _) in &fallback_entries {
+                        self.nullifier_cache.remove(nf);
+                    }
+                }
+                tracing::debug!(
+                    "Applied spend updates in {}ms (id_updates={}, fallback_updates={}, tx_meta={})",
+                    spend_apply_start.elapsed().as_millis(),
+                    updated_count,
+                    fallback_updates,
+                    tx_updates.len()
+                );
+            }
+            Err(e) => {
+                tracing::warn!("Failed batched spend apply for batch: {}", e);
+            }
+        }
+
+        if verbose_sync_batch_logging_enabled()
+            || matched_spends > 0
+            || updated_count > 0
+            || fallback_updates > 0
         {
-            use std::io::Write;
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis();
             let id = format!("{:08x}", ts);
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:apply_spends","message":"apply_spends summary","data":{{"start":{},"end":{},"sapling_spends":{},"orchard_spends":{},"matched_spends":{},"updates":{},"fallback_updates":{},"cache_size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+            append_debug_log_line(&format!(
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:apply_spends","message":"apply_spends summary","data":{{"start":{},"end":{},"sapling_spends":{},"orchard_spends":{},"matched_spends":{},"updates":{},"fallback_updates":{},"cache_size":{},"tracked_wallet_txids":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                 id,
                 ts,
                 min_height.unwrap_or(0),
@@ -4572,11 +5493,308 @@ impl SyncEngine {
                 matched_spends,
                 updated_count,
                 fallback_updates,
-                self.nullifier_cache.len()
-            );
+                self.nullifier_cache.len(),
+                self.tracked_wallet_txids.len()
+            ));
         }
 
         Ok(())
+    }
+
+    fn rederive_unmatched_sapling_spends(
+        &self,
+        entries: &[(pirate_storage_sqlite::models::NoteType, [u8; 32], [u8; 32])],
+    ) -> Result<Vec<(i64, [u8; 32], [u8; 32])>> {
+        let sink = match self.storage.as_ref() {
+            Some(s) => s,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut spend_map: HashMap<[u8; 32], [u8; 32]> = HashMap::new();
+        for (note_type, nf, txid) in entries {
+            if *note_type == pirate_storage_sqlite::models::NoteType::Sapling {
+                spend_map.entry(*nf).or_insert(*txid);
+            }
+        }
+        if spend_map.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut dfvk_by_key: HashMap<i64, ExtendedFullViewingKey> = HashMap::new();
+        for key in &self.keys {
+            if let Some(dfvk) = key.sapling_dfvk.as_ref() {
+                dfvk_by_key.insert(key.key_id, dfvk.clone());
+            }
+        }
+        if dfvk_by_key.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let repo = Repository::new(&db);
+        let notes = repo.get_spend_reconciliation_notes(sink.account_id)?;
+
+        let mut recovered: Vec<(i64, [u8; 32], [u8; 32])> = Vec::new();
+        for mut note in notes {
+            if note.note_type != pirate_storage_sqlite::models::NoteType::Sapling {
+                continue;
+            }
+            let id = match note.id {
+                Some(id) => id,
+                None => continue,
+            };
+            let position = match note.position {
+                Some(pos) if pos >= 0 => pos as u64,
+                _ => continue,
+            };
+            let note_bytes = match note.note.as_ref() {
+                Some(bytes) if !bytes.is_empty() => bytes,
+                _ => continue,
+            };
+            let (leadbyte, rseed_bytes) = match decode_sapling_rseed_from_note_bytes(note_bytes) {
+                Some(parts) => parts,
+                None => continue,
+            };
+            let address_bytes = match decode_sapling_address_bytes_from_note_bytes(note_bytes) {
+                Some(bytes) => bytes,
+                None => continue,
+            };
+            let payment_address = match SaplingPaymentAddress::from_bytes(&address_bytes) {
+                Some(address) => address,
+                None => continue,
+            };
+            let rseed = if leadbyte == 0x02 {
+                Rseed::AfterZip212(rseed_bytes)
+            } else {
+                let rcm = match Option::from(jubjub::Fr::from_bytes(&rseed_bytes)) {
+                    Some(rcm) => rcm,
+                    None => continue,
+                };
+                Rseed::BeforeZip212(rcm)
+            };
+            let value = match u64::try_from(note.value) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            let note_value = zcash_primitives::sapling::value::NoteValue::from_raw(value);
+            let sapling_note =
+                zcash_primitives::sapling::Note::from_parts(payment_address, note_value, rseed);
+
+            // Try the stored key first, then all other keys as fallback.
+            // This recovers from stale/misassigned key_id values without requiring local hacks.
+            let mut candidate_keys: Vec<(i64, &ExtendedFullViewingKey)> = Vec::new();
+            let mut seen_key_ids: HashSet<i64> = HashSet::new();
+            if let Some(key_id) = note.key_id {
+                if let Some(dfvk) = dfvk_by_key.get(&key_id) {
+                    candidate_keys.push((key_id, dfvk));
+                    seen_key_ids.insert(key_id);
+                }
+            }
+            for (key_id, dfvk) in &dfvk_by_key {
+                if !seen_key_ids.contains(key_id) {
+                    candidate_keys.push((*key_id, dfvk));
+                }
+            }
+
+            let mut matched: Option<([u8; 32], [u8; 32], i64)> = None;
+            for (candidate_key_id, dfvk) in candidate_keys {
+                let external_nf = sapling_note
+                    .nf(
+                        &dfvk.nullifier_deriving_key_for_scope(SaplingScope::External),
+                        position,
+                    )
+                    .0;
+                if let Some(spent_txid) = spend_map.get(&external_nf) {
+                    matched = Some((external_nf, *spent_txid, candidate_key_id));
+                    break;
+                }
+
+                let internal_nf = sapling_note
+                    .nf(
+                        &dfvk.nullifier_deriving_key_for_scope(SaplingScope::Internal),
+                        position,
+                    )
+                    .0;
+                if let Some(spent_txid) = spend_map.get(&internal_nf) {
+                    matched = Some((internal_nf, *spent_txid, candidate_key_id));
+                    break;
+                }
+            }
+
+            if let Some((nf, spent_txid, matched_key_id)) = matched {
+                let mut note_changed = false;
+                if note.nullifier.len() != 32 || note.nullifier.as_slice() != nf {
+                    note.nullifier = nf.to_vec();
+                    note_changed = true;
+                }
+                if note.key_id != Some(matched_key_id) {
+                    note.key_id = Some(matched_key_id);
+                    note_changed = true;
+                }
+                if note_changed {
+                    let _ = repo.update_note_by_id(&note);
+                }
+                recovered.push((id, nf, spent_txid));
+                spend_map.remove(&nf);
+                if spend_map.is_empty() {
+                    break;
+                }
+            }
+        }
+
+        Ok(recovered)
+    }
+
+    fn rederive_unmatched_orchard_spends(
+        &self,
+        entries: &[(pirate_storage_sqlite::models::NoteType, [u8; 32], [u8; 32])],
+    ) -> Result<Vec<(i64, [u8; 32], [u8; 32])>> {
+        let sink = match self.storage.as_ref() {
+            Some(s) => s,
+            None => return Ok(Vec::new()),
+        };
+
+        let mut spend_map: HashMap<[u8; 32], [u8; 32]> = HashMap::new();
+        for (note_type, nf, txid) in entries {
+            if *note_type == pirate_storage_sqlite::models::NoteType::Orchard {
+                spend_map.entry(*nf).or_insert(*txid);
+            }
+        }
+        if spend_map.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut fvk_by_key: HashMap<i64, OrchardExtendedFullViewingKey> = HashMap::new();
+        for key in &self.keys {
+            if let Some(fvk) = key.orchard_fvk.as_ref() {
+                fvk_by_key.insert(key.key_id, fvk.clone());
+            }
+        }
+        if fvk_by_key.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let repo = Repository::new(&db);
+        let notes = repo.get_spend_reconciliation_notes(sink.account_id)?;
+
+        let mut recovered: Vec<(i64, [u8; 32], [u8; 32])> = Vec::new();
+        for mut note in notes {
+            if note.note_type != pirate_storage_sqlite::models::NoteType::Orchard {
+                continue;
+            }
+            let id = match note.id {
+                Some(id) => id,
+                None => continue,
+            };
+            let note_bytes = match note.note.as_ref() {
+                Some(bytes) if !bytes.is_empty() => bytes,
+                _ => continue,
+            };
+            let address_bytes = match decode_orchard_address_bytes_from_note_bytes(note_bytes) {
+                Some(bytes) => bytes,
+                None => continue,
+            };
+            let (rho, rseed) = match decode_orchard_rho_rseed_from_note_bytes(note_bytes) {
+                Some(parts) => parts,
+                None => continue,
+            };
+            let value = match u64::try_from(note.value) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+
+            let mut candidate_keys: Vec<(i64, &OrchardExtendedFullViewingKey)> = Vec::new();
+            let mut seen_key_ids: HashSet<i64> = HashSet::new();
+            if let Some(key_id) = note.key_id {
+                if let Some(fvk) = fvk_by_key.get(&key_id) {
+                    candidate_keys.push((key_id, fvk));
+                    seen_key_ids.insert(key_id);
+                }
+            }
+            for (key_id, fvk) in &fvk_by_key {
+                if !seen_key_ids.contains(key_id) {
+                    candidate_keys.push((*key_id, fvk));
+                }
+            }
+
+            let mut matched: Option<([u8; 32], [u8; 32], i64)> = None;
+            for (candidate_key_id, fvk) in candidate_keys {
+                let nf = match orchard_nullifier_from_parts(
+                    &fvk.inner,
+                    address_bytes,
+                    value,
+                    rho,
+                    rseed,
+                ) {
+                    Ok(nf) => nf,
+                    Err(_) => continue,
+                };
+                if let Some(spent_txid) = spend_map.get(&nf) {
+                    matched = Some((nf, *spent_txid, candidate_key_id));
+                    break;
+                }
+            }
+
+            if let Some((nf, spent_txid, matched_key_id)) = matched {
+                let mut note_changed = false;
+                if note.nullifier.len() != 32 || note.nullifier.as_slice() != nf {
+                    note.nullifier = nf.to_vec();
+                    note_changed = true;
+                }
+                if note.key_id != Some(matched_key_id) {
+                    note.key_id = Some(matched_key_id);
+                    note_changed = true;
+                }
+                if note_changed {
+                    let _ = repo.update_note_by_id(&note);
+                }
+                recovered.push((id, nf, spent_txid));
+                spend_map.remove(&nf);
+                if spend_map.is_empty() {
+                    break;
+                }
+            }
+        }
+
+        Ok(recovered)
+    }
+
+    fn rederive_unmatched_spends(
+        &self,
+        entries: &[(pirate_storage_sqlite::models::NoteType, [u8; 32], [u8; 32])],
+    ) -> Result<
+        Vec<(
+            i64,
+            pirate_storage_sqlite::models::NoteType,
+            [u8; 32],
+            [u8; 32],
+        )>,
+    > {
+        let mut recovered: Vec<(
+            i64,
+            pirate_storage_sqlite::models::NoteType,
+            [u8; 32],
+            [u8; 32],
+        )> = Vec::new();
+
+        for (id, nf, txid) in self.rederive_unmatched_sapling_spends(entries)? {
+            recovered.push((
+                id,
+                pirate_storage_sqlite::models::NoteType::Sapling,
+                nf,
+                txid,
+            ));
+        }
+        for (id, nf, txid) in self.rederive_unmatched_orchard_spends(entries)? {
+            recovered.push((
+                id,
+                pirate_storage_sqlite::models::NoteType::Orchard,
+                nf,
+                txid,
+            ));
+        }
+        Ok(recovered)
     }
 
     /// Get witness for a Sapling note at a given position.
@@ -4643,6 +5861,16 @@ impl SyncEngine {
             position
         );
         Ok(None)
+    }
+
+    /// Get current Sapling anchor from the frontier, if available.
+    pub async fn get_sapling_anchor(&self) -> Option<[u8; 32]> {
+        let sapling_frontier = self.frontier.read().await;
+        if sapling_frontier.is_empty() {
+            None
+        } else {
+            Some(sapling_frontier.root())
+        }
     }
 
     /// Get current Orchard anchor from the frontier, if available.
@@ -4876,6 +6104,22 @@ fn decode_sapling_address_bytes_from_note_bytes(note_bytes: &[u8]) -> Option<[u8
     None
 }
 
+fn decode_sapling_rseed_from_note_bytes(note_bytes: &[u8]) -> Option<(u8, [u8; 32])> {
+    if note_bytes.is_empty() {
+        return None;
+    }
+
+    let expected = 1 + 43 + 1 + 32;
+    if note_bytes.len() >= expected && note_bytes[0] == SAPLING_NOTE_BYTES_VERSION {
+        let leadbyte = note_bytes[44];
+        let mut rseed = [0u8; 32];
+        rseed.copy_from_slice(&note_bytes[45..77]);
+        return Some((leadbyte, rseed));
+    }
+
+    None
+}
+
 fn decode_orchard_address_bytes_from_note_bytes(note_bytes: &[u8]) -> Option<[u8; 43]> {
     if note_bytes.is_empty() {
         return None;
@@ -4892,6 +6136,18 @@ fn decode_orchard_address_bytes_from_note_bytes(note_bytes: &[u8]) -> Option<[u8
         return Some(address);
     }
     None
+}
+
+fn decode_orchard_rho_rseed_from_note_bytes(note_bytes: &[u8]) -> Option<([u8; 32], [u8; 32])> {
+    let expected = 1 + 43 + 32 + 32;
+    if note_bytes.len() < expected || note_bytes[0] != ORCHARD_NOTE_BYTES_VERSION {
+        return None;
+    }
+    let mut rho = [0u8; 32];
+    rho.copy_from_slice(&note_bytes[44..76]);
+    let mut rseed = [0u8; 32];
+    rseed.copy_from_slice(&note_bytes[76..108]);
+    Some((rho, rseed))
 }
 
 fn orchard_address_from_ivk_diversifier(
@@ -5038,7 +6294,12 @@ struct StorageSink {
     key: EncryptionKey,
     master_key: MasterKey,
     account_id: i64,
-    network_type: NetworkType,
+    address_network_type: NetworkType,
+}
+
+struct PersistNotesResult {
+    inserted: Vec<([u8; 32], i64)>,
+    remove_from_cache: Vec<[u8; 32]>,
 }
 
 impl Clone for StorageSink {
@@ -5049,7 +6310,7 @@ impl Clone for StorageSink {
             key: EncryptionKey::from_bytes(key_bytes),
             master_key: self.master_key.clone(),
             account_id: self.account_id,
-            network_type: self.network_type,
+            address_network_type: self.address_network_type,
         }
     }
 }
@@ -5061,13 +6322,27 @@ impl StorageSink {
         tx_times: &HashMap<String, i64>,
         tx_fees: &HashMap<String, i64>,
         position_mappings: &PositionMaps,
-    ) -> Result<Vec<([u8; 32], i64)>> {
+    ) -> Result<PersistNotesResult> {
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
         let sync_state = SyncStateStorage::new(&db);
         let mut inserted: Vec<([u8; 32], i64)> = Vec::new();
+        let mut remove_from_cache: Vec<[u8; 32]> = Vec::new();
+        // Fast path: most batches have no owned notes.
+        if notes.is_empty() {
+            return Ok(PersistNotesResult {
+                inserted,
+                remove_from_cache,
+            });
+        }
+        // Batch-local caches; populate lazily so we don't decrypt full tables each batch.
+        let mut existing_by_output: HashMap<(Vec<u8>, i64), NoteRecord> = HashMap::new();
+        let mut address_cache: HashMap<String, i64> = HashMap::new();
 
-        let derive_address_id = |note: &DecryptedNote, timestamp: i64| -> Result<Option<i64>> {
+        let derive_address_id = |note: &DecryptedNote,
+                                 timestamp: i64,
+                                 address_cache: &mut HashMap<String, i64>|
+         -> Result<Option<i64>> {
             if note.note_bytes.is_empty() {
                 return Ok(None);
             }
@@ -5077,7 +6352,7 @@ impl StorageSink {
                         .and_then(|bytes| SaplingPaymentAddress::from_bytes(&bytes))
                         .map(|addr| {
                             PiratePaymentAddress { inner: addr }
-                                .encode_for_network(self.network_type)
+                                .encode_for_network(self.address_network_type)
                         })
                 }
                 crate::pipeline::NoteType::Orchard => {
@@ -5087,7 +6362,7 @@ impl StorageSink {
                         })
                         .and_then(|addr| {
                             PirateOrchardPaymentAddress { inner: addr }
-                                .encode_for_network(self.network_type)
+                                .encode_for_network(self.address_network_type)
                                 .ok()
                         })
                 }
@@ -5096,6 +6371,10 @@ impl StorageSink {
             let Some(address_string) = address_string else {
                 return Ok(None);
             };
+
+            if let Some(existing_id) = address_cache.get(&address_string).copied() {
+                return Ok(Some(existing_id));
+            }
 
             let address_type = match note.note_type {
                 crate::pipeline::NoteType::Sapling => {
@@ -5119,10 +6398,42 @@ impl StorageSink {
                 address_scope: note.address_scope,
             };
             let _ = repo.upsert_address(&address_record);
-            Ok(repo
+            let address_id = repo
                 .get_address_by_string(self.account_id, &address_string)?
-                .and_then(|addr| addr.id))
+                .and_then(|addr| addr.id);
+            if let Some(id) = address_id {
+                address_cache.insert(address_string, id);
+            }
+            Ok(address_id)
         };
+
+        let candidate_unlinked_spend_keys: Vec<(
+            pirate_storage_sqlite::models::NoteType,
+            [u8; 32],
+        )> = notes
+            .iter()
+            .filter_map(|n| {
+                if n.nullifier.len() != 32 || n.nullifier.iter().all(|b| *b == 0) {
+                    return None;
+                }
+                let note_type = match n.note_type {
+                    crate::pipeline::NoteType::Orchard => {
+                        pirate_storage_sqlite::models::NoteType::Orchard
+                    }
+                    crate::pipeline::NoteType::Sapling => {
+                        pirate_storage_sqlite::models::NoteType::Sapling
+                    }
+                };
+                let mut nf = [0u8; 32];
+                nf.copy_from_slice(&n.nullifier[..32]);
+                Some((note_type, nf))
+            })
+            .collect();
+        let unlinked_spend_map = repo.consume_unlinked_spends_for_nullifiers(
+            self.account_id,
+            &candidate_unlinked_spend_keys,
+        )?;
+        let mut upserted_txids: HashSet<String> = HashSet::new();
 
         for n in notes {
             // Skip if we don't have essential fields
@@ -5139,38 +6450,40 @@ impl StorageSink {
             };
             let txid_hex = hex::encode(&n.txid);
             // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let id = format!("{:08x}", ts);
-                let nf_is_zero = n.nullifier.iter().all(|b| *b == 0);
-                let txid_short = if txid_hex.len() > 12 {
-                    &txid_hex[..12]
-                } else {
-                    &txid_hex
-                };
-                let db_path = self.db_path.to_string_lossy();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:2435","message":"persist_note record","data":{{"account_id":{},"note_type":"{:?}","value":{},"height":{},"output_index":{},"nullifier_zero":{},"txid_prefix":"{}","db_path":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    id,
-                    ts,
-                    self.account_id,
-                    n.note_type,
-                    n.value,
-                    n.height,
-                    n.output_index,
-                    nf_is_zero,
-                    txid_short,
-                    db_path
-                );
+            if verbose_note_logging_enabled() {
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(debug_log_path())
+                {
+                    use std::io::Write;
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let id = format!("{:08x}", ts);
+                    let nf_is_zero = n.nullifier.iter().all(|b| *b == 0);
+                    let txid_short = if txid_hex.len() > 12 {
+                        &txid_hex[..12]
+                    } else {
+                        &txid_hex
+                    };
+                    let db_path = self.db_path.to_string_lossy();
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:2435","message":"persist_note record","data":{{"account_id":{},"note_type":"{:?}","value":{},"height":{},"output_index":{},"nullifier_zero":{},"txid_prefix":"{}","db_path":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        id,
+                        ts,
+                        self.account_id,
+                        n.note_type,
+                        n.value,
+                        n.height,
+                        n.output_index,
+                        nf_is_zero,
+                        txid_short,
+                        db_path
+                    );
+                }
             }
             // #endregion
             // Block timestamp is the "first confirmation time" for mined txs.
@@ -5182,18 +6495,35 @@ impl StorageSink {
             let fee = tx_fees.get(&txid_hex).copied().unwrap_or(0);
 
             // Upsert tx metadata (timestamp is used for transaction history UI).
-            let _ = repo.upsert_transaction(&txid_hex, n.height as i64, timestamp, fee);
+            if upserted_txids.insert(txid_hex.clone()) {
+                let _ = repo.upsert_transaction(&txid_hex, n.height as i64, timestamp, fee);
+            }
 
-            let address_id = derive_address_id(n, timestamp)?;
-
-            if let Ok(Some(existing)) =
-                repo.get_note_by_txid_and_index(self.account_id, &n.txid, n.output_index as i64)
+            let address_id = derive_address_id(n, timestamp, &mut address_cache)?;
+            let output_key = (n.txid.clone(), n.output_index as i64);
+            let existing_note = if let Some(existing) = existing_by_output.get(&output_key).cloned()
             {
+                Some(existing)
+            } else {
+                let fetched = repo.get_note_by_txid_and_index(
+                    self.account_id,
+                    &n.txid,
+                    n.output_index as i64,
+                )?;
+                if let Some(ref existing) = fetched {
+                    existing_by_output.insert(output_key.clone(), existing.clone());
+                }
+                fetched
+            };
+
+            if let Some(existing) = existing_note {
                 let mut updated = existing.clone();
                 let mut changed = false;
+                let existing_id = existing.id;
                 let incoming_nullifier = n.nullifier.to_vec();
                 let incoming_commitment = n.commitment.to_vec();
                 let incoming_value = n.value as i64;
+                let old_nullifier = existing.nullifier.clone();
 
                 if existing.note_type != note_type {
                     updated.note_type = note_type;
@@ -5303,9 +6633,42 @@ impl StorageSink {
                     }
                 }
 
+                if old_nullifier != updated.nullifier
+                    && old_nullifier.len() == 32
+                    && !old_nullifier.iter().all(|b| *b == 0)
+                {
+                    let mut old_nf = [0u8; 32];
+                    old_nf.copy_from_slice(&old_nullifier[..32]);
+                    remove_from_cache.push(old_nf);
+                }
+                if updated.nullifier.len() == 32 && !updated.nullifier.iter().all(|b| *b == 0) {
+                    let mut nf = [0u8; 32];
+                    nf.copy_from_slice(&updated.nullifier[..32]);
+                    if let Some(spent_txid) = unlinked_spend_map.get(&(note_type, nf)).copied() {
+                        if !updated.spent
+                            || updated
+                                .spent_txid
+                                .as_deref()
+                                .map(|v| v != spent_txid.as_slice())
+                                .unwrap_or(true)
+                        {
+                            updated.spent = true;
+                            updated.spent_txid = Some(spent_txid.to_vec());
+                            changed = true;
+                        }
+                        if changed || !updated.spent {
+                            remove_from_cache.push(nf);
+                        }
+                    } else if !updated.spent {
+                        if let Some(id) = existing_id {
+                            inserted.push((nf, id));
+                        }
+                    }
+                }
                 if changed {
                     repo.update_note_by_id(&updated)?;
                 }
+                existing_by_output.insert(output_key, updated);
                 continue;
             }
 
@@ -5354,35 +6717,53 @@ impl StorageSink {
                 },
                 memo: n.memo_bytes().map(|b| b.to_vec()),
             };
+            let mut record = record;
+            if record.nullifier.len() == 32 && !record.nullifier.iter().all(|b| *b == 0) {
+                let mut nf = [0u8; 32];
+                nf.copy_from_slice(&record.nullifier[..32]);
+                if let Some(spent_txid) = unlinked_spend_map.get(&(note_type, nf)).copied() {
+                    record.spent = true;
+                    record.spent_txid = Some(spent_txid.to_vec());
+                }
+            }
             match repo.insert_note(&record) {
                 Ok(id) => {
-                    if record.nullifier.len() == 32 {
+                    let mut stored = record.clone();
+                    stored.id = Some(id);
+                    if record.nullifier.len() == 32 && !record.nullifier.iter().all(|b| *b == 0) {
                         let mut nf = [0u8; 32];
                         nf.copy_from_slice(&record.nullifier[..32]);
-                        inserted.push((nf, id));
+                        if stored.spent {
+                            remove_from_cache.push(nf);
+                        } else {
+                            inserted.push((nf, id));
+                        }
                     }
+                    existing_by_output.insert(output_key, stored);
                 }
                 Err(e) => {
                     // #region agent log
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
-                        let ts = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis();
-                        let id = format!("{:08x}", ts);
-                        let _ = writeln!(
-                            file,
-                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:2478","message":"persist_note error","data":{{"txid_prefix":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                            id,
-                            ts,
-                            &txid_hex[..txid_hex.len().min(12)],
-                            e
-                        );
+                    if verbose_note_logging_enabled() {
+                        if let Ok(mut file) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(debug_log_path())
+                        {
+                            use std::io::Write;
+                            let ts = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis();
+                            let id = format!("{:08x}", ts);
+                            let _ = writeln!(
+                                file,
+                                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:2478","message":"persist_note error","data":{{"txid_prefix":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                                id,
+                                ts,
+                                &txid_hex[..txid_hex.len().min(12)],
+                                e
+                            );
+                        }
                     }
                     // #endregion
                 }
@@ -5392,7 +6773,10 @@ impl StorageSink {
         if let Some(max_h) = notes.iter().map(|n| n.height).max() {
             let _ = sync_state.save_sync_state(max_h, max_h, max_h);
         }
-        Ok(inserted)
+        Ok(PersistNotesResult {
+            inserted,
+            remove_from_cache,
+        })
     }
 
     fn get_note_by_txid_and_index(
@@ -5403,12 +6787,6 @@ impl StorageSink {
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
         Ok(repo.get_note_by_txid_and_index(self.account_id, txid, output_index)?)
-    }
-
-    fn delete_note_by_txid_and_index(&self, txid: &[u8], output_index: i64) -> Result<usize> {
-        let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
-        let repo = Repository::new(&db);
-        Ok(repo.delete_note_by_txid_and_index(self.account_id, txid, output_index)?)
     }
 
     fn list_orchard_note_refs(&self) -> Result<Vec<OrchardNoteRef>> {
@@ -5423,37 +6801,32 @@ impl StorageSink {
         Ok(repo.update_note_memo(self.account_id, txid, output_index, memo)?)
     }
 
-    fn mark_notes_spent_by_nullifiers_with_txid(
+    fn apply_spend_updates_with_txmeta(
         &self,
-        entries: &[([u8; 32], [u8; 32])],
+        spend_updates: &[(i64, [u8; 32])],
+        fallback_entries: &[([u8; 32], [u8; 32])],
+        tx_meta: &[(String, i64, i64, i64)],
+    ) -> Result<(u64, u64)> {
+        let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
+        let repo = Repository::new(&db);
+        Ok(repo.apply_spend_updates_with_txmeta(
+            self.account_id,
+            spend_updates,
+            fallback_entries,
+            tx_meta,
+        )?)
+    }
+
+    fn upsert_unlinked_spend_nullifiers_with_txid(
+        &self,
+        entries: &[(pirate_storage_sqlite::models::NoteType, [u8; 32], [u8; 32])],
     ) -> Result<u64> {
         if entries.is_empty() {
             return Ok(0);
         }
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
-        Ok(repo.mark_notes_spent_by_nullifiers_with_txid(self.account_id, entries)?)
-    }
-
-    fn mark_notes_spent_by_ids_with_txid(&self, entries: &[(i64, [u8; 32])]) -> Result<u64> {
-        if entries.is_empty() {
-            return Ok(0);
-        }
-        let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
-        let repo = Repository::new(&db);
-        Ok(repo.mark_notes_spent_by_ids_with_txid(entries)?)
-    }
-
-    fn upsert_transaction(
-        &self,
-        txid_hex: &str,
-        height: i64,
-        timestamp: i64,
-        fee: i64,
-    ) -> Result<()> {
-        let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
-        let repo = Repository::new(&db);
-        Ok(repo.upsert_transaction(txid_hex, height, timestamp, fee)?)
+        Ok(repo.upsert_unlinked_spend_nullifiers_with_txid(self.account_id, entries)?)
     }
 
     fn upsert_tx_memo(&self, txid_hex: &str, memo: &[u8]) -> Result<()> {
@@ -5584,6 +6957,27 @@ type CompactDecryptResult<D> = Option<(
     usize,
 )>;
 
+#[derive(Debug, Default, Clone)]
+struct DecryptBackendTelemetry {
+    cpu_ms: u128,
+}
+
+#[derive(Debug, Default, Clone)]
+struct TrialDecryptTelemetry {
+    cpu_ms: u128,
+}
+
+impl TrialDecryptTelemetry {
+    fn merge_stage(&mut self, stage: &DecryptBackendTelemetry, _note_type: NoteType) {
+        self.cpu_ms += stage.cpu_ms;
+    }
+}
+
+struct TrialDecryptBatchResult {
+    notes: Vec<DecryptedNote>,
+    telemetry: TrialDecryptTelemetry,
+}
+
 struct TrialDecryptBatchInputs<'a> {
     blocks: &'a [CompactBlockData],
     sapling_ivks: &'a [PreparedIncomingViewingKey],
@@ -5644,7 +7038,30 @@ where
     })
 }
 
-fn trial_decrypt_batch_impl(inputs: TrialDecryptBatchInputs<'_>) -> Result<Vec<DecryptedNote>> {
+fn try_compact_note_decryption_backend<D, Output>(
+    pool: &rayon::ThreadPool,
+    ivks: &[D::IncomingViewingKey],
+    outputs: &[(D, Output)],
+    max_parallel: usize,
+) -> (Vec<CompactDecryptResult<D>>, DecryptBackendTelemetry)
+where
+    D: zcash_note_encryption::BatchDomain + Sync,
+    Output: ShieldedOutput<D, COMPACT_NOTE_SIZE> + Sync,
+    D::IncomingViewingKey: Sync,
+    D::Note: Send,
+    D::Recipient: Send,
+{
+    let started = Instant::now();
+    let results = try_compact_note_decryption_parallel(pool, ivks, outputs, max_parallel);
+    let telemetry = DecryptBackendTelemetry {
+        cpu_ms: started.elapsed().as_millis(),
+    };
+    (results, telemetry)
+}
+
+fn trial_decrypt_batch_impl(
+    inputs: TrialDecryptBatchInputs<'_>,
+) -> Result<TrialDecryptBatchResult> {
     let TrialDecryptBatchInputs {
         blocks,
         sapling_ivks,
@@ -5758,14 +7175,16 @@ fn trial_decrypt_batch_impl(inputs: TrialDecryptBatchInputs<'_>) -> Result<Vec<D
     }
 
     let mut notes = Vec::new();
+    let mut telemetry = TrialDecryptTelemetry::default();
 
     if !sapling_ivks.is_empty() && !sapling_outputs.is_empty() {
-        let sapling_results = try_compact_note_decryption_parallel(
+        let (sapling_results, sapling_telemetry) = try_compact_note_decryption_backend(
             decrypt_pool,
             sapling_ivks,
             &sapling_outputs,
             max_parallel,
         );
+        telemetry.merge_stage(&sapling_telemetry, NoteType::Sapling);
 
         for (idx, result) in sapling_results.into_iter().enumerate() {
             if let Some(((note, address), ivk_index)) = result {
@@ -5801,12 +7220,13 @@ fn trial_decrypt_batch_impl(inputs: TrialDecryptBatchInputs<'_>) -> Result<Vec<D
     }
 
     if !orchard_ivks.is_empty() && !orchard_outputs.is_empty() {
-        let orchard_results = try_compact_note_decryption_parallel(
+        let (orchard_results, orchard_telemetry) = try_compact_note_decryption_backend(
             decrypt_pool,
             orchard_ivks,
             &orchard_outputs,
             max_parallel,
         );
+        telemetry.merge_stage(&orchard_telemetry, NoteType::Orchard);
 
         for (idx, result) in orchard_results.into_iter().enumerate() {
             if let Some(((note, address), ivk_index)) = result {
@@ -5848,7 +7268,7 @@ fn trial_decrypt_batch_impl(inputs: TrialDecryptBatchInputs<'_>) -> Result<Vec<D
         }
     }
 
-    Ok(notes)
+    Ok(TrialDecryptBatchResult { notes, telemetry })
 }
 
 /// Trial decrypt a single block (Sapling/Orchard) for tests.
@@ -5887,7 +7307,7 @@ fn trial_decrypt_block(
             orchard_scopes.push(AddressScope::External);
         }
     }
-    trial_decrypt_batch_impl(TrialDecryptBatchInputs {
+    let batch = trial_decrypt_batch_impl(TrialDecryptBatchInputs {
         blocks: std::slice::from_ref(block),
         sapling_ivks: &sapling_ivks,
         sapling_key_ids: &sapling_key_ids,
@@ -5898,7 +7318,8 @@ fn trial_decrypt_block(
         orchard_fvks: &orchard_fvks,
         decrypt_pool: &decrypt_pool,
         max_parallel: 1,
-    })
+    })?;
+    Ok(batch.notes)
 }
 
 // DecryptedNote is imported from pipeline module - no need to redefine here
@@ -5962,7 +7383,7 @@ mod tests {
         let cancel = CancelToken::new();
         cancel.cancel();
 
-        let result = SyncEngine::fetch_blocks_with_retry_inner(client, 10, 20, cancel).await;
+        let result = SyncEngine::fetch_blocks_with_retry_inner(client, 10, 20, cancel, None).await;
         assert!(matches!(result, Err(Error::Cancelled)));
     }
 
@@ -5971,7 +7392,7 @@ mod tests {
         let client = LightClient::new("http://127.0.0.1:1".to_string());
         let cancel = CancelToken::new();
 
-        let blocks = SyncEngine::fetch_blocks_with_retry_inner(client, 20, 10, cancel)
+        let blocks = SyncEngine::fetch_blocks_with_retry_inner(client, 20, 10, cancel, None)
             .await
             .unwrap();
         assert!(blocks.is_empty());

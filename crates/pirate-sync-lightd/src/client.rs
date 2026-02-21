@@ -1047,6 +1047,26 @@ fn _assert_channel_send_sync() {
 }
 
 impl LightClient {
+    fn is_non_retryable_status(code: tonic::Code) -> bool {
+        matches!(
+            code,
+            tonic::Code::InvalidArgument
+                | tonic::Code::Unimplemented
+                | tonic::Code::FailedPrecondition
+                | tonic::Code::PermissionDenied
+        )
+    }
+
+    fn is_non_retryable_error(error: &Error) -> bool {
+        match error {
+            Error::Status(status) => Self::is_non_retryable_status(status.code()),
+            Error::Sync(msg) | Error::Network(msg) | Error::Connection(msg) => {
+                msg.starts_with("NON_RETRYABLE:")
+            }
+            _ => false,
+        }
+    }
+
     /// Create new client with default configuration
     ///
     /// Default: uses DEFAULT_LIGHTD_URL via Tor (TLS disabled unless enabled in config)
@@ -1419,19 +1439,47 @@ impl LightClient {
     /// Streams blocks from `range.start` to `range.end` (exclusive).
     /// Returns Vec for simplicity; use `stream_blocks` for large ranges.
     pub async fn get_compact_block_range(&self, range: Range<u32>) -> Result<Vec<CompactBlock>> {
+        self.get_compact_block_range_with_wallet(range, None).await
+    }
+
+    /// Get compact blocks in the specified range with optional wallet context for logging.
+    pub async fn get_compact_block_range_with_wallet(
+        &self,
+        range: Range<u32>,
+        wallet_id: Option<&str>,
+    ) -> Result<Vec<CompactBlock>> {
         if range.is_empty() {
             return Ok(Vec::new());
         }
 
         let range = range.clone();
+        let wallet_id_owned = wallet_id.map(str::to_string);
 
         self.with_retry(move || {
             let range = range.clone();
+            let wallet_id_owned = wallet_id_owned.clone();
             async move {
             let mut client = self.get_client().await?;
             let start_instant = Instant::now();
+            let range_blocks = range.end.saturating_sub(range.start).max(1);
+            let (first_msg_timeout, next_msg_timeout) = match self.config.transport {
+                TransportMode::Direct => {
+                    if range_blocks <= 256 {
+                        (Duration::from_secs(20), Duration::from_secs(10))
+                    } else {
+                        (Duration::from_secs(35), Duration::from_secs(15))
+                    }
+                }
+                _ => {
+                    if range_blocks <= 256 {
+                        (Duration::from_secs(45), Duration::from_secs(20))
+                    } else {
+                        (Duration::from_secs(75), Duration::from_secs(30))
+                    }
+                }
+            };
 
-            let request = tonic::Request::new(BlockRange {
+            let mut request = tonic::Request::new(BlockRange {
                 start: Some(BlockId {
                     height: range.start as u64,
                     hash: Vec::new(),
@@ -1441,16 +1489,55 @@ impl LightClient {
                     hash: Vec::new(),
                 }),
             });
+            let open_timeout = first_msg_timeout.saturating_add(Duration::from_secs(5));
+            request.set_timeout(std::cmp::max(
+                self.config.request_timeout,
+                open_timeout,
+            ));
 
             debug!("Requesting blocks {}..{}", range.start, range.end);
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(debug_log_path())
+            {
+                use std::io::Write;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let id = format!("{:08x}", ts);
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:block_range_request","message":"block range request","data":{{"wallet_id":"{}","start":{},"end":{},"range_blocks":{},"first_timeout_secs":{},"next_timeout_secs":{},"open_timeout_secs":{},"endpoint":"{}","transport":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                    id,
+                    ts,
+                    wallet_id_owned.as_deref().unwrap_or("unknown"),
+                    range.start,
+                    range.end.saturating_sub(1),
+                    range_blocks,
+                    first_msg_timeout.as_secs(),
+                    next_msg_timeout.as_secs(),
+                    open_timeout.as_secs(),
+                    self.config.endpoint,
+                    self.config.transport
+                );
+            }
 
-            let mut stream = client.get_block_range(request).await?.into_inner();
+            let stream_response = tokio::time::timeout(open_timeout, client.get_block_range(request))
+                .await
+                .map_err(|_| {
+                    Error::Network(format!(
+                        "Timed out opening compact block stream ({}..{}; timeout {:?})",
+                        range.start,
+                        range.end,
+                        open_timeout
+                    ))
+                })??;
+            let mut stream = stream_response.into_inner();
             let mut blocks = Vec::with_capacity((range.end - range.start) as usize);
             let mut first_block_ms: Option<u128> = None;
             let mut estimated_bytes = 0u64;
-
-            let first_msg_timeout = Duration::from_secs(5 * 60);
-            let next_msg_timeout = Duration::from_secs(5 * 60);
 
             loop {
                 let idle_timeout = if blocks.is_empty() {
@@ -1505,9 +1592,10 @@ impl LightClient {
                 let id = format!("{:08x}", ts);
                 let _ = writeln!(
                     file,
-                    r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:block_range_stats","message":"block range stats","data":{{"start":{},"end":{},"blocks":{},"ttfb_ms":{},"total_ms":{},"est_bytes":{},"est_kbps":{:.2},"endpoint":"{}","transport":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:block_range_stats","message":"block range stats","data":{{"wallet_id":"{}","start":{},"end":{},"blocks":{},"ttfb_ms":{},"total_ms":{},"est_bytes":{},"est_kbps":{:.2},"endpoint":"{}","transport":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                     id,
                     ts,
+                    wallet_id_owned.as_deref().unwrap_or("unknown"),
                     range.start,
                     range.end.saturating_sub(1),
                     blocks.len(),
@@ -1870,6 +1958,11 @@ impl LightClient {
                 Err(e) => {
                     // Cancellation should return immediately (no retries/backoff).
                     if matches!(e, Error::Cancelled) {
+                        return Err(e);
+                    }
+
+                    // Certain gRPC status codes are deterministic and should not be retried.
+                    if Self::is_non_retryable_error(&e) {
                         return Err(e);
                     }
 
