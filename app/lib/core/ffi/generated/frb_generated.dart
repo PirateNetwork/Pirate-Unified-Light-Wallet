@@ -7,4879 +7,6626 @@ import 'api.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
-import 'frb_generated.io.dart' if (dart.library.js_interop) 'frb_generated.web.dart';
+import 'frb_generated.io.dart'
+    if (dart.library.js_interop) 'frb_generated.web.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+/// Main entrypoint of the Rust API
+class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
+  @internal
+  static final instance = RustLib._();
+
+  RustLib._();
+
+  /// Initialize flutter_rust_bridge
+  static Future<void> init({
+    RustLibApi? api,
+    BaseHandler? handler,
+    ExternalLibrary? externalLibrary,
+    bool forceSameCodegenVersion = true,
+  }) async {
+    await instance.initImpl(
+      api: api,
+      handler: handler,
+      externalLibrary: externalLibrary,
+      forceSameCodegenVersion: forceSameCodegenVersion,
+    );
+  }
+
+  /// Initialize flutter_rust_bridge in mock mode.
+  /// No libraries for FFI are loaded.
+  static void initMock({required RustLibApi api}) {
+    instance.initMockImpl(api: api);
+  }
+
+  /// Dispose flutter_rust_bridge
+  ///
+  /// The call to this function is optional, since flutter_rust_bridge (and everything else)
+  /// is automatically disposed when the app stops.
+  static void dispose() => instance.disposeImpl();
+
+  @override
+  ApiImplConstructor<RustLibApiImpl, RustLibWire> get apiImplConstructor =>
+      RustLibApiImpl.new;
+
+  @override
+  WireConstructor<RustLibWire> get wireConstructor =>
+      RustLibWire.fromExternalLibrary;
+
+  @override
+  Future<void> executeRustInitializers() async {}
+
+  @override
+  ExternalLibraryLoaderConfig get defaultExternalLibraryLoaderConfig =>
+      kDefaultExternalLibraryLoaderConfig;
+
+  @override
+  String get codegenVersion => '2.11.1';
+
+  @override
+  int get rustContentHash => -1248550582;
+
+  static const kDefaultExternalLibraryLoaderConfig =
+      ExternalLibraryLoaderConfig(
+        stem: 'pirate_ffi_frb',
+        ioDirectory: '../crates/pirate-ffi-frb/target/release/',
+        webPrefix: 'pkg/',
+      );
+}
+
+abstract class RustLibApi extends BaseApi {
+  Future<String> crateApiAcknowledgeSeedWarning();
+
+  Future<AddressBookEntryFfi> crateApiAddAddressBookEntry({
+    required String walletId,
+    required String address,
+    required String label,
+    String? notes,
+    required AddressBookColorTag colorTag,
+  });
+
+  Future<bool> crateApiAddressExistsInBook({
+    required String walletId,
+    required String address,
+  });
+
+  Future<bool> crateApiAreSeedScreenshotsBlocked();
+
+  Future<void> crateApiBootstrapTunnel({required TunnelMode mode});
+
+  Future<String> crateApiBroadcastTx({required SignedTx signed});
+
+  Future<PendingTx> crateApiBuildConsolidationTx({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required String targetAddress,
+    BigInt? feeOpt,
+  });
+
+  Future<PendingTx> crateApiBuildSweepTx({
+    required String walletId,
+    required String targetAddress,
+    BigInt? feeOpt,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  });
+
+  Future<PendingTx> crateApiBuildTx({
+    required String walletId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+  });
 
-                /// Main entrypoint of the Rust API
-                class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
-                  @internal
-                  static final instance = RustLib._();
+  Future<PendingTx> crateApiBuildTxFiltered({
+    required String walletId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  });
 
-                  RustLib._();
+  Future<PendingTx> crateApiBuildTxForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+  });
 
-                  /// Initialize flutter_rust_bridge
-                  static Future<void> init({
-                    RustLibApi? api,
-                    BaseHandler? handler,
-                    ExternalLibrary? externalLibrary,
-                    bool forceSameCodegenVersion = true,
-                  }) async {
-                    await instance.initImpl(
-                      api: api,
-                      handler: handler,
-                      externalLibrary: externalLibrary,
-                      forceSameCodegenVersion: forceSameCodegenVersion,
-                    );
-                  }
+  Future<void> crateApiCancelSeedExport();
 
-                  /// Initialize flutter_rust_bridge in mock mode.
-                  /// No libraries for FFI are loaded.
-                  static void initMock({
-                    required RustLibApi api,
-                  }) {
-                    instance.initMockImpl(
-                      api: api,
-                    );
-                  }
+  Future<void> crateApiCancelSync({required String walletId});
 
-                  /// Dispose flutter_rust_bridge
-                  ///
-                  /// The call to this function is optional, since flutter_rust_bridge (and everything else)
-                  /// is automatically disposed when the app stops.
-                  static void dispose() => instance.disposeImpl();
+  Future<void> crateApiChangeAppPassphrase({
+    required String currentPassphrase,
+    required String newPassphrase,
+  });
 
-                  @override
-                  ApiImplConstructor<RustLibApiImpl, RustLibWire> get apiImplConstructor => RustLibApiImpl.new;
+  Future<void> crateApiChangeAppPassphraseWithCached({
+    required String newPassphrase,
+  });
 
-                  @override
-                  WireConstructor<RustLibWire> get wireConstructor => RustLibWire.fromExternalLibrary;
+  Future<void> crateApiClearDuressPassphrase();
 
-                  @override
-                  Future<void> executeRustInitializers() async {
-                    
-                  }
+  Future<void> crateApiClearPanicPin();
 
-                  @override
-                  ExternalLibraryLoaderConfig get defaultExternalLibraryLoaderConfig => kDefaultExternalLibraryLoaderConfig;
+  Future<String> crateApiCompleteSeedBiometric({required bool success});
 
-                  @override
-                  String get codegenVersion => '2.11.1';
+  Future<String> crateApiCreateWallet({
+    required String name,
+    int? entropyLen,
+    int? birthdayOpt,
+  });
 
-                  @override
-                  int get rustContentHash => -1248550582;
+  Future<String> crateApiCurrentReceiveAddress({required String walletId});
 
-                  static const kDefaultExternalLibraryLoaderConfig = ExternalLibraryLoaderConfig(
-                    stem: 'pirate_ffi_frb',
-                    ioDirectory: '../crates/pirate-ffi-frb/target/release/',
-                    webPrefix: 'pkg/',
-                  );
-                }
-                
+  Future<void> crateApiDeleteAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+  });
 
-                abstract class RustLibApi extends BaseApi {
-                  Future<String> crateApiAcknowledgeSeedWarning();
+  Future<void> crateApiDeleteWallet({required String walletId});
 
-Future<AddressBookEntryFfi> crateApiAddAddressBookEntry({required String walletId , required String address , required String label , String? notes , required AddressBookColorTag colorTag });
+  Future<BigInt> crateApiEstimateFee({
+    required BigInt numOutputs,
+    required bool hasMemo,
+    String? feePolicy,
+  });
 
-Future<bool> crateApiAddressExistsInBook({required String walletId , required String address });
+  Future<void> crateApiExitDecoyMode();
 
-Future<bool> crateApiAreSeedScreenshotsBlocked();
+  Future<String> crateApiExportIvk({required String walletId});
 
-Future<void> crateApiBootstrapTunnel({required TunnelMode mode });
+  Future<String> crateApiExportIvkSecure({required String walletId});
 
-Future<String> crateApiBroadcastTx({required SignedTx signed });
+  Future<KeyExportInfo> crateApiExportKeyGroupKeys({
+    required String walletId,
+    required PlatformInt64 keyId,
+  });
 
-Future<PendingTx> crateApiBuildConsolidationTx({required String walletId , required PlatformInt64 keyId , required String targetAddress , BigInt? feeOpt });
+  Future<String> crateApiExportOrchardIvk({required String walletId});
 
-Future<PendingTx> crateApiBuildSweepTx({required String walletId , required String targetAddress , BigInt? feeOpt , Int64List? keyIdsFilter , Int64List? addressIdsFilter });
+  Future<String> crateApiExportOrchardViewingKey({required String walletId});
 
-Future<PendingTx> crateApiBuildTx({required String walletId , required List<Output> outputs , BigInt? feeOpt });
+  Future<String> crateApiExportSeed({required String walletId});
 
-Future<PendingTx> crateApiBuildTxFiltered({required String walletId , required List<Output> outputs , BigInt? feeOpt , Int64List? keyIdsFilter , Int64List? addressIdsFilter });
+  Future<List<String>> crateApiExportSeedWithCachedPassphrase({
+    required String walletId,
+  });
 
-Future<PendingTx> crateApiBuildTxForKey({required String walletId , required PlatformInt64 keyId , required List<Output> outputs , BigInt? feeOpt });
+  Future<List<String>> crateApiExportSeedWithPassphrase({
+    required String walletId,
+    required String passphrase,
+  });
 
-Future<void> crateApiCancelSeedExport();
+  Future<String?> crateApiFetchTransactionMemo({
+    required String walletId,
+    required String txid,
+    int? outputIndex,
+  });
 
-Future<void> crateApiCancelSync({required String walletId });
+  Future<String> crateApiFormatAmount({required BigInt arrrtoshis});
 
-Future<void> crateApiChangeAppPassphrase({required String currentPassphrase , required String newPassphrase });
+  Future<String> crateApiGenerateAddressForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required bool useOrchard,
+  });
 
-Future<void> crateApiChangeAppPassphraseWithCached({required String newPassphrase });
+  Future<String> crateApiGenerateMnemonic({int? wordCount});
 
-Future<void> crateApiClearDuressPassphrase();
+  Future<String?> crateApiGetActiveWallet();
 
-Future<void> crateApiClearPanicPin();
+  Future<int> crateApiGetAddressBookCount({required String walletId});
 
-Future<String> crateApiCompleteSeedBiometric({required bool success });
+  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+  });
 
-Future<String> crateApiCreateWallet({required String name , int? entropyLen , int? birthdayOpt });
+  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntryByAddress({
+    required String walletId,
+    required String address,
+  });
 
-Future<String> crateApiCurrentReceiveAddress({required String walletId });
+  Future<List<AddressBookEntryFfi>> crateApiGetAddressBookFavorites({
+    required String walletId,
+  });
 
-Future<void> crateApiDeleteAddressBookEntry({required String walletId , required PlatformInt64 id });
+  Future<int> crateApiGetAutoConsolidationCandidateCount({
+    required String walletId,
+  });
 
-Future<void> crateApiDeleteWallet({required String walletId });
+  Future<bool> crateApiGetAutoConsolidationEnabled({required String walletId});
 
-Future<BigInt> crateApiEstimateFee({required BigInt numOutputs , required bool hasMemo , String? feePolicy });
+  Future<int> crateApiGetAutoConsolidationThreshold();
 
-Future<void> crateApiExitDecoyMode();
+  Future<Balance> crateApiGetBalance({required String walletId});
 
-Future<String> crateApiExportIvk({required String walletId });
+  Future<BuildInfo> crateApiGetBuildInfo();
 
-Future<String> crateApiExportIvkSecure({required String walletId });
+  Future<CheckpointInfo?> crateApiGetCheckpointDetails({
+    required String walletId,
+    required int height,
+  });
 
-Future<KeyExportInfo> crateApiExportKeyGroupKeys({required String walletId , required PlatformInt64 keyId });
+  Future<String?> crateApiGetDuressPassphraseHash();
 
-Future<String> crateApiExportOrchardIvk({required String walletId });
+  Future<FeeInfo> crateApiGetFeeInfo();
 
-Future<String> crateApiExportOrchardViewingKey({required String walletId });
+  Future<BigInt?> crateApiGetIvkClipboardRemaining();
 
-Future<String> crateApiExportSeed({required String walletId });
+  Future<String?> crateApiGetLabelForAddress({
+    required String walletId,
+    required String address,
+  });
 
-Future<List<String>> crateApiExportSeedWithCachedPassphrase({required String walletId });
+  Future<CheckpointInfo?> crateApiGetLastCheckpoint({required String walletId});
 
-Future<List<String>> crateApiExportSeedWithPassphrase({required String walletId , required String passphrase });
+  Future<String> crateApiGetLightdEndpoint({required String walletId});
 
-Future<String?> crateApiFetchTransactionMemo({required String walletId , required String txid , int? outputIndex });
+  Future<LightdEndpoint> crateApiGetLightdEndpointConfig({
+    required String walletId,
+  });
 
-Future<String> crateApiFormatAmount({required BigInt arrrtoshis });
+  Future<NetworkInfo> crateApiGetNetworkInfo();
 
-Future<String> crateApiGenerateAddressForKey({required String walletId , required PlatformInt64 keyId , required bool useOrchard });
+  Future<List<AddressBookEntryFfi>> crateApiGetRecentlyUsedAddresses({
+    required String walletId,
+    required int limit,
+  });
 
-Future<String> crateApiGenerateMnemonic({int? wordCount });
+  Future<String> crateApiGetRecommendedBackgroundSyncMode({
+    required String walletId,
+    required int minutesSinceLast,
+  });
 
-Future<String?> crateApiGetActiveWallet();
+  Future<BigInt?> crateApiGetSeedClipboardRemaining();
 
-Future<int> crateApiGetAddressBookCount({required String walletId });
+  Future<String> crateApiGetSeedExportState();
 
-Future<AddressBookEntryFfi?> crateApiGetAddressBookEntry({required String walletId , required PlatformInt64 id });
+  Future<SeedExportWarnings> crateApiGetSeedExportWarnings();
 
-Future<AddressBookEntryFfi?> crateApiGetAddressBookEntryByAddress({required String walletId , required String address });
+  Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs({
+    required String walletId,
+    int? limit,
+  });
 
-Future<List<AddressBookEntryFfi>> crateApiGetAddressBookFavorites({required String walletId });
+  Future<String> crateApiGetTorStatus();
 
-Future<int> crateApiGetAutoConsolidationCandidateCount({required String walletId });
+  Future<TunnelMode> crateApiGetTunnel();
 
-Future<bool> crateApiGetAutoConsolidationEnabled({required String walletId });
+  Future<String> crateApiGetVaultMode();
 
-Future<int> crateApiGetAutoConsolidationThreshold();
+  Future<WatchOnlyBannerInfo?> crateApiGetWatchOnlyBanner({
+    required String walletId,
+  });
 
-Future<Balance> crateApiGetBalance({required String walletId });
+  Future<WatchOnlyCapabilitiesInfo> crateApiGetWatchOnlyCapabilities({
+    required String walletId,
+  });
 
-Future<BuildInfo> crateApiGetBuildInfo();
+  Future<bool> crateApiHasAppPassphrase();
 
-Future<CheckpointInfo?> crateApiGetCheckpointDetails({required String walletId , required int height });
+  Future<bool> crateApiHasDuressPassphrase();
 
-Future<String?> crateApiGetDuressPassphraseHash();
+  Future<bool> crateApiHasPanicPin();
 
-Future<FeeInfo> crateApiGetFeeInfo();
+  Future<String> crateApiImportIvk({
+    required String name,
+    String? saplingIvk,
+    String? orchardIvk,
+    required int birthday,
+  });
 
-Future<BigInt?> crateApiGetIvkClipboardRemaining();
+  Future<String> crateApiImportIvkAsWatchOnly({
+    required String name,
+    required String ivk,
+    required int birthdayHeight,
+  });
 
-Future<String?> crateApiGetLabelForAddress({required String walletId , required String address });
+  Future<PlatformInt64> crateApiImportSpendingKey({
+    required String walletId,
+    String? saplingKey,
+    String? orchardKey,
+    String? label,
+    required int birthdayHeight,
+  });
 
-Future<CheckpointInfo?> crateApiGetLastCheckpoint({required String walletId });
+  Future<bool> crateApiIsBackgroundSyncNeeded({required String walletId});
 
-Future<String> crateApiGetLightdEndpoint({required String walletId });
+  Future<bool> crateApiIsDecoyMode();
 
-Future<LightdEndpoint> crateApiGetLightdEndpointConfig({required String walletId });
+  Future<bool> crateApiIsSyncRunning({required String walletId});
 
-Future<NetworkInfo> crateApiGetNetworkInfo();
+  Future<void> crateApiLabelAddress({
+    required String walletId,
+    required String addr,
+    required String label,
+  });
 
-Future<List<AddressBookEntryFfi>> crateApiGetRecentlyUsedAddresses({required String walletId , required int limit });
+  Future<LightdEndpoint> crateApiLightdEndpointDefault();
 
-Future<String> crateApiGetRecommendedBackgroundSyncMode({required String walletId , required int minutesSinceLast });
+  Future<String> crateApiLightdEndpointDisplayString({
+    required LightdEndpoint that,
+  });
 
-Future<BigInt?> crateApiGetSeedClipboardRemaining();
+  Future<String> crateApiLightdEndpointUrl({required LightdEndpoint that});
 
-Future<String> crateApiGetSeedExportState();
+  Future<List<AddressBalanceInfo>> crateApiListAddressBalances({
+    required String walletId,
+    PlatformInt64? keyId,
+  });
 
-Future<SeedExportWarnings> crateApiGetSeedExportWarnings();
+  Future<List<AddressBookEntryFfi>> crateApiListAddressBook({
+    required String walletId,
+  });
 
-Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs({required String walletId , int? limit });
+  Future<List<AddressInfo>> crateApiListAddresses({required String walletId});
 
-Future<String> crateApiGetTorStatus();
+  Future<List<KeyAddressInfo>> crateApiListAddressesForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+  });
 
-Future<TunnelMode> crateApiGetTunnel();
+  Future<List<KeyGroupInfo>> crateApiListKeyGroups({required String walletId});
 
-Future<String> crateApiGetVaultMode();
+  Future<List<TxInfo>> crateApiListTransactions({
+    required String walletId,
+    int? limit,
+  });
 
-Future<WatchOnlyBannerInfo?> crateApiGetWatchOnlyBanner({required String walletId });
+  Future<List<WalletMeta>> crateApiListWallets();
 
-Future<WatchOnlyCapabilitiesInfo> crateApiGetWatchOnlyCapabilities({required String walletId });
+  Future<void> crateApiMarkAddressUsed({
+    required String walletId,
+    required String address,
+  });
 
-Future<bool> crateApiHasAppPassphrase();
+  Future<String> crateApiNextReceiveAddress({required String walletId});
 
-Future<bool> crateApiHasDuressPassphrase();
+  Future<BigInt> crateApiParseAmount({required String arrr});
 
-Future<bool> crateApiHasPanicPin();
+  Future<void> crateApiRenameWallet({
+    required String walletId,
+    required String newName,
+  });
 
-Future<String> crateApiImportIvk({required String name , String? saplingIvk , String? orchardIvk , required int birthday });
+  Future<void> crateApiRescan({
+    required String walletId,
+    required int fromHeight,
+  });
 
-Future<String> crateApiImportIvkAsWatchOnly({required String name , required String ivk , required int birthdayHeight });
+  Future<void> crateApiResealDbKeysForBiometrics();
 
-Future<PlatformInt64> crateApiImportSpendingKey({required String walletId , String? saplingKey , String? orchardKey , String? label , required int birthdayHeight });
+  Future<String> crateApiRestoreWallet({
+    required String name,
+    required String mnemonic,
+    String? passphraseOpt,
+    int? birthdayOpt,
+  });
 
-Future<bool> crateApiIsBackgroundSyncNeeded({required String walletId });
+  Future<void> crateApiRotateTorExit();
 
-Future<bool> crateApiIsDecoyMode();
+  Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook({
+    required String walletId,
+    required String query,
+  });
 
-Future<bool> crateApiIsSyncRunning({required String walletId });
+  Future<void> crateApiSetAddressColorTag({
+    required String walletId,
+    required String addr,
+    required AddressBookColorTag colorTag,
+  });
 
-Future<void> crateApiLabelAddress({required String walletId , required String addr , required String label });
+  Future<void> crateApiSetAppPassphrase({required String passphrase});
 
-Future<LightdEndpoint> crateApiLightdEndpointDefault();
+  Future<void> crateApiSetAutoConsolidationEnabled({
+    required String walletId,
+    required bool enabled,
+  });
 
-Future<String> crateApiLightdEndpointDisplayString({required LightdEndpoint that });
+  Future<void> crateApiSetDecoyWalletName({required String name});
 
-Future<String> crateApiLightdEndpointUrl({required LightdEndpoint that });
+  Future<String> crateApiSetDuressPassphrase({String? customPassphrase});
 
-Future<List<AddressBalanceInfo>> crateApiListAddressBalances({required String walletId , PlatformInt64? keyId });
+  Future<void> crateApiSetLightdEndpoint({
+    required String walletId,
+    required String url,
+    String? tlsPinOpt,
+  });
 
-Future<List<AddressBookEntryFfi>> crateApiListAddressBook({required String walletId });
+  Future<void> crateApiSetPanicPin({required String pin});
 
-Future<List<AddressInfo>> crateApiListAddresses({required String walletId });
+  Future<void> crateApiSetTorBridgeSettings({
+    required bool useBridges,
+    required bool fallbackToBridges,
+    required String transport,
+    required List<String> bridgeLines,
+    String? transportPath,
+  });
 
-Future<List<KeyAddressInfo>> crateApiListAddressesForKey({required String walletId , required PlatformInt64 keyId });
+  Future<void> crateApiSetTunnel({required TunnelMode mode});
 
-Future<List<KeyGroupInfo>> crateApiListKeyGroups({required String walletId });
+  Future<void> crateApiSetWalletBirthdayHeight({
+    required String walletId,
+    required int birthdayHeight,
+  });
 
-Future<List<TxInfo>> crateApiListTransactions({required String walletId , int? limit });
+  Future<void> crateApiShutdownTransport();
 
-Future<List<WalletMeta>> crateApiListWallets();
+  Future<SignedTx> crateApiSignTx({
+    required String walletId,
+    required PendingTx pending,
+  });
 
-Future<void> crateApiMarkAddressUsed({required String walletId , required String address });
+  Future<SignedTx> crateApiSignTxFiltered({
+    required String walletId,
+    required PendingTx pending,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  });
 
-Future<String> crateApiNextReceiveAddress({required String walletId });
+  Future<SignedTx> crateApiSignTxForKey({
+    required String walletId,
+    required PendingTx pending,
+    required PlatformInt64 keyId,
+  });
 
-Future<BigInt> crateApiParseAmount({required String arrr });
+  Future<String> crateApiSkipSeedBiometric();
 
-Future<void> crateApiRenameWallet({required String walletId , required String newName });
+  Future<BackgroundSyncResult> crateApiStartBackgroundSync({
+    required String walletId,
+    String? mode,
+  });
 
-Future<void> crateApiRescan({required String walletId , required int fromHeight });
+  Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin({
+    String? mode,
+  });
 
-Future<void> crateApiResealDbKeysForBiometrics();
+  Future<String> crateApiStartSeedExport({required String walletId});
 
-Future<String> crateApiRestoreWallet({required String name , required String mnemonic , String? passphraseOpt , int? birthdayOpt });
+  Future<void> crateApiStartSync({
+    required String walletId,
+    required SyncMode mode,
+  });
 
-Future<void> crateApiRotateTorExit();
+  Future<void> crateApiSwitchWallet({required String walletId});
 
-Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook({required String walletId , required String query });
+  Future<SyncStatus> crateApiSyncStatus({required String walletId});
 
-Future<void> crateApiSetAddressColorTag({required String walletId , required String addr , required AddressBookColorTag colorTag });
+  Future<NodeTestResult> crateApiTestNode({
+    required String url,
+    String? tlsPin,
+  });
 
-Future<void> crateApiSetAppPassphrase({required String passphrase });
+  Future<bool> crateApiToggleAddressBookFavorite({
+    required String walletId,
+    required PlatformInt64 id,
+  });
 
-Future<void> crateApiSetAutoConsolidationEnabled({required String walletId , required bool enabled });
+  Future<void> crateApiUnlockApp({required String passphrase});
 
-Future<void> crateApiSetDecoyWalletName({required String name });
+  Future<AddressBookEntryFfi> crateApiUpdateAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+    String? label,
+    String? notes,
+    AddressBookColorTag? colorTag,
+    bool? isFavorite,
+  });
 
-Future<String> crateApiSetDuressPassphrase({String? customPassphrase });
+  Future<bool> crateApiValidateMnemonic({required String mnemonic});
 
-Future<void> crateApiSetLightdEndpoint({required String walletId , required String url , String? tlsPinOpt });
+  Future<bool> crateApiVerifyAppPassphrase({required String passphrase});
 
-Future<void> crateApiSetPanicPin({required String pin });
+  Future<bool> crateApiVerifyDuressPassphrase({
+    required String passphrase,
+    required String hash,
+  });
 
-Future<void> crateApiSetTorBridgeSettings({required bool useBridges , required bool fallbackToBridges , required String transport , required List<String> bridgeLines , String? transportPath });
+  Future<bool> crateApiVerifyPanicPin({required String pin});
 
-Future<void> crateApiSetTunnel({required TunnelMode mode });
+  Future<bool> crateApiWalletRegistryExists();
 
-Future<void> crateApiSetWalletBirthdayHeight({required String walletId , required int birthdayHeight });
+  Future<WitnessRefreshOutcome> crateApiWitnessRefreshOutcomeDefault();
+}
 
-Future<void> crateApiShutdownTransport();
+class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
+  RustLibApiImpl({
+    required super.handler,
+    required super.wire,
+    required super.generalizedFrbRustBinding,
+    required super.portManager,
+  });
 
-Future<SignedTx> crateApiSignTx({required String walletId , required PendingTx pending });
-
-Future<SignedTx> crateApiSignTxFiltered({required String walletId , required PendingTx pending , Int64List? keyIdsFilter , Int64List? addressIdsFilter });
-
-Future<SignedTx> crateApiSignTxForKey({required String walletId , required PendingTx pending , required PlatformInt64 keyId });
-
-Future<String> crateApiSkipSeedBiometric();
-
-Future<BackgroundSyncResult> crateApiStartBackgroundSync({required String walletId , String? mode });
-
-Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin({String? mode });
-
-Future<String> crateApiStartSeedExport({required String walletId });
-
-Future<void> crateApiStartSync({required String walletId , required SyncMode mode });
-
-Future<void> crateApiSwitchWallet({required String walletId });
-
-Future<SyncStatus> crateApiSyncStatus({required String walletId });
-
-Future<NodeTestResult> crateApiTestNode({required String url , String? tlsPin });
-
-Future<bool> crateApiToggleAddressBookFavorite({required String walletId , required PlatformInt64 id });
-
-Future<void> crateApiUnlockApp({required String passphrase });
-
-Future<AddressBookEntryFfi> crateApiUpdateAddressBookEntry({required String walletId , required PlatformInt64 id , String? label , String? notes , AddressBookColorTag? colorTag , bool? isFavorite });
-
-Future<bool> crateApiValidateMnemonic({required String mnemonic });
-
-Future<bool> crateApiVerifyAppPassphrase({required String passphrase });
-
-Future<bool> crateApiVerifyDuressPassphrase({required String passphrase , required String hash });
-
-Future<bool> crateApiVerifyPanicPin({required String pin });
-
-Future<bool> crateApiWalletRegistryExists();
-
-Future<WitnessRefreshOutcome> crateApiWitnessRefreshOutcomeDefault();
-
-
-                }
-                
-
-                class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
-                  RustLibApiImpl({
-                    required super.handler,
-                    required super.wire,
-                    required super.generalizedFrbRustBinding,
-                    required super.portManager,
-                  });
-
-                  @override Future<String> crateApiAcknowledgeSeedWarning()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__acknowledge_seed_warning(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiAcknowledgeSeedWarning() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__acknowledge_seed_warning(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiAcknowledgeSeedWarningConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiAcknowledgeSeedWarningConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiAcknowledgeSeedWarningConstMeta =>
+      const TaskConstMeta(debugName: "acknowledge_seed_warning", argNames: []);
 
-        TaskConstMeta get kCrateApiAcknowledgeSeedWarningConstMeta => const TaskConstMeta(
-            debugName: "acknowledge_seed_warning",
-            argNames: [],
-        );
-        
-
-@override Future<AddressBookEntryFfi> crateApiAddAddressBookEntry({required String walletId , required String address , required String label , String? notes , required AddressBookColorTag colorTag })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(address);
-var arg2 = cst_encode_String(label);
-var arg3 = cst_encode_opt_String(notes);
-var arg4 = cst_encode_address_book_color_tag(colorTag);
-            return wire.wire__crate__api__add_address_book_entry(port_, arg0, arg1, arg2, arg3, arg4);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<AddressBookEntryFfi> crateApiAddAddressBookEntry({
+    required String walletId,
+    required String address,
+    required String label,
+    String? notes,
+    required AddressBookColorTag colorTag,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          var arg2 = cst_encode_String(label);
+          var arg3 = cst_encode_opt_String(notes);
+          var arg4 = cst_encode_address_book_color_tag(colorTag);
+          return wire.wire__crate__api__add_address_book_entry(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_address_book_entry_ffi,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiAddAddressBookEntryConstMeta,
-            argValues: [walletId, address, label, notes, colorTag],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiAddAddressBookEntryConstMeta,
+        argValues: [walletId, address, label, notes, colorTag],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiAddAddressBookEntryConstMeta =>
+      const TaskConstMeta(
+        debugName: "add_address_book_entry",
+        argNames: ["walletId", "address", "label", "notes", "colorTag"],
+      );
 
-        TaskConstMeta get kCrateApiAddAddressBookEntryConstMeta => const TaskConstMeta(
-            debugName: "add_address_book_entry",
-            argNames: ["walletId", "address", "label", "notes", "colorTag"],
-        );
-        
-
-@override Future<bool> crateApiAddressExistsInBook({required String walletId , required String address })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(address);
-            return wire.wire__crate__api__address_exists_in_book(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiAddressExistsInBook({
+    required String walletId,
+    required String address,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          return wire.wire__crate__api__address_exists_in_book(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiAddressExistsInBookConstMeta,
-            argValues: [walletId, address],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiAddressExistsInBookConstMeta,
+        argValues: [walletId, address],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiAddressExistsInBookConstMeta =>
+      const TaskConstMeta(
+        debugName: "address_exists_in_book",
+        argNames: ["walletId", "address"],
+      );
 
-        TaskConstMeta get kCrateApiAddressExistsInBookConstMeta => const TaskConstMeta(
-            debugName: "address_exists_in_book",
-            argNames: ["walletId", "address"],
-        );
-        
-
-@override Future<bool> crateApiAreSeedScreenshotsBlocked()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__are_seed_screenshots_blocked(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiAreSeedScreenshotsBlocked() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__are_seed_screenshots_blocked(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiAreSeedScreenshotsBlockedConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiAreSeedScreenshotsBlockedConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiAreSeedScreenshotsBlockedConstMeta =>
+      const TaskConstMeta(
+        debugName: "are_seed_screenshots_blocked",
+        argNames: [],
+      );
 
-        TaskConstMeta get kCrateApiAreSeedScreenshotsBlockedConstMeta => const TaskConstMeta(
-            debugName: "are_seed_screenshots_blocked",
-            argNames: [],
-        );
-        
-
-@override Future<void> crateApiBootstrapTunnel({required TunnelMode mode })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_box_autoadd_tunnel_mode(mode);
-            return wire.wire__crate__api__bootstrap_tunnel(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiBootstrapTunnel({required TunnelMode mode}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_tunnel_mode(mode);
+          return wire.wire__crate__api__bootstrap_tunnel(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiBootstrapTunnelConstMeta,
-            argValues: [mode],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiBootstrapTunnelConstMeta,
+        argValues: [mode],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiBootstrapTunnelConstMeta =>
+      const TaskConstMeta(debugName: "bootstrap_tunnel", argNames: ["mode"]);
 
-        TaskConstMeta get kCrateApiBootstrapTunnelConstMeta => const TaskConstMeta(
-            debugName: "bootstrap_tunnel",
-            argNames: ["mode"],
-        );
-        
-
-@override Future<String> crateApiBroadcastTx({required SignedTx signed })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_box_autoadd_signed_tx(signed);
-            return wire.wire__crate__api__broadcast_tx(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiBroadcastTx({required SignedTx signed}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_signed_tx(signed);
+          return wire.wire__crate__api__broadcast_tx(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiBroadcastTxConstMeta,
-            argValues: [signed],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiBroadcastTxConstMeta,
+        argValues: [signed],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiBroadcastTxConstMeta =>
+      const TaskConstMeta(debugName: "broadcast_tx", argNames: ["signed"]);
 
-        TaskConstMeta get kCrateApiBroadcastTxConstMeta => const TaskConstMeta(
-            debugName: "broadcast_tx",
-            argNames: ["signed"],
-        );
-        
-
-@override Future<PendingTx> crateApiBuildConsolidationTx({required String walletId , required PlatformInt64 keyId , required String targetAddress , BigInt? feeOpt })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_i_64(keyId);
-var arg2 = cst_encode_String(targetAddress);
-var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-            return wire.wire__crate__api__build_consolidation_tx(port_, arg0, arg1, arg2, arg3);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<PendingTx> crateApiBuildConsolidationTx({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required String targetAddress,
+    BigInt? feeOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          var arg2 = cst_encode_String(targetAddress);
+          var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          return wire.wire__crate__api__build_consolidation_tx(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_pending_tx,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiBuildConsolidationTxConstMeta,
-            argValues: [walletId, keyId, targetAddress, feeOpt],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiBuildConsolidationTxConstMeta,
+        argValues: [walletId, keyId, targetAddress, feeOpt],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiBuildConsolidationTxConstMeta =>
+      const TaskConstMeta(
+        debugName: "build_consolidation_tx",
+        argNames: ["walletId", "keyId", "targetAddress", "feeOpt"],
+      );
 
-        TaskConstMeta get kCrateApiBuildConsolidationTxConstMeta => const TaskConstMeta(
-            debugName: "build_consolidation_tx",
-            argNames: ["walletId", "keyId", "targetAddress", "feeOpt"],
-        );
-        
-
-@override Future<PendingTx> crateApiBuildSweepTx({required String walletId , required String targetAddress , BigInt? feeOpt , Int64List? keyIdsFilter , Int64List? addressIdsFilter })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(targetAddress);
-var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
-var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
-            return wire.wire__crate__api__build_sweep_tx(port_, arg0, arg1, arg2, arg3, arg4);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<PendingTx> crateApiBuildSweepTx({
+    required String walletId,
+    required String targetAddress,
+    BigInt? feeOpt,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(targetAddress);
+          var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
+          var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
+          return wire.wire__crate__api__build_sweep_tx(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_pending_tx,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiBuildSweepTxConstMeta,
-            argValues: [walletId, targetAddress, feeOpt, keyIdsFilter, addressIdsFilter],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiBuildSweepTxConstMeta,
+        argValues: [
+          walletId,
+          targetAddress,
+          feeOpt,
+          keyIdsFilter,
+          addressIdsFilter,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiBuildSweepTxConstMeta => const TaskConstMeta(
+    debugName: "build_sweep_tx",
+    argNames: [
+      "walletId",
+      "targetAddress",
+      "feeOpt",
+      "keyIdsFilter",
+      "addressIdsFilter",
+    ],
+  );
 
-        TaskConstMeta get kCrateApiBuildSweepTxConstMeta => const TaskConstMeta(
-            debugName: "build_sweep_tx",
-            argNames: ["walletId", "targetAddress", "feeOpt", "keyIdsFilter", "addressIdsFilter"],
-        );
-        
-
-@override Future<PendingTx> crateApiBuildTx({required String walletId , required List<Output> outputs , BigInt? feeOpt })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_list_output(outputs);
-var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-            return wire.wire__crate__api__build_tx(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<PendingTx> crateApiBuildTx({
+    required String walletId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_list_output(outputs);
+          var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          return wire.wire__crate__api__build_tx(port_, arg0, arg1, arg2);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_pending_tx,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiBuildTxConstMeta,
-            argValues: [walletId, outputs, feeOpt],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiBuildTxConstMeta,
+        argValues: [walletId, outputs, feeOpt],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiBuildTxConstMeta => const TaskConstMeta(
+    debugName: "build_tx",
+    argNames: ["walletId", "outputs", "feeOpt"],
+  );
 
-        TaskConstMeta get kCrateApiBuildTxConstMeta => const TaskConstMeta(
-            debugName: "build_tx",
-            argNames: ["walletId", "outputs", "feeOpt"],
-        );
-        
-
-@override Future<PendingTx> crateApiBuildTxFiltered({required String walletId , required List<Output> outputs , BigInt? feeOpt , Int64List? keyIdsFilter , Int64List? addressIdsFilter })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_list_output(outputs);
-var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
-var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
-            return wire.wire__crate__api__build_tx_filtered(port_, arg0, arg1, arg2, arg3, arg4);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<PendingTx> crateApiBuildTxFiltered({
+    required String walletId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_list_output(outputs);
+          var arg2 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          var arg3 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
+          var arg4 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
+          return wire.wire__crate__api__build_tx_filtered(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_pending_tx,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiBuildTxFilteredConstMeta,
-            argValues: [walletId, outputs, feeOpt, keyIdsFilter, addressIdsFilter],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiBuildTxFilteredConstMeta,
+        argValues: [walletId, outputs, feeOpt, keyIdsFilter, addressIdsFilter],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiBuildTxFilteredConstMeta => const TaskConstMeta(
+    debugName: "build_tx_filtered",
+    argNames: [
+      "walletId",
+      "outputs",
+      "feeOpt",
+      "keyIdsFilter",
+      "addressIdsFilter",
+    ],
+  );
 
-        TaskConstMeta get kCrateApiBuildTxFilteredConstMeta => const TaskConstMeta(
-            debugName: "build_tx_filtered",
-            argNames: ["walletId", "outputs", "feeOpt", "keyIdsFilter", "addressIdsFilter"],
-        );
-        
-
-@override Future<PendingTx> crateApiBuildTxForKey({required String walletId , required PlatformInt64 keyId , required List<Output> outputs , BigInt? feeOpt })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_i_64(keyId);
-var arg2 = cst_encode_list_output(outputs);
-var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
-            return wire.wire__crate__api__build_tx_for_key(port_, arg0, arg1, arg2, arg3);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<PendingTx> crateApiBuildTxForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required List<Output> outputs,
+    BigInt? feeOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          var arg2 = cst_encode_list_output(outputs);
+          var arg3 = cst_encode_opt_box_autoadd_u_64(feeOpt);
+          return wire.wire__crate__api__build_tx_for_key(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_pending_tx,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiBuildTxForKeyConstMeta,
-            argValues: [walletId, keyId, outputs, feeOpt],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiBuildTxForKeyConstMeta,
+        argValues: [walletId, keyId, outputs, feeOpt],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiBuildTxForKeyConstMeta => const TaskConstMeta(
+    debugName: "build_tx_for_key",
+    argNames: ["walletId", "keyId", "outputs", "feeOpt"],
+  );
 
-        TaskConstMeta get kCrateApiBuildTxForKeyConstMeta => const TaskConstMeta(
-            debugName: "build_tx_for_key",
-            argNames: ["walletId", "keyId", "outputs", "feeOpt"],
-        );
-        
-
-@override Future<void> crateApiCancelSeedExport()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__cancel_seed_export(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiCancelSeedExport() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__cancel_seed_export(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiCancelSeedExportConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiCancelSeedExportConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiCancelSeedExportConstMeta =>
+      const TaskConstMeta(debugName: "cancel_seed_export", argNames: []);
 
-        TaskConstMeta get kCrateApiCancelSeedExportConstMeta => const TaskConstMeta(
-            debugName: "cancel_seed_export",
-            argNames: [],
-        );
-        
-
-@override Future<void> crateApiCancelSync({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__cancel_sync(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiCancelSync({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__cancel_sync(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiCancelSyncConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiCancelSyncConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiCancelSyncConstMeta =>
+      const TaskConstMeta(debugName: "cancel_sync", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiCancelSyncConstMeta => const TaskConstMeta(
-            debugName: "cancel_sync",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<void> crateApiChangeAppPassphrase({required String currentPassphrase , required String newPassphrase })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(currentPassphrase);
-var arg1 = cst_encode_String(newPassphrase);
-            return wire.wire__crate__api__change_app_passphrase(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiChangeAppPassphrase({
+    required String currentPassphrase,
+    required String newPassphrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(currentPassphrase);
+          var arg1 = cst_encode_String(newPassphrase);
+          return wire.wire__crate__api__change_app_passphrase(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiChangeAppPassphraseConstMeta,
-            argValues: [currentPassphrase, newPassphrase],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiChangeAppPassphraseConstMeta,
+        argValues: [currentPassphrase, newPassphrase],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiChangeAppPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "change_app_passphrase",
+        argNames: ["currentPassphrase", "newPassphrase"],
+      );
 
-        TaskConstMeta get kCrateApiChangeAppPassphraseConstMeta => const TaskConstMeta(
-            debugName: "change_app_passphrase",
-            argNames: ["currentPassphrase", "newPassphrase"],
-        );
-        
-
-@override Future<void> crateApiChangeAppPassphraseWithCached({required String newPassphrase })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(newPassphrase);
-            return wire.wire__crate__api__change_app_passphrase_with_cached(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiChangeAppPassphraseWithCached({
+    required String newPassphrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(newPassphrase);
+          return wire.wire__crate__api__change_app_passphrase_with_cached(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiChangeAppPassphraseWithCachedConstMeta,
-            argValues: [newPassphrase],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiChangeAppPassphraseWithCachedConstMeta,
+        argValues: [newPassphrase],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiChangeAppPassphraseWithCachedConstMeta =>
+      const TaskConstMeta(
+        debugName: "change_app_passphrase_with_cached",
+        argNames: ["newPassphrase"],
+      );
 
-        TaskConstMeta get kCrateApiChangeAppPassphraseWithCachedConstMeta => const TaskConstMeta(
-            debugName: "change_app_passphrase_with_cached",
-            argNames: ["newPassphrase"],
-        );
-        
-
-@override Future<void> crateApiClearDuressPassphrase()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__clear_duress_passphrase(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiClearDuressPassphrase() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__clear_duress_passphrase(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiClearDuressPassphraseConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiClearDuressPassphraseConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiClearDuressPassphraseConstMeta =>
+      const TaskConstMeta(debugName: "clear_duress_passphrase", argNames: []);
 
-        TaskConstMeta get kCrateApiClearDuressPassphraseConstMeta => const TaskConstMeta(
-            debugName: "clear_duress_passphrase",
-            argNames: [],
-        );
-        
-
-@override Future<void> crateApiClearPanicPin()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__clear_panic_pin(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiClearPanicPin() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__clear_panic_pin(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiClearPanicPinConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiClearPanicPinConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiClearPanicPinConstMeta =>
+      const TaskConstMeta(debugName: "clear_panic_pin", argNames: []);
 
-        TaskConstMeta get kCrateApiClearPanicPinConstMeta => const TaskConstMeta(
-            debugName: "clear_panic_pin",
-            argNames: [],
-        );
-        
-
-@override Future<String> crateApiCompleteSeedBiometric({required bool success })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_bool(success);
-            return wire.wire__crate__api__complete_seed_biometric(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiCompleteSeedBiometric({required bool success}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_bool(success);
+          return wire.wire__crate__api__complete_seed_biometric(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiCompleteSeedBiometricConstMeta,
-            argValues: [success],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiCompleteSeedBiometricConstMeta,
+        argValues: [success],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiCompleteSeedBiometricConstMeta =>
+      const TaskConstMeta(
+        debugName: "complete_seed_biometric",
+        argNames: ["success"],
+      );
 
-        TaskConstMeta get kCrateApiCompleteSeedBiometricConstMeta => const TaskConstMeta(
-            debugName: "complete_seed_biometric",
-            argNames: ["success"],
-        );
-        
-
-@override Future<String> crateApiCreateWallet({required String name , int? entropyLen , int? birthdayOpt })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(name);
-var arg1 = cst_encode_opt_box_autoadd_u_32(entropyLen);
-var arg2 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
-            return wire.wire__crate__api__create_wallet(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiCreateWallet({
+    required String name,
+    int? entropyLen,
+    int? birthdayOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          var arg1 = cst_encode_opt_box_autoadd_u_32(entropyLen);
+          var arg2 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
+          return wire.wire__crate__api__create_wallet(port_, arg0, arg1, arg2);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiCreateWalletConstMeta,
-            argValues: [name, entropyLen, birthdayOpt],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiCreateWalletConstMeta,
+        argValues: [name, entropyLen, birthdayOpt],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiCreateWalletConstMeta => const TaskConstMeta(
+    debugName: "create_wallet",
+    argNames: ["name", "entropyLen", "birthdayOpt"],
+  );
 
-        TaskConstMeta get kCrateApiCreateWalletConstMeta => const TaskConstMeta(
-            debugName: "create_wallet",
-            argNames: ["name", "entropyLen", "birthdayOpt"],
-        );
-        
-
-@override Future<String> crateApiCurrentReceiveAddress({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__current_receive_address(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiCurrentReceiveAddress({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__current_receive_address(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiCurrentReceiveAddressConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiCurrentReceiveAddressConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiCurrentReceiveAddressConstMeta =>
+      const TaskConstMeta(
+        debugName: "current_receive_address",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiCurrentReceiveAddressConstMeta => const TaskConstMeta(
-            debugName: "current_receive_address",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<void> crateApiDeleteAddressBookEntry({required String walletId , required PlatformInt64 id })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_i_64(id);
-            return wire.wire__crate__api__delete_address_book_entry(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiDeleteAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(id);
+          return wire.wire__crate__api__delete_address_book_entry(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiDeleteAddressBookEntryConstMeta,
-            argValues: [walletId, id],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiDeleteAddressBookEntryConstMeta,
+        argValues: [walletId, id],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiDeleteAddressBookEntryConstMeta =>
+      const TaskConstMeta(
+        debugName: "delete_address_book_entry",
+        argNames: ["walletId", "id"],
+      );
 
-        TaskConstMeta get kCrateApiDeleteAddressBookEntryConstMeta => const TaskConstMeta(
-            debugName: "delete_address_book_entry",
-            argNames: ["walletId", "id"],
-        );
-        
-
-@override Future<void> crateApiDeleteWallet({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__delete_wallet(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiDeleteWallet({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__delete_wallet(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiDeleteWalletConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiDeleteWalletConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiDeleteWalletConstMeta =>
+      const TaskConstMeta(debugName: "delete_wallet", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiDeleteWalletConstMeta => const TaskConstMeta(
-            debugName: "delete_wallet",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<BigInt> crateApiEstimateFee({required BigInt numOutputs , required bool hasMemo , String? feePolicy })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_usize(numOutputs);
-var arg1 = cst_encode_bool(hasMemo);
-var arg2 = cst_encode_opt_String(feePolicy);
-            return wire.wire__crate__api__estimate_fee(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<BigInt> crateApiEstimateFee({
+    required BigInt numOutputs,
+    required bool hasMemo,
+    String? feePolicy,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_usize(numOutputs);
+          var arg1 = cst_encode_bool(hasMemo);
+          var arg2 = cst_encode_opt_String(feePolicy);
+          return wire.wire__crate__api__estimate_fee(port_, arg0, arg1, arg2);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_u_64,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiEstimateFeeConstMeta,
-            argValues: [numOutputs, hasMemo, feePolicy],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiEstimateFeeConstMeta,
+        argValues: [numOutputs, hasMemo, feePolicy],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiEstimateFeeConstMeta => const TaskConstMeta(
+    debugName: "estimate_fee",
+    argNames: ["numOutputs", "hasMemo", "feePolicy"],
+  );
 
-        TaskConstMeta get kCrateApiEstimateFeeConstMeta => const TaskConstMeta(
-            debugName: "estimate_fee",
-            argNames: ["numOutputs", "hasMemo", "feePolicy"],
-        );
-        
-
-@override Future<void> crateApiExitDecoyMode()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__exit_decoy_mode(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiExitDecoyMode() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__exit_decoy_mode(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiExitDecoyModeConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiExitDecoyModeConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiExitDecoyModeConstMeta =>
+      const TaskConstMeta(debugName: "exit_decoy_mode", argNames: []);
 
-        TaskConstMeta get kCrateApiExitDecoyModeConstMeta => const TaskConstMeta(
-            debugName: "exit_decoy_mode",
-            argNames: [],
-        );
-        
-
-@override Future<String> crateApiExportIvk({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__export_ivk(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiExportIvk({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_ivk(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiExportIvkConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiExportIvkConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiExportIvkConstMeta =>
+      const TaskConstMeta(debugName: "export_ivk", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiExportIvkConstMeta => const TaskConstMeta(
-            debugName: "export_ivk",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<String> crateApiExportIvkSecure({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__export_ivk_secure(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiExportIvkSecure({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_ivk_secure(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiExportIvkSecureConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiExportIvkSecureConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiExportIvkSecureConstMeta => const TaskConstMeta(
+    debugName: "export_ivk_secure",
+    argNames: ["walletId"],
+  );
 
-        TaskConstMeta get kCrateApiExportIvkSecureConstMeta => const TaskConstMeta(
-            debugName: "export_ivk_secure",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<KeyExportInfo> crateApiExportKeyGroupKeys({required String walletId , required PlatformInt64 keyId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_i_64(keyId);
-            return wire.wire__crate__api__export_key_group_keys(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<KeyExportInfo> crateApiExportKeyGroupKeys({
+    required String walletId,
+    required PlatformInt64 keyId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          return wire.wire__crate__api__export_key_group_keys(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_key_export_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiExportKeyGroupKeysConstMeta,
-            argValues: [walletId, keyId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiExportKeyGroupKeysConstMeta,
+        argValues: [walletId, keyId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiExportKeyGroupKeysConstMeta => const TaskConstMeta(
+    debugName: "export_key_group_keys",
+    argNames: ["walletId", "keyId"],
+  );
 
-        TaskConstMeta get kCrateApiExportKeyGroupKeysConstMeta => const TaskConstMeta(
-            debugName: "export_key_group_keys",
-            argNames: ["walletId", "keyId"],
-        );
-        
-
-@override Future<String> crateApiExportOrchardIvk({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__export_orchard_ivk(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiExportOrchardIvk({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_orchard_ivk(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiExportOrchardIvkConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiExportOrchardIvkConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiExportOrchardIvkConstMeta => const TaskConstMeta(
+    debugName: "export_orchard_ivk",
+    argNames: ["walletId"],
+  );
 
-        TaskConstMeta get kCrateApiExportOrchardIvkConstMeta => const TaskConstMeta(
-            debugName: "export_orchard_ivk",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<String> crateApiExportOrchardViewingKey({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__export_orchard_viewing_key(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiExportOrchardViewingKey({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_orchard_viewing_key(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiExportOrchardViewingKeyConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiExportOrchardViewingKeyConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiExportOrchardViewingKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_orchard_viewing_key",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiExportOrchardViewingKeyConstMeta => const TaskConstMeta(
-            debugName: "export_orchard_viewing_key",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<String> crateApiExportSeed({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__export_seed(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiExportSeed({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_seed(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiExportSeedConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiExportSeedConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiExportSeedConstMeta =>
+      const TaskConstMeta(debugName: "export_seed", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiExportSeedConstMeta => const TaskConstMeta(
-            debugName: "export_seed",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<List<String>> crateApiExportSeedWithCachedPassphrase({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__export_seed_with_cached_passphrase(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<String>> crateApiExportSeedWithCachedPassphrase({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_seed_with_cached_passphrase(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiExportSeedWithCachedPassphraseConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiExportSeedWithCachedPassphraseConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiExportSeedWithCachedPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_seed_with_cached_passphrase",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiExportSeedWithCachedPassphraseConstMeta => const TaskConstMeta(
-            debugName: "export_seed_with_cached_passphrase",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<List<String>> crateApiExportSeedWithPassphrase({required String walletId , required String passphrase })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(passphrase);
-            return wire.wire__crate__api__export_seed_with_passphrase(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<String>> crateApiExportSeedWithPassphrase({
+    required String walletId,
+    required String passphrase,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(passphrase);
+          return wire.wire__crate__api__export_seed_with_passphrase(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiExportSeedWithPassphraseConstMeta,
-            argValues: [walletId, passphrase],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiExportSeedWithPassphraseConstMeta,
+        argValues: [walletId, passphrase],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiExportSeedWithPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_seed_with_passphrase",
+        argNames: ["walletId", "passphrase"],
+      );
 
-        TaskConstMeta get kCrateApiExportSeedWithPassphraseConstMeta => const TaskConstMeta(
-            debugName: "export_seed_with_passphrase",
-            argNames: ["walletId", "passphrase"],
-        );
-        
-
-@override Future<String?> crateApiFetchTransactionMemo({required String walletId , required String txid , int? outputIndex })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(txid);
-var arg2 = cst_encode_opt_box_autoadd_u_32(outputIndex);
-            return wire.wire__crate__api__fetch_transaction_memo(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String?> crateApiFetchTransactionMemo({
+    required String walletId,
+    required String txid,
+    int? outputIndex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(txid);
+          var arg2 = cst_encode_opt_box_autoadd_u_32(outputIndex);
+          return wire.wire__crate__api__fetch_transaction_memo(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiFetchTransactionMemoConstMeta,
-            argValues: [walletId, txid, outputIndex],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiFetchTransactionMemoConstMeta,
+        argValues: [walletId, txid, outputIndex],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiFetchTransactionMemoConstMeta =>
+      const TaskConstMeta(
+        debugName: "fetch_transaction_memo",
+        argNames: ["walletId", "txid", "outputIndex"],
+      );
 
-        TaskConstMeta get kCrateApiFetchTransactionMemoConstMeta => const TaskConstMeta(
-            debugName: "fetch_transaction_memo",
-            argNames: ["walletId", "txid", "outputIndex"],
-        );
-        
-
-@override Future<String> crateApiFormatAmount({required BigInt arrrtoshis })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_u_64(arrrtoshis);
-            return wire.wire__crate__api__format_amount(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiFormatAmount({required BigInt arrrtoshis}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_u_64(arrrtoshis);
+          return wire.wire__crate__api__format_amount(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiFormatAmountConstMeta,
-            argValues: [arrrtoshis],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiFormatAmountConstMeta,
+        argValues: [arrrtoshis],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiFormatAmountConstMeta =>
+      const TaskConstMeta(debugName: "format_amount", argNames: ["arrrtoshis"]);
 
-        TaskConstMeta get kCrateApiFormatAmountConstMeta => const TaskConstMeta(
-            debugName: "format_amount",
-            argNames: ["arrrtoshis"],
-        );
-        
-
-@override Future<String> crateApiGenerateAddressForKey({required String walletId , required PlatformInt64 keyId , required bool useOrchard })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_i_64(keyId);
-var arg2 = cst_encode_bool(useOrchard);
-            return wire.wire__crate__api__generate_address_for_key(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiGenerateAddressForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+    required bool useOrchard,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          var arg2 = cst_encode_bool(useOrchard);
+          return wire.wire__crate__api__generate_address_for_key(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGenerateAddressForKeyConstMeta,
-            argValues: [walletId, keyId, useOrchard],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGenerateAddressForKeyConstMeta,
+        argValues: [walletId, keyId, useOrchard],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGenerateAddressForKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "generate_address_for_key",
+        argNames: ["walletId", "keyId", "useOrchard"],
+      );
 
-        TaskConstMeta get kCrateApiGenerateAddressForKeyConstMeta => const TaskConstMeta(
-            debugName: "generate_address_for_key",
-            argNames: ["walletId", "keyId", "useOrchard"],
-        );
-        
-
-@override Future<String> crateApiGenerateMnemonic({int? wordCount })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_opt_box_autoadd_u_32(wordCount);
-            return wire.wire__crate__api__generate_mnemonic(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiGenerateMnemonic({int? wordCount}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_opt_box_autoadd_u_32(wordCount);
+          return wire.wire__crate__api__generate_mnemonic(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGenerateMnemonicConstMeta,
-            argValues: [wordCount],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGenerateMnemonicConstMeta,
+        argValues: [wordCount],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGenerateMnemonicConstMeta => const TaskConstMeta(
+    debugName: "generate_mnemonic",
+    argNames: ["wordCount"],
+  );
 
-        TaskConstMeta get kCrateApiGenerateMnemonicConstMeta => const TaskConstMeta(
-            debugName: "generate_mnemonic",
-            argNames: ["wordCount"],
-        );
-        
-
-@override Future<String?> crateApiGetActiveWallet()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_active_wallet(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String?> crateApiGetActiveWallet() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_active_wallet(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetActiveWalletConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetActiveWalletConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetActiveWalletConstMeta =>
+      const TaskConstMeta(debugName: "get_active_wallet", argNames: []);
 
-        TaskConstMeta get kCrateApiGetActiveWalletConstMeta => const TaskConstMeta(
-            debugName: "get_active_wallet",
-            argNames: [],
-        );
-        
-
-@override Future<int> crateApiGetAddressBookCount({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_address_book_count(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<int> crateApiGetAddressBookCount({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_address_book_count(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_u_32,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetAddressBookCountConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetAddressBookCountConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetAddressBookCountConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_address_book_count",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiGetAddressBookCountConstMeta => const TaskConstMeta(
-            debugName: "get_address_book_count",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<AddressBookEntryFfi?> crateApiGetAddressBookEntry({required String walletId , required PlatformInt64 id })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_i_64(id);
-            return wire.wire__crate__api__get_address_book_entry(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(id);
+          return wire.wire__crate__api__get_address_book_entry(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_box_autoadd_address_book_entry_ffi,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetAddressBookEntryConstMeta,
-            argValues: [walletId, id],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetAddressBookEntryConstMeta,
+        argValues: [walletId, id],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetAddressBookEntryConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_address_book_entry",
+        argNames: ["walletId", "id"],
+      );
 
-        TaskConstMeta get kCrateApiGetAddressBookEntryConstMeta => const TaskConstMeta(
-            debugName: "get_address_book_entry",
-            argNames: ["walletId", "id"],
-        );
-        
-
-@override Future<AddressBookEntryFfi?> crateApiGetAddressBookEntryByAddress({required String walletId , required String address })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(address);
-            return wire.wire__crate__api__get_address_book_entry_by_address(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<AddressBookEntryFfi?> crateApiGetAddressBookEntryByAddress({
+    required String walletId,
+    required String address,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          return wire.wire__crate__api__get_address_book_entry_by_address(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_box_autoadd_address_book_entry_ffi,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetAddressBookEntryByAddressConstMeta,
-            argValues: [walletId, address],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetAddressBookEntryByAddressConstMeta,
+        argValues: [walletId, address],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetAddressBookEntryByAddressConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_address_book_entry_by_address",
+        argNames: ["walletId", "address"],
+      );
 
-        TaskConstMeta get kCrateApiGetAddressBookEntryByAddressConstMeta => const TaskConstMeta(
-            debugName: "get_address_book_entry_by_address",
-            argNames: ["walletId", "address"],
-        );
-        
-
-@override Future<List<AddressBookEntryFfi>> crateApiGetAddressBookFavorites({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_address_book_favorites(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<AddressBookEntryFfi>> crateApiGetAddressBookFavorites({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_address_book_favorites(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_address_book_entry_ffi,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetAddressBookFavoritesConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetAddressBookFavoritesConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetAddressBookFavoritesConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_address_book_favorites",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiGetAddressBookFavoritesConstMeta => const TaskConstMeta(
-            debugName: "get_address_book_favorites",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<int> crateApiGetAutoConsolidationCandidateCount({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_auto_consolidation_candidate_count(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<int> crateApiGetAutoConsolidationCandidateCount({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_auto_consolidation_candidate_count(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_u_32,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetAutoConsolidationCandidateCountConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetAutoConsolidationCandidateCountConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetAutoConsolidationCandidateCountConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_auto_consolidation_candidate_count",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiGetAutoConsolidationCandidateCountConstMeta => const TaskConstMeta(
-            debugName: "get_auto_consolidation_candidate_count",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<bool> crateApiGetAutoConsolidationEnabled({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_auto_consolidation_enabled(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiGetAutoConsolidationEnabled({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_auto_consolidation_enabled(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetAutoConsolidationEnabledConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetAutoConsolidationEnabledConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetAutoConsolidationEnabledConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_auto_consolidation_enabled",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiGetAutoConsolidationEnabledConstMeta => const TaskConstMeta(
-            debugName: "get_auto_consolidation_enabled",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<int> crateApiGetAutoConsolidationThreshold()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_auto_consolidation_threshold(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<int> crateApiGetAutoConsolidationThreshold() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_auto_consolidation_threshold(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_u_32,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetAutoConsolidationThresholdConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetAutoConsolidationThresholdConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetAutoConsolidationThresholdConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_auto_consolidation_threshold",
+        argNames: [],
+      );
 
-        TaskConstMeta get kCrateApiGetAutoConsolidationThresholdConstMeta => const TaskConstMeta(
-            debugName: "get_auto_consolidation_threshold",
-            argNames: [],
-        );
-        
-
-@override Future<Balance> crateApiGetBalance({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_balance(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<Balance> crateApiGetBalance({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_balance(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_balance,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetBalanceConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetBalanceConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetBalanceConstMeta =>
+      const TaskConstMeta(debugName: "get_balance", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiGetBalanceConstMeta => const TaskConstMeta(
-            debugName: "get_balance",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<BuildInfo> crateApiGetBuildInfo()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_build_info(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<BuildInfo> crateApiGetBuildInfo() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_build_info(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_build_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetBuildInfoConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetBuildInfoConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetBuildInfoConstMeta =>
+      const TaskConstMeta(debugName: "get_build_info", argNames: []);
 
-        TaskConstMeta get kCrateApiGetBuildInfoConstMeta => const TaskConstMeta(
-            debugName: "get_build_info",
-            argNames: [],
-        );
-        
-
-@override Future<CheckpointInfo?> crateApiGetCheckpointDetails({required String walletId , required int height })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_u_32(height);
-            return wire.wire__crate__api__get_checkpoint_details(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<CheckpointInfo?> crateApiGetCheckpointDetails({
+    required String walletId,
+    required int height,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(height);
+          return wire.wire__crate__api__get_checkpoint_details(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_box_autoadd_checkpoint_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetCheckpointDetailsConstMeta,
-            argValues: [walletId, height],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetCheckpointDetailsConstMeta,
+        argValues: [walletId, height],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetCheckpointDetailsConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_checkpoint_details",
+        argNames: ["walletId", "height"],
+      );
 
-        TaskConstMeta get kCrateApiGetCheckpointDetailsConstMeta => const TaskConstMeta(
-            debugName: "get_checkpoint_details",
-            argNames: ["walletId", "height"],
-        );
-        
-
-@override Future<String?> crateApiGetDuressPassphraseHash()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_duress_passphrase_hash(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String?> crateApiGetDuressPassphraseHash() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_duress_passphrase_hash(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetDuressPassphraseHashConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetDuressPassphraseHashConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetDuressPassphraseHashConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_duress_passphrase_hash",
+        argNames: [],
+      );
 
-        TaskConstMeta get kCrateApiGetDuressPassphraseHashConstMeta => const TaskConstMeta(
-            debugName: "get_duress_passphrase_hash",
-            argNames: [],
-        );
-        
-
-@override Future<FeeInfo> crateApiGetFeeInfo()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_fee_info(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<FeeInfo> crateApiGetFeeInfo() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_fee_info(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_fee_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetFeeInfoConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetFeeInfoConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetFeeInfoConstMeta =>
+      const TaskConstMeta(debugName: "get_fee_info", argNames: []);
 
-        TaskConstMeta get kCrateApiGetFeeInfoConstMeta => const TaskConstMeta(
-            debugName: "get_fee_info",
-            argNames: [],
-        );
-        
-
-@override Future<BigInt?> crateApiGetIvkClipboardRemaining()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_ivk_clipboard_remaining(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<BigInt?> crateApiGetIvkClipboardRemaining() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_ivk_clipboard_remaining(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_box_autoadd_u_64,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetIvkClipboardRemainingConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetIvkClipboardRemainingConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetIvkClipboardRemainingConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_ivk_clipboard_remaining",
+        argNames: [],
+      );
 
-        TaskConstMeta get kCrateApiGetIvkClipboardRemainingConstMeta => const TaskConstMeta(
-            debugName: "get_ivk_clipboard_remaining",
-            argNames: [],
-        );
-        
-
-@override Future<String?> crateApiGetLabelForAddress({required String walletId , required String address })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(address);
-            return wire.wire__crate__api__get_label_for_address(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String?> crateApiGetLabelForAddress({
+    required String walletId,
+    required String address,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          return wire.wire__crate__api__get_label_for_address(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetLabelForAddressConstMeta,
-            argValues: [walletId, address],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetLabelForAddressConstMeta,
+        argValues: [walletId, address],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetLabelForAddressConstMeta => const TaskConstMeta(
+    debugName: "get_label_for_address",
+    argNames: ["walletId", "address"],
+  );
 
-        TaskConstMeta get kCrateApiGetLabelForAddressConstMeta => const TaskConstMeta(
-            debugName: "get_label_for_address",
-            argNames: ["walletId", "address"],
-        );
-        
-
-@override Future<CheckpointInfo?> crateApiGetLastCheckpoint({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_last_checkpoint(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<CheckpointInfo?> crateApiGetLastCheckpoint({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_last_checkpoint(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_box_autoadd_checkpoint_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetLastCheckpointConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetLastCheckpointConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetLastCheckpointConstMeta => const TaskConstMeta(
+    debugName: "get_last_checkpoint",
+    argNames: ["walletId"],
+  );
 
-        TaskConstMeta get kCrateApiGetLastCheckpointConstMeta => const TaskConstMeta(
-            debugName: "get_last_checkpoint",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<String> crateApiGetLightdEndpoint({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_lightd_endpoint(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiGetLightdEndpoint({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_lightd_endpoint(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetLightdEndpointConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetLightdEndpointConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetLightdEndpointConstMeta => const TaskConstMeta(
+    debugName: "get_lightd_endpoint",
+    argNames: ["walletId"],
+  );
 
-        TaskConstMeta get kCrateApiGetLightdEndpointConstMeta => const TaskConstMeta(
-            debugName: "get_lightd_endpoint",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<LightdEndpoint> crateApiGetLightdEndpointConfig({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_lightd_endpoint_config(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<LightdEndpoint> crateApiGetLightdEndpointConfig({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_lightd_endpoint_config(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_lightd_endpoint,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetLightdEndpointConfigConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetLightdEndpointConfigConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetLightdEndpointConfigConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_lightd_endpoint_config",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiGetLightdEndpointConfigConstMeta => const TaskConstMeta(
-            debugName: "get_lightd_endpoint_config",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<NetworkInfo> crateApiGetNetworkInfo()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_network_info(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<NetworkInfo> crateApiGetNetworkInfo() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_network_info(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_network_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetNetworkInfoConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetNetworkInfoConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetNetworkInfoConstMeta =>
+      const TaskConstMeta(debugName: "get_network_info", argNames: []);
 
-        TaskConstMeta get kCrateApiGetNetworkInfoConstMeta => const TaskConstMeta(
-            debugName: "get_network_info",
-            argNames: [],
-        );
-        
-
-@override Future<List<AddressBookEntryFfi>> crateApiGetRecentlyUsedAddresses({required String walletId , required int limit })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_u_32(limit);
-            return wire.wire__crate__api__get_recently_used_addresses(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<AddressBookEntryFfi>> crateApiGetRecentlyUsedAddresses({
+    required String walletId,
+    required int limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(limit);
+          return wire.wire__crate__api__get_recently_used_addresses(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_address_book_entry_ffi,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetRecentlyUsedAddressesConstMeta,
-            argValues: [walletId, limit],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetRecentlyUsedAddressesConstMeta,
+        argValues: [walletId, limit],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetRecentlyUsedAddressesConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_recently_used_addresses",
+        argNames: ["walletId", "limit"],
+      );
 
-        TaskConstMeta get kCrateApiGetRecentlyUsedAddressesConstMeta => const TaskConstMeta(
-            debugName: "get_recently_used_addresses",
-            argNames: ["walletId", "limit"],
-        );
-        
-
-@override Future<String> crateApiGetRecommendedBackgroundSyncMode({required String walletId , required int minutesSinceLast })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_u_32(minutesSinceLast);
-            return wire.wire__crate__api__get_recommended_background_sync_mode(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiGetRecommendedBackgroundSyncMode({
+    required String walletId,
+    required int minutesSinceLast,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(minutesSinceLast);
+          return wire.wire__crate__api__get_recommended_background_sync_mode(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetRecommendedBackgroundSyncModeConstMeta,
-            argValues: [walletId, minutesSinceLast],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetRecommendedBackgroundSyncModeConstMeta,
+        argValues: [walletId, minutesSinceLast],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetRecommendedBackgroundSyncModeConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_recommended_background_sync_mode",
+        argNames: ["walletId", "minutesSinceLast"],
+      );
 
-        TaskConstMeta get kCrateApiGetRecommendedBackgroundSyncModeConstMeta => const TaskConstMeta(
-            debugName: "get_recommended_background_sync_mode",
-            argNames: ["walletId", "minutesSinceLast"],
-        );
-        
-
-@override Future<BigInt?> crateApiGetSeedClipboardRemaining()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_seed_clipboard_remaining(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<BigInt?> crateApiGetSeedClipboardRemaining() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_seed_clipboard_remaining(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_box_autoadd_u_64,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetSeedClipboardRemainingConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetSeedClipboardRemainingConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetSeedClipboardRemainingConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_seed_clipboard_remaining",
+        argNames: [],
+      );
 
-        TaskConstMeta get kCrateApiGetSeedClipboardRemainingConstMeta => const TaskConstMeta(
-            debugName: "get_seed_clipboard_remaining",
-            argNames: [],
-        );
-        
-
-@override Future<String> crateApiGetSeedExportState()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_seed_export_state(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiGetSeedExportState() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_seed_export_state(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetSeedExportStateConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetSeedExportStateConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetSeedExportStateConstMeta =>
+      const TaskConstMeta(debugName: "get_seed_export_state", argNames: []);
 
-        TaskConstMeta get kCrateApiGetSeedExportStateConstMeta => const TaskConstMeta(
-            debugName: "get_seed_export_state",
-            argNames: [],
-        );
-        
-
-@override Future<SeedExportWarnings> crateApiGetSeedExportWarnings()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_seed_export_warnings(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<SeedExportWarnings> crateApiGetSeedExportWarnings() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_seed_export_warnings(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_seed_export_warnings,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetSeedExportWarningsConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetSeedExportWarningsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetSeedExportWarningsConstMeta =>
+      const TaskConstMeta(debugName: "get_seed_export_warnings", argNames: []);
 
-        TaskConstMeta get kCrateApiGetSeedExportWarningsConstMeta => const TaskConstMeta(
-            debugName: "get_seed_export_warnings",
-            argNames: [],
-        );
-        
-
-@override Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs({required String walletId , int? limit })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_opt_box_autoadd_u_32(limit);
-            return wire.wire__crate__api__get_sync_logs(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs({
+    required String walletId,
+    int? limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_box_autoadd_u_32(limit);
+          return wire.wire__crate__api__get_sync_logs(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_sync_log_entry_ffi,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetSyncLogsConstMeta,
-            argValues: [walletId, limit],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetSyncLogsConstMeta,
+        argValues: [walletId, limit],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetSyncLogsConstMeta => const TaskConstMeta(
+    debugName: "get_sync_logs",
+    argNames: ["walletId", "limit"],
+  );
 
-        TaskConstMeta get kCrateApiGetSyncLogsConstMeta => const TaskConstMeta(
-            debugName: "get_sync_logs",
-            argNames: ["walletId", "limit"],
-        );
-        
-
-@override Future<String> crateApiGetTorStatus()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_tor_status(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiGetTorStatus() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_tor_status(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetTorStatusConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetTorStatusConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetTorStatusConstMeta =>
+      const TaskConstMeta(debugName: "get_tor_status", argNames: []);
 
-        TaskConstMeta get kCrateApiGetTorStatusConstMeta => const TaskConstMeta(
-            debugName: "get_tor_status",
-            argNames: [],
-        );
-        
-
-@override Future<TunnelMode> crateApiGetTunnel()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_tunnel(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<TunnelMode> crateApiGetTunnel() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_tunnel(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_tunnel_mode,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetTunnelConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetTunnelConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetTunnelConstMeta =>
+      const TaskConstMeta(debugName: "get_tunnel", argNames: []);
 
-        TaskConstMeta get kCrateApiGetTunnelConstMeta => const TaskConstMeta(
-            debugName: "get_tunnel",
-            argNames: [],
-        );
-        
-
-@override Future<String> crateApiGetVaultMode()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__get_vault_mode(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiGetVaultMode() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_vault_mode(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetVaultModeConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetVaultModeConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetVaultModeConstMeta =>
+      const TaskConstMeta(debugName: "get_vault_mode", argNames: []);
 
-        TaskConstMeta get kCrateApiGetVaultModeConstMeta => const TaskConstMeta(
-            debugName: "get_vault_mode",
-            argNames: [],
-        );
-        
-
-@override Future<WatchOnlyBannerInfo?> crateApiGetWatchOnlyBanner({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_watch_only_banner(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<WatchOnlyBannerInfo?> crateApiGetWatchOnlyBanner({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_watch_only_banner(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_opt_box_autoadd_watch_only_banner_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetWatchOnlyBannerConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetWatchOnlyBannerConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetWatchOnlyBannerConstMeta => const TaskConstMeta(
+    debugName: "get_watch_only_banner",
+    argNames: ["walletId"],
+  );
 
-        TaskConstMeta get kCrateApiGetWatchOnlyBannerConstMeta => const TaskConstMeta(
-            debugName: "get_watch_only_banner",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<WatchOnlyCapabilitiesInfo> crateApiGetWatchOnlyCapabilities({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__get_watch_only_capabilities(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<WatchOnlyCapabilitiesInfo> crateApiGetWatchOnlyCapabilities({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_watch_only_capabilities(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_watch_only_capabilities_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiGetWatchOnlyCapabilitiesConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiGetWatchOnlyCapabilitiesConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiGetWatchOnlyCapabilitiesConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_watch_only_capabilities",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiGetWatchOnlyCapabilitiesConstMeta => const TaskConstMeta(
-            debugName: "get_watch_only_capabilities",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<bool> crateApiHasAppPassphrase()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__has_app_passphrase(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiHasAppPassphrase() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__has_app_passphrase(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiHasAppPassphraseConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiHasAppPassphraseConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiHasAppPassphraseConstMeta =>
+      const TaskConstMeta(debugName: "has_app_passphrase", argNames: []);
 
-        TaskConstMeta get kCrateApiHasAppPassphraseConstMeta => const TaskConstMeta(
-            debugName: "has_app_passphrase",
-            argNames: [],
-        );
-        
-
-@override Future<bool> crateApiHasDuressPassphrase()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__has_duress_passphrase(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiHasDuressPassphrase() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__has_duress_passphrase(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiHasDuressPassphraseConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiHasDuressPassphraseConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiHasDuressPassphraseConstMeta =>
+      const TaskConstMeta(debugName: "has_duress_passphrase", argNames: []);
 
-        TaskConstMeta get kCrateApiHasDuressPassphraseConstMeta => const TaskConstMeta(
-            debugName: "has_duress_passphrase",
-            argNames: [],
-        );
-        
-
-@override Future<bool> crateApiHasPanicPin()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__has_panic_pin(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiHasPanicPin() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__has_panic_pin(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiHasPanicPinConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiHasPanicPinConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiHasPanicPinConstMeta =>
+      const TaskConstMeta(debugName: "has_panic_pin", argNames: []);
 
-        TaskConstMeta get kCrateApiHasPanicPinConstMeta => const TaskConstMeta(
-            debugName: "has_panic_pin",
-            argNames: [],
-        );
-        
-
-@override Future<String> crateApiImportIvk({required String name , String? saplingIvk , String? orchardIvk , required int birthday })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(name);
-var arg1 = cst_encode_opt_String(saplingIvk);
-var arg2 = cst_encode_opt_String(orchardIvk);
-var arg3 = cst_encode_u_32(birthday);
-            return wire.wire__crate__api__import_ivk(port_, arg0, arg1, arg2, arg3);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiImportIvk({
+    required String name,
+    String? saplingIvk,
+    String? orchardIvk,
+    required int birthday,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          var arg1 = cst_encode_opt_String(saplingIvk);
+          var arg2 = cst_encode_opt_String(orchardIvk);
+          var arg3 = cst_encode_u_32(birthday);
+          return wire.wire__crate__api__import_ivk(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiImportIvkConstMeta,
-            argValues: [name, saplingIvk, orchardIvk, birthday],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiImportIvkConstMeta,
+        argValues: [name, saplingIvk, orchardIvk, birthday],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiImportIvkConstMeta => const TaskConstMeta(
+    debugName: "import_ivk",
+    argNames: ["name", "saplingIvk", "orchardIvk", "birthday"],
+  );
 
-        TaskConstMeta get kCrateApiImportIvkConstMeta => const TaskConstMeta(
-            debugName: "import_ivk",
-            argNames: ["name", "saplingIvk", "orchardIvk", "birthday"],
-        );
-        
-
-@override Future<String> crateApiImportIvkAsWatchOnly({required String name , required String ivk , required int birthdayHeight })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(name);
-var arg1 = cst_encode_String(ivk);
-var arg2 = cst_encode_u_32(birthdayHeight);
-            return wire.wire__crate__api__import_ivk_as_watch_only(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiImportIvkAsWatchOnly({
+    required String name,
+    required String ivk,
+    required int birthdayHeight,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          var arg1 = cst_encode_String(ivk);
+          var arg2 = cst_encode_u_32(birthdayHeight);
+          return wire.wire__crate__api__import_ivk_as_watch_only(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiImportIvkAsWatchOnlyConstMeta,
-            argValues: [name, ivk, birthdayHeight],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiImportIvkAsWatchOnlyConstMeta,
+        argValues: [name, ivk, birthdayHeight],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiImportIvkAsWatchOnlyConstMeta =>
+      const TaskConstMeta(
+        debugName: "import_ivk_as_watch_only",
+        argNames: ["name", "ivk", "birthdayHeight"],
+      );
 
-        TaskConstMeta get kCrateApiImportIvkAsWatchOnlyConstMeta => const TaskConstMeta(
-            debugName: "import_ivk_as_watch_only",
-            argNames: ["name", "ivk", "birthdayHeight"],
-        );
-        
-
-@override Future<PlatformInt64> crateApiImportSpendingKey({required String walletId , String? saplingKey , String? orchardKey , String? label , required int birthdayHeight })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_opt_String(saplingKey);
-var arg2 = cst_encode_opt_String(orchardKey);
-var arg3 = cst_encode_opt_String(label);
-var arg4 = cst_encode_u_32(birthdayHeight);
-            return wire.wire__crate__api__import_spending_key(port_, arg0, arg1, arg2, arg3, arg4);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<PlatformInt64> crateApiImportSpendingKey({
+    required String walletId,
+    String? saplingKey,
+    String? orchardKey,
+    String? label,
+    required int birthdayHeight,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_String(saplingKey);
+          var arg2 = cst_encode_opt_String(orchardKey);
+          var arg3 = cst_encode_opt_String(label);
+          var arg4 = cst_encode_u_32(birthdayHeight);
+          return wire.wire__crate__api__import_spending_key(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_i_64,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiImportSpendingKeyConstMeta,
-            argValues: [walletId, saplingKey, orchardKey, label, birthdayHeight],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiImportSpendingKeyConstMeta,
+        argValues: [walletId, saplingKey, orchardKey, label, birthdayHeight],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiImportSpendingKeyConstMeta => const TaskConstMeta(
+    debugName: "import_spending_key",
+    argNames: [
+      "walletId",
+      "saplingKey",
+      "orchardKey",
+      "label",
+      "birthdayHeight",
+    ],
+  );
 
-        TaskConstMeta get kCrateApiImportSpendingKeyConstMeta => const TaskConstMeta(
-            debugName: "import_spending_key",
-            argNames: ["walletId", "saplingKey", "orchardKey", "label", "birthdayHeight"],
-        );
-        
-
-@override Future<bool> crateApiIsBackgroundSyncNeeded({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__is_background_sync_needed(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiIsBackgroundSyncNeeded({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__is_background_sync_needed(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiIsBackgroundSyncNeededConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiIsBackgroundSyncNeededConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiIsBackgroundSyncNeededConstMeta =>
+      const TaskConstMeta(
+        debugName: "is_background_sync_needed",
+        argNames: ["walletId"],
+      );
 
-        TaskConstMeta get kCrateApiIsBackgroundSyncNeededConstMeta => const TaskConstMeta(
-            debugName: "is_background_sync_needed",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<bool> crateApiIsDecoyMode()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__is_decoy_mode(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiIsDecoyMode() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__is_decoy_mode(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiIsDecoyModeConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiIsDecoyModeConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiIsDecoyModeConstMeta =>
+      const TaskConstMeta(debugName: "is_decoy_mode", argNames: []);
 
-        TaskConstMeta get kCrateApiIsDecoyModeConstMeta => const TaskConstMeta(
-            debugName: "is_decoy_mode",
-            argNames: [],
-        );
-        
-
-@override Future<bool> crateApiIsSyncRunning({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__is_sync_running(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiIsSyncRunning({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__is_sync_running(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiIsSyncRunningConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiIsSyncRunningConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiIsSyncRunningConstMeta =>
+      const TaskConstMeta(debugName: "is_sync_running", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiIsSyncRunningConstMeta => const TaskConstMeta(
-            debugName: "is_sync_running",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<void> crateApiLabelAddress({required String walletId , required String addr , required String label })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(addr);
-var arg2 = cst_encode_String(label);
-            return wire.wire__crate__api__label_address(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiLabelAddress({
+    required String walletId,
+    required String addr,
+    required String label,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(addr);
+          var arg2 = cst_encode_String(label);
+          return wire.wire__crate__api__label_address(port_, arg0, arg1, arg2);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiLabelAddressConstMeta,
-            argValues: [walletId, addr, label],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiLabelAddressConstMeta,
+        argValues: [walletId, addr, label],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiLabelAddressConstMeta => const TaskConstMeta(
+    debugName: "label_address",
+    argNames: ["walletId", "addr", "label"],
+  );
 
-        TaskConstMeta get kCrateApiLabelAddressConstMeta => const TaskConstMeta(
-            debugName: "label_address",
-            argNames: ["walletId", "addr", "label"],
-        );
-        
-
-@override Future<LightdEndpoint> crateApiLightdEndpointDefault()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__lightd_endpoint_default(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<LightdEndpoint> crateApiLightdEndpointDefault() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__lightd_endpoint_default(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_lightd_endpoint,
           decodeErrorData: null,
-        )
-        ,
-            constMeta: kCrateApiLightdEndpointDefaultConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiLightdEndpointDefaultConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiLightdEndpointDefaultConstMeta =>
+      const TaskConstMeta(debugName: "lightd_endpoint_default", argNames: []);
 
-        TaskConstMeta get kCrateApiLightdEndpointDefaultConstMeta => const TaskConstMeta(
-            debugName: "lightd_endpoint_default",
-            argNames: [],
-        );
-        
-
-@override Future<String> crateApiLightdEndpointDisplayString({required LightdEndpoint that })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_box_autoadd_lightd_endpoint(that);
-            return wire.wire__crate__api__lightd_endpoint_display_string(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiLightdEndpointDisplayString({
+    required LightdEndpoint that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_lightd_endpoint(that);
+          return wire.wire__crate__api__lightd_endpoint_display_string(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: null,
-        )
-        ,
-            constMeta: kCrateApiLightdEndpointDisplayStringConstMeta,
-            argValues: [that],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiLightdEndpointDisplayStringConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiLightdEndpointDisplayStringConstMeta =>
+      const TaskConstMeta(
+        debugName: "lightd_endpoint_display_string",
+        argNames: ["that"],
+      );
 
-        TaskConstMeta get kCrateApiLightdEndpointDisplayStringConstMeta => const TaskConstMeta(
-            debugName: "lightd_endpoint_display_string",
-            argNames: ["that"],
-        );
-        
-
-@override Future<String> crateApiLightdEndpointUrl({required LightdEndpoint that })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_box_autoadd_lightd_endpoint(that);
-            return wire.wire__crate__api__lightd_endpoint_url(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiLightdEndpointUrl({required LightdEndpoint that}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_lightd_endpoint(that);
+          return wire.wire__crate__api__lightd_endpoint_url(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: null,
-        )
-        ,
-            constMeta: kCrateApiLightdEndpointUrlConstMeta,
-            argValues: [that],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiLightdEndpointUrlConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiLightdEndpointUrlConstMeta =>
+      const TaskConstMeta(debugName: "lightd_endpoint_url", argNames: ["that"]);
 
-        TaskConstMeta get kCrateApiLightdEndpointUrlConstMeta => const TaskConstMeta(
-            debugName: "lightd_endpoint_url",
-            argNames: ["that"],
-        );
-        
-
-@override Future<List<AddressBalanceInfo>> crateApiListAddressBalances({required String walletId , PlatformInt64? keyId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_opt_box_autoadd_i_64(keyId);
-            return wire.wire__crate__api__list_address_balances(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<AddressBalanceInfo>> crateApiListAddressBalances({
+    required String walletId,
+    PlatformInt64? keyId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_box_autoadd_i_64(keyId);
+          return wire.wire__crate__api__list_address_balances(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_address_balance_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiListAddressBalancesConstMeta,
-            argValues: [walletId, keyId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiListAddressBalancesConstMeta,
+        argValues: [walletId, keyId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiListAddressBalancesConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_address_balances",
+        argNames: ["walletId", "keyId"],
+      );
 
-        TaskConstMeta get kCrateApiListAddressBalancesConstMeta => const TaskConstMeta(
-            debugName: "list_address_balances",
-            argNames: ["walletId", "keyId"],
-        );
-        
-
-@override Future<List<AddressBookEntryFfi>> crateApiListAddressBook({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__list_address_book(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<AddressBookEntryFfi>> crateApiListAddressBook({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__list_address_book(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_address_book_entry_ffi,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiListAddressBookConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiListAddressBookConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiListAddressBookConstMeta => const TaskConstMeta(
+    debugName: "list_address_book",
+    argNames: ["walletId"],
+  );
 
-        TaskConstMeta get kCrateApiListAddressBookConstMeta => const TaskConstMeta(
-            debugName: "list_address_book",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<List<AddressInfo>> crateApiListAddresses({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__list_addresses(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<AddressInfo>> crateApiListAddresses({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__list_addresses(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_address_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiListAddressesConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiListAddressesConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiListAddressesConstMeta =>
+      const TaskConstMeta(debugName: "list_addresses", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiListAddressesConstMeta => const TaskConstMeta(
-            debugName: "list_addresses",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<List<KeyAddressInfo>> crateApiListAddressesForKey({required String walletId , required PlatformInt64 keyId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_i_64(keyId);
-            return wire.wire__crate__api__list_addresses_for_key(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<KeyAddressInfo>> crateApiListAddressesForKey({
+    required String walletId,
+    required PlatformInt64 keyId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(keyId);
+          return wire.wire__crate__api__list_addresses_for_key(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_key_address_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiListAddressesForKeyConstMeta,
-            argValues: [walletId, keyId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiListAddressesForKeyConstMeta,
+        argValues: [walletId, keyId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiListAddressesForKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_addresses_for_key",
+        argNames: ["walletId", "keyId"],
+      );
 
-        TaskConstMeta get kCrateApiListAddressesForKeyConstMeta => const TaskConstMeta(
-            debugName: "list_addresses_for_key",
-            argNames: ["walletId", "keyId"],
-        );
-        
-
-@override Future<List<KeyGroupInfo>> crateApiListKeyGroups({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__list_key_groups(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<KeyGroupInfo>> crateApiListKeyGroups({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__list_key_groups(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_key_group_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiListKeyGroupsConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiListKeyGroupsConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiListKeyGroupsConstMeta =>
+      const TaskConstMeta(debugName: "list_key_groups", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiListKeyGroupsConstMeta => const TaskConstMeta(
-            debugName: "list_key_groups",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<List<TxInfo>> crateApiListTransactions({required String walletId , int? limit })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_opt_box_autoadd_u_32(limit);
-            return wire.wire__crate__api__list_transactions(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<TxInfo>> crateApiListTransactions({
+    required String walletId,
+    int? limit,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_box_autoadd_u_32(limit);
+          return wire.wire__crate__api__list_transactions(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_tx_info,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiListTransactionsConstMeta,
-            argValues: [walletId, limit],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiListTransactionsConstMeta,
+        argValues: [walletId, limit],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiListTransactionsConstMeta => const TaskConstMeta(
+    debugName: "list_transactions",
+    argNames: ["walletId", "limit"],
+  );
 
-        TaskConstMeta get kCrateApiListTransactionsConstMeta => const TaskConstMeta(
-            debugName: "list_transactions",
-            argNames: ["walletId", "limit"],
-        );
-        
-
-@override Future<List<WalletMeta>> crateApiListWallets()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__list_wallets(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<WalletMeta>> crateApiListWallets() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__list_wallets(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_wallet_meta,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiListWalletsConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiListWalletsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiListWalletsConstMeta =>
+      const TaskConstMeta(debugName: "list_wallets", argNames: []);
 
-        TaskConstMeta get kCrateApiListWalletsConstMeta => const TaskConstMeta(
-            debugName: "list_wallets",
-            argNames: [],
-        );
-        
-
-@override Future<void> crateApiMarkAddressUsed({required String walletId , required String address })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(address);
-            return wire.wire__crate__api__mark_address_used(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiMarkAddressUsed({
+    required String walletId,
+    required String address,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(address);
+          return wire.wire__crate__api__mark_address_used(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiMarkAddressUsedConstMeta,
-            argValues: [walletId, address],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiMarkAddressUsedConstMeta,
+        argValues: [walletId, address],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiMarkAddressUsedConstMeta => const TaskConstMeta(
+    debugName: "mark_address_used",
+    argNames: ["walletId", "address"],
+  );
 
-        TaskConstMeta get kCrateApiMarkAddressUsedConstMeta => const TaskConstMeta(
-            debugName: "mark_address_used",
-            argNames: ["walletId", "address"],
-        );
-        
-
-@override Future<String> crateApiNextReceiveAddress({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__next_receive_address(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiNextReceiveAddress({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__next_receive_address(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiNextReceiveAddressConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiNextReceiveAddressConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiNextReceiveAddressConstMeta => const TaskConstMeta(
+    debugName: "next_receive_address",
+    argNames: ["walletId"],
+  );
 
-        TaskConstMeta get kCrateApiNextReceiveAddressConstMeta => const TaskConstMeta(
-            debugName: "next_receive_address",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<BigInt> crateApiParseAmount({required String arrr })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(arrr);
-            return wire.wire__crate__api__parse_amount(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<BigInt> crateApiParseAmount({required String arrr}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(arrr);
+          return wire.wire__crate__api__parse_amount(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_u_64,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiParseAmountConstMeta,
-            argValues: [arrr],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiParseAmountConstMeta,
+        argValues: [arrr],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiParseAmountConstMeta =>
+      const TaskConstMeta(debugName: "parse_amount", argNames: ["arrr"]);
 
-        TaskConstMeta get kCrateApiParseAmountConstMeta => const TaskConstMeta(
-            debugName: "parse_amount",
-            argNames: ["arrr"],
-        );
-        
-
-@override Future<void> crateApiRenameWallet({required String walletId , required String newName })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(newName);
-            return wire.wire__crate__api__rename_wallet(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiRenameWallet({
+    required String walletId,
+    required String newName,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(newName);
+          return wire.wire__crate__api__rename_wallet(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiRenameWalletConstMeta,
-            argValues: [walletId, newName],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiRenameWalletConstMeta,
+        argValues: [walletId, newName],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiRenameWalletConstMeta => const TaskConstMeta(
+    debugName: "rename_wallet",
+    argNames: ["walletId", "newName"],
+  );
 
-        TaskConstMeta get kCrateApiRenameWalletConstMeta => const TaskConstMeta(
-            debugName: "rename_wallet",
-            argNames: ["walletId", "newName"],
-        );
-        
-
-@override Future<void> crateApiRescan({required String walletId , required int fromHeight })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_u_32(fromHeight);
-            return wire.wire__crate__api__rescan(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiRescan({
+    required String walletId,
+    required int fromHeight,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(fromHeight);
+          return wire.wire__crate__api__rescan(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiRescanConstMeta,
-            argValues: [walletId, fromHeight],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiRescanConstMeta,
+        argValues: [walletId, fromHeight],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiRescanConstMeta => const TaskConstMeta(
+    debugName: "rescan",
+    argNames: ["walletId", "fromHeight"],
+  );
 
-        TaskConstMeta get kCrateApiRescanConstMeta => const TaskConstMeta(
-            debugName: "rescan",
-            argNames: ["walletId", "fromHeight"],
-        );
-        
-
-@override Future<void> crateApiResealDbKeysForBiometrics()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__reseal_db_keys_for_biometrics(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiResealDbKeysForBiometrics() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__reseal_db_keys_for_biometrics(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiResealDbKeysForBiometricsConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiResealDbKeysForBiometricsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiResealDbKeysForBiometricsConstMeta =>
+      const TaskConstMeta(
+        debugName: "reseal_db_keys_for_biometrics",
+        argNames: [],
+      );
 
-        TaskConstMeta get kCrateApiResealDbKeysForBiometricsConstMeta => const TaskConstMeta(
-            debugName: "reseal_db_keys_for_biometrics",
-            argNames: [],
-        );
-        
-
-@override Future<String> crateApiRestoreWallet({required String name , required String mnemonic , String? passphraseOpt , int? birthdayOpt })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(name);
-var arg1 = cst_encode_String(mnemonic);
-var arg2 = cst_encode_opt_String(passphraseOpt);
-var arg3 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
-            return wire.wire__crate__api__restore_wallet(port_, arg0, arg1, arg2, arg3);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiRestoreWallet({
+    required String name,
+    required String mnemonic,
+    String? passphraseOpt,
+    int? birthdayOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          var arg1 = cst_encode_String(mnemonic);
+          var arg2 = cst_encode_opt_String(passphraseOpt);
+          var arg3 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
+          return wire.wire__crate__api__restore_wallet(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiRestoreWalletConstMeta,
-            argValues: [name, mnemonic, passphraseOpt, birthdayOpt],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiRestoreWalletConstMeta,
+        argValues: [name, mnemonic, passphraseOpt, birthdayOpt],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiRestoreWalletConstMeta => const TaskConstMeta(
+    debugName: "restore_wallet",
+    argNames: ["name", "mnemonic", "passphraseOpt", "birthdayOpt"],
+  );
 
-        TaskConstMeta get kCrateApiRestoreWalletConstMeta => const TaskConstMeta(
-            debugName: "restore_wallet",
-            argNames: ["name", "mnemonic", "passphraseOpt", "birthdayOpt"],
-        );
-        
-
-@override Future<void> crateApiRotateTorExit()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__rotate_tor_exit(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiRotateTorExit() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__rotate_tor_exit(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiRotateTorExitConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiRotateTorExitConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiRotateTorExitConstMeta =>
+      const TaskConstMeta(debugName: "rotate_tor_exit", argNames: []);
 
-        TaskConstMeta get kCrateApiRotateTorExitConstMeta => const TaskConstMeta(
-            debugName: "rotate_tor_exit",
-            argNames: [],
-        );
-        
-
-@override Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook({required String walletId , required String query })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(query);
-            return wire.wire__crate__api__search_address_book(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<List<AddressBookEntryFfi>> crateApiSearchAddressBook({
+    required String walletId,
+    required String query,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(query);
+          return wire.wire__crate__api__search_address_book(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_list_address_book_entry_ffi,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSearchAddressBookConstMeta,
-            argValues: [walletId, query],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSearchAddressBookConstMeta,
+        argValues: [walletId, query],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSearchAddressBookConstMeta => const TaskConstMeta(
+    debugName: "search_address_book",
+    argNames: ["walletId", "query"],
+  );
 
-        TaskConstMeta get kCrateApiSearchAddressBookConstMeta => const TaskConstMeta(
-            debugName: "search_address_book",
-            argNames: ["walletId", "query"],
-        );
-        
-
-@override Future<void> crateApiSetAddressColorTag({required String walletId , required String addr , required AddressBookColorTag colorTag })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(addr);
-var arg2 = cst_encode_address_book_color_tag(colorTag);
-            return wire.wire__crate__api__set_address_color_tag(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSetAddressColorTag({
+    required String walletId,
+    required String addr,
+    required AddressBookColorTag colorTag,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(addr);
+          var arg2 = cst_encode_address_book_color_tag(colorTag);
+          return wire.wire__crate__api__set_address_color_tag(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetAddressColorTagConstMeta,
-            argValues: [walletId, addr, colorTag],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetAddressColorTagConstMeta,
+        argValues: [walletId, addr, colorTag],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetAddressColorTagConstMeta => const TaskConstMeta(
+    debugName: "set_address_color_tag",
+    argNames: ["walletId", "addr", "colorTag"],
+  );
 
-        TaskConstMeta get kCrateApiSetAddressColorTagConstMeta => const TaskConstMeta(
-            debugName: "set_address_color_tag",
-            argNames: ["walletId", "addr", "colorTag"],
-        );
-        
-
-@override Future<void> crateApiSetAppPassphrase({required String passphrase })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(passphrase);
-            return wire.wire__crate__api__set_app_passphrase(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSetAppPassphrase({required String passphrase}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(passphrase);
+          return wire.wire__crate__api__set_app_passphrase(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetAppPassphraseConstMeta,
-            argValues: [passphrase],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetAppPassphraseConstMeta,
+        argValues: [passphrase],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetAppPassphraseConstMeta => const TaskConstMeta(
+    debugName: "set_app_passphrase",
+    argNames: ["passphrase"],
+  );
 
-        TaskConstMeta get kCrateApiSetAppPassphraseConstMeta => const TaskConstMeta(
-            debugName: "set_app_passphrase",
-            argNames: ["passphrase"],
-        );
-        
-
-@override Future<void> crateApiSetAutoConsolidationEnabled({required String walletId , required bool enabled })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_bool(enabled);
-            return wire.wire__crate__api__set_auto_consolidation_enabled(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSetAutoConsolidationEnabled({
+    required String walletId,
+    required bool enabled,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_bool(enabled);
+          return wire.wire__crate__api__set_auto_consolidation_enabled(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetAutoConsolidationEnabledConstMeta,
-            argValues: [walletId, enabled],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetAutoConsolidationEnabledConstMeta,
+        argValues: [walletId, enabled],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetAutoConsolidationEnabledConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_auto_consolidation_enabled",
+        argNames: ["walletId", "enabled"],
+      );
 
-        TaskConstMeta get kCrateApiSetAutoConsolidationEnabledConstMeta => const TaskConstMeta(
-            debugName: "set_auto_consolidation_enabled",
-            argNames: ["walletId", "enabled"],
-        );
-        
-
-@override Future<void> crateApiSetDecoyWalletName({required String name })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(name);
-            return wire.wire__crate__api__set_decoy_wallet_name(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSetDecoyWalletName({required String name}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(name);
+          return wire.wire__crate__api__set_decoy_wallet_name(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetDecoyWalletNameConstMeta,
-            argValues: [name],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetDecoyWalletNameConstMeta,
+        argValues: [name],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetDecoyWalletNameConstMeta => const TaskConstMeta(
+    debugName: "set_decoy_wallet_name",
+    argNames: ["name"],
+  );
 
-        TaskConstMeta get kCrateApiSetDecoyWalletNameConstMeta => const TaskConstMeta(
-            debugName: "set_decoy_wallet_name",
-            argNames: ["name"],
-        );
-        
-
-@override Future<String> crateApiSetDuressPassphrase({String? customPassphrase })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_opt_String(customPassphrase);
-            return wire.wire__crate__api__set_duress_passphrase(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiSetDuressPassphrase({String? customPassphrase}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_opt_String(customPassphrase);
+          return wire.wire__crate__api__set_duress_passphrase(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetDuressPassphraseConstMeta,
-            argValues: [customPassphrase],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetDuressPassphraseConstMeta,
+        argValues: [customPassphrase],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetDuressPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_duress_passphrase",
+        argNames: ["customPassphrase"],
+      );
 
-        TaskConstMeta get kCrateApiSetDuressPassphraseConstMeta => const TaskConstMeta(
-            debugName: "set_duress_passphrase",
-            argNames: ["customPassphrase"],
-        );
-        
-
-@override Future<void> crateApiSetLightdEndpoint({required String walletId , required String url , String? tlsPinOpt })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_String(url);
-var arg2 = cst_encode_opt_String(tlsPinOpt);
-            return wire.wire__crate__api__set_lightd_endpoint(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSetLightdEndpoint({
+    required String walletId,
+    required String url,
+    String? tlsPinOpt,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(url);
+          var arg2 = cst_encode_opt_String(tlsPinOpt);
+          return wire.wire__crate__api__set_lightd_endpoint(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetLightdEndpointConstMeta,
-            argValues: [walletId, url, tlsPinOpt],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetLightdEndpointConstMeta,
+        argValues: [walletId, url, tlsPinOpt],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetLightdEndpointConstMeta => const TaskConstMeta(
+    debugName: "set_lightd_endpoint",
+    argNames: ["walletId", "url", "tlsPinOpt"],
+  );
 
-        TaskConstMeta get kCrateApiSetLightdEndpointConstMeta => const TaskConstMeta(
-            debugName: "set_lightd_endpoint",
-            argNames: ["walletId", "url", "tlsPinOpt"],
-        );
-        
-
-@override Future<void> crateApiSetPanicPin({required String pin })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(pin);
-            return wire.wire__crate__api__set_panic_pin(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSetPanicPin({required String pin}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(pin);
+          return wire.wire__crate__api__set_panic_pin(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetPanicPinConstMeta,
-            argValues: [pin],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetPanicPinConstMeta,
+        argValues: [pin],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetPanicPinConstMeta =>
+      const TaskConstMeta(debugName: "set_panic_pin", argNames: ["pin"]);
 
-        TaskConstMeta get kCrateApiSetPanicPinConstMeta => const TaskConstMeta(
-            debugName: "set_panic_pin",
-            argNames: ["pin"],
-        );
-        
-
-@override Future<void> crateApiSetTorBridgeSettings({required bool useBridges , required bool fallbackToBridges , required String transport , required List<String> bridgeLines , String? transportPath })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_bool(useBridges);
-var arg1 = cst_encode_bool(fallbackToBridges);
-var arg2 = cst_encode_String(transport);
-var arg3 = cst_encode_list_String(bridgeLines);
-var arg4 = cst_encode_opt_String(transportPath);
-            return wire.wire__crate__api__set_tor_bridge_settings(port_, arg0, arg1, arg2, arg3, arg4);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSetTorBridgeSettings({
+    required bool useBridges,
+    required bool fallbackToBridges,
+    required String transport,
+    required List<String> bridgeLines,
+    String? transportPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_bool(useBridges);
+          var arg1 = cst_encode_bool(fallbackToBridges);
+          var arg2 = cst_encode_String(transport);
+          var arg3 = cst_encode_list_String(bridgeLines);
+          var arg4 = cst_encode_opt_String(transportPath);
+          return wire.wire__crate__api__set_tor_bridge_settings(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetTorBridgeSettingsConstMeta,
-            argValues: [useBridges, fallbackToBridges, transport, bridgeLines, transportPath],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetTorBridgeSettingsConstMeta,
+        argValues: [
+          useBridges,
+          fallbackToBridges,
+          transport,
+          bridgeLines,
+          transportPath,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetTorBridgeSettingsConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_tor_bridge_settings",
+        argNames: [
+          "useBridges",
+          "fallbackToBridges",
+          "transport",
+          "bridgeLines",
+          "transportPath",
+        ],
+      );
 
-        TaskConstMeta get kCrateApiSetTorBridgeSettingsConstMeta => const TaskConstMeta(
-            debugName: "set_tor_bridge_settings",
-            argNames: ["useBridges", "fallbackToBridges", "transport", "bridgeLines", "transportPath"],
-        );
-        
-
-@override Future<void> crateApiSetTunnel({required TunnelMode mode })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_box_autoadd_tunnel_mode(mode);
-            return wire.wire__crate__api__set_tunnel(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSetTunnel({required TunnelMode mode}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_box_autoadd_tunnel_mode(mode);
+          return wire.wire__crate__api__set_tunnel(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetTunnelConstMeta,
-            argValues: [mode],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetTunnelConstMeta,
+        argValues: [mode],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetTunnelConstMeta =>
+      const TaskConstMeta(debugName: "set_tunnel", argNames: ["mode"]);
 
-        TaskConstMeta get kCrateApiSetTunnelConstMeta => const TaskConstMeta(
-            debugName: "set_tunnel",
-            argNames: ["mode"],
-        );
-        
-
-@override Future<void> crateApiSetWalletBirthdayHeight({required String walletId , required int birthdayHeight })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_u_32(birthdayHeight);
-            return wire.wire__crate__api__set_wallet_birthday_height(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSetWalletBirthdayHeight({
+    required String walletId,
+    required int birthdayHeight,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_u_32(birthdayHeight);
+          return wire.wire__crate__api__set_wallet_birthday_height(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSetWalletBirthdayHeightConstMeta,
-            argValues: [walletId, birthdayHeight],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSetWalletBirthdayHeightConstMeta,
+        argValues: [walletId, birthdayHeight],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSetWalletBirthdayHeightConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_wallet_birthday_height",
+        argNames: ["walletId", "birthdayHeight"],
+      );
 
-        TaskConstMeta get kCrateApiSetWalletBirthdayHeightConstMeta => const TaskConstMeta(
-            debugName: "set_wallet_birthday_height",
-            argNames: ["walletId", "birthdayHeight"],
-        );
-        
-
-@override Future<void> crateApiShutdownTransport()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__shutdown_transport(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiShutdownTransport() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__shutdown_transport(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiShutdownTransportConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiShutdownTransportConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiShutdownTransportConstMeta =>
+      const TaskConstMeta(debugName: "shutdown_transport", argNames: []);
 
-        TaskConstMeta get kCrateApiShutdownTransportConstMeta => const TaskConstMeta(
-            debugName: "shutdown_transport",
-            argNames: [],
-        );
-        
-
-@override Future<SignedTx> crateApiSignTx({required String walletId , required PendingTx pending })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_box_autoadd_pending_tx(pending);
-            return wire.wire__crate__api__sign_tx(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<SignedTx> crateApiSignTx({
+    required String walletId,
+    required PendingTx pending,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_box_autoadd_pending_tx(pending);
+          return wire.wire__crate__api__sign_tx(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_signed_tx,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSignTxConstMeta,
-            argValues: [walletId, pending],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSignTxConstMeta,
+        argValues: [walletId, pending],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSignTxConstMeta => const TaskConstMeta(
+    debugName: "sign_tx",
+    argNames: ["walletId", "pending"],
+  );
 
-        TaskConstMeta get kCrateApiSignTxConstMeta => const TaskConstMeta(
-            debugName: "sign_tx",
-            argNames: ["walletId", "pending"],
-        );
-        
-
-@override Future<SignedTx> crateApiSignTxFiltered({required String walletId , required PendingTx pending , Int64List? keyIdsFilter , Int64List? addressIdsFilter })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_box_autoadd_pending_tx(pending);
-var arg2 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
-var arg3 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
-            return wire.wire__crate__api__sign_tx_filtered(port_, arg0, arg1, arg2, arg3);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<SignedTx> crateApiSignTxFiltered({
+    required String walletId,
+    required PendingTx pending,
+    Int64List? keyIdsFilter,
+    Int64List? addressIdsFilter,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_box_autoadd_pending_tx(pending);
+          var arg2 = cst_encode_opt_list_prim_i_64_strict(keyIdsFilter);
+          var arg3 = cst_encode_opt_list_prim_i_64_strict(addressIdsFilter);
+          return wire.wire__crate__api__sign_tx_filtered(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_signed_tx,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSignTxFilteredConstMeta,
-            argValues: [walletId, pending, keyIdsFilter, addressIdsFilter],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSignTxFilteredConstMeta,
+        argValues: [walletId, pending, keyIdsFilter, addressIdsFilter],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSignTxFilteredConstMeta => const TaskConstMeta(
+    debugName: "sign_tx_filtered",
+    argNames: ["walletId", "pending", "keyIdsFilter", "addressIdsFilter"],
+  );
 
-        TaskConstMeta get kCrateApiSignTxFilteredConstMeta => const TaskConstMeta(
-            debugName: "sign_tx_filtered",
-            argNames: ["walletId", "pending", "keyIdsFilter", "addressIdsFilter"],
-        );
-        
-
-@override Future<SignedTx> crateApiSignTxForKey({required String walletId , required PendingTx pending , required PlatformInt64 keyId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_box_autoadd_pending_tx(pending);
-var arg2 = cst_encode_i_64(keyId);
-            return wire.wire__crate__api__sign_tx_for_key(port_, arg0, arg1, arg2);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<SignedTx> crateApiSignTxForKey({
+    required String walletId,
+    required PendingTx pending,
+    required PlatformInt64 keyId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_box_autoadd_pending_tx(pending);
+          var arg2 = cst_encode_i_64(keyId);
+          return wire.wire__crate__api__sign_tx_for_key(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_signed_tx,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSignTxForKeyConstMeta,
-            argValues: [walletId, pending, keyId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSignTxForKeyConstMeta,
+        argValues: [walletId, pending, keyId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSignTxForKeyConstMeta => const TaskConstMeta(
+    debugName: "sign_tx_for_key",
+    argNames: ["walletId", "pending", "keyId"],
+  );
 
-        TaskConstMeta get kCrateApiSignTxForKeyConstMeta => const TaskConstMeta(
-            debugName: "sign_tx_for_key",
-            argNames: ["walletId", "pending", "keyId"],
-        );
-        
-
-@override Future<String> crateApiSkipSeedBiometric()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__skip_seed_biometric(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiSkipSeedBiometric() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__skip_seed_biometric(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSkipSeedBiometricConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSkipSeedBiometricConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSkipSeedBiometricConstMeta =>
+      const TaskConstMeta(debugName: "skip_seed_biometric", argNames: []);
 
-        TaskConstMeta get kCrateApiSkipSeedBiometricConstMeta => const TaskConstMeta(
-            debugName: "skip_seed_biometric",
-            argNames: [],
-        );
-        
-
-@override Future<BackgroundSyncResult> crateApiStartBackgroundSync({required String walletId , String? mode })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_opt_String(mode);
-            return wire.wire__crate__api__start_background_sync(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<BackgroundSyncResult> crateApiStartBackgroundSync({
+    required String walletId,
+    String? mode,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_String(mode);
+          return wire.wire__crate__api__start_background_sync(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_background_sync_result,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiStartBackgroundSyncConstMeta,
-            argValues: [walletId, mode],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiStartBackgroundSyncConstMeta,
+        argValues: [walletId, mode],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiStartBackgroundSyncConstMeta =>
+      const TaskConstMeta(
+        debugName: "start_background_sync",
+        argNames: ["walletId", "mode"],
+      );
 
-        TaskConstMeta get kCrateApiStartBackgroundSyncConstMeta => const TaskConstMeta(
-            debugName: "start_background_sync",
-            argNames: ["walletId", "mode"],
-        );
-        
-
-@override Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin({String? mode })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_opt_String(mode);
-            return wire.wire__crate__api__start_background_sync_round_robin(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin({
+    String? mode,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_opt_String(mode);
+          return wire.wire__crate__api__start_background_sync_round_robin(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_wallet_background_sync_result,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiStartBackgroundSyncRoundRobinConstMeta,
-            argValues: [mode],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiStartBackgroundSyncRoundRobinConstMeta,
+        argValues: [mode],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiStartBackgroundSyncRoundRobinConstMeta =>
+      const TaskConstMeta(
+        debugName: "start_background_sync_round_robin",
+        argNames: ["mode"],
+      );
 
-        TaskConstMeta get kCrateApiStartBackgroundSyncRoundRobinConstMeta => const TaskConstMeta(
-            debugName: "start_background_sync_round_robin",
-            argNames: ["mode"],
-        );
-        
-
-@override Future<String> crateApiStartSeedExport({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__start_seed_export(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<String> crateApiStartSeedExport({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__start_seed_export(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiStartSeedExportConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiStartSeedExportConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiStartSeedExportConstMeta => const TaskConstMeta(
+    debugName: "start_seed_export",
+    argNames: ["walletId"],
+  );
 
-        TaskConstMeta get kCrateApiStartSeedExportConstMeta => const TaskConstMeta(
-            debugName: "start_seed_export",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<void> crateApiStartSync({required String walletId , required SyncMode mode })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_sync_mode(mode);
-            return wire.wire__crate__api__start_sync(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiStartSync({
+    required String walletId,
+    required SyncMode mode,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_sync_mode(mode);
+          return wire.wire__crate__api__start_sync(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiStartSyncConstMeta,
-            argValues: [walletId, mode],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiStartSyncConstMeta,
+        argValues: [walletId, mode],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiStartSyncConstMeta => const TaskConstMeta(
+    debugName: "start_sync",
+    argNames: ["walletId", "mode"],
+  );
 
-        TaskConstMeta get kCrateApiStartSyncConstMeta => const TaskConstMeta(
-            debugName: "start_sync",
-            argNames: ["walletId", "mode"],
-        );
-        
-
-@override Future<void> crateApiSwitchWallet({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__switch_wallet(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiSwitchWallet({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__switch_wallet(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSwitchWalletConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSwitchWalletConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSwitchWalletConstMeta =>
+      const TaskConstMeta(debugName: "switch_wallet", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiSwitchWalletConstMeta => const TaskConstMeta(
-            debugName: "switch_wallet",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<SyncStatus> crateApiSyncStatus({required String walletId })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-            return wire.wire__crate__api__sync_status(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<SyncStatus> crateApiSyncStatus({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__sync_status(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_sync_status,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiSyncStatusConstMeta,
-            argValues: [walletId],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiSyncStatusConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiSyncStatusConstMeta =>
+      const TaskConstMeta(debugName: "sync_status", argNames: ["walletId"]);
 
-        TaskConstMeta get kCrateApiSyncStatusConstMeta => const TaskConstMeta(
-            debugName: "sync_status",
-            argNames: ["walletId"],
-        );
-        
-
-@override Future<NodeTestResult> crateApiTestNode({required String url , String? tlsPin })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(url);
-var arg1 = cst_encode_opt_String(tlsPin);
-            return wire.wire__crate__api__test_node(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<NodeTestResult> crateApiTestNode({
+    required String url,
+    String? tlsPin,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(url);
+          var arg1 = cst_encode_opt_String(tlsPin);
+          return wire.wire__crate__api__test_node(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_node_test_result,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiTestNodeConstMeta,
-            argValues: [url, tlsPin],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiTestNodeConstMeta,
+        argValues: [url, tlsPin],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiTestNodeConstMeta =>
+      const TaskConstMeta(debugName: "test_node", argNames: ["url", "tlsPin"]);
 
-        TaskConstMeta get kCrateApiTestNodeConstMeta => const TaskConstMeta(
-            debugName: "test_node",
-            argNames: ["url", "tlsPin"],
-        );
-        
-
-@override Future<bool> crateApiToggleAddressBookFavorite({required String walletId , required PlatformInt64 id })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_i_64(id);
-            return wire.wire__crate__api__toggle_address_book_favorite(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiToggleAddressBookFavorite({
+    required String walletId,
+    required PlatformInt64 id,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(id);
+          return wire.wire__crate__api__toggle_address_book_favorite(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiToggleAddressBookFavoriteConstMeta,
-            argValues: [walletId, id],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiToggleAddressBookFavoriteConstMeta,
+        argValues: [walletId, id],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiToggleAddressBookFavoriteConstMeta =>
+      const TaskConstMeta(
+        debugName: "toggle_address_book_favorite",
+        argNames: ["walletId", "id"],
+      );
 
-        TaskConstMeta get kCrateApiToggleAddressBookFavoriteConstMeta => const TaskConstMeta(
-            debugName: "toggle_address_book_favorite",
-            argNames: ["walletId", "id"],
-        );
-        
-
-@override Future<void> crateApiUnlockApp({required String passphrase })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(passphrase);
-            return wire.wire__crate__api__unlock_app(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<void> crateApiUnlockApp({required String passphrase}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(passphrase);
+          return wire.wire__crate__api__unlock_app(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_unit,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiUnlockAppConstMeta,
-            argValues: [passphrase],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiUnlockAppConstMeta,
+        argValues: [passphrase],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiUnlockAppConstMeta =>
+      const TaskConstMeta(debugName: "unlock_app", argNames: ["passphrase"]);
 
-        TaskConstMeta get kCrateApiUnlockAppConstMeta => const TaskConstMeta(
-            debugName: "unlock_app",
-            argNames: ["passphrase"],
-        );
-        
-
-@override Future<AddressBookEntryFfi> crateApiUpdateAddressBookEntry({required String walletId , required PlatformInt64 id , String? label , String? notes , AddressBookColorTag? colorTag , bool? isFavorite })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(walletId);
-var arg1 = cst_encode_i_64(id);
-var arg2 = cst_encode_opt_String(label);
-var arg3 = cst_encode_opt_String(notes);
-var arg4 = cst_encode_opt_box_autoadd_address_book_color_tag(colorTag);
-var arg5 = cst_encode_opt_box_autoadd_bool(isFavorite);
-            return wire.wire__crate__api__update_address_book_entry(port_, arg0, arg1, arg2, arg3, arg4, arg5);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<AddressBookEntryFfi> crateApiUpdateAddressBookEntry({
+    required String walletId,
+    required PlatformInt64 id,
+    String? label,
+    String? notes,
+    AddressBookColorTag? colorTag,
+    bool? isFavorite,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_i_64(id);
+          var arg2 = cst_encode_opt_String(label);
+          var arg3 = cst_encode_opt_String(notes);
+          var arg4 = cst_encode_opt_box_autoadd_address_book_color_tag(
+            colorTag,
+          );
+          var arg5 = cst_encode_opt_box_autoadd_bool(isFavorite);
+          return wire.wire__crate__api__update_address_book_entry(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+            arg3,
+            arg4,
+            arg5,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_address_book_entry_ffi,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiUpdateAddressBookEntryConstMeta,
-            argValues: [walletId, id, label, notes, colorTag, isFavorite],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiUpdateAddressBookEntryConstMeta,
+        argValues: [walletId, id, label, notes, colorTag, isFavorite],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiUpdateAddressBookEntryConstMeta =>
+      const TaskConstMeta(
+        debugName: "update_address_book_entry",
+        argNames: [
+          "walletId",
+          "id",
+          "label",
+          "notes",
+          "colorTag",
+          "isFavorite",
+        ],
+      );
 
-        TaskConstMeta get kCrateApiUpdateAddressBookEntryConstMeta => const TaskConstMeta(
-            debugName: "update_address_book_entry",
-            argNames: ["walletId", "id", "label", "notes", "colorTag", "isFavorite"],
-        );
-        
-
-@override Future<bool> crateApiValidateMnemonic({required String mnemonic })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(mnemonic);
-            return wire.wire__crate__api__validate_mnemonic(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiValidateMnemonic({required String mnemonic}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(mnemonic);
+          return wire.wire__crate__api__validate_mnemonic(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiValidateMnemonicConstMeta,
-            argValues: [mnemonic],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiValidateMnemonicConstMeta,
+        argValues: [mnemonic],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiValidateMnemonicConstMeta => const TaskConstMeta(
+    debugName: "validate_mnemonic",
+    argNames: ["mnemonic"],
+  );
 
-        TaskConstMeta get kCrateApiValidateMnemonicConstMeta => const TaskConstMeta(
-            debugName: "validate_mnemonic",
-            argNames: ["mnemonic"],
-        );
-        
-
-@override Future<bool> crateApiVerifyAppPassphrase({required String passphrase })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(passphrase);
-            return wire.wire__crate__api__verify_app_passphrase(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiVerifyAppPassphrase({required String passphrase}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(passphrase);
+          return wire.wire__crate__api__verify_app_passphrase(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiVerifyAppPassphraseConstMeta,
-            argValues: [passphrase],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiVerifyAppPassphraseConstMeta,
+        argValues: [passphrase],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiVerifyAppPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "verify_app_passphrase",
+        argNames: ["passphrase"],
+      );
 
-        TaskConstMeta get kCrateApiVerifyAppPassphraseConstMeta => const TaskConstMeta(
-            debugName: "verify_app_passphrase",
-            argNames: ["passphrase"],
-        );
-        
-
-@override Future<bool> crateApiVerifyDuressPassphrase({required String passphrase , required String hash })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(passphrase);
-var arg1 = cst_encode_String(hash);
-            return wire.wire__crate__api__verify_duress_passphrase(port_, arg0, arg1);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiVerifyDuressPassphrase({
+    required String passphrase,
+    required String hash,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(passphrase);
+          var arg1 = cst_encode_String(hash);
+          return wire.wire__crate__api__verify_duress_passphrase(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiVerifyDuressPassphraseConstMeta,
-            argValues: [passphrase, hash],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiVerifyDuressPassphraseConstMeta,
+        argValues: [passphrase, hash],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiVerifyDuressPassphraseConstMeta =>
+      const TaskConstMeta(
+        debugName: "verify_duress_passphrase",
+        argNames: ["passphrase", "hash"],
+      );
 
-        TaskConstMeta get kCrateApiVerifyDuressPassphraseConstMeta => const TaskConstMeta(
-            debugName: "verify_duress_passphrase",
-            argNames: ["passphrase", "hash"],
-        );
-        
-
-@override Future<bool> crateApiVerifyPanicPin({required String pin })  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              var arg0 = cst_encode_String(pin);
-            return wire.wire__crate__api__verify_panic_pin(port_, arg0);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiVerifyPanicPin({required String pin}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(pin);
+          return wire.wire__crate__api__verify_panic_pin(port_, arg0);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiVerifyPanicPinConstMeta,
-            argValues: [pin],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiVerifyPanicPinConstMeta,
+        argValues: [pin],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiVerifyPanicPinConstMeta =>
+      const TaskConstMeta(debugName: "verify_panic_pin", argNames: ["pin"]);
 
-        TaskConstMeta get kCrateApiVerifyPanicPinConstMeta => const TaskConstMeta(
-            debugName: "verify_panic_pin",
-            argNames: ["pin"],
-        );
-        
-
-@override Future<bool> crateApiWalletRegistryExists()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__wallet_registry_exists(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<bool> crateApiWalletRegistryExists() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__wallet_registry_exists(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_bool,
           decodeErrorData: dco_decode_AnyhowException,
-        )
-        ,
-            constMeta: kCrateApiWalletRegistryExistsConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
+        ),
+        constMeta: kCrateApiWalletRegistryExistsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
 
+  TaskConstMeta get kCrateApiWalletRegistryExistsConstMeta =>
+      const TaskConstMeta(debugName: "wallet_registry_exists", argNames: []);
 
-        TaskConstMeta get kCrateApiWalletRegistryExistsConstMeta => const TaskConstMeta(
-            debugName: "wallet_registry_exists",
-            argNames: [],
-        );
-        
-
-@override Future<WitnessRefreshOutcome> crateApiWitnessRefreshOutcomeDefault()  { return handler.executeNormal(NormalTask(
-            callFfi: (port_) {
-              
-            return wire.wire__crate__api__witness_refresh_outcome_default(port_);
-            
-            },
-            codec: 
-        DcoCodec(
+  @override
+  Future<WitnessRefreshOutcome> crateApiWitnessRefreshOutcomeDefault() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__witness_refresh_outcome_default(port_);
+        },
+        codec: DcoCodec(
           decodeSuccessData: dco_decode_witness_refresh_outcome,
           decodeErrorData: null,
-        )
-        ,
-            constMeta: kCrateApiWitnessRefreshOutcomeDefaultConstMeta,
-            argValues: [],
-            apiImpl: this,
-        )); }
-
-
-        TaskConstMeta get kCrateApiWitnessRefreshOutcomeDefaultConstMeta => const TaskConstMeta(
-            debugName: "witness_refresh_outcome_default",
-            argNames: [],
-        );
-        
-
-
-
-                  @protected AnyhowException dco_decode_AnyhowException(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return AnyhowException(raw as String); }
-
-@protected String dco_decode_String(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as String; }
-
-@protected AddressBalanceInfo dco_decode_address_balance_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 10) throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
-                return AddressBalanceInfo(address: dco_decode_String(arr[0]),
-balance: dco_decode_u_64(arr[1]),
-spendable: dco_decode_u_64(arr[2]),
-pending: dco_decode_u_64(arr[3]),
-keyId: dco_decode_opt_box_autoadd_i_64(arr[4]),
-addressId: dco_decode_i_64(arr[5]),
-label: dco_decode_opt_String(arr[6]),
-createdAt: dco_decode_i_64(arr[7]),
-colorTag: dco_decode_address_book_color_tag(arr[8]),
-diversifierIndex: dco_decode_u_32(arr[9]),); }
-
-@protected AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return AddressBookColorTag.values[raw as int]; }
-
-@protected AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 11) throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
-                return AddressBookEntryFfi(id: dco_decode_i_64(arr[0]),
-walletId: dco_decode_String(arr[1]),
-address: dco_decode_String(arr[2]),
-label: dco_decode_String(arr[3]),
-notes: dco_decode_opt_String(arr[4]),
-colorTag: dco_decode_address_book_color_tag(arr[5]),
-isFavorite: dco_decode_bool(arr[6]),
-createdAt: dco_decode_i_64(arr[7]),
-updatedAt: dco_decode_i_64(arr[8]),
-lastUsedAt: dco_decode_opt_box_autoadd_i_64(arr[9]),
-useCount: dco_decode_u_32(arr[10]),); }
-
-@protected AddressInfo dco_decode_address_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 5) throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
-                return AddressInfo(address: dco_decode_String(arr[0]),
-diversifierIndex: dco_decode_u_32(arr[1]),
-label: dco_decode_opt_String(arr[2]),
-createdAt: dco_decode_i_64(arr[3]),
-colorTag: dco_decode_address_book_color_tag(arr[4]),); }
-
-@protected BackgroundSyncResult dco_decode_background_sync_result(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 8) throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
-                return BackgroundSyncResult(mode: dco_decode_String(arr[0]),
-blocksSynced: dco_decode_u_64(arr[1]),
-startHeight: dco_decode_u_64(arr[2]),
-endHeight: dco_decode_u_64(arr[3]),
-durationSecs: dco_decode_u_64(arr[4]),
-errors: dco_decode_list_String(arr[5]),
-newBalance: dco_decode_opt_box_autoadd_u_64(arr[6]),
-newTransactions: dco_decode_u_32(arr[7]),); }
-
-@protected Balance dco_decode_balance(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 3) throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
-                return Balance(total: dco_decode_u_64(arr[0]),
-spendable: dco_decode_u_64(arr[1]),
-pending: dco_decode_u_64(arr[2]),); }
-
-@protected bool dco_decode_bool(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as bool; }
-
-@protected AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_address_book_color_tag(raw); }
-
-@protected AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_address_book_entry_ffi(raw); }
-
-@protected bool dco_decode_box_autoadd_bool(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as bool; }
-
-@protected CheckpointInfo dco_decode_box_autoadd_checkpoint_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_checkpoint_info(raw); }
-
-@protected PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_i_64(raw); }
-
-@protected LightdEndpoint dco_decode_box_autoadd_lightd_endpoint(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_lightd_endpoint(raw); }
-
-@protected PendingTx dco_decode_box_autoadd_pending_tx(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_pending_tx(raw); }
-
-@protected SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_signed_tx(raw); }
-
-@protected TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_tunnel_mode(raw); }
-
-@protected int dco_decode_box_autoadd_u_32(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as int; }
-
-@protected BigInt dco_decode_box_autoadd_u_64(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_u_64(raw); }
-
-@protected WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dco_decode_watch_only_banner_info(raw); }
-
-@protected BuildInfo dco_decode_build_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 5) throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
-                return BuildInfo(version: dco_decode_String(arr[0]),
-gitCommit: dco_decode_String(arr[1]),
-buildDate: dco_decode_String(arr[2]),
-rustVersion: dco_decode_String(arr[3]),
-targetTriple: dco_decode_String(arr[4]),); }
-
-@protected CheckpointInfo dco_decode_checkpoint_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 2) throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
-                return CheckpointInfo(height: dco_decode_u_32(arr[0]),
-timestamp: dco_decode_i_64(arr[1]),); }
-
-@protected double dco_decode_f_64(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as double; }
-
-@protected FeeInfo dco_decode_fee_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 5) throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
-                return FeeInfo(defaultFee: dco_decode_u_64(arr[0]),
-minFee: dco_decode_u_64(arr[1]),
-maxFee: dco_decode_u_64(arr[2]),
-feePerOutput: dco_decode_u_64(arr[3]),
-memoFeeMultiplier: dco_decode_f_64(arr[4]),); }
-
-@protected int dco_decode_i_32(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as int; }
-
-@protected PlatformInt64 dco_decode_i_64(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dcoDecodeI64(raw); }
-
-@protected KeyAddressInfo dco_decode_key_address_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 6) throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
-                return KeyAddressInfo(keyId: dco_decode_i_64(arr[0]),
-address: dco_decode_String(arr[1]),
-diversifierIndex: dco_decode_u_32(arr[2]),
-label: dco_decode_opt_String(arr[3]),
-createdAt: dco_decode_i_64(arr[4]),
-colorTag: dco_decode_address_book_color_tag(arr[5]),); }
-
-@protected KeyExportInfo dco_decode_key_export_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 5) throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
-                return KeyExportInfo(keyId: dco_decode_i_64(arr[0]),
-saplingViewingKey: dco_decode_opt_String(arr[1]),
-orchardViewingKey: dco_decode_opt_String(arr[2]),
-saplingSpendingKey: dco_decode_opt_String(arr[3]),
-orchardSpendingKey: dco_decode_opt_String(arr[4]),); }
-
-@protected KeyGroupInfo dco_decode_key_group_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 8) throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
-                return KeyGroupInfo(id: dco_decode_i_64(arr[0]),
-label: dco_decode_opt_String(arr[1]),
-keyType: dco_decode_key_type_info(arr[2]),
-spendable: dco_decode_bool(arr[3]),
-hasSapling: dco_decode_bool(arr[4]),
-hasOrchard: dco_decode_bool(arr[5]),
-birthdayHeight: dco_decode_i_64(arr[6]),
-createdAt: dco_decode_i_64(arr[7]),); }
-
-@protected KeyTypeInfo dco_decode_key_type_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return KeyTypeInfo.values[raw as int]; }
-
-@protected LightdEndpoint dco_decode_lightd_endpoint(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 5) throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
-                return LightdEndpoint(host: dco_decode_String(arr[0]),
-port: dco_decode_u_16(arr[1]),
-useTls: dco_decode_bool(arr[2]),
-tlsPin: dco_decode_opt_String(arr[3]),
-label: dco_decode_opt_String(arr[4]),); }
-
-@protected List<String> dco_decode_list_String(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_String).toList(); }
-
-@protected List<AddressBalanceInfo> dco_decode_list_address_balance_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_address_balance_info).toList(); }
-
-@protected List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_address_book_entry_ffi).toList(); }
-
-@protected List<AddressInfo> dco_decode_list_address_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_address_info).toList(); }
-
-@protected List<KeyAddressInfo> dco_decode_list_key_address_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_key_address_info).toList(); }
-
-@protected List<KeyGroupInfo> dco_decode_list_key_group_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_key_group_info).toList(); }
-
-@protected List<Output> dco_decode_list_output(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_output).toList(); }
-
-@protected Int64List dco_decode_list_prim_i_64_strict(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dcoDecodeInt64List(raw); }
-
-@protected Uint8List dco_decode_list_prim_u_8_strict(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as Uint8List; }
-
-@protected List<SyncLogEntryFfi> dco_decode_list_sync_log_entry_ffi(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_sync_log_entry_ffi).toList(); }
-
-@protected List<TxInfo> dco_decode_list_tx_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_tx_info).toList(); }
-
-@protected List<WalletMeta> dco_decode_list_wallet_meta(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return (raw as List<dynamic>).map(dco_decode_wallet_meta).toList(); }
-
-@protected NetworkInfo dco_decode_network_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 4) throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
-                return NetworkInfo(name: dco_decode_String(arr[0]),
-coinType: dco_decode_u_32(arr[1]),
-rpcPort: dco_decode_u_16(arr[2]),
-defaultBirthday: dco_decode_u_32(arr[3]),); }
-
-@protected NodeTestResult dco_decode_node_test_result(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 11) throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
-                return NodeTestResult(success: dco_decode_bool(arr[0]),
-latestBlockHeight: dco_decode_opt_box_autoadd_u_64(arr[1]),
-transportMode: dco_decode_String(arr[2]),
-tlsEnabled: dco_decode_bool(arr[3]),
-tlsPinMatched: dco_decode_opt_box_autoadd_bool(arr[4]),
-expectedPin: dco_decode_opt_String(arr[5]),
-actualPin: dco_decode_opt_String(arr[6]),
-errorMessage: dco_decode_opt_String(arr[7]),
-responseTimeMs: dco_decode_u_64(arr[8]),
-serverVersion: dco_decode_opt_String(arr[9]),
-chainName: dco_decode_opt_String(arr[10]),); }
-
-@protected String? dco_decode_opt_String(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_String(raw); }
-
-@protected AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_box_autoadd_address_book_color_tag(raw); }
-
-@protected AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_box_autoadd_address_book_entry_ffi(raw); }
-
-@protected bool? dco_decode_opt_box_autoadd_bool(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_box_autoadd_bool(raw); }
-
-@protected CheckpointInfo? dco_decode_opt_box_autoadd_checkpoint_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_box_autoadd_checkpoint_info(raw); }
-
-@protected PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_box_autoadd_i_64(raw); }
-
-@protected int? dco_decode_opt_box_autoadd_u_32(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_box_autoadd_u_32(raw); }
-
-@protected BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_box_autoadd_u_64(raw); }
-
-@protected WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_box_autoadd_watch_only_banner_info(raw); }
-
-@protected Int64List? dco_decode_opt_list_prim_i_64_strict(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw == null ? null : dco_decode_list_prim_i_64_strict(raw); }
-
-@protected Output dco_decode_output(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 3) throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
-                return Output(addr: dco_decode_String(arr[0]),
-amount: dco_decode_u_64(arr[1]),
-memo: dco_decode_opt_String(arr[2]),); }
-
-@protected PendingTx dco_decode_pending_tx(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 9) throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
-                return PendingTx(id: dco_decode_String(arr[0]),
-outputs: dco_decode_list_output(arr[1]),
-totalAmount: dco_decode_u_64(arr[2]),
-fee: dco_decode_u_64(arr[3]),
-change: dco_decode_u_64(arr[4]),
-inputTotal: dco_decode_u_64(arr[5]),
-numInputs: dco_decode_u_32(arr[6]),
-expiryHeight: dco_decode_u_32(arr[7]),
-createdAt: dco_decode_i_64(arr[8]),); }
-
-@protected SeedExportWarnings dco_decode_seed_export_warnings(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 4) throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
-                return SeedExportWarnings(primary: dco_decode_String(arr[0]),
-secondary: dco_decode_String(arr[1]),
-backupInstructions: dco_decode_String(arr[2]),
-clipboardWarning: dco_decode_String(arr[3]),); }
-
-@protected SignedTx dco_decode_signed_tx(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 3) throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
-                return SignedTx(txid: dco_decode_String(arr[0]),
-raw: dco_decode_list_prim_u_8_strict(arr[1]),
-size: dco_decode_usize(arr[2]),); }
-
-@protected SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 4) throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
-                return SyncLogEntryFfi(timestamp: dco_decode_i_64(arr[0]),
-level: dco_decode_String(arr[1]),
-module: dco_decode_String(arr[2]),
-message: dco_decode_String(arr[3]),); }
-
-@protected SyncMode dco_decode_sync_mode(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return SyncMode.values[raw as int]; }
-
-@protected SyncStage dco_decode_sync_stage(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return SyncStage.values[raw as int]; }
-
-@protected SyncStatus dco_decode_sync_status(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 9) throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
-                return SyncStatus(localHeight: dco_decode_u_64(arr[0]),
-targetHeight: dco_decode_u_64(arr[1]),
-percent: dco_decode_f_64(arr[2]),
-eta: dco_decode_opt_box_autoadd_u_64(arr[3]),
-stage: dco_decode_sync_stage(arr[4]),
-lastCheckpoint: dco_decode_opt_box_autoadd_u_64(arr[5]),
-blocksPerSecond: dco_decode_f_64(arr[6]),
-notesDecrypted: dco_decode_u_64(arr[7]),
-lastBatchMs: dco_decode_u_64(arr[8]),); }
-
-@protected TunnelMode dco_decode_tunnel_mode(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-switch (raw[0]) {
-                case 0: return TunnelMode_Tor();
-case 1: return TunnelMode_I2p();
-case 2: return TunnelMode_Socks5(url: dco_decode_String(raw[1]),);
-case 3: return TunnelMode_Direct();
-                default: throw Exception("unreachable");
-            } }
-
-@protected TxInfo dco_decode_tx_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 7) throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
-                return TxInfo(txid: dco_decode_String(arr[0]),
-height: dco_decode_opt_box_autoadd_u_32(arr[1]),
-timestamp: dco_decode_i_64(arr[2]),
-amount: dco_decode_i_64(arr[3]),
-fee: dco_decode_u_64(arr[4]),
-memo: dco_decode_opt_String(arr[5]),
-confirmed: dco_decode_bool(arr[6]),); }
-
-@protected int dco_decode_u_16(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as int; }
-
-@protected int dco_decode_u_32(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as int; }
-
-@protected BigInt dco_decode_u_64(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dcoDecodeU64(raw); }
-
-@protected int dco_decode_u_8(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return raw as int; }
-
-@protected void dco_decode_unit(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return; }
-
-@protected BigInt dco_decode_usize(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-return dcoDecodeU64(raw); }
-
-@protected WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 9) throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
-                return WalletBackgroundSyncResult(walletId: dco_decode_String(arr[0]),
-mode: dco_decode_String(arr[1]),
-blocksSynced: dco_decode_u_64(arr[2]),
-startHeight: dco_decode_u_64(arr[3]),
-endHeight: dco_decode_u_64(arr[4]),
-durationSecs: dco_decode_u_64(arr[5]),
-errors: dco_decode_list_String(arr[6]),
-newBalance: dco_decode_opt_box_autoadd_u_64(arr[7]),
-newTransactions: dco_decode_u_32(arr[8]),); }
-
-@protected WalletMeta dco_decode_wallet_meta(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 6) throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
-                return WalletMeta(id: dco_decode_String(arr[0]),
-name: dco_decode_String(arr[1]),
-createdAt: dco_decode_i_64(arr[2]),
-watchOnly: dco_decode_bool(arr[3]),
-birthdayHeight: dco_decode_u_32(arr[4]),
-networkType: dco_decode_opt_String(arr[5]),); }
-
-@protected WatchOnlyBannerInfo dco_decode_watch_only_banner_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 4) throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
-                return WatchOnlyBannerInfo(bannerType: dco_decode_String(arr[0]),
-title: dco_decode_String(arr[1]),
-subtitle: dco_decode_String(arr[2]),
-icon: dco_decode_String(arr[3]),); }
-
-@protected WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 6) throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
-                return WatchOnlyCapabilitiesInfo(canViewIncoming: dco_decode_bool(arr[0]),
-canViewOutgoing: dco_decode_bool(arr[1]),
-canSpend: dco_decode_bool(arr[2]),
-canExportSeed: dco_decode_bool(arr[3]),
-canGenerateAddresses: dco_decode_bool(arr[4]),
-isWatchOnly: dco_decode_bool(arr[5]),); }
-
-@protected WitnessRefreshOutcome dco_decode_witness_refresh_outcome(dynamic raw){ // Codec=Dco (DartCObject based), see doc to use other codecs
-final arr = raw as List<dynamic>;
-                if (arr.length != 9) throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
-                return WitnessRefreshOutcome(source: dco_decode_String(arr[0]),
-saplingRequested: dco_decode_usize(arr[1]),
-saplingUpdated: dco_decode_usize(arr[2]),
-saplingMissing: dco_decode_usize(arr[3]),
-saplingErrors: dco_decode_usize(arr[4]),
-orchardRequested: dco_decode_usize(arr[5]),
-orchardUpdated: dco_decode_usize(arr[6]),
-orchardMissing: dco_decode_usize(arr[7]),
-orchardErrors: dco_decode_usize(arr[8]),); }
-
-@protected AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var inner = sse_decode_String(deserializer);
-        return AnyhowException(inner); }
-
-@protected String sse_decode_String(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var inner = sse_decode_list_prim_u_8_strict(deserializer);
-        return utf8.decoder.convert(inner); }
-
-@protected AddressBalanceInfo sse_decode_address_balance_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_address = sse_decode_String(deserializer);
-var var_balance = sse_decode_u_64(deserializer);
-var var_spendable = sse_decode_u_64(deserializer);
-var var_pending = sse_decode_u_64(deserializer);
-var var_keyId = sse_decode_opt_box_autoadd_i_64(deserializer);
-var var_addressId = sse_decode_i_64(deserializer);
-var var_label = sse_decode_opt_String(deserializer);
-var var_createdAt = sse_decode_i_64(deserializer);
-var var_colorTag = sse_decode_address_book_color_tag(deserializer);
-var var_diversifierIndex = sse_decode_u_32(deserializer);
-return AddressBalanceInfo(address: var_address, balance: var_balance, spendable: var_spendable, pending: var_pending, keyId: var_keyId, addressId: var_addressId, label: var_label, createdAt: var_createdAt, colorTag: var_colorTag, diversifierIndex: var_diversifierIndex); }
-
-@protected AddressBookColorTag sse_decode_address_book_color_tag(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var inner = sse_decode_i_32(deserializer);
-        return AddressBookColorTag.values[inner]; }
-
-@protected AddressBookEntryFfi sse_decode_address_book_entry_ffi(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_id = sse_decode_i_64(deserializer);
-var var_walletId = sse_decode_String(deserializer);
-var var_address = sse_decode_String(deserializer);
-var var_label = sse_decode_String(deserializer);
-var var_notes = sse_decode_opt_String(deserializer);
-var var_colorTag = sse_decode_address_book_color_tag(deserializer);
-var var_isFavorite = sse_decode_bool(deserializer);
-var var_createdAt = sse_decode_i_64(deserializer);
-var var_updatedAt = sse_decode_i_64(deserializer);
-var var_lastUsedAt = sse_decode_opt_box_autoadd_i_64(deserializer);
-var var_useCount = sse_decode_u_32(deserializer);
-return AddressBookEntryFfi(id: var_id, walletId: var_walletId, address: var_address, label: var_label, notes: var_notes, colorTag: var_colorTag, isFavorite: var_isFavorite, createdAt: var_createdAt, updatedAt: var_updatedAt, lastUsedAt: var_lastUsedAt, useCount: var_useCount); }
-
-@protected AddressInfo sse_decode_address_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_address = sse_decode_String(deserializer);
-var var_diversifierIndex = sse_decode_u_32(deserializer);
-var var_label = sse_decode_opt_String(deserializer);
-var var_createdAt = sse_decode_i_64(deserializer);
-var var_colorTag = sse_decode_address_book_color_tag(deserializer);
-return AddressInfo(address: var_address, diversifierIndex: var_diversifierIndex, label: var_label, createdAt: var_createdAt, colorTag: var_colorTag); }
-
-@protected BackgroundSyncResult sse_decode_background_sync_result(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_mode = sse_decode_String(deserializer);
-var var_blocksSynced = sse_decode_u_64(deserializer);
-var var_startHeight = sse_decode_u_64(deserializer);
-var var_endHeight = sse_decode_u_64(deserializer);
-var var_durationSecs = sse_decode_u_64(deserializer);
-var var_errors = sse_decode_list_String(deserializer);
-var var_newBalance = sse_decode_opt_box_autoadd_u_64(deserializer);
-var var_newTransactions = sse_decode_u_32(deserializer);
-return BackgroundSyncResult(mode: var_mode, blocksSynced: var_blocksSynced, startHeight: var_startHeight, endHeight: var_endHeight, durationSecs: var_durationSecs, errors: var_errors, newBalance: var_newBalance, newTransactions: var_newTransactions); }
-
-@protected Balance sse_decode_balance(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_total = sse_decode_u_64(deserializer);
-var var_spendable = sse_decode_u_64(deserializer);
-var var_pending = sse_decode_u_64(deserializer);
-return Balance(total: var_total, spendable: var_spendable, pending: var_pending); }
-
-@protected bool sse_decode_bool(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return deserializer.buffer.getUint8() != 0; }
-
-@protected AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_address_book_color_tag(deserializer)); }
-
-@protected AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_address_book_entry_ffi(deserializer)); }
-
-@protected bool sse_decode_box_autoadd_bool(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_bool(deserializer)); }
-
-@protected CheckpointInfo sse_decode_box_autoadd_checkpoint_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_checkpoint_info(deserializer)); }
-
-@protected PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_i_64(deserializer)); }
-
-@protected LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_lightd_endpoint(deserializer)); }
-
-@protected PendingTx sse_decode_box_autoadd_pending_tx(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_pending_tx(deserializer)); }
-
-@protected SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_signed_tx(deserializer)); }
-
-@protected TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_tunnel_mode(deserializer)); }
-
-@protected int sse_decode_box_autoadd_u_32(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_u_32(deserializer)); }
-
-@protected BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_u_64(deserializer)); }
-
-@protected WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return (sse_decode_watch_only_banner_info(deserializer)); }
-
-@protected BuildInfo sse_decode_build_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_version = sse_decode_String(deserializer);
-var var_gitCommit = sse_decode_String(deserializer);
-var var_buildDate = sse_decode_String(deserializer);
-var var_rustVersion = sse_decode_String(deserializer);
-var var_targetTriple = sse_decode_String(deserializer);
-return BuildInfo(version: var_version, gitCommit: var_gitCommit, buildDate: var_buildDate, rustVersion: var_rustVersion, targetTriple: var_targetTriple); }
-
-@protected CheckpointInfo sse_decode_checkpoint_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_height = sse_decode_u_32(deserializer);
-var var_timestamp = sse_decode_i_64(deserializer);
-return CheckpointInfo(height: var_height, timestamp: var_timestamp); }
-
-@protected double sse_decode_f_64(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return deserializer.buffer.getFloat64(); }
-
-@protected FeeInfo sse_decode_fee_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_defaultFee = sse_decode_u_64(deserializer);
-var var_minFee = sse_decode_u_64(deserializer);
-var var_maxFee = sse_decode_u_64(deserializer);
-var var_feePerOutput = sse_decode_u_64(deserializer);
-var var_memoFeeMultiplier = sse_decode_f_64(deserializer);
-return FeeInfo(defaultFee: var_defaultFee, minFee: var_minFee, maxFee: var_maxFee, feePerOutput: var_feePerOutput, memoFeeMultiplier: var_memoFeeMultiplier); }
-
-@protected int sse_decode_i_32(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return deserializer.buffer.getInt32(); }
-
-@protected PlatformInt64 sse_decode_i_64(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return deserializer.buffer.getPlatformInt64(); }
-
-@protected KeyAddressInfo sse_decode_key_address_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_keyId = sse_decode_i_64(deserializer);
-var var_address = sse_decode_String(deserializer);
-var var_diversifierIndex = sse_decode_u_32(deserializer);
-var var_label = sse_decode_opt_String(deserializer);
-var var_createdAt = sse_decode_i_64(deserializer);
-var var_colorTag = sse_decode_address_book_color_tag(deserializer);
-return KeyAddressInfo(keyId: var_keyId, address: var_address, diversifierIndex: var_diversifierIndex, label: var_label, createdAt: var_createdAt, colorTag: var_colorTag); }
-
-@protected KeyExportInfo sse_decode_key_export_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_keyId = sse_decode_i_64(deserializer);
-var var_saplingViewingKey = sse_decode_opt_String(deserializer);
-var var_orchardViewingKey = sse_decode_opt_String(deserializer);
-var var_saplingSpendingKey = sse_decode_opt_String(deserializer);
-var var_orchardSpendingKey = sse_decode_opt_String(deserializer);
-return KeyExportInfo(keyId: var_keyId, saplingViewingKey: var_saplingViewingKey, orchardViewingKey: var_orchardViewingKey, saplingSpendingKey: var_saplingSpendingKey, orchardSpendingKey: var_orchardSpendingKey); }
-
-@protected KeyGroupInfo sse_decode_key_group_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_id = sse_decode_i_64(deserializer);
-var var_label = sse_decode_opt_String(deserializer);
-var var_keyType = sse_decode_key_type_info(deserializer);
-var var_spendable = sse_decode_bool(deserializer);
-var var_hasSapling = sse_decode_bool(deserializer);
-var var_hasOrchard = sse_decode_bool(deserializer);
-var var_birthdayHeight = sse_decode_i_64(deserializer);
-var var_createdAt = sse_decode_i_64(deserializer);
-return KeyGroupInfo(id: var_id, label: var_label, keyType: var_keyType, spendable: var_spendable, hasSapling: var_hasSapling, hasOrchard: var_hasOrchard, birthdayHeight: var_birthdayHeight, createdAt: var_createdAt); }
-
-@protected KeyTypeInfo sse_decode_key_type_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var inner = sse_decode_i_32(deserializer);
-        return KeyTypeInfo.values[inner]; }
-
-@protected LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_host = sse_decode_String(deserializer);
-var var_port = sse_decode_u_16(deserializer);
-var var_useTls = sse_decode_bool(deserializer);
-var var_tlsPin = sse_decode_opt_String(deserializer);
-var var_label = sse_decode_opt_String(deserializer);
-return LightdEndpoint(host: var_host, port: var_port, useTls: var_useTls, tlsPin: var_tlsPin, label: var_label); }
-
-@protected List<String> sse_decode_list_String(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <String>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_String(deserializer)); }
-        return ans_;
-         }
-
-@protected List<AddressBalanceInfo> sse_decode_list_address_balance_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <AddressBalanceInfo>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_address_balance_info(deserializer)); }
-        return ans_;
-         }
-
-@protected List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <AddressBookEntryFfi>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_address_book_entry_ffi(deserializer)); }
-        return ans_;
-         }
-
-@protected List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <AddressInfo>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_address_info(deserializer)); }
-        return ans_;
-         }
-
-@protected List<KeyAddressInfo> sse_decode_list_key_address_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <KeyAddressInfo>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_key_address_info(deserializer)); }
-        return ans_;
-         }
-
-@protected List<KeyGroupInfo> sse_decode_list_key_group_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <KeyGroupInfo>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_key_group_info(deserializer)); }
-        return ans_;
-         }
-
-@protected List<Output> sse_decode_list_output(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <Output>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_output(deserializer)); }
-        return ans_;
-         }
-
-@protected Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var len_ = sse_decode_i_32(deserializer);
-                return deserializer.buffer.getInt64List(len_); }
-
-@protected Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var len_ = sse_decode_i_32(deserializer);
-                return deserializer.buffer.getUint8List(len_); }
-
-@protected List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <SyncLogEntryFfi>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_sync_log_entry_ffi(deserializer)); }
-        return ans_;
-         }
-
-@protected List<TxInfo> sse_decode_list_tx_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <TxInfo>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_tx_info(deserializer)); }
-        return ans_;
-         }
-
-@protected List<WalletMeta> sse_decode_list_wallet_meta(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-        var len_ = sse_decode_i_32(deserializer);
-        var ans_ = <WalletMeta>[];
-        for (var idx_ = 0; idx_ < len_; ++idx_) { ans_.add(sse_decode_wallet_meta(deserializer)); }
-        return ans_;
-         }
-
-@protected NetworkInfo sse_decode_network_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_name = sse_decode_String(deserializer);
-var var_coinType = sse_decode_u_32(deserializer);
-var var_rpcPort = sse_decode_u_16(deserializer);
-var var_defaultBirthday = sse_decode_u_32(deserializer);
-return NetworkInfo(name: var_name, coinType: var_coinType, rpcPort: var_rpcPort, defaultBirthday: var_defaultBirthday); }
-
-@protected NodeTestResult sse_decode_node_test_result(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_success = sse_decode_bool(deserializer);
-var var_latestBlockHeight = sse_decode_opt_box_autoadd_u_64(deserializer);
-var var_transportMode = sse_decode_String(deserializer);
-var var_tlsEnabled = sse_decode_bool(deserializer);
-var var_tlsPinMatched = sse_decode_opt_box_autoadd_bool(deserializer);
-var var_expectedPin = sse_decode_opt_String(deserializer);
-var var_actualPin = sse_decode_opt_String(deserializer);
-var var_errorMessage = sse_decode_opt_String(deserializer);
-var var_responseTimeMs = sse_decode_u_64(deserializer);
-var var_serverVersion = sse_decode_opt_String(deserializer);
-var var_chainName = sse_decode_opt_String(deserializer);
-return NodeTestResult(success: var_success, latestBlockHeight: var_latestBlockHeight, transportMode: var_transportMode, tlsEnabled: var_tlsEnabled, tlsPinMatched: var_tlsPinMatched, expectedPin: var_expectedPin, actualPin: var_actualPin, errorMessage: var_errorMessage, responseTimeMs: var_responseTimeMs, serverVersion: var_serverVersion, chainName: var_chainName); }
-
-@protected String? sse_decode_opt_String(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_String(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_box_autoadd_address_book_color_tag(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_box_autoadd_address_book_entry_ffi(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_box_autoadd_bool(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_box_autoadd_checkpoint_info(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_box_autoadd_i_64(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_box_autoadd_u_32(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_box_autoadd_u_64(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_box_autoadd_watch_only_banner_info(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected Int64List? sse_decode_opt_list_prim_i_64_strict(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            if (sse_decode_bool(deserializer)) {
-                return (sse_decode_list_prim_i_64_strict(deserializer));
-            } else {
-                return null;
-            }
-             }
-
-@protected Output sse_decode_output(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_addr = sse_decode_String(deserializer);
-var var_amount = sse_decode_u_64(deserializer);
-var var_memo = sse_decode_opt_String(deserializer);
-return Output(addr: var_addr, amount: var_amount, memo: var_memo); }
-
-@protected PendingTx sse_decode_pending_tx(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_id = sse_decode_String(deserializer);
-var var_outputs = sse_decode_list_output(deserializer);
-var var_totalAmount = sse_decode_u_64(deserializer);
-var var_fee = sse_decode_u_64(deserializer);
-var var_change = sse_decode_u_64(deserializer);
-var var_inputTotal = sse_decode_u_64(deserializer);
-var var_numInputs = sse_decode_u_32(deserializer);
-var var_expiryHeight = sse_decode_u_32(deserializer);
-var var_createdAt = sse_decode_i_64(deserializer);
-return PendingTx(id: var_id, outputs: var_outputs, totalAmount: var_totalAmount, fee: var_fee, change: var_change, inputTotal: var_inputTotal, numInputs: var_numInputs, expiryHeight: var_expiryHeight, createdAt: var_createdAt); }
-
-@protected SeedExportWarnings sse_decode_seed_export_warnings(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_primary = sse_decode_String(deserializer);
-var var_secondary = sse_decode_String(deserializer);
-var var_backupInstructions = sse_decode_String(deserializer);
-var var_clipboardWarning = sse_decode_String(deserializer);
-return SeedExportWarnings(primary: var_primary, secondary: var_secondary, backupInstructions: var_backupInstructions, clipboardWarning: var_clipboardWarning); }
-
-@protected SignedTx sse_decode_signed_tx(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_txid = sse_decode_String(deserializer);
-var var_raw = sse_decode_list_prim_u_8_strict(deserializer);
-var var_size = sse_decode_usize(deserializer);
-return SignedTx(txid: var_txid, raw: var_raw, size: var_size); }
-
-@protected SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_timestamp = sse_decode_i_64(deserializer);
-var var_level = sse_decode_String(deserializer);
-var var_module = sse_decode_String(deserializer);
-var var_message = sse_decode_String(deserializer);
-return SyncLogEntryFfi(timestamp: var_timestamp, level: var_level, module: var_module, message: var_message); }
-
-@protected SyncMode sse_decode_sync_mode(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var inner = sse_decode_i_32(deserializer);
-        return SyncMode.values[inner]; }
-
-@protected SyncStage sse_decode_sync_stage(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var inner = sse_decode_i_32(deserializer);
-        return SyncStage.values[inner]; }
-
-@protected SyncStatus sse_decode_sync_status(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_localHeight = sse_decode_u_64(deserializer);
-var var_targetHeight = sse_decode_u_64(deserializer);
-var var_percent = sse_decode_f_64(deserializer);
-var var_eta = sse_decode_opt_box_autoadd_u_64(deserializer);
-var var_stage = sse_decode_sync_stage(deserializer);
-var var_lastCheckpoint = sse_decode_opt_box_autoadd_u_64(deserializer);
-var var_blocksPerSecond = sse_decode_f_64(deserializer);
-var var_notesDecrypted = sse_decode_u_64(deserializer);
-var var_lastBatchMs = sse_decode_u_64(deserializer);
-return SyncStatus(localHeight: var_localHeight, targetHeight: var_targetHeight, percent: var_percent, eta: var_eta, stage: var_stage, lastCheckpoint: var_lastCheckpoint, blocksPerSecond: var_blocksPerSecond, notesDecrypted: var_notesDecrypted, lastBatchMs: var_lastBatchMs); }
-
-@protected TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-            var tag_ = sse_decode_i_32(deserializer);
-            switch (tag_) { case 0: return TunnelMode_Tor();case 1: return TunnelMode_I2p();case 2: var var_url = sse_decode_String(deserializer);
-return TunnelMode_Socks5(url: var_url);case 3: return TunnelMode_Direct(); default: throw UnimplementedError(''); }
-             }
-
-@protected TxInfo sse_decode_tx_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_txid = sse_decode_String(deserializer);
-var var_height = sse_decode_opt_box_autoadd_u_32(deserializer);
-var var_timestamp = sse_decode_i_64(deserializer);
-var var_amount = sse_decode_i_64(deserializer);
-var var_fee = sse_decode_u_64(deserializer);
-var var_memo = sse_decode_opt_String(deserializer);
-var var_confirmed = sse_decode_bool(deserializer);
-return TxInfo(txid: var_txid, height: var_height, timestamp: var_timestamp, amount: var_amount, fee: var_fee, memo: var_memo, confirmed: var_confirmed); }
-
-@protected int sse_decode_u_16(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return deserializer.buffer.getUint16(); }
-
-@protected int sse_decode_u_32(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return deserializer.buffer.getUint32(); }
-
-@protected BigInt sse_decode_u_64(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return deserializer.buffer.getBigUint64(); }
-
-@protected int sse_decode_u_8(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return deserializer.buffer.getUint8(); }
-
-@protected void sse_decode_unit(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
- }
-
-@protected BigInt sse_decode_usize(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-return deserializer.buffer.getBigUint64(); }
-
-@protected WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_walletId = sse_decode_String(deserializer);
-var var_mode = sse_decode_String(deserializer);
-var var_blocksSynced = sse_decode_u_64(deserializer);
-var var_startHeight = sse_decode_u_64(deserializer);
-var var_endHeight = sse_decode_u_64(deserializer);
-var var_durationSecs = sse_decode_u_64(deserializer);
-var var_errors = sse_decode_list_String(deserializer);
-var var_newBalance = sse_decode_opt_box_autoadd_u_64(deserializer);
-var var_newTransactions = sse_decode_u_32(deserializer);
-return WalletBackgroundSyncResult(walletId: var_walletId, mode: var_mode, blocksSynced: var_blocksSynced, startHeight: var_startHeight, endHeight: var_endHeight, durationSecs: var_durationSecs, errors: var_errors, newBalance: var_newBalance, newTransactions: var_newTransactions); }
-
-@protected WalletMeta sse_decode_wallet_meta(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_id = sse_decode_String(deserializer);
-var var_name = sse_decode_String(deserializer);
-var var_createdAt = sse_decode_i_64(deserializer);
-var var_watchOnly = sse_decode_bool(deserializer);
-var var_birthdayHeight = sse_decode_u_32(deserializer);
-var var_networkType = sse_decode_opt_String(deserializer);
-return WalletMeta(id: var_id, name: var_name, createdAt: var_createdAt, watchOnly: var_watchOnly, birthdayHeight: var_birthdayHeight, networkType: var_networkType); }
-
-@protected WatchOnlyBannerInfo sse_decode_watch_only_banner_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_bannerType = sse_decode_String(deserializer);
-var var_title = sse_decode_String(deserializer);
-var var_subtitle = sse_decode_String(deserializer);
-var var_icon = sse_decode_String(deserializer);
-return WatchOnlyBannerInfo(bannerType: var_bannerType, title: var_title, subtitle: var_subtitle, icon: var_icon); }
-
-@protected WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_canViewIncoming = sse_decode_bool(deserializer);
-var var_canViewOutgoing = sse_decode_bool(deserializer);
-var var_canSpend = sse_decode_bool(deserializer);
-var var_canExportSeed = sse_decode_bool(deserializer);
-var var_canGenerateAddresses = sse_decode_bool(deserializer);
-var var_isWatchOnly = sse_decode_bool(deserializer);
-return WatchOnlyCapabilitiesInfo(canViewIncoming: var_canViewIncoming, canViewOutgoing: var_canViewOutgoing, canSpend: var_canSpend, canExportSeed: var_canExportSeed, canGenerateAddresses: var_canGenerateAddresses, isWatchOnly: var_isWatchOnly); }
-
-@protected WitnessRefreshOutcome sse_decode_witness_refresh_outcome(SseDeserializer deserializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-var var_source = sse_decode_String(deserializer);
-var var_saplingRequested = sse_decode_usize(deserializer);
-var var_saplingUpdated = sse_decode_usize(deserializer);
-var var_saplingMissing = sse_decode_usize(deserializer);
-var var_saplingErrors = sse_decode_usize(deserializer);
-var var_orchardRequested = sse_decode_usize(deserializer);
-var var_orchardUpdated = sse_decode_usize(deserializer);
-var var_orchardMissing = sse_decode_usize(deserializer);
-var var_orchardErrors = sse_decode_usize(deserializer);
-return WitnessRefreshOutcome(source: var_source, saplingRequested: var_saplingRequested, saplingUpdated: var_saplingUpdated, saplingMissing: var_saplingMissing, saplingErrors: var_saplingErrors, orchardRequested: var_orchardRequested, orchardUpdated: var_orchardUpdated, orchardMissing: var_orchardMissing, orchardErrors: var_orchardErrors); }
-
-@protected int cst_encode_address_book_color_tag(AddressBookColorTag raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_i_32(raw.index); }
-
-@protected bool cst_encode_bool(bool raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw; }
-
-@protected double cst_encode_f_64(double raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw; }
-
-@protected int cst_encode_i_32(int raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw; }
-
-@protected int cst_encode_key_type_info(KeyTypeInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_i_32(raw.index); }
-
-@protected int cst_encode_sync_mode(SyncMode raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_i_32(raw.index); }
-
-@protected int cst_encode_sync_stage(SyncStage raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_i_32(raw.index); }
-
-@protected int cst_encode_u_16(int raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw; }
-
-@protected int cst_encode_u_32(int raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw; }
-
-@protected int cst_encode_u_8(int raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw; }
-
-@protected void cst_encode_unit(void raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw; }
-
-@protected void sse_encode_AnyhowException(AnyhowException self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.message, serializer); }
-
-@protected void sse_encode_String(String self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer); }
-
-@protected void sse_encode_address_balance_info(AddressBalanceInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.address, serializer);
-sse_encode_u_64(self.balance, serializer);
-sse_encode_u_64(self.spendable, serializer);
-sse_encode_u_64(self.pending, serializer);
-sse_encode_opt_box_autoadd_i_64(self.keyId, serializer);
-sse_encode_i_64(self.addressId, serializer);
-sse_encode_opt_String(self.label, serializer);
-sse_encode_i_64(self.createdAt, serializer);
-sse_encode_address_book_color_tag(self.colorTag, serializer);
-sse_encode_u_32(self.diversifierIndex, serializer);
- }
-
-@protected void sse_encode_address_book_color_tag(AddressBookColorTag self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.index, serializer); }
-
-@protected void sse_encode_address_book_entry_ffi(AddressBookEntryFfi self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_64(self.id, serializer);
-sse_encode_String(self.walletId, serializer);
-sse_encode_String(self.address, serializer);
-sse_encode_String(self.label, serializer);
-sse_encode_opt_String(self.notes, serializer);
-sse_encode_address_book_color_tag(self.colorTag, serializer);
-sse_encode_bool(self.isFavorite, serializer);
-sse_encode_i_64(self.createdAt, serializer);
-sse_encode_i_64(self.updatedAt, serializer);
-sse_encode_opt_box_autoadd_i_64(self.lastUsedAt, serializer);
-sse_encode_u_32(self.useCount, serializer);
- }
-
-@protected void sse_encode_address_info(AddressInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.address, serializer);
-sse_encode_u_32(self.diversifierIndex, serializer);
-sse_encode_opt_String(self.label, serializer);
-sse_encode_i_64(self.createdAt, serializer);
-sse_encode_address_book_color_tag(self.colorTag, serializer);
- }
-
-@protected void sse_encode_background_sync_result(BackgroundSyncResult self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.mode, serializer);
-sse_encode_u_64(self.blocksSynced, serializer);
-sse_encode_u_64(self.startHeight, serializer);
-sse_encode_u_64(self.endHeight, serializer);
-sse_encode_u_64(self.durationSecs, serializer);
-sse_encode_list_String(self.errors, serializer);
-sse_encode_opt_box_autoadd_u_64(self.newBalance, serializer);
-sse_encode_u_32(self.newTransactions, serializer);
- }
-
-@protected void sse_encode_balance(Balance self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_u_64(self.total, serializer);
-sse_encode_u_64(self.spendable, serializer);
-sse_encode_u_64(self.pending, serializer);
- }
-
-@protected void sse_encode_bool(bool self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-serializer.buffer.putUint8(self ? 1 : 0); }
-
-@protected void sse_encode_box_autoadd_address_book_color_tag(AddressBookColorTag self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_address_book_color_tag(self, serializer); }
-
-@protected void sse_encode_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_address_book_entry_ffi(self, serializer); }
-
-@protected void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_bool(self, serializer); }
-
-@protected void sse_encode_box_autoadd_checkpoint_info(CheckpointInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_checkpoint_info(self, serializer); }
-
-@protected void sse_encode_box_autoadd_i_64(PlatformInt64 self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_64(self, serializer); }
-
-@protected void sse_encode_box_autoadd_lightd_endpoint(LightdEndpoint self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_lightd_endpoint(self, serializer); }
-
-@protected void sse_encode_box_autoadd_pending_tx(PendingTx self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_pending_tx(self, serializer); }
-
-@protected void sse_encode_box_autoadd_signed_tx(SignedTx self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_signed_tx(self, serializer); }
-
-@protected void sse_encode_box_autoadd_tunnel_mode(TunnelMode self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_tunnel_mode(self, serializer); }
-
-@protected void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_u_32(self, serializer); }
-
-@protected void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_u_64(self, serializer); }
-
-@protected void sse_encode_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_watch_only_banner_info(self, serializer); }
-
-@protected void sse_encode_build_info(BuildInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.version, serializer);
-sse_encode_String(self.gitCommit, serializer);
-sse_encode_String(self.buildDate, serializer);
-sse_encode_String(self.rustVersion, serializer);
-sse_encode_String(self.targetTriple, serializer);
- }
-
-@protected void sse_encode_checkpoint_info(CheckpointInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_u_32(self.height, serializer);
-sse_encode_i_64(self.timestamp, serializer);
- }
-
-@protected void sse_encode_f_64(double self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-serializer.buffer.putFloat64(self); }
-
-@protected void sse_encode_fee_info(FeeInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_u_64(self.defaultFee, serializer);
-sse_encode_u_64(self.minFee, serializer);
-sse_encode_u_64(self.maxFee, serializer);
-sse_encode_u_64(self.feePerOutput, serializer);
-sse_encode_f_64(self.memoFeeMultiplier, serializer);
- }
-
-@protected void sse_encode_i_32(int self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-serializer.buffer.putInt32(self); }
-
-@protected void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-serializer.buffer.putPlatformInt64(self); }
-
-@protected void sse_encode_key_address_info(KeyAddressInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_64(self.keyId, serializer);
-sse_encode_String(self.address, serializer);
-sse_encode_u_32(self.diversifierIndex, serializer);
-sse_encode_opt_String(self.label, serializer);
-sse_encode_i_64(self.createdAt, serializer);
-sse_encode_address_book_color_tag(self.colorTag, serializer);
- }
-
-@protected void sse_encode_key_export_info(KeyExportInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_64(self.keyId, serializer);
-sse_encode_opt_String(self.saplingViewingKey, serializer);
-sse_encode_opt_String(self.orchardViewingKey, serializer);
-sse_encode_opt_String(self.saplingSpendingKey, serializer);
-sse_encode_opt_String(self.orchardSpendingKey, serializer);
- }
-
-@protected void sse_encode_key_group_info(KeyGroupInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_64(self.id, serializer);
-sse_encode_opt_String(self.label, serializer);
-sse_encode_key_type_info(self.keyType, serializer);
-sse_encode_bool(self.spendable, serializer);
-sse_encode_bool(self.hasSapling, serializer);
-sse_encode_bool(self.hasOrchard, serializer);
-sse_encode_i_64(self.birthdayHeight, serializer);
-sse_encode_i_64(self.createdAt, serializer);
- }
-
-@protected void sse_encode_key_type_info(KeyTypeInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.index, serializer); }
-
-@protected void sse_encode_lightd_endpoint(LightdEndpoint self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.host, serializer);
-sse_encode_u_16(self.port, serializer);
-sse_encode_bool(self.useTls, serializer);
-sse_encode_opt_String(self.tlsPin, serializer);
-sse_encode_opt_String(self.label, serializer);
- }
-
-@protected void sse_encode_list_String(List<String> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_String(item, serializer); } }
-
-@protected void sse_encode_list_address_balance_info(List<AddressBalanceInfo> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_address_balance_info(item, serializer); } }
-
-@protected void sse_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_address_book_entry_ffi(item, serializer); } }
-
-@protected void sse_encode_list_address_info(List<AddressInfo> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_address_info(item, serializer); } }
-
-@protected void sse_encode_list_key_address_info(List<KeyAddressInfo> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_key_address_info(item, serializer); } }
-
-@protected void sse_encode_list_key_group_info(List<KeyGroupInfo> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_key_group_info(item, serializer); } }
-
-@protected void sse_encode_list_output(List<Output> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_output(item, serializer); } }
-
-@protected void sse_encode_list_prim_i_64_strict(Int64List self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-                    serializer.buffer.putInt64List(self); }
-
-@protected void sse_encode_list_prim_u_8_strict(Uint8List self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-                    serializer.buffer.putUint8List(self); }
-
-@protected void sse_encode_list_sync_log_entry_ffi(List<SyncLogEntryFfi> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_sync_log_entry_ffi(item, serializer); } }
-
-@protected void sse_encode_list_tx_info(List<TxInfo> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_tx_info(item, serializer); } }
-
-@protected void sse_encode_list_wallet_meta(List<WalletMeta> self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.length, serializer);
-        for (final item in self) { sse_encode_wallet_meta(item, serializer); } }
-
-@protected void sse_encode_network_info(NetworkInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.name, serializer);
-sse_encode_u_32(self.coinType, serializer);
-sse_encode_u_16(self.rpcPort, serializer);
-sse_encode_u_32(self.defaultBirthday, serializer);
- }
-
-@protected void sse_encode_node_test_result(NodeTestResult self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_bool(self.success, serializer);
-sse_encode_opt_box_autoadd_u_64(self.latestBlockHeight, serializer);
-sse_encode_String(self.transportMode, serializer);
-sse_encode_bool(self.tlsEnabled, serializer);
-sse_encode_opt_box_autoadd_bool(self.tlsPinMatched, serializer);
-sse_encode_opt_String(self.expectedPin, serializer);
-sse_encode_opt_String(self.actualPin, serializer);
-sse_encode_opt_String(self.errorMessage, serializer);
-sse_encode_u_64(self.responseTimeMs, serializer);
-sse_encode_opt_String(self.serverVersion, serializer);
-sse_encode_opt_String(self.chainName, serializer);
- }
-
-@protected void sse_encode_opt_String(String? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_String(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_opt_box_autoadd_address_book_color_tag(AddressBookColorTag? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_box_autoadd_address_book_color_tag(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_opt_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_box_autoadd_address_book_entry_ffi(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_box_autoadd_bool(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_opt_box_autoadd_checkpoint_info(CheckpointInfo? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_box_autoadd_checkpoint_info(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_opt_box_autoadd_i_64(PlatformInt64? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_box_autoadd_i_64(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_box_autoadd_u_32(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_box_autoadd_u_64(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_opt_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_box_autoadd_watch_only_banner_info(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_opt_list_prim_i_64_strict(Int64List? self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-
-                sse_encode_bool(self != null, serializer);
-                if (self != null) {
-                    sse_encode_list_prim_i_64_strict(self, serializer);
-                }
-                 }
-
-@protected void sse_encode_output(Output self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.addr, serializer);
-sse_encode_u_64(self.amount, serializer);
-sse_encode_opt_String(self.memo, serializer);
- }
-
-@protected void sse_encode_pending_tx(PendingTx self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.id, serializer);
-sse_encode_list_output(self.outputs, serializer);
-sse_encode_u_64(self.totalAmount, serializer);
-sse_encode_u_64(self.fee, serializer);
-sse_encode_u_64(self.change, serializer);
-sse_encode_u_64(self.inputTotal, serializer);
-sse_encode_u_32(self.numInputs, serializer);
-sse_encode_u_32(self.expiryHeight, serializer);
-sse_encode_i_64(self.createdAt, serializer);
- }
-
-@protected void sse_encode_seed_export_warnings(SeedExportWarnings self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.primary, serializer);
-sse_encode_String(self.secondary, serializer);
-sse_encode_String(self.backupInstructions, serializer);
-sse_encode_String(self.clipboardWarning, serializer);
- }
-
-@protected void sse_encode_signed_tx(SignedTx self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.txid, serializer);
-sse_encode_list_prim_u_8_strict(self.raw, serializer);
-sse_encode_usize(self.size, serializer);
- }
-
-@protected void sse_encode_sync_log_entry_ffi(SyncLogEntryFfi self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_64(self.timestamp, serializer);
-sse_encode_String(self.level, serializer);
-sse_encode_String(self.module, serializer);
-sse_encode_String(self.message, serializer);
- }
-
-@protected void sse_encode_sync_mode(SyncMode self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.index, serializer); }
-
-@protected void sse_encode_sync_stage(SyncStage self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_i_32(self.index, serializer); }
-
-@protected void sse_encode_sync_status(SyncStatus self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_u_64(self.localHeight, serializer);
-sse_encode_u_64(self.targetHeight, serializer);
-sse_encode_f_64(self.percent, serializer);
-sse_encode_opt_box_autoadd_u_64(self.eta, serializer);
-sse_encode_sync_stage(self.stage, serializer);
-sse_encode_opt_box_autoadd_u_64(self.lastCheckpoint, serializer);
-sse_encode_f_64(self.blocksPerSecond, serializer);
-sse_encode_u_64(self.notesDecrypted, serializer);
-sse_encode_u_64(self.lastBatchMs, serializer);
- }
-
-@protected void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-switch (self) { case TunnelMode_Tor(): sse_encode_i_32(0, serializer); case TunnelMode_I2p(): sse_encode_i_32(1, serializer); case TunnelMode_Socks5(url: final url): sse_encode_i_32(2, serializer); sse_encode_String(url, serializer);
-case TunnelMode_Direct(): sse_encode_i_32(3, serializer);   } }
-
-@protected void sse_encode_tx_info(TxInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.txid, serializer);
-sse_encode_opt_box_autoadd_u_32(self.height, serializer);
-sse_encode_i_64(self.timestamp, serializer);
-sse_encode_i_64(self.amount, serializer);
-sse_encode_u_64(self.fee, serializer);
-sse_encode_opt_String(self.memo, serializer);
-sse_encode_bool(self.confirmed, serializer);
- }
-
-@protected void sse_encode_u_16(int self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-serializer.buffer.putUint16(self); }
-
-@protected void sse_encode_u_32(int self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-serializer.buffer.putUint32(self); }
-
-@protected void sse_encode_u_64(BigInt self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-serializer.buffer.putBigUint64(self); }
-
-@protected void sse_encode_u_8(int self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-serializer.buffer.putUint8(self); }
-
-@protected void sse_encode_unit(void self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
- }
-
-@protected void sse_encode_usize(BigInt self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-serializer.buffer.putBigUint64(self); }
-
-@protected void sse_encode_wallet_background_sync_result(WalletBackgroundSyncResult self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.walletId, serializer);
-sse_encode_String(self.mode, serializer);
-sse_encode_u_64(self.blocksSynced, serializer);
-sse_encode_u_64(self.startHeight, serializer);
-sse_encode_u_64(self.endHeight, serializer);
-sse_encode_u_64(self.durationSecs, serializer);
-sse_encode_list_String(self.errors, serializer);
-sse_encode_opt_box_autoadd_u_64(self.newBalance, serializer);
-sse_encode_u_32(self.newTransactions, serializer);
- }
-
-@protected void sse_encode_wallet_meta(WalletMeta self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.id, serializer);
-sse_encode_String(self.name, serializer);
-sse_encode_i_64(self.createdAt, serializer);
-sse_encode_bool(self.watchOnly, serializer);
-sse_encode_u_32(self.birthdayHeight, serializer);
-sse_encode_opt_String(self.networkType, serializer);
- }
-
-@protected void sse_encode_watch_only_banner_info(WatchOnlyBannerInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.bannerType, serializer);
-sse_encode_String(self.title, serializer);
-sse_encode_String(self.subtitle, serializer);
-sse_encode_String(self.icon, serializer);
- }
-
-@protected void sse_encode_watch_only_capabilities_info(WatchOnlyCapabilitiesInfo self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_bool(self.canViewIncoming, serializer);
-sse_encode_bool(self.canViewOutgoing, serializer);
-sse_encode_bool(self.canSpend, serializer);
-sse_encode_bool(self.canExportSeed, serializer);
-sse_encode_bool(self.canGenerateAddresses, serializer);
-sse_encode_bool(self.isWatchOnly, serializer);
- }
-
-@protected void sse_encode_witness_refresh_outcome(WitnessRefreshOutcome self, SseSerializer serializer){ // Codec=Sse (Serialization based), see doc to use other codecs
-sse_encode_String(self.source, serializer);
-sse_encode_usize(self.saplingRequested, serializer);
-sse_encode_usize(self.saplingUpdated, serializer);
-sse_encode_usize(self.saplingMissing, serializer);
-sse_encode_usize(self.saplingErrors, serializer);
-sse_encode_usize(self.orchardRequested, serializer);
-sse_encode_usize(self.orchardUpdated, serializer);
-sse_encode_usize(self.orchardMissing, serializer);
-sse_encode_usize(self.orchardErrors, serializer);
- }
-                }
-                
+        ),
+        constMeta: kCrateApiWitnessRefreshOutcomeDefaultConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiWitnessRefreshOutcomeDefaultConstMeta =>
+      const TaskConstMeta(
+        debugName: "witness_refresh_outcome_default",
+        argNames: [],
+      );
+
+  @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AnyhowException(raw as String);
+  }
+
+  @protected
+  String dco_decode_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as String;
+  }
+
+  @protected
+  AddressBalanceInfo dco_decode_address_balance_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
+    return AddressBalanceInfo(
+      address: dco_decode_String(arr[0]),
+      balance: dco_decode_u_64(arr[1]),
+      spendable: dco_decode_u_64(arr[2]),
+      pending: dco_decode_u_64(arr[3]),
+      keyId: dco_decode_opt_box_autoadd_i_64(arr[4]),
+      addressId: dco_decode_i_64(arr[5]),
+      label: dco_decode_opt_String(arr[6]),
+      createdAt: dco_decode_i_64(arr[7]),
+      colorTag: dco_decode_address_book_color_tag(arr[8]),
+      diversifierIndex: dco_decode_u_32(arr[9]),
+    );
+  }
+
+  @protected
+  AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AddressBookColorTag.values[raw as int];
+  }
+
+  @protected
+  AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 11)
+      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
+    return AddressBookEntryFfi(
+      id: dco_decode_i_64(arr[0]),
+      walletId: dco_decode_String(arr[1]),
+      address: dco_decode_String(arr[2]),
+      label: dco_decode_String(arr[3]),
+      notes: dco_decode_opt_String(arr[4]),
+      colorTag: dco_decode_address_book_color_tag(arr[5]),
+      isFavorite: dco_decode_bool(arr[6]),
+      createdAt: dco_decode_i_64(arr[7]),
+      updatedAt: dco_decode_i_64(arr[8]),
+      lastUsedAt: dco_decode_opt_box_autoadd_i_64(arr[9]),
+      useCount: dco_decode_u_32(arr[10]),
+    );
+  }
+
+  @protected
+  AddressInfo dco_decode_address_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return AddressInfo(
+      address: dco_decode_String(arr[0]),
+      diversifierIndex: dco_decode_u_32(arr[1]),
+      label: dco_decode_opt_String(arr[2]),
+      createdAt: dco_decode_i_64(arr[3]),
+      colorTag: dco_decode_address_book_color_tag(arr[4]),
+    );
+  }
+
+  @protected
+  BackgroundSyncResult dco_decode_background_sync_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return BackgroundSyncResult(
+      mode: dco_decode_String(arr[0]),
+      blocksSynced: dco_decode_u_64(arr[1]),
+      startHeight: dco_decode_u_64(arr[2]),
+      endHeight: dco_decode_u_64(arr[3]),
+      durationSecs: dco_decode_u_64(arr[4]),
+      errors: dco_decode_list_String(arr[5]),
+      newBalance: dco_decode_opt_box_autoadd_u_64(arr[6]),
+      newTransactions: dco_decode_u_32(arr[7]),
+    );
+  }
+
+  @protected
+  Balance dco_decode_balance(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return Balance(
+      total: dco_decode_u_64(arr[0]),
+      spendable: dco_decode_u_64(arr[1]),
+      pending: dco_decode_u_64(arr[2]),
+    );
+  }
+
+  @protected
+  bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_address_book_color_tag(raw);
+  }
+
+  @protected
+  AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_address_book_entry_ffi(raw);
+  }
+
+  @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  CheckpointInfo dco_decode_box_autoadd_checkpoint_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_checkpoint_info(raw);
+  }
+
+  @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_i_64(raw);
+  }
+
+  @protected
+  LightdEndpoint dco_decode_box_autoadd_lightd_endpoint(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_lightd_endpoint(raw);
+  }
+
+  @protected
+  PendingTx dco_decode_box_autoadd_pending_tx(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_pending_tx(raw);
+  }
+
+  @protected
+  SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_signed_tx(raw);
+  }
+
+  @protected
+  TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_tunnel_mode(raw);
+  }
+
+  @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_u_64(raw);
+  }
+
+  @protected
+  WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_watch_only_banner_info(raw);
+  }
+
+  @protected
+  BuildInfo dco_decode_build_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return BuildInfo(
+      version: dco_decode_String(arr[0]),
+      gitCommit: dco_decode_String(arr[1]),
+      buildDate: dco_decode_String(arr[2]),
+      rustVersion: dco_decode_String(arr[3]),
+      targetTriple: dco_decode_String(arr[4]),
+    );
+  }
+
+  @protected
+  CheckpointInfo dco_decode_checkpoint_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return CheckpointInfo(
+      height: dco_decode_u_32(arr[0]),
+      timestamp: dco_decode_i_64(arr[1]),
+    );
+  }
+
+  @protected
+  double dco_decode_f_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as double;
+  }
+
+  @protected
+  FeeInfo dco_decode_fee_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return FeeInfo(
+      defaultFee: dco_decode_u_64(arr[0]),
+      minFee: dco_decode_u_64(arr[1]),
+      maxFee: dco_decode_u_64(arr[2]),
+      feePerOutput: dco_decode_u_64(arr[3]),
+      memoFeeMultiplier: dco_decode_f_64(arr[4]),
+    );
+  }
+
+  @protected
+  int dco_decode_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeI64(raw);
+  }
+
+  @protected
+  KeyAddressInfo dco_decode_key_address_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return KeyAddressInfo(
+      keyId: dco_decode_i_64(arr[0]),
+      address: dco_decode_String(arr[1]),
+      diversifierIndex: dco_decode_u_32(arr[2]),
+      label: dco_decode_opt_String(arr[3]),
+      createdAt: dco_decode_i_64(arr[4]),
+      colorTag: dco_decode_address_book_color_tag(arr[5]),
+    );
+  }
+
+  @protected
+  KeyExportInfo dco_decode_key_export_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return KeyExportInfo(
+      keyId: dco_decode_i_64(arr[0]),
+      saplingViewingKey: dco_decode_opt_String(arr[1]),
+      orchardViewingKey: dco_decode_opt_String(arr[2]),
+      saplingSpendingKey: dco_decode_opt_String(arr[3]),
+      orchardSpendingKey: dco_decode_opt_String(arr[4]),
+    );
+  }
+
+  @protected
+  KeyGroupInfo dco_decode_key_group_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return KeyGroupInfo(
+      id: dco_decode_i_64(arr[0]),
+      label: dco_decode_opt_String(arr[1]),
+      keyType: dco_decode_key_type_info(arr[2]),
+      spendable: dco_decode_bool(arr[3]),
+      hasSapling: dco_decode_bool(arr[4]),
+      hasOrchard: dco_decode_bool(arr[5]),
+      birthdayHeight: dco_decode_i_64(arr[6]),
+      createdAt: dco_decode_i_64(arr[7]),
+    );
+  }
+
+  @protected
+  KeyTypeInfo dco_decode_key_type_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return KeyTypeInfo.values[raw as int];
+  }
+
+  @protected
+  LightdEndpoint dco_decode_lightd_endpoint(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return LightdEndpoint(
+      host: dco_decode_String(arr[0]),
+      port: dco_decode_u_16(arr[1]),
+      useTls: dco_decode_bool(arr[2]),
+      tlsPin: dco_decode_opt_String(arr[3]),
+      label: dco_decode_opt_String(arr[4]),
+    );
+  }
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_String).toList();
+  }
+
+  @protected
+  List<AddressBalanceInfo> dco_decode_list_address_balance_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_address_balance_info).toList();
+  }
+
+  @protected
+  List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>)
+        .map(dco_decode_address_book_entry_ffi)
+        .toList();
+  }
+
+  @protected
+  List<AddressInfo> dco_decode_list_address_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_address_info).toList();
+  }
+
+  @protected
+  List<KeyAddressInfo> dco_decode_list_key_address_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_key_address_info).toList();
+  }
+
+  @protected
+  List<KeyGroupInfo> dco_decode_list_key_group_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_key_group_info).toList();
+  }
+
+  @protected
+  List<Output> dco_decode_list_output(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_output).toList();
+  }
+
+  @protected
+  Int64List dco_decode_list_prim_i_64_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeInt64List(raw);
+  }
+
+  @protected
+  Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Uint8List;
+  }
+
+  @protected
+  List<SyncLogEntryFfi> dco_decode_list_sync_log_entry_ffi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_sync_log_entry_ffi).toList();
+  }
+
+  @protected
+  List<TxInfo> dco_decode_list_tx_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_tx_info).toList();
+  }
+
+  @protected
+  List<WalletMeta> dco_decode_list_wallet_meta(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_wallet_meta).toList();
+  }
+
+  @protected
+  NetworkInfo dco_decode_network_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return NetworkInfo(
+      name: dco_decode_String(arr[0]),
+      coinType: dco_decode_u_32(arr[1]),
+      rpcPort: dco_decode_u_16(arr[2]),
+      defaultBirthday: dco_decode_u_32(arr[3]),
+    );
+  }
+
+  @protected
+  NodeTestResult dco_decode_node_test_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 11)
+      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
+    return NodeTestResult(
+      success: dco_decode_bool(arr[0]),
+      latestBlockHeight: dco_decode_opt_box_autoadd_u_64(arr[1]),
+      transportMode: dco_decode_String(arr[2]),
+      tlsEnabled: dco_decode_bool(arr[3]),
+      tlsPinMatched: dco_decode_opt_box_autoadd_bool(arr[4]),
+      expectedPin: dco_decode_opt_String(arr[5]),
+      actualPin: dco_decode_opt_String(arr[6]),
+      errorMessage: dco_decode_opt_String(arr[7]),
+      responseTimeMs: dco_decode_u_64(arr[8]),
+      serverVersion: dco_decode_opt_String(arr[9]),
+      chainName: dco_decode_opt_String(arr[10]),
+    );
+  }
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null
+        ? null
+        : dco_decode_box_autoadd_address_book_color_tag(raw);
+  }
+
+  @protected
+  AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null
+        ? null
+        : dco_decode_box_autoadd_address_book_entry_ffi(raw);
+  }
+
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_bool(raw);
+  }
+
+  @protected
+  CheckpointInfo? dco_decode_opt_box_autoadd_checkpoint_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_checkpoint_info(raw);
+  }
+
+  @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_i_64(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_64(raw);
+  }
+
+  @protected
+  WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null
+        ? null
+        : dco_decode_box_autoadd_watch_only_banner_info(raw);
+  }
+
+  @protected
+  Int64List? dco_decode_opt_list_prim_i_64_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_list_prim_i_64_strict(raw);
+  }
+
+  @protected
+  Output dco_decode_output(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return Output(
+      addr: dco_decode_String(arr[0]),
+      amount: dco_decode_u_64(arr[1]),
+      memo: dco_decode_opt_String(arr[2]),
+    );
+  }
+
+  @protected
+  PendingTx dco_decode_pending_tx(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return PendingTx(
+      id: dco_decode_String(arr[0]),
+      outputs: dco_decode_list_output(arr[1]),
+      totalAmount: dco_decode_u_64(arr[2]),
+      fee: dco_decode_u_64(arr[3]),
+      change: dco_decode_u_64(arr[4]),
+      inputTotal: dco_decode_u_64(arr[5]),
+      numInputs: dco_decode_u_32(arr[6]),
+      expiryHeight: dco_decode_u_32(arr[7]),
+      createdAt: dco_decode_i_64(arr[8]),
+    );
+  }
+
+  @protected
+  SeedExportWarnings dco_decode_seed_export_warnings(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return SeedExportWarnings(
+      primary: dco_decode_String(arr[0]),
+      secondary: dco_decode_String(arr[1]),
+      backupInstructions: dco_decode_String(arr[2]),
+      clipboardWarning: dco_decode_String(arr[3]),
+    );
+  }
+
+  @protected
+  SignedTx dco_decode_signed_tx(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return SignedTx(
+      txid: dco_decode_String(arr[0]),
+      raw: dco_decode_list_prim_u_8_strict(arr[1]),
+      size: dco_decode_usize(arr[2]),
+    );
+  }
+
+  @protected
+  SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return SyncLogEntryFfi(
+      timestamp: dco_decode_i_64(arr[0]),
+      level: dco_decode_String(arr[1]),
+      module: dco_decode_String(arr[2]),
+      message: dco_decode_String(arr[3]),
+    );
+  }
+
+  @protected
+  SyncMode dco_decode_sync_mode(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return SyncMode.values[raw as int];
+  }
+
+  @protected
+  SyncStage dco_decode_sync_stage(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return SyncStage.values[raw as int];
+  }
+
+  @protected
+  SyncStatus dco_decode_sync_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return SyncStatus(
+      localHeight: dco_decode_u_64(arr[0]),
+      targetHeight: dco_decode_u_64(arr[1]),
+      percent: dco_decode_f_64(arr[2]),
+      eta: dco_decode_opt_box_autoadd_u_64(arr[3]),
+      stage: dco_decode_sync_stage(arr[4]),
+      lastCheckpoint: dco_decode_opt_box_autoadd_u_64(arr[5]),
+      blocksPerSecond: dco_decode_f_64(arr[6]),
+      notesDecrypted: dco_decode_u_64(arr[7]),
+      lastBatchMs: dco_decode_u_64(arr[8]),
+    );
+  }
+
+  @protected
+  TunnelMode dco_decode_tunnel_mode(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return TunnelMode_Tor();
+      case 1:
+        return TunnelMode_I2p();
+      case 2:
+        return TunnelMode_Socks5(url: dco_decode_String(raw[1]));
+      case 3:
+        return TunnelMode_Direct();
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  TxInfo dco_decode_tx_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return TxInfo(
+      txid: dco_decode_String(arr[0]),
+      height: dco_decode_opt_box_autoadd_u_32(arr[1]),
+      timestamp: dco_decode_i_64(arr[2]),
+      amount: dco_decode_i_64(arr[3]),
+      fee: dco_decode_u_64(arr[4]),
+      memo: dco_decode_opt_String(arr[5]),
+      confirmed: dco_decode_bool(arr[6]),
+    );
+  }
+
+  @protected
+  int dco_decode_u_16(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  int dco_decode_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
+  }
+
+  @protected
+  int dco_decode_u_8(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  void dco_decode_unit(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return;
+  }
+
+  @protected
+  BigInt dco_decode_usize(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
+  }
+
+  @protected
+  WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return WalletBackgroundSyncResult(
+      walletId: dco_decode_String(arr[0]),
+      mode: dco_decode_String(arr[1]),
+      blocksSynced: dco_decode_u_64(arr[2]),
+      startHeight: dco_decode_u_64(arr[3]),
+      endHeight: dco_decode_u_64(arr[4]),
+      durationSecs: dco_decode_u_64(arr[5]),
+      errors: dco_decode_list_String(arr[6]),
+      newBalance: dco_decode_opt_box_autoadd_u_64(arr[7]),
+      newTransactions: dco_decode_u_32(arr[8]),
+    );
+  }
+
+  @protected
+  WalletMeta dco_decode_wallet_meta(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return WalletMeta(
+      id: dco_decode_String(arr[0]),
+      name: dco_decode_String(arr[1]),
+      createdAt: dco_decode_i_64(arr[2]),
+      watchOnly: dco_decode_bool(arr[3]),
+      birthdayHeight: dco_decode_u_32(arr[4]),
+      networkType: dco_decode_opt_String(arr[5]),
+    );
+  }
+
+  @protected
+  WatchOnlyBannerInfo dco_decode_watch_only_banner_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return WatchOnlyBannerInfo(
+      bannerType: dco_decode_String(arr[0]),
+      title: dco_decode_String(arr[1]),
+      subtitle: dco_decode_String(arr[2]),
+      icon: dco_decode_String(arr[3]),
+    );
+  }
+
+  @protected
+  WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return WatchOnlyCapabilitiesInfo(
+      canViewIncoming: dco_decode_bool(arr[0]),
+      canViewOutgoing: dco_decode_bool(arr[1]),
+      canSpend: dco_decode_bool(arr[2]),
+      canExportSeed: dco_decode_bool(arr[3]),
+      canGenerateAddresses: dco_decode_bool(arr[4]),
+      isWatchOnly: dco_decode_bool(arr[5]),
+    );
+  }
+
+  @protected
+  WitnessRefreshOutcome dco_decode_witness_refresh_outcome(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return WitnessRefreshOutcome(
+      source: dco_decode_String(arr[0]),
+      saplingRequested: dco_decode_usize(arr[1]),
+      saplingUpdated: dco_decode_usize(arr[2]),
+      saplingMissing: dco_decode_usize(arr[3]),
+      saplingErrors: dco_decode_usize(arr[4]),
+      orchardRequested: dco_decode_usize(arr[5]),
+      orchardUpdated: dco_decode_usize(arr[6]),
+      orchardMissing: dco_decode_usize(arr[7]),
+      orchardErrors: dco_decode_usize(arr[8]),
+    );
+  }
+
+  @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_String(deserializer);
+    return AnyhowException(inner);
+  }
+
+  @protected
+  String sse_decode_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_list_prim_u_8_strict(deserializer);
+    return utf8.decoder.convert(inner);
+  }
+
+  @protected
+  AddressBalanceInfo sse_decode_address_balance_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_address = sse_decode_String(deserializer);
+    var var_balance = sse_decode_u_64(deserializer);
+    var var_spendable = sse_decode_u_64(deserializer);
+    var var_pending = sse_decode_u_64(deserializer);
+    var var_keyId = sse_decode_opt_box_autoadd_i_64(deserializer);
+    var var_addressId = sse_decode_i_64(deserializer);
+    var var_label = sse_decode_opt_String(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    var var_colorTag = sse_decode_address_book_color_tag(deserializer);
+    var var_diversifierIndex = sse_decode_u_32(deserializer);
+    return AddressBalanceInfo(
+      address: var_address,
+      balance: var_balance,
+      spendable: var_spendable,
+      pending: var_pending,
+      keyId: var_keyId,
+      addressId: var_addressId,
+      label: var_label,
+      createdAt: var_createdAt,
+      colorTag: var_colorTag,
+      diversifierIndex: var_diversifierIndex,
+    );
+  }
+
+  @protected
+  AddressBookColorTag sse_decode_address_book_color_tag(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return AddressBookColorTag.values[inner];
+  }
+
+  @protected
+  AddressBookEntryFfi sse_decode_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_i_64(deserializer);
+    var var_walletId = sse_decode_String(deserializer);
+    var var_address = sse_decode_String(deserializer);
+    var var_label = sse_decode_String(deserializer);
+    var var_notes = sse_decode_opt_String(deserializer);
+    var var_colorTag = sse_decode_address_book_color_tag(deserializer);
+    var var_isFavorite = sse_decode_bool(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    var var_updatedAt = sse_decode_i_64(deserializer);
+    var var_lastUsedAt = sse_decode_opt_box_autoadd_i_64(deserializer);
+    var var_useCount = sse_decode_u_32(deserializer);
+    return AddressBookEntryFfi(
+      id: var_id,
+      walletId: var_walletId,
+      address: var_address,
+      label: var_label,
+      notes: var_notes,
+      colorTag: var_colorTag,
+      isFavorite: var_isFavorite,
+      createdAt: var_createdAt,
+      updatedAt: var_updatedAt,
+      lastUsedAt: var_lastUsedAt,
+      useCount: var_useCount,
+    );
+  }
+
+  @protected
+  AddressInfo sse_decode_address_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_address = sse_decode_String(deserializer);
+    var var_diversifierIndex = sse_decode_u_32(deserializer);
+    var var_label = sse_decode_opt_String(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    var var_colorTag = sse_decode_address_book_color_tag(deserializer);
+    return AddressInfo(
+      address: var_address,
+      diversifierIndex: var_diversifierIndex,
+      label: var_label,
+      createdAt: var_createdAt,
+      colorTag: var_colorTag,
+    );
+  }
+
+  @protected
+  BackgroundSyncResult sse_decode_background_sync_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_mode = sse_decode_String(deserializer);
+    var var_blocksSynced = sse_decode_u_64(deserializer);
+    var var_startHeight = sse_decode_u_64(deserializer);
+    var var_endHeight = sse_decode_u_64(deserializer);
+    var var_durationSecs = sse_decode_u_64(deserializer);
+    var var_errors = sse_decode_list_String(deserializer);
+    var var_newBalance = sse_decode_opt_box_autoadd_u_64(deserializer);
+    var var_newTransactions = sse_decode_u_32(deserializer);
+    return BackgroundSyncResult(
+      mode: var_mode,
+      blocksSynced: var_blocksSynced,
+      startHeight: var_startHeight,
+      endHeight: var_endHeight,
+      durationSecs: var_durationSecs,
+      errors: var_errors,
+      newBalance: var_newBalance,
+      newTransactions: var_newTransactions,
+    );
+  }
+
+  @protected
+  Balance sse_decode_balance(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_total = sse_decode_u_64(deserializer);
+    var var_spendable = sse_decode_u_64(deserializer);
+    var var_pending = sse_decode_u_64(deserializer);
+    return Balance(
+      total: var_total,
+      spendable: var_spendable,
+      pending: var_pending,
+    );
+  }
+
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
+  AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_address_book_color_tag(deserializer));
+  }
+
+  @protected
+  AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_address_book_entry_ffi(deserializer));
+  }
+
+  @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_bool(deserializer));
+  }
+
+  @protected
+  CheckpointInfo sse_decode_box_autoadd_checkpoint_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_checkpoint_info(deserializer));
+  }
+
+  @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_i_64(deserializer));
+  }
+
+  @protected
+  LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_lightd_endpoint(deserializer));
+  }
+
+  @protected
+  PendingTx sse_decode_box_autoadd_pending_tx(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_pending_tx(deserializer));
+  }
+
+  @protected
+  SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_signed_tx(deserializer));
+  }
+
+  @protected
+  TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_tunnel_mode(deserializer));
+  }
+
+  @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_32(deserializer));
+  }
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_64(deserializer));
+  }
+
+  @protected
+  WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_watch_only_banner_info(deserializer));
+  }
+
+  @protected
+  BuildInfo sse_decode_build_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_version = sse_decode_String(deserializer);
+    var var_gitCommit = sse_decode_String(deserializer);
+    var var_buildDate = sse_decode_String(deserializer);
+    var var_rustVersion = sse_decode_String(deserializer);
+    var var_targetTriple = sse_decode_String(deserializer);
+    return BuildInfo(
+      version: var_version,
+      gitCommit: var_gitCommit,
+      buildDate: var_buildDate,
+      rustVersion: var_rustVersion,
+      targetTriple: var_targetTriple,
+    );
+  }
+
+  @protected
+  CheckpointInfo sse_decode_checkpoint_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_height = sse_decode_u_32(deserializer);
+    var var_timestamp = sse_decode_i_64(deserializer);
+    return CheckpointInfo(height: var_height, timestamp: var_timestamp);
+  }
+
+  @protected
+  double sse_decode_f_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getFloat64();
+  }
+
+  @protected
+  FeeInfo sse_decode_fee_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_defaultFee = sse_decode_u_64(deserializer);
+    var var_minFee = sse_decode_u_64(deserializer);
+    var var_maxFee = sse_decode_u_64(deserializer);
+    var var_feePerOutput = sse_decode_u_64(deserializer);
+    var var_memoFeeMultiplier = sse_decode_f_64(deserializer);
+    return FeeInfo(
+      defaultFee: var_defaultFee,
+      minFee: var_minFee,
+      maxFee: var_maxFee,
+      feePerOutput: var_feePerOutput,
+      memoFeeMultiplier: var_memoFeeMultiplier,
+    );
+  }
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getInt32();
+  }
+
+  @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getPlatformInt64();
+  }
+
+  @protected
+  KeyAddressInfo sse_decode_key_address_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_keyId = sse_decode_i_64(deserializer);
+    var var_address = sse_decode_String(deserializer);
+    var var_diversifierIndex = sse_decode_u_32(deserializer);
+    var var_label = sse_decode_opt_String(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    var var_colorTag = sse_decode_address_book_color_tag(deserializer);
+    return KeyAddressInfo(
+      keyId: var_keyId,
+      address: var_address,
+      diversifierIndex: var_diversifierIndex,
+      label: var_label,
+      createdAt: var_createdAt,
+      colorTag: var_colorTag,
+    );
+  }
+
+  @protected
+  KeyExportInfo sse_decode_key_export_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_keyId = sse_decode_i_64(deserializer);
+    var var_saplingViewingKey = sse_decode_opt_String(deserializer);
+    var var_orchardViewingKey = sse_decode_opt_String(deserializer);
+    var var_saplingSpendingKey = sse_decode_opt_String(deserializer);
+    var var_orchardSpendingKey = sse_decode_opt_String(deserializer);
+    return KeyExportInfo(
+      keyId: var_keyId,
+      saplingViewingKey: var_saplingViewingKey,
+      orchardViewingKey: var_orchardViewingKey,
+      saplingSpendingKey: var_saplingSpendingKey,
+      orchardSpendingKey: var_orchardSpendingKey,
+    );
+  }
+
+  @protected
+  KeyGroupInfo sse_decode_key_group_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_i_64(deserializer);
+    var var_label = sse_decode_opt_String(deserializer);
+    var var_keyType = sse_decode_key_type_info(deserializer);
+    var var_spendable = sse_decode_bool(deserializer);
+    var var_hasSapling = sse_decode_bool(deserializer);
+    var var_hasOrchard = sse_decode_bool(deserializer);
+    var var_birthdayHeight = sse_decode_i_64(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    return KeyGroupInfo(
+      id: var_id,
+      label: var_label,
+      keyType: var_keyType,
+      spendable: var_spendable,
+      hasSapling: var_hasSapling,
+      hasOrchard: var_hasOrchard,
+      birthdayHeight: var_birthdayHeight,
+      createdAt: var_createdAt,
+    );
+  }
+
+  @protected
+  KeyTypeInfo sse_decode_key_type_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return KeyTypeInfo.values[inner];
+  }
+
+  @protected
+  LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_host = sse_decode_String(deserializer);
+    var var_port = sse_decode_u_16(deserializer);
+    var var_useTls = sse_decode_bool(deserializer);
+    var var_tlsPin = sse_decode_opt_String(deserializer);
+    var var_label = sse_decode_opt_String(deserializer);
+    return LightdEndpoint(
+      host: var_host,
+      port: var_port,
+      useTls: var_useTls,
+      tlsPin: var_tlsPin,
+      label: var_label,
+    );
+  }
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <String>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<AddressBalanceInfo> sse_decode_list_address_balance_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <AddressBalanceInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_address_balance_info(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <AddressBookEntryFfi>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_address_book_entry_ffi(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <AddressInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_address_info(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<KeyAddressInfo> sse_decode_list_key_address_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <KeyAddressInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_key_address_info(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<KeyGroupInfo> sse_decode_list_key_group_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <KeyGroupInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_key_group_info(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<Output> sse_decode_list_output(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <Output>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_output(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getInt64List(len_);
+  }
+
+  @protected
+  Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <SyncLogEntryFfi>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_sync_log_entry_ffi(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<TxInfo> sse_decode_list_tx_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <TxInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_tx_info(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<WalletMeta> sse_decode_list_wallet_meta(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <WalletMeta>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_wallet_meta(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  NetworkInfo sse_decode_network_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_name = sse_decode_String(deserializer);
+    var var_coinType = sse_decode_u_32(deserializer);
+    var var_rpcPort = sse_decode_u_16(deserializer);
+    var var_defaultBirthday = sse_decode_u_32(deserializer);
+    return NetworkInfo(
+      name: var_name,
+      coinType: var_coinType,
+      rpcPort: var_rpcPort,
+      defaultBirthday: var_defaultBirthday,
+    );
+  }
+
+  @protected
+  NodeTestResult sse_decode_node_test_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_success = sse_decode_bool(deserializer);
+    var var_latestBlockHeight = sse_decode_opt_box_autoadd_u_64(deserializer);
+    var var_transportMode = sse_decode_String(deserializer);
+    var var_tlsEnabled = sse_decode_bool(deserializer);
+    var var_tlsPinMatched = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_expectedPin = sse_decode_opt_String(deserializer);
+    var var_actualPin = sse_decode_opt_String(deserializer);
+    var var_errorMessage = sse_decode_opt_String(deserializer);
+    var var_responseTimeMs = sse_decode_u_64(deserializer);
+    var var_serverVersion = sse_decode_opt_String(deserializer);
+    var var_chainName = sse_decode_opt_String(deserializer);
+    return NodeTestResult(
+      success: var_success,
+      latestBlockHeight: var_latestBlockHeight,
+      transportMode: var_transportMode,
+      tlsEnabled: var_tlsEnabled,
+      tlsPinMatched: var_tlsPinMatched,
+      expectedPin: var_expectedPin,
+      actualPin: var_actualPin,
+      errorMessage: var_errorMessage,
+      responseTimeMs: var_responseTimeMs,
+      serverVersion: var_serverVersion,
+      chainName: var_chainName,
+    );
+  }
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_String(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_address_book_color_tag(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_address_book_entry_ffi(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_bool(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_checkpoint_info(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_i_64(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_64(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_watch_only_banner_info(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Int64List? sse_decode_opt_list_prim_i_64_strict(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_list_prim_i_64_strict(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Output sse_decode_output(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_addr = sse_decode_String(deserializer);
+    var var_amount = sse_decode_u_64(deserializer);
+    var var_memo = sse_decode_opt_String(deserializer);
+    return Output(addr: var_addr, amount: var_amount, memo: var_memo);
+  }
+
+  @protected
+  PendingTx sse_decode_pending_tx(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_outputs = sse_decode_list_output(deserializer);
+    var var_totalAmount = sse_decode_u_64(deserializer);
+    var var_fee = sse_decode_u_64(deserializer);
+    var var_change = sse_decode_u_64(deserializer);
+    var var_inputTotal = sse_decode_u_64(deserializer);
+    var var_numInputs = sse_decode_u_32(deserializer);
+    var var_expiryHeight = sse_decode_u_32(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    return PendingTx(
+      id: var_id,
+      outputs: var_outputs,
+      totalAmount: var_totalAmount,
+      fee: var_fee,
+      change: var_change,
+      inputTotal: var_inputTotal,
+      numInputs: var_numInputs,
+      expiryHeight: var_expiryHeight,
+      createdAt: var_createdAt,
+    );
+  }
+
+  @protected
+  SeedExportWarnings sse_decode_seed_export_warnings(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_primary = sse_decode_String(deserializer);
+    var var_secondary = sse_decode_String(deserializer);
+    var var_backupInstructions = sse_decode_String(deserializer);
+    var var_clipboardWarning = sse_decode_String(deserializer);
+    return SeedExportWarnings(
+      primary: var_primary,
+      secondary: var_secondary,
+      backupInstructions: var_backupInstructions,
+      clipboardWarning: var_clipboardWarning,
+    );
+  }
+
+  @protected
+  SignedTx sse_decode_signed_tx(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_txid = sse_decode_String(deserializer);
+    var var_raw = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_size = sse_decode_usize(deserializer);
+    return SignedTx(txid: var_txid, raw: var_raw, size: var_size);
+  }
+
+  @protected
+  SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_timestamp = sse_decode_i_64(deserializer);
+    var var_level = sse_decode_String(deserializer);
+    var var_module = sse_decode_String(deserializer);
+    var var_message = sse_decode_String(deserializer);
+    return SyncLogEntryFfi(
+      timestamp: var_timestamp,
+      level: var_level,
+      module: var_module,
+      message: var_message,
+    );
+  }
+
+  @protected
+  SyncMode sse_decode_sync_mode(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return SyncMode.values[inner];
+  }
+
+  @protected
+  SyncStage sse_decode_sync_stage(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return SyncStage.values[inner];
+  }
+
+  @protected
+  SyncStatus sse_decode_sync_status(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_localHeight = sse_decode_u_64(deserializer);
+    var var_targetHeight = sse_decode_u_64(deserializer);
+    var var_percent = sse_decode_f_64(deserializer);
+    var var_eta = sse_decode_opt_box_autoadd_u_64(deserializer);
+    var var_stage = sse_decode_sync_stage(deserializer);
+    var var_lastCheckpoint = sse_decode_opt_box_autoadd_u_64(deserializer);
+    var var_blocksPerSecond = sse_decode_f_64(deserializer);
+    var var_notesDecrypted = sse_decode_u_64(deserializer);
+    var var_lastBatchMs = sse_decode_u_64(deserializer);
+    return SyncStatus(
+      localHeight: var_localHeight,
+      targetHeight: var_targetHeight,
+      percent: var_percent,
+      eta: var_eta,
+      stage: var_stage,
+      lastCheckpoint: var_lastCheckpoint,
+      blocksPerSecond: var_blocksPerSecond,
+      notesDecrypted: var_notesDecrypted,
+      lastBatchMs: var_lastBatchMs,
+    );
+  }
+
+  @protected
+  TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        return TunnelMode_Tor();
+      case 1:
+        return TunnelMode_I2p();
+      case 2:
+        var var_url = sse_decode_String(deserializer);
+        return TunnelMode_Socks5(url: var_url);
+      case 3:
+        return TunnelMode_Direct();
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  TxInfo sse_decode_tx_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_txid = sse_decode_String(deserializer);
+    var var_height = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_timestamp = sse_decode_i_64(deserializer);
+    var var_amount = sse_decode_i_64(deserializer);
+    var var_fee = sse_decode_u_64(deserializer);
+    var var_memo = sse_decode_opt_String(deserializer);
+    var var_confirmed = sse_decode_bool(deserializer);
+    return TxInfo(
+      txid: var_txid,
+      height: var_height,
+      timestamp: var_timestamp,
+      amount: var_amount,
+      fee: var_fee,
+      memo: var_memo,
+      confirmed: var_confirmed,
+    );
+  }
+
+  @protected
+  int sse_decode_u_16(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint16();
+  }
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint32();
+  }
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getBigUint64();
+  }
+
+  @protected
+  int sse_decode_u_8(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8();
+  }
+
+  @protected
+  void sse_decode_unit(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+  }
+
+  @protected
+  BigInt sse_decode_usize(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getBigUint64();
+  }
+
+  @protected
+  WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_walletId = sse_decode_String(deserializer);
+    var var_mode = sse_decode_String(deserializer);
+    var var_blocksSynced = sse_decode_u_64(deserializer);
+    var var_startHeight = sse_decode_u_64(deserializer);
+    var var_endHeight = sse_decode_u_64(deserializer);
+    var var_durationSecs = sse_decode_u_64(deserializer);
+    var var_errors = sse_decode_list_String(deserializer);
+    var var_newBalance = sse_decode_opt_box_autoadd_u_64(deserializer);
+    var var_newTransactions = sse_decode_u_32(deserializer);
+    return WalletBackgroundSyncResult(
+      walletId: var_walletId,
+      mode: var_mode,
+      blocksSynced: var_blocksSynced,
+      startHeight: var_startHeight,
+      endHeight: var_endHeight,
+      durationSecs: var_durationSecs,
+      errors: var_errors,
+      newBalance: var_newBalance,
+      newTransactions: var_newTransactions,
+    );
+  }
+
+  @protected
+  WalletMeta sse_decode_wallet_meta(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_createdAt = sse_decode_i_64(deserializer);
+    var var_watchOnly = sse_decode_bool(deserializer);
+    var var_birthdayHeight = sse_decode_u_32(deserializer);
+    var var_networkType = sse_decode_opt_String(deserializer);
+    return WalletMeta(
+      id: var_id,
+      name: var_name,
+      createdAt: var_createdAt,
+      watchOnly: var_watchOnly,
+      birthdayHeight: var_birthdayHeight,
+      networkType: var_networkType,
+    );
+  }
+
+  @protected
+  WatchOnlyBannerInfo sse_decode_watch_only_banner_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_bannerType = sse_decode_String(deserializer);
+    var var_title = sse_decode_String(deserializer);
+    var var_subtitle = sse_decode_String(deserializer);
+    var var_icon = sse_decode_String(deserializer);
+    return WatchOnlyBannerInfo(
+      bannerType: var_bannerType,
+      title: var_title,
+      subtitle: var_subtitle,
+      icon: var_icon,
+    );
+  }
+
+  @protected
+  WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_canViewIncoming = sse_decode_bool(deserializer);
+    var var_canViewOutgoing = sse_decode_bool(deserializer);
+    var var_canSpend = sse_decode_bool(deserializer);
+    var var_canExportSeed = sse_decode_bool(deserializer);
+    var var_canGenerateAddresses = sse_decode_bool(deserializer);
+    var var_isWatchOnly = sse_decode_bool(deserializer);
+    return WatchOnlyCapabilitiesInfo(
+      canViewIncoming: var_canViewIncoming,
+      canViewOutgoing: var_canViewOutgoing,
+      canSpend: var_canSpend,
+      canExportSeed: var_canExportSeed,
+      canGenerateAddresses: var_canGenerateAddresses,
+      isWatchOnly: var_isWatchOnly,
+    );
+  }
+
+  @protected
+  WitnessRefreshOutcome sse_decode_witness_refresh_outcome(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_source = sse_decode_String(deserializer);
+    var var_saplingRequested = sse_decode_usize(deserializer);
+    var var_saplingUpdated = sse_decode_usize(deserializer);
+    var var_saplingMissing = sse_decode_usize(deserializer);
+    var var_saplingErrors = sse_decode_usize(deserializer);
+    var var_orchardRequested = sse_decode_usize(deserializer);
+    var var_orchardUpdated = sse_decode_usize(deserializer);
+    var var_orchardMissing = sse_decode_usize(deserializer);
+    var var_orchardErrors = sse_decode_usize(deserializer);
+    return WitnessRefreshOutcome(
+      source: var_source,
+      saplingRequested: var_saplingRequested,
+      saplingUpdated: var_saplingUpdated,
+      saplingMissing: var_saplingMissing,
+      saplingErrors: var_saplingErrors,
+      orchardRequested: var_orchardRequested,
+      orchardUpdated: var_orchardUpdated,
+      orchardMissing: var_orchardMissing,
+      orchardErrors: var_orchardErrors,
+    );
+  }
+
+  @protected
+  int cst_encode_address_book_color_tag(AddressBookColorTag raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_i_32(raw.index);
+  }
+
+  @protected
+  bool cst_encode_bool(bool raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw;
+  }
+
+  @protected
+  double cst_encode_f_64(double raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw;
+  }
+
+  @protected
+  int cst_encode_i_32(int raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw;
+  }
+
+  @protected
+  int cst_encode_key_type_info(KeyTypeInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_i_32(raw.index);
+  }
+
+  @protected
+  int cst_encode_sync_mode(SyncMode raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_i_32(raw.index);
+  }
+
+  @protected
+  int cst_encode_sync_stage(SyncStage raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_i_32(raw.index);
+  }
+
+  @protected
+  int cst_encode_u_16(int raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw;
+  }
+
+  @protected
+  int cst_encode_u_32(int raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw;
+  }
+
+  @protected
+  int cst_encode_u_8(int raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw;
+  }
+
+  @protected
+  void cst_encode_unit(void raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw;
+  }
+
+  @protected
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_String(String self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_address_balance_info(
+    AddressBalanceInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.address, serializer);
+    sse_encode_u_64(self.balance, serializer);
+    sse_encode_u_64(self.spendable, serializer);
+    sse_encode_u_64(self.pending, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.keyId, serializer);
+    sse_encode_i_64(self.addressId, serializer);
+    sse_encode_opt_String(self.label, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+    sse_encode_address_book_color_tag(self.colorTag, serializer);
+    sse_encode_u_32(self.diversifierIndex, serializer);
+  }
+
+  @protected
+  void sse_encode_address_book_color_tag(
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_address_book_entry_ffi(
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.id, serializer);
+    sse_encode_String(self.walletId, serializer);
+    sse_encode_String(self.address, serializer);
+    sse_encode_String(self.label, serializer);
+    sse_encode_opt_String(self.notes, serializer);
+    sse_encode_address_book_color_tag(self.colorTag, serializer);
+    sse_encode_bool(self.isFavorite, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+    sse_encode_i_64(self.updatedAt, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.lastUsedAt, serializer);
+    sse_encode_u_32(self.useCount, serializer);
+  }
+
+  @protected
+  void sse_encode_address_info(AddressInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.address, serializer);
+    sse_encode_u_32(self.diversifierIndex, serializer);
+    sse_encode_opt_String(self.label, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+    sse_encode_address_book_color_tag(self.colorTag, serializer);
+  }
+
+  @protected
+  void sse_encode_background_sync_result(
+    BackgroundSyncResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.mode, serializer);
+    sse_encode_u_64(self.blocksSynced, serializer);
+    sse_encode_u_64(self.startHeight, serializer);
+    sse_encode_u_64(self.endHeight, serializer);
+    sse_encode_u_64(self.durationSecs, serializer);
+    sse_encode_list_String(self.errors, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.newBalance, serializer);
+    sse_encode_u_32(self.newTransactions, serializer);
+  }
+
+  @protected
+  void sse_encode_balance(Balance self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.total, serializer);
+    sse_encode_u_64(self.spendable, serializer);
+    sse_encode_u_64(self.pending, serializer);
+  }
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_address_book_color_tag(
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_address_book_color_tag(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_address_book_entry_ffi(
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_address_book_entry_ffi(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_checkpoint_info(
+    CheckpointInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_checkpoint_info(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_lightd_endpoint(
+    LightdEndpoint self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_lightd_endpoint(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_pending_tx(
+    PendingTx self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_pending_tx(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_signed_tx(
+    SignedTx self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_signed_tx(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_tunnel_mode(
+    TunnelMode self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_tunnel_mode(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_watch_only_banner_info(
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_watch_only_banner_info(self, serializer);
+  }
+
+  @protected
+  void sse_encode_build_info(BuildInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.version, serializer);
+    sse_encode_String(self.gitCommit, serializer);
+    sse_encode_String(self.buildDate, serializer);
+    sse_encode_String(self.rustVersion, serializer);
+    sse_encode_String(self.targetTriple, serializer);
+  }
+
+  @protected
+  void sse_encode_checkpoint_info(
+    CheckpointInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.height, serializer);
+    sse_encode_i_64(self.timestamp, serializer);
+  }
+
+  @protected
+  void sse_encode_f_64(double self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putFloat64(self);
+  }
+
+  @protected
+  void sse_encode_fee_info(FeeInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.defaultFee, serializer);
+    sse_encode_u_64(self.minFee, serializer);
+    sse_encode_u_64(self.maxFee, serializer);
+    sse_encode_u_64(self.feePerOutput, serializer);
+    sse_encode_f_64(self.memoFeeMultiplier, serializer);
+  }
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putInt32(self);
+  }
+
+  @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putPlatformInt64(self);
+  }
+
+  @protected
+  void sse_encode_key_address_info(
+    KeyAddressInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.keyId, serializer);
+    sse_encode_String(self.address, serializer);
+    sse_encode_u_32(self.diversifierIndex, serializer);
+    sse_encode_opt_String(self.label, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+    sse_encode_address_book_color_tag(self.colorTag, serializer);
+  }
+
+  @protected
+  void sse_encode_key_export_info(
+    KeyExportInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.keyId, serializer);
+    sse_encode_opt_String(self.saplingViewingKey, serializer);
+    sse_encode_opt_String(self.orchardViewingKey, serializer);
+    sse_encode_opt_String(self.saplingSpendingKey, serializer);
+    sse_encode_opt_String(self.orchardSpendingKey, serializer);
+  }
+
+  @protected
+  void sse_encode_key_group_info(KeyGroupInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.id, serializer);
+    sse_encode_opt_String(self.label, serializer);
+    sse_encode_key_type_info(self.keyType, serializer);
+    sse_encode_bool(self.spendable, serializer);
+    sse_encode_bool(self.hasSapling, serializer);
+    sse_encode_bool(self.hasOrchard, serializer);
+    sse_encode_i_64(self.birthdayHeight, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+  }
+
+  @protected
+  void sse_encode_key_type_info(KeyTypeInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_lightd_endpoint(
+    LightdEndpoint self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.host, serializer);
+    sse_encode_u_16(self.port, serializer);
+    sse_encode_bool(self.useTls, serializer);
+    sse_encode_opt_String(self.tlsPin, serializer);
+    sse_encode_opt_String(self.label, serializer);
+  }
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_address_balance_info(
+    List<AddressBalanceInfo> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_address_balance_info(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_address_book_entry_ffi(
+    List<AddressBookEntryFfi> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_address_book_entry_ffi(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_address_info(
+    List<AddressInfo> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_address_info(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_key_address_info(
+    List<KeyAddressInfo> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_key_address_info(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_key_group_info(
+    List<KeyGroupInfo> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_key_group_info(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_output(List<Output> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_output(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_prim_i_64_strict(
+    Int64List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putInt64List(self);
+  }
+
+  @protected
+  void sse_encode_list_prim_u_8_strict(
+    Uint8List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_list_sync_log_entry_ffi(
+    List<SyncLogEntryFfi> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_sync_log_entry_ffi(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_tx_info(List<TxInfo> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_tx_info(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_wallet_meta(
+    List<WalletMeta> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_wallet_meta(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_network_info(NetworkInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.name, serializer);
+    sse_encode_u_32(self.coinType, serializer);
+    sse_encode_u_16(self.rpcPort, serializer);
+    sse_encode_u_32(self.defaultBirthday, serializer);
+  }
+
+  @protected
+  void sse_encode_node_test_result(
+    NodeTestResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.success, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.latestBlockHeight, serializer);
+    sse_encode_String(self.transportMode, serializer);
+    sse_encode_bool(self.tlsEnabled, serializer);
+    sse_encode_opt_box_autoadd_bool(self.tlsPinMatched, serializer);
+    sse_encode_opt_String(self.expectedPin, serializer);
+    sse_encode_opt_String(self.actualPin, serializer);
+    sse_encode_opt_String(self.errorMessage, serializer);
+    sse_encode_u_64(self.responseTimeMs, serializer);
+    sse_encode_opt_String(self.serverVersion, serializer);
+    sse_encode_opt_String(self.chainName, serializer);
+  }
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_String(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_address_book_color_tag(
+    AddressBookColorTag? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_address_book_color_tag(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_address_book_entry_ffi(
+    AddressBookEntryFfi? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_address_book_entry_ffi(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_bool(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_checkpoint_info(
+    CheckpointInfo? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_checkpoint_info(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_i_64(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_32(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_64(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_watch_only_banner_info(
+    WatchOnlyBannerInfo? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_watch_only_banner_info(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_list_prim_i_64_strict(
+    Int64List? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_list_prim_i_64_strict(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_output(Output self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.addr, serializer);
+    sse_encode_u_64(self.amount, serializer);
+    sse_encode_opt_String(self.memo, serializer);
+  }
+
+  @protected
+  void sse_encode_pending_tx(PendingTx self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_list_output(self.outputs, serializer);
+    sse_encode_u_64(self.totalAmount, serializer);
+    sse_encode_u_64(self.fee, serializer);
+    sse_encode_u_64(self.change, serializer);
+    sse_encode_u_64(self.inputTotal, serializer);
+    sse_encode_u_32(self.numInputs, serializer);
+    sse_encode_u_32(self.expiryHeight, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+  }
+
+  @protected
+  void sse_encode_seed_export_warnings(
+    SeedExportWarnings self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.primary, serializer);
+    sse_encode_String(self.secondary, serializer);
+    sse_encode_String(self.backupInstructions, serializer);
+    sse_encode_String(self.clipboardWarning, serializer);
+  }
+
+  @protected
+  void sse_encode_signed_tx(SignedTx self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.txid, serializer);
+    sse_encode_list_prim_u_8_strict(self.raw, serializer);
+    sse_encode_usize(self.size, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_log_entry_ffi(
+    SyncLogEntryFfi self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.timestamp, serializer);
+    sse_encode_String(self.level, serializer);
+    sse_encode_String(self.module, serializer);
+    sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_mode(SyncMode self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_stage(SyncStage self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_sync_status(SyncStatus self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.localHeight, serializer);
+    sse_encode_u_64(self.targetHeight, serializer);
+    sse_encode_f_64(self.percent, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.eta, serializer);
+    sse_encode_sync_stage(self.stage, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.lastCheckpoint, serializer);
+    sse_encode_f_64(self.blocksPerSecond, serializer);
+    sse_encode_u_64(self.notesDecrypted, serializer);
+    sse_encode_u_64(self.lastBatchMs, serializer);
+  }
+
+  @protected
+  void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case TunnelMode_Tor():
+        sse_encode_i_32(0, serializer);
+      case TunnelMode_I2p():
+        sse_encode_i_32(1, serializer);
+      case TunnelMode_Socks5(url: final url):
+        sse_encode_i_32(2, serializer);
+        sse_encode_String(url, serializer);
+      case TunnelMode_Direct():
+        sse_encode_i_32(3, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_tx_info(TxInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.txid, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.height, serializer);
+    sse_encode_i_64(self.timestamp, serializer);
+    sse_encode_i_64(self.amount, serializer);
+    sse_encode_u_64(self.fee, serializer);
+    sse_encode_opt_String(self.memo, serializer);
+    sse_encode_bool(self.confirmed, serializer);
+  }
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint16(self);
+  }
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint32(self);
+  }
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putBigUint64(self);
+  }
+
+  @protected
+  void sse_encode_u_8(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self);
+  }
+
+  @protected
+  void sse_encode_unit(void self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+  }
+
+  @protected
+  void sse_encode_usize(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putBigUint64(self);
+  }
+
+  @protected
+  void sse_encode_wallet_background_sync_result(
+    WalletBackgroundSyncResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.walletId, serializer);
+    sse_encode_String(self.mode, serializer);
+    sse_encode_u_64(self.blocksSynced, serializer);
+    sse_encode_u_64(self.startHeight, serializer);
+    sse_encode_u_64(self.endHeight, serializer);
+    sse_encode_u_64(self.durationSecs, serializer);
+    sse_encode_list_String(self.errors, serializer);
+    sse_encode_opt_box_autoadd_u_64(self.newBalance, serializer);
+    sse_encode_u_32(self.newTransactions, serializer);
+  }
+
+  @protected
+  void sse_encode_wallet_meta(WalletMeta self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_i_64(self.createdAt, serializer);
+    sse_encode_bool(self.watchOnly, serializer);
+    sse_encode_u_32(self.birthdayHeight, serializer);
+    sse_encode_opt_String(self.networkType, serializer);
+  }
+
+  @protected
+  void sse_encode_watch_only_banner_info(
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.bannerType, serializer);
+    sse_encode_String(self.title, serializer);
+    sse_encode_String(self.subtitle, serializer);
+    sse_encode_String(self.icon, serializer);
+  }
+
+  @protected
+  void sse_encode_watch_only_capabilities_info(
+    WatchOnlyCapabilitiesInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.canViewIncoming, serializer);
+    sse_encode_bool(self.canViewOutgoing, serializer);
+    sse_encode_bool(self.canSpend, serializer);
+    sse_encode_bool(self.canExportSeed, serializer);
+    sse_encode_bool(self.canGenerateAddresses, serializer);
+    sse_encode_bool(self.isWatchOnly, serializer);
+  }
+
+  @protected
+  void sse_encode_witness_refresh_outcome(
+    WitnessRefreshOutcome self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.source, serializer);
+    sse_encode_usize(self.saplingRequested, serializer);
+    sse_encode_usize(self.saplingUpdated, serializer);
+    sse_encode_usize(self.saplingMissing, serializer);
+    sse_encode_usize(self.saplingErrors, serializer);
+    sse_encode_usize(self.orchardRequested, serializer);
+    sse_encode_usize(self.orchardUpdated, serializer);
+    sse_encode_usize(self.orchardMissing, serializer);
+    sse_encode_usize(self.orchardErrors, serializer);
+  }
+}

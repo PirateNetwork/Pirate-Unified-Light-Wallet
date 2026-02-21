@@ -11,908 +11,1691 @@ import 'frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
 
+abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
+  RustLibApiImplPlatform({
+    required super.handler,
+    required super.wire,
+    required super.generalizedFrbRustBinding,
+    required super.portManager,
+  });
 
+  @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw);
 
+  @protected
+  String dco_decode_String(dynamic raw);
 
-                abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
-                  RustLibApiImplPlatform({
-                    required super.handler,
-                    required super.wire,
-                    required super.generalizedFrbRustBinding,
-                    required super.portManager,
-                  });
+  @protected
+  AddressBalanceInfo dco_decode_address_balance_info(dynamic raw);
 
-                  
+  @protected
+  AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw);
 
-                  @protected AnyhowException dco_decode_AnyhowException(dynamic raw);
+  @protected
+  AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw);
 
-@protected String dco_decode_String(dynamic raw);
+  @protected
+  AddressInfo dco_decode_address_info(dynamic raw);
 
-@protected AddressBalanceInfo dco_decode_address_balance_info(dynamic raw);
+  @protected
+  BackgroundSyncResult dco_decode_background_sync_result(dynamic raw);
 
-@protected AddressBookColorTag dco_decode_address_book_color_tag(dynamic raw);
+  @protected
+  Balance dco_decode_balance(dynamic raw);
 
-@protected AddressBookEntryFfi dco_decode_address_book_entry_ffi(dynamic raw);
+  @protected
+  bool dco_decode_bool(dynamic raw);
 
-@protected AddressInfo dco_decode_address_info(dynamic raw);
+  @protected
+  AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(
+    dynamic raw,
+  );
 
-@protected BackgroundSyncResult dco_decode_background_sync_result(dynamic raw);
+  @protected
+  AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(
+    dynamic raw,
+  );
 
-@protected Balance dco_decode_balance(dynamic raw);
+  @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw);
 
-@protected bool dco_decode_bool(dynamic raw);
+  @protected
+  CheckpointInfo dco_decode_box_autoadd_checkpoint_info(dynamic raw);
 
-@protected AddressBookColorTag dco_decode_box_autoadd_address_book_color_tag(dynamic raw);
+  @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
 
-@protected AddressBookEntryFfi dco_decode_box_autoadd_address_book_entry_ffi(dynamic raw);
+  @protected
+  LightdEndpoint dco_decode_box_autoadd_lightd_endpoint(dynamic raw);
 
-@protected bool dco_decode_box_autoadd_bool(dynamic raw);
+  @protected
+  PendingTx dco_decode_box_autoadd_pending_tx(dynamic raw);
 
-@protected CheckpointInfo dco_decode_box_autoadd_checkpoint_info(dynamic raw);
+  @protected
+  SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw);
 
-@protected PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
+  @protected
+  TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw);
 
-@protected LightdEndpoint dco_decode_box_autoadd_lightd_endpoint(dynamic raw);
+  @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw);
 
-@protected PendingTx dco_decode_box_autoadd_pending_tx(dynamic raw);
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
 
-@protected SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw);
+  @protected
+  WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(
+    dynamic raw,
+  );
 
-@protected TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw);
+  @protected
+  BuildInfo dco_decode_build_info(dynamic raw);
 
-@protected int dco_decode_box_autoadd_u_32(dynamic raw);
+  @protected
+  CheckpointInfo dco_decode_checkpoint_info(dynamic raw);
 
-@protected BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+  @protected
+  double dco_decode_f_64(dynamic raw);
 
-@protected WatchOnlyBannerInfo dco_decode_box_autoadd_watch_only_banner_info(dynamic raw);
+  @protected
+  FeeInfo dco_decode_fee_info(dynamic raw);
 
-@protected BuildInfo dco_decode_build_info(dynamic raw);
+  @protected
+  int dco_decode_i_32(dynamic raw);
 
-@protected CheckpointInfo dco_decode_checkpoint_info(dynamic raw);
+  @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw);
 
-@protected double dco_decode_f_64(dynamic raw);
+  @protected
+  KeyAddressInfo dco_decode_key_address_info(dynamic raw);
 
-@protected FeeInfo dco_decode_fee_info(dynamic raw);
+  @protected
+  KeyExportInfo dco_decode_key_export_info(dynamic raw);
 
-@protected int dco_decode_i_32(dynamic raw);
+  @protected
+  KeyGroupInfo dco_decode_key_group_info(dynamic raw);
 
-@protected PlatformInt64 dco_decode_i_64(dynamic raw);
+  @protected
+  KeyTypeInfo dco_decode_key_type_info(dynamic raw);
 
-@protected KeyAddressInfo dco_decode_key_address_info(dynamic raw);
+  @protected
+  LightdEndpoint dco_decode_lightd_endpoint(dynamic raw);
 
-@protected KeyExportInfo dco_decode_key_export_info(dynamic raw);
+  @protected
+  List<String> dco_decode_list_String(dynamic raw);
 
-@protected KeyGroupInfo dco_decode_key_group_info(dynamic raw);
+  @protected
+  List<AddressBalanceInfo> dco_decode_list_address_balance_info(dynamic raw);
 
-@protected KeyTypeInfo dco_decode_key_type_info(dynamic raw);
+  @protected
+  List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw);
 
-@protected LightdEndpoint dco_decode_lightd_endpoint(dynamic raw);
+  @protected
+  List<AddressInfo> dco_decode_list_address_info(dynamic raw);
 
-@protected List<String> dco_decode_list_String(dynamic raw);
+  @protected
+  List<KeyAddressInfo> dco_decode_list_key_address_info(dynamic raw);
 
-@protected List<AddressBalanceInfo> dco_decode_list_address_balance_info(dynamic raw);
+  @protected
+  List<KeyGroupInfo> dco_decode_list_key_group_info(dynamic raw);
 
-@protected List<AddressBookEntryFfi> dco_decode_list_address_book_entry_ffi(dynamic raw);
+  @protected
+  List<Output> dco_decode_list_output(dynamic raw);
 
-@protected List<AddressInfo> dco_decode_list_address_info(dynamic raw);
+  @protected
+  Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
 
-@protected List<KeyAddressInfo> dco_decode_list_key_address_info(dynamic raw);
+  @protected
+  Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
-@protected List<KeyGroupInfo> dco_decode_list_key_group_info(dynamic raw);
+  @protected
+  List<SyncLogEntryFfi> dco_decode_list_sync_log_entry_ffi(dynamic raw);
 
-@protected List<Output> dco_decode_list_output(dynamic raw);
+  @protected
+  List<TxInfo> dco_decode_list_tx_info(dynamic raw);
 
-@protected Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
+  @protected
+  List<WalletMeta> dco_decode_list_wallet_meta(dynamic raw);
 
-@protected Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+  @protected
+  NetworkInfo dco_decode_network_info(dynamic raw);
 
-@protected List<SyncLogEntryFfi> dco_decode_list_sync_log_entry_ffi(dynamic raw);
+  @protected
+  NodeTestResult dco_decode_node_test_result(dynamic raw);
 
-@protected List<TxInfo> dco_decode_list_tx_info(dynamic raw);
+  @protected
+  String? dco_decode_opt_String(dynamic raw);
 
-@protected List<WalletMeta> dco_decode_list_wallet_meta(dynamic raw);
+  @protected
+  AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(
+    dynamic raw,
+  );
 
-@protected NetworkInfo dco_decode_network_info(dynamic raw);
+  @protected
+  AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(
+    dynamic raw,
+  );
 
-@protected NodeTestResult dco_decode_node_test_result(dynamic raw);
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
 
-@protected String? dco_decode_opt_String(dynamic raw);
+  @protected
+  CheckpointInfo? dco_decode_opt_box_autoadd_checkpoint_info(dynamic raw);
 
-@protected AddressBookColorTag? dco_decode_opt_box_autoadd_address_book_color_tag(dynamic raw);
+  @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
 
-@protected AddressBookEntryFfi? dco_decode_opt_box_autoadd_address_book_entry_ffi(dynamic raw);
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
-@protected bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
 
-@protected CheckpointInfo? dco_decode_opt_box_autoadd_checkpoint_info(dynamic raw);
+  @protected
+  WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(
+    dynamic raw,
+  );
 
-@protected PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+  @protected
+  Int64List? dco_decode_opt_list_prim_i_64_strict(dynamic raw);
 
-@protected int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+  @protected
+  Output dco_decode_output(dynamic raw);
 
-@protected BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+  @protected
+  PendingTx dco_decode_pending_tx(dynamic raw);
 
-@protected WatchOnlyBannerInfo? dco_decode_opt_box_autoadd_watch_only_banner_info(dynamic raw);
+  @protected
+  SeedExportWarnings dco_decode_seed_export_warnings(dynamic raw);
 
-@protected Int64List? dco_decode_opt_list_prim_i_64_strict(dynamic raw);
+  @protected
+  SignedTx dco_decode_signed_tx(dynamic raw);
 
-@protected Output dco_decode_output(dynamic raw);
+  @protected
+  SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw);
 
-@protected PendingTx dco_decode_pending_tx(dynamic raw);
+  @protected
+  SyncMode dco_decode_sync_mode(dynamic raw);
 
-@protected SeedExportWarnings dco_decode_seed_export_warnings(dynamic raw);
+  @protected
+  SyncStage dco_decode_sync_stage(dynamic raw);
 
-@protected SignedTx dco_decode_signed_tx(dynamic raw);
+  @protected
+  SyncStatus dco_decode_sync_status(dynamic raw);
 
-@protected SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw);
+  @protected
+  TunnelMode dco_decode_tunnel_mode(dynamic raw);
 
-@protected SyncMode dco_decode_sync_mode(dynamic raw);
+  @protected
+  TxInfo dco_decode_tx_info(dynamic raw);
 
-@protected SyncStage dco_decode_sync_stage(dynamic raw);
+  @protected
+  int dco_decode_u_16(dynamic raw);
 
-@protected SyncStatus dco_decode_sync_status(dynamic raw);
+  @protected
+  int dco_decode_u_32(dynamic raw);
 
-@protected TunnelMode dco_decode_tunnel_mode(dynamic raw);
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
 
-@protected TxInfo dco_decode_tx_info(dynamic raw);
+  @protected
+  int dco_decode_u_8(dynamic raw);
 
-@protected int dco_decode_u_16(dynamic raw);
+  @protected
+  void dco_decode_unit(dynamic raw);
 
-@protected int dco_decode_u_32(dynamic raw);
+  @protected
+  BigInt dco_decode_usize(dynamic raw);
 
-@protected BigInt dco_decode_u_64(dynamic raw);
+  @protected
+  WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(
+    dynamic raw,
+  );
 
-@protected int dco_decode_u_8(dynamic raw);
+  @protected
+  WalletMeta dco_decode_wallet_meta(dynamic raw);
 
-@protected void dco_decode_unit(dynamic raw);
+  @protected
+  WatchOnlyBannerInfo dco_decode_watch_only_banner_info(dynamic raw);
 
-@protected BigInt dco_decode_usize(dynamic raw);
+  @protected
+  WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(
+    dynamic raw,
+  );
 
-@protected WalletBackgroundSyncResult dco_decode_wallet_background_sync_result(dynamic raw);
+  @protected
+  WitnessRefreshOutcome dco_decode_witness_refresh_outcome(dynamic raw);
 
-@protected WalletMeta dco_decode_wallet_meta(dynamic raw);
+  @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
-@protected WatchOnlyBannerInfo dco_decode_watch_only_banner_info(dynamic raw);
+  @protected
+  String sse_decode_String(SseDeserializer deserializer);
 
-@protected WatchOnlyCapabilitiesInfo dco_decode_watch_only_capabilities_info(dynamic raw);
+  @protected
+  AddressBalanceInfo sse_decode_address_balance_info(
+    SseDeserializer deserializer,
+  );
 
-@protected WitnessRefreshOutcome dco_decode_witness_refresh_outcome(dynamic raw);
+  @protected
+  AddressBookColorTag sse_decode_address_book_color_tag(
+    SseDeserializer deserializer,
+  );
 
-@protected AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+  @protected
+  AddressBookEntryFfi sse_decode_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected String sse_decode_String(SseDeserializer deserializer);
+  @protected
+  AddressInfo sse_decode_address_info(SseDeserializer deserializer);
 
-@protected AddressBalanceInfo sse_decode_address_balance_info(SseDeserializer deserializer);
+  @protected
+  BackgroundSyncResult sse_decode_background_sync_result(
+    SseDeserializer deserializer,
+  );
 
-@protected AddressBookColorTag sse_decode_address_book_color_tag(SseDeserializer deserializer);
+  @protected
+  Balance sse_decode_balance(SseDeserializer deserializer);
 
-@protected AddressBookEntryFfi sse_decode_address_book_entry_ffi(SseDeserializer deserializer);
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer);
 
-@protected AddressInfo sse_decode_address_info(SseDeserializer deserializer);
+  @protected
+  AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(
+    SseDeserializer deserializer,
+  );
 
-@protected BackgroundSyncResult sse_decode_background_sync_result(SseDeserializer deserializer);
+  @protected
+  AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected Balance sse_decode_balance(SseDeserializer deserializer);
+  @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
 
-@protected bool sse_decode_bool(SseDeserializer deserializer);
+  @protected
+  CheckpointInfo sse_decode_box_autoadd_checkpoint_info(
+    SseDeserializer deserializer,
+  );
 
-@protected AddressBookColorTag sse_decode_box_autoadd_address_book_color_tag(SseDeserializer deserializer);
+  @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
 
-@protected AddressBookEntryFfi sse_decode_box_autoadd_address_book_entry_ffi(SseDeserializer deserializer);
+  @protected
+  LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(
+    SseDeserializer deserializer,
+  );
 
-@protected bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
+  @protected
+  PendingTx sse_decode_box_autoadd_pending_tx(SseDeserializer deserializer);
 
-@protected CheckpointInfo sse_decode_box_autoadd_checkpoint_info(SseDeserializer deserializer);
+  @protected
+  SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer);
 
-@protected PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
+  @protected
+  TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer);
 
-@protected LightdEndpoint sse_decode_box_autoadd_lightd_endpoint(SseDeserializer deserializer);
+  @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
-@protected PendingTx sse_decode_box_autoadd_pending_tx(SseDeserializer deserializer);
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
 
-@protected SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer);
+  @protected
+  WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(
+    SseDeserializer deserializer,
+  );
 
-@protected TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer);
+  @protected
+  BuildInfo sse_decode_build_info(SseDeserializer deserializer);
 
-@protected int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+  @protected
+  CheckpointInfo sse_decode_checkpoint_info(SseDeserializer deserializer);
 
-@protected BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+  @protected
+  double sse_decode_f_64(SseDeserializer deserializer);
 
-@protected WatchOnlyBannerInfo sse_decode_box_autoadd_watch_only_banner_info(SseDeserializer deserializer);
+  @protected
+  FeeInfo sse_decode_fee_info(SseDeserializer deserializer);
 
-@protected BuildInfo sse_decode_build_info(SseDeserializer deserializer);
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
 
-@protected CheckpointInfo sse_decode_checkpoint_info(SseDeserializer deserializer);
+  @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
-@protected double sse_decode_f_64(SseDeserializer deserializer);
+  @protected
+  KeyAddressInfo sse_decode_key_address_info(SseDeserializer deserializer);
 
-@protected FeeInfo sse_decode_fee_info(SseDeserializer deserializer);
+  @protected
+  KeyExportInfo sse_decode_key_export_info(SseDeserializer deserializer);
 
-@protected int sse_decode_i_32(SseDeserializer deserializer);
+  @protected
+  KeyGroupInfo sse_decode_key_group_info(SseDeserializer deserializer);
 
-@protected PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+  @protected
+  KeyTypeInfo sse_decode_key_type_info(SseDeserializer deserializer);
 
-@protected KeyAddressInfo sse_decode_key_address_info(SseDeserializer deserializer);
+  @protected
+  LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer);
 
-@protected KeyExportInfo sse_decode_key_export_info(SseDeserializer deserializer);
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
 
-@protected KeyGroupInfo sse_decode_key_group_info(SseDeserializer deserializer);
+  @protected
+  List<AddressBalanceInfo> sse_decode_list_address_balance_info(
+    SseDeserializer deserializer,
+  );
 
-@protected KeyTypeInfo sse_decode_key_type_info(SseDeserializer deserializer);
+  @protected
+  List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected LightdEndpoint sse_decode_lightd_endpoint(SseDeserializer deserializer);
+  @protected
+  List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
 
-@protected List<String> sse_decode_list_String(SseDeserializer deserializer);
+  @protected
+  List<KeyAddressInfo> sse_decode_list_key_address_info(
+    SseDeserializer deserializer,
+  );
 
-@protected List<AddressBalanceInfo> sse_decode_list_address_balance_info(SseDeserializer deserializer);
+  @protected
+  List<KeyGroupInfo> sse_decode_list_key_group_info(
+    SseDeserializer deserializer,
+  );
 
-@protected List<AddressBookEntryFfi> sse_decode_list_address_book_entry_ffi(SseDeserializer deserializer);
+  @protected
+  List<Output> sse_decode_list_output(SseDeserializer deserializer);
 
-@protected List<AddressInfo> sse_decode_list_address_info(SseDeserializer deserializer);
+  @protected
+  Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
 
-@protected List<KeyAddressInfo> sse_decode_list_key_address_info(SseDeserializer deserializer);
+  @protected
+  Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
-@protected List<KeyGroupInfo> sse_decode_list_key_group_info(SseDeserializer deserializer);
+  @protected
+  List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected List<Output> sse_decode_list_output(SseDeserializer deserializer);
+  @protected
+  List<TxInfo> sse_decode_list_tx_info(SseDeserializer deserializer);
 
-@protected Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
+  @protected
+  List<WalletMeta> sse_decode_list_wallet_meta(SseDeserializer deserializer);
 
-@protected Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+  @protected
+  NetworkInfo sse_decode_network_info(SseDeserializer deserializer);
 
-@protected List<SyncLogEntryFfi> sse_decode_list_sync_log_entry_ffi(SseDeserializer deserializer);
+  @protected
+  NodeTestResult sse_decode_node_test_result(SseDeserializer deserializer);
 
-@protected List<TxInfo> sse_decode_list_tx_info(SseDeserializer deserializer);
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
 
-@protected List<WalletMeta> sse_decode_list_wallet_meta(SseDeserializer deserializer);
+  @protected
+  AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(
+    SseDeserializer deserializer,
+  );
 
-@protected NetworkInfo sse_decode_network_info(SseDeserializer deserializer);
+  @protected
+  AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(
+    SseDeserializer deserializer,
+  );
 
-@protected NodeTestResult sse_decode_node_test_result(SseDeserializer deserializer);
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
 
-@protected String? sse_decode_opt_String(SseDeserializer deserializer);
+  @protected
+  CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(
+    SseDeserializer deserializer,
+  );
 
-@protected AddressBookColorTag? sse_decode_opt_box_autoadd_address_book_color_tag(SseDeserializer deserializer);
+  @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
 
-@protected AddressBookEntryFfi? sse_decode_opt_box_autoadd_address_book_entry_ffi(SseDeserializer deserializer);
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
-@protected bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
-@protected CheckpointInfo? sse_decode_opt_box_autoadd_checkpoint_info(SseDeserializer deserializer);
+  @protected
+  WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(
+    SseDeserializer deserializer,
+  );
 
-@protected PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+  @protected
+  Int64List? sse_decode_opt_list_prim_i_64_strict(SseDeserializer deserializer);
 
-@protected int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+  @protected
+  Output sse_decode_output(SseDeserializer deserializer);
 
-@protected BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
+  @protected
+  PendingTx sse_decode_pending_tx(SseDeserializer deserializer);
 
-@protected WatchOnlyBannerInfo? sse_decode_opt_box_autoadd_watch_only_banner_info(SseDeserializer deserializer);
+  @protected
+  SeedExportWarnings sse_decode_seed_export_warnings(
+    SseDeserializer deserializer,
+  );
 
-@protected Int64List? sse_decode_opt_list_prim_i_64_strict(SseDeserializer deserializer);
+  @protected
+  SignedTx sse_decode_signed_tx(SseDeserializer deserializer);
 
-@protected Output sse_decode_output(SseDeserializer deserializer);
+  @protected
+  SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer);
 
-@protected PendingTx sse_decode_pending_tx(SseDeserializer deserializer);
+  @protected
+  SyncMode sse_decode_sync_mode(SseDeserializer deserializer);
 
-@protected SeedExportWarnings sse_decode_seed_export_warnings(SseDeserializer deserializer);
+  @protected
+  SyncStage sse_decode_sync_stage(SseDeserializer deserializer);
 
-@protected SignedTx sse_decode_signed_tx(SseDeserializer deserializer);
+  @protected
+  SyncStatus sse_decode_sync_status(SseDeserializer deserializer);
 
-@protected SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer);
+  @protected
+  TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer);
 
-@protected SyncMode sse_decode_sync_mode(SseDeserializer deserializer);
+  @protected
+  TxInfo sse_decode_tx_info(SseDeserializer deserializer);
 
-@protected SyncStage sse_decode_sync_stage(SseDeserializer deserializer);
+  @protected
+  int sse_decode_u_16(SseDeserializer deserializer);
 
-@protected SyncStatus sse_decode_sync_status(SseDeserializer deserializer);
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer);
 
-@protected TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer);
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
-@protected TxInfo sse_decode_tx_info(SseDeserializer deserializer);
+  @protected
+  int sse_decode_u_8(SseDeserializer deserializer);
 
-@protected int sse_decode_u_16(SseDeserializer deserializer);
+  @protected
+  void sse_decode_unit(SseDeserializer deserializer);
 
-@protected int sse_decode_u_32(SseDeserializer deserializer);
+  @protected
+  BigInt sse_decode_usize(SseDeserializer deserializer);
 
-@protected BigInt sse_decode_u_64(SseDeserializer deserializer);
+  @protected
+  WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(
+    SseDeserializer deserializer,
+  );
 
-@protected int sse_decode_u_8(SseDeserializer deserializer);
+  @protected
+  WalletMeta sse_decode_wallet_meta(SseDeserializer deserializer);
 
-@protected void sse_decode_unit(SseDeserializer deserializer);
+  @protected
+  WatchOnlyBannerInfo sse_decode_watch_only_banner_info(
+    SseDeserializer deserializer,
+  );
 
-@protected BigInt sse_decode_usize(SseDeserializer deserializer);
+  @protected
+  WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(
+    SseDeserializer deserializer,
+  );
 
-@protected WalletBackgroundSyncResult sse_decode_wallet_background_sync_result(SseDeserializer deserializer);
+  @protected
+  WitnessRefreshOutcome sse_decode_witness_refresh_outcome(
+    SseDeserializer deserializer,
+  );
 
-@protected WalletMeta sse_decode_wallet_meta(SseDeserializer deserializer);
+  @protected
+  ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_encode_AnyhowException(
+    AnyhowException raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    throw UnimplementedError();
+  }
 
-@protected WatchOnlyBannerInfo sse_decode_watch_only_banner_info(SseDeserializer deserializer);
+  @protected
+  ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_encode_String(String raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_list_prim_u_8_strict(utf8.encoder.convert(raw));
+  }
 
-@protected WatchOnlyCapabilitiesInfo sse_decode_watch_only_capabilities_info(SseDeserializer deserializer);
+  @protected
+  ffi.Pointer<ffi.Int32> cst_encode_box_autoadd_address_book_color_tag(
+    AddressBookColorTag raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return wire.cst_new_box_autoadd_address_book_color_tag(
+      cst_encode_address_book_color_tag(raw),
+    );
+  }
 
-@protected WitnessRefreshOutcome sse_decode_witness_refresh_outcome(SseDeserializer deserializer);
+  @protected
+  ffi.Pointer<wire_cst_address_book_entry_ffi>
+  cst_encode_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ptr = wire.cst_new_box_autoadd_address_book_entry_ffi();
+    cst_api_fill_to_wire_address_book_entry_ffi(raw, ptr.ref);
+    return ptr;
+  }
 
-@protected ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_encode_AnyhowException(AnyhowException raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-throw UnimplementedError(); }
-
-@protected ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_encode_String(String raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return cst_encode_list_prim_u_8_strict(utf8.encoder.convert(raw)); }
-
-@protected ffi.Pointer<ffi.Int32> cst_encode_box_autoadd_address_book_color_tag(AddressBookColorTag raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return wire.cst_new_box_autoadd_address_book_color_tag(cst_encode_address_book_color_tag(raw)); }
-
-@protected ffi.Pointer<wire_cst_address_book_entry_ffi> cst_encode_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ptr = wire.cst_new_box_autoadd_address_book_entry_ffi();
-                    cst_api_fill_to_wire_address_book_entry_ffi(raw, ptr.ref);
-                    return ptr; }
-
-@protected ffi.Pointer<ffi.Bool> cst_encode_box_autoadd_bool(bool raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return wire.cst_new_box_autoadd_bool(cst_encode_bool(raw)); }
-
-@protected ffi.Pointer<wire_cst_checkpoint_info> cst_encode_box_autoadd_checkpoint_info(CheckpointInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ptr = wire.cst_new_box_autoadd_checkpoint_info();
-                    cst_api_fill_to_wire_checkpoint_info(raw, ptr.ref);
-                    return ptr; }
-
-@protected ffi.Pointer<ffi.Int64> cst_encode_box_autoadd_i_64(PlatformInt64 raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return wire.cst_new_box_autoadd_i_64(cst_encode_i_64(raw)); }
-
-@protected ffi.Pointer<wire_cst_lightd_endpoint> cst_encode_box_autoadd_lightd_endpoint(LightdEndpoint raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ptr = wire.cst_new_box_autoadd_lightd_endpoint();
-                    cst_api_fill_to_wire_lightd_endpoint(raw, ptr.ref);
-                    return ptr; }
-
-@protected ffi.Pointer<wire_cst_pending_tx> cst_encode_box_autoadd_pending_tx(PendingTx raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ptr = wire.cst_new_box_autoadd_pending_tx();
-                    cst_api_fill_to_wire_pending_tx(raw, ptr.ref);
-                    return ptr; }
-
-@protected ffi.Pointer<wire_cst_signed_tx> cst_encode_box_autoadd_signed_tx(SignedTx raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ptr = wire.cst_new_box_autoadd_signed_tx();
-                    cst_api_fill_to_wire_signed_tx(raw, ptr.ref);
-                    return ptr; }
-
-@protected ffi.Pointer<wire_cst_tunnel_mode> cst_encode_box_autoadd_tunnel_mode(TunnelMode raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ptr = wire.cst_new_box_autoadd_tunnel_mode();
-                    cst_api_fill_to_wire_tunnel_mode(raw, ptr.ref);
-                    return ptr; }
-
-@protected ffi.Pointer<ffi.Uint32> cst_encode_box_autoadd_u_32(int raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return wire.cst_new_box_autoadd_u_32(cst_encode_u_32(raw)); }
-
-@protected ffi.Pointer<ffi.Uint64> cst_encode_box_autoadd_u_64(BigInt raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return wire.cst_new_box_autoadd_u_64(cst_encode_u_64(raw)); }
-
-@protected ffi.Pointer<wire_cst_watch_only_banner_info> cst_encode_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ptr = wire.cst_new_box_autoadd_watch_only_banner_info();
-                    cst_api_fill_to_wire_watch_only_banner_info(raw, ptr.ref);
-                    return ptr; }
-
-@protected int cst_encode_i_64(PlatformInt64 raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.toInt(); }
-
-@protected ffi.Pointer<wire_cst_list_String> cst_encode_list_String(List<String> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_String(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    ans.ref.ptr[i] = cst_encode_String(raw[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_address_balance_info> cst_encode_list_address_balance_info(List<AddressBalanceInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_address_balance_info(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    cst_api_fill_to_wire_address_balance_info(raw[i], ans.ref.ptr[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_address_book_entry_ffi> cst_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_address_book_entry_ffi(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    cst_api_fill_to_wire_address_book_entry_ffi(raw[i], ans.ref.ptr[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_address_info> cst_encode_list_address_info(List<AddressInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_address_info(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    cst_api_fill_to_wire_address_info(raw[i], ans.ref.ptr[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_key_address_info> cst_encode_list_key_address_info(List<KeyAddressInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_key_address_info(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    cst_api_fill_to_wire_key_address_info(raw[i], ans.ref.ptr[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_key_group_info> cst_encode_list_key_group_info(List<KeyGroupInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_key_group_info(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    cst_api_fill_to_wire_key_group_info(raw[i], ans.ref.ptr[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_output> cst_encode_list_output(List<Output> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_output(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    cst_api_fill_to_wire_output(raw[i], ans.ref.ptr[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_prim_i_64_strict> cst_encode_list_prim_i_64_strict(Int64List raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_prim_i_64_strict(raw.length);
-                ans.ref.ptr.asTypedList(raw.length).setAll(0, raw.inner);
-                return ans; }
-
-@protected ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_encode_list_prim_u_8_strict(Uint8List raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_prim_u_8_strict(raw.length);
-                ans.ref.ptr.asTypedList(raw.length).setAll(0, raw);
-                return ans; }
-
-@protected ffi.Pointer<wire_cst_list_sync_log_entry_ffi> cst_encode_list_sync_log_entry_ffi(List<SyncLogEntryFfi> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_sync_log_entry_ffi(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    cst_api_fill_to_wire_sync_log_entry_ffi(raw[i], ans.ref.ptr[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_tx_info> cst_encode_list_tx_info(List<TxInfo> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_tx_info(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    cst_api_fill_to_wire_tx_info(raw[i], ans.ref.ptr[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_wallet_meta> cst_encode_list_wallet_meta(List<WalletMeta> raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-final ans = wire.cst_new_list_wallet_meta(raw.length);
-                for (var i = 0; i < raw.length; ++i) {
-                    cst_api_fill_to_wire_wallet_meta(raw[i], ans.ref.ptr[i]);
-                }
-                return ans;
-                 }
-
-@protected ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_encode_opt_String(String? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_String(raw); }
-
-@protected ffi.Pointer<ffi.Int32> cst_encode_opt_box_autoadd_address_book_color_tag(AddressBookColorTag? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_box_autoadd_address_book_color_tag(raw); }
-
-@protected ffi.Pointer<wire_cst_address_book_entry_ffi> cst_encode_opt_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_box_autoadd_address_book_entry_ffi(raw); }
-
-@protected ffi.Pointer<ffi.Bool> cst_encode_opt_box_autoadd_bool(bool? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_box_autoadd_bool(raw); }
-
-@protected ffi.Pointer<wire_cst_checkpoint_info> cst_encode_opt_box_autoadd_checkpoint_info(CheckpointInfo? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_box_autoadd_checkpoint_info(raw); }
-
-@protected ffi.Pointer<ffi.Int64> cst_encode_opt_box_autoadd_i_64(PlatformInt64? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_box_autoadd_i_64(raw); }
-
-@protected ffi.Pointer<ffi.Uint32> cst_encode_opt_box_autoadd_u_32(int? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_box_autoadd_u_32(raw); }
-
-@protected ffi.Pointer<ffi.Uint64> cst_encode_opt_box_autoadd_u_64(BigInt? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_box_autoadd_u_64(raw); }
-
-@protected ffi.Pointer<wire_cst_watch_only_banner_info> cst_encode_opt_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_box_autoadd_watch_only_banner_info(raw); }
-
-@protected ffi.Pointer<wire_cst_list_prim_i_64_strict> cst_encode_opt_list_prim_i_64_strict(Int64List? raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw == null ? ffi.nullptr : cst_encode_list_prim_i_64_strict(raw); }
-
-@protected int cst_encode_u_64(BigInt raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.toSigned(64).toInt(); }
-
-@protected int cst_encode_usize(BigInt raw){ // Codec=Cst (C-struct based), see doc to use other codecs
-return raw.toSigned(64).toInt(); }
-
-@protected void cst_api_fill_to_wire_address_balance_info(AddressBalanceInfo apiObj, wire_cst_address_balance_info wireObj){ wireObj.address = cst_encode_String(apiObj.address);
-wireObj.balance = cst_encode_u_64(apiObj.balance);
-wireObj.spendable = cst_encode_u_64(apiObj.spendable);
-wireObj.pending = cst_encode_u_64(apiObj.pending);
-wireObj.key_id = cst_encode_opt_box_autoadd_i_64(apiObj.keyId);
-wireObj.address_id = cst_encode_i_64(apiObj.addressId);
-wireObj.label = cst_encode_opt_String(apiObj.label);
-wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
-wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag);
-wireObj.diversifier_index = cst_encode_u_32(apiObj.diversifierIndex); }
-
-@protected void cst_api_fill_to_wire_address_book_entry_ffi(AddressBookEntryFfi apiObj, wire_cst_address_book_entry_ffi wireObj){ wireObj.id = cst_encode_i_64(apiObj.id);
-wireObj.wallet_id = cst_encode_String(apiObj.walletId);
-wireObj.address = cst_encode_String(apiObj.address);
-wireObj.label = cst_encode_String(apiObj.label);
-wireObj.notes = cst_encode_opt_String(apiObj.notes);
-wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag);
-wireObj.is_favorite = cst_encode_bool(apiObj.isFavorite);
-wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
-wireObj.updated_at = cst_encode_i_64(apiObj.updatedAt);
-wireObj.last_used_at = cst_encode_opt_box_autoadd_i_64(apiObj.lastUsedAt);
-wireObj.use_count = cst_encode_u_32(apiObj.useCount); }
-
-@protected void cst_api_fill_to_wire_address_info(AddressInfo apiObj, wire_cst_address_info wireObj){ wireObj.address = cst_encode_String(apiObj.address);
-wireObj.diversifier_index = cst_encode_u_32(apiObj.diversifierIndex);
-wireObj.label = cst_encode_opt_String(apiObj.label);
-wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
-wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag); }
-
-@protected void cst_api_fill_to_wire_background_sync_result(BackgroundSyncResult apiObj, wire_cst_background_sync_result wireObj){ wireObj.mode = cst_encode_String(apiObj.mode);
-wireObj.blocks_synced = cst_encode_u_64(apiObj.blocksSynced);
-wireObj.start_height = cst_encode_u_64(apiObj.startHeight);
-wireObj.end_height = cst_encode_u_64(apiObj.endHeight);
-wireObj.duration_secs = cst_encode_u_64(apiObj.durationSecs);
-wireObj.errors = cst_encode_list_String(apiObj.errors);
-wireObj.new_balance = cst_encode_opt_box_autoadd_u_64(apiObj.newBalance);
-wireObj.new_transactions = cst_encode_u_32(apiObj.newTransactions); }
-
-@protected void cst_api_fill_to_wire_balance(Balance apiObj, wire_cst_balance wireObj){ wireObj.total = cst_encode_u_64(apiObj.total);
-wireObj.spendable = cst_encode_u_64(apiObj.spendable);
-wireObj.pending = cst_encode_u_64(apiObj.pending); }
-
-@protected void cst_api_fill_to_wire_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi apiObj, ffi.Pointer<wire_cst_address_book_entry_ffi> wireObj){ cst_api_fill_to_wire_address_book_entry_ffi(apiObj, wireObj.ref); }
-
-@protected void cst_api_fill_to_wire_box_autoadd_checkpoint_info(CheckpointInfo apiObj, ffi.Pointer<wire_cst_checkpoint_info> wireObj){ cst_api_fill_to_wire_checkpoint_info(apiObj, wireObj.ref); }
-
-@protected void cst_api_fill_to_wire_box_autoadd_lightd_endpoint(LightdEndpoint apiObj, ffi.Pointer<wire_cst_lightd_endpoint> wireObj){ cst_api_fill_to_wire_lightd_endpoint(apiObj, wireObj.ref); }
-
-@protected void cst_api_fill_to_wire_box_autoadd_pending_tx(PendingTx apiObj, ffi.Pointer<wire_cst_pending_tx> wireObj){ cst_api_fill_to_wire_pending_tx(apiObj, wireObj.ref); }
-
-@protected void cst_api_fill_to_wire_box_autoadd_signed_tx(SignedTx apiObj, ffi.Pointer<wire_cst_signed_tx> wireObj){ cst_api_fill_to_wire_signed_tx(apiObj, wireObj.ref); }
-
-@protected void cst_api_fill_to_wire_box_autoadd_tunnel_mode(TunnelMode apiObj, ffi.Pointer<wire_cst_tunnel_mode> wireObj){ cst_api_fill_to_wire_tunnel_mode(apiObj, wireObj.ref); }
-
-@protected void cst_api_fill_to_wire_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo apiObj, ffi.Pointer<wire_cst_watch_only_banner_info> wireObj){ cst_api_fill_to_wire_watch_only_banner_info(apiObj, wireObj.ref); }
-
-@protected void cst_api_fill_to_wire_build_info(BuildInfo apiObj, wire_cst_build_info wireObj){ wireObj.version = cst_encode_String(apiObj.version);
-wireObj.git_commit = cst_encode_String(apiObj.gitCommit);
-wireObj.build_date = cst_encode_String(apiObj.buildDate);
-wireObj.rust_version = cst_encode_String(apiObj.rustVersion);
-wireObj.target_triple = cst_encode_String(apiObj.targetTriple); }
-
-@protected void cst_api_fill_to_wire_checkpoint_info(CheckpointInfo apiObj, wire_cst_checkpoint_info wireObj){ wireObj.height = cst_encode_u_32(apiObj.height);
-wireObj.timestamp = cst_encode_i_64(apiObj.timestamp); }
-
-@protected void cst_api_fill_to_wire_fee_info(FeeInfo apiObj, wire_cst_fee_info wireObj){ wireObj.default_fee = cst_encode_u_64(apiObj.defaultFee);
-wireObj.min_fee = cst_encode_u_64(apiObj.minFee);
-wireObj.max_fee = cst_encode_u_64(apiObj.maxFee);
-wireObj.fee_per_output = cst_encode_u_64(apiObj.feePerOutput);
-wireObj.memo_fee_multiplier = cst_encode_f_64(apiObj.memoFeeMultiplier); }
-
-@protected void cst_api_fill_to_wire_key_address_info(KeyAddressInfo apiObj, wire_cst_key_address_info wireObj){ wireObj.key_id = cst_encode_i_64(apiObj.keyId);
-wireObj.address = cst_encode_String(apiObj.address);
-wireObj.diversifier_index = cst_encode_u_32(apiObj.diversifierIndex);
-wireObj.label = cst_encode_opt_String(apiObj.label);
-wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
-wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag); }
-
-@protected void cst_api_fill_to_wire_key_export_info(KeyExportInfo apiObj, wire_cst_key_export_info wireObj){ wireObj.key_id = cst_encode_i_64(apiObj.keyId);
-wireObj.sapling_viewing_key = cst_encode_opt_String(apiObj.saplingViewingKey);
-wireObj.orchard_viewing_key = cst_encode_opt_String(apiObj.orchardViewingKey);
-wireObj.sapling_spending_key = cst_encode_opt_String(apiObj.saplingSpendingKey);
-wireObj.orchard_spending_key = cst_encode_opt_String(apiObj.orchardSpendingKey); }
-
-@protected void cst_api_fill_to_wire_key_group_info(KeyGroupInfo apiObj, wire_cst_key_group_info wireObj){ wireObj.id = cst_encode_i_64(apiObj.id);
-wireObj.label = cst_encode_opt_String(apiObj.label);
-wireObj.key_type = cst_encode_key_type_info(apiObj.keyType);
-wireObj.spendable = cst_encode_bool(apiObj.spendable);
-wireObj.has_sapling = cst_encode_bool(apiObj.hasSapling);
-wireObj.has_orchard = cst_encode_bool(apiObj.hasOrchard);
-wireObj.birthday_height = cst_encode_i_64(apiObj.birthdayHeight);
-wireObj.created_at = cst_encode_i_64(apiObj.createdAt); }
-
-@protected void cst_api_fill_to_wire_lightd_endpoint(LightdEndpoint apiObj, wire_cst_lightd_endpoint wireObj){ wireObj.host = cst_encode_String(apiObj.host);
-wireObj.port = cst_encode_u_16(apiObj.port);
-wireObj.use_tls = cst_encode_bool(apiObj.useTls);
-wireObj.tls_pin = cst_encode_opt_String(apiObj.tlsPin);
-wireObj.label = cst_encode_opt_String(apiObj.label); }
-
-@protected void cst_api_fill_to_wire_network_info(NetworkInfo apiObj, wire_cst_network_info wireObj){ wireObj.name = cst_encode_String(apiObj.name);
-wireObj.coin_type = cst_encode_u_32(apiObj.coinType);
-wireObj.rpc_port = cst_encode_u_16(apiObj.rpcPort);
-wireObj.default_birthday = cst_encode_u_32(apiObj.defaultBirthday); }
-
-@protected void cst_api_fill_to_wire_node_test_result(NodeTestResult apiObj, wire_cst_node_test_result wireObj){ wireObj.success = cst_encode_bool(apiObj.success);
-wireObj.latest_block_height = cst_encode_opt_box_autoadd_u_64(apiObj.latestBlockHeight);
-wireObj.transport_mode = cst_encode_String(apiObj.transportMode);
-wireObj.tls_enabled = cst_encode_bool(apiObj.tlsEnabled);
-wireObj.tls_pin_matched = cst_encode_opt_box_autoadd_bool(apiObj.tlsPinMatched);
-wireObj.expected_pin = cst_encode_opt_String(apiObj.expectedPin);
-wireObj.actual_pin = cst_encode_opt_String(apiObj.actualPin);
-wireObj.error_message = cst_encode_opt_String(apiObj.errorMessage);
-wireObj.response_time_ms = cst_encode_u_64(apiObj.responseTimeMs);
-wireObj.server_version = cst_encode_opt_String(apiObj.serverVersion);
-wireObj.chain_name = cst_encode_opt_String(apiObj.chainName); }
-
-@protected void cst_api_fill_to_wire_output(Output apiObj, wire_cst_output wireObj){ wireObj.addr = cst_encode_String(apiObj.addr);
-wireObj.amount = cst_encode_u_64(apiObj.amount);
-wireObj.memo = cst_encode_opt_String(apiObj.memo); }
-
-@protected void cst_api_fill_to_wire_pending_tx(PendingTx apiObj, wire_cst_pending_tx wireObj){ wireObj.id = cst_encode_String(apiObj.id);
-wireObj.outputs = cst_encode_list_output(apiObj.outputs);
-wireObj.total_amount = cst_encode_u_64(apiObj.totalAmount);
-wireObj.fee = cst_encode_u_64(apiObj.fee);
-wireObj.change = cst_encode_u_64(apiObj.change);
-wireObj.input_total = cst_encode_u_64(apiObj.inputTotal);
-wireObj.num_inputs = cst_encode_u_32(apiObj.numInputs);
-wireObj.expiry_height = cst_encode_u_32(apiObj.expiryHeight);
-wireObj.created_at = cst_encode_i_64(apiObj.createdAt); }
-
-@protected void cst_api_fill_to_wire_seed_export_warnings(SeedExportWarnings apiObj, wire_cst_seed_export_warnings wireObj){ wireObj.primary = cst_encode_String(apiObj.primary);
-wireObj.secondary = cst_encode_String(apiObj.secondary);
-wireObj.backup_instructions = cst_encode_String(apiObj.backupInstructions);
-wireObj.clipboard_warning = cst_encode_String(apiObj.clipboardWarning); }
-
-@protected void cst_api_fill_to_wire_signed_tx(SignedTx apiObj, wire_cst_signed_tx wireObj){ wireObj.txid = cst_encode_String(apiObj.txid);
-wireObj.raw = cst_encode_list_prim_u_8_strict(apiObj.raw);
-wireObj.size = cst_encode_usize(apiObj.size); }
-
-@protected void cst_api_fill_to_wire_sync_log_entry_ffi(SyncLogEntryFfi apiObj, wire_cst_sync_log_entry_ffi wireObj){ wireObj.timestamp = cst_encode_i_64(apiObj.timestamp);
-wireObj.level = cst_encode_String(apiObj.level);
-wireObj.module = cst_encode_String(apiObj.module);
-wireObj.message = cst_encode_String(apiObj.message); }
-
-@protected void cst_api_fill_to_wire_sync_status(SyncStatus apiObj, wire_cst_sync_status wireObj){ wireObj.local_height = cst_encode_u_64(apiObj.localHeight);
-wireObj.target_height = cst_encode_u_64(apiObj.targetHeight);
-wireObj.percent = cst_encode_f_64(apiObj.percent);
-wireObj.eta = cst_encode_opt_box_autoadd_u_64(apiObj.eta);
-wireObj.stage = cst_encode_sync_stage(apiObj.stage);
-wireObj.last_checkpoint = cst_encode_opt_box_autoadd_u_64(apiObj.lastCheckpoint);
-wireObj.blocks_per_second = cst_encode_f_64(apiObj.blocksPerSecond);
-wireObj.notes_decrypted = cst_encode_u_64(apiObj.notesDecrypted);
-wireObj.last_batch_ms = cst_encode_u_64(apiObj.lastBatchMs); }
-
-@protected void cst_api_fill_to_wire_tunnel_mode(TunnelMode apiObj, wire_cst_tunnel_mode wireObj){ if (apiObj is TunnelMode_Tor) {
-                wireObj.tag = 0;
-                return;
-            }
-if (apiObj is TunnelMode_I2p) {
-                wireObj.tag = 1;
-                return;
-            }
-if (apiObj is TunnelMode_Socks5) {
-                var pre_url = cst_encode_String(apiObj.url);wireObj.tag = 2;wireObj.kind.Socks5.url = pre_url;
-                return;
-            }
-if (apiObj is TunnelMode_Direct) {
-                wireObj.tag = 3;
-                return;
-            } }
-
-@protected void cst_api_fill_to_wire_tx_info(TxInfo apiObj, wire_cst_tx_info wireObj){ wireObj.txid = cst_encode_String(apiObj.txid);
-wireObj.height = cst_encode_opt_box_autoadd_u_32(apiObj.height);
-wireObj.timestamp = cst_encode_i_64(apiObj.timestamp);
-wireObj.amount = cst_encode_i_64(apiObj.amount);
-wireObj.fee = cst_encode_u_64(apiObj.fee);
-wireObj.memo = cst_encode_opt_String(apiObj.memo);
-wireObj.confirmed = cst_encode_bool(apiObj.confirmed); }
-
-@protected void cst_api_fill_to_wire_wallet_background_sync_result(WalletBackgroundSyncResult apiObj, wire_cst_wallet_background_sync_result wireObj){ wireObj.wallet_id = cst_encode_String(apiObj.walletId);
-wireObj.mode = cst_encode_String(apiObj.mode);
-wireObj.blocks_synced = cst_encode_u_64(apiObj.blocksSynced);
-wireObj.start_height = cst_encode_u_64(apiObj.startHeight);
-wireObj.end_height = cst_encode_u_64(apiObj.endHeight);
-wireObj.duration_secs = cst_encode_u_64(apiObj.durationSecs);
-wireObj.errors = cst_encode_list_String(apiObj.errors);
-wireObj.new_balance = cst_encode_opt_box_autoadd_u_64(apiObj.newBalance);
-wireObj.new_transactions = cst_encode_u_32(apiObj.newTransactions); }
-
-@protected void cst_api_fill_to_wire_wallet_meta(WalletMeta apiObj, wire_cst_wallet_meta wireObj){ wireObj.id = cst_encode_String(apiObj.id);
-wireObj.name = cst_encode_String(apiObj.name);
-wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
-wireObj.watch_only = cst_encode_bool(apiObj.watchOnly);
-wireObj.birthday_height = cst_encode_u_32(apiObj.birthdayHeight);
-wireObj.network_type = cst_encode_opt_String(apiObj.networkType); }
-
-@protected void cst_api_fill_to_wire_watch_only_banner_info(WatchOnlyBannerInfo apiObj, wire_cst_watch_only_banner_info wireObj){ wireObj.banner_type = cst_encode_String(apiObj.bannerType);
-wireObj.title = cst_encode_String(apiObj.title);
-wireObj.subtitle = cst_encode_String(apiObj.subtitle);
-wireObj.icon = cst_encode_String(apiObj.icon); }
-
-@protected void cst_api_fill_to_wire_watch_only_capabilities_info(WatchOnlyCapabilitiesInfo apiObj, wire_cst_watch_only_capabilities_info wireObj){ wireObj.can_view_incoming = cst_encode_bool(apiObj.canViewIncoming);
-wireObj.can_view_outgoing = cst_encode_bool(apiObj.canViewOutgoing);
-wireObj.can_spend = cst_encode_bool(apiObj.canSpend);
-wireObj.can_export_seed = cst_encode_bool(apiObj.canExportSeed);
-wireObj.can_generate_addresses = cst_encode_bool(apiObj.canGenerateAddresses);
-wireObj.is_watch_only = cst_encode_bool(apiObj.isWatchOnly); }
-
-@protected void cst_api_fill_to_wire_witness_refresh_outcome(WitnessRefreshOutcome apiObj, wire_cst_witness_refresh_outcome wireObj){ wireObj.source = cst_encode_String(apiObj.source);
-wireObj.sapling_requested = cst_encode_usize(apiObj.saplingRequested);
-wireObj.sapling_updated = cst_encode_usize(apiObj.saplingUpdated);
-wireObj.sapling_missing = cst_encode_usize(apiObj.saplingMissing);
-wireObj.sapling_errors = cst_encode_usize(apiObj.saplingErrors);
-wireObj.orchard_requested = cst_encode_usize(apiObj.orchardRequested);
-wireObj.orchard_updated = cst_encode_usize(apiObj.orchardUpdated);
-wireObj.orchard_missing = cst_encode_usize(apiObj.orchardMissing);
-wireObj.orchard_errors = cst_encode_usize(apiObj.orchardErrors); }
-
-@protected int cst_encode_address_book_color_tag(AddressBookColorTag raw);
-
-@protected bool cst_encode_bool(bool raw);
-
-@protected double cst_encode_f_64(double raw);
-
-@protected int cst_encode_i_32(int raw);
-
-@protected int cst_encode_key_type_info(KeyTypeInfo raw);
-
-@protected int cst_encode_sync_mode(SyncMode raw);
-
-@protected int cst_encode_sync_stage(SyncStage raw);
-
-@protected int cst_encode_u_16(int raw);
-
-@protected int cst_encode_u_32(int raw);
-
-@protected int cst_encode_u_8(int raw);
-
-@protected void cst_encode_unit(void raw);
-
-@protected void sse_encode_AnyhowException(AnyhowException self, SseSerializer serializer);
-
-@protected void sse_encode_String(String self, SseSerializer serializer);
-
-@protected void sse_encode_address_balance_info(AddressBalanceInfo self, SseSerializer serializer);
-
-@protected void sse_encode_address_book_color_tag(AddressBookColorTag self, SseSerializer serializer);
-
-@protected void sse_encode_address_book_entry_ffi(AddressBookEntryFfi self, SseSerializer serializer);
-
-@protected void sse_encode_address_info(AddressInfo self, SseSerializer serializer);
-
-@protected void sse_encode_background_sync_result(BackgroundSyncResult self, SseSerializer serializer);
-
-@protected void sse_encode_balance(Balance self, SseSerializer serializer);
-
-@protected void sse_encode_bool(bool self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_address_book_color_tag(AddressBookColorTag self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_checkpoint_info(CheckpointInfo self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_i_64(PlatformInt64 self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_lightd_endpoint(LightdEndpoint self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_pending_tx(PendingTx self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_signed_tx(SignedTx self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_tunnel_mode(TunnelMode self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
-
-@protected void sse_encode_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo self, SseSerializer serializer);
-
-@protected void sse_encode_build_info(BuildInfo self, SseSerializer serializer);
-
-@protected void sse_encode_checkpoint_info(CheckpointInfo self, SseSerializer serializer);
-
-@protected void sse_encode_f_64(double self, SseSerializer serializer);
-
-@protected void sse_encode_fee_info(FeeInfo self, SseSerializer serializer);
-
-@protected void sse_encode_i_32(int self, SseSerializer serializer);
-
-@protected void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
-
-@protected void sse_encode_key_address_info(KeyAddressInfo self, SseSerializer serializer);
-
-@protected void sse_encode_key_export_info(KeyExportInfo self, SseSerializer serializer);
-
-@protected void sse_encode_key_group_info(KeyGroupInfo self, SseSerializer serializer);
-
-@protected void sse_encode_key_type_info(KeyTypeInfo self, SseSerializer serializer);
-
-@protected void sse_encode_lightd_endpoint(LightdEndpoint self, SseSerializer serializer);
-
-@protected void sse_encode_list_String(List<String> self, SseSerializer serializer);
-
-@protected void sse_encode_list_address_balance_info(List<AddressBalanceInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> self, SseSerializer serializer);
-
-@protected void sse_encode_list_address_info(List<AddressInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_key_address_info(List<KeyAddressInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_key_group_info(List<KeyGroupInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_output(List<Output> self, SseSerializer serializer);
-
-@protected void sse_encode_list_prim_i_64_strict(Int64List self, SseSerializer serializer);
-
-@protected void sse_encode_list_prim_u_8_strict(Uint8List self, SseSerializer serializer);
-
-@protected void sse_encode_list_sync_log_entry_ffi(List<SyncLogEntryFfi> self, SseSerializer serializer);
-
-@protected void sse_encode_list_tx_info(List<TxInfo> self, SseSerializer serializer);
-
-@protected void sse_encode_list_wallet_meta(List<WalletMeta> self, SseSerializer serializer);
-
-@protected void sse_encode_network_info(NetworkInfo self, SseSerializer serializer);
-
-@protected void sse_encode_node_test_result(NodeTestResult self, SseSerializer serializer);
-
-@protected void sse_encode_opt_String(String? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_address_book_color_tag(AddressBookColorTag? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_checkpoint_info(CheckpointInfo? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_i_64(PlatformInt64? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo? self, SseSerializer serializer);
-
-@protected void sse_encode_opt_list_prim_i_64_strict(Int64List? self, SseSerializer serializer);
-
-@protected void sse_encode_output(Output self, SseSerializer serializer);
-
-@protected void sse_encode_pending_tx(PendingTx self, SseSerializer serializer);
-
-@protected void sse_encode_seed_export_warnings(SeedExportWarnings self, SseSerializer serializer);
-
-@protected void sse_encode_signed_tx(SignedTx self, SseSerializer serializer);
-
-@protected void sse_encode_sync_log_entry_ffi(SyncLogEntryFfi self, SseSerializer serializer);
-
-@protected void sse_encode_sync_mode(SyncMode self, SseSerializer serializer);
-
-@protected void sse_encode_sync_stage(SyncStage self, SseSerializer serializer);
-
-@protected void sse_encode_sync_status(SyncStatus self, SseSerializer serializer);
-
-@protected void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer);
-
-@protected void sse_encode_tx_info(TxInfo self, SseSerializer serializer);
-
-@protected void sse_encode_u_16(int self, SseSerializer serializer);
-
-@protected void sse_encode_u_32(int self, SseSerializer serializer);
-
-@protected void sse_encode_u_64(BigInt self, SseSerializer serializer);
-
-@protected void sse_encode_u_8(int self, SseSerializer serializer);
-
-@protected void sse_encode_unit(void self, SseSerializer serializer);
-
-@protected void sse_encode_usize(BigInt self, SseSerializer serializer);
-
-@protected void sse_encode_wallet_background_sync_result(WalletBackgroundSyncResult self, SseSerializer serializer);
-
-@protected void sse_encode_wallet_meta(WalletMeta self, SseSerializer serializer);
-
-@protected void sse_encode_watch_only_banner_info(WatchOnlyBannerInfo self, SseSerializer serializer);
-
-@protected void sse_encode_watch_only_capabilities_info(WatchOnlyCapabilitiesInfo self, SseSerializer serializer);
-
-@protected void sse_encode_witness_refresh_outcome(WitnessRefreshOutcome self, SseSerializer serializer);
-                }
-                
-
+  @protected
+  ffi.Pointer<ffi.Bool> cst_encode_box_autoadd_bool(bool raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return wire.cst_new_box_autoadd_bool(cst_encode_bool(raw));
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_checkpoint_info> cst_encode_box_autoadd_checkpoint_info(
+    CheckpointInfo raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ptr = wire.cst_new_box_autoadd_checkpoint_info();
+    cst_api_fill_to_wire_checkpoint_info(raw, ptr.ref);
+    return ptr;
+  }
+
+  @protected
+  ffi.Pointer<ffi.Int64> cst_encode_box_autoadd_i_64(PlatformInt64 raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return wire.cst_new_box_autoadd_i_64(cst_encode_i_64(raw));
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_lightd_endpoint> cst_encode_box_autoadd_lightd_endpoint(
+    LightdEndpoint raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ptr = wire.cst_new_box_autoadd_lightd_endpoint();
+    cst_api_fill_to_wire_lightd_endpoint(raw, ptr.ref);
+    return ptr;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_pending_tx> cst_encode_box_autoadd_pending_tx(
+    PendingTx raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ptr = wire.cst_new_box_autoadd_pending_tx();
+    cst_api_fill_to_wire_pending_tx(raw, ptr.ref);
+    return ptr;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_signed_tx> cst_encode_box_autoadd_signed_tx(
+    SignedTx raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ptr = wire.cst_new_box_autoadd_signed_tx();
+    cst_api_fill_to_wire_signed_tx(raw, ptr.ref);
+    return ptr;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_tunnel_mode> cst_encode_box_autoadd_tunnel_mode(
+    TunnelMode raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ptr = wire.cst_new_box_autoadd_tunnel_mode();
+    cst_api_fill_to_wire_tunnel_mode(raw, ptr.ref);
+    return ptr;
+  }
+
+  @protected
+  ffi.Pointer<ffi.Uint32> cst_encode_box_autoadd_u_32(int raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return wire.cst_new_box_autoadd_u_32(cst_encode_u_32(raw));
+  }
+
+  @protected
+  ffi.Pointer<ffi.Uint64> cst_encode_box_autoadd_u_64(BigInt raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return wire.cst_new_box_autoadd_u_64(cst_encode_u_64(raw));
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_watch_only_banner_info>
+  cst_encode_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ptr = wire.cst_new_box_autoadd_watch_only_banner_info();
+    cst_api_fill_to_wire_watch_only_banner_info(raw, ptr.ref);
+    return ptr;
+  }
+
+  @protected
+  int cst_encode_i_64(PlatformInt64 raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.toInt();
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_String> cst_encode_list_String(List<String> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_String(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      ans.ref.ptr[i] = cst_encode_String(raw[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_address_balance_info>
+  cst_encode_list_address_balance_info(List<AddressBalanceInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_address_balance_info(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_address_balance_info(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_address_book_entry_ffi>
+  cst_encode_list_address_book_entry_ffi(List<AddressBookEntryFfi> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_address_book_entry_ffi(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_address_book_entry_ffi(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_address_info> cst_encode_list_address_info(
+    List<AddressInfo> raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_address_info(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_address_info(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_key_address_info> cst_encode_list_key_address_info(
+    List<KeyAddressInfo> raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_key_address_info(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_key_address_info(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_key_group_info> cst_encode_list_key_group_info(
+    List<KeyGroupInfo> raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_key_group_info(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_key_group_info(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_output> cst_encode_list_output(List<Output> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_output(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_output(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_prim_i_64_strict> cst_encode_list_prim_i_64_strict(
+    Int64List raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_prim_i_64_strict(raw.length);
+    ans.ref.ptr.asTypedList(raw.length).setAll(0, raw.inner);
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_encode_list_prim_u_8_strict(
+    Uint8List raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_prim_u_8_strict(raw.length);
+    ans.ref.ptr.asTypedList(raw.length).setAll(0, raw);
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_sync_log_entry_ffi>
+  cst_encode_list_sync_log_entry_ffi(List<SyncLogEntryFfi> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_sync_log_entry_ffi(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_sync_log_entry_ffi(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_tx_info> cst_encode_list_tx_info(List<TxInfo> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_tx_info(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_tx_info(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_wallet_meta> cst_encode_list_wallet_meta(
+    List<WalletMeta> raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_wallet_meta(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_wallet_meta(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_prim_u_8_strict> cst_encode_opt_String(
+    String? raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? ffi.nullptr : cst_encode_String(raw);
+  }
+
+  @protected
+  ffi.Pointer<ffi.Int32> cst_encode_opt_box_autoadd_address_book_color_tag(
+    AddressBookColorTag? raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null
+        ? ffi.nullptr
+        : cst_encode_box_autoadd_address_book_color_tag(raw);
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_address_book_entry_ffi>
+  cst_encode_opt_box_autoadd_address_book_entry_ffi(AddressBookEntryFfi? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null
+        ? ffi.nullptr
+        : cst_encode_box_autoadd_address_book_entry_ffi(raw);
+  }
+
+  @protected
+  ffi.Pointer<ffi.Bool> cst_encode_opt_box_autoadd_bool(bool? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? ffi.nullptr : cst_encode_box_autoadd_bool(raw);
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_checkpoint_info>
+  cst_encode_opt_box_autoadd_checkpoint_info(CheckpointInfo? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null
+        ? ffi.nullptr
+        : cst_encode_box_autoadd_checkpoint_info(raw);
+  }
+
+  @protected
+  ffi.Pointer<ffi.Int64> cst_encode_opt_box_autoadd_i_64(PlatformInt64? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? ffi.nullptr : cst_encode_box_autoadd_i_64(raw);
+  }
+
+  @protected
+  ffi.Pointer<ffi.Uint32> cst_encode_opt_box_autoadd_u_32(int? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? ffi.nullptr : cst_encode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  ffi.Pointer<ffi.Uint64> cst_encode_opt_box_autoadd_u_64(BigInt? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? ffi.nullptr : cst_encode_box_autoadd_u_64(raw);
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_watch_only_banner_info>
+  cst_encode_opt_box_autoadd_watch_only_banner_info(WatchOnlyBannerInfo? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null
+        ? ffi.nullptr
+        : cst_encode_box_autoadd_watch_only_banner_info(raw);
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_prim_i_64_strict>
+  cst_encode_opt_list_prim_i_64_strict(Int64List? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? ffi.nullptr : cst_encode_list_prim_i_64_strict(raw);
+  }
+
+  @protected
+  int cst_encode_u_64(BigInt raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.toSigned(64).toInt();
+  }
+
+  @protected
+  int cst_encode_usize(BigInt raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.toSigned(64).toInt();
+  }
+
+  @protected
+  void cst_api_fill_to_wire_address_balance_info(
+    AddressBalanceInfo apiObj,
+    wire_cst_address_balance_info wireObj,
+  ) {
+    wireObj.address = cst_encode_String(apiObj.address);
+    wireObj.balance = cst_encode_u_64(apiObj.balance);
+    wireObj.spendable = cst_encode_u_64(apiObj.spendable);
+    wireObj.pending = cst_encode_u_64(apiObj.pending);
+    wireObj.key_id = cst_encode_opt_box_autoadd_i_64(apiObj.keyId);
+    wireObj.address_id = cst_encode_i_64(apiObj.addressId);
+    wireObj.label = cst_encode_opt_String(apiObj.label);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
+    wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag);
+    wireObj.diversifier_index = cst_encode_u_32(apiObj.diversifierIndex);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_address_book_entry_ffi(
+    AddressBookEntryFfi apiObj,
+    wire_cst_address_book_entry_ffi wireObj,
+  ) {
+    wireObj.id = cst_encode_i_64(apiObj.id);
+    wireObj.wallet_id = cst_encode_String(apiObj.walletId);
+    wireObj.address = cst_encode_String(apiObj.address);
+    wireObj.label = cst_encode_String(apiObj.label);
+    wireObj.notes = cst_encode_opt_String(apiObj.notes);
+    wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag);
+    wireObj.is_favorite = cst_encode_bool(apiObj.isFavorite);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
+    wireObj.updated_at = cst_encode_i_64(apiObj.updatedAt);
+    wireObj.last_used_at = cst_encode_opt_box_autoadd_i_64(apiObj.lastUsedAt);
+    wireObj.use_count = cst_encode_u_32(apiObj.useCount);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_address_info(
+    AddressInfo apiObj,
+    wire_cst_address_info wireObj,
+  ) {
+    wireObj.address = cst_encode_String(apiObj.address);
+    wireObj.diversifier_index = cst_encode_u_32(apiObj.diversifierIndex);
+    wireObj.label = cst_encode_opt_String(apiObj.label);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
+    wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_background_sync_result(
+    BackgroundSyncResult apiObj,
+    wire_cst_background_sync_result wireObj,
+  ) {
+    wireObj.mode = cst_encode_String(apiObj.mode);
+    wireObj.blocks_synced = cst_encode_u_64(apiObj.blocksSynced);
+    wireObj.start_height = cst_encode_u_64(apiObj.startHeight);
+    wireObj.end_height = cst_encode_u_64(apiObj.endHeight);
+    wireObj.duration_secs = cst_encode_u_64(apiObj.durationSecs);
+    wireObj.errors = cst_encode_list_String(apiObj.errors);
+    wireObj.new_balance = cst_encode_opt_box_autoadd_u_64(apiObj.newBalance);
+    wireObj.new_transactions = cst_encode_u_32(apiObj.newTransactions);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_balance(Balance apiObj, wire_cst_balance wireObj) {
+    wireObj.total = cst_encode_u_64(apiObj.total);
+    wireObj.spendable = cst_encode_u_64(apiObj.spendable);
+    wireObj.pending = cst_encode_u_64(apiObj.pending);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_box_autoadd_address_book_entry_ffi(
+    AddressBookEntryFfi apiObj,
+    ffi.Pointer<wire_cst_address_book_entry_ffi> wireObj,
+  ) {
+    cst_api_fill_to_wire_address_book_entry_ffi(apiObj, wireObj.ref);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_box_autoadd_checkpoint_info(
+    CheckpointInfo apiObj,
+    ffi.Pointer<wire_cst_checkpoint_info> wireObj,
+  ) {
+    cst_api_fill_to_wire_checkpoint_info(apiObj, wireObj.ref);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_box_autoadd_lightd_endpoint(
+    LightdEndpoint apiObj,
+    ffi.Pointer<wire_cst_lightd_endpoint> wireObj,
+  ) {
+    cst_api_fill_to_wire_lightd_endpoint(apiObj, wireObj.ref);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_box_autoadd_pending_tx(
+    PendingTx apiObj,
+    ffi.Pointer<wire_cst_pending_tx> wireObj,
+  ) {
+    cst_api_fill_to_wire_pending_tx(apiObj, wireObj.ref);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_box_autoadd_signed_tx(
+    SignedTx apiObj,
+    ffi.Pointer<wire_cst_signed_tx> wireObj,
+  ) {
+    cst_api_fill_to_wire_signed_tx(apiObj, wireObj.ref);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_box_autoadd_tunnel_mode(
+    TunnelMode apiObj,
+    ffi.Pointer<wire_cst_tunnel_mode> wireObj,
+  ) {
+    cst_api_fill_to_wire_tunnel_mode(apiObj, wireObj.ref);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_box_autoadd_watch_only_banner_info(
+    WatchOnlyBannerInfo apiObj,
+    ffi.Pointer<wire_cst_watch_only_banner_info> wireObj,
+  ) {
+    cst_api_fill_to_wire_watch_only_banner_info(apiObj, wireObj.ref);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_build_info(
+    BuildInfo apiObj,
+    wire_cst_build_info wireObj,
+  ) {
+    wireObj.version = cst_encode_String(apiObj.version);
+    wireObj.git_commit = cst_encode_String(apiObj.gitCommit);
+    wireObj.build_date = cst_encode_String(apiObj.buildDate);
+    wireObj.rust_version = cst_encode_String(apiObj.rustVersion);
+    wireObj.target_triple = cst_encode_String(apiObj.targetTriple);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_checkpoint_info(
+    CheckpointInfo apiObj,
+    wire_cst_checkpoint_info wireObj,
+  ) {
+    wireObj.height = cst_encode_u_32(apiObj.height);
+    wireObj.timestamp = cst_encode_i_64(apiObj.timestamp);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_fee_info(
+    FeeInfo apiObj,
+    wire_cst_fee_info wireObj,
+  ) {
+    wireObj.default_fee = cst_encode_u_64(apiObj.defaultFee);
+    wireObj.min_fee = cst_encode_u_64(apiObj.minFee);
+    wireObj.max_fee = cst_encode_u_64(apiObj.maxFee);
+    wireObj.fee_per_output = cst_encode_u_64(apiObj.feePerOutput);
+    wireObj.memo_fee_multiplier = cst_encode_f_64(apiObj.memoFeeMultiplier);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_key_address_info(
+    KeyAddressInfo apiObj,
+    wire_cst_key_address_info wireObj,
+  ) {
+    wireObj.key_id = cst_encode_i_64(apiObj.keyId);
+    wireObj.address = cst_encode_String(apiObj.address);
+    wireObj.diversifier_index = cst_encode_u_32(apiObj.diversifierIndex);
+    wireObj.label = cst_encode_opt_String(apiObj.label);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
+    wireObj.color_tag = cst_encode_address_book_color_tag(apiObj.colorTag);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_key_export_info(
+    KeyExportInfo apiObj,
+    wire_cst_key_export_info wireObj,
+  ) {
+    wireObj.key_id = cst_encode_i_64(apiObj.keyId);
+    wireObj.sapling_viewing_key = cst_encode_opt_String(
+      apiObj.saplingViewingKey,
+    );
+    wireObj.orchard_viewing_key = cst_encode_opt_String(
+      apiObj.orchardViewingKey,
+    );
+    wireObj.sapling_spending_key = cst_encode_opt_String(
+      apiObj.saplingSpendingKey,
+    );
+    wireObj.orchard_spending_key = cst_encode_opt_String(
+      apiObj.orchardSpendingKey,
+    );
+  }
+
+  @protected
+  void cst_api_fill_to_wire_key_group_info(
+    KeyGroupInfo apiObj,
+    wire_cst_key_group_info wireObj,
+  ) {
+    wireObj.id = cst_encode_i_64(apiObj.id);
+    wireObj.label = cst_encode_opt_String(apiObj.label);
+    wireObj.key_type = cst_encode_key_type_info(apiObj.keyType);
+    wireObj.spendable = cst_encode_bool(apiObj.spendable);
+    wireObj.has_sapling = cst_encode_bool(apiObj.hasSapling);
+    wireObj.has_orchard = cst_encode_bool(apiObj.hasOrchard);
+    wireObj.birthday_height = cst_encode_i_64(apiObj.birthdayHeight);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_lightd_endpoint(
+    LightdEndpoint apiObj,
+    wire_cst_lightd_endpoint wireObj,
+  ) {
+    wireObj.host = cst_encode_String(apiObj.host);
+    wireObj.port = cst_encode_u_16(apiObj.port);
+    wireObj.use_tls = cst_encode_bool(apiObj.useTls);
+    wireObj.tls_pin = cst_encode_opt_String(apiObj.tlsPin);
+    wireObj.label = cst_encode_opt_String(apiObj.label);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_network_info(
+    NetworkInfo apiObj,
+    wire_cst_network_info wireObj,
+  ) {
+    wireObj.name = cst_encode_String(apiObj.name);
+    wireObj.coin_type = cst_encode_u_32(apiObj.coinType);
+    wireObj.rpc_port = cst_encode_u_16(apiObj.rpcPort);
+    wireObj.default_birthday = cst_encode_u_32(apiObj.defaultBirthday);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_node_test_result(
+    NodeTestResult apiObj,
+    wire_cst_node_test_result wireObj,
+  ) {
+    wireObj.success = cst_encode_bool(apiObj.success);
+    wireObj.latest_block_height = cst_encode_opt_box_autoadd_u_64(
+      apiObj.latestBlockHeight,
+    );
+    wireObj.transport_mode = cst_encode_String(apiObj.transportMode);
+    wireObj.tls_enabled = cst_encode_bool(apiObj.tlsEnabled);
+    wireObj.tls_pin_matched = cst_encode_opt_box_autoadd_bool(
+      apiObj.tlsPinMatched,
+    );
+    wireObj.expected_pin = cst_encode_opt_String(apiObj.expectedPin);
+    wireObj.actual_pin = cst_encode_opt_String(apiObj.actualPin);
+    wireObj.error_message = cst_encode_opt_String(apiObj.errorMessage);
+    wireObj.response_time_ms = cst_encode_u_64(apiObj.responseTimeMs);
+    wireObj.server_version = cst_encode_opt_String(apiObj.serverVersion);
+    wireObj.chain_name = cst_encode_opt_String(apiObj.chainName);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_output(Output apiObj, wire_cst_output wireObj) {
+    wireObj.addr = cst_encode_String(apiObj.addr);
+    wireObj.amount = cst_encode_u_64(apiObj.amount);
+    wireObj.memo = cst_encode_opt_String(apiObj.memo);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_pending_tx(
+    PendingTx apiObj,
+    wire_cst_pending_tx wireObj,
+  ) {
+    wireObj.id = cst_encode_String(apiObj.id);
+    wireObj.outputs = cst_encode_list_output(apiObj.outputs);
+    wireObj.total_amount = cst_encode_u_64(apiObj.totalAmount);
+    wireObj.fee = cst_encode_u_64(apiObj.fee);
+    wireObj.change = cst_encode_u_64(apiObj.change);
+    wireObj.input_total = cst_encode_u_64(apiObj.inputTotal);
+    wireObj.num_inputs = cst_encode_u_32(apiObj.numInputs);
+    wireObj.expiry_height = cst_encode_u_32(apiObj.expiryHeight);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_seed_export_warnings(
+    SeedExportWarnings apiObj,
+    wire_cst_seed_export_warnings wireObj,
+  ) {
+    wireObj.primary = cst_encode_String(apiObj.primary);
+    wireObj.secondary = cst_encode_String(apiObj.secondary);
+    wireObj.backup_instructions = cst_encode_String(apiObj.backupInstructions);
+    wireObj.clipboard_warning = cst_encode_String(apiObj.clipboardWarning);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_signed_tx(
+    SignedTx apiObj,
+    wire_cst_signed_tx wireObj,
+  ) {
+    wireObj.txid = cst_encode_String(apiObj.txid);
+    wireObj.raw = cst_encode_list_prim_u_8_strict(apiObj.raw);
+    wireObj.size = cst_encode_usize(apiObj.size);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_sync_log_entry_ffi(
+    SyncLogEntryFfi apiObj,
+    wire_cst_sync_log_entry_ffi wireObj,
+  ) {
+    wireObj.timestamp = cst_encode_i_64(apiObj.timestamp);
+    wireObj.level = cst_encode_String(apiObj.level);
+    wireObj.module = cst_encode_String(apiObj.module);
+    wireObj.message = cst_encode_String(apiObj.message);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_sync_status(
+    SyncStatus apiObj,
+    wire_cst_sync_status wireObj,
+  ) {
+    wireObj.local_height = cst_encode_u_64(apiObj.localHeight);
+    wireObj.target_height = cst_encode_u_64(apiObj.targetHeight);
+    wireObj.percent = cst_encode_f_64(apiObj.percent);
+    wireObj.eta = cst_encode_opt_box_autoadd_u_64(apiObj.eta);
+    wireObj.stage = cst_encode_sync_stage(apiObj.stage);
+    wireObj.last_checkpoint = cst_encode_opt_box_autoadd_u_64(
+      apiObj.lastCheckpoint,
+    );
+    wireObj.blocks_per_second = cst_encode_f_64(apiObj.blocksPerSecond);
+    wireObj.notes_decrypted = cst_encode_u_64(apiObj.notesDecrypted);
+    wireObj.last_batch_ms = cst_encode_u_64(apiObj.lastBatchMs);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_tunnel_mode(
+    TunnelMode apiObj,
+    wire_cst_tunnel_mode wireObj,
+  ) {
+    if (apiObj is TunnelMode_Tor) {
+      wireObj.tag = 0;
+      return;
+    }
+    if (apiObj is TunnelMode_I2p) {
+      wireObj.tag = 1;
+      return;
+    }
+    if (apiObj is TunnelMode_Socks5) {
+      var pre_url = cst_encode_String(apiObj.url);
+      wireObj.tag = 2;
+      wireObj.kind.Socks5.url = pre_url;
+      return;
+    }
+    if (apiObj is TunnelMode_Direct) {
+      wireObj.tag = 3;
+      return;
+    }
+  }
+
+  @protected
+  void cst_api_fill_to_wire_tx_info(TxInfo apiObj, wire_cst_tx_info wireObj) {
+    wireObj.txid = cst_encode_String(apiObj.txid);
+    wireObj.height = cst_encode_opt_box_autoadd_u_32(apiObj.height);
+    wireObj.timestamp = cst_encode_i_64(apiObj.timestamp);
+    wireObj.amount = cst_encode_i_64(apiObj.amount);
+    wireObj.fee = cst_encode_u_64(apiObj.fee);
+    wireObj.memo = cst_encode_opt_String(apiObj.memo);
+    wireObj.confirmed = cst_encode_bool(apiObj.confirmed);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_wallet_background_sync_result(
+    WalletBackgroundSyncResult apiObj,
+    wire_cst_wallet_background_sync_result wireObj,
+  ) {
+    wireObj.wallet_id = cst_encode_String(apiObj.walletId);
+    wireObj.mode = cst_encode_String(apiObj.mode);
+    wireObj.blocks_synced = cst_encode_u_64(apiObj.blocksSynced);
+    wireObj.start_height = cst_encode_u_64(apiObj.startHeight);
+    wireObj.end_height = cst_encode_u_64(apiObj.endHeight);
+    wireObj.duration_secs = cst_encode_u_64(apiObj.durationSecs);
+    wireObj.errors = cst_encode_list_String(apiObj.errors);
+    wireObj.new_balance = cst_encode_opt_box_autoadd_u_64(apiObj.newBalance);
+    wireObj.new_transactions = cst_encode_u_32(apiObj.newTransactions);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_wallet_meta(
+    WalletMeta apiObj,
+    wire_cst_wallet_meta wireObj,
+  ) {
+    wireObj.id = cst_encode_String(apiObj.id);
+    wireObj.name = cst_encode_String(apiObj.name);
+    wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
+    wireObj.watch_only = cst_encode_bool(apiObj.watchOnly);
+    wireObj.birthday_height = cst_encode_u_32(apiObj.birthdayHeight);
+    wireObj.network_type = cst_encode_opt_String(apiObj.networkType);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_watch_only_banner_info(
+    WatchOnlyBannerInfo apiObj,
+    wire_cst_watch_only_banner_info wireObj,
+  ) {
+    wireObj.banner_type = cst_encode_String(apiObj.bannerType);
+    wireObj.title = cst_encode_String(apiObj.title);
+    wireObj.subtitle = cst_encode_String(apiObj.subtitle);
+    wireObj.icon = cst_encode_String(apiObj.icon);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_watch_only_capabilities_info(
+    WatchOnlyCapabilitiesInfo apiObj,
+    wire_cst_watch_only_capabilities_info wireObj,
+  ) {
+    wireObj.can_view_incoming = cst_encode_bool(apiObj.canViewIncoming);
+    wireObj.can_view_outgoing = cst_encode_bool(apiObj.canViewOutgoing);
+    wireObj.can_spend = cst_encode_bool(apiObj.canSpend);
+    wireObj.can_export_seed = cst_encode_bool(apiObj.canExportSeed);
+    wireObj.can_generate_addresses = cst_encode_bool(
+      apiObj.canGenerateAddresses,
+    );
+    wireObj.is_watch_only = cst_encode_bool(apiObj.isWatchOnly);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_witness_refresh_outcome(
+    WitnessRefreshOutcome apiObj,
+    wire_cst_witness_refresh_outcome wireObj,
+  ) {
+    wireObj.source = cst_encode_String(apiObj.source);
+    wireObj.sapling_requested = cst_encode_usize(apiObj.saplingRequested);
+    wireObj.sapling_updated = cst_encode_usize(apiObj.saplingUpdated);
+    wireObj.sapling_missing = cst_encode_usize(apiObj.saplingMissing);
+    wireObj.sapling_errors = cst_encode_usize(apiObj.saplingErrors);
+    wireObj.orchard_requested = cst_encode_usize(apiObj.orchardRequested);
+    wireObj.orchard_updated = cst_encode_usize(apiObj.orchardUpdated);
+    wireObj.orchard_missing = cst_encode_usize(apiObj.orchardMissing);
+    wireObj.orchard_errors = cst_encode_usize(apiObj.orchardErrors);
+  }
+
+  @protected
+  int cst_encode_address_book_color_tag(AddressBookColorTag raw);
+
+  @protected
+  bool cst_encode_bool(bool raw);
+
+  @protected
+  double cst_encode_f_64(double raw);
+
+  @protected
+  int cst_encode_i_32(int raw);
+
+  @protected
+  int cst_encode_key_type_info(KeyTypeInfo raw);
+
+  @protected
+  int cst_encode_sync_mode(SyncMode raw);
+
+  @protected
+  int cst_encode_sync_stage(SyncStage raw);
+
+  @protected
+  int cst_encode_u_16(int raw);
+
+  @protected
+  int cst_encode_u_32(int raw);
+
+  @protected
+  int cst_encode_u_8(int raw);
+
+  @protected
+  void cst_encode_unit(void raw);
+
+  @protected
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_String(String self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_address_balance_info(
+    AddressBalanceInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_address_book_color_tag(
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_address_book_entry_ffi(
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_address_info(AddressInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_background_sync_result(
+    BackgroundSyncResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_balance(Balance self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_address_book_color_tag(
+    AddressBookColorTag self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_address_book_entry_ffi(
+    AddressBookEntryFfi self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_checkpoint_info(
+    CheckpointInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_lightd_endpoint(
+    LightdEndpoint self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_pending_tx(
+    PendingTx self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_signed_tx(
+    SignedTx self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_tunnel_mode(
+    TunnelMode self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_watch_only_banner_info(
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_build_info(BuildInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_checkpoint_info(
+    CheckpointInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_f_64(double self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_fee_info(FeeInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_key_address_info(
+    KeyAddressInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_key_export_info(KeyExportInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_key_group_info(KeyGroupInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_key_type_info(KeyTypeInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_lightd_endpoint(
+    LightdEndpoint self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_address_balance_info(
+    List<AddressBalanceInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_address_book_entry_ffi(
+    List<AddressBookEntryFfi> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_address_info(
+    List<AddressInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_key_address_info(
+    List<KeyAddressInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_key_group_info(
+    List<KeyGroupInfo> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_output(List<Output> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_prim_i_64_strict(
+    Int64List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_8_strict(
+    Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_sync_log_entry_ffi(
+    List<SyncLogEntryFfi> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_tx_info(List<TxInfo> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_wallet_meta(
+    List<WalletMeta> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_network_info(NetworkInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_node_test_result(
+    NodeTestResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_address_book_color_tag(
+    AddressBookColorTag? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_address_book_entry_ffi(
+    AddressBookEntryFfi? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_checkpoint_info(
+    CheckpointInfo? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_watch_only_banner_info(
+    WatchOnlyBannerInfo? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_list_prim_i_64_strict(
+    Int64List? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_output(Output self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_pending_tx(PendingTx self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_seed_export_warnings(
+    SeedExportWarnings self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_signed_tx(SignedTx self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_log_entry_ffi(
+    SyncLogEntryFfi self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_sync_mode(SyncMode self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_stage(SyncStage self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_sync_status(SyncStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_tx_info(TxInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_8(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_usize(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_wallet_background_sync_result(
+    WalletBackgroundSyncResult self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_wallet_meta(WalletMeta self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_watch_only_banner_info(
+    WatchOnlyBannerInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_watch_only_capabilities_info(
+    WatchOnlyCapabilitiesInfo self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_witness_refresh_outcome(
+    WitnessRefreshOutcome self,
+    SseSerializer serializer,
+  );
+}
 
 // Section: wire_class
 
@@ -924,10 +1707,9 @@ wireObj.orchard_errors = cst_encode_usize(apiObj.orchardErrors); }
 
 /// generated by flutter_rust_bridge
 class RustLibWire implements BaseWire {
+  factory RustLibWire.fromExternalLibrary(ExternalLibrary lib) =>
+      RustLibWire(lib.ffiDynamicLibrary);
 
-            factory RustLibWire.fromExternalLibrary(ExternalLibrary lib) =>
-              RustLibWire(lib.ffiDynamicLibrary);
-        
   /// Holds the symbol lookup function.
   final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
   _lookup;
@@ -4205,12 +4987,6 @@ class RustLibWire implements BaseWire {
       _dummy_method_to_enforce_bundlingPtr.asFunction<int Function()>();
 }
 
-
-
-
-
-
-
 typedef DartPort = ffi.Int64;
 typedef DartDartPort = int;
 typedef DartPostCObjectFnTypeFunction =
@@ -4219,8 +4995,6 @@ typedef DartDartPostCObjectFnTypeFunction =
     bool Function(DartDartPort port_id, ffi.Pointer<ffi.Void> message);
 typedef DartPostCObjectFnType =
     ffi.Pointer<ffi.NativeFunction<DartPostCObjectFnTypeFunction>>;
-
-
 
 final class wire_cst_list_prim_u_8_strict extends ffi.Struct {
   external ffi.Pointer<ffi.Uint8> ptr;
