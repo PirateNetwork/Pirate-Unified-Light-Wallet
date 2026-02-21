@@ -10,7 +10,7 @@
 use crate::fees::FeeCalculator;
 use crate::keys::{ExtendedSpendingKey, OrchardExtendedSpendingKey, PaymentAddress};
 use crate::params::sapling_prover;
-use crate::selection::{NoteSelector, SelectableNote, SelectionStrategy};
+use crate::selection::{NoteSelector, NoteType, SelectableNote, SelectionStrategy};
 use crate::{Error, Memo, Result};
 use pirate_params::{Network, NetworkType};
 use std::collections::HashMap;
@@ -166,6 +166,23 @@ pub struct SignedShieldedTransaction {
     pub raw_tx: Vec<u8>,
     /// Transaction size
     pub size: usize,
+    /// Selected input notes consumed by this transaction.
+    pub spent_notes: Vec<SelectedSpendNoteRef>,
+}
+
+/// Minimal selected input note metadata carried with signed txs.
+#[derive(Debug, Clone)]
+pub struct SelectedSpendNoteRef {
+    /// Selected note pool.
+    pub note_type: NoteType,
+    /// Source txid bytes for the note.
+    pub txid: Vec<u8>,
+    /// Source output index for the note.
+    pub output_index: u32,
+    /// Owning key-group id if known.
+    pub key_id: Option<i64>,
+    /// Note nullifier if known.
+    pub nullifier: Option<Vec<u8>>,
 }
 
 /// Shielded transaction builder with Sapling and Orchard support
@@ -374,6 +391,17 @@ impl ShieldedBuilder {
         } else {
             selector.select_notes(available_notes, output_sum, estimated_fee)?
         };
+        let spent_notes = selection
+            .notes
+            .iter()
+            .map(|note| SelectedSpendNoteRef {
+                note_type: note.note_type,
+                txid: note.txid.clone(),
+                output_index: note.output_index,
+                key_id: note.key_id,
+                nullifier: note.nullifier.clone(),
+            })
+            .collect::<Vec<_>>();
 
         // Get note count and check for Orchard spends before moving selection.notes
         let note_count = selection.notes.len();
@@ -430,10 +458,32 @@ impl ShieldedBuilder {
                                 })?
                                 .clone();
 
-                        let sapling_key = note
+                        let base_sapling_key = note
                             .key_id
                             .and_then(|key_id| sapling_spending_keys_by_id.get(&key_id))
                             .unwrap_or(default_sapling_spending_key);
+                        let mut sapling_key = base_sapling_key.clone();
+
+                        // Match selected key scope (external/internal) to the actual note
+                        // recipient to avoid spend-proof failures on internal change notes.
+                        let recipient = sapling_note.recipient();
+                        let external_matches = base_sapling_key
+                            .to_extended_fvk()
+                            .address_from_diversifier(diversifier.0)
+                            .map(|addr| addr.inner == recipient)
+                            .unwrap_or(false);
+
+                        if !external_matches {
+                            let internal_candidate = base_sapling_key.derive_internal();
+                            let internal_matches = internal_candidate
+                                .to_extended_fvk()
+                                .address_from_diversifier(diversifier.0)
+                                .map(|addr| addr.inner == recipient)
+                                .unwrap_or(false);
+                            if internal_matches {
+                                sapling_key = internal_candidate;
+                            }
+                        }
 
                         tx_builder
                             .add_sapling_spend(
@@ -627,6 +677,7 @@ impl ShieldedBuilder {
             txid,
             raw_tx,
             size: tx_size,
+            spent_notes,
         })
     }
 }

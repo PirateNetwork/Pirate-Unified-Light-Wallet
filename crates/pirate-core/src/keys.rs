@@ -186,6 +186,13 @@ impl ExtendedSpendingKey {
         ExtendedFullViewingKey { inner: dfvk }
     }
 
+    /// Derive internal (change) spending key per ZIP-32.
+    pub fn derive_internal(&self) -> Self {
+        Self {
+            inner: self.inner.derive_internal(),
+        }
+    }
+
     /// Encode the Sapling extended full viewing key (xFVK) for the given network.
     #[allow(deprecated)]
     pub fn to_xfvk_bech32_for_network(&self, network: NetworkType) -> String {
@@ -422,6 +429,18 @@ impl ExtendedFullViewingKey {
     /// Get the Sapling nullifier deriving key (nk).
     pub fn nullifier_deriving_key(&self) -> NullifierDerivingKey {
         self.inner.fvk().vk.nk
+    }
+
+    /// Get the Sapling nullifier deriving key (nk) for a specific ZIP-32 scope.
+    ///
+    /// Internal scope is required for correctly deriving nullifiers of change notes.
+    pub fn nullifier_deriving_key_for_scope(&self, scope: Scope) -> NullifierDerivingKey {
+        self.inner.to_nk(scope)
+    }
+
+    /// Get the Sapling internal-scope nullifier deriving key (nk).
+    pub fn internal_nullifier_deriving_key(&self) -> NullifierDerivingKey {
+        self.inner.to_nk(Scope::Internal)
     }
 
     /// Get the Sapling outgoing viewing key (ovk).
