@@ -303,13 +303,28 @@ Name: "{autodesktop}\Pirate Wallet"; Filename: "{app}\{#AppExeName}"
 Filename: "{app}\{#AppExeName}"; Description: "Launch Pirate Wallet"; Flags: nowait postinstall skipifsilent
 ISS
 
-    "$iscc_cmd" \
-        "/DSourceDir=$source_dir" \
-        "/DOutputDir=$output_dir" \
-        "/DOutputBaseFilename=$output_name" \
-        "/DAppVersion=$app_version" \
-        "/DAppExeName=$app_exe_name" \
-        "$iss_file"
+    local source_dir_win="$source_dir"
+    local output_dir_win="$output_dir"
+    local iss_file_win="$iss_file"
+    if command -v cygpath &> /dev/null; then
+        source_dir_win="$(cygpath -w "$source_dir")"
+        output_dir_win="$(cygpath -w "$output_dir")"
+        iss_file_win="$(cygpath -w "$iss_file")"
+    fi
+
+    local -a iscc_args=(
+        "/DSourceDir=$source_dir_win"
+        "/DOutputDir=$output_dir_win"
+        "/DOutputBaseFilename=$output_name"
+        "/DAppVersion=$app_version"
+        "/DAppExeName=$app_exe_name"
+        "$iss_file_win"
+    )
+
+    # On GitHub Windows runners this script executes under bash (MSYS2),
+    # which can rewrite slash-prefixed arguments intended for native Windows
+    # tools like ISCC. Disable implicit conversion for this invocation.
+    MSYS2_ARG_CONV_EXCL="*" "$iscc_cmd" "${iscc_args[@]}"
 
     rm -f "$iss_file"
     return 0
