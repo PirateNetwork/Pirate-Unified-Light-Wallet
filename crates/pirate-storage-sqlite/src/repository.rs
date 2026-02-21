@@ -194,6 +194,7 @@ impl<'a> Repository<'a> {
             conn.execute("DELETE FROM notes", [])?;
             conn.execute("DELETE FROM transactions", [])?;
             conn.execute("DELETE FROM memos", [])?;
+            conn.execute("DELETE FROM unlinked_spend_nullifiers", [])?;
             conn.execute("DELETE FROM checkpoints", [])?;
             conn.execute("DELETE FROM frontier_snapshots", [])?;
             conn.execute("DELETE FROM sync_logs", [])?;
@@ -713,6 +714,142 @@ impl<'a> Repository<'a> {
         // #endregion
 
         Ok(decrypted_notes)
+    }
+
+    /// Get notes that are eligible for spend reconciliation.
+    ///
+    /// This returns a canonical per-output view used by sync spend matching:
+    /// - prefer unspent rows
+    /// - otherwise allow spent rows missing `spent_txid` (unresolved local state)
+    /// - ignore rows already spent with a known `spent_txid`
+    ///
+    /// If duplicates exist for a single output key, the latest row id wins within
+    /// the same priority class.
+    pub fn get_spend_reconciliation_notes(&self, account_id: i64) -> Result<Vec<NoteRecord>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
+        )?;
+
+        let notes = stmt
+            .query_map([], |row| {
+                let note_type_str: String = row.get(2)?;
+                let note_type = match note_type_str.as_str() {
+                    "Orchard" => crate::models::NoteType::Orchard,
+                    _ => crate::models::NoteType::Sapling,
+                };
+
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    note_type,
+                    row.get::<_, Vec<u8>>(3)?,          // encrypted value
+                    row.get::<_, Vec<u8>>(4)?,          // encrypted nullifier
+                    row.get::<_, Vec<u8>>(5)?,          // encrypted commitment
+                    row.get::<_, Vec<u8>>(6)?,          // encrypted spent
+                    row.get::<_, Vec<u8>>(7)?,          // encrypted height
+                    row.get::<_, Vec<u8>>(8)?,          // encrypted txid
+                    row.get::<_, Vec<u8>>(9)?,          // encrypted output_index
+                    row.get::<_, Option<Vec<u8>>>(10)?, // encrypted spent_txid
+                    row.get::<_, Option<Vec<u8>>>(11)?, // encrypted diversifier
+                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted merkle_path
+                    row.get::<_, Option<Vec<u8>>>(13)?, // encrypted note
+                    row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
+                    row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
+                    row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
+                    row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
+                    row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        // (txid, output_index, note_type) -> (priority, note)
+        // priority: 2=unspent, 1=spent without spent_txid
+        let mut canonical: HashMap<(Vec<u8>, i64, crate::models::NoteType), (u8, NoteRecord)> =
+            HashMap::new();
+
+        for (
+            id,
+            enc_account_id,
+            note_type,
+            enc_value,
+            enc_nullifier,
+            enc_commitment,
+            enc_spent,
+            enc_height,
+            enc_txid,
+            enc_output_index,
+            enc_spent_txid,
+            enc_diversifier,
+            enc_merkle_path,
+            enc_note,
+            enc_anchor,
+            enc_position,
+            enc_memo,
+            enc_address_id,
+            enc_key_id,
+        ) in notes
+        {
+            let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
+            if decrypted_account_id != account_id {
+                continue;
+            }
+
+            let spent = self.decrypt_bool(&enc_spent)?;
+            let spent_txid = self.decrypt_optional_blob(enc_spent_txid)?;
+            let priority = if !spent {
+                2
+            } else if spent_txid.is_none() {
+                1
+            } else {
+                0
+            };
+            if priority == 0 {
+                continue;
+            }
+
+            let txid = self.decrypt_blob(&enc_txid)?;
+            let output_index = self.decrypt_int64(&enc_output_index)?;
+            let key = (txid.clone(), output_index, note_type);
+
+            let candidate = NoteRecord {
+                id: Some(id),
+                account_id: decrypted_account_id,
+                key_id: self.decrypt_optional_int64(enc_key_id)?,
+                note_type,
+                value: self.decrypt_int64(&enc_value)?,
+                nullifier: self.decrypt_blob(&enc_nullifier)?,
+                commitment: self.decrypt_blob(&enc_commitment)?,
+                spent,
+                height: self.decrypt_int64(&enc_height)?,
+                txid,
+                output_index,
+                address_id: self.decrypt_optional_int64(enc_address_id)?,
+                spent_txid,
+                diversifier: self.decrypt_optional_blob(enc_diversifier)?,
+                merkle_path: self.decrypt_optional_blob(enc_merkle_path)?,
+                note: self.decrypt_optional_blob(enc_note)?,
+                anchor: self.decrypt_optional_blob(enc_anchor)?,
+                position: self.decrypt_optional_int64(enc_position)?,
+                memo: self.decrypt_optional_blob(enc_memo)?,
+            };
+
+            match canonical.get(&key) {
+                Some((existing_pri, existing_note)) => {
+                    let candidate_id = candidate.id.unwrap_or_default();
+                    let existing_id = existing_note.id.unwrap_or_default();
+                    if priority > *existing_pri
+                        || (priority == *existing_pri && candidate_id > existing_id)
+                    {
+                        canonical.insert(key, (priority, candidate));
+                    }
+                }
+                None => {
+                    canonical.insert(key, (priority, candidate));
+                }
+            }
+        }
+
+        Ok(canonical.into_values().map(|(_, n)| n).collect())
     }
 
     /// Insert wallet secret (encrypted EXTSK)
@@ -1995,14 +2132,16 @@ impl<'a> Repository<'a> {
                 None => {
                     seen.insert(key, spent);
                     process_incoming = true;
-                    if spent {
+                    if spent && spent_txid.is_some() {
                         process_outgoing = true;
                     }
                 }
                 Some(prev_spent) => {
                     if spent && !*prev_spent {
                         seen.insert(key, true);
-                        process_outgoing = true;
+                        if spent_txid.is_some() {
+                            process_outgoing = true;
+                        }
                     } else {
                         continue;
                     }
@@ -2040,11 +2179,11 @@ impl<'a> Repository<'a> {
             }
 
             if process_outgoing {
-                let spend_txid_hex = spent_txid
-                    .as_ref()
-                    .map(|bytes| txid_hex_from_bytes(bytes))
-                    .unwrap_or_else(|| txid_hex.clone());
-                let entry_height = if spent_txid.is_some() { 0 } else { height };
+                let Some(spent_txid_bytes) = spent_txid.as_ref() else {
+                    continue;
+                };
+                let spend_txid_hex = txid_hex_from_bytes(spent_txid_bytes);
+                let entry_height = 0;
                 let entry = tx_map
                     .entry(spend_txid_hex.clone())
                     .or_insert_with(|| TxAggregate::new(entry_height));
@@ -2666,6 +2805,449 @@ impl<'a> Repository<'a> {
         Ok(updated)
     }
 
+    /// Persist spends that could not yet be linked to known notes.
+    ///
+    /// This mirrors the upstream "unlinked nullifier map" concept:
+    /// when a spend nullifier is observed before the corresponding note exists
+    /// locally, we store it and reconcile later when the note arrives.
+    pub fn upsert_unlinked_spend_nullifiers_with_txid(
+        &self,
+        account_id: i64,
+        entries: &[(NoteType, [u8; 32], [u8; 32])],
+    ) -> Result<u64> {
+        if entries.is_empty() {
+            return Ok(0);
+        }
+
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, note_type, nullifier, spending_txid
+             FROM unlinked_spend_nullifiers",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    row.get::<_, String>(2)?,  // note_type
+                    row.get::<_, Vec<u8>>(3)?, // encrypted nullifier
+                    row.get::<_, Vec<u8>>(4)?, // encrypted spending_txid
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut existing: HashMap<(NoteType, [u8; 32]), (i64, [u8; 32])> = HashMap::new();
+        let mut duplicate_ids: Vec<i64> = Vec::new();
+
+        for (id, enc_account_id, note_type_str, enc_nullifier, enc_spending_txid) in rows {
+            let row_account_id = self.decrypt_int64(&enc_account_id)?;
+            if row_account_id != account_id {
+                continue;
+            }
+
+            let row_note_type = match note_type_str.as_str() {
+                "Orchard" => NoteType::Orchard,
+                _ => NoteType::Sapling,
+            };
+
+            let row_nullifier = self.decrypt_blob(&enc_nullifier)?;
+            if row_nullifier.len() != 32 {
+                continue;
+            }
+            let mut nf = [0u8; 32];
+            nf.copy_from_slice(&row_nullifier[..32]);
+
+            let row_spending_txid = self.decrypt_blob(&enc_spending_txid)?;
+            if row_spending_txid.len() != 32 {
+                continue;
+            }
+            let mut txid = [0u8; 32];
+            txid.copy_from_slice(&row_spending_txid[..32]);
+
+            let key = (row_note_type, nf);
+            if let std::collections::hash_map::Entry::Vacant(slot) = existing.entry(key) {
+                slot.insert((id, txid));
+            } else {
+                duplicate_ids.push(id);
+            }
+        }
+
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+
+        let mut changed = 0u64;
+        let now = chrono::Utc::now().timestamp();
+        for duplicate_id in duplicate_ids {
+            if let Err(e) = conn.execute(
+                "DELETE FROM unlinked_spend_nullifiers WHERE id = ?1",
+                params![duplicate_id],
+            ) {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(e.into());
+            }
+            changed += 1;
+        }
+
+        let encrypted_account_id = self.encrypt_int64(account_id)?;
+        for (note_type, nullifier, spending_txid) in entries {
+            if nullifier.iter().all(|b| *b == 0) {
+                continue;
+            }
+            let key = (*note_type, *nullifier);
+            if let Some((row_id, current_txid)) = existing.get(&key).copied() {
+                if current_txid == *spending_txid {
+                    continue;
+                }
+                let encrypted_spending_txid = self.encrypt_blob(spending_txid)?;
+                if let Err(e) = conn.execute(
+                    "UPDATE unlinked_spend_nullifiers
+                     SET spending_txid = ?1, updated_at = ?2
+                     WHERE id = ?3",
+                    params![encrypted_spending_txid, now, row_id],
+                ) {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    return Err(e.into());
+                }
+                changed += 1;
+                existing.insert(key, (row_id, *spending_txid));
+                continue;
+            }
+
+            let note_type_str = match note_type {
+                NoteType::Sapling => "Sapling",
+                NoteType::Orchard => "Orchard",
+            };
+            let encrypted_nullifier = self.encrypt_blob(nullifier)?;
+            let encrypted_spending_txid = self.encrypt_blob(spending_txid)?;
+            if let Err(e) = conn.execute(
+                "INSERT INTO unlinked_spend_nullifiers
+                 (account_id, note_type, nullifier, spending_txid, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    encrypted_account_id.clone(),
+                    note_type_str,
+                    encrypted_nullifier,
+                    encrypted_spending_txid,
+                    now,
+                    now
+                ],
+            ) {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(e.into());
+            }
+            changed += 1;
+        }
+
+        conn.execute_batch("COMMIT;")?;
+        Ok(changed)
+    }
+
+    /// List persisted unlinked spend nullifiers for an account.
+    ///
+    /// The returned list is deterministic (sorted + deduplicated), which allows
+    /// sync reconciliation passes to behave consistently across rescans/devices.
+    pub fn list_unlinked_spend_nullifiers_with_txid(
+        &self,
+        account_id: i64,
+    ) -> Result<Vec<(NoteType, [u8; 32], [u8; 32])>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT account_id, note_type, nullifier, spending_txid
+             FROM unlinked_spend_nullifiers",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, Vec<u8>>(0)?, // encrypted account_id
+                    row.get::<_, String>(1)?,  // note_type
+                    row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
+                    row.get::<_, Vec<u8>>(3)?, // encrypted spending_txid
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut out: Vec<(NoteType, [u8; 32], [u8; 32])> = Vec::new();
+        for (enc_account_id, note_type_str, enc_nullifier, enc_spending_txid) in rows {
+            let row_account_id = self.decrypt_int64(&enc_account_id)?;
+            if row_account_id != account_id {
+                continue;
+            }
+
+            let note_type = match note_type_str.as_str() {
+                "Orchard" => NoteType::Orchard,
+                _ => NoteType::Sapling,
+            };
+
+            let row_nullifier = self.decrypt_blob(&enc_nullifier)?;
+            if row_nullifier.len() != 32 {
+                continue;
+            }
+            let mut nf = [0u8; 32];
+            nf.copy_from_slice(&row_nullifier[..32]);
+            if nf.iter().all(|b| *b == 0) {
+                continue;
+            }
+
+            let row_spending_txid = self.decrypt_blob(&enc_spending_txid)?;
+            if row_spending_txid.len() != 32 {
+                continue;
+            }
+            let mut txid = [0u8; 32];
+            txid.copy_from_slice(&row_spending_txid[..32]);
+
+            out.push((note_type, nf, txid));
+        }
+
+        out.sort_by(|a, b| {
+            let a_ty = match a.0 {
+                NoteType::Sapling => 0u8,
+                NoteType::Orchard => 1u8,
+            };
+            let b_ty = match b.0 {
+                NoteType::Sapling => 0u8,
+                NoteType::Orchard => 1u8,
+            };
+            a_ty.cmp(&b_ty)
+                .then_with(|| a.1.cmp(&b.1))
+                .then_with(|| a.2.cmp(&b.2))
+        });
+        out.dedup();
+        Ok(out)
+    }
+
+    /// Deterministically reconcile persisted unlinked spends against local notes.
+    ///
+    /// Returns `(updated_notes, deleted_unlinked_rows)`.
+    pub fn reconcile_unlinked_spend_nullifiers_with_notes(
+        &self,
+        account_id: i64,
+    ) -> Result<(u64, u64)> {
+        let entries = self.list_unlinked_spend_nullifiers_with_txid(account_id)?;
+        if entries.is_empty() {
+            return Ok((0, 0));
+        }
+
+        let mark_entries: Vec<([u8; 32], [u8; 32])> =
+            entries.iter().map(|(_, nf, txid)| (*nf, *txid)).collect();
+        let updated_notes =
+            self.mark_notes_spent_by_nullifiers_with_txid(account_id, &mark_entries)?;
+
+        let mut expected: HashMap<(NoteType, [u8; 32]), [u8; 32]> = HashMap::new();
+        for (note_type, nf, txid) in &entries {
+            expected.insert((*note_type, *nf), *txid);
+        }
+
+        let mut note_stmt = self
+            .db
+            .conn()
+            .prepare("SELECT account_id, note_type, nullifier, spent, spent_txid FROM notes")?;
+        let note_rows = note_stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, Vec<u8>>(0)?,         // encrypted account_id
+                    row.get::<_, String>(1)?,          // note_type
+                    row.get::<_, Vec<u8>>(2)?,         // encrypted nullifier
+                    row.get::<_, Vec<u8>>(3)?,         // encrypted spent
+                    row.get::<_, Option<Vec<u8>>>(4)?, // encrypted spent_txid
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut resolved: HashSet<(NoteType, [u8; 32])> = HashSet::new();
+        for (enc_account_id, note_type_str, enc_nullifier, enc_spent, enc_spent_txid) in note_rows {
+            let row_account_id = self.decrypt_int64(&enc_account_id)?;
+            if row_account_id != account_id {
+                continue;
+            }
+
+            let note_type = match note_type_str.as_str() {
+                "Orchard" => NoteType::Orchard,
+                _ => NoteType::Sapling,
+            };
+
+            let row_nullifier = self.decrypt_blob(&enc_nullifier)?;
+            if row_nullifier.len() != 32 {
+                continue;
+            }
+            let mut nf = [0u8; 32];
+            nf.copy_from_slice(&row_nullifier[..32]);
+
+            let expected_txid = match expected.get(&(note_type, nf)) {
+                Some(txid) => txid,
+                None => continue,
+            };
+
+            let spent = self.decrypt_bool(&enc_spent)?;
+            if !spent {
+                continue;
+            }
+
+            let row_spent_txid = match self.decrypt_optional_blob(enc_spent_txid)? {
+                Some(bytes) if bytes.len() == 32 => bytes,
+                _ => continue,
+            };
+            if row_spent_txid.as_slice() == expected_txid {
+                resolved.insert((note_type, nf));
+            }
+        }
+
+        if resolved.is_empty() {
+            return Ok((updated_notes, 0));
+        }
+
+        let mut unlinked_stmt = self.db.conn().prepare(
+            "SELECT id, account_id, note_type, nullifier
+             FROM unlinked_spend_nullifiers",
+        )?;
+        let unlinked_rows = unlinked_stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    row.get::<_, String>(2)?,  // note_type
+                    row.get::<_, Vec<u8>>(3)?, // encrypted nullifier
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+        let mut deleted = 0u64;
+        for (id, enc_account_id, note_type_str, enc_nullifier) in unlinked_rows {
+            let row_account_id = self.decrypt_int64(&enc_account_id)?;
+            if row_account_id != account_id {
+                continue;
+            }
+
+            let note_type = match note_type_str.as_str() {
+                "Orchard" => NoteType::Orchard,
+                _ => NoteType::Sapling,
+            };
+
+            let row_nullifier = self.decrypt_blob(&enc_nullifier)?;
+            if row_nullifier.len() != 32 {
+                continue;
+            }
+            let mut nf = [0u8; 32];
+            nf.copy_from_slice(&row_nullifier[..32]);
+            if !resolved.contains(&(note_type, nf)) {
+                continue;
+            }
+
+            if let Err(e) = conn.execute(
+                "DELETE FROM unlinked_spend_nullifiers WHERE id = ?1",
+                params![id],
+            ) {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(e.into());
+            }
+            deleted += 1;
+        }
+        conn.execute_batch("COMMIT;")?;
+        Ok((updated_notes, deleted))
+    }
+
+    /// Consume (read + delete) previously stored unlinked spend nullifiers in one pass.
+    ///
+    /// This is used by note persistence to avoid per-note full-table scans.
+    pub fn consume_unlinked_spends_for_nullifiers(
+        &self,
+        account_id: i64,
+        nullifiers: &[(NoteType, [u8; 32])],
+    ) -> Result<HashMap<(NoteType, [u8; 32]), [u8; 32]>> {
+        if nullifiers.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let wanted: HashSet<(NoteType, [u8; 32])> = nullifiers
+            .iter()
+            .copied()
+            .filter(|(_, nf)| !nf.iter().all(|b| *b == 0))
+            .collect();
+        if wanted.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, note_type, nullifier, spending_txid
+             FROM unlinked_spend_nullifiers",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    row.get::<_, String>(2)?,  // note_type
+                    row.get::<_, Vec<u8>>(3)?, // encrypted nullifier
+                    row.get::<_, Vec<u8>>(4)?, // encrypted spending_txid
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut matching_ids: Vec<i64> = Vec::new();
+        let mut matched: HashMap<(NoteType, [u8; 32]), [u8; 32]> = HashMap::new();
+
+        for (id, enc_account_id, note_type_str, enc_nullifier, enc_spending_txid) in rows {
+            let row_account_id = self.decrypt_int64(&enc_account_id)?;
+            if row_account_id != account_id {
+                continue;
+            }
+
+            let row_note_type = match note_type_str.as_str() {
+                "Orchard" => NoteType::Orchard,
+                _ => NoteType::Sapling,
+            };
+            let row_nullifier = self.decrypt_blob(&enc_nullifier)?;
+            if row_nullifier.len() != 32 {
+                continue;
+            }
+            let mut nf = [0u8; 32];
+            nf.copy_from_slice(&row_nullifier[..32]);
+            if !wanted.contains(&(row_note_type, nf)) {
+                continue;
+            }
+
+            let row_spending_txid = self.decrypt_blob(&enc_spending_txid)?;
+            if row_spending_txid.len() != 32 {
+                continue;
+            }
+
+            let mut txid = [0u8; 32];
+            txid.copy_from_slice(&row_spending_txid[..32]);
+            matched.entry((row_note_type, nf)).or_insert(txid);
+            matching_ids.push(id);
+        }
+
+        if matching_ids.is_empty() {
+            return Ok(matched);
+        }
+
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+        for id in matching_ids {
+            if let Err(e) = conn.execute(
+                "DELETE FROM unlinked_spend_nullifiers WHERE id = ?1",
+                params![id],
+            ) {
+                let _ = conn.execute_batch("ROLLBACK;");
+                return Err(e.into());
+            }
+        }
+        conn.execute_batch("COMMIT;")?;
+
+        Ok(matched)
+    }
+
+    /// Consume (read + delete) a previously stored unlinked spend nullifier.
+    pub fn consume_unlinked_spend_for_nullifier(
+        &self,
+        account_id: i64,
+        note_type: NoteType,
+        nullifier: &[u8; 32],
+    ) -> Result<Option<[u8; 32]>> {
+        let entries = [(note_type, *nullifier)];
+        let matched = self.consume_unlinked_spends_for_nullifiers(account_id, &entries)?;
+        Ok(matched.get(&(note_type, *nullifier)).copied())
+    }
+
     /// Mark notes as spent for any nullifier in the provided set.
     /// Note: Since all fields are encrypted, we decrypt all notes and filter in memory.
     pub fn mark_notes_spent_by_nullifiers(
@@ -2829,6 +3411,129 @@ impl<'a> Repository<'a> {
         }
         conn.execute_batch("COMMIT;")?;
         Ok(updated)
+    }
+
+    /// Apply spend updates in a single DB transaction for sync hot path.
+    ///
+    /// This combines:
+    /// - direct note-id spend marks
+    /// - fallback nullifier-based spend marks
+    /// - transaction metadata upserts for matched spending txids
+    ///
+    /// Returns `(updated_by_id, updated_by_nullifier)`.
+    pub fn apply_spend_updates_with_txmeta(
+        &self,
+        account_id: i64,
+        spend_updates: &[(i64, [u8; 32])],
+        fallback_entries: &[([u8; 32], [u8; 32])],
+        tx_meta: &[(String, i64, i64, i64)],
+    ) -> Result<(u64, u64)> {
+        if spend_updates.is_empty() && fallback_entries.is_empty() && tx_meta.is_empty() {
+            return Ok((0, 0));
+        }
+
+        let encrypted_spent = self.encrypt_bool(true)?;
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+
+        let result = (|| -> Result<(u64, u64)> {
+            let mut updated_by_id = 0u64;
+            if !spend_updates.is_empty() {
+                let mut update_stmt =
+                    conn.prepare("UPDATE notes SET spent = ?1, spent_txid = ?2 WHERE id = ?3")?;
+                for (id, spent_txid) in spend_updates {
+                    let encrypted_spent_txid = self.encrypt_blob(spent_txid)?;
+                    let rows =
+                        update_stmt.execute(params![&encrypted_spent, encrypted_spent_txid, id])?;
+                    updated_by_id += rows as u64;
+                }
+            }
+
+            let mut updated_by_nullifier = 0u64;
+            if !fallback_entries.is_empty() {
+                let mut spend_map: HashMap<[u8; 32], [u8; 32]> =
+                    HashMap::with_capacity(fallback_entries.len());
+                for (nullifier, txid) in fallback_entries {
+                    spend_map.insert(*nullifier, *txid);
+                }
+
+                let mut stmt =
+                    conn.prepare("SELECT id, account_id, nullifier, spent FROM notes")?;
+                let notes = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,     // id
+                            row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                            row.get::<_, Vec<u8>>(2)?, // encrypted nullifier
+                            row.get::<_, Vec<u8>>(3)?, // encrypted spent
+                        ))
+                    })?
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                drop(stmt);
+
+                let mut update_spent_txid_stmt =
+                    conn.prepare("UPDATE notes SET spent_txid = ?1 WHERE id = ?2")?;
+                let mut update_spent_with_txid_stmt =
+                    conn.prepare("UPDATE notes SET spent = ?1, spent_txid = ?2 WHERE id = ?3")?;
+                for (id, enc_account_id, enc_nullifier, enc_spent) in notes {
+                    let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
+                    if decrypted_account_id != account_id {
+                        continue;
+                    }
+
+                    let decrypted_nullifier = self.decrypt_blob(&enc_nullifier)?;
+                    if decrypted_nullifier.len() != 32 {
+                        continue;
+                    }
+                    let mut nf = [0u8; 32];
+                    nf.copy_from_slice(&decrypted_nullifier[..32]);
+                    let spent_txid = match spend_map.get(&nf) {
+                        Some(txid) => txid,
+                        None => continue,
+                    };
+
+                    let spent = self.decrypt_bool(&enc_spent)?;
+                    let encrypted_spent_txid = self.encrypt_blob(spent_txid)?;
+                    let rows = if spent {
+                        update_spent_txid_stmt.execute(params![encrypted_spent_txid, id])?
+                    } else {
+                        update_spent_with_txid_stmt.execute(params![
+                            &encrypted_spent,
+                            encrypted_spent_txid,
+                            id
+                        ])?
+                    };
+                    updated_by_nullifier += rows as u64;
+                }
+            }
+
+            if !tx_meta.is_empty() {
+                let mut tx_stmt = conn.prepare(
+                    "INSERT INTO transactions (txid, height, timestamp, fee)
+                     VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT(txid) DO UPDATE SET
+                       height=excluded.height,
+                       timestamp=excluded.timestamp,
+                       fee=excluded.fee",
+                )?;
+                for (txid_hex, height, timestamp, fee) in tx_meta {
+                    tx_stmt.execute(params![txid_hex, height, timestamp, fee])?;
+                }
+            }
+
+            Ok((updated_by_id, updated_by_nullifier))
+        })();
+
+        match result {
+            Ok(v) => {
+                conn.execute_batch("COMMIT;")?;
+                Ok(v)
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(e)
+            }
+        }
     }
 
     /// Get all notes for a transaction (by txid) with decrypted fields

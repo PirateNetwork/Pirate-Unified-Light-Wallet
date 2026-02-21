@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 18;
+const SCHEMA_VERSION: i32 = 19;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -83,6 +83,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 18 {
         migrate_v18(conn)?;
+    }
+    if current_version < 19 {
+        migrate_v19(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -696,6 +699,32 @@ fn migrate_v18(conn: &Connection) -> Result<()> {
         r#"
         -- Track which key group a note belongs to (encrypted)
         ALTER TABLE notes ADD COLUMN key_id BLOB;
+        "#,
+    )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v19(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        -- Nullifier spends observed before corresponding notes are discovered.
+        -- This mirrors upstream "unlinked nullifier" behavior for both Sapling and Orchard.
+        CREATE TABLE IF NOT EXISTS unlinked_spend_nullifiers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id BLOB NOT NULL,
+            note_type TEXT NOT NULL CHECK (note_type IN ('Sapling', 'Orchard')),
+            nullifier BLOB NOT NULL,
+            spending_txid BLOB NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_unlinked_spends_note_type
+            ON unlinked_spend_nullifiers(note_type);
+        CREATE INDEX IF NOT EXISTS idx_unlinked_spends_created_at
+            ON unlinked_spend_nullifiers(created_at);
         "#,
     )
     .map_err(|e| Error::Migration(e.to_string()))?;
