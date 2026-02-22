@@ -2,7 +2,7 @@
 //!
 //! Integrates with zcash_primitives for proof generation and signing.
 
-use crate::fees::FeeCalculator;
+use crate::fees::{apply_dust_policy_add_to_fee, FeeCalculator, CHANGE_DUST_THRESHOLD};
 use crate::keys::{ExtendedSpendingKey, PaymentAddress};
 use crate::params::sapling_prover;
 use crate::selection::{NoteSelector, SelectableNote, SelectionStrategy};
@@ -252,14 +252,15 @@ impl TransactionBuilder {
         let change = total_input.checked_sub(total_output).ok_or_else(|| {
             Error::InsufficientFunds(format!("Need {} but have {}", total_output, total_input))
         })?;
+        let effective = apply_dust_policy_add_to_fee(actual_fee, change)?;
 
         Ok(PendingTransaction {
             temp_id: format!("pending-{}", hex::encode(rand::random::<[u8; 16]>())),
             outputs: self.outputs.clone(),
             input_value: total_input,
             output_value: output_sum,
-            fee: actual_fee,
-            change,
+            fee: effective.fee,
+            change: effective.change,
         })
     }
 
@@ -304,6 +305,9 @@ impl TransactionBuilder {
         let change = total_input.checked_sub(total_output).ok_or_else(|| {
             Error::InsufficientFunds(format!("Need {} but have {}", total_output, total_input))
         })?;
+        let effective = apply_dust_policy_add_to_fee(actual_fee, change)?;
+        let actual_fee = effective.fee;
+        let change = effective.change;
 
         let pending_outputs = self.outputs.clone();
 
@@ -365,8 +369,7 @@ impl TransactionBuilder {
         }
 
         // Add change output if needed
-        if change > 10_000 {
-            // Dust threshold
+        if change >= CHANGE_DUST_THRESHOLD {
             let change_addr = spending_key
                 .to_internal_fvk()
                 .derive_address(change_diversifier_index)

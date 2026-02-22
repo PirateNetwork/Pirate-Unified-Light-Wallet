@@ -7,7 +7,7 @@
 //! Based on the Rust builder path in the node (`builder_ffi.rs`), but
 //! adapted for lightwalletd anchors.
 
-use crate::fees::FeeCalculator;
+use crate::fees::{apply_dust_policy_add_to_fee, FeeCalculator, CHANGE_DUST_THRESHOLD};
 use crate::keys::{ExtendedSpendingKey, OrchardExtendedSpendingKey, PaymentAddress};
 use crate::params::sapling_prover;
 use crate::selection::{NoteSelector, NoteType, SelectableNote, SelectionStrategy};
@@ -425,6 +425,17 @@ impl ShieldedBuilder {
         let change = total_input.checked_sub(total_output).ok_or_else(|| {
             Error::InsufficientFunds(format!("Need {} but have {}", total_output, total_input))
         })?;
+        let effective = apply_dust_policy_add_to_fee(actual_fee, change)?;
+        let actual_fee = effective.fee;
+        let change = effective.change;
+        if effective.dust_added_to_fee > 0 {
+            tracing::info!(
+                "Applied dust policy in shielded builder: dust={} added_to_fee={}, final_change={}",
+                effective.dust_added_to_fee,
+                actual_fee,
+                change
+            );
+        }
 
         // Create prover from cached Sapling parameters
         let prover: LocalTxProver = sapling_prover();
@@ -594,8 +605,7 @@ impl ShieldedBuilder {
         }
 
         // Add change output if needed
-        if change > 10_000 {
-            // Dust threshold
+        if change >= CHANGE_DUST_THRESHOLD {
             // Determine change address type:
             // - Use Orchard if we have Orchard outputs or Orchard spends
             // - Otherwise use Sapling

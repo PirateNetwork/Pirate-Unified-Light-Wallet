@@ -8,6 +8,11 @@ use crate::{Error, Result};
 /// Default fixed fee (in arrrtoshis)
 pub const DEFAULT_FEE: u64 = 10_000;
 
+/// Minimum economically meaningful change output.
+///
+/// Change smaller than this threshold is treated as dust and folded into fee.
+pub const CHANGE_DUST_THRESHOLD: u64 = DEFAULT_FEE;
+
 /// Legacy ZIP-317 constants kept for backward compatibility.
 #[deprecated(note = "Pirate uses a fixed fee; use DEFAULT_FEE instead.")]
 pub const ZIP317_MARGINAL_FEE: u64 = DEFAULT_FEE;
@@ -122,6 +127,53 @@ impl Default for FeeCalculator {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Effective fee/change after applying dust policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectiveFeeAndChange {
+    /// Final fee encoded into the transaction.
+    pub fee: u64,
+    /// Final change output amount (0 when dust is folded into fee).
+    pub change: u64,
+    /// Amount of change converted into fee due to dust policy.
+    pub dust_added_to_fee: u64,
+}
+
+/// Apply the wallet dust policy to a computed fee + change pair.
+///
+/// Policy:
+/// - `change == 0`: unchanged
+/// - `0 < change < CHANGE_DUST_THRESHOLD`: add dust to fee
+/// - `change >= CHANGE_DUST_THRESHOLD`: keep change output
+pub fn apply_dust_policy_add_to_fee(base_fee: u64, change: u64) -> Result<EffectiveFeeAndChange> {
+    if change == 0 || change >= CHANGE_DUST_THRESHOLD {
+        return Ok(EffectiveFeeAndChange {
+            fee: base_fee,
+            change,
+            dust_added_to_fee: 0,
+        });
+    }
+
+    let effective_fee = base_fee.checked_add(change).ok_or_else(|| {
+        Error::AmountOverflow(format!(
+            "Fee overflow while applying dust policy: base_fee={} dust={}",
+            base_fee, change
+        ))
+    })?;
+
+    if effective_fee > MAX_FEE {
+        return Err(Error::FeeTooHigh(format!(
+            "Effective fee {} exceeds maximum {} after dust adjustment",
+            effective_fee, MAX_FEE
+        )));
+    }
+
+    Ok(EffectiveFeeAndChange {
+        fee: effective_fee,
+        change: 0,
+        dust_added_to_fee: change,
+    })
 }
 
 /// Fee policy for dynamic fee adjustment
@@ -251,5 +303,29 @@ mod tests {
         let max_fee = calculator.estimate_max_fee(10, 5).unwrap();
 
         assert_eq!(max_fee, DEFAULT_FEE);
+    }
+
+    #[test]
+    fn test_apply_dust_policy_zero_change() {
+        let resolved = apply_dust_policy_add_to_fee(DEFAULT_FEE, 0).unwrap();
+        assert_eq!(resolved.fee, DEFAULT_FEE);
+        assert_eq!(resolved.change, 0);
+        assert_eq!(resolved.dust_added_to_fee, 0);
+    }
+
+    #[test]
+    fn test_apply_dust_policy_dust_added_to_fee() {
+        let resolved = apply_dust_policy_add_to_fee(DEFAULT_FEE, 1).unwrap();
+        assert_eq!(resolved.fee, DEFAULT_FEE + 1);
+        assert_eq!(resolved.change, 0);
+        assert_eq!(resolved.dust_added_to_fee, 1);
+    }
+
+    #[test]
+    fn test_apply_dust_policy_threshold_change_kept() {
+        let resolved = apply_dust_policy_add_to_fee(DEFAULT_FEE, CHANGE_DUST_THRESHOLD).unwrap();
+        assert_eq!(resolved.fee, DEFAULT_FEE);
+        assert_eq!(resolved.change, CHANGE_DUST_THRESHOLD);
+        assert_eq!(resolved.dust_added_to_fee, 0);
     }
 }

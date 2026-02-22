@@ -25,7 +25,10 @@ pub use diversifier::{
     DEFAULT_GAP_LIMIT, MAX_DIVERSIFIER_INDEX,
 };
 pub use error::{Error, ErrorCategory, Result};
-pub use fees::{FeeCalculator, FeePolicy, DEFAULT_FEE, MAX_FEE, MIN_FEE};
+pub use fees::{
+    apply_dust_policy_add_to_fee, EffectiveFeeAndChange, FeeCalculator, FeePolicy,
+    CHANGE_DUST_THRESHOLD, DEFAULT_FEE, MAX_FEE, MIN_FEE,
+};
 pub use memo::{Memo, MAX_MEMO_LENGTH, MEMO_WARNING_LENGTH};
 pub use params::{orchard_params, sapling_params, sapling_prover};
 pub use selection::{NoteSelector, NoteType, SelectableNote, SelectionResult, SelectionStrategy};

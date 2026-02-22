@@ -3934,8 +3934,8 @@ pub fn export_seed(wallet_id: WalletId) -> Result<String> {
 // ============================================================================
 
 use pirate_core::{
-    FeeCalculator, FeePolicy, NoteSelector, SelectionStrategy, DEFAULT_FEE, MAX_FEE,
-    MAX_MEMO_LENGTH, MIN_FEE,
+    apply_dust_policy_add_to_fee, FeeCalculator, FeePolicy, NoteSelector, SelectionStrategy,
+    CHANGE_DUST_THRESHOLD, DEFAULT_FEE, MAX_FEE, MAX_MEMO_LENGTH, MIN_FEE,
 };
 
 /// Maximum number of outputs per transaction
@@ -5874,7 +5874,22 @@ fn build_tx_internal(
             .select_notes(selectable_notes, total_amount, fee)
             .map_err(|e| anyhow!("Note selection failed: {}", e))?
     };
-    let change = selection.change;
+    let effective = apply_dust_policy_add_to_fee(fee, selection.change)
+        .map_err(|e| anyhow!("Dust policy resolution failed: {}", e))?;
+    let effective_fee = effective.fee;
+    let change = effective.change;
+    if effective.dust_added_to_fee > 0 {
+        tracing::info!(
+            "Applied dust-to-fee policy for pending tx {}: dust={} fee={} change={}",
+            wallet_id,
+            effective.dust_added_to_fee,
+            effective_fee,
+            change
+        );
+    }
+    let pending_required_total = total_amount
+        .checked_add(effective_fee)
+        .ok_or_else(|| anyhow!("Amount + effective fee overflow"))?;
 
     // Get current height from sync state for expiry
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
@@ -5886,7 +5901,7 @@ fn build_tx_internal(
         id: uuid::Uuid::new_v4().to_string(),
         outputs,
         total_amount,
-        fee,
+        fee: effective_fee,
         change,
         input_total: selection.total_value,
         num_inputs: selection.notes.len() as u32,
@@ -5898,7 +5913,7 @@ fn build_tx_internal(
         &pending.id,
         PendingSignContext {
             wallet_id: wallet_id.clone(),
-            required_total,
+            required_total: pending_required_total,
             created_at_ms: unix_timestamp_millis(),
             key_ids_filter: normalize_pending_sign_filter_ids(effective_key_ids_filter.as_ref()),
             address_ids_filter: normalize_pending_sign_filter_ids(address_ids_filter.as_ref()),
@@ -6428,6 +6443,24 @@ fn sign_tx_internal(
             );
         }
     };
+    let mut pending = pending;
+    let normalized = apply_dust_policy_add_to_fee(pending.fee, pending.change)
+        .map_err(|e| anyhow!("Pending tx dust normalization failed: {}", e))?;
+    if normalized.fee != pending.fee || normalized.change != pending.change {
+        log_step(
+            "pending_dust_normalized",
+            &format!(
+                "orig_fee={},orig_change={},new_fee={},new_change={},dust_added={}",
+                pending.fee,
+                pending.change,
+                normalized.fee,
+                normalized.change,
+                normalized.dust_added_to_fee
+            ),
+        );
+        pending.fee = normalized.fee;
+        pending.change = normalized.change;
+    }
 
     // Mark signing critical section to suppress auto-recovery restarts that can
     // race transport/sync state while proving a transaction.
@@ -7234,7 +7267,7 @@ fn sign_tx_internal(
         &format!("{}", change_diversifier_index),
     );
 
-    if pending.change > 10_000 {
+    if pending.change >= CHANGE_DUST_THRESHOLD {
         let (change_addr, address_type) = if use_orchard_change {
             let orchard_extsk = orchard_extsk_opt
                 .as_ref()
