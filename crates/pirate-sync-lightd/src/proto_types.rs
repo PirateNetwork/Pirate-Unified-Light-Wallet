@@ -1,7 +1,7 @@
 //! Lightwalletd gRPC proto type definitions
 //!
 //! These types mirror the proto definitions in `proto/service.proto` for the
-//! Zcash/Pirate Chain lightwalletd CompactTxStreamer service.
+//! chain lightwalletd CompactTxStreamer service.
 //!
 //! ## Design Decision: Manual vs Generated
 //!
@@ -10,13 +10,10 @@
 //! 1. **No protoc dependency** - Builds work on any system without requiring
 //!    protobuf compiler installation
 //!
-//! 2. **Stable protocol** - The lightwalletd compact block protocol is a Zcash
-//!    ecosystem standard that hasn't changed materially in years
-//!
-//! 3. **Complete implementation** - We include all methods (GetLatestBlock,
+//! We include all methods (GetLatestBlock,
 //!    GetBlockRange, SendTransaction, GetLightdInfo) that some generated versions omit
 //!
-//! 4. **Reproducible builds** - No external tool dependency at build time
+//! 3. **Reproducible builds** - No external tool dependency at build time
 //!
 //! ## Regeneration
 //!
@@ -223,12 +220,7 @@ pub struct TreeState {
 
 /// Generated-equivalent client for CompactTxStreamer service.
 pub mod compact_tx_streamer_client {
-    #![allow(
-        unused_variables,
-        dead_code,
-        clippy::wildcard_imports,
-        clippy::let_unit_value
-    )]
+    #![allow(unused_variables, clippy::wildcard_imports, clippy::let_unit_value)]
 
     use super::*;
     use tonic::codegen::http::Uri;

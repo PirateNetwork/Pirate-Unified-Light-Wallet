@@ -24,7 +24,7 @@ message CompactTx {
 }
 
 message CompactSaplingSpend {
-    bytes nf = 1;   // nullifier (see the Zcash protocol specification)
+    bytes nf = 1;   // nullifier (see protocol specification)
 }
 
 message CompactSaplingOutput {

@@ -61,7 +61,8 @@ fn get_memory_usage_mb() -> usize {
 
     system
         .process(pid)
-        .map(|process| (process.memory() / 1024) as usize)
+        // sysinfo reports bytes; convert to MiB.
+        .map(|process| (process.memory() / (1024 * 1024)) as usize)
         .unwrap_or(0)
 }
 

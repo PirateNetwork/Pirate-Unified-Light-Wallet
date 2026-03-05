@@ -1,6 +1,6 @@
 //! Orchard full transaction decryption for memo extraction
 //!
-//! Uses zcash_note_encryption for Orchard note handling.
+//! Uses the note-encryption crate for Orchard note handling.
 //! References node Orchard full decryption logic.
 //! - pirate/src/rust/src/orchard_actions.rs (try_orchard_decrypt_action_ivk)
 

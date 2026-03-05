@@ -1,7 +1,7 @@
 //! zk-SNARK parameter loading for Sapling and Orchard.
 //!
 //! - Sapling proving/verification parameters are loaded from embedded bytes
-//!   via `wagyu-zcash-parameters`, so no external download is required.
+//!   via an embedded parameter crate, so no external download is required.
 //! - Orchard proving/verification keys are constructed in-memory via
 //!   `orchard::circuit`.
 //!

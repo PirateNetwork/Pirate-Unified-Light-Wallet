@@ -22,7 +22,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/pirate-chain/pirate-unified-wallet"
 
 [workspace.dependencies]
-# Zcash/Librustzcash - Pirate fork (pirate_master_node_13.0 branch)
+# Shielded protocol dependencies - Pirate fork (pirate_master_node_13.0 branch)
 zcash_primitives = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
 zcash_client_backend = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
 zcash_proofs = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }

@@ -1,7 +1,6 @@
 //! Key derivation and management
 //!
-//! Implements BIP-32/BIP-39/BIP-44 HD wallet key derivation for Pirate Chain
-//! using Sapling key types from `zcash_primitives`.
+//! Implements BIP-32/BIP-39/BIP-44 HD wallet key derivation for Pirate Chain.
 
 use crate::{Error, Result};
 use bech32::{Bech32, Hrp};
@@ -388,7 +387,7 @@ impl ExtendedFullViewingKey {
     /// Export as incoming viewing key (IVK)
     /// IVK is derived from the FullViewingKey's ak and nk components.
     /// This is a 32-byte value that allows viewing incoming transactions but not spending.
-    /// Uses the same IVK derivation as `librustzcash_crh_ivk(ak, nk)`.
+    /// Uses the canonical IVK derivation from ak and nk.
     pub fn to_ivk(&self) -> IncomingViewingKey {
         // Get the underlying Sapling FullViewingKey from the DFVK (Pirate fork provides fvk()).
         let fvk: &FullViewingKey = self.inner.fvk();
@@ -533,7 +532,7 @@ impl PaymentAddress {
 
 /// Orchard payment address (Pirate encoding: bech32 HRP `pirate`, `pirate-test`, `pirate-regtest`)
 ///
-/// This is **not** a Zcash Unified Address; Pirate encodes the raw Orchard address bytes directly
+/// Pirate encodes raw Orchard address bytes directly
 /// under chain-specific HRPs, as seen in `pirate/src/key_io.cpp`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrchardPaymentAddress {
@@ -614,7 +613,7 @@ impl OrchardExtendedSpendingKey {
     /// Derive master Orchard spending key from seed bytes
     ///
     /// Uses ZIP-32 Orchard master key generation:
-    /// I := BLAKE2b-512("ZcashIP32Orchard", seed)
+    /// I := BLAKE2b-512(personalization, seed)
     /// sk_m := I[0..32]
     /// c_m := I[32..64]
     pub fn master(seed: &[u8]) -> Result<Self> {
@@ -624,7 +623,7 @@ impl OrchardExtendedSpendingKey {
 
         const ZIP32_ORCHARD_PERSONALIZATION: &[u8; 16] = b"ZcashIP32Orchard";
 
-        // I := BLAKE2b-512("ZcashIP32Orchard", seed)
+        // I := BLAKE2b-512(personalization, seed)
         let i: [u8; 64] =
             {
                 let mut hasher = Blake2bParams::new()
@@ -680,7 +679,7 @@ impl OrchardExtendedSpendingKey {
         let hardened_index = index | (1u32 << 31);
 
         // I := PRF^Expand(c_par, [0x81] || sk_par || I2LEOSP(i))
-        // PRF^Expand(sk, dst, t) := BLAKE2b-512("Zcash_ExpandSeed", sk || dst || t)
+        // PRF^Expand(sk, dst, t) := BLAKE2b-512(personalization, sk || dst || t)
         let i: [u8; 64] =
             {
                 let mut hasher = Blake2bParams::new()

@@ -1,6 +1,6 @@
 //! Transaction building with real Sapling crypto
 //!
-//! Integrates with zcash_primitives for proof generation and signing.
+//! Integrates with the Rust Sapling primitives for proof generation and signing.
 
 use crate::fees::{apply_dust_policy_add_to_fee, FeeCalculator, CHANGE_DUST_THRESHOLD};
 use crate::keys::{ExtendedSpendingKey, PaymentAddress};

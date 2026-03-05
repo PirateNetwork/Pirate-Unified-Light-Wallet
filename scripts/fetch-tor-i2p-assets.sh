@@ -475,7 +475,7 @@ fetch_i2p() {
         *) dest_name="i2pd" ;;
       esac
     else
-      # Best-effort default: treat the upstream tarball as Intel-only.
+      # Best-effort default: treat the downloaded tarball as Intel-only.
       dest_name="i2pd-x86_64"
     fi
 
@@ -536,7 +536,7 @@ fetch_tor_pt() {
     return 0
   fi
   if tor_pt_source_only; then
-    error "Tor PT source build requested but failed. Check upstream availability or set TOR_PT_SOURCE=off."
+    error "Tor PT source build requested but failed. Check source availability or set TOR_PT_SOURCE=off."
   fi
 
   local tmpdir

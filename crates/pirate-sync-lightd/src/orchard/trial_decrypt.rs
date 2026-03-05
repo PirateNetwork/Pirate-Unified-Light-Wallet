@@ -1,8 +1,8 @@
-//! Orchard trial decryption using zcash_note_encryption
+//! Orchard trial decryption using the note-encryption crate
 //!
 //! References node Orchard trial decryption logic.
 //! - pirate/src/rust/src/orchard_actions.rs (try_orchard_decrypt_action_ivk)
-//! - Uses zcash_note_encryption::try_note_decryption with OrchardDomain
+//! - Uses note decryption with OrchardDomain
 
 use crate::{client::CompactOrchardAction, Error};
 use orchard::{

@@ -7,6 +7,7 @@
 #![warn(missing_docs)]
 
 pub mod address;
+pub mod debug_log;
 pub mod diversifier;
 pub mod error;
 pub mod fees;

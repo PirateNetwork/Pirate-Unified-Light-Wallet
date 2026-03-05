@@ -4,9 +4,7 @@
 //! ciphertexts to extract memos using sapling_ka_agree + KDF_Sapling +
 //! ChaCha20Poly1305.
 //!
-//! References node Sapling decryption logic:
-//! - pirate/src/zcash/Note.cpp (SaplingNotePlaintext::decrypt)
-//! - pirate/src/zcash/NoteEncryption.cpp (AttemptSaplingEncDecryption, KDF_Sapling)
+//! Mirrors node Sapling decryption logic.
 
 use crate::Error;
 use blake2b_simd::Params;
@@ -35,7 +33,7 @@ pub struct DecryptedFullNote {
 /// KDF_Sapling as specified by the Sapling protocol.
 fn kdf_sapling(dhsecret: &[u8; 32], epk: &[u8; 32]) -> Key {
     // KDF_Sapling(K, dhsecret, epk)
-    // Uses Blake2b with personalization "Zcash_SaplingKDF"
+    // Uses Blake2b with the protocol-defined personalization string.
     let mut hasher = Params::new()
         .hash_length(32)
         .personal(b"Zcash_SaplingKDF")
@@ -136,7 +134,7 @@ pub fn decrypt_memo_from_raw_tx_with_ivk_bytes(
         }
     }
 
-    // Step 1: Key agreement (librustzcash_sapling_ka_agree).
+    // Step 1: Key agreement.
     let ka = sapling_ka_agree(&ivk_scalar, &epk);
     let ka_bytes = ka.to_bytes();
 
@@ -186,7 +184,7 @@ pub fn decrypt_memo_from_raw_tx_with_ivk_bytes(
 
     // Verify note commitment matches (optional validation)
     // This would require computing cmu from diversifier, value, rseed
-    // Skip plaintext consistency check; upstream validation already covers it.
+    // Skip plaintext consistency check; note validation already covers it.
 
     Ok(Some(DecryptedFullNote {
         value,

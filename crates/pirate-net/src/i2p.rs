@@ -82,7 +82,7 @@ fn i2pd_binary_filenames() -> Vec<String> {
         names.push(format!("i2pd-{}", arch));
         if cfg!(target_os = "macos") && arch == "aarch64" {
             // Apple Silicon can run Intel binaries under Rosetta. This keeps I2P
-            // usable even when upstream i2pd releases are x86_64-only.
+            // usable even when distributed i2pd binaries are x86_64-only.
             names.push("i2pd-x86_64".to_string());
         }
         names.push("i2pd".to_string());
@@ -208,7 +208,7 @@ fn needs_rosetta_for_binary(path: &Path) -> bool {
         return false;
     }
 
-    // Our bundling convention uses i2pd-x86_64 when the upstream macOS tarball is Intel-only.
+    // Our bundling convention uses i2pd-x86_64 when the macOS tarball is Intel-only.
     // This avoids invoking Rosetta checks for native/universal binaries.
     let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
     name == "i2pd-x86_64"

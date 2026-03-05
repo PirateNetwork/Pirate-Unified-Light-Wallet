@@ -3,9 +3,7 @@
 //! Given an IVK (derived from EXTSK/DFVK) and a compact output (cmu, epk, truncated
 //! ciphertext), attempts to decrypt and recover the note plaintext.
 //!
-//! References node Sapling trial decryption logic.
-//! - pirate/src/zcash/Note.cpp (SaplingNotePlaintext::decrypt)
-//! - pirate/src/zcash/NoteEncryption.cpp (AttemptSaplingEncDecryption, KDF_Sapling)
+//! Mirrors node Sapling trial decryption logic.
 //!
 //! For compact blocks, we only have the first 52 bytes of ciphertext (not full 580 bytes).
 //! This is sufficient to decrypt the first part of the plaintext (leadbyte + diversifier + value)
@@ -40,7 +38,7 @@ pub struct DecryptedCompactNote {
 /// KDF_Sapling as specified by the Sapling protocol.
 fn kdf_sapling(dhsecret: &[u8; 32], epk: &[u8; 32]) -> [u8; 32] {
     // KDF_Sapling(K, dhsecret, epk)
-    // Uses Blake2b with personalization "Zcash_SaplingKDF"
+    // Uses Blake2b with the protocol-defined personalization string.
     let mut hasher = Params::new()
         .hash_length(32)
         .personal(b"Zcash_SaplingKDF")
@@ -57,7 +55,7 @@ fn kdf_sapling(dhsecret: &[u8; 32], epk: &[u8; 32]) -> [u8; 32] {
 /// Attempt to decrypt a compact Sapling output with the given IVK bytes.
 ///
 /// This performs trial decryption using the compact output data (first 52 bytes of ciphertext).
-/// This is how Zcash/Pirate light wallets work:
+/// This is the standard light-wallet flow:
 /// 1. Lightwalletd provides compact blocks with only 52 bytes of ciphertext (not full 580 bytes)
 /// 2. Light client performs trial decryption to find notes that belong to the wallet
 /// 3. If a note matches, the wallet can optionally fetch the full transaction to decrypt the memo
@@ -111,11 +109,11 @@ pub fn try_decrypt_compact_output(
     // Extract the compact ciphertext prefix (52 bytes; does not include the 16-byte auth tag).
     let compact_ciphertext = &output.ciphertext[..52];
 
-    // Step 1: Key agreement (librustzcash_sapling_ka_agree).
+    // Step 1: Key agreement.
     let ka = sapling_ka_agree(&ivk_fr, &epk);
     let ka_bytes = ka.to_bytes();
 
-    // Step 2: Derive symmetric key using KDF_Sapling (Blake2b-256, personalization "Zcash_SaplingKDF")
+    // Step 2: Derive symmetric key using KDF_Sapling.
     let key_bytes = kdf_sapling(&ka_bytes, &epk_bytes);
 
     // Step 3: Decrypt the first 52 bytes using the ChaCha20 keystream (IETF variant).
