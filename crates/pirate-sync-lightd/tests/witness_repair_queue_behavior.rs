@@ -133,7 +133,11 @@ fn follow_tip_start_ahead_keeps_queue_worker_path_active() {
         "start-ahead handling must special-case follow-tip mode"
     );
     assert!(
-        branch.contains("effective_start_height = end;"),
-        "follow-tip start-ahead branch should clamp to tip and continue sync loop"
+        branch.contains("do NOT clamp start down to `end`"),
+        "follow-tip start-ahead branch must avoid clamping to tip to prevent re-fetching the last processed block"
+    );
+    assert!(
+        branch.contains("Keep effective_start_height at resume height"),
+        "follow-tip start-ahead branch should preserve resume height semantics so fetch loop no-ops and queue worker/monitor path remains active"
     );
 }
