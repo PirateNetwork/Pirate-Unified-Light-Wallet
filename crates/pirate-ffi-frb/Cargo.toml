@@ -40,11 +40,14 @@ sha2 = "0.10"
 orchard = { workspace = true }
 zcash_primitives = { workspace = true }
 zcash_client_backend = { workspace = true }
+zcash_note_encryption = { workspace = true }
 bech32 = { workspace = true }
 rusqlite = { workspace = true }
 directories = "5.0"
 
 [dev-dependencies]
+shardtree = "0.1"
+incrementalmerkletree = { workspace = true }
 
 [build-dependencies]
 chrono = { workspace = true }

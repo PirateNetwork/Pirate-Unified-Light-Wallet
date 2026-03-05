@@ -51,6 +51,12 @@ enum TransactionErrorType {
   /// Watch-only wallet cannot spend
   watchOnlyCannotSpend,
 
+  /// Wallet is still finalizing spendability/witness state
+  syncFinalizing,
+
+  /// Wallet requires an explicit rescan before spending
+  rescanRequired,
+
   /// Unknown error
   unknown,
 }
@@ -98,6 +104,27 @@ class TransactionErrorMapper {
   /// Map FFI error string to TransactionError
   static TransactionError mapError(dynamic error) {
     final errorStr = error.toString().toLowerCase();
+
+    // Deterministic spendability state errors from Rust
+    if (errorStr.contains('err_witness_repair_queued') ||
+        errorStr.contains('err_sync_finalizing')) {
+      return TransactionError(
+        type: TransactionErrorType.syncFinalizing,
+        message: 'Spendability is finalizing',
+        technicalDetails: error.toString(),
+        suggestion: 'Let wallet sync finish, then try sending again.',
+      );
+    }
+
+    if (errorStr.contains('err_rescan_required')) {
+      return TransactionError(
+        type: TransactionErrorType.rescanRequired,
+        message: 'Rescan required before sending',
+        technicalDetails: error.toString(),
+        suggestion:
+            'Run a rescan, let it complete, then retry the transaction.',
+      );
+    }
 
     // Address errors
     if (errorStr.contains('invalid address') ||

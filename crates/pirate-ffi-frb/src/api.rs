@@ -22,8 +22,7 @@ use anyhow::{anyhow, Result};
 use bech32::{Bech32, Hrp};
 use directories::ProjectDirs;
 use hex;
-use orchard::note::ExtractedNoteCommitment as OrchardExtractedNoteCommitment;
-use orchard::tree::MerkleHashOrchard;
+use orchard::note_encryption::OrchardDomain;
 use orchard::Address as OrchardAddress;
 use parking_lot::RwLock;
 use pirate_core::keys::{
@@ -31,9 +30,9 @@ use pirate_core::keys::{
     OrchardExtendedFullViewingKey, OrchardExtendedSpendingKey, OrchardPaymentAddress,
     PaymentAddress,
 };
+use pirate_core::transaction::PirateNetwork;
 use pirate_core::wallet::Wallet;
 use pirate_params::{Network, NetworkType};
-use pirate_storage_sqlite::FrontierStorage;
 use pirate_storage_sqlite::{
     address_book::{
         AddressBookEntry as DbAddressBookEntry, AddressBookStorage, ColorTag as DbColorTag,
@@ -41,12 +40,11 @@ use pirate_storage_sqlite::{
     passphrase_store, platform_keystore,
     security::{generate_salt, AppPassphrase, EncryptionAlgorithm, MasterKey, SealedKey},
     Account, AccountKey, AddressType, Database, EncryptionKey, KeyScope, KeyType, KeystoreResult,
-    Repository, WalletSecret,
+    Repository, ScanQueueStorage, SpendabilityStateStorage, WalletSecret,
 };
 use pirate_sync_lightd::client::{
     LightClient, LightClientConfig, RetryConfig, TlsConfig, TransportMode,
 };
-use pirate_sync_lightd::OrchardFrontier;
 use rusqlite::params;
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
@@ -63,9 +61,13 @@ use std::time::Duration;
 use zcash_client_backend::encoding::{
     encode_extended_full_viewing_key, encode_extended_spending_key,
 };
-use zcash_primitives::merkle_tree::{read_frontier_v0, read_frontier_v1};
-use zcash_primitives::sapling::note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment;
+use zcash_note_encryption::try_output_recovery_with_ovk;
+use zcash_primitives::consensus::{BlockHeight, BranchId};
+use zcash_primitives::merkle_tree::{read_commitment_tree, read_frontier_v0, read_frontier_v1};
+use zcash_primitives::sapling::keys::OutgoingViewingKey as SaplingOutgoingViewingKey;
+use zcash_primitives::sapling::note_encryption::try_sapling_output_recovery;
 use zcash_primitives::sapling::PaymentAddress as SaplingPaymentAddress;
+use zcash_primitives::transaction::Transaction;
 use zcash_primitives::zip32::ExtendedFullViewingKey as SaplingExtendedFullViewingKey;
 
 // Global state with thread-safe access
@@ -98,8 +100,152 @@ const REGISTRY_DURESS_PASSPHRASE_HASH_KEY: &str = "duress_passphrase_hash";
 const REGISTRY_DURESS_USE_REVERSE_KEY: &str = "duress_passphrase_use_reverse";
 const REGISTRY_TUNNEL_MODE_KEY: &str = "tunnel_mode";
 const REGISTRY_TUNNEL_SOCKS5_URL_KEY: &str = "tunnel_socks5_url";
+const SPENDABILITY_REASON_ERR_RESCAN_REQUIRED: &str = "ERR_RESCAN_REQUIRED";
+const SPENDABILITY_REASON_ERR_SYNC_FINALIZING: &str = "ERR_SYNC_FINALIZING";
+const SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED: &str = "ERR_WITNESS_REPAIR_QUEUED";
 const DECOY_WALLET_ID: &str = "decoy_wallet";
 const RUNTIME_MARKER_FILE: &str = "runtime_session.marker";
+
+fn extract_orchard_anchor_from_raw_tx(raw_tx_bytes: &[u8]) -> Option<[u8; 32]> {
+    let tx = Transaction::read(raw_tx_bytes, BranchId::Nu5)
+        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
+        .ok()?;
+    tx.orchard_bundle().map(|bundle| bundle.anchor().to_bytes())
+}
+
+fn extract_sapling_anchor_from_raw_tx(raw_tx_bytes: &[u8]) -> Option<[u8; 32]> {
+    let tx = Transaction::read(raw_tx_bytes, BranchId::Nu5)
+        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
+        .ok()?;
+    let bundle = tx.sapling_bundle()?;
+    bundle
+        .shielded_spends()
+        .first()
+        .map(|spend| spend.anchor().to_bytes())
+}
+
+fn parse_sapling_root_from_tree_state(
+    tree_state: &pirate_sync_lightd::client::TreeState,
+) -> Option<[u8; 32]> {
+    let encoded = if !tree_state.sapling_frontier.is_empty() {
+        tree_state.sapling_frontier.trim()
+    } else if !tree_state.sapling_tree.is_empty() {
+        tree_state.sapling_tree.trim()
+    } else {
+        return None;
+    };
+    if encoded.is_empty() {
+        return None;
+    }
+    if encoded.len() == 64 {
+        return hex::decode(encoded)
+            .ok()
+            .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok());
+    }
+    let bytes = hex::decode(encoded).ok()?;
+    if let Ok(tree) = read_commitment_tree::<
+        zcash_primitives::sapling::Node,
+        _,
+        { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
+    >(&bytes[..])
+    {
+        return Some(tree.root().to_bytes());
+    }
+    let frontier = read_frontier_v1::<zcash_primitives::sapling::Node, _>(&bytes[..])
+        .or_else(|_| read_frontier_v0::<zcash_primitives::sapling::Node, _>(&bytes[..]))
+        .ok()?;
+    Some(frontier.root().to_bytes())
+}
+
+fn parse_orchard_root_from_tree_state(
+    tree_state: &pirate_sync_lightd::client::TreeState,
+) -> Option<[u8; 32]> {
+    let encoded = tree_state.orchard_tree.trim();
+    if encoded.is_empty() {
+        return None;
+    }
+    // Root-only encoding (finalRoot) is a 32-byte root as hex. Detect first to avoid mis-parsing.
+    if encoded.len() == 64 {
+        return hex::decode(encoded)
+            .ok()
+            .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok());
+    }
+
+    let bytes = hex::decode(encoded).ok()?;
+    // `z_gettreestate{legacy}` returns a serialized legacy `CommitmentTree` in `finalState`.
+    // Some servers may also provide a serialized `Frontier` (v0/v1). Try both.
+    if let Ok(tree) = read_commitment_tree::<
+        orchard::tree::MerkleHashOrchard,
+        _,
+        { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
+    >(&bytes[..])
+    {
+        return Some(tree.root().to_bytes());
+    }
+
+    let frontier = read_frontier_v1::<orchard::tree::MerkleHashOrchard, _>(&bytes[..])
+        .or_else(|_| read_frontier_v0::<orchard::tree::MerkleHashOrchard, _>(&bytes[..]))
+        .ok()?;
+    Some(frontier.root().to_bytes())
+}
+
+fn encode_hex_opt(bytes: Option<[u8; 32]>) -> String {
+    bytes.map(hex::encode).unwrap_or_else(|| "none".to_string())
+}
+
+fn recover_outgoing_memo_from_raw_tx(
+    raw_tx_bytes: &[u8],
+    tx_height: Option<u32>,
+    sapling_ovks: &[SaplingOutgoingViewingKey],
+    orchard_ovks: &[orchard::keys::OutgoingViewingKey],
+) -> Option<Vec<u8>> {
+    if sapling_ovks.is_empty() && orchard_ovks.is_empty() {
+        return None;
+    }
+
+    let tx = Transaction::read(raw_tx_bytes, BranchId::Nu5)
+        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
+        .ok()?;
+    let block_height = BlockHeight::from_u32(tx_height.unwrap_or(0));
+
+    if let Some(bundle) = tx.sapling_bundle() {
+        for ovk in sapling_ovks {
+            for output in bundle.shielded_outputs() {
+                if let Some((_note, _address, memo)) = try_sapling_output_recovery(
+                    &PirateNetwork::default(),
+                    block_height,
+                    ovk,
+                    output,
+                ) {
+                    if !memo.as_array().iter().all(|b| *b == 0) {
+                        return Some(memo.as_array().to_vec());
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(bundle) = tx.orchard_bundle() {
+        for ovk in orchard_ovks {
+            for action in bundle.actions() {
+                let domain = OrchardDomain::for_action(action);
+                if let Some((_note, _address, memo)) = try_output_recovery_with_ovk(
+                    &domain,
+                    ovk,
+                    action,
+                    action.cv_net(),
+                    &action.encrypted_note().out_ciphertext,
+                ) {
+                    if !memo.iter().all(|b| *b == 0) {
+                        return Some(memo.to_vec());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
 
 fn debug_log_path() -> PathBuf {
     let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
@@ -186,11 +332,7 @@ where
 }
 
 fn write_runtime_debug_event(id: &str, message: &str, data_json: &str) {
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = unix_timestamp_millis();
         let _ = writeln!(
             file,
@@ -200,7 +342,7 @@ fn write_runtime_debug_event(id: &str, message: &str, data_json: &str) {
             escape_json(message),
             data_json
         );
-    }
+    });
 }
 
 fn current_linux_fd_count() -> Option<usize> {
@@ -355,11 +497,7 @@ fn install_debug_panic_hook() {
     PANIC_HOOK_ONCE.call_once(|| {
         let default_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |panic_info| {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -383,7 +521,7 @@ fn install_debug_panic_hook() {
                     r#"{{"id":"log_rust_panic","timestamp":{},"location":"api.rs","message":"unhandled rust panic","data":{{"panic":"{}","thread":"{}","panic_location":"{}","backtrace":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, payload, thread_name, panic_location, backtrace
                 );
-            }
+            });
             update_runtime_marker(|m| {
                 m.insert("pid".to_string(), std::process::id().to_string());
                 m.insert("last_heartbeat_ms".to_string(), unix_timestamp_millis().to_string());
@@ -457,18 +595,14 @@ fn log_orchard_address_samples(wallet_id: &WalletId) {
     };
     let orchard_fvk = orchard_extsk.to_extended_fvk();
 
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = chrono::Utc::now().timestamp_millis();
         let _ = writeln!(
             file,
             r#"{{"id":"log_orchard_address_samples","timestamp":{},"location":"api.rs:log_orchard_address_samples","message":"orchard address sample header","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
             ts, wallet_id
         );
-    }
+    });
 
     for index in 0u32..10u32 {
         let address = orchard_fvk.address_at(index);
@@ -482,18 +616,14 @@ fn log_orchard_address_samples(wallet_id: &WalletId) {
             .encode_for_network(NetworkType::Regtest)
             .unwrap_or_default();
 
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = chrono::Utc::now().timestamp_millis();
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_orchard_address_sample","timestamp":{},"location":"api.rs:log_orchard_address_samples","message":"orchard address sample","data":{{"wallet_id":"{}","index":{},"mainnet":"{}","testnet":"{}","regtest":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                 ts, wallet_id, index, addr_mainnet, addr_testnet, addr_regtest
             );
-        }
+        });
     }
 }
 
@@ -734,11 +864,7 @@ pub fn switch_wallet(wallet_id: WalletId) -> Result<()> {
                 }
             });
 
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -756,7 +882,7 @@ pub fn switch_wallet(wallet_id: WalletId) -> Result<()> {
                         .map(|e| truncate_for_log(&e.to_string(), 180))
                         .unwrap_or_default()
                 );
-            }
+            });
 
             if let Err(e) = cancel_result {
                 tracing::warn!(
@@ -1501,7 +1627,7 @@ fn reencrypt_wallet_tables(
 ) -> Result<()> {
     {
         let mut stmt = conn.prepare(
-            "SELECT id, account_id, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo FROM notes",
+            "SELECT id, account_id, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, note, position, memo, address_id, key_id FROM notes",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok((
@@ -1515,9 +1641,9 @@ fn reencrypt_wallet_tables(
                 row.get::<_, Vec<u8>>(7)?,
                 row.get::<_, Vec<u8>>(8)?,
                 row.get::<_, Option<Vec<u8>>>(9)?,
-                row.get::<_, Vec<u8>>(10)?,
-                row.get::<_, Vec<u8>>(11)?,
-                row.get::<_, Vec<u8>>(12)?,
+                row.get::<_, Option<Vec<u8>>>(10)?,
+                row.get::<_, Option<Vec<u8>>>(11)?,
+                row.get::<_, Option<Vec<u8>>>(12)?,
                 row.get::<_, Option<Vec<u8>>>(13)?,
                 row.get::<_, Option<Vec<u8>>>(14)?,
                 row.get::<_, Option<Vec<u8>>>(15)?,
@@ -1541,15 +1667,15 @@ fn reencrypt_wallet_tables(
             output_index,
             spent_txid,
             diversifier,
-            merkle_path,
             note,
-            anchor,
             position,
             memo,
+            address_id,
+            key_id,
         ) in rows_cache
         {
             conn.execute(
-                "UPDATE notes SET account_id = ?1, value = ?2, nullifier = ?3, commitment = ?4, spent = ?5, height = ?6, txid = ?7, output_index = ?8, spent_txid = ?9, diversifier = ?10, merkle_path = ?11, note = ?12, anchor = ?13, position = ?14, memo = ?15 WHERE id = ?16",
+                "UPDATE notes SET account_id = ?1, value = ?2, nullifier = ?3, commitment = ?4, spent = ?5, height = ?6, txid = ?7, output_index = ?8, spent_txid = ?9, diversifier = ?10, note = ?11, position = ?12, memo = ?13, address_id = ?14, key_id = ?15 WHERE id = ?16",
                 params![
                     reencrypt_blob(old_key, new_key, &account_id)?,
                     reencrypt_blob(old_key, new_key, &value)?,
@@ -1560,12 +1686,12 @@ fn reencrypt_wallet_tables(
                     reencrypt_blob(old_key, new_key, &txid)?,
                     reencrypt_blob(old_key, new_key, &output_index)?,
                     reencrypt_optional_blob(old_key, new_key, spent_txid)?,
-                    reencrypt_blob(old_key, new_key, &diversifier)?,
-                    reencrypt_blob(old_key, new_key, &merkle_path)?,
-                    reencrypt_blob(old_key, new_key, &note)?,
-                    reencrypt_optional_blob(old_key, new_key, anchor)?,
+                    reencrypt_optional_blob(old_key, new_key, diversifier)?,
+                    reencrypt_optional_blob(old_key, new_key, note)?,
                     reencrypt_optional_blob(old_key, new_key, position)?,
                     reencrypt_optional_blob(old_key, new_key, memo)?,
+                    reencrypt_optional_blob(old_key, new_key, address_id)?,
+                    reencrypt_optional_blob(old_key, new_key, key_id)?,
                     id,
                 ],
             )?;
@@ -2097,12 +2223,7 @@ fn open_wallet_db_with_passphrase(
     let path = wallet_db_path_for(wallet_id)?;
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -2114,10 +2235,10 @@ fn open_wallet_db_with_passphrase(
             let path_str = path.to_string_lossy();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_db_path","timestamp":{},"location":"api.rs:954","message":"open_wallet_db_with_passphrase","data":{{"wallet_id":"{}","path":"{}","cwd":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                r#"{{"id":"log_db_path","timestamp":{},"location":"api.rs:954","message":"open_wallet_db_with_passphrase","data":{{"wallet_id":"{}","path":{:?},"cwd":{:?}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 ts, wallet_id, path_str, cwd
             );
-        }
+        });
     }
     // #endregion
     let salt_path = wallet_db_salt_path(wallet_id)?;
@@ -2183,6 +2304,294 @@ fn open_wallet_db_for(wallet_id: &str) -> Result<(&'static Database, Repository<
             unsafe { std::mem::transmute::<&Database, &'static Database>(db_ref) };
         Ok((db_static, Repository::new(db_static)))
     })
+}
+
+fn load_spendability_status_internal(wallet_id: &str) -> Result<SpendabilityStatus> {
+    let (db, _repo) = open_wallet_db_for(wallet_id)?;
+    let storage = SpendabilityStateStorage::new(db);
+    let state = storage.load_state()?;
+    let scan_queue = ScanQueueStorage::new(db);
+    let queue_has_work = scan_queue.next_found_note_range()?.is_some();
+
+    let epoch_ok = state.anchor_height != 0 && state.validated_anchor_height >= state.anchor_height;
+    let spendable = !state.rescan_required && !queue_has_work && epoch_ok;
+    let reason_code = if state.rescan_required {
+        SPENDABILITY_REASON_ERR_RESCAN_REQUIRED.to_string()
+    } else if queue_has_work {
+        SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED.to_string()
+    } else if spendable {
+        "OK".to_string()
+    } else {
+        SPENDABILITY_REASON_ERR_SYNC_FINALIZING.to_string()
+    };
+
+    Ok(SpendabilityStatus {
+        spendable,
+        rescan_required: state.rescan_required,
+        target_height: state.target_height,
+        anchor_height: state.anchor_height,
+        validated_anchor_height: state.validated_anchor_height,
+        repair_queued: queue_has_work,
+        reason_code,
+    })
+}
+
+fn require_spendability_ready(wallet_id: &str) -> Result<SpendabilityStatus> {
+    let spendability = load_spendability_status_internal(wallet_id)?;
+    if spendability.rescan_required {
+        return Err(anyhow!(
+            "{}: Wallet requires a full rescan before spending.",
+            SPENDABILITY_REASON_ERR_RESCAN_REQUIRED
+        ));
+    }
+    if spendability.repair_queued {
+        return Err(anyhow!(
+            "{}: Witness repair is queued. Let sync complete and retry.",
+            SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED
+        ));
+    }
+    if !spendability.spendable {
+        return Err(anyhow!(
+            "{}: Wallet spend anchor is not available yet. Let sync complete and retry.",
+            SPENDABILITY_REASON_ERR_SYNC_FINALIZING
+        ));
+    }
+    Ok(spendability)
+}
+
+fn require_spendability_ready_with_sync_trigger(
+    wallet_id: &WalletId,
+) -> Result<SpendabilityStatus> {
+    match require_spendability_ready(wallet_id) {
+        Ok(status) => Ok(status),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.starts_with(SPENDABILITY_REASON_ERR_SYNC_FINALIZING)
+                || msg.starts_with(SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED)
+            {
+                maybe_trigger_compact_sync(wallet_id.clone());
+            }
+            Err(e)
+        }
+    }
+}
+
+fn mark_spendability_rescan_required(wallet_id: &str, reason_code: &str) {
+    if let Ok((db, _repo)) = open_wallet_db_for(wallet_id) {
+        let storage = SpendabilityStateStorage::new(db);
+        if let Err(e) = storage.mark_rescan_required(reason_code) {
+            tracing::warn!(
+                "Failed to mark spendability rescan-required for {}: {}",
+                wallet_id,
+                e
+            );
+        }
+    }
+}
+
+fn mark_spendability_sync_finalizing(wallet_id: &str, target_height: u64, anchor_height: u64) {
+    if let Ok((db, _repo)) = open_wallet_db_for(wallet_id) {
+        let storage = SpendabilityStateStorage::new(db);
+        if let Err(e) = storage.mark_sync_finalizing(target_height, anchor_height) {
+            tracing::warn!(
+                "Failed to mark spendability sync-finalizing for {}: {}",
+                wallet_id,
+                e
+            );
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SyncMutationSnapshot {
+    reason: &'static str,
+}
+
+fn sync_mutation_snapshot(wallet_id: &WalletId) -> (bool, SyncMutationSnapshot) {
+    let rescan_in_flight = RESCAN_IN_FLIGHT.read().contains(wallet_id);
+    let rescan_active = is_rescan_active(wallet_id);
+    if rescan_in_flight || rescan_active {
+        return (
+            true,
+            SyncMutationSnapshot {
+                reason: if rescan_in_flight {
+                    "rescan_in_flight"
+                } else {
+                    "rescan_active"
+                },
+            },
+        );
+    }
+
+    // Prefer runtime progress as the authoritative snapshot. This avoids spurious
+    // "mutating" results due to unrelated session-lock contention (e.g. sync-status polls).
+    if let Some(handles) = SYNC_RUNTIME_HANDLES.read().get(wallet_id).cloned() {
+        match handles.progress.try_read() {
+            Ok(progress) => {
+                let local_height = progress.current_height();
+                let target_height = progress.target_height();
+                let stage = map_stage(progress.stage());
+                let mutating = local_height < target_height
+                    || !matches!(stage, crate::models::SyncStage::Verify);
+                return (
+                    mutating,
+                    SyncMutationSnapshot {
+                        reason: if mutating {
+                            "runtime_progress_mutating"
+                        } else {
+                            "runtime_progress_idle"
+                        },
+                    },
+                );
+            }
+            Err(_) => {
+                // Runtime exists but progress is currently being written. Treat as mutating.
+                return (
+                    true,
+                    SyncMutationSnapshot {
+                        reason: "runtime_progress_lock_busy",
+                    },
+                );
+            }
+        }
+    }
+
+    // No runtime handles; fall back to session status.
+    let session_arc = {
+        let sessions = SYNC_SESSIONS.read();
+        sessions.get(wallet_id).cloned()
+    };
+    let Some(session_arc) = session_arc else {
+        return (
+            false,
+            SyncMutationSnapshot {
+                reason: "no_session",
+            },
+        );
+    };
+
+    let try_lock = session_arc.try_lock();
+    match try_lock {
+        Ok(session) => {
+            let is_running = session.is_running;
+            let has_task = session.task.is_some() || session.startup_in_progress;
+            let mutating = is_running || has_task;
+            (
+                mutating,
+                SyncMutationSnapshot {
+                    reason: if mutating {
+                        "session_running_no_runtime"
+                    } else {
+                        "session_idle_no_runtime"
+                    },
+                },
+            )
+        }
+        Err(_) => (
+            true,
+            SyncMutationSnapshot {
+                reason: "session_lock_busy",
+            },
+        ),
+    }
+}
+
+fn maybe_trigger_compact_sync(wallet_id: WalletId) {
+    if RESCAN_IN_FLIGHT.read().contains(&wallet_id) || is_rescan_active(&wallet_id) {
+        return;
+    }
+
+    let session_running = {
+        let sessions = SYNC_SESSIONS.read();
+        if let Some(session_arc) = sessions.get(&wallet_id) {
+            match session_arc.try_lock() {
+                Ok(session) => {
+                    session.is_running || session.task.is_some() || session.startup_in_progress
+                }
+                Err(_) => true,
+            }
+        } else {
+            false
+        }
+    };
+    if session_running {
+        return;
+    }
+
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(async move {
+            let _ = start_sync(wallet_id, SyncMode::Compact).await;
+        });
+    } else {
+        std::thread::spawn(move || {
+            if let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                let _ = runtime.block_on(start_sync(wallet_id, SyncMode::Compact));
+            }
+        });
+    }
+}
+
+/// Return deterministic spendability status for the wallet.
+pub fn get_spendability_status(wallet_id: WalletId) -> Result<SpendabilityStatus> {
+    ensure_not_decoy("Get spendability status")?;
+    let status = load_spendability_status_internal(&wallet_id)?;
+    let (sync_mutating, sync_mutation_snapshot) = sync_mutation_snapshot(&wallet_id);
+    let epoch_ok =
+        status.anchor_height != 0 && status.validated_anchor_height >= status.anchor_height;
+
+    pirate_core::debug_log::with_locked_file(|file| {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_spendability_status_call","timestamp":{},"location":"api.rs:get_spendability_status","message":"get_spendability_status call","data":{{"wallet_id":"{}","spendable":{},"rescan_required":{},"repair_queued":{},"target_height":{},"anchor_height":{},"validated_anchor_height":{},"reason_code":"{}","epoch_ok":{},"sync_mutating":{},"sync_mutation_reason":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"S"}}"#,
+            ts,
+            wallet_id,
+            status.spendable,
+            status.rescan_required,
+            status.repair_queued,
+            status.target_height,
+            status.anchor_height,
+            status.validated_anchor_height,
+            status.reason_code,
+            epoch_ok,
+            sync_mutating,
+            sync_mutation_snapshot.reason,
+        );
+    });
+
+    if !status.spendable
+        || status.rescan_required
+        || status.repair_queued
+        || status.reason_code != "OK"
+        || !epoch_ok
+    {
+        pirate_core::debug_log::with_locked_file(|file| {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_spendability_status","timestamp":{},"location":"api.rs:get_spendability_status","message":"spendability status","data":{{"wallet_id":"{}","spendable":{},"rescan_required":{},"repair_queued":{},"target_height":{},"anchor_height":{},"validated_anchor_height":{},"reason_code":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"S"}}"#,
+                ts,
+                wallet_id,
+                status.spendable,
+                status.rescan_required,
+                status.repair_queued,
+                status.target_height,
+                status.anchor_height,
+                status.validated_anchor_height,
+                status.reason_code
+            );
+        });
+    }
+    Ok(status)
 }
 
 fn ensure_primary_account_key(
@@ -2718,9 +3127,11 @@ pub fn list_address_balances(
     let orchard_enabled_for_balance = orchard_active || has_orchard_note_bytes;
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
     let sync_state = sync_storage.load_sync_state()?;
-    let current_height = sync_state.local_height.max(sync_state.target_height);
+    // Use scanned height for confirmation depth so UI doesn't "spend" beyond what
+    // we've actually validated locally.
+    let current_height = sync_state.local_height;
     const MIN_DEPTH: u64 = 10;
-    let confirmation_threshold = current_height.saturating_sub(MIN_DEPTH);
+    let confirmation_threshold = current_height.saturating_sub(MIN_DEPTH.saturating_sub(1));
 
     let mut balances_by_address: HashMap<String, (u64, u64, u64)> = HashMap::new();
 
@@ -3942,6 +4353,7 @@ use pirate_core::{
 pub const MAX_OUTPUTS_PER_TX: usize = 50;
 const AUTO_CONSOLIDATION_THRESHOLD: usize = 30;
 const AUTO_CONSOLIDATION_MAX_EXTRA_NOTES: usize = 20;
+const SPENDABILITY_MIN_CONFIRMATIONS: u32 = 10;
 
 fn normalize_filter_ids(ids: Option<Vec<i64>>) -> Option<Vec<i64>> {
     let values = ids?;
@@ -4053,7 +4465,7 @@ fn auto_select_spend_key_id_for_amount(
     repo: &Repository,
     account_id: i64,
     required_total: u64,
-    primary_key_id: Option<i64>,
+    anchor_height: u64,
 ) -> Result<Option<i64>> {
     let spendable_keys = repo
         .get_account_keys(account_id)?
@@ -4068,34 +4480,18 @@ fn auto_select_spend_key_id_for_amount(
 
     let mut totals_by_key = HashMap::<i64, u64>::new();
     for key_id in spendable_keys {
-        let notes =
-            repo.get_unspent_selectable_notes_filtered(account_id, Some(vec![key_id]), None)?;
-        let (aligned_notes, _groups, _filtered, _chosen_anchor_hex) =
-            align_sapling_anchor_group(notes, required_total);
-        let (aligned_notes, _groups, _filtered, _chosen_anchor_hex) =
-            align_orchard_anchor_group(aligned_notes, required_total);
-        let aligned_total = aligned_notes
+        let notes = repo.get_unspent_selectable_notes_at_anchor_filtered(
+            account_id,
+            anchor_height,
+            SPENDABILITY_MIN_CONFIRMATIONS,
+            Some(vec![key_id]),
+            None,
+        )?;
+        let total = notes
             .iter()
             .fold(0u64, |acc, note| acc.saturating_add(note.value));
-        if aligned_total > 0 {
-            totals_by_key.insert(key_id, aligned_total);
-        }
-    }
-
-    // Keep compatibility with legacy rows that may not carry key ids.
-    if totals_by_key.is_empty() {
-        let notes = repo.get_unspent_notes(account_id)?;
-        for note in notes {
-            let value = match u64::try_from(note.value) {
-                Ok(value) => value,
-                Err(_) => continue,
-            };
-            let key_id = note.key_id.or(primary_key_id);
-            let Some(key_id) = key_id else {
-                continue;
-            };
-            let entry = totals_by_key.entry(key_id).or_insert(0);
-            *entry = entry.saturating_add(value);
+        if total > 0 {
+            totals_by_key.insert(key_id, total);
         }
     }
 
@@ -4137,89 +4533,6 @@ fn note_balances_by_key_id(notes: &[pirate_core::selection::SelectableNote]) -> 
         *entry = entry.saturating_add(note.value);
     }
     balances
-}
-
-fn sapling_note_commitment_matches(note: &pirate_core::selection::SelectableNote) -> Option<bool> {
-    if note.note_type != pirate_core::selection::NoteType::Sapling {
-        return None;
-    }
-    let sapling_note = note.note.as_ref()?;
-    if note.commitment.len() != 32 {
-        return Some(false);
-    }
-    let mut stored = [0u8; 32];
-    stored.copy_from_slice(&note.commitment[..32]);
-    let computed = sapling_note.cmu().to_bytes();
-    Some(computed == stored)
-}
-
-fn orchard_note_commitment_matches(note: &pirate_core::selection::SelectableNote) -> Option<bool> {
-    if note.note_type != pirate_core::selection::NoteType::Orchard {
-        return None;
-    }
-    let orchard_note = note.orchard_note.as_ref()?;
-    if note.commitment.len() != 32 {
-        return Some(false);
-    }
-    let mut stored = [0u8; 32];
-    stored.copy_from_slice(&note.commitment[..32]);
-    let computed = OrchardExtractedNoteCommitment::from(orchard_note.commitment()).to_bytes();
-    Some(computed == stored)
-}
-
-fn resolve_sapling_key_id_for_note(
-    note: &pirate_core::selection::SelectableNote,
-    sapling_spend_keys_by_id: &HashMap<i64, ExtendedSpendingKey>,
-) -> Option<i64> {
-    if note.note_type != pirate_core::selection::NoteType::Sapling {
-        return None;
-    }
-    let sapling_note = note.note.as_ref()?;
-    let position = note.sapling_position?;
-    let nullifier_bytes = note.nullifier.as_ref()?;
-    if nullifier_bytes.len() != 32 {
-        return None;
-    }
-
-    for (key_id, extsk) in sapling_spend_keys_by_id {
-        let external_nk = extsk.to_extended_fvk().nullifier_deriving_key();
-        let external_derived = sapling_note.nf(&external_nk, position).0;
-        if external_derived.as_slice() == nullifier_bytes.as_slice() {
-            return Some(*key_id);
-        }
-
-        let internal_nk = extsk.to_internal_fvk().nullifier_deriving_key();
-        let internal_derived = sapling_note.nf(&internal_nk, position).0;
-        if internal_derived.as_slice() == nullifier_bytes.as_slice() {
-            return Some(*key_id);
-        }
-    }
-
-    None
-}
-
-fn resolve_orchard_key_id_for_note(
-    note: &pirate_core::selection::SelectableNote,
-    orchard_spend_keys_by_id: &HashMap<i64, OrchardExtendedSpendingKey>,
-) -> Option<i64> {
-    if note.note_type != pirate_core::selection::NoteType::Orchard {
-        return None;
-    }
-    let orchard_note = note.orchard_note.as_ref()?;
-    let nullifier_bytes = note.nullifier.as_ref()?;
-    if nullifier_bytes.len() != 32 {
-        return None;
-    }
-
-    for (key_id, extsk) in orchard_spend_keys_by_id {
-        let fvk = extsk.to_extended_fvk();
-        let derived = orchard_note.nullifier(&fvk.inner).to_bytes();
-        if derived.as_slice() == nullifier_bytes.as_slice() {
-            return Some(*key_id);
-        }
-    }
-
-    None
 }
 
 fn infer_contributing_key_ids_for_amount(
@@ -4303,938 +4616,19 @@ fn resolve_change_diversifier_index(
     Ok(existing_index.unwrap_or(0))
 }
 
-#[derive(Debug, Default)]
-pub(crate) struct WitnessRefreshOutcome {
-    pub(crate) source: String,
-    pub(crate) sapling_requested: usize,
-    pub(crate) sapling_updated: usize,
-    pub(crate) sapling_missing: usize,
-    pub(crate) sapling_errors: usize,
-    pub(crate) orchard_requested: usize,
-    pub(crate) orchard_updated: usize,
-    pub(crate) orchard_missing: usize,
-    pub(crate) orchard_errors: usize,
-}
-
-fn witness_note_type_label(note: &pirate_core::selection::SelectableNote) -> &'static str {
-    match note.note_type {
-        pirate_core::selection::NoteType::Sapling => "sapling",
-        pirate_core::selection::NoteType::Orchard => "orchard",
-    }
-}
-
-fn txid_prefix_hex(txid: &[u8]) -> String {
-    let full = hex::encode(txid);
-    if full.len() > 16 {
-        full[..16].to_string()
-    } else {
-        full
-    }
-}
-
-fn log_witness_repair_note_event(
-    wallet_id: &WalletId,
-    phase: &str,
-    event: &str,
-    note_idx: usize,
-    note: &pirate_core::selection::SelectableNote,
-    position: Option<u64>,
-    error: Option<&str>,
-) {
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        let ts = unix_timestamp_millis();
-        let key_id_json = note
-            .key_id
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| "null".to_string());
-        let position_json = position
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| "null".to_string());
-        let error_json = error
-            .map(|e| format!(r#""{}""#, escape_json(e)))
-            .unwrap_or_else(|| "null".to_string());
-        let txid_prefix = txid_prefix_hex(&note.txid);
-
-        let _ = writeln!(
-            file,
-            r#"{{"id":"log_witness_repair_note","timestamp":{},"location":"api.rs:refresh_selectable_note_witnesses","message":"witness repair note event","data":{{"wallet_id":"{}","phase":"{}","event":"{}","note_idx":{},"note_type":"{}","key_id":{},"height":{},"output_index":{},"value":{},"position":{},"txid_prefix":"{}","error":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-            ts,
-            wallet_id,
-            escape_json(phase),
-            escape_json(event),
-            note_idx,
-            witness_note_type_label(note),
-            key_id_json,
-            note.height,
-            note.output_index,
-            note.value,
-            position_json,
-            txid_prefix,
-            error_json
-        );
-    }
-}
-
-fn selectable_note_lookup_key(note: &pirate_core::selection::SelectableNote) -> NotePositionKey {
-    let note_type = match note.note_type {
-        pirate_core::selection::NoteType::Sapling => 0u8,
-        pirate_core::selection::NoteType::Orchard => 1u8,
-    };
-    (
-        note_type,
-        note.txid.clone(),
-        note.output_index,
-        note.commitment.clone(),
-    )
-}
-
-type NotePositionKey = (u8, Vec<u8>, u32, Vec<u8>);
-type NotePositionValue = (Option<u64>, Option<u64>);
-
-fn refresh_selectable_note_positions_from_db(
-    wallet_id: &WalletId,
-    selectable_notes: &mut [pirate_core::selection::SelectableNote],
-) -> Result<usize> {
-    let (_db, repo) = open_wallet_db_for(wallet_id)?;
-    let secret = repo
-        .get_wallet_secret(wallet_id)?
-        .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let latest_notes = repo.get_unspent_selectable_notes_filtered(secret.account_id, None, None)?;
-
-    let mut latest_positions: HashMap<NotePositionKey, NotePositionValue> = HashMap::new();
-    for note in latest_notes {
-        latest_positions.insert(
-            selectable_note_lookup_key(&note),
-            (note.sapling_position, note.orchard_position),
-        );
-    }
-
-    let mut refreshed = 0usize;
-    for note in selectable_notes.iter_mut() {
-        let key = selectable_note_lookup_key(note);
-        if let Some((sapling_position, orchard_position)) = latest_positions.get(&key) {
-            match note.note_type {
-                pirate_core::selection::NoteType::Sapling => {
-                    if note.sapling_position != *sapling_position {
-                        note.sapling_position = *sapling_position;
-                        refreshed += 1;
-                    }
-                }
-                pirate_core::selection::NoteType::Orchard => {
-                    if note.orchard_position != *orchard_position {
-                        note.orchard_position = *orchard_position;
-                        refreshed += 1;
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(refreshed)
-}
-
-fn is_guarded_witness_refresh_source(source: &str) -> bool {
-    matches!(
-        source,
-        "session_missing"
-            | "session_busy"
-            | "sync_missing"
-            | "engine_busy"
-            | "engine_busy_after_replay"
-            | "engine_lock_replay_failed"
-    )
-}
-
-const WITNESS_LOCK_ATTEMPTS: usize = 40;
-const WITNESS_RELOCK_ATTEMPTS: usize = 40;
-const WITNESS_LOCK_SLEEP_MS: u64 = 25;
-const WITNESS_PRIME_ATTEMPTS: usize = 40;
-const WITNESS_PRIME_SLEEP_MS: u64 = 15;
-const WITNESS_WAIT_FOR_STOP_TIMEOUT: Duration = Duration::from_millis(900);
-const SIGN_SYNC_ENGINE_IDLE_TIMEOUT: Duration = Duration::from_millis(900);
 const CANCEL_SYNC_ENGINE_REQUEST_TIMEOUT: Duration = Duration::from_millis(350);
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum SyncHandleProbe {
-    Present,
-    Missing,
-    Busy,
-}
-
-fn probe_sync_engine_handle(wallet_id: &WalletId) -> SyncHandleProbe {
-    let session_arc_opt = {
-        let sessions = SYNC_SESSIONS.read();
-        sessions.get(wallet_id).cloned()
-    };
-    if let Some(session_arc) = session_arc_opt {
-        for _ in 0..WITNESS_LOCK_ATTEMPTS {
-            if let Ok(session) = session_arc.try_lock() {
-                return if session.sync.is_some() {
-                    SyncHandleProbe::Present
-                } else {
-                    SyncHandleProbe::Missing
-                };
-            }
-            std::thread::sleep(Duration::from_millis(WITNESS_LOCK_SLEEP_MS));
-        }
-        return SyncHandleProbe::Busy;
-    }
-
-    SyncHandleProbe::Missing
-}
-
-fn has_sync_engine_handle(wallet_id: &WalletId) -> bool {
-    matches!(
-        probe_sync_engine_handle(wallet_id),
-        SyncHandleProbe::Present
-    )
-}
-
-fn prime_sync_engine_for_witness(wallet_id: &WalletId) -> bool {
-    let initial_probe = probe_sync_engine_handle(wallet_id);
-    if initial_probe == SyncHandleProbe::Present {
-        return true;
-    }
-
-    // Non-destructive recovery path: if a handle exists but is lock-contended,
-    // force-stop any running task while preserving the engine handle.
-    if matches!(
-        initial_probe,
-        SyncHandleProbe::Busy | SyncHandleProbe::Present
-    ) {
-        let _ = run_on_runtime_blocking({
-            let wallet_id = wallet_id.clone();
-            move || async move {
-                let _ = cancel_sync_internal(wallet_id.clone(), false).await;
-                let _ = wait_for_sync_stop(&wallet_id, WITNESS_WAIT_FOR_STOP_TIMEOUT).await;
-                Ok(())
-            }
-        });
-
-        match probe_sync_engine_handle(wallet_id) {
-            SyncHandleProbe::Present => return true,
-            SyncHandleProbe::Busy => return false,
-            SyncHandleProbe::Missing => {}
-        }
-    }
-
-    // Cold-start priming only when there is definitely no engine handle.
-    if probe_sync_engine_handle(wallet_id) != SyncHandleProbe::Missing {
-        return has_sync_engine_handle(wallet_id);
-    }
-
-    let wallet_id_cloned = wallet_id.clone();
-    let primed = run_on_runtime_blocking(move || async move {
-        // Create an engine handle quickly using compact mode, then stop the task
-        // while preserving the handle for witness refresh.
-        let _priming_guard = mark_sync_priming_active(&wallet_id_cloned);
-        if start_sync(wallet_id_cloned.clone(), SyncMode::Compact)
-            .await
-            .is_err()
-        {
-            return Ok(false);
-        }
-
-        let mut handle_ready = false;
-        for _ in 0..WITNESS_PRIME_ATTEMPTS {
-            let session_arc_opt = {
-                let sessions = SYNC_SESSIONS.read();
-                sessions.get(&wallet_id_cloned).cloned()
-            };
-            if let Some(session_arc) = session_arc_opt {
-                if let Ok(session) = session_arc.try_lock() {
-                    if session.sync.is_some() {
-                        handle_ready = true;
-                        break;
-                    }
-                }
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(WITNESS_PRIME_SLEEP_MS)).await;
-        }
-
-        let _ = cancel_sync_internal(wallet_id_cloned.clone(), false).await;
-        let stopped = wait_for_sync_stop(&wallet_id_cloned, WITNESS_WAIT_FOR_STOP_TIMEOUT).await;
-        let task_cleared = !is_sync_running(wallet_id_cloned.clone()).unwrap_or(true);
-        let handle_present = has_sync_engine_handle(&wallet_id_cloned);
-        Ok(handle_ready && stopped && task_cleared && handle_present)
-    })
-    .unwrap_or(false);
-
-    primed || has_sync_engine_handle(wallet_id)
-}
-
-fn refresh_selectable_note_witnesses(
-    wallet_id: &WalletId,
-    selectable_notes: &mut [pirate_core::selection::SelectableNote],
-    allow_wait_for_sync_stop: bool,
-) -> WitnessRefreshOutcome {
-    let mut outcome = WitnessRefreshOutcome {
-        source: "session_missing".to_string(),
-        ..WitnessRefreshOutcome::default()
-    };
-
-    let session_arc_opt = {
-        let sessions = SYNC_SESSIONS.read();
-        sessions.get(wallet_id).cloned()
-    };
-    if let Some(session_arc) = session_arc_opt {
-        let mut session_guard = None;
-        for _ in 0..WITNESS_LOCK_ATTEMPTS {
-            if let Ok(guard) = session_arc.try_lock() {
-                session_guard = Some(guard);
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(WITNESS_LOCK_SLEEP_MS));
-        }
-        if let Some(session) = session_guard {
-            if let Some(sync_arc) = session.sync.clone() {
-                let mut engine_guard = None;
-                for _ in 0..WITNESS_LOCK_ATTEMPTS {
-                    if let Ok(guard) = sync_arc.try_lock() {
-                        engine_guard = Some(guard);
-                        break;
-                    }
-                    std::thread::sleep(Duration::from_millis(WITNESS_LOCK_SLEEP_MS));
-                }
-                if engine_guard.is_none() && allow_wait_for_sync_stop {
-                    let _ = run_on_runtime_blocking({
-                        let wallet_id = wallet_id.clone();
-                        move || async move {
-                            let _ =
-                                wait_for_sync_stop(&wallet_id, WITNESS_WAIT_FOR_STOP_TIMEOUT).await;
-                            Ok(())
-                        }
-                    });
-                    for _ in 0..WITNESS_RELOCK_ATTEMPTS {
-                        if let Ok(guard) = sync_arc.try_lock() {
-                            engine_guard = Some(guard);
-                            break;
-                        }
-                        std::thread::sleep(Duration::from_millis(WITNESS_LOCK_SLEEP_MS));
-                    }
-                }
-                if let Some(engine) = engine_guard {
-                    outcome.source = "engine_lock".to_string();
-                    let mut sapling_missing_indices: Vec<(usize, u64, u64)> = Vec::new();
-                    let mut orchard_missing_indices: Vec<(usize, u64, u64)> = Vec::new();
-                    let expected_sapling_anchor =
-                        futures::executor::block_on(engine.get_sapling_anchor());
-                    let expected_orchard_anchor =
-                        futures::executor::block_on(engine.get_orchard_anchor());
-                    for (note_idx, note) in selectable_notes.iter_mut().enumerate() {
-                        match note.note_type {
-                            pirate_core::selection::NoteType::Sapling => {
-                                if let Some(position) = note.sapling_position {
-                                    outcome.sapling_requested += 1;
-                                    let witness_result = futures::executor::block_on(
-                                        engine.get_sapling_witness(position),
-                                    );
-                                    match witness_result {
-                                        Ok(Some(merkle_path)) => {
-                                            let expected_anchor = match expected_sapling_anchor {
-                                                Some(anchor) => anchor,
-                                                None => {
-                                                    outcome.sapling_missing += 1;
-                                                    sapling_missing_indices.push((
-                                                        note_idx,
-                                                        position,
-                                                        note.height,
-                                                    ));
-                                                    log_witness_repair_note_event(
-                                                        wallet_id,
-                                                        "initial",
-                                                        "anchor_unavailable",
-                                                        note_idx,
-                                                        note,
-                                                        Some(position),
-                                                        None,
-                                                    );
-                                                    continue;
-                                                }
-                                            };
-                                            let computed_anchor = {
-                                                let leaf = if note.commitment.len() == 32 {
-                                                    let mut cmu_bytes = [0u8; 32];
-                                                    cmu_bytes
-                                                        .copy_from_slice(&note.commitment[..32]);
-                                                    if let Some(cmu) = Option::<
-                                                        SaplingExtractedNoteCommitment,
-                                                    >::from(
-                                                        SaplingExtractedNoteCommitment::from_bytes(
-                                                            &cmu_bytes,
-                                                        ),
-                                                    ) {
-                                                        Some(
-                                                            zcash_primitives::sapling::Node::from_cmu(
-                                                                &cmu,
-                                                            ),
-                                                        )
-                                                    } else {
-                                                        note.note.as_ref().map(|sapling_note| {
-                                                            zcash_primitives::sapling::Node::from_cmu(
-                                                                &sapling_note.cmu(),
-                                                            )
-                                                        })
-                                                    }
-                                                } else {
-                                                    note.note.as_ref().map(|sapling_note| {
-                                                        zcash_primitives::sapling::Node::from_cmu(
-                                                            &sapling_note.cmu(),
-                                                        )
-                                                    })
-                                                };
-                                                leaf.map(|node| merkle_path.root(node).to_bytes())
-                                            };
-                                            let computed_anchor = match computed_anchor {
-                                                Some(anchor) => anchor,
-                                                None => {
-                                                    outcome.sapling_errors += 1;
-                                                    log_witness_repair_note_event(
-                                                        wallet_id,
-                                                        "initial",
-                                                        "anchor_compute_failed",
-                                                        note_idx,
-                                                        note,
-                                                        Some(position),
-                                                        None,
-                                                    );
-                                                    continue;
-                                                }
-                                            };
-                                            if computed_anchor != expected_anchor {
-                                                outcome.sapling_missing += 1;
-                                                sapling_missing_indices.push((
-                                                    note_idx,
-                                                    position,
-                                                    note.height,
-                                                ));
-                                                log_witness_repair_note_event(
-                                                    wallet_id,
-                                                    "initial",
-                                                    "anchor_mismatch",
-                                                    note_idx,
-                                                    note,
-                                                    Some(position),
-                                                    Some(&format!(
-                                                        "expected={},computed={}",
-                                                        hex::encode(expected_anchor),
-                                                        hex::encode(computed_anchor)
-                                                    )),
-                                                );
-                                                continue;
-                                            }
-                                            note.merkle_path = Some(merkle_path);
-                                            outcome.sapling_updated += 1;
-                                        }
-                                        Ok(None) => {
-                                            outcome.sapling_missing += 1;
-                                            sapling_missing_indices.push((
-                                                note_idx,
-                                                position,
-                                                note.height,
-                                            ));
-                                            log_witness_repair_note_event(
-                                                wallet_id,
-                                                "initial",
-                                                "missing",
-                                                note_idx,
-                                                note,
-                                                Some(position),
-                                                None,
-                                            );
-                                        }
-                                        Err(e) => {
-                                            outcome.sapling_errors += 1;
-                                            log_witness_repair_note_event(
-                                                wallet_id,
-                                                "initial",
-                                                "error",
-                                                note_idx,
-                                                note,
-                                                Some(position),
-                                                Some(&e.to_string()),
-                                            );
-                                            tracing::warn!(
-                                                "Failed to compute Sapling witness for position {}: {}",
-                                                position,
-                                                e
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                            pirate_core::selection::NoteType::Orchard => {
-                                if let Some(position) = note.orchard_position {
-                                    outcome.orchard_requested += 1;
-                                    let witness_result = futures::executor::block_on(
-                                        engine.get_orchard_witness(position),
-                                    );
-                                    match witness_result {
-                                        Ok(Some(merkle_path)) => {
-                                            let expected_anchor = match expected_orchard_anchor {
-                                                Some(anchor) => anchor,
-                                                None => {
-                                                    outcome.orchard_missing += 1;
-                                                    orchard_missing_indices.push((
-                                                        note_idx,
-                                                        position,
-                                                        note.height,
-                                                    ));
-                                                    log_witness_repair_note_event(
-                                                        wallet_id,
-                                                        "initial",
-                                                        "anchor_unavailable",
-                                                        note_idx,
-                                                        note,
-                                                        Some(position),
-                                                        None,
-                                                    );
-                                                    continue;
-                                                }
-                                            };
-                                            let orchard_path: orchard::tree::MerklePath =
-                                                merkle_path.clone().into();
-                                            let computed_anchor =
-                                                match orchard_anchor_from_merkle_path(
-                                                    note,
-                                                    &orchard_path,
-                                                ) {
-                                                    Some(anchor) => anchor,
-                                                    None => {
-                                                        outcome.orchard_errors += 1;
-                                                        log_witness_repair_note_event(
-                                                            wallet_id,
-                                                            "initial",
-                                                            "anchor_compute_failed",
-                                                            note_idx,
-                                                            note,
-                                                            Some(position),
-                                                            None,
-                                                        );
-                                                        continue;
-                                                    }
-                                                };
-                                            if computed_anchor != expected_anchor {
-                                                outcome.orchard_missing += 1;
-                                                orchard_missing_indices.push((
-                                                    note_idx,
-                                                    position,
-                                                    note.height,
-                                                ));
-                                                log_witness_repair_note_event(
-                                                    wallet_id,
-                                                    "initial",
-                                                    "anchor_mismatch",
-                                                    note_idx,
-                                                    note,
-                                                    Some(position),
-                                                    Some(&format!(
-                                                        "expected={},computed={}",
-                                                        hex::encode(expected_anchor),
-                                                        hex::encode(computed_anchor)
-                                                    )),
-                                                );
-                                                continue;
-                                            }
-                                            note.orchard_merkle_path = Some(orchard_path);
-                                            outcome.orchard_updated += 1;
-                                        }
-                                        Ok(None) => {
-                                            outcome.orchard_missing += 1;
-                                            orchard_missing_indices.push((
-                                                note_idx,
-                                                position,
-                                                note.height,
-                                            ));
-                                            log_witness_repair_note_event(
-                                                wallet_id,
-                                                "initial",
-                                                "missing",
-                                                note_idx,
-                                                note,
-                                                Some(position),
-                                                None,
-                                            );
-                                        }
-                                        Err(e) => {
-                                            outcome.orchard_errors += 1;
-                                            log_witness_repair_note_event(
-                                                wallet_id,
-                                                "initial",
-                                                "error",
-                                                note_idx,
-                                                note,
-                                                Some(position),
-                                                Some(&e.to_string()),
-                                            );
-                                            tracing::warn!(
-                                                "Failed to compute Orchard witness for position {}: {}",
-                                                position,
-                                                e
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    let has_missing =
-                        !sapling_missing_indices.is_empty() || !orchard_missing_indices.is_empty();
-                    if has_missing && allow_wait_for_sync_stop {
-                        let replay_from_height = sapling_missing_indices
-                            .iter()
-                            .map(|(_, _, height)| *height)
-                            .chain(orchard_missing_indices.iter().map(|(_, _, height)| *height))
-                            .min();
-
-                        if let Some(replay_from_height) = replay_from_height {
-                            let replay_start = replay_from_height.saturating_sub(1);
-                            // Bound repair replay to the current known tip. Using `end=None`
-                            // can keep replay running continuously and block build validation.
-                            let replay_end = {
-                                let tip = session
-                                    .last_status
-                                    .target_height
-                                    .max(session.last_status.local_height);
-                                if tip > 0 {
-                                    Some(tip.max(replay_start))
-                                } else {
-                                    None
-                                }
-                            };
-                            tracing::warn!(
-                                "Witness repair replay starting for wallet {} from height {} to {:?} (sapling_missing={}, orchard_missing={})",
-                                wallet_id,
-                                replay_start,
-                                replay_end,
-                                sapling_missing_indices.len(),
-                                orchard_missing_indices.len()
-                            );
-                            if let Ok(mut file) = std::fs::OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(debug_log_path())
-                            {
-                                use std::io::Write;
-                                let ts = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_millis();
-                                let _ = writeln!(
-                                    file,
-                                    r#"{{"id":"log_witness_repair_replay_start","timestamp":{},"location":"api.rs:refresh_selectable_note_witnesses","message":"witness repair replay start","data":{{"wallet_id":"{}","replay_start_height":{},"replay_end_height":{},"sapling_missing":{},"orchard_missing":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                                    ts,
-                                    wallet_id,
-                                    replay_start,
-                                    replay_end
-                                        .map(|h| h.to_string())
-                                        .unwrap_or_else(|| "null".to_string()),
-                                    sapling_missing_indices.len(),
-                                    orchard_missing_indices.len()
-                                );
-                            }
-
-                            // `sync_range` performs network I/O and requires a Tokio runtime;
-                            // using `futures::executor::block_on` here can panic ("no reactor").
-                            drop(engine);
-                            let replay_result = run_on_runtime_blocking({
-                                let sync_arc = Arc::clone(&sync_arc);
-                                move || async move {
-                                    run_sync_engine_task(sync_arc, move |engine| {
-                                        Box::pin(async move {
-                                            engine
-                                                .reset_frontiers_for_replay(replay_start)
-                                                .await
-                                                .map_err(anyhow::Error::from)?;
-                                            engine
-                                                .sync_range(replay_start, replay_end)
-                                                .await
-                                                .map_err(anyhow::Error::from)
-                                        })
-                                    })
-                                    .await
-                                }
-                            });
-
-                            match replay_result {
-                                Ok(()) => {
-                                    outcome.source = "engine_lock_replay".to_string();
-                                    match refresh_selectable_note_positions_from_db(
-                                        wallet_id,
-                                        selectable_notes,
-                                    ) {
-                                        Ok(refreshed) => {
-                                            if refreshed > 0 {
-                                                tracing::info!(
-                                                    "Witness repair replay refreshed {} note positions from DB for wallet {}",
-                                                    refreshed,
-                                                    wallet_id
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!(
-                                                "Failed to refresh selectable note positions from DB for wallet {}: {}",
-                                                wallet_id,
-                                                e
-                                            );
-                                        }
-                                    }
-
-                                    let mut replay_engine_guard = None;
-                                    for _ in 0..WITNESS_RELOCK_ATTEMPTS {
-                                        if let Ok(guard) = sync_arc.try_lock() {
-                                            replay_engine_guard = Some(guard);
-                                            break;
-                                        }
-                                        std::thread::sleep(Duration::from_millis(
-                                            WITNESS_LOCK_SLEEP_MS,
-                                        ));
-                                    }
-
-                                    if let Some(replay_engine) = replay_engine_guard {
-                                        for (note_idx, position, _) in sapling_missing_indices {
-                                            let retry_position = selectable_notes
-                                                .get(note_idx)
-                                                .and_then(|note| note.sapling_position)
-                                                .unwrap_or(position);
-                                            let witness_result = futures::executor::block_on(
-                                                replay_engine.get_sapling_witness(retry_position),
-                                            );
-                                            match witness_result {
-                                                Ok(Some(merkle_path)) => {
-                                                    if let Some(note) =
-                                                        selectable_notes.get_mut(note_idx)
-                                                    {
-                                                        note.merkle_path = Some(merkle_path);
-                                                        note.sapling_position =
-                                                            Some(retry_position);
-                                                    }
-                                                    outcome.sapling_updated += 1;
-                                                    outcome.sapling_missing =
-                                                        outcome.sapling_missing.saturating_sub(1);
-                                                }
-                                                Ok(None) => {
-                                                    if let Some(note) =
-                                                        selectable_notes.get(note_idx)
-                                                    {
-                                                        log_witness_repair_note_event(
-                                                            wallet_id,
-                                                            "replay",
-                                                            "missing",
-                                                            note_idx,
-                                                            note,
-                                                            Some(retry_position),
-                                                            None,
-                                                        );
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    outcome.sapling_errors += 1;
-                                                    if let Some(note) =
-                                                        selectable_notes.get(note_idx)
-                                                    {
-                                                        log_witness_repair_note_event(
-                                                            wallet_id,
-                                                            "replay",
-                                                            "error",
-                                                            note_idx,
-                                                            note,
-                                                            Some(retry_position),
-                                                            Some(&e.to_string()),
-                                                        );
-                                                    }
-                                                    tracing::warn!(
-                                                        "Failed Sapling witness repair retry for position {}: {}",
-                                                        retry_position,
-                                                        e
-                                                    );
-                                                }
-                                            }
-                                        }
-
-                                        for (note_idx, position, _) in orchard_missing_indices {
-                                            let retry_position = selectable_notes
-                                                .get(note_idx)
-                                                .and_then(|note| note.orchard_position)
-                                                .unwrap_or(position);
-                                            let witness_result = futures::executor::block_on(
-                                                replay_engine.get_orchard_witness(retry_position),
-                                            );
-                                            match witness_result {
-                                                Ok(Some(merkle_path)) => {
-                                                    if let Some(note) =
-                                                        selectable_notes.get_mut(note_idx)
-                                                    {
-                                                        note.orchard_merkle_path =
-                                                            Some(merkle_path.into());
-                                                        note.orchard_position =
-                                                            Some(retry_position);
-                                                    }
-                                                    outcome.orchard_updated += 1;
-                                                    outcome.orchard_missing =
-                                                        outcome.orchard_missing.saturating_sub(1);
-                                                }
-                                                Ok(None) => {
-                                                    if let Some(note) =
-                                                        selectable_notes.get(note_idx)
-                                                    {
-                                                        log_witness_repair_note_event(
-                                                            wallet_id,
-                                                            "replay",
-                                                            "missing",
-                                                            note_idx,
-                                                            note,
-                                                            Some(retry_position),
-                                                            None,
-                                                        );
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    outcome.orchard_errors += 1;
-                                                    if let Some(note) =
-                                                        selectable_notes.get(note_idx)
-                                                    {
-                                                        log_witness_repair_note_event(
-                                                            wallet_id,
-                                                            "replay",
-                                                            "error",
-                                                            note_idx,
-                                                            note,
-                                                            Some(retry_position),
-                                                            Some(&e.to_string()),
-                                                        );
-                                                    }
-                                                    tracing::warn!(
-                                                        "Failed Orchard witness repair retry for position {}: {}",
-                                                        retry_position,
-                                                        e
-                                                    );
-                                                }
-                                            }
-                                        }
-
-                                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                                            .create(true)
-                                            .append(true)
-                                            .open(debug_log_path())
-                                        {
-                                            use std::io::Write;
-                                            let ts = std::time::SystemTime::now()
-                                                .duration_since(std::time::UNIX_EPOCH)
-                                                .unwrap_or_default()
-                                                .as_millis();
-                                            let _ = writeln!(
-                                                file,
-                                                r#"{{"id":"log_witness_repair_replay_done","timestamp":{},"location":"api.rs:refresh_selectable_note_witnesses","message":"witness repair replay done","data":{{"wallet_id":"{}","sapling_missing_after":{},"orchard_missing_after":{},"sapling_updated":{},"orchard_updated":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                                                ts,
-                                                wallet_id,
-                                                outcome.sapling_missing,
-                                                outcome.orchard_missing,
-                                                outcome.sapling_updated,
-                                                outcome.orchard_updated
-                                            );
-                                        }
-                                    } else {
-                                        outcome.source = "engine_busy_after_replay".to_string();
-                                        tracing::warn!(
-                                            "Witness repair replay completed but engine lock was unavailable for witness refresh (wallet {})",
-                                            wallet_id
-                                        );
-                                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                                            .create(true)
-                                            .append(true)
-                                            .open(debug_log_path())
-                                        {
-                                            use std::io::Write;
-                                            let ts = std::time::SystemTime::now()
-                                                .duration_since(std::time::UNIX_EPOCH)
-                                                .unwrap_or_default()
-                                                .as_millis();
-                                            let _ = writeln!(
-                                                file,
-                                                r#"{{"id":"log_witness_repair_replay_lock_unavailable","timestamp":{},"location":"api.rs:refresh_selectable_note_witnesses","message":"witness repair replay lock unavailable","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                                                ts, wallet_id
-                                            );
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    outcome.source = "engine_lock_replay_failed".to_string();
-                                    tracing::warn!(
-                                        "Witness repair replay failed for wallet {} from height {}: {}",
-                                        wallet_id,
-                                        replay_start,
-                                        e
-                                    );
-                                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                                        .create(true)
-                                        .append(true)
-                                        .open(debug_log_path())
-                                    {
-                                        use std::io::Write;
-                                        let ts = std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .unwrap_or_default()
-                                            .as_millis();
-                                        let _ = writeln!(
-                                            file,
-                                            r#"{{"id":"log_witness_repair_replay_error","timestamp":{},"location":"api.rs:refresh_selectable_note_witnesses","message":"witness repair replay failed","data":{{"wallet_id":"{}","replay_start_height":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                                            ts,
-                                            wallet_id,
-                                            replay_start,
-                                            escape_json(&e.to_string())
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    outcome.source = "engine_busy".to_string();
-                }
-            } else {
-                outcome.source = "sync_missing".to_string();
-            }
-        } else {
-            outcome.source = "session_busy".to_string();
-        }
-    }
-
-    outcome
-}
 
 const PENDING_SIGN_CONTEXT_TTL_MS: u64 = 10 * 60 * 1000;
 const PENDING_SIGN_CONTEXT_MAX_ENTRIES: usize = 128;
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-struct PendingSignNoteId {
-    note_type: u8,
-    txid_hex: String,
-    output_index: u32,
-    key_id: Option<i64>,
-}
-
-#[derive(Debug, Clone)]
-struct PendingSignNoteSnapshot {
-    id: PendingSignNoteId,
-    sapling_position: Option<u64>,
-    orchard_position: Option<u64>,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct PendingSignContext {
     wallet_id: WalletId,
     required_total: u64,
     created_at_ms: u64,
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
-    notes: Vec<PendingSignNoteSnapshot>,
+    selected_notes: Vec<pirate_core::selection::SelectableNote>,
 }
 
 lazy_static::lazy_static! {
@@ -5249,29 +4643,6 @@ fn normalize_pending_sign_filter_ids(ids: Option<&Vec<i64>>) -> Option<Vec<i64>>
         normalized.dedup();
         normalized
     })
-}
-
-fn pending_sign_note_id(note: &pirate_core::selection::SelectableNote) -> PendingSignNoteId {
-    let note_type = match note.note_type {
-        pirate_core::selection::NoteType::Sapling => 0,
-        pirate_core::selection::NoteType::Orchard => 1,
-    };
-    PendingSignNoteId {
-        note_type,
-        txid_hex: hex::encode(&note.txid),
-        output_index: note.output_index,
-        key_id: note.key_id,
-    }
-}
-
-fn pending_sign_note_snapshot(
-    note: &pirate_core::selection::SelectableNote,
-) -> PendingSignNoteSnapshot {
-    PendingSignNoteSnapshot {
-        id: pending_sign_note_id(note),
-        sapling_position: note.sapling_position,
-        orchard_position: note.orchard_position,
-    }
 }
 
 fn store_pending_sign_context(pending_id: &str, context: PendingSignContext) {
@@ -5293,7 +4664,7 @@ fn store_pending_sign_context(pending_id: &str, context: PendingSignContext) {
     }
 }
 
-fn load_pending_sign_context(
+fn take_pending_sign_context(
     pending_id: &str,
     wallet_id: &WalletId,
     required_total: u64,
@@ -5303,8 +4674,11 @@ fn load_pending_sign_context(
     let now = unix_timestamp_millis();
     let expected_key_ids = normalize_pending_sign_filter_ids(key_ids_filter);
     let expected_address_ids = normalize_pending_sign_filter_ids(address_ids_filter);
-    let cache = PENDING_SIGN_CONTEXTS.read();
-    let ctx = cache.get(pending_id)?;
+    let mut cache = PENDING_SIGN_CONTEXTS.write();
+    cache.retain(|_, existing| {
+        now.saturating_sub(existing.created_at_ms) <= PENDING_SIGN_CONTEXT_TTL_MS
+    });
+    let ctx = cache.remove(pending_id)?;
     if now.saturating_sub(ctx.created_at_ms) > PENDING_SIGN_CONTEXT_TTL_MS {
         return None;
     }
@@ -5320,57 +4694,139 @@ fn load_pending_sign_context(
     if ctx.address_ids_filter != expected_address_ids {
         return None;
     }
-    Some(ctx.clone())
+    Some(ctx)
 }
 
 fn clear_pending_sign_context(pending_id: &str) {
     PENDING_SIGN_CONTEXTS.write().remove(pending_id);
 }
 
-fn apply_pending_sign_context(
-    selectable_notes: Vec<pirate_core::selection::SelectableNote>,
-    context: &PendingSignContext,
-) -> (
-    Vec<pirate_core::selection::SelectableNote>,
-    usize,
-    usize,
-    bool,
-) {
-    let snapshot_count = context.notes.len();
-    if snapshot_count == 0 {
-        return (selectable_notes, 0, 0, false);
+/// Context stored at sign-time and consumed at broadcast-time to mark spent notes.
+///
+/// Spent notes are captured at sign-time. We defer DB marking to broadcast
+/// success to avoid phantom spends on user-cancelled sends, but must mark them
+/// once the node accepts the transaction.
+#[derive(Debug)]
+struct BroadcastContext {
+    wallet_id: WalletId,
+    account_id: i64,
+    spent_nullifiers: Vec<Vec<u8>>,
+    change_amount: u64,
+    created_at_ms: u64,
+}
+
+/// Pending change from a broadcast TX whose change note hasn't been mined yet.
+/// Keeps balance from dropping to zero between broadcast and sync detection.
+#[derive(Debug, Clone)]
+struct PendingChangeEntry {
+    txid: String,
+    change_amount: u64,
+    broadcast_at_ms: u64,
+}
+
+const PENDING_CHANGE_TTL_MS: u64 = 30 * 60 * 1000;
+
+lazy_static::lazy_static! {
+    static ref PENDING_CHANGES: RwLock<HashMap<WalletId, Vec<PendingChangeEntry>>> =
+        RwLock::new(HashMap::new());
+}
+
+fn normalize_txid_hex(txid: &str) -> Option<String> {
+    let normalized = txid.trim().to_ascii_lowercase();
+    if normalized.len() == 64 && normalized.chars().all(|c| c.is_ascii_hexdigit()) {
+        Some(normalized)
+    } else {
+        None
     }
+}
 
-    let snapshot_by_id: HashMap<PendingSignNoteId, &PendingSignNoteSnapshot> = context
-        .notes
-        .iter()
-        .map(|snapshot| (snapshot.id.clone(), snapshot))
-        .collect();
-
-    let matched_count = selectable_notes
-        .iter()
-        .filter(|note| snapshot_by_id.contains_key(&pending_sign_note_id(note)))
-        .count();
-
-    if matched_count != snapshot_count {
-        return (selectable_notes, matched_count, snapshot_count, false);
+fn txid_hex_variants_from_bytes(txid_bytes: &[u8]) -> Vec<String> {
+    if txid_bytes.is_empty() {
+        return Vec::new();
     }
-
-    let mut prepared_notes = Vec::with_capacity(snapshot_count);
-    for mut note in selectable_notes {
-        let note_id = pending_sign_note_id(&note);
-        if let Some(snapshot) = snapshot_by_id.get(&note_id) {
-            if snapshot.sapling_position.is_some() {
-                note.sapling_position = snapshot.sapling_position;
-            }
-            if snapshot.orchard_position.is_some() {
-                note.orchard_position = snapshot.orchard_position;
-            }
-            prepared_notes.push(note);
-        }
+    let direct = hex::encode(txid_bytes);
+    if txid_bytes.len() != 32 {
+        return vec![direct];
     }
+    let mut reversed = txid_bytes.to_vec();
+    reversed.reverse();
+    let reversed_hex = hex::encode(reversed);
+    if reversed_hex == direct {
+        vec![direct]
+    } else {
+        vec![direct, reversed_hex]
+    }
+}
 
-    (prepared_notes, matched_count, snapshot_count, true)
+fn add_pending_change(wallet_id: &WalletId, txid: &str, change_amount: u64) {
+    if change_amount == 0 {
+        return;
+    }
+    let Some(txid) = normalize_txid_hex(txid) else {
+        return;
+    };
+    let now = unix_timestamp_millis();
+    let mut cache = PENDING_CHANGES.write();
+    let entries = cache.entry(wallet_id.clone()).or_default();
+    entries.retain(|e| now.saturating_sub(e.broadcast_at_ms) <= PENDING_CHANGE_TTL_MS);
+    if let Some(existing) = entries.iter_mut().find(|e| e.txid == txid) {
+        existing.change_amount = change_amount;
+        existing.broadcast_at_ms = now;
+        return;
+    }
+    entries.push(PendingChangeEntry {
+        txid,
+        change_amount,
+        broadcast_at_ms: now,
+    });
+}
+
+fn resolve_pending_change(wallet_id: &WalletId, known_txids: &HashSet<String>) -> u64 {
+    let now = unix_timestamp_millis();
+    let mut cache = PENDING_CHANGES.write();
+    let Some(entries) = cache.get_mut(wallet_id) else {
+        return 0;
+    };
+    entries.retain(|e| {
+        now.saturating_sub(e.broadcast_at_ms) <= PENDING_CHANGE_TTL_MS
+            && !known_txids.contains(&e.txid)
+    });
+    let total: u64 = entries.iter().map(|e| e.change_amount).sum();
+    if entries.is_empty() {
+        cache.remove(wallet_id);
+    }
+    total
+}
+
+const BROADCAST_CONTEXT_TTL_MS: u64 = 30 * 60 * 1000;
+const BROADCAST_CONTEXT_MAX_ENTRIES: usize = 64;
+
+lazy_static::lazy_static! {
+    static ref BROADCAST_CONTEXTS: RwLock<HashMap<String, BroadcastContext>> =
+        RwLock::new(HashMap::new());
+}
+
+fn store_broadcast_context(txid: &str, context: BroadcastContext) {
+    let now = unix_timestamp_millis();
+    let mut cache = BROADCAST_CONTEXTS.write();
+    cache.retain(|_, existing| {
+        now.saturating_sub(existing.created_at_ms) <= BROADCAST_CONTEXT_TTL_MS
+    });
+    cache.insert(txid.to_string(), context);
+    while cache.len() > BROADCAST_CONTEXT_MAX_ENTRIES {
+        let Some(oldest_key) = cache
+            .iter()
+            .min_by_key(|(_, ctx)| ctx.created_at_ms)
+            .map(|(key, _)| key.clone())
+        else {
+            break;
+        };
+        cache.remove(&oldest_key);
+    }
+}
+
+fn take_broadcast_context(txid: &str) -> Option<BroadcastContext> {
+    BROADCAST_CONTEXTS.write().remove(txid)
 }
 
 /// Build transaction with note selection, fee calculation, and change
@@ -5497,6 +4953,17 @@ fn build_tx_internal(
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
+    let spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
+    let spendability_storage = SpendabilityStateStorage::new(db);
+    let (computed_target_height, computed_anchor_height) = match spendability_storage
+        .get_target_and_anchor_heights_for_account(
+            SPENDABILITY_MIN_CONFIRMATIONS,
+            secret.account_id,
+        )? {
+        Some(heights) => heights,
+        None => return Err(anyhow!("Anchor height unavailable for spend selection")),
+    };
+    let anchor_height = computed_anchor_height.max(1);
     let resolved_key_id = resolve_spend_key_id(
         &repo,
         secret.account_id,
@@ -5511,7 +4978,7 @@ fn build_tx_internal(
                 &repo,
                 secret.account_id,
                 required_total,
-                ensure_primary_account_key(&repo, &wallet_id, &secret).ok(),
+                anchor_height,
             )?,
         };
 
@@ -5526,269 +4993,15 @@ fn build_tx_internal(
         }
     }
 
-    let mut selectable_notes_raw = repo.get_unspent_selectable_notes_filtered(
+    let selectable_notes_raw = repo.get_unspent_selectable_notes_at_anchor_filtered(
         secret.account_id,
+        anchor_height,
+        SPENDABILITY_MIN_CONFIRMATIONS,
         effective_key_ids_filter.clone(),
         address_ids_filter.clone(),
     )?;
-    let raw_available_balance: u64 = selectable_notes_raw.iter().map(|note| note.value).sum();
-    let notes_for_initial_alignment = repo.get_unspent_selectable_notes_filtered(
-        secret.account_id,
-        effective_key_ids_filter.clone(),
-        address_ids_filter.clone(),
-    )?;
-    let (
-        aligned_after_sapling,
-        sapling_anchor_groups,
-        sapling_anchor_filtered,
-        sapling_anchor_chosen,
-    ) = align_sapling_anchor_group(notes_for_initial_alignment, required_total);
-    let (mut aligned_notes, orchard_anchor_groups, orchard_anchor_filtered, orchard_anchor_chosen) =
-        align_orchard_anchor_group(aligned_after_sapling, required_total);
-    if sapling_anchor_groups > 1 {
-        tracing::info!(
-            "Aligned Sapling anchors for build_tx wallet {} (groups={}, filtered={}, chosen={})",
-            wallet_id,
-            sapling_anchor_groups,
-            sapling_anchor_filtered,
-            sapling_anchor_chosen.as_deref().unwrap_or("unknown")
-        );
-    }
-    if orchard_anchor_groups > 1 {
-        tracing::info!(
-            "Aligned Orchard anchors for build_tx wallet {} (groups={}, filtered={}, chosen={})",
-            wallet_id,
-            orchard_anchor_groups,
-            orchard_anchor_filtered,
-            orchard_anchor_chosen.as_deref().unwrap_or("unknown")
-        );
-    }
-    let mut aligned_available_balance: u64 = aligned_notes.iter().map(|note| note.value).sum();
-    if aligned_available_balance < required_total && raw_available_balance >= required_total {
-        let mut resume_sync_after_build = false;
-        let sync_was_running = is_sync_running(wallet_id.clone()).unwrap_or(false);
-        if sync_was_running {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_build_tx_sync_pause_start","timestamp":{},"location":"api.rs:build_tx_internal","message":"build_tx sync pause start","data":{{"wallet_id":"{}","reason":"anchor_alignment"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                    ts, wallet_id
-                );
-            }
-
-            let (cancel_ok, stopped) = run_on_runtime_blocking({
-                let wallet_id = wallet_id.clone();
-                move || async move {
-                    let cancel_ok = cancel_sync_internal(wallet_id.clone(), false).await.is_ok();
-                    let stopped =
-                        wait_for_sync_stop(&wallet_id, std::time::Duration::from_secs(20)).await;
-                    Ok((cancel_ok, stopped))
-                }
-            })
-            .unwrap_or((false, false));
-
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_build_tx_sync_pause_done","timestamp":{},"location":"api.rs:build_tx_internal","message":"build_tx sync pause done","data":{{"wallet_id":"{}","cancel_ok":{},"stopped":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                    ts, wallet_id, cancel_ok, stopped
-                );
-            }
-
-            if stopped {
-                resume_sync_after_build = true;
-            }
-        }
-
-        let _sync_resume_guard = SyncResumeGuard::new(wallet_id.clone(), resume_sync_after_build);
-        let mut refresh =
-            refresh_selectable_note_witnesses(&wallet_id, &mut selectable_notes_raw, true);
-        if refresh.sapling_requested == 0 && refresh.orchard_requested == 0 {
-            if let Ok(refreshed_positions) =
-                refresh_selectable_note_positions_from_db(&wallet_id, &mut selectable_notes_raw)
-            {
-                if refreshed_positions > 0 {
-                    refresh = refresh_selectable_note_witnesses(
-                        &wallet_id,
-                        &mut selectable_notes_raw,
-                        true,
-                    );
-                }
-            }
-        }
-        if is_guarded_witness_refresh_source(&refresh.source) {
-            let primed = prime_sync_engine_for_witness(&wallet_id);
-            if primed {
-                refresh =
-                    refresh_selectable_note_witnesses(&wallet_id, &mut selectable_notes_raw, true);
-            }
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_build_tx_witness_preflight","timestamp":{},"location":"api.rs:build_tx_internal","message":"build_tx witness preflight","data":{{"wallet_id":"{}","source":"{}","primed":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                    ts, wallet_id, refresh.source, primed
-                );
-            }
-        }
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_build_tx_witness_refresh_summary","timestamp":{},"location":"api.rs:build_tx_internal","message":"build_tx witness refresh summary","data":{{"wallet_id":"{}","source":"{}","sapling_req":{},"sapling_upd":{},"sapling_missing":{},"sapling_err":{},"orchard_req":{},"orchard_upd":{},"orchard_missing":{},"orchard_err":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts,
-                wallet_id,
-                refresh.source,
-                refresh.sapling_requested,
-                refresh.sapling_updated,
-                refresh.sapling_missing,
-                refresh.sapling_errors,
-                refresh.orchard_requested,
-                refresh.orchard_updated,
-                refresh.orchard_missing,
-                refresh.orchard_errors
-            );
-        }
-
-        if refresh.sapling_updated > 0 || refresh.orchard_updated > 0 {
-            let (
-                refreshed_after_sapling,
-                _refreshed_sapling_groups,
-                _refreshed_sapling_filtered,
-                _refreshed_sapling_chosen,
-            ) = align_sapling_anchor_group(selectable_notes_raw, required_total);
-            let (
-                refreshed_aligned_notes,
-                _refreshed_orchard_groups,
-                _refreshed_orchard_filtered,
-                _refreshed_orchard_chosen,
-            ) = align_orchard_anchor_group(refreshed_after_sapling, required_total);
-            let refreshed_aligned_available_balance: u64 =
-                refreshed_aligned_notes.iter().map(|note| note.value).sum();
-            if refreshed_aligned_available_balance > aligned_available_balance {
-                aligned_available_balance = refreshed_aligned_available_balance;
-                aligned_notes = refreshed_aligned_notes;
-                tracing::info!(
-                    "Build_tx aligned balance improved after witness refresh for wallet {} (required={}, aligned_balance={})",
-                    wallet_id,
-                    required_total,
-                    aligned_available_balance
-                );
-            }
-        }
-
-        // If only a subset of notes refreshed successfully, anchor fragmentation can
-        // become worse than the persisted pre-refresh state. Re-check that state once
-        // before failing with insufficient funds.
-        if aligned_available_balance < required_total && raw_available_balance >= required_total {
-            match repo.get_unspent_selectable_notes_filtered(
-                secret.account_id,
-                effective_key_ids_filter.clone(),
-                address_ids_filter.clone(),
-            ) {
-                Ok(selectable_notes_before_refresh) => {
-                    let (
-                        fallback_after_sapling,
-                        fallback_sapling_groups,
-                        fallback_sapling_filtered,
-                        _fallback_sapling_anchor,
-                    ) = align_sapling_anchor_group(selectable_notes_before_refresh, required_total);
-                    let (
-                        fallback_aligned_notes,
-                        fallback_orchard_groups,
-                        fallback_orchard_filtered,
-                        _fallback_orchard_anchor,
-                    ) = align_orchard_anchor_group(fallback_after_sapling, required_total);
-                    let fallback_balance: u64 =
-                        fallback_aligned_notes.iter().map(|note| note.value).sum();
-
-                    if fallback_balance >= required_total {
-                        aligned_available_balance = fallback_balance;
-                        aligned_notes = fallback_aligned_notes;
-                        tracing::info!(
-                            "Build_tx anchor fallback applied for wallet {} (required={}, balance={}, sapling_groups={}, sapling_filtered={}, orchard_groups={}, orchard_filtered={})",
-                            wallet_id,
-                            required_total,
-                            aligned_available_balance,
-                            fallback_sapling_groups,
-                            fallback_sapling_filtered,
-                            fallback_orchard_groups,
-                            fallback_orchard_filtered
-                        );
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Build_tx failed to load fallback selectable notes for wallet {}: {}",
-                        wallet_id,
-                        e
-                    );
-                }
-            }
-        }
-    }
-
-    let selectable_notes = aligned_notes;
-    let available_balance = aligned_available_balance;
-    if aligned_available_balance < required_total && raw_available_balance >= required_total {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_build_tx_anchor_alignment_required","timestamp":{},"location":"api.rs:build_tx_internal","message":"build_tx constrained by anchor alignment","data":{{"wallet_id":"{}","required_total":{},"aligned_balance":{},"raw_balance":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts, wallet_id, required_total, aligned_available_balance, raw_available_balance
-            );
-        }
-        tracing::warn!(
-            "Build_tx constrained by anchor alignment for wallet {} (required={}, aligned_balance={}, raw_balance={})",
-            wallet_id,
-            required_total,
-            aligned_available_balance,
-            raw_available_balance
-        );
-    }
+    let selectable_notes = selectable_notes_raw;
+    let available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
     let eligible_note_count = selectable_notes
         .iter()
         .filter(|note| note.auto_consolidation_eligible)
@@ -5816,19 +5029,14 @@ fn build_tx_internal(
     };
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_build_tx","timestamp":{},"location":"api.rs:1920","message":"build_tx notes","data":{{"wallet_id":"{}","account_id":{},"key_id":{},"address_id":{},"key_ids_count":{},"address_ids_count":{},"selectable_notes":{},"available_balance":{},"total_amount":{},"fee":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                r#"{{"id":"log_build_tx","timestamp":{},"location":"api.rs:1920","message":"build_tx notes","data":{{"wallet_id":"{}","account_id":{},"key_id":{},"address_id":{},"key_ids_count":{},"address_ids_count":{},"selectable_notes":{},"available_balance":{},"total_amount":{},"fee":{},"anchor_height":{},"validated_anchor_height":{},"computed_target_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 ts,
                 wallet_id,
                 secret.account_id,
@@ -5839,13 +5047,16 @@ fn build_tx_internal(
                 selectable_notes.len(),
                 available_balance,
                 total_amount,
-                fee
+                fee,
+                anchor_height,
+                spendability.validated_anchor_height,
+                computed_target_height
             );
-        }
+        });
     }
     // #endregion
 
-    // Check if we have enough funds
+    // Check if we have enough anchor-eligible funds.
     if required_total > available_balance {
         return Err(anyhow!(
             "Insufficient funds: need {} arrrtoshis, have {} arrrtoshis",
@@ -5853,11 +5064,6 @@ fn build_tx_internal(
             available_balance
         ));
     }
-
-    let pending_sign_context_notes = selectable_notes
-        .iter()
-        .map(pending_sign_note_snapshot)
-        .collect::<Vec<_>>();
 
     let selector = NoteSelector::new(SelectionStrategy::SmallestFirst);
     let selection = if auto_consolidation_extra_limit > 0 {
@@ -5874,7 +5080,13 @@ fn build_tx_internal(
             .select_notes(selectable_notes, total_amount, fee)
             .map_err(|e| anyhow!("Note selection failed: {}", e))?
     };
-    let effective = apply_dust_policy_add_to_fee(fee, selection.change)
+    let pirate_core::selection::SelectionResult {
+        notes: selected_notes,
+        total_value: selected_input_total,
+        change: selected_change,
+    } = selection;
+
+    let effective = apply_dust_policy_add_to_fee(fee, selected_change)
         .map_err(|e| anyhow!("Dust policy resolution failed: {}", e))?;
     let effective_fee = effective.fee;
     let change = effective.change;
@@ -5903,8 +5115,8 @@ fn build_tx_internal(
         total_amount,
         fee: effective_fee,
         change,
-        input_total: selection.total_value,
-        num_inputs: selection.notes.len() as u32,
+        input_total: selected_input_total,
+        num_inputs: selected_notes.len() as u32,
         expiry_height,
         created_at: chrono::Utc::now().timestamp(),
     };
@@ -5917,7 +5129,7 @@ fn build_tx_internal(
             created_at_ms: unix_timestamp_millis(),
             key_ids_filter: normalize_pending_sign_filter_ids(effective_key_ids_filter.as_ref()),
             address_ids_filter: normalize_pending_sign_filter_ids(address_ids_filter.as_ref()),
-            notes: pending_sign_context_notes,
+            selected_notes,
         },
     );
 
@@ -5979,11 +5191,19 @@ pub fn build_consolidation_tx(
     fee_opt: Option<u64>,
 ) -> Result<PendingTx> {
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
+    let anchor_height = spendability.anchor_height.max(1);
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let selectable_notes =
-        repo.get_unspent_selectable_notes_filtered(secret.account_id, Some(vec![key_id]), None)?;
+    let selectable_notes_raw = repo.get_unspent_selectable_notes_at_anchor_filtered(
+        secret.account_id,
+        anchor_height,
+        SPENDABILITY_MIN_CONFIRMATIONS,
+        Some(vec![key_id]),
+        None,
+    )?;
+    let selectable_notes = selectable_notes_raw;
     let available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
 
     if available_balance == 0 {
@@ -6026,6 +5246,8 @@ pub fn build_sweep_tx(
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<PendingTx> {
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+    let spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
+    let anchor_height = spendability.anchor_height.max(1);
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
@@ -6039,11 +5261,14 @@ pub fn build_sweep_tx(
         address_ids_filter.as_deref(),
     )?;
 
-    let selectable_notes = repo.get_unspent_selectable_notes_filtered(
+    let selectable_notes_raw = repo.get_unspent_selectable_notes_at_anchor_filtered(
         secret.account_id,
+        anchor_height,
+        SPENDABILITY_MIN_CONFIRMATIONS,
         key_ids_filter.clone(),
         address_ids_filter.clone(),
     )?;
+    let selectable_notes = selectable_notes_raw;
     let available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
 
     if available_balance == 0 {
@@ -6082,310 +5307,6 @@ pub fn build_sweep_tx(
     )
 }
 
-fn sapling_anchor_for_selectable_note(
-    note: &pirate_core::selection::SelectableNote,
-) -> Option<[u8; 32]> {
-    if note.note_type != pirate_core::selection::NoteType::Sapling {
-        return None;
-    }
-    let merkle_path = note.merkle_path.as_ref()?;
-
-    // Prefer recomputing from persisted commitment bytes to avoid edge cases
-    // where reconstructed note data is present but diverges from the canonical
-    // on-chain commitment leaf for anchor grouping.
-    let leaf = if note.commitment.len() == 32 {
-        let mut cmu_bytes = [0u8; 32];
-        cmu_bytes.copy_from_slice(&note.commitment[..32]);
-        if let Some(cmu) = Option::<SaplingExtractedNoteCommitment>::from(
-            SaplingExtractedNoteCommitment::from_bytes(&cmu_bytes),
-        ) {
-            zcash_primitives::sapling::Node::from_cmu(&cmu)
-        } else {
-            let sapling_note = note.note.as_ref()?;
-            zcash_primitives::sapling::Node::from_cmu(&sapling_note.cmu())
-        }
-    } else {
-        let sapling_note = note.note.as_ref()?;
-        zcash_primitives::sapling::Node::from_cmu(&sapling_note.cmu())
-    };
-
-    Some(merkle_path.root(leaf).to_bytes())
-}
-
-fn orchard_anchor_from_merkle_path(
-    note: &pirate_core::selection::SelectableNote,
-    merkle_path: &orchard::tree::MerklePath,
-) -> Option<[u8; 32]> {
-    if note.note_type != pirate_core::selection::NoteType::Orchard {
-        return None;
-    }
-    if note.commitment.len() == 32 {
-        let mut cmx_bytes = [0u8; 32];
-        cmx_bytes.copy_from_slice(&note.commitment[..32]);
-        if let Some(cmx) = Option::from(OrchardExtractedNoteCommitment::from_bytes(&cmx_bytes)) {
-            return Some(merkle_path.root(cmx).to_bytes());
-        }
-    }
-    let orchard_note = note.orchard_note.as_ref()?;
-    Some(
-        merkle_path
-            .root(OrchardExtractedNoteCommitment::from(
-                orchard_note.commitment(),
-            ))
-            .to_bytes(),
-    )
-}
-
-fn align_sapling_anchor_group(
-    notes: Vec<pirate_core::selection::SelectableNote>,
-    required_total: u64,
-) -> (
-    Vec<pirate_core::selection::SelectableNote>,
-    usize,
-    usize,
-    Option<String>,
-) {
-    let mut anchor_stats: HashMap<[u8; 32], (u128, usize, u64)> = HashMap::new();
-    for note in &notes {
-        if let Some(anchor) = sapling_anchor_for_selectable_note(note) {
-            let entry = anchor_stats.entry(anchor).or_insert((0u128, 0usize, 0u64));
-            entry.0 = entry.0.saturating_add(note.value as u128);
-            entry.1 += 1;
-            entry.2 = entry.2.max(note.height);
-        }
-    }
-
-    if anchor_stats.len() <= 1 {
-        let chosen = anchor_stats.keys().next().copied().map(hex::encode);
-        return (notes, anchor_stats.len(), 0, chosen);
-    }
-
-    let mut sufficient_choice: Option<([u8; 32], u128, u64, usize)> = None;
-    let mut insufficient_choice: Option<([u8; 32], u128, u64, usize)> = None;
-    for (anchor, (total, count, max_height)) in &anchor_stats {
-        if *total >= required_total as u128 {
-            let replace = match sufficient_choice {
-                Some((_, best_total, best_height, best_count)) => {
-                    (*total < best_total)
-                        || (*total == best_total && *max_height > best_height)
-                        || (*total == best_total
-                            && *max_height == best_height
-                            && *count > best_count)
-                }
-                None => true,
-            };
-            if replace {
-                sufficient_choice = Some((*anchor, *total, *max_height, *count));
-            }
-        } else {
-            let replace = match insufficient_choice {
-                Some((_, best_total, best_height, best_count)) => {
-                    (*total > best_total)
-                        || (*total == best_total && *max_height > best_height)
-                        || (*total == best_total
-                            && *max_height == best_height
-                            && *count > best_count)
-                }
-                None => true,
-            };
-            if replace {
-                insufficient_choice = Some((*anchor, *total, *max_height, *count));
-            }
-        }
-    }
-
-    let chosen_anchor = sufficient_choice
-        .map(|(anchor, _, _, _)| anchor)
-        .or_else(|| insufficient_choice.map(|(anchor, _, _, _)| anchor));
-    let Some(chosen_anchor) = chosen_anchor else {
-        return (notes, anchor_stats.len(), 0, None);
-    };
-
-    let mut filtered = 0usize;
-    let mut aligned_notes = Vec::with_capacity(notes.len());
-    for note in notes {
-        if note.note_type != pirate_core::selection::NoteType::Sapling {
-            aligned_notes.push(note);
-            continue;
-        }
-        let keep = sapling_anchor_for_selectable_note(&note)
-            .map(|anchor| anchor == chosen_anchor)
-            .unwrap_or(false);
-        if keep {
-            aligned_notes.push(note);
-        } else {
-            filtered += 1;
-        }
-    }
-
-    (
-        aligned_notes,
-        anchor_stats.len(),
-        filtered,
-        Some(hex::encode(chosen_anchor)),
-    )
-}
-
-fn orchard_anchor_for_selectable_note(
-    note: &pirate_core::selection::SelectableNote,
-) -> Option<[u8; 32]> {
-    if note.note_type != pirate_core::selection::NoteType::Orchard {
-        return None;
-    }
-
-    // Prefer recomputing from witness when available to avoid stale persisted anchors.
-    if let Some(merkle_path) = note.orchard_merkle_path.as_ref() {
-        if let Some(anchor) = orchard_anchor_from_merkle_path(note, merkle_path) {
-            return Some(anchor);
-        }
-    }
-
-    note.orchard_anchor.as_ref().map(|anchor| anchor.to_bytes())
-}
-
-fn align_orchard_anchor_group(
-    notes: Vec<pirate_core::selection::SelectableNote>,
-    required_total: u64,
-) -> (
-    Vec<pirate_core::selection::SelectableNote>,
-    usize,
-    usize,
-    Option<String>,
-) {
-    let mut anchor_stats: HashMap<[u8; 32], (u128, usize, u64)> = HashMap::new();
-    for note in &notes {
-        if let Some(anchor) = orchard_anchor_for_selectable_note(note) {
-            let entry = anchor_stats.entry(anchor).or_insert((0u128, 0usize, 0u64));
-            entry.0 = entry.0.saturating_add(note.value as u128);
-            entry.1 += 1;
-            entry.2 = entry.2.max(note.height);
-        }
-    }
-
-    if anchor_stats.len() <= 1 {
-        let chosen = anchor_stats.keys().next().copied().map(hex::encode);
-        return (notes, anchor_stats.len(), 0, chosen);
-    }
-
-    let mut sufficient_choice: Option<([u8; 32], u128, u64, usize)> = None;
-    let mut insufficient_choice: Option<([u8; 32], u128, u64, usize)> = None;
-    for (anchor, (total, count, max_height)) in &anchor_stats {
-        if *total >= required_total as u128 {
-            let replace = match sufficient_choice {
-                Some((_, best_total, best_height, best_count)) => {
-                    (*total < best_total)
-                        || (*total == best_total && *max_height > best_height)
-                        || (*total == best_total
-                            && *max_height == best_height
-                            && *count > best_count)
-                }
-                None => true,
-            };
-            if replace {
-                sufficient_choice = Some((*anchor, *total, *max_height, *count));
-            }
-        } else {
-            let replace = match insufficient_choice {
-                Some((_, best_total, best_height, best_count)) => {
-                    (*total > best_total)
-                        || (*total == best_total && *max_height > best_height)
-                        || (*total == best_total
-                            && *max_height == best_height
-                            && *count > best_count)
-                }
-                None => true,
-            };
-            if replace {
-                insufficient_choice = Some((*anchor, *total, *max_height, *count));
-            }
-        }
-    }
-
-    let chosen_anchor = sufficient_choice
-        .map(|(anchor, _, _, _)| anchor)
-        .or_else(|| insufficient_choice.map(|(anchor, _, _, _)| anchor));
-    let Some(chosen_anchor) = chosen_anchor else {
-        return (notes, anchor_stats.len(), 0, None);
-    };
-
-    let mut filtered = 0usize;
-    let mut aligned_notes = Vec::with_capacity(notes.len());
-    for note in notes {
-        if note.note_type != pirate_core::selection::NoteType::Orchard {
-            aligned_notes.push(note);
-            continue;
-        }
-        let keep = orchard_anchor_for_selectable_note(&note)
-            .map(|anchor| anchor == chosen_anchor)
-            .unwrap_or(false);
-        if keep {
-            aligned_notes.push(note);
-        } else {
-            filtered += 1;
-        }
-    }
-
-    (
-        aligned_notes,
-        anchor_stats.len(),
-        filtered,
-        Some(hex::encode(chosen_anchor)),
-    )
-}
-
-fn resume_background_sync_after_sign(wallet_id: WalletId) {
-    std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build();
-        match runtime {
-            Ok(runtime) => {
-                runtime.block_on(async move {
-                    if let Err(e) =
-                        start_background_sync_inner(wallet_id.clone(), Some("compact".to_string()))
-                            .await
-                    {
-                        tracing::warn!(
-                            "Failed to resume background sync after signing for {}: {}",
-                            wallet_id,
-                            e
-                        );
-                    }
-                });
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to build runtime to resume background sync for {}: {}",
-                    wallet_id,
-                    e
-                );
-            }
-        }
-    });
-}
-
-struct SyncResumeGuard {
-    wallet_id: WalletId,
-    should_resume: bool,
-}
-
-impl SyncResumeGuard {
-    fn new(wallet_id: WalletId, should_resume: bool) -> Self {
-        Self {
-            wallet_id,
-            should_resume,
-        }
-    }
-}
-
-impl Drop for SyncResumeGuard {
-    fn drop(&mut self) {
-        if self.should_resume {
-            resume_background_sync_after_sign(self.wallet_id.clone());
-        }
-    }
-}
-
 /// Sign pending transaction
 ///
 /// Loads wallet from secure storage, performs note selection,
@@ -6402,12 +5323,7 @@ fn sign_tx_internal(
         wallet_id
     );
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -6422,16 +5338,11 @@ fn sign_tx_internal(
             pending.total_amount,
             pending.fee
         );
-    }
+    });
     // #endregion
 
     let log_step = |step: &str, detail: &str| {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -6441,7 +5352,7 @@ fn sign_tx_internal(
                 r#"{{"id":"log_sign_tx_step","timestamp":{},"location":"api.rs:2035","message":"sign_tx step","data":{{"wallet_id":"{}","step":"{}","detail":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                 ts, wallet_id, step, detail
             );
-        }
+        });
     };
     let mut pending = pending;
     let normalized = apply_dust_policy_add_to_fee(pending.fee, pending.change)
@@ -6461,56 +5372,6 @@ fn sign_tx_internal(
         pending.fee = normalized.fee;
         pending.change = normalized.change;
     }
-
-    // Mark signing critical section to suppress auto-recovery restarts that can
-    // race transport/sync state while proving a transaction.
-    let _signing_guard = mark_signing_active(&wallet_id);
-
-    // Quiesce background sync before signing.
-    // This uses a fast stop path (task abort + cancel flag) so "Send" is snappy.
-    let mut resume_sync_after_sign = false;
-    let mut sync_pause_elapsed_ms: u128 = 0;
-    let mut sync_engine_idle_before_sign = true;
-    let sync_was_running = is_sync_running(wallet_id.clone()).unwrap_or(false);
-    if sync_was_running {
-        let pause_started_at = std::time::Instant::now();
-        log_step("sync_quiesce_start", "reason=sign_tx");
-        let (was_running, task_aborted, cancel_requested) = run_on_runtime_blocking({
-            let wallet_id = wallet_id.clone();
-            move || async move { quiesce_sync_for_sign(wallet_id.clone()).await }
-        })
-        .unwrap_or_else(|e| {
-            tracing::warn!(
-                "Failed to quiesce sync before signing for {}: {}",
-                wallet_id,
-                e
-            );
-            (false, false, false)
-        });
-        sync_pause_elapsed_ms = pause_started_at.elapsed().as_millis();
-        sync_engine_idle_before_sign = run_on_runtime_blocking({
-            let wallet_id = wallet_id.clone();
-            move || async move {
-                Ok(wait_for_sync_engine_idle(&wallet_id, SIGN_SYNC_ENGINE_IDLE_TIMEOUT).await)
-            }
-        })
-        .unwrap_or(false);
-        log_step(
-            "sync_quiesce_done",
-            &format!(
-                "was_running={},task_aborted={},cancel_requested={},engine_idle={},elapsed_ms={}",
-                was_running,
-                task_aborted,
-                cancel_requested,
-                sync_engine_idle_before_sign,
-                sync_pause_elapsed_ms
-            ),
-        );
-        if was_running {
-            resume_sync_after_sign = true;
-        }
-    }
-    let _sync_resume_guard = SyncResumeGuard::new(wallet_id.clone(), resume_sync_after_sign);
 
     // Open encrypted wallet DB and load wallet secret + notes
     log_step("open_db_start", "");
@@ -6532,6 +5393,21 @@ fn sign_tx_internal(
         .total_amount
         .checked_add(pending.fee)
         .ok_or_else(|| anyhow!("Amount + fee overflow"))?;
+    let spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
+    let anchor_height = spendability.anchor_height.max(1);
+    log_step(
+        "spendability_status",
+        &format!(
+            "spendable={},rescan_required={},target_height={},anchor_height={},validated_anchor_height={},repair_queued={},reason_code={}",
+            spendability.spendable,
+            spendability.rescan_required,
+            spendability.target_height,
+            spendability.anchor_height,
+            spendability.validated_anchor_height,
+            spendability.repair_queued,
+            spendability.reason_code
+        ),
+    );
     let mut signing_key_id = resolve_spend_key_id(
         &repo,
         secret.account_id,
@@ -6545,7 +5421,7 @@ fn sign_tx_internal(
                 &repo,
                 secret.account_id,
                 required_total,
-                ensure_primary_account_key(&repo, &wallet_id, &secret).ok(),
+                anchor_height,
             )?;
         }
         if let Some(key_id) = signing_key_id {
@@ -6590,7 +5466,7 @@ fn sign_tx_internal(
         };
 
     // Build spend-key maps for per-note signing across all modes.
-    // This mirrors upstream behavior: each selected note should use its own
+    // Each selected note should use its own
     // spend key when key_id is available, with the selected/default key as fallback.
     let mut account_keys_by_id: HashMap<i64, AccountKey> = HashMap::new();
     let mut sapling_spend_keys_by_id: HashMap<i64, ExtendedSpendingKey> = HashMap::new();
@@ -6617,364 +5493,33 @@ fn sign_tx_internal(
         }
     }
 
-    // Load selectable notes for this account
-    log_step("load_selectable_notes_start", "");
-    let mut selectable_notes = repo
-        .get_unspent_selectable_notes_filtered(
-            secret.account_id,
-            effective_key_ids_filter.clone(),
-            address_ids_filter.clone(),
-        )
-        .map_err(|e| {
-            log_step("load_selectable_notes_error", &format!("{:?}", e));
-            e
-        })?;
-    log_step(
-        "load_selectable_notes_ok",
-        &format!("notes={}", selectable_notes.len()),
-    );
-
-    let mut used_pending_context = false;
-    if let Some(context) = load_pending_sign_context(
+    // Prefer build-time-selected notes with witness material from pending context.
+    // This keeps sign flow strict and deterministic (no send-time hydration).
+    let mut selectable_notes = if let Some(context) = take_pending_sign_context(
         &pending.id,
         &wallet_id,
         required_total,
         effective_key_ids_filter.as_ref(),
         address_ids_filter.as_ref(),
     ) {
-        let (context_notes, matched_count, snapshot_count, applied) =
-            apply_pending_sign_context(selectable_notes, &context);
-        selectable_notes = context_notes;
-        if applied {
-            used_pending_context = true;
-            log_step(
-                "pending_context_applied",
-                &format!(
-                    "matched_notes={},snapshot_notes={}",
-                    matched_count, snapshot_count
-                ),
-            );
-        } else {
-            log_step(
-                "pending_context_miss",
-                &format!(
-                    "matched_notes={},snapshot_notes={}",
-                    matched_count, snapshot_count
-                ),
-            );
-        }
+        log_step(
+            "pending_context_applied",
+            &format!("selected_notes={}", context.selected_notes.len()),
+        );
+        context.selected_notes
     } else {
-        log_step("pending_context_miss", "reason=not_found_or_stale");
-    }
-
-    // Pre-proof integrity hardening:
-    // 1) Ensure selected Sapling note payload still matches its stored commitment.
-    // 2) Rebind Sapling note key_id via (nullifier, position) when metadata is stale.
-    let mut sapling_commitment_mismatch = 0usize;
-    let mut sapling_key_rebound = 0usize;
-    let mut sapling_key_unresolved = 0usize;
-    let mut orchard_commitment_mismatch = 0usize;
-    let mut orchard_key_rebound = 0usize;
-    let mut orchard_key_unresolved = 0usize;
-    for (idx, note) in selectable_notes.iter_mut().enumerate() {
-        match note.note_type {
-            pirate_core::selection::NoteType::Sapling => {
-                if let Some(matches) = sapling_note_commitment_matches(note) {
-                    if !matches {
-                        sapling_commitment_mismatch += 1;
-                        log_step(
-                            "sapling_note_commitment_mismatch",
-                            &format!(
-                                "note_idx={},key_id={:?},height={},output_index={},txid_prefix={}",
-                                idx,
-                                note.key_id,
-                                note.height,
-                                note.output_index,
-                                hex::encode(&note.txid[..note.txid.len().min(4)])
-                            ),
-                        );
-                    }
-                }
-
-                if let Some(resolved_key_id) =
-                    resolve_sapling_key_id_for_note(note, &sapling_spend_keys_by_id)
-                {
-                    if note.key_id != Some(resolved_key_id) {
-                        log_step(
-                            "sapling_note_key_rebound",
-                            &format!(
-                                "note_idx={},from={:?},to={}",
-                                idx, note.key_id, resolved_key_id
-                            ),
-                        );
-                        note.key_id = Some(resolved_key_id);
-                        sapling_key_rebound += 1;
-                    }
-                } else if note.sapling_position.is_some() && note.nullifier.is_some() {
-                    sapling_key_unresolved += 1;
-                }
-            }
-            pirate_core::selection::NoteType::Orchard => {
-                if let Some(matches) = orchard_note_commitment_matches(note) {
-                    if !matches {
-                        orchard_commitment_mismatch += 1;
-                        log_step(
-                            "orchard_note_commitment_mismatch",
-                            &format!(
-                                "note_idx={},key_id={:?},height={},output_index={},txid_prefix={}",
-                                idx,
-                                note.key_id,
-                                note.height,
-                                note.output_index,
-                                hex::encode(&note.txid[..note.txid.len().min(4)])
-                            ),
-                        );
-                    }
-                }
-
-                if let Some(resolved_key_id) =
-                    resolve_orchard_key_id_for_note(note, &orchard_spend_keys_by_id)
-                {
-                    if note.key_id != Some(resolved_key_id) {
-                        log_step(
-                            "orchard_note_key_rebound",
-                            &format!(
-                                "note_idx={},from={:?},to={}",
-                                idx, note.key_id, resolved_key_id
-                            ),
-                        );
-                        note.key_id = Some(resolved_key_id);
-                        orchard_key_rebound += 1;
-                    }
-                } else if note.nullifier.is_some() {
-                    orchard_key_unresolved += 1;
-                }
-            }
-        }
-    }
-    log_step(
-        "sapling_note_integrity_summary",
-        &format!(
-            "commitment_mismatch={},key_rebound={},key_unresolved={}",
-            sapling_commitment_mismatch, sapling_key_rebound, sapling_key_unresolved
-        ),
-    );
-    log_step(
-        "orchard_note_integrity_summary",
-        &format!(
-            "commitment_mismatch={},key_rebound={},key_unresolved={}",
-            orchard_commitment_mismatch, orchard_key_rebound, orchard_key_unresolved
-        ),
-    );
-    if sapling_commitment_mismatch > 0 {
-        return Err(anyhow!(
-            "Detected inconsistent Sapling note data for selected inputs. Please run Rescan and retry."
-        ));
-    }
-    if orchard_commitment_mismatch > 0 {
-        return Err(anyhow!(
-            "Detected inconsistent Orchard note data for selected inputs. Please run Rescan and retry."
-        ));
-    }
-
-    // Send path should be near-instant and must not run witness refresh/repair.
-    // Witness maintenance belongs to the sync/idle pipeline; here we only validate
-    // that selected notes already have locally-available witness payloads.
-    let mut sapling_requested = 0usize;
-    let mut sapling_missing = 0usize;
-    let mut orchard_requested = 0usize;
-    let mut orchard_missing = 0usize;
-    for note in &selectable_notes {
-        match note.note_type {
-            pirate_core::selection::NoteType::Sapling => {
-                if note.sapling_position.is_some() {
-                    sapling_requested += 1;
-                    let missing = note.note.is_none()
-                        || note.merkle_path.is_none()
-                        || note.diversifier.is_none();
-                    if missing {
-                        sapling_missing += 1;
-                    }
-                }
-            }
-            pirate_core::selection::NoteType::Orchard => {
-                // Orchard spends require note + position + witness path.
-                // `nullifier` may be absent during partial metadata recovery,
-                // so do not gate readiness exclusively on it.
-                if note.orchard_position.is_some()
-                    || note.orchard_merkle_path.is_some()
-                    || note.orchard_note.is_some()
-                {
-                    orchard_requested += 1;
-                    let missing = note.orchard_note.is_none()
-                        || note.orchard_position.is_none()
-                        || note.orchard_merkle_path.is_none();
-                    if missing {
-                        orchard_missing += 1;
-                    }
-                }
-            }
-        }
-    }
-    log_step(
-        "witness_refresh_mode",
-        &format!(
-            "send_fast_path=true,used_pending_context={},pause_ms={},engine_idle={}",
-            used_pending_context, sync_pause_elapsed_ms, sync_engine_idle_before_sign
-        ),
-    );
-    log_step(
-        "witness_refresh_summary",
-        &format!(
-            "source={},sapling_req={},sapling_upd={},sapling_missing={},sapling_err={},orchard_req={},orchard_upd={},orchard_missing={},orchard_err={}",
-            "local_cached",
-            sapling_requested,
-            0,
-            sapling_missing,
-            0,
-            orchard_requested,
-            0,
-            orchard_missing,
-            0
-        ),
-    );
-
-    let witness_unavailable = sapling_missing > 0 || orchard_missing > 0;
-    if witness_unavailable {
         log_step(
-            "witness_refresh_sync_required",
-            &format!(
-                "source={},sapling_req={},sapling_missing={},sapling_err={},orchard_req={},orchard_missing={},orchard_err={}",
-                "local_cached",
-                sapling_requested,
-                sapling_missing,
-                0,
-                orchard_requested,
-                orchard_missing,
-                0
-            ),
+            "pending_context_miss",
+            "reason=not_found_or_stale_or_mismatch",
         );
+        // A stale/missing pending context is a user-recoverable error: the user
+        // just needs to rebuild the TX. Do NOT poison the wallet's global
+        // spendability state here — that would lock out ALL sends until the sync
+        // engine re-validates, which is disproportionate to a cache miss.
         return Err(anyhow!(
-            "Sync required: witness data for selected notes is not ready yet. Let wallet sync complete, then retry."
+            "Pending send context expired. Rebuild transaction and retry."
         ));
-    }
-
-    let raw_available_balance: u64 = selectable_notes.iter().map(|note| note.value).sum();
-    let raw_note_count = selectable_notes.len();
-
-    let (
-        aligned_after_sapling,
-        sapling_anchor_groups,
-        sapling_anchor_filtered,
-        sapling_anchor_chosen_hex,
-    ) = align_sapling_anchor_group(selectable_notes, required_total);
-    if sapling_anchor_groups > 1 {
-        let detail = format!(
-            "groups={},filtered={},required={},chosen={}",
-            sapling_anchor_groups,
-            sapling_anchor_filtered,
-            required_total,
-            sapling_anchor_chosen_hex.as_deref().unwrap_or("unknown"),
-        );
-        log_step("sapling_anchor_group_aligned", &detail);
-    }
-
-    // Align Orchard notes to a single anchor group, mirroring Sapling behavior.
-    let (
-        aligned_notes,
-        orchard_anchor_groups,
-        orchard_anchor_filtered,
-        mut orchard_anchor_chosen_hex,
-    ) = align_orchard_anchor_group(aligned_after_sapling, required_total);
-    if orchard_anchor_groups > 1 {
-        let detail = format!(
-            "groups={},filtered={},required={},chosen={}",
-            orchard_anchor_groups,
-            orchard_anchor_filtered,
-            required_total,
-            orchard_anchor_chosen_hex.as_deref().unwrap_or("unknown"),
-        );
-        log_step("orchard_anchor_group_aligned", &detail);
-    }
-
-    let mut aligned_available_balance: u64 = aligned_notes.iter().map(|note| note.value).sum();
-    let mut selectable_notes = aligned_notes;
-    if aligned_available_balance < required_total && raw_available_balance >= required_total {
-        log_step(
-            "anchor_alignment_required",
-            &format!(
-                "required={},aligned_balance={},raw_balance={},raw_notes={},sapling_groups={},sapling_filtered={},orchard_groups={},orchard_filtered={}",
-                required_total,
-                aligned_available_balance,
-                raw_available_balance,
-                raw_note_count,
-                sapling_anchor_groups,
-                sapling_anchor_filtered,
-                orchard_anchor_groups,
-                orchard_anchor_filtered
-            ),
-        );
-
-        // If witness refresh only updated a subset of notes, anchor fragmentation can
-        // become worse than the persisted pre-refresh state. Try that state once before
-        // failing so valid funds are not rejected as "insufficient".
-        match repo.get_unspent_selectable_notes_filtered(
-            secret.account_id,
-            effective_key_ids_filter.clone(),
-            address_ids_filter.clone(),
-        ) {
-            Ok(selectable_notes_before_refresh) => {
-                let (
-                    fallback_sapling,
-                    fallback_sapling_groups,
-                    fallback_sapling_filtered,
-                    fallback_sapling_anchor_hex,
-                ) = align_sapling_anchor_group(selectable_notes_before_refresh, required_total);
-                let (
-                    fallback_notes,
-                    fallback_orchard_groups,
-                    fallback_orchard_filtered,
-                    fallback_orchard_anchor_hex,
-                ) = align_orchard_anchor_group(fallback_sapling, required_total);
-                let fallback_balance: u64 = fallback_notes.iter().map(|note| note.value).sum();
-                log_step(
-                    "anchor_alignment_fallback_check",
-                    &format!(
-                        "required={},fallback_balance={},sapling_groups={},sapling_filtered={},orchard_groups={},orchard_filtered={}",
-                        required_total,
-                        fallback_balance,
-                        fallback_sapling_groups,
-                        fallback_sapling_filtered,
-                        fallback_orchard_groups,
-                        fallback_orchard_filtered
-                    ),
-                );
-
-                if fallback_balance >= required_total {
-                    selectable_notes = fallback_notes;
-                    aligned_available_balance = fallback_balance;
-                    orchard_anchor_chosen_hex = fallback_orchard_anchor_hex;
-                    log_step(
-                        "anchor_alignment_fallback_applied",
-                        &format!(
-                            "required={},balance={},notes={},sapling_groups={},sapling_filtered={},orchard_groups={},orchard_filtered={},sapling_anchor={}",
-                            required_total,
-                            aligned_available_balance,
-                            selectable_notes.len(),
-                            fallback_sapling_groups,
-                            fallback_sapling_filtered,
-                            fallback_orchard_groups,
-                            fallback_orchard_filtered,
-                            fallback_sapling_anchor_hex.as_deref().unwrap_or("unknown")
-                        ),
-                    );
-                }
-            }
-            Err(e) => {
-                log_step("anchor_alignment_fallback_load_error", &format!("{:?}", e));
-            }
-        }
-    }
+    };
 
     let mut forced_auto_consolidation_extra_limit = 0usize;
     if key_ids_filter.is_none() && address_ids_filter.is_none() && signing_key_id.is_none() {
@@ -7062,24 +5607,6 @@ fn sign_tx_internal(
     {
         log_step("orchard_extsk_missing", "");
         return Err(anyhow!("Orchard spending key missing for this key group"));
-    }
-
-    let orchard_anchor_from_notes = orchard_anchor_chosen_hex.as_deref().and_then(|hex_str| {
-        hex::decode(hex_str).ok().and_then(|bytes| {
-            if bytes.len() != 32 {
-                return None;
-            }
-            let mut anchor_bytes = [0u8; 32];
-            anchor_bytes.copy_from_slice(&bytes[..32]);
-            Option::from(orchard::tree::Anchor::from_bytes(anchor_bytes))
-        })
-    });
-    if let Some(chosen_hex) = orchard_anchor_chosen_hex.as_deref() {
-        log_step("orchard_anchor_from_notes_ok", chosen_hex);
-        log_step(
-            "orchard_anchor_from_notes_filtered",
-            &format!("notes={}", selectable_notes.len()),
-        );
     }
 
     let eligible_note_count = selectable_notes
@@ -7171,81 +5698,42 @@ fn sign_tx_internal(
     }
     let use_orchard_change = has_orchard_output || has_orchard_spends;
 
-    // Target height from sync_state
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(_db);
-    let sync_state = sync_storage.load_sync_state().map_err(|e| {
-        log_step("load_sync_state_error", &format!("{:?}", e));
-        e
-    })?;
-    let target_height = sync_state.local_height as u32;
+    if spendability.target_height == 0 {
+        return Err(anyhow!(
+            "{}: Spendability target height is not initialized yet.",
+            SPENDABILITY_REASON_ERR_SYNC_FINALIZING
+        ));
+    }
+    let target_height_u64 = spendability.target_height.max(1);
+    let target_height = u32::try_from(target_height_u64)
+        .map_err(|_| anyhow!("Target height {} exceeds u32 range", target_height_u64))?;
     log_step(
         "load_sync_state_ok",
-        &format!("target_height={}", target_height),
+        &format!(
+            "target_height={},anchor_height={},validated_anchor_height={}",
+            target_height, spendability.anchor_height, spendability.validated_anchor_height
+        ),
     );
 
-    // Send path should not block on network anchor fetches; use local/frontier state only.
-    let orchard_anchor_opt = if has_orchard_output || has_orchard_spends {
-        log_step("orchard_anchor_fetch_start", "");
-        let mut anchor_opt: Option<orchard::tree::Anchor> = None;
+    // For Orchard spends, builder derives anchor from the selected spend-note set.
+    let orchard_anchor_opt = if has_orchard_spends {
+        None
+    } else if has_orchard_output {
+        // Orchard outputs without Orchard spends still need a deterministic
+        // anchor sourced from persisted DB state at-or-below the selected anchor.
+        log_step("orchard_anchor_fetch_start", "outputs_only");
 
-        if let Some(anchor) = orchard_anchor_from_notes {
-            anchor_opt = Some(anchor);
-            log_step("orchard_anchor_from_notes_used", "");
-        }
-
-        let sessions = SYNC_SESSIONS.read();
-        if let Some(session_arc) = sessions.get(&wallet_id) {
-            if let Ok(session) = session_arc.try_lock() {
-                if let Some(ref sync) = session.sync {
-                    if let Ok(engine) = sync.try_lock() {
-                        if let Some(anchor_bytes) =
-                            futures::executor::block_on(engine.get_orchard_anchor())
-                        {
-                            anchor_opt = orchard::tree::Anchor::from_bytes(anchor_bytes).into();
-                            if anchor_opt.is_some() {
-                                log_step("orchard_anchor_frontier_ok", "");
-                            } else {
-                                log_step("orchard_anchor_frontier_none", "");
-                            }
-                        } else {
-                            log_step("orchard_anchor_frontier_none", "");
-                        }
-                    }
-                }
-            }
-        }
-        if anchor_opt.is_none() {
-            log_step("orchard_anchor_frontier_missing", "");
-        }
-
-        if anchor_opt.is_none() {
-            let snapshot_anchor = FrontierStorage::new(_db)
-                .load_last_snapshot()
-                .ok()
-                .flatten()
-                .and_then(|(_height, bytes)| decode_frontier_snapshot(&bytes).ok())
-                .and_then(|(_sapling, orchard)| {
-                    if orchard.is_empty() {
-                        None
-                    } else {
-                        let hex_str = hex::encode(orchard);
-                        orchard_anchor_from_frontier_hex(&hex_str).ok().flatten()
-                    }
-                });
-            if snapshot_anchor.is_some() {
-                anchor_opt = snapshot_anchor;
-                log_step("orchard_anchor_snapshot_ok", "");
-            } else {
-                log_step("orchard_anchor_snapshot_none", "");
-            }
-        }
+        let anchor_opt = repo
+            .resolve_orchard_anchor_from_db_state(anchor_height)
+            .map_err(|e| anyhow!("Failed to resolve Orchard anchor from DB state: {}", e))?;
 
         if anchor_opt.is_some() {
-            log_step("orchard_anchor_fetch_ok", "some");
-        }
-
-        if anchor_opt.is_none() {
-            log_step("orchard_anchor_sync_required", "missing_local_anchor");
+            log_step(
+                "orchard_anchor_fetch_ok",
+                &format!("anchor_height<={}", anchor_height),
+            );
+        } else {
+            log_step("orchard_anchor_sync_required", "missing_db_anchor_state");
             return Err(anyhow!(
                 "Sync required: Orchard anchor is not available locally yet. Let wallet sync complete, then retry."
             ));
@@ -7255,6 +5743,24 @@ fn sign_tx_internal(
     } else {
         None
     };
+
+    // Log the Orchard anchor we're expecting to commit to (when available).
+    let selected_orchard_anchor_hex = selectable_notes
+        .iter()
+        .find(|note| note.note_type == pirate_core::selection::NoteType::Orchard)
+        .and_then(|note| note.orchard_anchor)
+        .map(|anchor| anchor.to_bytes());
+    log_step(
+        "orchard_anchor_selected",
+        &format!(
+            "anchor_height={},has_orchard_spends={},has_orchard_output={},note_anchor={},provided_anchor={}",
+            anchor_height,
+            has_orchard_spends,
+            has_orchard_output,
+            encode_hex_opt(selected_orchard_anchor_hex),
+            encode_hex_opt(orchard_anchor_opt.map(|a| a.to_bytes())),
+        ),
+    );
 
     // Reuse one deterministic internal change address per key group.
     let change_diversifier_index =
@@ -7299,21 +5805,6 @@ fn sign_tx_internal(
         };
         let _ = repo.upsert_address(&address);
     }
-
-    // Diagnostic-only pre-build sync state snapshot.
-    // Do not gate send on sync engine lock availability; send path should rely on
-    // local witness readiness already validated above.
-    let pre_build_idle = run_on_runtime_blocking({
-        let wallet_id = wallet_id.clone();
-        move || async move {
-            Ok(wait_for_sync_engine_idle(&wallet_id, SIGN_SYNC_ENGINE_IDLE_TIMEOUT).await)
-        }
-    })
-    .unwrap_or(false);
-    log_step(
-        "pre_build_sync_barrier",
-        &format!("engine_idle={}", pre_build_idle),
-    );
 
     // Guard against signing with an incorrect fallback key when note key_id metadata
     // points to a key group that is unavailable in this wallet session.
@@ -7393,31 +5884,26 @@ fn sign_tx_internal(
     let signed_core = match build_rx.recv_timeout(build_timeout) {
         Ok(Ok(core)) => core,
         Ok(Err(e)) => {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            let err_text = format!("{}", e);
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis();
                 let _ = writeln!(
                     file,
-                    r#"{{"id":"log_sign_tx_error","timestamp":{},"location":"api.rs:2166","message":"build_and_sign failed","data":{{"wallet_id":"{}","error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    ts, wallet_id_for_log, e
+                    r#"{{"id":"log_sign_tx_error","timestamp":{},"location":"api.rs:2166","message":"build_and_sign failed","data":{{"wallet_id":"{}","error":{:?}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    ts, wallet_id_for_log, &err_text
                 );
-            }
+            });
+            // Build/sign errors (even anchor/witness related) are transient proving
+            // failures. Do NOT poison the wallet's global spendability state here.
+            // The user can retry immediately; if the anchor is genuinely stale the
+            // broadcast-time "unknown-anchor" handler will queue a targeted repair.
             return Err(anyhow!("Build/sign failed: {}", e));
         }
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -7427,16 +5913,11 @@ fn sign_tx_internal(
                     r#"{{"id":"log_sign_tx_error","timestamp":{},"location":"api.rs:2166","message":"build_and_sign timeout","data":{{"wallet_id":"{}","timeout_secs":120}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                     ts, wallet_id_for_log
                 );
-            }
+            });
             return Err(anyhow!("Build/sign timed out after 120s"));
         }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -7446,7 +5927,7 @@ fn sign_tx_internal(
                     r#"{{"id":"log_sign_tx_error","timestamp":{},"location":"api.rs:2166","message":"build_and_sign failed","data":{{"wallet_id":"{}","error":"channel disconnected"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                     ts, wallet_id_for_log
                 );
-            }
+            });
             return Err(anyhow!("Build/sign failed: channel disconnected"));
         }
     };
@@ -7456,13 +5937,21 @@ fn sign_tx_internal(
         signed_core.txid,
         signed_core.size
     );
+
+    let tx_sapling_anchor_hex =
+        encode_hex_opt(extract_sapling_anchor_from_raw_tx(&signed_core.raw_tx));
+    let tx_orchard_anchor_hex =
+        encode_hex_opt(extract_orchard_anchor_from_raw_tx(&signed_core.raw_tx));
+    log_step(
+        "tx_anchors",
+        &format!(
+            "target_height={},anchor_height={},tx_sapling_anchor={},tx_orchard_anchor={}",
+            target_height, anchor_height, tx_sapling_anchor_hex, tx_orchard_anchor_hex
+        ),
+    );
+
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -7472,7 +5961,7 @@ fn sign_tx_internal(
             r#"{{"id":"log_sign_tx_ok","timestamp":{},"location":"api.rs:2222","message":"sign_tx ok","data":{{"wallet_id":"{}","txid":"{}","size":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
             ts, wallet_id, signed_core.txid, signed_core.size
         );
-    }
+    });
     // #endregion
 
     // Persist first non-empty outgoing memo at sign time so transaction history can
@@ -7493,6 +5982,27 @@ fn sign_tx_internal(
     }
 
     clear_pending_sign_context(&pending.id);
+
+    // Capture spent-note nullifiers so broadcast_tx can mark them spent in the DB.
+    // The DB write is deferred to broadcast success to avoid phantom spends on
+    // user-cancelled sends.
+    let spent_nullifiers: Vec<Vec<u8>> = signed_core
+        .spent_notes
+        .iter()
+        .filter_map(|n| n.nullifier.clone())
+        .collect();
+    if !spent_nullifiers.is_empty() {
+        store_broadcast_context(
+            &signed_core.txid.to_string(),
+            BroadcastContext {
+                wallet_id: wallet_id.clone(),
+                account_id: secret.account_id,
+                spent_nullifiers,
+                change_amount: pending.change,
+                created_at_ms: unix_timestamp_millis(),
+            },
+        );
+    }
 
     Ok(SignedTx {
         txid: signed_core.txid.to_string(),
@@ -7536,12 +6046,7 @@ pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
 async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
     tracing::info!("Broadcasting transaction {}", signed.txid);
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -7551,14 +6056,14 @@ async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
             r#"{{"id":"log_broadcast_start","timestamp":{},"location":"api.rs:2233","message":"broadcast start","data":{{"txid":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
             ts, signed.txid
         );
-    }
+    });
     // #endregion
 
     // Get active wallet for endpoint
     let wallet_id = get_active_wallet()?.ok_or_else(|| anyhow!("No active wallet"))?;
 
     // Get lightwalletd endpoint configuration
-    let endpoint_config = get_lightd_endpoint_config(wallet_id)?;
+    let endpoint_config = get_lightd_endpoint_config(wallet_id.clone())?;
     let endpoint_url = endpoint_config.url();
     let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
     let tls_enabled = endpoint_config.use_tls;
@@ -7590,52 +6095,170 @@ async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
     };
 
     // Create lightwalletd client and broadcast
+    let client_config_for_retry = client_config.clone();
     let client = pirate_sync_lightd::LightClient::with_config(client_config);
     if let Err(e) = client.connect().await {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        let err_text = format!("{}", e);
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_broadcast_connect_error","timestamp":{},"location":"api.rs:2212","message":"broadcast connect failed","data":{{"endpoint":"{}","error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                ts, endpoint_url, e
+                r#"{{"id":"log_broadcast_connect_error","timestamp":{},"location":"api.rs:2212","message":"broadcast connect failed","data":{{"endpoint":"{}","error":{:?}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                ts, endpoint_url, &err_text
             );
-        }
-        return Err(anyhow!("Failed to connect to {}: {}", endpoint_url, e));
+        });
+        return Err(anyhow!(
+            "Failed to connect to {}: {}",
+            endpoint_url,
+            err_text
+        ));
     }
 
-    let txid_hex = client
-        .broadcast(signed.raw.clone())
-        .await
-        .map_err(|e| {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+    let txid_hex = match client.broadcast(signed.raw.clone()).await {
+        Ok(txid_hex) => txid_hex,
+        Err(e) => {
+            let err_text = format!("{}", e);
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis();
                 let _ = writeln!(
                     file,
-                    r#"{{"id":"log_broadcast_error","timestamp":{},"location":"api.rs:2226","message":"broadcast failed","data":{{"txid":"{}","endpoint":"{}","error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    ts,
-                    signed.txid,
-                    endpoint_url,
-                    e
+                    r#"{{"id":"log_broadcast_error","timestamp":{},"location":"api.rs:2226","message":"broadcast failed","data":{{"txid":"{}","endpoint":"{}","error":{:?}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    ts, signed.txid, endpoint_url, &err_text
                 );
+            });
+
+            let err_lower = err_text.to_ascii_lowercase();
+
+            // Deterministic behavior: treat unknown-anchor as witness/anchor
+            // invalidation, queue repair immediately, and fail with deterministic
+            // spendability reason rather than a generic network error.
+            if err_lower.contains("unknown-anchor") {
+                let tx_orchard_anchor = extract_orchard_anchor_from_raw_tx(&signed.raw);
+                let tx_sapling_anchor = extract_sapling_anchor_from_raw_tx(&signed.raw);
+                let mut repair_from = 1u64;
+                let mut repair_to_exclusive = 0u64;
+                let mut local_orchard_anchor: Option<[u8; 32]> = None;
+                let mut local_sapling_root: Option<[u8; 32]> = None;
+
+                if let Ok((db, repo)) = open_wallet_db_for(&wallet_id) {
+                    let spendability_storage = SpendabilityStateStorage::new(db);
+                    let state = spendability_storage.load_state().unwrap_or_default();
+                    repair_from = state.anchor_height.max(1);
+                    repair_to_exclusive = state.target_height.max(repair_from).saturating_add(1);
+                    local_orchard_anchor = repo
+                        .resolve_orchard_anchor_from_db_state(repair_from)
+                        .ok()
+                        .flatten()
+                        .map(|anchor| anchor.to_bytes());
+                    local_sapling_root = repo
+                        .resolve_sapling_root_from_db_state(repair_from)
+                        .ok()
+                        .flatten();
+                }
+
+                let tree_state_at_anchor = client.get_tree_state(repair_from).await.ok();
+                let remote_sapling_root = tree_state_at_anchor
+                    .as_ref()
+                    .and_then(parse_sapling_root_from_tree_state);
+                let remote_orchard_root = tree_state_at_anchor
+                    .as_ref()
+                    .and_then(parse_orchard_root_from_tree_state);
+                let remote_bridge_orchard_root = client
+                    .get_bridge_tree_state(repair_from)
+                    .await
+                    .ok()
+                    .as_ref()
+                    .and_then(parse_orchard_root_from_tree_state);
+
+                pirate_core::debug_log::with_locked_file(|file| {
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis();
+                    let _ = writeln!(
+                        file,
+                        r#"{{"id":"log_unknown_anchor_diag","timestamp":{},"location":"api.rs:broadcast_tx","message":"unknown-anchor diagnostics","data":{{"wallet_id":"{}","txid":"{}","anchor_height":{},"tx_sapling_anchor":"{}","local_sapling_root":"{}","remote_sapling_root":"{}","tx_orchard_anchor":"{}","local_orchard_anchor":"{}","remote_orchard_root":"{}","remote_bridge_orchard_root":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                        ts,
+                        wallet_id,
+                        signed.txid,
+                        repair_from,
+                        encode_hex_opt(tx_sapling_anchor),
+                        encode_hex_opt(local_sapling_root),
+                        encode_hex_opt(remote_sapling_root),
+                        encode_hex_opt(tx_orchard_anchor),
+                        encode_hex_opt(local_orchard_anchor),
+                        encode_hex_opt(remote_orchard_root),
+                        encode_hex_opt(remote_bridge_orchard_root),
+                    );
+                });
+
+                // If the anchor in the TX matches the server-reported root at this height,
+                // the broadcast failure is likely caused by the server backend being
+                // temporarily out-of-sync. Try one reconnect+broadcast before falling
+                // back to repair. Check both Sapling (primary for Pirate) and Orchard.
+                let sapling_matches = tx_sapling_anchor.is_some()
+                    && remote_sapling_root.is_some()
+                    && tx_sapling_anchor == remote_sapling_root;
+                let orchard_remote = remote_bridge_orchard_root.or(remote_orchard_root);
+                let orchard_matches = tx_orchard_anchor.is_some()
+                    && orchard_remote.is_some()
+                    && tx_orchard_anchor == orchard_remote;
+                let anchor_matches_remote = sapling_matches || orchard_matches;
+                if anchor_matches_remote {
+                    let retry_client =
+                        pirate_sync_lightd::LightClient::with_config(client_config_for_retry);
+                    if retry_client.connect().await.is_ok()
+                        && retry_client.broadcast(signed.raw.clone()).await.is_ok()
+                    {
+                        pirate_core::debug_log::with_locked_file(|file| {
+                            let ts = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis();
+                            let _ = writeln!(
+                                file,
+                                r#"{{"id":"log_unknown_anchor_retry_ok","timestamp":{},"location":"api.rs:broadcast_tx","message":"unknown-anchor retry broadcast ok","data":{{"wallet_id":"{}","txid":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                                ts, wallet_id, signed.txid
+                            );
+                        });
+                        return Ok(signed.txid);
+                    }
+                }
+
+                if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
+                    let spendability_storage = SpendabilityStateStorage::new(db);
+                    if let Err(queue_err) = spendability_storage.queue_repair_range(
+                        repair_from,
+                        repair_to_exclusive.max(repair_from.saturating_add(1)),
+                        SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
+                    ) {
+                        tracing::warn!(
+                            "Failed to queue unknown-anchor repair for {} ({}..{}): {}",
+                            wallet_id,
+                            repair_from,
+                            repair_to_exclusive,
+                            queue_err
+                        );
+                    }
+                }
+
+                maybe_trigger_compact_sync(wallet_id.clone());
+
+                return Err(anyhow!(
+                    "{}: Node rejected transaction with unknown anchor. Witness repair was queued; let sync finalize and retry.",
+                    SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED
+                ));
             }
-            anyhow!("Broadcast failed: {}", e)
-        })?;
+
+            return Err(anyhow!("Broadcast failed: {}", e));
+        }
+    };
 
     tracing::info!(
         "Broadcast to {} succeeded: {} ({} bytes)",
@@ -7644,12 +6267,7 @@ async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
         signed.size
     );
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -7659,8 +6277,69 @@ async fn broadcast_tx_inner(signed: SignedTx) -> Result<TxId> {
             r#"{{"id":"log_broadcast_ok","timestamp":{},"location":"api.rs:2263","message":"broadcast ok","data":{{"txid":"{}","endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
             ts, signed.txid, endpoint_url
         );
-    }
+    });
     // #endregion
+
+    // --- Post-broadcast state update ---
+    //
+    // Mark spent notes by nullifier so the wallet won't double-select them for the
+    // next send. Without this, the same notes could be picked again before sync
+    // discovers the on-chain nullifiers, causing either a double-spend rejection
+    // or a permanent "spendability is finalizing" lockout.
+    if let Some(ctx) = take_broadcast_context(&signed.txid) {
+        let txid_bytes: [u8; 32] = {
+            let decoded = hex::decode(&signed.txid).unwrap_or_default();
+            let mut arr = [0u8; 32];
+            if decoded.len() == 32 {
+                arr.copy_from_slice(&decoded);
+            }
+            arr
+        };
+        if let Ok((db, repo)) = open_wallet_db_for(&ctx.wallet_id) {
+            let entries: Vec<([u8; 32], [u8; 32])> = ctx
+                .spent_nullifiers
+                .iter()
+                .filter_map(|nf| {
+                    let mut arr = [0u8; 32];
+                    if nf.len() == 32 {
+                        arr.copy_from_slice(nf);
+                        Some((arr, txid_bytes))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let marked = repo
+                .mark_notes_spent_by_nullifiers_with_txid(ctx.account_id, &entries)
+                .unwrap_or(0);
+            tracing::info!(
+                "Post-broadcast: marked {} notes as spent for tx {}",
+                marked,
+                signed.txid
+            );
+            pirate_core::debug_log::with_locked_file(|file| {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_broadcast_post_mark","timestamp":{},"location":"api.rs:broadcast_tx","message":"post-broadcast note marking","data":{{"txid":"{}","wallet":"{}","nullifiers_submitted":{},"notes_marked":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    ts,
+                    signed.txid,
+                    ctx.wallet_id,
+                    entries.len(),
+                    marked
+                );
+            });
+
+            // Track expected change so balance doesn't drop to zero between
+            // broadcast and the sync engine detecting the mined change note.
+            add_pending_change(&ctx.wallet_id, &signed.txid, ctx.change_amount);
+
+            let _ = db;
+        }
+    }
 
     Ok(signed.txid)
 }
@@ -7733,67 +6412,6 @@ fn map_stage(stage: pirate_sync_lightd::SyncStage) -> crate::models::SyncStage {
     }
 }
 
-fn decode_frontier_snapshot(bytes: &[u8]) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
-    const FRONTIER_SNAPSHOT_MAGIC: [u8; 4] = *b"PFRT";
-    const FRONTIER_SNAPSHOT_VERSION: u8 = 1;
-
-    if bytes.len() < FRONTIER_SNAPSHOT_MAGIC.len() + 1
-        || !bytes.starts_with(&FRONTIER_SNAPSHOT_MAGIC)
-    {
-        return Ok((bytes.to_vec(), Vec::new()));
-    }
-
-    let version = bytes[FRONTIER_SNAPSHOT_MAGIC.len()];
-    if version != FRONTIER_SNAPSHOT_VERSION {
-        return Err(anyhow::anyhow!(
-            "Unsupported frontier snapshot version: {}",
-            version
-        ));
-    }
-
-    let mut offset = FRONTIER_SNAPSHOT_MAGIC.len() + 1;
-    if bytes.len() < offset + 4 {
-        return Err(anyhow::anyhow!("Frontier snapshot truncated"));
-    }
-    let sapling_len = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
-    offset += 4;
-    if bytes.len() < offset + sapling_len + 4 {
-        return Err(anyhow::anyhow!("Frontier snapshot truncated"));
-    }
-    let sapling_bytes = bytes[offset..offset + sapling_len].to_vec();
-    offset += sapling_len;
-    let orchard_len = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
-    offset += 4;
-    if bytes.len() < offset + orchard_len {
-        return Err(anyhow::anyhow!("Frontier snapshot truncated"));
-    }
-    let orchard_bytes = bytes[offset..offset + orchard_len].to_vec();
-    Ok((sapling_bytes, orchard_bytes))
-}
-
-fn orchard_anchor_from_frontier_hex(
-    frontier_hex: &str,
-) -> anyhow::Result<Option<orchard::tree::Anchor>> {
-    if frontier_hex.is_empty() {
-        return Ok(None);
-    }
-    let bytes = match hex::decode(frontier_hex) {
-        Ok(b) => b,
-        Err(_) => return Ok(None),
-    };
-
-    let frontier = if let Ok(f) = read_frontier_v1::<MerkleHashOrchard, _>(&bytes[..]) {
-        f
-    } else {
-        read_frontier_v0::<MerkleHashOrchard, _>(&bytes[..])?
-    };
-
-    let mut orchard_frontier = OrchardFrontier::new();
-    orchard_frontier.init_from_frontier(frontier);
-    let root_bytes = orchard_frontier.root();
-    Ok(root_bytes.and_then(|b| orchard::tree::Anchor::from_bytes(b).into()))
-}
-
 lazy_static::lazy_static! {
     /// Active sync sessions per wallet
     //
@@ -7811,61 +6429,15 @@ lazy_static::lazy_static! {
     /// Stable transaction list cache used while sync is mutating notes/spends.
     static ref TX_LIST_CACHE: Arc<RwLock<TxListCacheMap>> =
         Arc::new(RwLock::new(HashMap::new()));
+    /// Stable balance cache used while sync is mutating notes/spends.
+    static ref BALANCE_CACHE: Arc<RwLock<HashMap<WalletId, Balance>>> =
+        Arc::new(RwLock::new(HashMap::new()));
     /// Prevent overlapping rescan setup for the same wallet.
     static ref RESCAN_IN_FLIGHT: Arc<RwLock<HashSet<WalletId>>> =
         Arc::new(RwLock::new(HashSet::new()));
     /// Wallets currently running an active rescan task.
     static ref RESCAN_ACTIVE: Arc<RwLock<HashSet<WalletId>>> =
         Arc::new(RwLock::new(HashSet::new()));
-    /// Wallets currently performing sign/build critical sections where sync
-    /// recovery should not auto-restart in the background.
-    static ref SIGNING_ACTIVE: Arc<RwLock<HashSet<WalletId>>> =
-        Arc::new(RwLock::new(HashSet::new()));
-    /// Wallets performing intentional sync priming while signing.
-    static ref SYNC_PRIMING_ACTIVE: Arc<RwLock<HashSet<WalletId>>> =
-        Arc::new(RwLock::new(HashSet::new()));
-}
-
-struct SigningGuard {
-    wallet_id: WalletId,
-}
-
-impl Drop for SigningGuard {
-    fn drop(&mut self) {
-        SIGNING_ACTIVE.write().remove(&self.wallet_id);
-    }
-}
-
-fn mark_signing_active(wallet_id: &WalletId) -> SigningGuard {
-    SIGNING_ACTIVE.write().insert(wallet_id.clone());
-    SigningGuard {
-        wallet_id: wallet_id.clone(),
-    }
-}
-
-fn is_signing_active(wallet_id: &WalletId) -> bool {
-    SIGNING_ACTIVE.read().contains(wallet_id)
-}
-
-struct SyncPrimingGuard {
-    wallet_id: WalletId,
-}
-
-impl Drop for SyncPrimingGuard {
-    fn drop(&mut self) {
-        SYNC_PRIMING_ACTIVE.write().remove(&self.wallet_id);
-    }
-}
-
-fn mark_sync_priming_active(wallet_id: &WalletId) -> SyncPrimingGuard {
-    SYNC_PRIMING_ACTIVE.write().insert(wallet_id.clone());
-    SyncPrimingGuard {
-        wallet_id: wallet_id.clone(),
-    }
-}
-
-fn is_sync_priming_active(wallet_id: &WalletId) -> bool {
-    SYNC_PRIMING_ACTIVE.read().contains(wallet_id)
 }
 
 #[derive(Clone)]
@@ -7874,41 +6446,61 @@ struct SyncRuntimeHandles {
     perf: Arc<PerfCounters>,
 }
 
-const TX_CACHE_NO_LIMIT_KEY: u32 = u32::MAX;
-type TxListCacheKey = (WalletId, u32);
-type TxListCacheMap = HashMap<TxListCacheKey, Vec<TxInfo>>;
-
-fn tx_cache_key(wallet_id: &WalletId, limit: Option<u32>) -> TxListCacheKey {
-    (wallet_id.clone(), limit.unwrap_or(TX_CACHE_NO_LIMIT_KEY))
-}
+type TxListCacheMap = HashMap<WalletId, Vec<TxInfo>>;
 
 fn get_cached_transactions(wallet_id: &WalletId, limit: Option<u32>) -> Option<Vec<TxInfo>> {
-    let key = tx_cache_key(wallet_id, limit);
-    TX_LIST_CACHE.read().get(&key).cloned()
+    let cached = TX_LIST_CACHE.read().get(wallet_id).cloned()?;
+    if let Some(limit) = limit {
+        let limit = limit as usize;
+        if cached.len() > limit {
+            return Some(cached.into_iter().take(limit).collect());
+        }
+    }
+    Some(cached)
 }
 
 fn put_cached_transactions(wallet_id: &WalletId, limit: Option<u32>, txs: &[TxInfo]) {
-    let key = tx_cache_key(wallet_id, limit);
-    TX_LIST_CACHE.write().insert(key, txs.to_vec());
+    let mut cache = TX_LIST_CACHE.write();
+    match cache.get_mut(wallet_id) {
+        Some(existing) => {
+            let limit_usize = limit.map(|v| v as usize);
+            let likely_truncated = limit_usize.is_some_and(|v| txs.len() >= v);
+            if likely_truncated {
+                // Preserve canonical depth when this read was likely truncated by `limit`.
+                // Merge in the newest prefix and retain older unseen items from cache.
+                let mut merged = txs.to_vec();
+                let mut seen_txids: HashSet<String> =
+                    merged.iter().map(|tx| tx.txid.clone()).collect();
+                for tx in existing.iter() {
+                    if seen_txids.insert(tx.txid.clone()) {
+                        merged.push(tx.clone());
+                    }
+                }
+                *existing = merged;
+            } else {
+                // Full (or likely full) result; replace canonical cache.
+                *existing = txs.to_vec();
+            }
+        }
+        None => {
+            cache.insert(wallet_id.clone(), txs.to_vec());
+        }
+    }
+}
+
+fn get_cached_balance(wallet_id: &WalletId) -> Option<Balance> {
+    BALANCE_CACHE.read().get(wallet_id).cloned()
+}
+
+fn put_cached_balance(wallet_id: &WalletId, balance: &Balance) {
+    BALANCE_CACHE
+        .write()
+        .insert(wallet_id.clone(), balance.clone());
 }
 
 fn should_suppress_live_tx_reads(wallet_id: &WalletId) -> bool {
-    let sessions = SYNC_SESSIONS.read();
-    let session_arc = match sessions.get(wallet_id) {
-        Some(session) => Arc::clone(session),
-        None => return false,
-    };
-    drop(sessions);
-
-    let suppress = if let Ok(session) = session_arc.try_lock() {
-        session.is_running
-            && session.task.is_some()
-            && !matches!(session.last_status.stage, crate::models::SyncStage::Verify)
-    } else {
-        // Lock contention typically means sync mutation is active.
-        true
-    };
-    suppress
+    let (mutating, _snapshot) = sync_mutation_snapshot(wallet_id);
+    mutating
 }
 
 fn cache_sync_status(wallet_id: &WalletId, status: &SyncStatus) {
@@ -7924,9 +6516,8 @@ fn get_cached_sync_status(wallet_id: &WalletId) -> Option<SyncStatus> {
 fn clear_sync_runtime_cache(wallet_id: &WalletId) {
     SYNC_RUNTIME_HANDLES.write().remove(wallet_id);
     SYNC_STATUS_SNAPSHOT_CACHE.write().remove(wallet_id);
-    TX_LIST_CACHE
-        .write()
-        .retain(|(cached_wallet_id, _), _| cached_wallet_id != wallet_id);
+    TX_LIST_CACHE.write().remove(wallet_id);
+    BALANCE_CACHE.write().remove(wallet_id);
 }
 
 /// Sync session state
@@ -7945,6 +6536,8 @@ struct SyncSession {
     last_status: SyncStatus,
     /// Whether sync is currently running
     is_running: bool,
+    /// True while sync startup is reserving session state before task handle install.
+    startup_in_progress: bool,
     /// Background sync task handle (if running)
     task: Option<tokio::task::JoinHandle<()>>,
     /// Last time we updated the target height from the server
@@ -7972,6 +6565,7 @@ impl Default for SyncSession {
                 last_batch_ms: 0,
             },
             is_running: false,
+            startup_in_progress: false,
             task: None,
             last_target_height_update: None,
             last_recovery_attempt: None,
@@ -7984,35 +6578,8 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     ensure_not_decoy("Sync")?;
     tracing::info!("Starting sync for wallet {} in mode {:?}", wallet_id, mode);
 
-    // Prevent sync restarts from racing transaction proof generation.
-    // Witness priming uses an explicit bypass guard.
-    if is_signing_active(&wallet_id) && !is_sync_priming_active(&wallet_id) {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_start_sync_skip_signing","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; signing active","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
-                ts, wallet_id, mode
-            );
-        }
-        return Ok(());
-    }
-
     if RESCAN_IN_FLIGHT.read().contains(&wallet_id) || is_rescan_active(&wallet_id) {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -8022,7 +6589,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                 r#"{{"id":"log_start_sync_skip_rescan","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; rescan active","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
                 ts, wallet_id, mode
             );
-        }
+        });
         return Ok(());
     }
 
@@ -8035,15 +6602,13 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     if let Some(session_arc) = session_arc_opt {
         let (is_running, has_task) = {
             let session = session_arc.lock().await;
-            (session.is_running, session.task.is_some())
+            (
+                session.is_running,
+                session.task.is_some() || session.startup_in_progress,
+            )
         };
         if is_running && has_task {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -8053,21 +6618,17 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                     r#"{{"id":"log_start_sync_skip_running","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; already running","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
                     ts, wallet_id, mode
                 );
-            }
+            });
             return Ok(());
         } else if is_running && !has_task {
             let mut session = session_arc.lock().await;
             session.is_running = false;
+            session.startup_in_progress = false;
         }
     }
     log_orchard_address_samples(&wallet_id);
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -8082,7 +6643,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:2306","message":"start_sync wallet","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
             id, ts, wallet_id
         );
-    }
+    });
     // #endregion
 
     // Get wallet birthday height
@@ -8097,12 +6658,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                 .map(|state| state.local_height as u32)
         });
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -8117,13 +6673,25 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                 r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:2319","message":"start_sync resume_height","data":{{"wallet_id":"{}","resume_height":"{:?}","birthday_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
                 id, ts, wallet_id, resume_height_opt, birthday_height
             );
-        }
+        });
         // #endregion
         match resume_height_opt {
             Some(resume_height) if resume_height > 0 => resume_height,
             _ => birthday_height,
         }
     };
+    // Do not blindly downgrade spendability on sync start.
+    //
+    // Wallets can remain spendable while new blocks are syncing as long as the
+    // anchor epoch stays within scanned coverage. We only force-sync-finalizing on start
+    // when the wallet is already non-spendable (and not in rescan-required / repair-queued
+    // states), so we don't create "stuck finalizing" states on app open.
+    let should_mark_finalizing = load_spendability_status_internal(&wallet_id)
+        .map(|state| !state.spendable && !state.rescan_required && !state.repair_queued)
+        .unwrap_or(true);
+    if should_mark_finalizing {
+        mark_spendability_sync_finalizing(&wallet_id, start_height as u64, start_height as u64);
+    }
 
     // Get endpoint configuration (not just URL)
     let endpoint_config = get_lightd_endpoint_config(wallet_id.clone())?;
@@ -8171,12 +6739,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     );
 
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -8191,7 +6754,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:1964","message":"start_sync config","data":{{"endpoint":"{}","tls_enabled":{},"transport":"{:?}","host":"{}","tls_server_name":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
             id, ts, endpoint_url, tls_enabled, transport, host, tls_server_name
         );
-    }
+    });
     // #endregion
 
     // Create LightClient config with proper TLS settings
@@ -8238,8 +6801,8 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             32_000_000,
             4_000_000,
             64_000_000,
-            4,
-            96_000_000,
+            5,
+            160_000_000,
         )
     };
 
@@ -8285,14 +6848,23 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         let mut session = session_arc.lock().await;
         if session.is_running {
             if session.task.is_none() {
+                if session.startup_in_progress {
+                    pirate_core::debug_log::with_locked_file(|file| {
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_start_sync_skip_running","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; startup in progress","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
+                            ts, wallet_id, mode
+                        );
+                    });
+                    return Ok(());
+                }
                 session.is_running = false;
             } else {
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -8302,12 +6874,13 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
                         r#"{{"id":"log_start_sync_skip_running","timestamp":{},"location":"api.rs:start_sync","message":"start_sync skipped; already running","data":{{"wallet_id":"{}","mode":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
                         ts, wallet_id, mode
                     );
-                }
+                });
                 return Ok(());
             }
         }
 
         session.is_running = true;
+        session.startup_in_progress = true;
         // Clear stale handles; they'll be replaced after engine init.
         session.sync = None;
         session.cancelled = None;
@@ -8334,16 +6907,25 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     // We need to modify SyncEngine to accept a LightClientConfig instead of just a URL
     // For now, create the client manually and pass it to a modified sync engine
     let client = LightClient::with_config(client_config);
-    let sync = match SyncEngine::with_client_and_config(client, start_height, config).with_wallet(
-        wallet_id.clone(),
-        db_key,
-        master_key,
-        network_type,
-        address_network_type,
-    ) {
+    // IMPORTANT:
+    // The sync engine must be configured with the wallet's birthday height, not the resume
+    // height. The engine uses the stored sync state to resume, but it must remain free to
+    // rollback/replay below the resume height when repairing witnesses/anchors. Using the
+    // resume height as the "birthday" can cause skipped commitment replay and "unknown-anchor"
+    // broadcast failures.
+    let sync = match SyncEngine::with_client_and_config(client, birthday_height, config)
+        .with_wallet(
+            wallet_id.clone(),
+            db_key,
+            master_key,
+            network_type,
+            address_network_type,
+        ) {
         Ok(sync) => sync,
         Err(e) => {
-            session_arc.lock().await.is_running = false;
+            let mut session = session_arc.lock().await;
+            session.is_running = false;
+            session.startup_in_progress = false;
             clear_sync_runtime_cache(&wallet_id);
             return Err(anyhow!("Failed to initialize sync engine: {}", e));
         }
@@ -8447,6 +7029,8 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
         if let Some(status) = status_opt {
             session.last_status = status;
             cache_sync_status(&wallet_id_for_task, &session.last_status);
+            // Spendability transitions are driven by sync-engine witness integrity
+            // checks and queue-based repair state. Do not override them here.
         }
         match &result {
             Ok(()) => {
@@ -8464,10 +7048,12 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
             Err(e) => {
                 tracing::error!("Sync failed for wallet {}: {:?}", wallet_id_for_task, e);
                 tracing::error!("Sync error details: {}", e);
+                mark_spendability_sync_finalizing(&wallet_id_for_task, 0, 0);
             }
         }
         // Always mark idle when the task exits.
         session.is_running = false;
+        session.startup_in_progress = false;
         session.sync = None;
         session.cancelled = None;
         session.progress = None;
@@ -8479,6 +7065,7 @@ pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
     {
         let mut session = session_arc.lock().await;
         session.task = Some(task_handle);
+        session.startup_in_progress = false;
     }
 
     Ok(())
@@ -8504,12 +7091,7 @@ pub fn sync_status(wallet_id: WalletId) -> Result<SyncStatus> {
     match result {
         Ok(inner) => inner,
         Err(_) => {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -8519,7 +7101,7 @@ pub fn sync_status(wallet_id: WalletId) -> Result<SyncStatus> {
                     r#"{{"id":"log_sync_status_panic","timestamp":{},"location":"api.rs:2557","message":"sync_status panic","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                     ts, wallet_id_for_panic
                 );
-            }
+            });
             Ok(SyncStatus {
                 local_height: 0,
                 target_height: 0,
@@ -8597,9 +7179,6 @@ fn maybe_schedule_sync_recovery(
     is_running: bool,
     has_task: bool,
 ) {
-    if is_signing_active(wallet_id) {
-        return;
-    }
     if has_task {
         return;
     }
@@ -8629,12 +7208,7 @@ fn maybe_schedule_sync_recovery(
         return;
     }
 
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -8650,7 +7224,7 @@ fn maybe_schedule_sync_recovery(
             is_running,
             has_task
         );
-    }
+    });
 
     let wallet_id_clone = wallet_id.clone();
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -8672,12 +7246,7 @@ fn maybe_schedule_sync_recovery(
 fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -8687,7 +7256,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 r#"{{"id":"log_sync_status_call","timestamp":{},"location":"api.rs:2557","message":"sync_status call","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                 ts, wallet_id
             );
-        }
+        });
     }
     // #endregion
     let session_arc = {
@@ -8700,12 +7269,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
         None => {
             // #region agent log
             {
-                use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -8715,7 +7279,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         r#"{{"id":"log_sync_status_session_none","timestamp":{},"location":"api.rs:2568","message":"sync_status no session in map","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                         ts, wallet_id
                     );
-                }
+                });
             }
             // #endregion
             if let Some(status) = get_cached_sync_status(&wallet_id) {
@@ -8731,12 +7295,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     };
                     // #region agent log
                     {
-                        use std::io::Write;
-                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(debug_log_path())
-                        {
+                        pirate_core::debug_log::with_locked_file(|file| {
                             let ts = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
@@ -8746,7 +7305,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                                 r#"{{"id":"log_sync_status_state","timestamp":{},"location":"api.rs:2585","message":"sync_status returning from sync_state","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                                 ts, wallet_id, state.local_height, state.target_height, percent
                             );
-                        }
+                        });
                     }
                     // #endregion
                     let status = SyncStatus {
@@ -8766,12 +7325,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             }
             // #region agent log
             {
-                use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -8781,17 +7335,12 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         r#"{{"id":"log_sync_status_no_session","timestamp":{},"location":"api.rs:2590","message":"sync_status no session","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                         ts, wallet_id
                     );
-                }
+                });
             }
             // #endregion
             // Return default status if no session
             // #region agent log
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_sync_status_default","timestamp":{},"location":"api.rs:2200","message":"sync_status returning default zeros","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"G"}}"#,
@@ -8801,7 +7350,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         .as_millis(),
                     wallet_id
                 );
-            }
+            });
             // #endregion
             let status = SyncStatus {
                 local_height: 0,
@@ -8835,18 +7384,13 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             session.last_status.clone(),
             session.last_target_height_update,
             session.is_running,
-            session.task.is_some(),
+            session.task.is_some() || session.startup_in_progress,
         )
     } else {
         // Never block here: this function can be called while async tasks are running
         // on the same runtime thread.
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -8856,7 +7400,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     r#"{{"id":"log_sync_status_lock_busy","timestamp":{},"location":"api.rs:2610","message":"sync_status session lock busy","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
                     ts, wallet_id
                 );
-            }
+            });
         }
 
         if let Some(handles) = SYNC_RUNTIME_HANDLES.read().get(&wallet_id).cloned() {
@@ -8956,12 +7500,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             maybe_schedule_sync_recovery(&wallet_id, &session_arc, &status, is_running, has_task);
 
             // #region agent log
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_sync_status","timestamp":{},"location":"api.rs:2166","message":"sync_status returning","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{},"stage":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
@@ -8975,7 +7514,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                     status.percent,
                     status.stage
                 );
-            }
+            });
             // #endregion
 
             return Ok(status);
@@ -9022,12 +7561,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 );
 
                 // #region agent log
-                use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
+                pirate_core::debug_log::with_locked_file(|file| {
                     let _ = writeln!(
                         file,
                         r#"{{"id":"log_sync_status","timestamp":{},"location":"api.rs:2166","message":"sync_status returning","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{},"stage":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"E"}}"#,
@@ -9041,7 +7575,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                         status.percent,
                         status.stage
                     );
-                }
+                });
                 // #endregion
 
                 return Ok(status);
@@ -9051,12 +7585,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
 
     // Fallback to last known status
     // #region agent log
-    use std::io::Write;
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
+    pirate_core::debug_log::with_locked_file(|file| {
         let _ = writeln!(
             file,
             r#"{{"id":"log_sync_status_fallback","timestamp":{},"location":"api.rs:2192","message":"sync_status using fallback last_status","data":{{"wallet_id":"{}","local_height":{},"target_height":{},"percent":{},"stage":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"F"}}"#,
@@ -9070,7 +7599,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
             last_status.percent,
             last_status.stage
         );
-    }
+    });
     // #endregion
     cache_sync_status(&wallet_id, &last_status);
     maybe_schedule_sync_recovery(&wallet_id, &session_arc, &last_status, is_running, has_task);
@@ -9184,7 +7713,9 @@ async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: std::time::Duration) 
 
         let running = if let Some(session_arc) = session_arc_opt {
             match session_arc.try_lock() {
-                Ok(session) => session.is_running && session.task.is_some(),
+                Ok(session) => {
+                    session.is_running || session.task.is_some() || session.startup_in_progress
+                }
                 Err(_) => true,
             }
         } else {
@@ -9201,72 +7732,6 @@ async fn wait_for_sync_stop(wallet_id: &WalletId, timeout: std::time::Duration) 
     }
 }
 
-async fn wait_for_sync_engine_idle(wallet_id: &WalletId, timeout: std::time::Duration) -> bool {
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        let sync_arc_opt = {
-            let sessions = SYNC_SESSIONS.read();
-            sessions
-                .get(wallet_id)
-                .and_then(|session_arc| session_arc.try_lock().ok())
-                .and_then(|session| session.sync.clone())
-        };
-        match sync_arc_opt {
-            Some(sync_arc) => {
-                if sync_arc.try_lock().is_ok() {
-                    return true;
-                }
-            }
-            None => return true,
-        }
-        if std::time::Instant::now() >= deadline {
-            return false;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    }
-}
-
-/// Fast quiesce path for signing:
-/// - flips the session to idle immediately
-/// - aborts the background sync task
-/// - raises cancel flag
-///
-/// This avoids long graceful-stop delays in the UX-critical send flow.
-async fn quiesce_sync_for_sign(wallet_id: WalletId) -> Result<(bool, bool, bool)> {
-    let session_arc_opt = {
-        let sessions = SYNC_SESSIONS.read();
-        sessions.get(&wallet_id).cloned()
-    };
-    let Some(session_arc) = session_arc_opt else {
-        return Ok((false, false, false));
-    };
-
-    let (cancel_opt, task_opt, was_running) = {
-        let mut session = session_arc.lock().await;
-        let was_running = session.is_running || session.task.is_some();
-        let cancel_opt = session.cancelled.clone();
-        let task_opt = session.task.take();
-        session.is_running = false;
-        // Prevent immediate auto-recovery while signing; _SigningGuard_ also enforces this.
-        session.last_recovery_attempt = Some(std::time::Instant::now());
-        (cancel_opt, task_opt, was_running)
-    };
-
-    let mut task_aborted = false;
-    if let Some(task) = task_opt {
-        task.abort();
-        task_aborted = true;
-    }
-
-    let mut cancel_requested = false;
-    if let Some(cancel) = cancel_opt {
-        cancel.cancel();
-        cancel_requested = true;
-    }
-
-    Ok((was_running, task_aborted, cancel_requested))
-}
-
 /// Rescan wallet from specific height
 pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     ensure_not_decoy("Rescan")?;
@@ -9277,12 +7742,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     );
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -9292,7 +7752,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 r#"{{"id":"log_rescan_start","timestamp":{},"location":"api.rs:3050","message":"rescan start","data":{{"wallet_id":"{}","from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                 ts, wallet_id, from_height
             );
-        }
+        });
     }
     // #endregion
 
@@ -9301,17 +7761,13 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         return Err(anyhow!("Invalid rescan height: must be > 0"));
     }
     let _rescan_guard = acquire_rescan_guard(&wallet_id)?;
+    mark_spendability_rescan_required(&wallet_id, SPENDABILITY_REASON_ERR_RESCAN_REQUIRED);
     let mut effective_from_height = from_height;
     let truncate_height: u64;
 
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -9321,7 +7777,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3058","message":"rescan step","data":{{"wallet_id":"{}","step":"cancel_sync_start"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                 ts, wallet_id
             );
-        }
+        });
     }
     // #endregion
 
@@ -9335,12 +7791,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         .await;
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9355,19 +7806,14 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3076","message":"rescan step","data":{{"wallet_id":"{}","step":"{}","attempt":1}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id, step
                 );
-            }
+            });
         }
         // #endregion
 
         let wait_ok = wait_for_sync_stop(&wallet_id, std::time::Duration::from_millis(500)).await;
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9382,7 +7828,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"{}","attempt":1}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id, step
                 );
-            }
+            });
         }
         // #endregion
 
@@ -9395,12 +7841,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     } else {
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9410,7 +7851,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3090","message":"rescan step","data":{{"wallet_id":"{}","step":"cancel_sync_skipped"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id
                 );
-            }
+            });
         }
         // #endregion
     }
@@ -9455,12 +7896,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     clear_sync_runtime_cache(&wallet_id);
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -9470,19 +7906,14 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3105","message":"rescan step","data":{{"wallet_id":"{}","step":"session_removed"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                 ts, wallet_id
             );
-        }
+        });
     }
     // #endregion
 
     {
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9492,18 +7923,13 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3119","message":"rescan step","data":{{"wallet_id":"{}","step":"get_passphrase_start"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id
                 );
-            }
+            });
         }
         // #endregion
         let passphrase = match app_passphrase() {
             Ok(passphrase) => passphrase,
             Err(e) => {
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -9513,18 +7939,13 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                         r#"{{"id":"log_rescan_passphrase_error","timestamp":{},"location":"api.rs:3070","message":"rescan passphrase error","data":{{"wallet_id":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                         ts, wallet_id, e
                     );
-                }
+                });
                 return Err(e);
             }
         };
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9534,17 +7955,12 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3146","message":"rescan step","data":{{"wallet_id":"{}","step":"get_passphrase_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id
                 );
-            }
+            });
         }
         // #endregion
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9554,17 +7970,12 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3159","message":"rescan step","data":{{"wallet_id":"{}","step":"open_db_start"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id
                 );
-            }
+            });
         }
         // #endregion
         let (mut db, _key, _master_key) =
             open_wallet_db_with_passphrase(&wallet_id, &passphrase).map_err(|e| {
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -9576,7 +7987,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                         wallet_id,
                         e
                     );
-                }
+                });
                 e
             })?;
         let repo = Repository::new(&db);
@@ -9594,12 +8005,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                             effective_from_height,
                             min_height
                         );
-                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(debug_log_path())
-                        {
-                            use std::io::Write;
+                        pirate_core::debug_log::with_locked_file(|file| {
                             let ts = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
@@ -9609,7 +8015,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                                 r#"{{"id":"log_rescan_adjusted","timestamp":{},"location":"api.rs:rescan","message":"rescan start height adjusted","data":{{"wallet_id":"{}","requested_from_height":{},"effective_from_height":{},"min_unspent_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                                 ts, wallet_id, from_height, min_height, min_height
                             );
-                        }
+                        });
                         effective_from_height = min_height;
                     }
                 }
@@ -9618,12 +8024,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         truncate_height = effective_from_height.saturating_sub(1) as u64;
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9633,17 +8034,12 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3181","message":"rescan step","data":{{"wallet_id":"{}","step":"open_db_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id
                 );
-            }
+            });
         }
         // #endregion
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9653,16 +8049,11 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3194","message":"rescan step","data":{{"wallet_id":"{}","step":"truncate_start","truncate_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id, truncate_height
                 );
-            }
+            });
         }
         // #endregion
         pirate_storage_sqlite::truncate_above_height(&mut db, truncate_height).map_err(|e| {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9674,17 +8065,12 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     wallet_id,
                     e
                 );
-            }
+            });
             e
         })?;
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9694,17 +8080,12 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3219","message":"rescan step","data":{{"wallet_id":"{}","step":"truncate_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id
                 );
-            }
+            });
         }
         // #endregion
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9716,19 +8097,14 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     wallet_id,
                     effective_from_height.saturating_sub(1)
                 );
-            }
+            });
         }
         // #endregion
         let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
         sync_storage
             .reset_sync_state(effective_from_height.saturating_sub(1) as u64)
             .map_err(|e| {
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -9740,17 +8116,29 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                         wallet_id,
                         e
                     );
-                }
+                });
                 e
             })?;
+        let scan_queue = ScanQueueStorage::new(&db);
+        scan_queue.clear_all().map_err(|e| {
+            pirate_core::debug_log::with_locked_file(|file| {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_rescan_queue_reset_error","timestamp":{},"location":"api.rs:rescan","message":"rescan queue reset error","data":{{"wallet_id":"{}","error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                    ts,
+                    wallet_id,
+                    e
+                );
+            });
+            e
+        })?;
         // #region agent log
         {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -9760,18 +8148,13 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                     r#"{{"id":"log_rescan_step","timestamp":{},"location":"api.rs:3254","message":"rescan step","data":{{"wallet_id":"{}","step":"reset_state_done"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                     ts, wallet_id
                 );
-            }
+            });
         }
         // #endregion
     }
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -9784,7 +8167,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 truncate_height,
                 effective_from_height.saturating_sub(1)
             );
-        }
+        });
     }
     // #endregion
 
@@ -9877,8 +8260,8 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             32_000_000,
             4_000_000,
             64_000_000,
-            4,
-            96_000_000,
+            5,
+            160_000_000,
         )
     };
 
@@ -9950,6 +8333,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             perf: Some(perf),
             last_status: initial_status.clone(),
             is_running: true,
+            startup_in_progress: true,
             task: None,
             last_target_height_update: None,
             last_recovery_attempt: None,
@@ -9958,6 +8342,11 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
         session
     };
     cache_sync_status(&wallet_id, &initial_status);
+    mark_spendability_sync_finalizing(
+        &wallet_id,
+        effective_from_height as u64,
+        effective_from_height as u64,
+    );
     SYNC_RUNTIME_HANDLES.write().insert(
         wallet_id.clone(),
         SyncRuntimeHandles {
@@ -9967,12 +8356,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     );
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -9982,7 +8366,7 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
                 r#"{{"id":"log_rescan_session","timestamp":{},"location":"api.rs:3142","message":"rescan session created","data":{{"wallet_id":"{}","from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                 ts, wallet_id, effective_from_height
             );
-        }
+        });
     }
     // #endregion
 
@@ -9992,14 +8376,21 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
     let task_handle = tokio::spawn(async move {
         // Keep rescan marked active for the full background task lifetime.
         // If the task is aborted, dropping this guard clears the flag.
-        let _rescan_active_guard = rescan_active_guard;
+        let rescan_active_guard = rescan_active_guard;
         let sync_opt = { session_arc_for_task.lock().await.sync.clone() };
 
         if let Some(sync) = sync_opt {
             let result = run_sync_engine_task(sync.clone(), move |engine| {
                 Box::pin(async move {
+                    // Rescan is a finite operation: scan to the current tip at start time, then
+                    // return. Follow-tip syncing resumes via normal compact sync scheduling.
+                    let tip_height = engine
+                        .latest_block_height()
+                        .await
+                        .map_err(anyhow::Error::from)?;
+                    let end_height = tip_height.max(effective_from_height as u64);
                     engine
-                        .sync_range(effective_from_height as u64, None)
+                        .sync_range(effective_from_height as u64, Some(end_height))
                         .await
                         .map_err(anyhow::Error::from)
                 })
@@ -10029,26 +8420,57 @@ pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
             if let Some(status) = status_opt {
                 session.last_status = status;
                 cache_sync_status(&wallet_id_for_task, &session.last_status);
+                // Spendability transitions are driven by sync-engine witness integrity
+                // checks and queue-based repair state. Do not override them here.
             }
-            match result {
-                Ok(()) => tracing::info!("Rescan completed for wallet {}", wallet_id_for_task),
+            let rescan_ok = result.is_ok();
+            match &result {
+                Ok(()) => {
+                    tracing::info!("Rescan completed for wallet {}", wallet_id_for_task);
+                    pirate_core::debug_log::with_locked_file(|file| {
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_rescan_complete","timestamp":{},"location":"api.rs:rescan","message":"rescan complete","data":{{"wallet_id":"{}","from_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
+                            ts, wallet_id_for_task, effective_from_height
+                        );
+                    });
+                }
                 Err(e) => {
-                    tracing::error!("Rescan failed for wallet {}: {:?}", wallet_id_for_task, e)
+                    tracing::error!("Rescan failed for wallet {}: {:?}", wallet_id_for_task, e);
+                    mark_spendability_rescan_required(
+                        &wallet_id_for_task,
+                        SPENDABILITY_REASON_ERR_RESCAN_REQUIRED,
+                    );
                 }
             }
             session.is_running = false;
+            session.startup_in_progress = false;
             session.task = None;
+            drop(session);
             clear_sync_runtime_cache(&wallet_id_for_task);
+            drop(rescan_active_guard);
+
+            // Resume follow-tip syncing after a finite rescan completes.
+            if rescan_ok {
+                maybe_trigger_compact_sync(wallet_id_for_task.clone());
+            }
         } else {
             let mut session = session_arc_for_task.lock().await;
             session.is_running = false;
+            session.startup_in_progress = false;
             session.task = None;
             clear_sync_runtime_cache(&wallet_id_for_task);
+            drop(rescan_active_guard);
         }
     });
     {
         let mut session = rescan_session_arc.lock().await;
         session.task = Some(task_handle);
+        session.startup_in_progress = false;
     }
     Ok(())
 }
@@ -10081,12 +8503,7 @@ async fn cancel_sync_internal(wallet_id: WalletId, clear_engine_handle: bool) ->
             task.abort();
             tracing::info!("Sync task aborted for wallet {}", wallet_id);
             {
-                use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -10096,7 +8513,7 @@ async fn cancel_sync_internal(wallet_id: WalletId, clear_engine_handle: bool) ->
                         r#"{{"id":"log_cancel_sync","timestamp":{},"location":"api.rs:cancel_sync","message":"cancel sync","data":{{"wallet_id":"{}","path":"task_abort"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                         ts, wallet_id
                     );
-                }
+                });
             }
         }
 
@@ -10105,12 +8522,7 @@ async fn cancel_sync_internal(wallet_id: WalletId, clear_engine_handle: bool) ->
             tracing::info!("Sync cancelled for wallet {}", wallet_id);
             // #region agent log
             {
-                use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -10120,7 +8532,7 @@ async fn cancel_sync_internal(wallet_id: WalletId, clear_engine_handle: bool) ->
                         r#"{{"id":"log_cancel_sync","timestamp":{},"location":"api.rs:3679","message":"cancel sync","data":{{"wallet_id":"{}","path":"cancel_flag"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                         ts, wallet_id
                     );
-                }
+                });
             }
             // #endregion
         }
@@ -10156,12 +8568,7 @@ async fn cancel_sync_internal(wallet_id: WalletId, clear_engine_handle: bool) ->
 
             // #region agent log
             {
-                use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -10171,7 +8578,7 @@ async fn cancel_sync_internal(wallet_id: WalletId, clear_engine_handle: bool) ->
                         r#"{{"id":"log_cancel_sync","timestamp":{},"location":"api.rs:3696","message":"cancel sync","data":{{"wallet_id":"{}","path":"engine"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"R"}}"#,
                         ts, wallet_id
                     );
-                }
+                });
             }
             // #endregion
         }
@@ -10213,6 +8620,7 @@ async fn cancel_sync_internal(wallet_id: WalletId, clear_engine_handle: bool) ->
         {
             let mut session = session_arc.lock().await;
             session.is_running = false;
+            session.startup_in_progress = false;
             session.sync = if clear_engine_handle { None } else { sync_opt };
             session.cancelled = None;
             session.progress = None;
@@ -10248,7 +8656,7 @@ pub fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
 
     if let Some(session_arc) = session_arc_opt {
         if let Ok(session) = session_arc.try_lock() {
-            return Ok(session.is_running && session.task.is_some());
+            return Ok(session.is_running || session.task.is_some() || session.startup_in_progress);
         }
         // Conservatively report running when lock is contended to avoid
         // starting overlapping sync sessions.
@@ -10557,6 +8965,19 @@ pub struct LightdEndpoint {
     pub label: Option<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct WitnessRefreshOutcome {
+    pub source: String,
+    pub sapling_requested: usize,
+    pub sapling_updated: usize,
+    pub sapling_missing: usize,
+    pub sapling_errors: usize,
+    pub orchard_requested: usize,
+    pub orchard_updated: usize,
+    pub orchard_missing: usize,
+    pub orchard_errors: usize,
+}
+
 impl Default for LightdEndpoint {
     fn default() -> Self {
         Self {
@@ -10636,17 +9057,13 @@ pub fn set_lightd_endpoint(
 
         {
             let ts = chrono::Utc::now().timestamp_millis();
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_set_lightd_endpoint","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"set_lightd_endpoint","data":{{"wallet_id":"{}","endpoint":"{}","old_network":"{:?}","new_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                     ts, wallet_id, endpoint_url, old_network_type, new_network_type
                 );
-            }
+            });
         }
 
         if old_network_type != new_network_type {
@@ -10673,17 +9090,13 @@ pub fn set_lightd_endpoint(
             }
         } else {
             let ts = chrono::Utc::now().timestamp_millis();
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rederive_skip","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"rederive skipped (same network)","data":{{"wallet_id":"{}","network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                     ts, wallet_id, new_network_type
                 );
-            }
+            });
         }
 
         // Persist endpoint per wallet so it survives restarts.
@@ -10756,18 +9169,14 @@ fn infer_key_network_type_from_addresses(
     let addresses = repo.get_all_addresses(account_id)?;
     let address_count = addresses.len();
     if addresses.is_empty() {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = chrono::Utc::now().timestamp_millis();
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rederive_address_count","timestamp":{},"location":"api.rs:infer_key_network_type_from_addresses","message":"no stored addresses","data":{{"account_id":{},"count":0}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                 ts, account_id
             );
-        }
+        });
         return Ok(None);
     }
 
@@ -10820,11 +9229,7 @@ fn infer_key_network_type_from_addresses(
         }
     }
 
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = chrono::Utc::now().timestamp_millis();
         let mut summary = String::new();
         for (idx, (candidate, matches)) in match_counts.iter().enumerate() {
@@ -10848,7 +9253,7 @@ fn infer_key_network_type_from_addresses(
                 ts, account_id, address_count, sample_prefix, sample_type, summary
             );
         }
-    }
+    });
 
     if best_matches == 0 {
         return Ok(None);
@@ -10864,17 +9269,13 @@ fn rederive_wallet_keys_for_network(
 ) -> Result<()> {
     {
         let ts = chrono::Utc::now().timestamp_millis();
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rederive_start","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive start","data":{{"wallet_id":"{}","old_network":"{:?}","new_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                 ts, wallet_id, old_network_type, new_network_type
             );
-        }
+        });
     }
 
     let (_db, repo) = open_wallet_db_for(wallet_id)?;
@@ -10890,17 +9291,13 @@ fn rederive_wallet_keys_for_network(
                 wallet_id
             );
             let ts = chrono::Utc::now().timestamp_millis();
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rederive_skip","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive skipped (no mnemonic)","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                     ts, wallet_id
                 );
-            }
+            });
             return Ok(());
         }
     };
@@ -10947,17 +9344,13 @@ fn rederive_wallet_keys_for_network(
             wallet_id
         );
         let ts = chrono::Utc::now().timestamp_millis();
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rederive_skip","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive skipped (passphrase mismatch)","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                 ts, wallet_id
             );
-        }
+        });
         return Ok(());
     }
 
@@ -10965,34 +9358,26 @@ fn rederive_wallet_keys_for_network(
     let inferred_network =
         infer_key_network_type_from_addresses(&mnemonic, secret.account_id, &repo, &endpoint)?;
     let key_network_type = if let Some((network_type, matched, total)) = inferred_network {
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = chrono::Utc::now().timestamp_millis();
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rederive_infer","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive inferred key network","data":{{"wallet_id":"{}","inferred_network":"{:?}","matched":{},"total":{},"endpoint_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                 ts, wallet_id, network_type, matched, total, new_network_type
             );
-        }
+        });
         network_type
     } else {
         let prefix_network = address_prefix_network_type_for_endpoint(&endpoint, new_network_type);
         if prefix_network != new_network_type {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = chrono::Utc::now().timestamp_millis();
                 let _ = writeln!(
                     file,
                     r#"{{"id":"log_rederive_prefix_fallback","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive using prefix network fallback","data":{{"wallet_id":"{}","endpoint_network":"{:?}","prefix_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                     ts, wallet_id, new_network_type, prefix_network
                 );
-            }
+            });
         }
         prefix_network
     };
@@ -11025,17 +9410,13 @@ fn rederive_wallet_keys_for_network(
     );
     {
         let ts = chrono::Utc::now().timestamp_millis();
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let _ = writeln!(
                 file,
                 r#"{{"id":"log_rederive_ok","timestamp":{},"location":"api.rs:rederive_wallet_keys_for_network","message":"rederive ok","data":{{"wallet_id":"{}","network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                 ts, wallet_id, key_network_type
             );
-        }
+        });
     }
 
     Ok(())
@@ -11091,12 +9472,7 @@ pub fn set_tunnel(mode: TunnelMode) -> Result<()> {
     tracing::info!("Setting tunnel mode: {:?}", mode);
     *TUNNEL_MODE.write() = mode.clone();
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -11115,7 +9491,7 @@ pub fn set_tunnel(mode: TunnelMode) -> Result<()> {
             mode_label,
             socks5_label
         );
-    }
+    });
     // #endregion
     if let Ok(registry_db) = open_wallet_registry() {
         if let Err(e) = persist_registry_tunnel_mode(&registry_db, &mode) {
@@ -11145,12 +9521,7 @@ pub fn get_tunnel() -> Result<TunnelMode> {
 pub async fn bootstrap_tunnel(mode: TunnelMode) -> Result<()> {
     let (transport, socks5_url, _) = tunnel_transport_config_for(&mode);
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -11169,7 +9540,7 @@ pub async fn bootstrap_tunnel(mode: TunnelMode) -> Result<()> {
             mode_label,
             socks5_label
         );
-    }
+    });
     // #endregion
     pirate_sync_lightd::bootstrap_transport(transport, socks5_url)
         .await
@@ -11180,12 +9551,7 @@ pub async fn bootstrap_tunnel(mode: TunnelMode) -> Result<()> {
 /// Shutdown any active transport manager (Tor/I2P/SOCKS5).
 pub async fn shutdown_transport() -> Result<()> {
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -11196,7 +9562,7 @@ pub async fn shutdown_transport() -> Result<()> {
             ts,
             line!()
         );
-    }
+    });
     // #endregion
     pirate_sync_lightd::shutdown_transport().await;
     mark_runtime_clean_shutdown("shutdown_transport");
@@ -11220,12 +9586,7 @@ pub async fn set_tor_bridge_settings(
     )?;
 
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -11244,7 +9605,7 @@ pub async fn set_tor_bridge_settings(
                 .map(|p| !p.trim().is_empty())
                 .unwrap_or(false)
         );
-    }
+    });
     // #endregion
 
     let current = TUNNEL_MODE.read().clone();
@@ -11293,12 +9654,7 @@ pub async fn rotate_tor_exit() -> Result<()> {
         .map_err(|e| anyhow!("Failed to rotate Tor exit: {}", e))?;
 
     // #region agent log
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -11309,7 +9665,7 @@ pub async fn rotate_tor_exit() -> Result<()> {
             ts,
             line!()
         );
-    }
+    });
     // #endregion
 
     disconnect_active_sync_channels("tor_exit_rotate").await;
@@ -11337,6 +9693,24 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
     }
     tracing::info!("Getting balance for wallet {}", wallet_id);
 
+    let suppress_live_reads = should_suppress_live_tx_reads(&wallet_id);
+    if suppress_live_reads {
+        if let Some(cached) = get_cached_balance(&wallet_id) {
+            pirate_core::debug_log::with_locked_file(|file| {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let _ = writeln!(
+                    file,
+                    r#"{{"id":"log_get_balance_cached","timestamp":{},"location":"api.rs:get_balance","message":"returning cached balance during active sync mutation","data":{{"wallet_id":"{}","total":{},"spendable":{},"pending":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                    ts, wallet_id, cached.total, cached.spendable, cached.pending
+                );
+            });
+            return Ok(cached);
+        }
+    }
+
     // Open encrypted wallet DB
     let (db, repo) = open_wallet_db_for(&wallet_id)?;
 
@@ -11348,16 +9722,14 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
     // Get current height from sync state
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
     let sync_state = sync_storage.load_sync_state()?;
+    // Confirmation math should be derived from locally-scanned chain state.
+    // During active sync mutation (including FoundNote replay), callers should use the stable
+    // cached balance above to avoid transient dips.
     let current_height = sync_state.local_height;
 
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -11367,16 +9739,17 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
                 r#"{{"id":"log_get_balance","timestamp":{},"location":"api.rs:4186","message":"get_balance start","data":{{"wallet_id":"{}","account_id":{},"current_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 ts, wallet_id, secret.account_id, current_height
             );
-        }
+        });
     }
     // #endregion
 
-    // Standard confirmation depth for Pirate Chain (10 blocks, same as Zcash)
+    // Standard confirmation depth for Pirate Chain (10 blocks)
     const MIN_DEPTH: u64 = 10;
+
+    let unspent = repo.get_unspent_notes(secret.account_id)?;
 
     // #region agent log
     {
-        let unspent = repo.get_unspent_notes(secret.account_id)?;
         let (count, sum_value, min_h, max_h) = if unspent.is_empty() {
             (0usize, 0i64, None, None)
         } else {
@@ -11390,12 +9763,7 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
             }
             (unspent.len(), sum, Some(min_height), Some(max_height))
         };
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -11414,22 +9782,34 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "null".to_string())
             );
-        }
+        });
     }
     // #endregion
 
-    // Calculate balance from unspent notes
-    let (spendable, pending, total) =
+    // Match wallet-summary behavior for displayed balances:
+    // - spendable/pending are confirmation-depth based wallet balances
+    // - send gating remains controlled by spendability status checks
+    let (spendable, mut pending, mut total) =
         repo.calculate_balance(secret.account_id, current_height, MIN_DEPTH)?;
+
+    // Include change from recently-broadcast TXs whose change note hasn't been
+    // mined and detected by sync yet. Without this, balance drops to zero between
+    // broadcast and the sync engine trial-decrypting the mined change output.
+    {
+        let known_txids: HashSet<String> = unspent
+            .iter()
+            .flat_map(|note| txid_hex_variants_from_bytes(&note.txid))
+            .collect();
+        let unseen_change = resolve_pending_change(&wallet_id, &known_txids);
+        if unseen_change > 0 {
+            pending = pending.saturating_add(unseen_change);
+            total = total.saturating_add(unseen_change);
+        }
+    }
 
     // #region agent log
     {
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -11439,7 +9819,7 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
                 r#"{{"id":"log_get_balance","timestamp":{},"location":"api.rs:4204","message":"get_balance result","data":{{"wallet_id":"{}","total":{},"spendable":{},"pending":{},"min_depth":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 ts, wallet_id, total, spendable, pending, MIN_DEPTH
             );
-        }
+        });
     }
     // #endregion
 
@@ -11452,11 +9832,16 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
         current_height
     );
 
-    Ok(Balance {
+    let balance = Balance {
         total,
         spendable,
         pending,
-    })
+    };
+    // Always refresh the cache, even during mutation mode. This lets the first
+    // fallback read populate a stable snapshot and avoids repeated heavy DB reads
+    // while sync is actively mutating state.
+    put_cached_balance(&wallet_id, &balance);
+    Ok(balance)
 }
 
 /// List transactions
@@ -11470,12 +9855,7 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     let suppress_live_reads = should_suppress_live_tx_reads(&wallet_id);
     if suppress_live_reads {
         if let Some(cached) = get_cached_transactions(&wallet_id, limit) {
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -11488,7 +9868,7 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
                     limit,
                     cached.len()
                 );
-            }
+            });
             return Ok(cached);
         }
     }
@@ -11508,12 +9888,7 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
 
     let spendable =
         !secret.extsk.is_empty() || secret.orchard_extsk.as_ref().is_some_and(|k| !k.is_empty());
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(debug_log_path())
-    {
-        use std::io::Write;
+    pirate_core::debug_log::with_locked_file(|file| {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -11529,12 +9904,13 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
             secret.extsk.len(),
             secret.orchard_extsk.as_ref().map(|k| k.len()).unwrap_or(0)
         );
-    }
+    });
 
     // Get current height from sync state
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
     let sync_state = sync_storage.load_sync_state()?;
-    let current_height = sync_state.local_height;
+    // Use the best known synced height for confirmation display stability.
+    let current_height = sync_state.local_height.max(sync_state.target_height);
 
     // Confirmation thresholds: receive requires 10, send requires 1.
     const RECEIVE_MIN_DEPTH: u64 = 10;
@@ -11601,9 +9977,10 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
         wallet_id
     );
 
-    if !suppress_live_reads {
-        put_cached_transactions(&wallet_id, limit, &transactions);
-    }
+    // Always refresh the cache, even during mutation mode. This lets the first
+    // fallback read populate a stable snapshot and avoids repeated heavy DB reads
+    // while sync is actively mutating state.
+    put_cached_transactions(&wallet_id, limit, &transactions);
 
     Ok(transactions)
 }
@@ -11646,14 +10023,17 @@ async fn fetch_transaction_memo_inner(
     let (
         endpoint_config,
         account_id,
-        txid_array,
+        tx_hash_candidates,
         txid_bytes,
         sapling_candidates,
         orchard_candidates,
+        sapling_ovk_candidates,
+        orchard_ovk_candidates,
+        tx_height_hint,
         stored_memo,
     ) = {
         // Open encrypted wallet DB
-        let (_db, repo) = open_wallet_db_for(&wallet_id)?;
+        let (db, repo) = open_wallet_db_for(&wallet_id)?;
 
         // Get wallet secret to find account_id
         let secret = repo
@@ -11677,14 +10057,26 @@ async fn fetch_transaction_memo_inner(
             if notes_reversed.is_empty() {
                 (parsed_txid.clone(), notes_direct)
             } else {
-                (reversed_txid, notes_reversed)
+                (reversed_txid.clone(), notes_reversed)
             }
         } else {
             (parsed_txid.clone(), notes_direct)
         };
 
-        let mut txid_array = [0u8; 32];
-        txid_array.copy_from_slice(&txid_bytes[..32]);
+        let mut tx_hash_candidates: Vec<[u8; 32]> = Vec::new();
+        let mut push_tx_hash_candidate = |bytes: &[u8]| {
+            if bytes.len() != 32 {
+                return;
+            }
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(bytes);
+            if !tx_hash_candidates.contains(&arr) {
+                tx_hash_candidates.push(arr);
+            }
+        };
+        push_tx_hash_candidate(&txid_bytes);
+        push_tx_hash_candidate(&parsed_txid);
+        push_tx_hash_candidate(&reversed_txid);
 
         let default_sapling_ivk = if !secret.extsk.is_empty() {
             ExtendedSpendingKey::from_bytes(&secret.extsk)
@@ -11722,6 +10114,62 @@ async fn fetch_transaction_memo_inner(
         } else {
             None
         };
+        let mut sapling_ovk_candidates: Vec<SaplingOutgoingViewingKey> = Vec::new();
+        let mut seen_sapling_ovks: HashSet<[u8; 32]> = HashSet::new();
+        let mut push_sapling_ovk = |ovk: SaplingOutgoingViewingKey| {
+            if seen_sapling_ovks.insert(ovk.0) {
+                sapling_ovk_candidates.push(ovk);
+            }
+        };
+
+        let mut orchard_ovk_candidates: Vec<orchard::keys::OutgoingViewingKey> = Vec::new();
+        let mut push_orchard_ovk = |ovk: orchard::keys::OutgoingViewingKey| {
+            orchard_ovk_candidates.push(ovk);
+        };
+
+        if !secret.extsk.is_empty() {
+            if let Ok(extsk) = ExtendedSpendingKey::from_bytes(&secret.extsk) {
+                push_sapling_ovk(extsk.to_extended_fvk().outgoing_viewing_key());
+            }
+        } else if let Some(ref dfvk_bytes) = secret.dfvk {
+            if let Some(dfvk) = ExtendedFullViewingKey::from_bytes(dfvk_bytes) {
+                push_sapling_ovk(dfvk.outgoing_viewing_key());
+            }
+        }
+
+        if let Some(ref orchard_extsk) = secret.orchard_extsk {
+            if let Ok(extsk) = OrchardExtendedSpendingKey::from_bytes(orchard_extsk) {
+                push_orchard_ovk(extsk.to_extended_fvk().to_ovk());
+            }
+        } else if let Some(ref orchard_ivk) = secret.orchard_ivk {
+            if orchard_ivk.len() == 137 {
+                if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(orchard_ivk) {
+                    push_orchard_ovk(fvk.to_ovk());
+                }
+            }
+        }
+
+        for key in repo.get_account_keys(secret.account_id)? {
+            if let Some(ref extsk_bytes) = key.sapling_extsk {
+                if let Ok(extsk) = ExtendedSpendingKey::from_bytes(extsk_bytes) {
+                    push_sapling_ovk(extsk.to_extended_fvk().outgoing_viewing_key());
+                }
+            } else if let Some(ref dfvk_bytes) = key.sapling_dfvk {
+                if let Some(dfvk) = ExtendedFullViewingKey::from_bytes(dfvk_bytes) {
+                    push_sapling_ovk(dfvk.outgoing_viewing_key());
+                }
+            }
+
+            if let Some(ref extsk_bytes) = key.orchard_extsk {
+                if let Ok(extsk) = OrchardExtendedSpendingKey::from_bytes(extsk_bytes) {
+                    push_orchard_ovk(extsk.to_extended_fvk().to_ovk());
+                }
+            } else if let Some(ref fvk_bytes) = key.orchard_fvk {
+                if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(fvk_bytes) {
+                    push_orchard_ovk(fvk.to_ovk());
+                }
+            }
+        }
 
         let mut sapling_ivk_by_key: HashMap<i64, [u8; 32]> = HashMap::new();
         let mut orchard_ivk_by_key: HashMap<i64, [u8; 64]> = HashMap::new();
@@ -11729,7 +10177,11 @@ async fn fetch_transaction_memo_inner(
         let mut orchard_candidates: Vec<(i64, [u8; 64], Option<[u8; 32]>)> = Vec::new();
         let mut seen_sapling_output_indices: HashSet<i64> = HashSet::new();
         let mut seen_orchard_output_indices: HashSet<i64> = HashSet::new();
-        let mut stored_memo: Option<Vec<u8>> = None;
+        let mut stored_memo: Option<Vec<u8>> = if output_index.is_none() {
+            repo.get_tx_memo(&txid)?
+        } else {
+            None
+        };
 
         for note in &notes {
             if let Some(requested_idx) = output_index {
@@ -11837,13 +10289,47 @@ async fn fetch_transaction_memo_inner(
             }
         }
 
+        let mut tx_height_hint = notes
+            .iter()
+            .map(|note| note.height)
+            .filter(|height| *height > 0)
+            .max()
+            .and_then(|height| u32::try_from(height).ok());
+
+        if tx_height_hint.is_none() {
+            let mut txid_candidates = vec![
+                hex::encode(&txid_bytes),
+                hex::encode(&parsed_txid),
+                hex::encode(&reversed_txid),
+            ];
+            txid_candidates.sort_unstable();
+            txid_candidates.dedup();
+
+            for candidate in txid_candidates {
+                let mut stmt = db.conn().prepare(
+                    "SELECT height FROM transactions WHERE txid = ?1 AND height > 0 ORDER BY height DESC LIMIT 1",
+                )?;
+                let mut rows = stmt.query(params![candidate])?;
+                if let Some(row) = rows.next()? {
+                    let height: i64 = row.get(0)?;
+                    if let Ok(parsed_height) = u32::try_from(height) {
+                        tx_height_hint = Some(parsed_height);
+                        break;
+                    }
+                }
+            }
+        }
+
         (
             get_lightd_endpoint_config(wallet_id.clone())?,
             secret.account_id,
-            txid_array,
+            tx_hash_candidates,
             txid_bytes,
             sapling_candidates,
             orchard_candidates,
+            sapling_ovk_candidates,
+            orchard_ovk_candidates,
+            tx_height_hint,
             stored_memo,
         )
     };
@@ -11892,10 +10378,25 @@ async fn fetch_transaction_memo_inner(
         .await
         .map_err(|e| anyhow!("Failed to connect to lightwalletd: {}", e))?;
 
-    let raw_tx_bytes = client
-        .get_transaction(&txid_array)
-        .await
-        .map_err(|e| anyhow!("Failed to fetch transaction: {}", e))?;
+    let mut raw_tx_bytes: Option<Vec<u8>> = None;
+    let mut last_fetch_err: Option<String> = None;
+    for tx_hash in &tx_hash_candidates {
+        match client.get_transaction(tx_hash).await {
+            Ok(raw) => {
+                raw_tx_bytes = Some(raw);
+                break;
+            }
+            Err(e) => {
+                last_fetch_err = Some(e.to_string());
+            }
+        }
+    }
+    let raw_tx_bytes = raw_tx_bytes.ok_or_else(|| {
+        anyhow!(
+            "Failed to fetch transaction: {}",
+            last_fetch_err.unwrap_or_else(|| "unknown get_transaction error".to_string())
+        )
+    })?;
 
     // Decrypt Sapling memo candidates.
     for (idx, ivk_bytes, cmu_opt) in &sapling_candidates {
@@ -11908,7 +10409,13 @@ async fn fetch_transaction_memo_inner(
             Ok(Some(decrypted)) => {
                 // Store memo in database (re-open DB)
                 let (_db3, repo3) = open_wallet_db_for(&wallet_id)?;
-                repo3.update_note_memo(account_id, &txid_bytes, *idx, Some(&decrypted.memo))?;
+                repo3.update_note_memo_with_type(
+                    account_id,
+                    &txid_bytes,
+                    *idx,
+                    Some(pirate_storage_sqlite::models::NoteType::Sapling),
+                    Some(&decrypted.memo),
+                )?;
 
                 // Decode and return
                 let memo_str =
@@ -11918,7 +10425,9 @@ async fn fetch_transaction_memo_inner(
                     txid,
                     idx
                 );
-                return Ok(memo_str);
+                if memo_str.is_some() || output_index.is_some() {
+                    return Ok(memo_str);
+                }
             }
             Ok(None) => continue,
             Err(e) => {
@@ -11940,18 +10449,49 @@ async fn fetch_transaction_memo_inner(
                 let memo_bytes = decrypted.memo.to_vec();
                 // Store memo in database (re-open DB)
                 let (_db3, repo3) = open_wallet_db_for(&wallet_id)?;
-                repo3.update_note_memo(account_id, &txid_bytes, *idx, Some(&memo_bytes))?;
+                repo3.update_note_memo_with_type(
+                    account_id,
+                    &txid_bytes,
+                    *idx,
+                    Some(pirate_storage_sqlite::models::NoteType::Orchard),
+                    Some(&memo_bytes),
+                )?;
 
                 // Decode and return
                 let memo_str =
                     pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_bytes);
                 tracing::info!("Fetched and stored Orchard memo for tx {} output {}", txid, idx);
-                return Ok(memo_str);
+                if memo_str.is_some() || output_index.is_some() {
+                    return Ok(memo_str);
+                }
             }
             Ok(None) => continue,
             Err(e) => {
                 tracing::warn!("Failed to decrypt Orchard memo for output {}: {}", idx, e);
                 continue;
+            }
+        }
+    }
+
+    if output_index.is_none() {
+        if let Some(memo_bytes) = recover_outgoing_memo_from_raw_tx(
+            &raw_tx_bytes,
+            tx_height_hint,
+            &sapling_ovk_candidates,
+            &orchard_ovk_candidates,
+        ) {
+            let (_db3, repo3) = open_wallet_db_for(&wallet_id)?;
+            let txid_hex = hex::encode(&txid_bytes);
+            if let Err(e) = repo3.upsert_tx_memo(&txid_hex, &memo_bytes) {
+                tracing::warn!(
+                    "Failed to persist recovered outgoing memo for {}: {}",
+                    txid,
+                    e
+                );
+            }
+            let memo_str = pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_bytes);
+            if memo_str.is_some() {
+                return Ok(memo_str);
             }
         }
     }

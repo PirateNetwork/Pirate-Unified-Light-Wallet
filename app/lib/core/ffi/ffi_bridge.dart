@@ -801,6 +801,16 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  /// Get deterministic spendability status for send gating.
+  static Future<SpendabilityStatus> getSpendabilityStatus(
+    WalletId walletId,
+  ) async {
+    if (kUseFrbBindings) {
+      return await api.getSpendabilityStatus(walletId: walletId);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   /// Build transaction with validation
   ///
   /// Validates:

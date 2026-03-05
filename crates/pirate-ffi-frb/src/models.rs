@@ -254,6 +254,25 @@ impl SyncStatus {
     }
 }
 
+/// Wallet spendability status for deterministic send gating.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpendabilityStatus {
+    /// Whether spending is currently allowed.
+    pub spendable: bool,
+    /// Whether a full rescan is required before spending.
+    pub rescan_required: bool,
+    /// Latest target height known by the wallet.
+    pub target_height: u64,
+    /// Latest anchor height observed by sync.
+    pub anchor_height: u64,
+    /// Anchor height last validated for spending.
+    pub validated_anchor_height: u64,
+    /// Whether a repair/rescan request is queued.
+    pub repair_queued: bool,
+    /// Deterministic reason code.
+    pub reason_code: String,
+}
+
 /// Network tunnel mode
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TunnelMode {
