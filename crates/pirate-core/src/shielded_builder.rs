@@ -1,7 +1,7 @@
 //! Shielded transaction builder for Sapling and Orchard
 //!
 //! This module provides a unified transaction builder that uses
-//! `zcash_primitives::transaction::builder::Builder` to construct
+//! the Rust transaction builder to construct
 //! transactions with both Sapling and Orchard outputs.
 //!
 //! Based on the Rust builder path in the node (`builder_ffi.rs`), but
@@ -348,7 +348,7 @@ impl ShieldedBuilder {
             orchard_spending_keys_by_id,
             available_notes,
             target_height,
-            orchard_anchor,
+            orchard_anchor: provided_orchard_anchor,
             change_diversifier_index,
         } = inputs;
 
@@ -410,6 +410,10 @@ impl ShieldedBuilder {
             .notes
             .iter()
             .any(|n| n.note_type == crate::selection::NoteType::Orchard);
+        let has_orchard_outputs = self
+            .outputs
+            .iter()
+            .any(|o| matches!(o, ShieldedOutput::Orchard { .. }));
 
         // Recalculate fee with actual input count
         let actual_fee = match self.fee_override {
@@ -437,6 +441,49 @@ impl ShieldedBuilder {
             );
         }
 
+        let effective_orchard_anchor = if has_orchard_spends {
+            let mut selected_anchor: Option<OrchardAnchor> = None;
+            for note in &selection.notes {
+                if note.note_type != crate::selection::NoteType::Orchard {
+                    continue;
+                }
+                let note_anchor = note.orchard_anchor.ok_or_else(|| {
+                    Error::TransactionBuild(
+                        "Missing Orchard anchor for selected Orchard spend note".to_string(),
+                    )
+                })?;
+                if let Some(existing) = selected_anchor.as_ref() {
+                    if existing != &note_anchor {
+                        return Err(Error::TransactionBuild(
+                            "Selected Orchard spend notes are not anchored to a single root"
+                                .to_string(),
+                        ));
+                    }
+                } else {
+                    selected_anchor = Some(note_anchor);
+                }
+            }
+
+            let selected_anchor = selected_anchor.ok_or_else(|| {
+                Error::TransactionBuild(
+                    "Missing Orchard anchor for selected Orchard spend set".to_string(),
+                )
+            })?;
+            if let Some(provided) = provided_orchard_anchor.as_ref() {
+                if provided != &selected_anchor {
+                    return Err(Error::TransactionBuild(
+                        "Provided Orchard anchor does not match selected spend-note anchor"
+                            .to_string(),
+                    ));
+                }
+            }
+            Some(selected_anchor)
+        } else if has_orchard_outputs {
+            provided_orchard_anchor
+        } else {
+            None
+        };
+
         // Create prover from cached Sapling parameters
         let prover: LocalTxProver = sapling_prover();
 
@@ -444,7 +491,7 @@ impl ShieldedBuilder {
         let mut tx_builder = TxBuilder::new(
             self.network.clone(),
             BlockHeight::from_u32(target_height),
-            orchard_anchor,
+            effective_orchard_anchor,
         );
 
         // Add Sapling and Orchard spends with witness data
