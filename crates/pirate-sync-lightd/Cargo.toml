@@ -19,8 +19,8 @@ pirate-storage-sqlite = { path = "../pirate-storage-sqlite" }
 
 # Merkle tree for Sapling commitment tree (compatible with zcash_primitives 0.22)
 # Align with node version
-bridgetree = "0.4"
 incrementalmerkletree = "0.5"
+shardtree = "0.1"
 
 # Sapling primitives for proper Pedersen hash using Jubjub curve
 sapling-crypto = { workspace = true }

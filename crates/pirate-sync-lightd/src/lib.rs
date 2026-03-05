@@ -10,13 +10,10 @@
 pub mod background;
 pub mod background_logger;
 mod block_cache;
-mod bridge_tree_codec;
 pub mod cancel;
 pub mod client;
 pub mod error;
-pub mod frontier;
 pub mod orchard;
-pub mod orchard_frontier;
 pub mod pipeline;
 pub mod privacy;
 pub mod progress;
@@ -37,8 +34,6 @@ pub use client::{
     TreeState, DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_URL,
 };
 pub use error::{Error, Result};
-pub use frontier::{FrontierSnapshot, SaplingCommitment, SaplingFrontier, SAPLING_TREE_DEPTH};
-pub use orchard_frontier::{OrchardFrontier, OrchardFrontierSnapshot};
 pub use pipeline::{
     DecryptedNote, PerfCounters, PerfSnapshot, PipelineConfig, PipelineResult, SyncPipeline,
     MINI_CHECKPOINT_INTERVAL, PIPELINE_BATCH_SIZE,

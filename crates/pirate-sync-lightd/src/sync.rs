@@ -5,15 +5,13 @@
 //! - Cancellation handling and interruption recovery
 //! - Performance counters
 //! - Mini-checkpoints every N batches
-//! - SaplingFrontier for witness tree management
+//! - ShardTree for witness tree management (single source of truth)
 //! - Checkpoint loading and restoration
 //! - Rollback on interruption/corruption/reorg
 
 use crate::block_cache::{acquire_inflight, BlockCache, InflightLease};
 use crate::client::{CompactBlockData, TransportMode};
-use crate::frontier::SaplingFrontier;
 use crate::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes;
-use crate::orchard_frontier::OrchardFrontier;
 use crate::pipeline::NoteType;
 use crate::pipeline::{DecryptedNote, OrchardDecryptedNoteInit, PerfCounters};
 use crate::progress::SyncStage;
@@ -22,6 +20,9 @@ use crate::{CancelToken, Error, LightClient, Result, SyncProgress};
 use directories::ProjectDirs;
 use group::ff::PrimeField;
 use hex;
+use incrementalmerkletree::frontier::CommitmentTree;
+use incrementalmerkletree::Hashable;
+use incrementalmerkletree::Retention;
 use orchard::keys::{
     Diversifier as OrchardDiversifier, IncomingViewingKey as OrchardIncomingViewingKey,
     PreparedIncomingViewingKey as OrchardPreparedIncomingViewingKey,
@@ -45,11 +46,13 @@ use pirate_params::{Network as PirateParamsNetwork, NetworkType};
 use pirate_storage_sqlite::models::{AccountKey, AddressScope, KeyScope, KeyType};
 use pirate_storage_sqlite::repository::OrchardNoteRef;
 use pirate_storage_sqlite::security::MasterKey;
+use pirate_storage_sqlite::shardtree_store::SqliteShardStore;
 use pirate_storage_sqlite::{
-    truncate_above_height, Database, EncryptionKey, FrontierStorage, NoteRecord, Repository,
-    SyncStateStorage,
+    truncate_above_height, Database, EncryptionKey, NoteRecord, Repository, ScanQueueStorage,
+    SpendabilityStateStorage, SyncStateStorage,
 };
 use rayon::prelude::*;
+use shardtree::ShardTree;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
 use std::io::Write;
@@ -64,12 +67,15 @@ use zcash_note_encryption::{
     batch as note_batch, EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE,
 };
 use zcash_primitives::consensus::{BlockHeight, BranchId};
-use zcash_primitives::merkle_tree::{read_frontier_v0, read_frontier_v1, write_merkle_path};
+use zcash_primitives::merkle_tree::{read_commitment_tree, read_frontier_v0, read_frontier_v1};
 use zcash_primitives::sapling::keys::{
     OutgoingViewingKey as SaplingOutgoingViewingKey, PreparedIncomingViewingKey,
 };
 use zcash_primitives::sapling::note_encryption::{try_sapling_output_recovery, SaplingDomain};
-use zcash_primitives::sapling::{PaymentAddress as SaplingPaymentAddress, Rseed, SaplingIvk};
+use zcash_primitives::sapling::{
+    note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment, Node as SaplingNode,
+    PaymentAddress as SaplingPaymentAddress, Rseed, SaplingIvk, NOTE_COMMITMENT_TREE_DEPTH,
+};
 use zcash_primitives::transaction::Transaction;
 use zcash_primitives::zip32::Scope as SaplingScope;
 
@@ -79,24 +85,6 @@ type TxidBytes = [u8; 32];
 type TypedSpendEntry = (StorageNoteType, NullifierBytes, TxidBytes);
 type RecoveredSpend = (i64, NullifierBytes, TxidBytes);
 type TypedRecoveredSpend = (i64, StorageNoteType, NullifierBytes, TxidBytes);
-
-fn debug_log_path() -> PathBuf {
-    let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
-        PathBuf::from(path)
-    } else {
-        ProjectDirs::from("com", "Pirate", "PirateWallet")
-            .map(|dirs| dirs.data_local_dir().join("logs").join("debug.log"))
-            .unwrap_or_else(|| {
-                env::current_dir()
-                    .map(|dir| dir.join(".cursor").join("debug.log"))
-                    .unwrap_or_else(|_| PathBuf::from(".cursor").join("debug.log"))
-            })
-    };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    path
-}
 
 fn verbose_note_logging_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
@@ -126,62 +114,16 @@ fn verbose_sync_batch_logging_enabled() -> bool {
 }
 
 fn append_debug_log_line(line: &str) {
-    static LOG_FILE: OnceLock<std::sync::Mutex<Option<std::fs::File>>> = OnceLock::new();
-    let lock = LOG_FILE.get_or_init(|| std::sync::Mutex::new(None));
-    if let Ok(mut guard) = lock.lock() {
-        if guard.is_none() {
-            *guard = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-                .ok();
-        }
-        if let Some(file) = guard.as_mut() {
-            let _ = writeln!(file, "{}", line);
-        }
-    }
+    pirate_core::debug_log::append_line(line);
 }
 
-struct IdleWitnessMaintenanceEvent<'a> {
-    event: &'a str,
-    current_height: u64,
-    checkpoint_height: u64,
-    sapling_repaired: usize,
-    orchard_repaired: usize,
-    checkpoint_persisted: bool,
-    yielded_to_tip: bool,
-    duration_ms: u128,
-    detail: &'a str,
-}
-
-fn log_idle_witness_maintenance_event(data: IdleWitnessMaintenanceEvent<'_>) {
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let id = format!("{:08x}", ts);
-    append_debug_log_line(&format!(
-        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:idle_witness_maintenance","message":"idle witness maintenance","data":{{"event":"{}","current_height":{},"checkpoint_height":{},"sapling_repaired":{},"orchard_repaired":{},"checkpoint_persisted":{},"yielded_to_tip":{},"duration_ms":{},"detail":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-        id,
-        ts,
-        data.event,
-        data.current_height,
-        data.checkpoint_height,
-        data.sapling_repaired,
-        data.orchard_repaired,
-        data.checkpoint_persisted,
-        data.yielded_to_tip,
-        data.duration_ms,
-        data.detail.replace('"', "'")
-    ));
-}
-
-/// Prevent long startup stalls when replaying extremely large frontier gaps from cache.
-/// For larger gaps, fall back to authoritative tree-state bootstrap.
-const FRONTIER_CACHE_REPLAY_MAX_GAP: u64 = 250_000;
-/// Replay cached frontiers in chunks so cancellation can preempt quickly.
-const FRONTIER_CACHE_REPLAY_CHUNK_SIZE: u64 = 10_000;
-
+// BridgeTree frontier cache replay constants removed -- ShardTree is persistent.
+const SHARDTREE_PRUNING_DEPTH: usize = 1000;
+const SAPLING_SHARD_HEIGHT: u8 = NOTE_COMMITMENT_TREE_DEPTH / 2;
+const ORCHARD_SHARD_HEIGHT: u8 = NOTE_COMMITMENT_TREE_DEPTH / 2;
+const SAPLING_TABLE_PREFIX: &str = "sapling";
+const ORCHARD_TABLE_PREFIX: &str = "orchard";
+/// Shard height used for subtree-addressed spendability/repair scheduling.
 fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKeyGroup>> {
     let key_id = key.id.unwrap_or(0);
 
@@ -280,14 +222,21 @@ pub struct SyncConfig {
 /// Constants for retry logic
 const MAX_RETRY_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF_MS: u64 = 100;
-const FRONTIER_SNAPSHOT_RETAIN: usize = 512;
+// BridgeTree snapshot retention removed -- ShardTree is persistent in SQLite.
 const MIN_PARALLEL_OUTPUTS: usize = 256;
-const MAX_WITNESS_MARK_REPAIR_NOTES: usize = 25_000;
-const IDLE_WITNESS_MAINTENANCE_INTERVAL: Duration = Duration::from_secs(5);
-const IDLE_WITNESS_MAINTENANCE_TIP_CHECK_TIMEOUT: Duration = Duration::from_millis(1200);
+const SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED: &str = "ERR_WITNESS_REPAIR_QUEUED";
+const SPENDABILITY_MIN_CONFIRMATIONS: u32 = 10;
 const PREFETCH_JOIN_TIMEOUT: Duration = Duration::from_secs(25);
 const LOW_HEIGHT_BATCH_CAP_HEIGHT: u64 = 10_000;
-const LOW_HEIGHT_BATCH_MAX_BLOCKS: u64 = 256;
+const LOW_HEIGHT_BATCH_MAX_BLOCKS: u64 = 1_024;
+const SYNC_STATE_AUX_UPDATE_BLOCK_INTERVAL: u64 = 512;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TipWitnessValidationOutcome {
+    Clean,
+    RepairQueued { start: u64, end_exclusive: u64 },
+    Error,
+}
 
 impl Default for SyncConfig {
     fn default() -> Self {
@@ -300,6 +249,10 @@ impl Default for SyncConfig {
             max_batch_bytes,
             prefetch_queue_depth,
             prefetch_queue_max_bytes,
+            batch_size,
+            max_batch_size,
+            sync_state_flush_every_batches,
+            sync_state_flush_interval_ms,
         ) = if is_mobile {
             (
                 8,
@@ -309,24 +262,32 @@ impl Default for SyncConfig {
                 16_000_000,
                 2,
                 16_000_000,
+                2_000,
+                2_000,
+                3,
+                1_500,
             )
         } else {
             (
                 32,
                 Some(500_000_000),
-                32_000_000,
-                4_000_000,
-                64_000_000,
+                128_000_000,
+                16_000_000,
+                256_000_000,
                 4,
-                96_000_000,
+                384_000_000,
+                4_000,
+                4_000,
+                6,
+                5_000,
             )
         };
 
         Self {
             checkpoint_interval: 10_000,
-            batch_size: 2_000, // Match SimpleSync default (used when server recommendations disabled)
+            batch_size,          // Used when server recommendations disabled/unavailable.
             min_batch_size: 100, // Minimum batch size for spam blocks
-            max_batch_size: 2_000, // Maximum batch size (caps server batches to prevent OOM)
+            max_batch_size,      // Maximum batch size (caps server batches to prevent OOM)
             use_server_batch_recommendations: true, // Use server's ~4MB chunk recommendations (typically ~199 blocks)
             mini_checkpoint_every: 5,               // Mini-checkpoint every 5 batches
             mini_checkpoint_max_block_gap: 20_000,  // Always checkpoint at least every 20k blocks
@@ -338,8 +299,8 @@ impl Default for SyncConfig {
             max_batch_bytes,
             heavy_block_threshold_bytes: 500_000, // 500KB per block = heavy/spam (lowered for earlier detection)
             max_batch_memory_bytes,
-            sync_state_flush_every_batches: if is_mobile { 3 } else { 2 },
-            sync_state_flush_interval_ms: 1_500,
+            sync_state_flush_every_batches,
+            sync_state_flush_interval_ms,
             prefetch_queue_depth,
             prefetch_queue_max_bytes,
         }
@@ -359,10 +320,10 @@ pub struct SyncEngine {
     nullifier_cache: HashMap<[u8; 32], i64>,
     nullifier_cache_loaded: bool,
     tracked_wallet_txids: HashSet<[u8; 32]>,
-    /// Sapling frontier for witness tree management
-    frontier: Arc<RwLock<SaplingFrontier>>,
-    /// Orchard frontier for witness tree management
-    orchard_frontier: Arc<RwLock<OrchardFrontier>>,
+    /// Next Sapling commitment position (sequential counter, init from frontier)
+    sapling_tree_position: Arc<RwLock<u64>>,
+    /// Next Orchard commitment position (sequential counter, init from frontier)
+    orchard_tree_position: Arc<RwLock<u64>>,
     /// Performance counters
     perf: Arc<PerfCounters>,
     /// Parallel trial-decryption worker pool
@@ -371,12 +332,8 @@ pub struct SyncEngine {
     cancel: CancelToken,
     /// Background full-tx enrichment limiter
     enrich_semaphore: Arc<tokio::sync::Semaphore>,
-}
-
-#[allow(dead_code)]
-fn _assert_sync_engine_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<SyncEngine>();
+    /// Last tip height where queue-based witness integrity check completed.
+    last_witness_check_height: Arc<RwLock<u64>>,
 }
 
 struct PrefetchTask {
@@ -389,6 +346,14 @@ struct PrefetchTask {
 struct ServerBatchHintTask {
     start: u64,
     handle: tokio::task::JoinHandle<Option<u64>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FrontierCheckpointMode {
+    /// Persist a checkpoint for every processed block.
+    PerBlock,
+    /// Persist checkpoints only for blocks containing wallet-owned commitments.
+    OwnedOnly,
 }
 
 #[derive(Clone, Copy)]
@@ -410,21 +375,7 @@ struct TreeStateRetryProfile {
 enum FrontierInitSource {
     None,
     LocalSnapshot,
-    LocalCacheReplay,
     RemoteTreeState,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum FrontierIntegrityStatus {
-    Verified,
-    Mismatch,
-    Unverified,
-}
-
-#[derive(Clone, Debug)]
-struct FrontierIntegrityOutcome {
-    status: FrontierIntegrityStatus,
-    detail: String,
 }
 
 impl SyncEngine {
@@ -479,12 +430,13 @@ impl SyncEngine {
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
             tracked_wallet_txids: HashSet::new(),
-            frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
-            orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
+            sapling_tree_position: Arc::new(RwLock::new(0)),
+            orchard_tree_position: Arc::new(RwLock::new(0)),
             perf: Arc::new(PerfCounters::new()),
             decrypt_pool: Arc::new(decrypt_pool),
             cancel: CancelToken::new(),
             enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
+            last_witness_check_height: Arc::new(RwLock::new(0)),
         }
     }
 
@@ -520,12 +472,7 @@ impl SyncEngine {
             loaded += 1;
         }
         self.nullifier_cache_loaded = true;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -536,7 +483,7 @@ impl SyncEngine {
                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:185","message":"nullifier_cache loaded","data":{{"count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
                 id, ts, loaded
             );
-        }
+        });
         tracing::debug!("Loaded {} unspent nullifiers into cache", loaded);
         Ok(())
     }
@@ -579,12 +526,13 @@ impl SyncEngine {
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
             tracked_wallet_txids: HashSet::new(),
-            frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
-            orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
+            sapling_tree_position: Arc::new(RwLock::new(0)),
+            orchard_tree_position: Arc::new(RwLock::new(0)),
             perf: Arc::new(PerfCounters::new()),
             decrypt_pool: Arc::new(decrypt_pool),
             cancel: CancelToken::new(),
             enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
+            last_witness_check_height: Arc::new(RwLock::new(0)),
         }
     }
 
@@ -614,12 +562,13 @@ impl SyncEngine {
             nullifier_cache: HashMap::new(),
             nullifier_cache_loaded: false,
             tracked_wallet_txids: HashSet::new(),
-            frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
-            orchard_frontier: Arc::new(RwLock::new(OrchardFrontier::new())),
+            sapling_tree_position: Arc::new(RwLock::new(0)),
+            orchard_tree_position: Arc::new(RwLock::new(0)),
             perf: Arc::new(PerfCounters::new()),
             decrypt_pool: Arc::new(decrypt_pool),
             cancel: CancelToken::new(),
             enrich_semaphore: Arc::new(tokio::sync::Semaphore::new(enrich_limit)),
+            last_witness_check_height: Arc::new(RwLock::new(0)),
         }
     }
 
@@ -734,6 +683,9 @@ impl SyncEngine {
         };
         self.storage = Some(sink);
         self.keys = key_groups;
+        if let Ok(mut last) = self.last_witness_check_height.try_write() {
+            *last = 0;
+        }
         Ok(self)
     }
 
@@ -742,7 +694,11 @@ impl SyncEngine {
         Arc::clone(&self.progress)
     }
 
-    /// Start sync from birthday height
+    /// Start sync from birthday height.
+    ///
+    /// ShardTree state is persistent in SQLite, so we just need the stored
+    /// local height to know where to resume. Position counters are recovered
+    /// in `initialize_shardtrees_for_sync`.
     pub async fn sync_from_birthday(&mut self) -> Result<()> {
         let mut start_height = self.birthday_height as u64;
 
@@ -754,49 +710,7 @@ impl SyncEngine {
             };
 
             if stored_height > 0 {
-                if let Some(snapshot_height) =
-                    self.restore_frontiers_from_storage(stored_height).await?
-                {
-                    if snapshot_height < stored_height {
-                        // Frontier snapshot is behind. Try to rebuild the frontier from cached
-                        // compact blocks to avoid truncating notes or fetching tree state.
-                        let rebuilt = self
-                            .rebuild_frontier_from_cache(snapshot_height, stored_height)
-                            .await
-                            .unwrap_or(false);
-
-                        if !rebuilt {
-                            // Cache rebuild failed; clear frontiers and fall back to tree-state init.
-                            *self.frontier.write().await = SaplingFrontier::new();
-                            *self.orchard_frontier.write().await = OrchardFrontier::new();
-                        }
-
-                        start_height = stored_height.saturating_add(1);
-                        // #region agent log
-                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(debug_log_path())
-                        {
-                            use std::io::Write;
-                            let ts = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_millis();
-                            let id = format!("{:08x}", ts);
-                            let _ = writeln!(
-                                file,
-                                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:303","message":"frontier snapshot behind; cache rebuild","data":{{"stored_height":{},"snapshot_height":{},"start_height":{},"rebuilt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                                id, ts, stored_height, snapshot_height, start_height, rebuilt
-                            );
-                        }
-                        // #endregion
-                    } else {
-                        start_height = snapshot_height.saturating_add(1);
-                    }
-                } else {
-                    start_height = stored_height.saturating_add(1);
-                }
+                start_height = stored_height.saturating_add(1);
             }
         }
 
@@ -805,60 +719,6 @@ impl SyncEngine {
         }
 
         self.sync_range(start_height, None).await
-    }
-
-    async fn rebuild_frontier_from_cache(
-        &self,
-        snapshot_height: u64,
-        stored_height: u64,
-    ) -> Result<bool> {
-        if stored_height <= snapshot_height {
-            return Ok(true);
-        }
-
-        let start = snapshot_height.saturating_add(1);
-        let end = stored_height;
-        let gap = end.saturating_sub(start).saturating_add(1);
-        if gap > FRONTIER_CACHE_REPLAY_MAX_GAP {
-            tracing::info!(
-                "Skipping cache frontier replay for large gap (start={}, end={}, gap={}); using remote tree-state bootstrap",
-                start,
-                end,
-                gap
-            );
-            return Ok(false);
-        }
-        let cache = match BlockCache::for_endpoint(self.client.endpoint()) {
-            Ok(c) => c,
-            Err(_) => return Ok(false),
-        };
-
-        let mut chunk_start = start;
-        while chunk_start <= end {
-            if self.is_cancelled().await {
-                return Err(Error::Cancelled);
-            }
-            let chunk_end = std::cmp::min(
-                chunk_start.saturating_add(FRONTIER_CACHE_REPLAY_CHUNK_SIZE.saturating_sub(1)),
-                end,
-            );
-            let expected = chunk_end.saturating_sub(chunk_start).saturating_add(1);
-            let blocks = cache.load_range(chunk_start, chunk_end).unwrap_or_default();
-            if blocks.len() as u64 != expected {
-                tracing::warn!(
-                    "Cache frontier replay missing blocks (start={}, end={}, expected={}, got={})",
-                    chunk_start,
-                    chunk_end,
-                    expected,
-                    blocks.len()
-                );
-                return Ok(false);
-            }
-
-            let _ = self.update_frontier(&blocks, &[]).await?;
-            chunk_start = chunk_end.saturating_add(1);
-        }
-        Ok(true)
     }
 
     /// Total wallet balance at a given chain height (spendable + pending).
@@ -914,11 +774,7 @@ impl SyncEngine {
         );
 
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -929,17 +785,20 @@ impl SyncEngine {
                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:275","message":"sync_range entry","data":{{"start":{},"end_height":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
                 id, ts, start_height, end_height
             );
-        }
+        });
         // #endregion
+
+        // New sync ranges (including rescans) must re-run witness integrity checks
+        // when they catch tip, even if the target height matches a prior session.
+        {
+            let mut last = self.last_witness_check_height.write().await;
+            *last = 0;
+        }
 
         // Connect to lightwalletd
         tracing::debug!("Connecting to lightwalletd...");
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -950,15 +809,11 @@ impl SyncEngine {
                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:280","message":"connect attempt","data":{{}},"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}}"#,
                 id, ts
             );
-        }
+        });
         // #endregion
         let connect_result = self.client.connect().await;
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -972,7 +827,7 @@ impl SyncEngine {
                 connect_result.is_ok(),
                 connect_result.as_ref().err()
             );
-        }
+        });
         // #endregion
         connect_result.map_err(|e| {
             tracing::error!("Failed to connect to lightwalletd: {:?}", e);
@@ -991,11 +846,7 @@ impl SyncEngine {
             None => {
                 tracing::debug!("Fetching latest block from server...");
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -1006,15 +857,11 @@ impl SyncEngine {
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:294","message":"get_latest_block call","data":{{}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                         id, ts
                     );
-                }
+                });
                 // #endregion
                 let latest_result = self.client.get_latest_block().await;
                 // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -1029,7 +876,7 @@ impl SyncEngine {
                         latest_result.as_ref().ok().copied().unwrap_or(0),
                         latest_result.as_ref().err()
                     );
-                }
+                });
                 // #endregion
                 let latest = latest_result.map_err(|e| {
                     tracing::error!("Failed to get latest block: {:?}", e);
@@ -1040,21 +887,34 @@ impl SyncEngine {
             }
         };
 
-        // Validate end height
+        // Validate end height.
+        //
+        // In follow-tip mode we cannot early-return when local resume height is ahead of
+        // current server tip, because that can leave queued FoundNote repairs unprocessed.
+        // Clamp to tip so the normal monitor/repair loop remains active.
+        let effective_start_height = start_height;
         if end < start_height {
-            tracing::warn!(
-                "Skipping sync: local height {} is ahead of server tip {}",
-                start_height,
-                end
-            );
-            {
-                let progress = self.progress.write().await;
-                progress.set_target(end);
-                progress.set_current(end);
-                progress.set_stage(SyncStage::Complete);
-                progress.start();
+            if follow_tip {
+                // The server tip hasn't advanced past our resume height yet.
+                // Keep effective_start_height at resume height so the batch-fetch
+                // loop is a no-op (start > end → nothing to fetch). The follow-tip
+                // monitoring loop will then wait for new blocks and handle repairs.
+                //
+                // CRITICAL: do NOT clamp start down to `end` — that would re-fetch
+                // and re-process the last block from the previous sync, double-
+                // appending its commitments to the ShardTree and corrupting roots.
+                tracing::info!(
+                    "Local resume height {} is ahead of server tip {}; entering follow-tip monitoring without re-fetching",
+                    start_height,
+                    end
+                );
+            } else {
+                tracing::warn!(
+                    "Bounded sync start {} is ahead of server tip {}; entering queue/validation pass without block fetch",
+                    start_height,
+                    end
+                );
             }
-            return Ok(());
         }
 
         self.ensure_nullifier_cache()?;
@@ -1063,12 +923,12 @@ impl SyncEngine {
         {
             let progress = self.progress.write().await;
             progress.set_target(end);
-            progress.set_current(start_height);
+            progress.set_current(effective_start_height);
             progress.set_stage(SyncStage::Headers);
             progress.start();
             tracing::debug!(
                 "Progress initialized: current={}, target={}, stage={:?}",
-                start_height,
+                effective_start_height,
                 end,
                 SyncStage::Headers
             );
@@ -1076,17 +936,13 @@ impl SyncEngine {
 
         tracing::info!(
             "Starting sync: {} -> {} ({} blocks)",
-            start_height,
+            effective_start_height,
             end,
-            end - start_height + 1
+            end.saturating_sub(effective_start_height).saturating_add(1)
         );
 
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -1097,21 +953,17 @@ impl SyncEngine {
                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:332","message":"sync_range_internal entry","data":{{"start":{},"end":{},"blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
                 id,
                 ts,
-                start_height,
+                effective_start_height,
                 end,
-                end - start_height + 1
+                end.saturating_sub(effective_start_height).saturating_add(1)
             );
-        }
+        });
         // #endregion
         let result = self
-            .sync_range_internal(start_height, end, follow_tip)
+            .sync_range_internal(effective_start_height, end, follow_tip)
             .await;
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -1125,7 +977,7 @@ impl SyncEngine {
                 result.is_ok(),
                 result.as_ref().err()
             );
-        }
+        });
         // #endregion
 
         // Mark complete or failed
@@ -1140,105 +992,43 @@ impl SyncEngine {
         result
     }
 
-    /// Reset in-memory frontiers so a bounded replay can rebuild witness state
-    /// from authoritative tree state at `start_height - 1`.
-    pub async fn reset_frontiers_for_replay(&mut self, start_height: u64) -> Result<()> {
-        *self.frontier.write().await = SaplingFrontier::new();
-        *self.orchard_frontier.write().await = OrchardFrontier::new();
-        tracing::warn!(
-            "Frontiers reset for bounded replay start_height={}",
-            start_height
-        );
-
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let id = format!("{:08x}", ts);
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:338","message":"frontiers reset for replay","data":{{"start_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                id, ts, start_height
-            );
-        }
-
-        Ok(())
+    /// Check whether the ShardTree already has checkpoints at or above a given height.
+    fn shardtree_has_checkpoints_at_or_above(&self, height: u64) -> Result<bool> {
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(false);
+        };
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let height_u32 = u32::try_from(height).unwrap_or(u32::MAX);
+        let has: bool = db
+            .conn()
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sapling_tree_checkpoints WHERE checkpoint_id >= ?1)",
+                [height_u32],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        Ok(has)
     }
 
-    async fn restore_frontiers_from_storage(&self, height: u64) -> Result<Option<u64>> {
-        let sink = match self.storage.as_ref() {
-            Some(s) => s,
-            None => return Ok(None),
-        };
-
-        let snapshot = {
-            let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
-            let storage = FrontierStorage::new(&db);
-            storage.load_snapshot_at_or_below(height as u32)?
-        };
-        let (snapshot_height, bytes) = match snapshot {
-            Some(data) => data,
-            None => return Ok(None),
-        };
-
-        let (sapling_bytes, orchard_bytes) = decode_frontier_snapshot(&bytes)?;
-        if sapling_bytes.is_empty() {
-            return Err(Error::Sync("Empty Sapling frontier snapshot".to_string()));
-        }
-
-        let sapling_frontier = match SaplingFrontier::deserialize(&sapling_bytes) {
-            Ok(frontier) => frontier,
-            Err(e) => {
-                tracing::warn!("Failed to restore Sapling frontier snapshot: {}", e);
-                return Ok(None);
-            }
-        };
-        let orchard_frontier = if orchard_bytes.is_empty() {
-            OrchardFrontier::new()
-        } else {
-            match OrchardFrontier::deserialize(&orchard_bytes) {
-                Ok(frontier) => frontier,
-                Err(e) => {
-                    tracing::warn!("Failed to restore Orchard frontier snapshot: {}", e);
-                    return Ok(None);
-                }
-            }
-        };
-
-        *self.frontier.write().await = sapling_frontier;
-        *self.orchard_frontier.write().await = orchard_frontier;
-
-        Ok(Some(snapshot_height as u64))
-    }
-
-    async fn initialize_frontiers_from_tree_state(
+    /// Initialize ShardTrees for a sync starting at `start_height`.
+    ///
+    /// If the ShardTree already has checkpoint data (from a previous sync), the existing
+    /// state is reused and position counters are recovered from it. Otherwise the remote
+    /// lightwalletd tree-state is fetched and used to seed both trees via
+    /// `insert_frontier_nodes()`.
+    async fn initialize_shardtrees_for_sync(
         &self,
         start_height: u64,
-    ) -> Result<(FrontierInitSource, Option<u64>)> {
+    ) -> Result<FrontierInitSource> {
         if start_height <= 1 {
-            // Some lightwalletd deployments reject tree-state lookups at height 0
-            // ("request for unspecified identifier"). For scans starting at
-            // block 1, the pre-state frontier is genesis-empty, so initialize
-            // locally and continue.
-            *self.frontier.write().await = SaplingFrontier::new();
-            *self.orchard_frontier.write().await = OrchardFrontier::new();
-            return Ok((FrontierInitSource::None, None));
+            *self.sapling_tree_position.write().await = 0;
+            *self.orchard_tree_position.write().await = 0;
+            return Ok(FrontierInitSource::None);
         }
 
         let tree_height = start_height.saturating_sub(1);
 
-        // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -1246,241 +1036,285 @@ impl SyncEngine {
             let id = format!("{:08x}", ts);
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:502","message":"initialize frontiers tree state","data":{{"tree_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:init_shardtrees","message":"initialize shardtrees for sync","data":{{"tree_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
                 id, ts, tree_height
             );
-        }
-        // #endregion
+        });
 
-        if let Some(snapshot_height) = self.restore_frontiers_from_storage(tree_height).await? {
-            if snapshot_height == tree_height {
-                tracing::debug!(
-                    "Restored frontier snapshots at height {} from storage",
-                    snapshot_height
-                );
-                return Ok((FrontierInitSource::LocalSnapshot, None));
-            }
-
-            // Snapshot is older than required. First try to replay from local compact-block cache
-            // to avoid slow/fragile remote tree-state bootstrap on old heights.
-            if snapshot_height < tree_height {
-                let rebuilt = self
-                    .rebuild_frontier_from_cache(snapshot_height, tree_height)
-                    .await
-                    .unwrap_or(false);
-                if rebuilt {
-                    tracing::debug!(
-                        "Rebuilt frontiers from cache {} -> {} (no remote tree-state needed)",
-                        snapshot_height,
-                        tree_height
-                    );
-                    return Ok((FrontierInitSource::LocalCacheReplay, None));
-                }
-
-                // Do not backfill from snapshot when cache replay is unavailable.
-                // Rescan/sync start height must remain authoritative.
-                tracing::info!(
-                    "Skipping local snapshot backfill: snapshot {} < tree_height {} and cache replay unavailable; using remote tree-state",
-                    snapshot_height,
-                    tree_height
-                );
-                *self.frontier.write().await = SaplingFrontier::new();
-                *self.orchard_frontier.write().await = OrchardFrontier::new();
-            }
-
-            // Cache replay not available; reset and fall back to tree-state fetch.
-            *self.frontier.write().await = SaplingFrontier::new();
-            *self.orchard_frontier.write().await = OrchardFrontier::new();
+        if self.shardtree_has_checkpoints_at_or_above(tree_height)? {
+            self.recover_position_counters_from_shardtree().await?;
+            tracing::debug!(
+                "ShardTree already has checkpoints at height {}; reusing existing state",
+                tree_height
+            );
+            return Ok(FrontierInitSource::LocalSnapshot);
         }
 
-        self.initialize_frontiers_from_remote_tree_state(tree_height)
-            .await?;
-
-        Ok((FrontierInitSource::RemoteTreeState, None))
+        self.seed_shardtrees_from_remote(tree_height).await?;
+        Ok(FrontierInitSource::RemoteTreeState)
     }
 
-    async fn initialize_frontiers_from_remote_tree_state(&self, tree_height: u64) -> Result<()> {
+    /// Seed both ShardTrees from the remote lightwalletd tree state at the given height.
+    async fn seed_shardtrees_from_remote(&self, tree_height: u64) -> Result<()> {
         let tree_state = self.fetch_tree_state_with_retry(tree_height).await?;
 
-        let sapling_hex = if !tree_state.sapling_frontier.is_empty() {
-            (&tree_state.sapling_frontier, "sapling_frontier")
+        let sapling_frontier = if !tree_state.sapling_frontier.is_empty() {
+            match Self::parse_frontier_hex::<SaplingNode>(
+                "sapling_frontier",
+                &tree_state.sapling_frontier,
+            ) {
+                Ok(f) => Some(f),
+                Err(e) => {
+                    tracing::warn!(
+                        "Sapling frontier parse failed at height {}: {} -- treating as empty tree",
+                        tree_height,
+                        e
+                    );
+                    None
+                }
+            }
         } else if !tree_state.sapling_tree.is_empty() {
-            (&tree_state.sapling_tree, "sapling_tree")
+            match Self::parse_frontier_hex::<SaplingNode>("sapling_tree", &tree_state.sapling_tree)
+            {
+                Ok(f) => Some(f),
+                Err(e) => {
+                    tracing::warn!(
+                        "Sapling tree parse failed at height {}: {} -- treating as empty tree",
+                        tree_height,
+                        e
+                    );
+                    None
+                }
+            }
         } else {
-            return Err(Error::Sync(
-                "Tree state missing Sapling frontier/tree data".to_string(),
-            ));
+            tracing::info!(
+                "No Sapling tree data from server at height {} -- empty tree",
+                tree_height
+            );
+            None
         };
 
-        let sapling_inner = SyncEngine::parse_frontier_hex::<crate::frontier::SaplingCommitment>(
-            sapling_hex.1,
-            sapling_hex.0,
-        )?;
-        let mut sapling_frontier = SaplingFrontier::new();
-        sapling_frontier.init_from_frontier(sapling_inner);
-
-        let orchard_required = self.orchard_tree_required(tree_height);
+        let orchard_hex_len = tree_state.orchard_tree.len();
         let orchard_frontier = if tree_state.orchard_tree.is_empty() {
-            if orchard_required {
-                return Err(Error::Sync(format!(
-                    "Tree state missing Orchard tree data at height {}",
-                    tree_height
-                )));
-            }
-            OrchardFrontier::new()
+            tracing::info!(
+                "No Orchard tree data from server at height {} -- empty tree",
+                tree_height
+            );
+            None
         } else {
-            let orchard_inner = SyncEngine::parse_frontier_hex::<MerkleHashOrchard>(
+            match Self::parse_frontier_hex::<MerkleHashOrchard>(
                 "orchard_tree",
                 &tree_state.orchard_tree,
-            )?;
-            let mut frontier = OrchardFrontier::new();
-            frontier.init_from_frontier(orchard_inner);
-            frontier
+            ) {
+                Ok(f) => {
+                    let root_hex = hex::encode(f.root().to_bytes());
+                    tracing::info!(
+                        "Orchard frontier parsed OK at height {}: hex_len={}, root={}",
+                        tree_height,
+                        orchard_hex_len,
+                        root_hex
+                    );
+                    append_debug_log_line(&format!(
+                        r#"{{"id":"log_orchard_frontier_parsed","timestamp":{},"location":"sync.rs:seed_shardtrees_from_remote","message":"Orchard frontier parsed OK","data":{{"tree_height":{},"hex_len":{},"root":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis(),
+                        tree_height,
+                        orchard_hex_len,
+                        root_hex
+                    ));
+                    Some(f)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Orchard tree parse failed at height {}: {} (hex_len={}) -- treating as empty tree",
+                        tree_height, e, orchard_hex_len
+                    );
+                    append_debug_log_line(&format!(
+                        r#"{{"id":"log_orchard_frontier_parse_failed","timestamp":{},"location":"sync.rs:seed_shardtrees_from_remote","message":"Orchard frontier parse failed","data":{{"tree_height":{},"hex_len":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis(),
+                        tree_height,
+                        orchard_hex_len,
+                        e
+                    ));
+                    None
+                }
+            }
         };
 
-        let sapling_root = sapling_frontier.root();
-        let orchard_root = orchard_frontier.root();
+        let checkpoint_height = u32::try_from(tree_height).map_err(|_| {
+            Error::Sync(format!(
+                "Shardtree seed height {} exceeds u32::MAX",
+                tree_height
+            ))
+        })?;
+        let checkpoint_id = BlockHeight::from(checkpoint_height);
 
-        *self.frontier.write().await = sapling_frontier;
-        *self.orchard_frontier.write().await = orchard_frontier;
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(());
+        };
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let tx = db.conn().unchecked_transaction().map_err(|e| {
+            Error::Sync(format!("Failed to start shardtree seed transaction: {}", e))
+        })?;
+
+        // Sapling
+        {
+            tx.execute("DELETE FROM sapling_tree_checkpoint_marks_removed", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+            tx.execute("DELETE FROM sapling_tree_checkpoints", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+            tx.execute("DELETE FROM sapling_tree_shards", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+            tx.execute("DELETE FROM sapling_tree_cap", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+
+            let store = SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
+                &tx,
+                SAPLING_TABLE_PREFIX,
+            )
+            .map_err(|e| Error::Sync(format!("Failed to open Sapling shard store: {}", e)))?;
+            let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT> =
+                ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+
+            let sapling_nonempty = sapling_frontier.as_ref().and_then(|f| f.value());
+            if let Some(nonempty) = sapling_nonempty {
+                tree.insert_frontier_nodes(
+                    nonempty.clone(),
+                    Retention::Checkpoint {
+                        id: checkpoint_id,
+                        is_marked: false,
+                    },
+                )
+                .map_err(|e| Error::Sync(format!("Failed to seed Sapling shardtree: {}", e)))?;
+                let pos = u64::from(nonempty.position()) + 1;
+                *self.sapling_tree_position.write().await = pos;
+            } else {
+                tree.checkpoint(checkpoint_id)
+                    .map_err(|e| Error::Sync(format!("Sapling checkpoint failed: {}", e)))?;
+                *self.sapling_tree_position.write().await = 0;
+            }
+        }
+
+        // Orchard
+        {
+            tx.execute("DELETE FROM orchard_tree_checkpoint_marks_removed", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+            tx.execute("DELETE FROM orchard_tree_checkpoints", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+            tx.execute("DELETE FROM orchard_tree_shards", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+            tx.execute("DELETE FROM orchard_tree_cap", [])
+                .map_err(|e| Error::Sync(format!("Seed clear failed: {}", e)))?;
+
+            let store =
+                SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
+                    &tx,
+                    ORCHARD_TABLE_PREFIX,
+                )
+                .map_err(|e| Error::Sync(format!("Failed to open Orchard shard store: {}", e)))?;
+            let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT> =
+                ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+
+            if let Some(ref frontier) = orchard_frontier {
+                if let Some(nonempty) = frontier.value() {
+                    tree.insert_frontier_nodes(
+                        nonempty.clone(),
+                        Retention::Checkpoint {
+                            id: checkpoint_id,
+                            is_marked: false,
+                        },
+                    )
+                    .map_err(|e| Error::Sync(format!("Failed to seed Orchard shardtree: {}", e)))?;
+                    let pos = u64::from(nonempty.position()) + 1;
+                    *self.orchard_tree_position.write().await = pos;
+                } else {
+                    tree.checkpoint(checkpoint_id)
+                        .map_err(|e| Error::Sync(format!("Orchard checkpoint failed: {}", e)))?;
+                    *self.orchard_tree_position.write().await = 0;
+                }
+            } else {
+                tree.checkpoint(checkpoint_id)
+                    .map_err(|e| Error::Sync(format!("Orchard checkpoint failed: {}", e)))?;
+                *self.orchard_tree_position.write().await = 0;
+            }
+        }
+
+        tx.commit()
+            .map_err(|e| Error::Sync(format!("Shardtree seed commit failed: {}", e)))?;
 
         tracing::info!(
-            "Initialized authoritative frontiers at {} (sapling_root={}, orchard_root={})",
+            "Seeded ShardTrees from remote tree state at height {} (sapling_pos={}, orchard_pos={})",
             tree_height,
-            hex::encode(sapling_root),
-            orchard_root
-                .map(hex::encode)
-                .unwrap_or_else(|| "none".to_string())
+            *self.sapling_tree_position.read().await,
+            *self.orchard_tree_position.read().await,
         );
         Ok(())
     }
 
-    async fn spawn_frontier_integrity_check(
-        &self,
-        start_height: u64,
-    ) -> Option<tokio::task::JoinHandle<Result<FrontierIntegrityOutcome>>> {
-        let tree_height = start_height.saturating_sub(1);
-        if tree_height == 0 {
-            return None;
-        }
+    /// Recover position counters from the existing ShardTree checkpoint state.
+    async fn recover_position_counters_from_shardtree(&self) -> Result<()> {
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(());
+        };
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let conn = db.conn();
 
-        let local_sapling_root = { self.frontier.read().await.root() };
-        let local_orchard_root = { self.orchard_frontier.read().await.root() };
-        let client = self.client.clone();
-
-        Some(tokio::spawn(async move {
-            SyncEngine::verify_frontier_integrity(
-                client,
-                tree_height,
-                local_sapling_root,
-                local_orchard_root,
+        let sapling_pos: Option<i64> = conn
+            .query_row(
+                "SELECT MAX(position) FROM sapling_tree_checkpoints WHERE position IS NOT NULL",
+                [],
+                |row| row.get(0),
             )
-            .await
-        }))
-    }
+            .unwrap_or(None);
+        *self.sapling_tree_position.write().await = sapling_pos
+            .map(|p| (p as u64).saturating_add(1))
+            .unwrap_or(0);
 
-    async fn verify_frontier_integrity(
-        client: LightClient,
-        tree_height: u64,
-        local_sapling_root: [u8; 32],
-        local_orchard_root: Option<[u8; 32]>,
-    ) -> Result<FrontierIntegrityOutcome> {
-        let mut tree_state = tokio::time::timeout(
-            Duration::from_secs(8),
-            client.get_bridge_tree_state(tree_height),
-        )
-        .await
-        .ok()
-        .and_then(|r| r.ok());
+        let orchard_pos: Option<i64> = conn
+            .query_row(
+                "SELECT MAX(position) FROM orchard_tree_checkpoints WHERE position IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(None);
+        *self.orchard_tree_position.write().await = orchard_pos
+            .map(|p| (p as u64).saturating_add(1))
+            .unwrap_or(0);
 
-        if tree_state.is_none() {
-            tree_state =
-                tokio::time::timeout(Duration::from_secs(10), client.get_tree_state(tree_height))
-                    .await
-                    .ok()
-                    .and_then(|r| r.ok());
-        }
-
-        if tree_state.is_none() {
-            let hash = tokio::time::timeout(Duration::from_secs(8), async {
-                let h = u32::try_from(tree_height).map_err(|_| {
-                    Error::Sync(format!("Tree height {} exceeds u32 range", tree_height))
-                })?;
-                let block = client.get_block(h).await?;
-                Ok::<Vec<u8>, Error>(block.hash)
-            })
-            .await
-            .ok()
-            .and_then(|r| r.ok());
-
-            if let Some(hash) = hash {
-                tree_state = tokio::time::timeout(
-                    Duration::from_secs(8),
-                    client.get_bridge_tree_state_by_hash(hash.clone()),
-                )
-                .await
-                .ok()
-                .and_then(|r| r.ok());
-
-                if tree_state.is_none() {
-                    tree_state = tokio::time::timeout(
-                        Duration::from_secs(8),
-                        client.get_tree_state_by_hash(hash),
-                    )
-                    .await
-                    .ok()
-                    .and_then(|r| r.ok());
-                }
-            }
-        }
-
-        let Some(tree_state) = tree_state else {
-            return Ok(FrontierIntegrityOutcome {
-                status: FrontierIntegrityStatus::Unverified,
-                detail: format!("unable to fetch tree state at {}", tree_height),
-            });
-        };
-
-        let remote_sapling_root = SyncEngine::sapling_root_from_tree_state(&tree_state)?;
-        let remote_orchard_root = SyncEngine::orchard_root_from_tree_state(&tree_state)?;
-
-        let sapling_match = remote_sapling_root == local_sapling_root;
-        let orchard_match = match (local_orchard_root, remote_orchard_root) {
-            (Some(local), Some(remote)) => local == remote,
-            (None, None) => true,
-            _ => false,
-        };
-
-        if sapling_match && orchard_match {
-            return Ok(FrontierIntegrityOutcome {
-                status: FrontierIntegrityStatus::Verified,
-                detail: format!("frontier integrity verified at {}", tree_height),
-            });
-        }
-
-        Ok(FrontierIntegrityOutcome {
-            status: FrontierIntegrityStatus::Mismatch,
-            detail: format!(
-                "frontier mismatch at {} (sapling_match={}, orchard_match={}, local_orchard_present={}, remote_orchard_present={})",
-                tree_height,
-                sapling_match,
-                orchard_match,
-                local_orchard_root.is_some(),
-                remote_orchard_root.is_some()
-            ),
-        })
+        Ok(())
     }
 
     fn parse_frontier_hex<H>(
         label: &str,
         hex_str: &str,
-    ) -> Result<bridgetree::Frontier<H, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>>
+    ) -> Result<incrementalmerkletree::frontier::Frontier<H, { NOTE_COMMITMENT_TREE_DEPTH }>>
     where
-        H: bridgetree::Hashable + zcash_primitives::merkle_tree::HashSer + Clone,
+        H: Hashable + zcash_primitives::merkle_tree::HashSer + Clone,
     {
         let bytes = hex::decode(hex_str)
             .map_err(|e| Error::Sync(format!("Failed to decode {} bytes: {}", label, e)))?;
 
+        // Root-only encodings (32 bytes) are not sufficient to construct a frontier.
+        // Fail closed so callers can fall back to root-only handling when applicable.
+        if bytes.len() == 32 {
+            return Err(Error::Sync(format!(
+                "{} returned root-only encoding (frontier required)",
+                label
+            )));
+        }
+
+        // `z_gettreestate{legacy}` returns a legacy `CommitmentTree` serialization in `finalState`.
+        // Decode it via `read_commitment_tree` and then derive a `Frontier`.
+        if let Ok(tree) = read_commitment_tree::<H, _, { NOTE_COMMITMENT_TREE_DEPTH }>(&bytes[..]) {
+            return Ok(CommitmentTree::to_frontier(&tree));
+        }
+
+        // Fallback: some servers may provide serialized `Frontier` (v0/v1) instead.
         if let Ok(frontier) = read_frontier_v1::<H, _>(&bytes[..]) {
             return Ok(frontier);
         }
@@ -1489,214 +1323,268 @@ impl SyncEngine {
             .map_err(|e| Error::Sync(format!("Failed to parse {} frontier: {}", label, e)))
     }
 
-    fn sapling_root_from_tree_state(tree_state: &crate::client::TreeState) -> Result<[u8; 32]> {
-        let sapling_hex = if !tree_state.sapling_frontier.is_empty() {
-            &tree_state.sapling_frontier
-        } else if !tree_state.sapling_tree.is_empty() {
-            &tree_state.sapling_tree
-        } else {
-            return Err(Error::Sync(
-                "Tree state missing sapling frontier/tree".to_string(),
-            ));
-        };
-
-        let frontier = SyncEngine::parse_frontier_hex::<crate::frontier::SaplingCommitment>(
-            "sapling_tree_state",
-            sapling_hex,
-        )?;
-        Ok(SaplingFrontier::from_inner(frontier).root())
-    }
-
-    fn orchard_root_from_tree_state(
-        tree_state: &crate::client::TreeState,
-    ) -> Result<Option<[u8; 32]>> {
-        if tree_state.orchard_tree.is_empty() {
-            return Ok(None);
-        }
-        let frontier = SyncEngine::parse_frontier_hex::<MerkleHashOrchard>(
-            "orchard_tree_state",
-            &tree_state.orchard_tree,
-        )?;
-        let mut orchard = OrchardFrontier::new();
-        orchard.init_from_frontier(frontier);
-        Ok(orchard.root())
-    }
-
-    async fn repair_witness_marks_from_unspent_notes(
-        &self,
-        max_notes: usize,
-    ) -> Result<(usize, usize)> {
-        let sink = match self.storage.as_ref() {
-            Some(s) => s,
-            None => return Ok((0, 0)),
-        };
-
-        let notes = {
-            let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
-            let repo = Repository::new(&db);
-            repo.get_unspent_notes(sink.account_id)?
-        };
-
-        let mut sapling_positions = HashSet::new();
-        let mut orchard_positions = HashSet::new();
-        for note in notes.into_iter().take(max_notes) {
-            let Some(pos) = note.position else { continue };
-            if pos < 0 {
-                continue;
-            }
-            match note.note_type {
-                pirate_storage_sqlite::models::NoteType::Sapling => {
-                    sapling_positions.insert(pos as u64);
-                }
-                pirate_storage_sqlite::models::NoteType::Orchard => {
-                    orchard_positions.insert(pos as u64);
-                }
-            }
-        }
-
-        let mut repaired_sapling = 0usize;
-        {
-            let mut sapling_frontier = self.frontier.write().await;
-            for pos in sapling_positions {
-                if sapling_frontier.recover_mark(pos)? {
-                    repaired_sapling += 1;
-                }
-            }
-        }
-
-        let mut repaired_orchard = 0usize;
-        {
-            let mut orchard_frontier = self.orchard_frontier.write().await;
-            for pos in orchard_positions {
-                if orchard_frontier.recover_mark(pos)? {
-                    repaired_orchard += 1;
-                }
-            }
-        }
-
-        Ok((repaired_sapling, repaired_orchard))
-    }
-
-    async fn run_idle_witness_maintenance(
+    async fn check_witnesses_and_queue_rescans(
         &self,
         current_height: u64,
-        checkpoint_height: u64,
-    ) -> Result<(usize, usize, bool, bool)> {
-        let started_at = Instant::now();
-        log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
-            event: "start",
-            current_height,
-            checkpoint_height,
-            sapling_repaired: 0,
-            orchard_repaired: 0,
-            checkpoint_persisted: false,
-            yielded_to_tip: false,
-            duration_ms: 0,
-            detail: "cycle_start",
-        });
+    ) -> Result<Option<(u64, u64)>> {
+        let sink = match self.storage.as_ref() {
+            Some(s) => s,
+            None => return Ok(None),
+        };
 
-        // If a newer tip is already available, let sync process that first.
-        if self
-            .idle_maintenance_should_yield_to_new_tip(current_height)
-            .await
-        {
-            log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
-                event: "yield_before",
-                current_height,
-                checkpoint_height,
-                sapling_repaired: 0,
-                orchard_repaired: 0,
-                checkpoint_persisted: false,
-                yielded_to_tip: true,
-                duration_ms: started_at.elapsed().as_millis(),
-                detail: "new_tip_detected_before_repair",
-            });
-            return Ok((0, 0, false, true));
+        let already_checked = {
+            let last = self.last_witness_check_height.read().await;
+            *last >= current_height
+        };
+
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let repo = Repository::new(&db);
+        let spendability = SpendabilityStateStorage::new(&db);
+        let scan_queue = ScanQueueStorage::new(&db);
+        let wallet_birthday = repo
+            .get_wallet_birthday_height(sink.account_id)?
+            .unwrap_or(1)
+            .max(1);
+
+        let Some((target_height, computed_anchor_height)) = spendability
+            .get_target_and_anchor_heights_for_account(
+                SPENDABILITY_MIN_CONFIRMATIONS,
+                sink.account_id,
+            )?
+            .map(|(target, anchor_height)| (target.max(1), anchor_height.max(1)))
+        else {
+            spendability.mark_sync_finalizing(0, 0)?;
+            tracing::debug!(
+                "Skipping witness integrity check at tip {}: scan queue extrema not available yet",
+                current_height
+            );
+            return Ok(None);
+        };
+
+        let state = spendability.load_state().unwrap_or_default();
+        if state.rescan_required {
+            return Ok(None);
         }
 
-        let (sapling_repaired, orchard_repaired) = self
-            .repair_witness_marks_from_unspent_notes(MAX_WITNESS_MARK_REPAIR_NOTES)
-            .await?;
-        log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
-            event: "repair_result",
-            current_height,
-            checkpoint_height,
-            sapling_repaired,
-            orchard_repaired,
-            checkpoint_persisted: false,
-            yielded_to_tip: false,
-            duration_ms: started_at.elapsed().as_millis(),
-            detail: "repair_completed",
-        });
-
-        // If a new block arrived while maintenance ran, skip checkpointing and
-        // return to sync loop immediately.
-        if self
-            .idle_maintenance_should_yield_to_new_tip(current_height)
-            .await
-        {
-            log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
-                event: "yield_after",
-                current_height,
-                checkpoint_height,
-                sapling_repaired,
-                orchard_repaired,
-                checkpoint_persisted: false,
-                yielded_to_tip: true,
-                duration_ms: started_at.elapsed().as_millis(),
-                detail: "new_tip_detected_after_repair",
-            });
-            return Ok((sapling_repaired, orchard_repaired, false, true));
+        // If tip didn't advance and state is already validated for this anchor epoch,
+        // avoid redundant checks.
+        if already_checked {
+            let state_ok = state.spendable
+                && !state.rescan_required
+                && !state.repair_queued
+                && state.reason_code == "OK"
+                && state.validated_anchor_height >= computed_anchor_height;
+            if state_ok {
+                return Ok(None);
+            }
         }
 
-        let mut checkpoint_persisted = false;
-        if checkpoint_height > 0 && (sapling_repaired > 0 || orchard_repaired > 0) {
-            self.create_checkpoint(checkpoint_height).await?;
-            checkpoint_persisted = true;
-            log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
-                event: "checkpoint_persisted",
-                current_height,
-                checkpoint_height,
-                sapling_repaired,
-                orchard_repaired,
-                checkpoint_persisted: true,
-                yielded_to_tip: false,
-                duration_ms: started_at.elapsed().as_millis(),
-                detail: "repair_checkpoint_saved",
-            });
-        }
-
-        log_idle_witness_maintenance_event(IdleWitnessMaintenanceEvent {
-            event: "done",
-            current_height,
-            checkpoint_height,
-            sapling_repaired,
-            orchard_repaired,
-            checkpoint_persisted,
-            yielded_to_tip: false,
-            duration_ms: started_at.elapsed().as_millis(),
-            detail: if sapling_repaired == 0 && orchard_repaired == 0 {
-                "noop"
+        // Queue-first flow:
+        // - ask storage for witness/material gaps at the fixed anchor epoch
+        // - queue FoundNote ranges for normal replay worker
+        // - mark spendability validated only when queue is clean
+        let witness_check =
+            repo.check_witnesses(sink.account_id, computed_anchor_height, wallet_birthday)?;
+        if witness_check.repair_ranges.is_empty() {
+            let done_through = computed_anchor_height
+                .saturating_add(1)
+                .max(current_height.saturating_add(1));
+            let _ = scan_queue.mark_found_note_done_through(done_through);
+            if let Some(next_row) = scan_queue.next_found_note_range()? {
+                spendability.mark_repair_pending_without_enqueue(
+                    next_row.range_start.max(1),
+                    SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
+                )?;
             } else {
-                "repaired"
-            },
-        });
+                spendability.mark_validated(target_height, computed_anchor_height)?;
+            }
+            let mut last = self.last_witness_check_height.write().await;
+            *last = (*last).max(current_height);
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            append_debug_log_line(&format!(
+                r#"{{"id":"log_check_witnesses_complete","timestamp":{},"location":"sync.rs:check_witnesses_and_queue_rescans","message":"witness check complete","data":{{"current_height":{},"target_height":{},"anchor_height":{},"considered_notes":{},"done_through_exclusive":{},"next_repair_row":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                ts,
+                current_height,
+                target_height,
+                computed_anchor_height,
+                witness_check.considered_notes,
+                done_through,
+                if scan_queue.next_found_note_range()?.is_some() {
+                    1
+                } else {
+                    0
+                }
+            ));
+            tracing::debug!(
+                "check_witnesses complete at tip {}: anchor={} considered={} missing=0",
+                current_height,
+                computed_anchor_height,
+                witness_check.considered_notes
+            );
+            return Ok(None);
+        }
 
-        Ok((
-            sapling_repaired,
-            orchard_repaired,
-            checkpoint_persisted,
-            false,
-        ))
+        let mut queued_start = u64::MAX;
+        let mut queued_end = computed_anchor_height.max(current_height).saturating_add(1);
+        for (from_height, range_end_exclusive) in &witness_check.repair_ranges {
+            let from = (*from_height).max(wallet_birthday).max(1);
+            let end = (*range_end_exclusive).max(from.saturating_add(1));
+            queued_start = queued_start.min(from);
+            queued_end = queued_end.max(end);
+            spendability.queue_repair_range(
+                from,
+                end,
+                SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
+            )?;
+        }
+        let queued_start = if queued_start == u64::MAX {
+            wallet_birthday.max(1)
+        } else {
+            queued_start
+        };
+        spendability.mark_repair_pending_without_enqueue(
+            queued_start,
+            SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
+        )?;
+        let mut last = self.last_witness_check_height.write().await;
+        *last = (*last).max(current_height);
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        append_debug_log_line(&format!(
+            r#"{{"id":"log_check_witnesses_queued","timestamp":{},"location":"sync.rs:check_witnesses_and_queue_rescans","message":"witness check queued repair ranges","data":{{"current_height":{},"target_height":{},"anchor_height":{},"queued_start":{},"queued_end_exclusive":{},"ranges":{},"considered_notes":{},"sapling_missing":{},"orchard_missing":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+            ts,
+            current_height,
+            target_height,
+            computed_anchor_height,
+            queued_start,
+            queued_end,
+            witness_check.repair_ranges.len(),
+            witness_check.considered_notes,
+            witness_check.sapling_missing,
+            witness_check.orchard_missing
+        ));
+        tracing::warn!(
+            "check_witnesses queued repairs at tip {}: anchor={} considered={} sapling_missing={} orchard_missing={} ranges={}",
+            current_height,
+            computed_anchor_height,
+            witness_check.considered_notes,
+            witness_check.sapling_missing,
+            witness_check.orchard_missing,
+            witness_check.repair_ranges.len()
+        );
+        Ok(Some((queued_start, queued_end)))
     }
 
-    async fn idle_maintenance_should_yield_to_new_tip(&self, current_height: u64) -> bool {
-        let latest_result = tokio::time::timeout(
-            IDLE_WITNESS_MAINTENANCE_TIP_CHECK_TIMEOUT,
-            self.client.get_latest_block(),
-        )
-        .await;
-        matches!(latest_result, Ok(Ok(latest_height)) if latest_height > current_height)
+    /// Run a tip-level witness validation pass without failing the sync task.
+    ///
+    /// This is used when sync exits without entering the follow-tip monitoring
+    /// loop (for example bounded rescans). In those cases we still need one
+    /// deterministic integrity pass so `validated_anchor_height` can advance at
+    /// the current tip.
+    async fn run_tip_witness_validation(
+        &self,
+        tip_height: u64,
+        context: &'static str,
+    ) -> TipWitnessValidationOutcome {
+        let mut queued_start = 0u64;
+        let mut queued_end_exclusive = 0u64;
+        let outcome: &'static str;
+        let mut error_detail = String::new();
+        let result;
+        match self.check_witnesses_and_queue_rescans(tip_height).await {
+            Ok(Some((repair_from_height, repair_end_exclusive))) => {
+                queued_start = repair_from_height;
+                queued_end_exclusive = repair_end_exclusive;
+                outcome = "repair_queued";
+                result = TipWitnessValidationOutcome::RepairQueued {
+                    start: repair_from_height,
+                    end_exclusive: repair_end_exclusive,
+                };
+                tracing::warn!(
+                    "Tip witness validation queued FoundNote repair range {}..{} at tip {} (context={})",
+                    repair_from_height,
+                    repair_end_exclusive,
+                    tip_height,
+                    context
+                );
+            }
+            Ok(None) => {
+                outcome = "clean";
+                result = TipWitnessValidationOutcome::Clean;
+            }
+            Err(e) => {
+                outcome = "error";
+                error_detail = e.to_string();
+                result = TipWitnessValidationOutcome::Error;
+                tracing::warn!(
+                    "Tip witness validation failed at {} (context={}): {}",
+                    tip_height,
+                    context,
+                    e
+                );
+            }
+        }
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        append_debug_log_line(&format!(
+            r#"{{"id":"log_tip_witness_validation","timestamp":{},"location":"sync.rs:run_tip_witness_validation","message":"tip witness validation pass","data":{{"tip_height":{},"context":"{}","outcome":"{}","queued_start":{},"queued_end_exclusive":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+            ts,
+            tip_height,
+            context,
+            outcome,
+            queued_start,
+            queued_end_exclusive,
+            error_detail.replace('"', "'")
+        ));
+        result
+    }
+
+    async fn activate_queued_found_note_range(&self) -> Result<Option<(u64, u64)>> {
+        let sink = match self.storage.as_ref() {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let scan_queue = ScanQueueStorage::new(&db);
+        let spendability = SpendabilityStateStorage::new(&db);
+        let Some(row) = scan_queue.next_found_note_range()? else {
+            return Ok(None);
+        };
+        if row.status == "pending" {
+            scan_queue.mark_in_progress(row.id)?;
+        }
+        let range_start = row.range_start.max(1);
+        let range_end_exclusive = row.range_end.max(range_start.saturating_add(1));
+        spendability.mark_repair_pending_without_enqueue(
+            range_start,
+            SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
+        )?;
+        // Force one post-repair integrity pass at the same tip after replay
+        // finishes, so spendability can return to validated without waiting for
+        // a new block.
+        {
+            let mut last = self.last_witness_check_height.write().await;
+            let force_height = range_start.saturating_sub(1);
+            if *last > force_height {
+                *last = force_height;
+            }
+        }
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        append_debug_log_line(&format!(
+            r#"{{"id":"log_activate_repair_range","timestamp":{},"location":"sync.rs:activate_queued_found_note_range","message":"activated witness repair range","data":{{"range_start":{},"range_end_exclusive":{},"row_status":"{}","row_id":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+            ts, range_start, range_end_exclusive, row.status, row.id
+        ));
+        Ok(Some((range_start, range_end_exclusive)))
     }
 
     fn tree_state_retry_profile(&self) -> TreeStateRetryProfile {
@@ -1803,12 +1691,7 @@ impl SyncEngine {
             let hash_timeout = std::cmp::min(timeout, hash_timeout_cap);
 
             // #region agent log
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -1823,7 +1706,7 @@ impl SyncEngine {
                     attempt,
                     timeout.as_secs()
                 );
-            }
+            });
             // #endregion
 
             // Try bridge first, then legacy. Running both in parallel can overload some
@@ -1841,11 +1724,7 @@ impl SyncEngine {
                 match bridge_result {
                     Ok(Ok(state)) => return Ok(state),
                     Ok(Err(e)) => {
-                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(debug_log_path())
-                        {
+                        pirate_core::debug_log::with_locked_file(|file| {
                             let ts = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
@@ -1856,15 +1735,11 @@ impl SyncEngine {
                                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:535","message":"bridge tree state failed","data":{{"tree_height":{},"attempt":{},"error":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
                                 id, ts, tree_height, attempt, e
                             );
-                        }
+                        });
                         Some(format!("{:?}", e))
                     }
                     Err(_) => {
-                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(debug_log_path())
-                        {
+                        pirate_core::debug_log::with_locked_file(|file| {
                             let ts = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
@@ -1875,7 +1750,7 @@ impl SyncEngine {
                                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:552","message":"bridge tree state timeout","data":{{"tree_height":{},"attempt":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
                                 id, ts, tree_height, attempt
                             );
-                        }
+                        });
                         Some("timeout".to_string())
                     }
                 }
@@ -1975,12 +1850,7 @@ impl SyncEngine {
                 let mut extended_legacy_hash_err: Option<String> = None;
                 let mut extended_hash_err: Option<String> = None;
 
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -1995,7 +1865,7 @@ impl SyncEngine {
                         extended_timeout.as_secs(),
                         extended_hash_timeout.as_secs()
                     );
-                }
+                });
 
                 let extended_bridge_err = if orchard_required {
                     let extended_bridge = tokio::select! {
@@ -2136,7 +2006,6 @@ impl SyncEngine {
         follow_tip: bool,
     ) -> Result<()> {
         let mut current_height = start;
-        let mut frontier_start = start;
         let mut last_checkpoint_height = start.saturating_sub(1);
         let mut last_major_checkpoint_height = start.saturating_sub(1);
         let mut batches_since_mini_checkpoint = 0u32;
@@ -2152,11 +2021,34 @@ impl SyncEngine {
         let mut pending_server_group_hint: Option<ServerBatchHintTask> = None;
         let mut batches_since_sync_state_flush: u32 = 0;
         let mut last_sync_state_flush = Instant::now();
-        let mut frontier_integrity_guard: Option<
-            tokio::task::JoinHandle<Result<FrontierIntegrityOutcome>>,
-        > = None;
-        let mut frontier_integrity_retries = 0u8;
-        let mut last_idle_witness_maintenance = Instant::now() - IDLE_WITNESS_MAINTENANCE_INTERVAL;
+        let mut last_aux_state_update_height = start.saturating_sub(1);
+        // Resume deterministic FoundNote repairs queued by previous runs.
+        if follow_tip {
+            if let Some(ref sink) = self.storage {
+                if let Ok(db) = Database::open(&sink.db_path, &sink.key, sink.master_key.clone()) {
+                    let scan_queue = ScanQueueStorage::new(&db);
+                    if let Ok(Some(row)) = scan_queue.next_found_note_range() {
+                        if row.status == "pending" {
+                            let _ = scan_queue.mark_in_progress(row.id);
+                        }
+                        let queued_start = row.range_start.max(1);
+                        if queued_start < current_height {
+                            tracing::info!(
+                                "Resuming queued FoundNote repair range from {} (requested start={})",
+                                queued_start,
+                                start
+                            );
+                            current_height = queued_start;
+                        }
+                        let spendability = SpendabilityStateStorage::new(&db);
+                        let _ = spendability.mark_repair_pending_without_enqueue(
+                            queued_start,
+                            SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
+                        );
+                    }
+                }
+            }
+        }
 
         // Reset perf counters
         self.perf.reset();
@@ -2165,118 +2057,37 @@ impl SyncEngine {
         self.cancel.reset();
 
         if start > 0 {
-            let mut init_source = FrontierInitSource::None;
-            let needs_init = self.frontier.read().await.is_empty();
-
-            if needs_init {
-                // #region agent log
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis();
-                    let id = format!("{:08x}", ts);
-                    let _ = writeln!(
-                        file,
-                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:343","message":"initialize frontiers start","data":{{"start_height":{},"sapling_empty":{},"orchard_empty":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
-                        id,
-                        ts,
-                        start,
-                        self.frontier.read().await.is_empty(),
-                        self.orchard_frontier.read().await.is_empty()
-                    );
-                }
-                // #endregion
-                let (source, replay_start_override) =
-                    self.initialize_frontiers_from_tree_state(start).await?;
-                init_source = source;
-                if let Some(replay_start) = replay_start_override {
-                    if replay_start < current_height {
-                        tracing::info!(
-                            "Frontier startup fast-path selected: replay_start={} (requested_start={})",
-                            replay_start,
-                            start
-                        );
-                        current_height = replay_start;
-                        frontier_start = replay_start;
-                        last_checkpoint_height = frontier_start.saturating_sub(1);
-                        last_major_checkpoint_height = frontier_start.saturating_sub(1);
-                        self.progress
-                            .write()
-                            .await
-                            .set_current(frontier_start.saturating_sub(1));
-                    }
-                }
-            }
-
-            // Persist the freshly initialized pre-state frontier so repeated rescans from
-            // the same height can bootstrap from local snapshot instead of remote tree-state.
-            if matches!(
-                init_source,
-                FrontierInitSource::RemoteTreeState | FrontierInitSource::LocalCacheReplay
-            ) {
-                let bootstrap_checkpoint = frontier_start.saturating_sub(1);
-                if let Err(e) = self.create_checkpoint(bootstrap_checkpoint).await {
-                    tracing::warn!(
-                        "Failed to persist bootstrap frontier checkpoint at {}: {}",
-                        bootstrap_checkpoint,
-                        e
-                    );
-                } else {
-                    last_checkpoint_height = last_checkpoint_height.max(bootstrap_checkpoint);
-                    last_major_checkpoint_height =
-                        last_major_checkpoint_height.max(bootstrap_checkpoint);
-                }
-            }
-
-            match self
-                .repair_witness_marks_from_unspent_notes(MAX_WITNESS_MARK_REPAIR_NOTES)
-                .await
-            {
-                Ok((sapling_repaired, orchard_repaired)) => {
-                    if sapling_repaired > 0 || orchard_repaired > 0 {
-                        tracing::info!(
-                            "Recovered stale witness marks (sapling={}, orchard={})",
-                            sapling_repaired,
-                            orchard_repaired
-                        );
-                        let repaired_checkpoint = frontier_start.saturating_sub(1);
-                        if frontier_start > 0 {
-                            self.create_checkpoint(repaired_checkpoint).await?;
-                            tracing::info!(
-                                "Persisted repaired witness/frontier state at checkpoint {}",
-                                repaired_checkpoint
-                            );
-                            last_checkpoint_height = repaired_checkpoint;
-                            last_major_checkpoint_height = repaired_checkpoint;
-                        }
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Witness mark repair skipped due to error: {}", e);
-                }
-            }
-
-            let should_run_integrity_guard =
-                !matches!(init_source, FrontierInitSource::RemoteTreeState) && frontier_start > 0;
-            if should_run_integrity_guard {
-                frontier_integrity_guard =
-                    self.spawn_frontier_integrity_check(frontier_start).await;
+            let init_source = self.initialize_shardtrees_for_sync(start).await?;
+            if matches!(init_source, FrontierInitSource::RemoteTreeState) {
+                tracing::info!(
+                    "ShardTrees seeded from remote tree state for sync start {}",
+                    start
+                );
             }
         }
 
         self.cleanup_orchard_false_positives().await?;
 
+        // Bootstrap queue extrema at sync start so anchor/target derivation
+        // reflects the current known local range immediately, even before the
+        // first periodic sync-state flush.
+        if let Some(ref sink) = self.storage {
+            if let Ok(db) = Database::open(&sink.db_path, &sink.key, sink.master_key.clone()) {
+                let scan_queue = ScanQueueStorage::new(&db);
+                let historic_start = (self.birthday_height as u64).max(1);
+                let historic_end = current_height
+                    .saturating_add(1)
+                    .max(historic_start.saturating_add(1));
+                let _ = scan_queue.record_historic_scanned_range(
+                    historic_start,
+                    historic_end,
+                    Some("historic_sync_bootstrap"),
+                );
+            }
+        }
+
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -2287,11 +2098,56 @@ impl SyncEngine {
                 r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:361","message":"sync loop start","data":{{"current":{},"end":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
                 id, ts, current_height, end
             );
-        }
+        });
         // #endregion
 
         // Outer loop: Keep syncing until we're fully caught up with no new blocks
-        loop {
+        'sync_outer: loop {
+            if let Some((repair_start, repair_end_exclusive)) =
+                self.activate_queued_found_note_range().await?
+            {
+                let repair_end_height = repair_end_exclusive.saturating_sub(1).max(repair_start);
+                let rollback_target = repair_start.saturating_sub(1);
+                let rollback_height = self.rollback_to_checkpoint(rollback_target).await?;
+                // IMPORTANT:
+                // Repairs must replay deterministically from the rollback point, regardless
+                // of wallet birthday / resume height heuristics. Skipping blocks here will
+                // corrupt shardtree state (missing commitments) and can lead to
+                // "unknown-anchor" rejections at broadcast time.
+                let replay_start = rollback_height.saturating_add(1).max(1);
+
+                tracing::info!(
+                    "Activating queued FoundNote repair range {}..{} with rollback_target={} rollback_height={} replay_start={}",
+                    repair_start,
+                    repair_end_exclusive,
+                    rollback_target,
+                    rollback_height,
+                    replay_start
+                );
+                append_debug_log_line(&format!(
+                    r#"{{"id":"log_repair_rollback","timestamp":{},"location":"sync.rs:sync_range_internal","message":"rollback before found-note replay","data":{{"repair_start":{},"repair_end_exclusive":{},"rollback_target":{},"rollback_height":{},"replay_start":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis(),
+                    repair_start,
+                    repair_end_exclusive,
+                    rollback_target,
+                    rollback_height,
+                    replay_start
+                ));
+
+                current_height = replay_start;
+                end = end.max(repair_end_height).max(replay_start);
+                last_checkpoint_height = rollback_height;
+                last_major_checkpoint_height = rollback_height;
+                batches_since_mini_checkpoint = 0;
+                batches_since_sync_state_flush = 0;
+                last_sync_state_flush = Instant::now();
+                Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
+                Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+            }
+
             // Main sync loop: sync from current_height to end
             'sync_main: while current_height <= end {
                 // Check for cancellation
@@ -2302,127 +2158,13 @@ impl SyncEngine {
                     return Err(Error::Cancelled);
                 }
 
-                let guard_finished = frontier_integrity_guard
-                    .as_ref()
-                    .map(|handle| handle.is_finished())
-                    .unwrap_or(false);
-                if guard_finished {
-                    let handle = frontier_integrity_guard.take().expect("guard should exist");
-                    match handle.await {
-                        Ok(Ok(outcome)) => match outcome.status {
-                            FrontierIntegrityStatus::Verified => {
-                                tracing::info!("{}", outcome.detail);
-                            }
-                            FrontierIntegrityStatus::Unverified => {
-                                tracing::warn!("{}", outcome.detail);
-                                if frontier_integrity_retries < 1 {
-                                    frontier_integrity_retries += 1;
-                                    frontier_integrity_guard =
-                                        self.spawn_frontier_integrity_check(frontier_start).await;
-                                }
-                            }
-                            FrontierIntegrityStatus::Mismatch => {
-                                tracing::warn!(
-                                    "{}; rolling back to {} and reinitializing from authoritative tree state",
-                                    outcome.detail,
-                                    frontier_start.saturating_sub(1)
-                                );
-
-                                Self::abort_prefetch_queue(
-                                    &mut prefetch_queue,
-                                    &mut queued_prefetch_bytes,
-                                );
-                                Self::abort_pending_server_batch_hint(
-                                    &mut pending_server_group_hint,
-                                );
-
-                                let heal_checkpoint = frontier_start.saturating_sub(1);
-                                let rollback_height =
-                                    self.rollback_to_checkpoint(heal_checkpoint).await?;
-                                let restart_height =
-                                    rollback_height.saturating_add(1).max(frontier_start);
-                                let healed_checkpoint = restart_height.saturating_sub(1);
-
-                                self.reset_frontiers_for_replay(restart_height).await?;
-                                if restart_height > 0 {
-                                    self.initialize_frontiers_from_remote_tree_state(
-                                        restart_height.saturating_sub(1),
-                                    )
-                                    .await?;
-                                }
-
-                                match self
-                                    .repair_witness_marks_from_unspent_notes(
-                                        MAX_WITNESS_MARK_REPAIR_NOTES,
-                                    )
-                                    .await
-                                {
-                                    Ok((sapling_repaired, orchard_repaired)) => {
-                                        if sapling_repaired > 0 || orchard_repaired > 0 {
-                                            tracing::info!(
-                                                "Post-heal witness repair (sapling={}, orchard={})",
-                                                sapling_repaired,
-                                                orchard_repaired
-                                            );
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            "Post-heal witness repair skipped due to error: {}",
-                                            e
-                                        );
-                                    }
-                                }
-
-                                if restart_height > 0 {
-                                    self.create_checkpoint(healed_checkpoint).await?;
-                                    tracing::info!(
-                                        "Persisted post-heal frontier/witness checkpoint at {}",
-                                        healed_checkpoint
-                                    );
-                                }
-
-                                current_height = restart_height;
-                                last_checkpoint_height = healed_checkpoint;
-                                last_major_checkpoint_height = healed_checkpoint;
-                                batches_since_mini_checkpoint = 0;
-                                batches_since_sync_state_flush = 0;
-                                current_target_bytes = self.config.target_batch_bytes;
-                                consecutive_heavy_batches = 0;
-                                server_group_end_hint = None;
-                                Self::abort_pending_server_batch_hint(
-                                    &mut pending_server_group_hint,
-                                );
-                                last_sync_state_flush = Instant::now();
-                                avg_block_size_estimate = (self.config.target_batch_bytes
-                                    / self.config.batch_size.max(1))
-                                .max(1);
-
-                                {
-                                    let progress = self.progress.write().await;
-                                    progress.set_stage(SyncStage::Headers);
-                                    progress.set_checkpoint(healed_checkpoint);
-                                    progress.set_current(restart_height.saturating_sub(1));
-                                }
-
-                                continue;
-                            }
-                        },
-                        Ok(Err(e)) => {
-                            tracing::warn!("Frontier integrity guard failed: {}", e);
-                        }
-                        Err(e) => {
-                            tracing::warn!("Frontier integrity task join failed: {}", e);
-                        }
-                    }
-                }
-
                 let batch_start_time = Instant::now();
                 let mut persist_ms: u128 = 0;
                 let mut apply_spends_ms: u128 = 0;
                 let mut tx_meta_prepare_ms: u128 = 0;
                 let mut checkpoint_ms: u128 = 0;
                 let mut checkpoint_written_this_batch = false;
+                let mut emergency_checkpoint_requested = false;
 
                 let prefetch_plan_start = Instant::now();
                 self.fill_prefetch_queue(
@@ -2720,26 +2462,10 @@ impl SyncEngine {
                     consecutive_heavy_batches
                 );
 
-                    // Create mini-checkpoint more frequently during spam blocks
-                    // This prevents losing progress if connection is unstable
+                    // Request an extra checkpoint for this batch once frontier updates finish.
+                    // Checkpointing before commitment append would persist a stale tree state.
                     if consecutive_heavy_batches >= 2 {
-                        let emergency_checkpoint_start = Instant::now();
-                        self.create_checkpoint(batch_end).await?;
-                        checkpoint_ms += emergency_checkpoint_start.elapsed().as_millis();
-                        checkpoint_written_this_batch = true;
-                        batches_since_mini_checkpoint = 0;
-                        last_checkpoint_height = batch_end;
-
-                        {
-                            let progress = self.progress.write().await;
-                            progress.set_checkpoint(batch_end);
-                        }
-
-                        tracing::info!(
-                            "Emergency checkpoint at {} due to spam blocks (target bytes: {})",
-                            batch_end,
-                            current_target_bytes
-                        );
+                        emergency_checkpoint_requested = true;
                     }
                 } else {
                     // Reset counter and gradually increase batch size back to normal
@@ -2837,8 +2563,28 @@ impl SyncEngine {
                 }
                 // #endregion
                 let frontier_start = Instant::now();
-                let (commitments_applied, position_mappings) =
-                    self.update_frontier(&blocks, &notes).await?;
+                let remaining_to_tip = end.saturating_sub(batch_end);
+                // The Zcash reference creates a checkpoint for EVERY block
+                // (embedded in the last commitment's Retention::Checkpoint).
+                // We must do the same for at least the recent window so that
+                // any anchor height used for spending has a real checkpoint.
+                //
+                // Without per-block checkpoints, a rescan (follow_tip=false)
+                // only checkpoints owned-note heights, leaving the anchor
+                // height (tip - min_confirmations) without a checkpoint.
+                // This causes "unknown-anchor" on the first send after rescan.
+                //
+                // Use PerBlock for the last SHARDTREE_PRUNING_DEPTH blocks
+                // regardless of follow_tip. Old per-block checkpoints are
+                // pruned by the ShardTree automatically.
+                let checkpoint_mode = if remaining_to_tip <= SHARDTREE_PRUNING_DEPTH as u64 {
+                    FrontierCheckpointMode::PerBlock
+                } else {
+                    FrontierCheckpointMode::OwnedOnly
+                };
+                let (commitments_applied, position_mappings) = self
+                    .update_commitment_trees(&blocks, &notes, checkpoint_mode)
+                    .await?;
                 let frontier_ms = frontier_start.elapsed().as_millis();
                 // #region agent log
                 if verbose_sync_batch_logging_enabled() {
@@ -2889,12 +2635,7 @@ impl SyncEngine {
 
                     let filtered = filtered_value + filtered_nullifier;
                     if filtered > 0 {
-                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(debug_log_path())
-                        {
-                            use std::io::Write;
+                        pirate_core::debug_log::with_locked_file(|file| {
                             let ts = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
@@ -2911,7 +2652,7 @@ impl SyncEngine {
                                 notes.len(),
                                 require_orchard_nullifier
                             );
-                        }
+                        });
                     }
                 }
                 let note_post_ms = note_post_start.elapsed().as_millis();
@@ -3068,6 +2809,28 @@ impl SyncEngine {
                 }
                 // #endregion
 
+                if emergency_checkpoint_requested {
+                    if !checkpoint_written_this_batch {
+                        let emergency_checkpoint_start = Instant::now();
+                        self.create_checkpoint(batch_end).await?;
+                        checkpoint_ms += emergency_checkpoint_start.elapsed().as_millis();
+                        checkpoint_written_this_batch = true;
+                    }
+                    batches_since_mini_checkpoint = 0;
+                    last_checkpoint_height = batch_end;
+
+                    {
+                        let progress = self.progress.write().await;
+                        progress.set_checkpoint(batch_end);
+                    }
+
+                    tracing::info!(
+                        "Emergency checkpoint at {} due to spam blocks (target bytes: {})",
+                        batch_end,
+                        current_target_bytes
+                    );
+                }
+
                 batches_since_mini_checkpoint += 1;
                 let blocks_since_major_checkpoint = batch_end - last_major_checkpoint_height;
                 let blocks_since_last_checkpoint = batch_end.saturating_sub(last_checkpoint_height);
@@ -3133,12 +2896,24 @@ impl SyncEngine {
                     || last_sync_state_flush.elapsed().as_millis()
                         >= self.config.sync_state_flush_interval_ms as u128;
                 let sync_state_ms = if should_flush_sync_state {
+                    let include_aux_state_update = checkpoint_written_this_batch
+                        || batch_end >= end
+                        || batch_end.saturating_sub(last_aux_state_update_height)
+                            >= SYNC_STATE_AUX_UPDATE_BLOCK_INTERVAL;
                     let sync_state_start = Instant::now();
-                    self.save_sync_state(batch_end, end, last_checkpoint_height)
-                        .await?;
+                    self.save_sync_state(
+                        batch_end,
+                        end,
+                        last_checkpoint_height,
+                        include_aux_state_update,
+                    )
+                    .await?;
                     let elapsed_ms = sync_state_start.elapsed().as_millis();
                     batches_since_sync_state_flush = 0;
                     last_sync_state_flush = Instant::now();
+                    if include_aux_state_update {
+                        last_aux_state_update_height = batch_end;
+                    }
                     elapsed_ms
                 } else {
                     batches_since_sync_state_flush =
@@ -3147,7 +2922,7 @@ impl SyncEngine {
                 };
 
                 // #region agent log
-                {
+                if verbose_sync_batch_logging_enabled() {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -3218,11 +2993,91 @@ impl SyncEngine {
                     ));
                 }
                 // #endregion
+
+                // When the just-processed batch reaches the known target tip,
+                // run witness integrity immediately instead of waiting for the
+                // follow-tip monitor loop. This shortens the "sync finalizing"
+                // window after percent=100.
+                if follow_tip && current_height > end {
+                    let tip_height = current_height.saturating_sub(1);
+
+                    if tip_height > last_checkpoint_height {
+                        match self.create_checkpoint(tip_height).await {
+                            Ok(()) => {
+                                last_checkpoint_height = tip_height;
+                                let progress = self.progress.write().await;
+                                progress.set_checkpoint(tip_height);
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to persist immediate tip checkpoint {} before witness integrity check: {}",
+                                    tip_height,
+                                    e
+                                );
+                            }
+                        }
+                    }
+
+                    match self.check_witnesses_and_queue_rescans(tip_height).await {
+                        Ok(Some((repair_from_height, repair_end_exclusive))) => {
+                            tracing::warn!(
+                                "Immediate tip witness integrity queued FoundNote repair range {}..{} at tip {}; scheduling queue-driven replay",
+                                repair_from_height,
+                                repair_end_exclusive,
+                                tip_height
+                            );
+                            continue 'sync_outer;
+                        }
+                        Ok(None) => {
+                            let progress = self.progress.write().await;
+                            if progress.current_height() >= progress.target_height() {
+                                progress.set_stage(SyncStage::Verify);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Immediate tip witness integrity check failed at tip {}: {}",
+                                tip_height,
+                                e
+                            );
+                        }
+                    }
+                }
             }
 
-            // For bounded ranges (e.g. witness repair replay), stop once we reach the
-            // requested end height instead of entering continuous tip monitoring.
+            // For bounded ranges (e.g. witness repair replay), persist a final
+            // frontier checkpoint before returning so anchor-hydrated selection
+            // can immediately use the repaired range.
+            //
+            // Without this forced checkpoint, short replay runs can finish before
+            // periodic mini/major checkpoint thresholds are met, leaving send
+            // selection with stale snapshot coverage.
             if !follow_tip {
+                if let Err(e) = self.create_checkpoint(end).await {
+                    tracing::warn!(
+                        "Failed to persist bounded-range final checkpoint at {}: {}",
+                        end,
+                        e
+                    );
+                }
+                match self
+                    .run_tip_witness_validation(end, "bounded_sync_complete")
+                    .await
+                {
+                    TipWitnessValidationOutcome::RepairQueued {
+                        start,
+                        end_exclusive,
+                    } => {
+                        tracing::warn!(
+                            "Bounded sync queued FoundNote repair range {}..{} at tip {}; continuing bounded replay loop",
+                            start,
+                            end_exclusive,
+                            end
+                        );
+                        continue 'sync_outer;
+                    }
+                    TipWitnessValidationOutcome::Clean | TipWitnessValidationOutcome::Error => {}
+                }
                 Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
                 Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
                 return Ok(());
@@ -3243,6 +3098,51 @@ impl SyncEngine {
                 return Err(Error::Cancelled);
             }
 
+            // Always give witness integrity a chance to converge while monitoring.
+            //
+            // This follows the "queue-first" model: if spendability is still
+            // finalizing (or was downgraded by a prior run), we need a deterministic
+            // path to re-validate at the current tip even when the tip height hasn't
+            // advanced.
+            //
+            // The integrity check itself will no-op quickly when the wallet is already
+            // validated for the current anchor epoch.
+            // Ensure witness checks run against a tip-fresh frontier snapshot.
+            // Without this, checks can repeatedly flag false "missing witness" notes
+            // when the latest persisted checkpoint is behind the current tip.
+            if current > last_checkpoint_height {
+                match self.create_checkpoint(current).await {
+                    Ok(()) => {
+                        last_checkpoint_height = current;
+                        let progress = self.progress.write().await;
+                        progress.set_checkpoint(current);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to persist tip checkpoint {} before witness integrity check: {}",
+                            current,
+                            e
+                        );
+                    }
+                }
+            }
+
+            match self.check_witnesses_and_queue_rescans(current).await {
+                Ok(Some((repair_from_height, repair_end_exclusive))) => {
+                    tracing::warn!(
+                        "Witness integrity queued FoundNote repair range {}..{} at tip {}; scheduling queue-driven replay",
+                        repair_from_height,
+                        repair_end_exclusive,
+                        current
+                    );
+                    continue 'sync_outer;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::warn!("Witness integrity check failed at tip {}: {}", current, e);
+                }
+            }
+
             match self.client.get_latest_block().await {
                 Ok(latest_height) => {
                     if latest_height > current {
@@ -3260,89 +3160,45 @@ impl SyncEngine {
                         }
                         // Continue syncing from current to latest - re-enter the main sync loop
                         end = latest_height;
-                        current_height = current;
+                        // `current` is progress.current_height() which stores
+                        // the last *processed* block (batch_end). The sync loop
+                        // must start at the NEXT unprocessed block to avoid
+                        // double-appending commitments into the ShardTree.
+                        current_height = current.saturating_add(1);
                         // Reset batch tracking for the new range
                         batches_since_mini_checkpoint = 0;
                         // Re-enter the outer loop (which will re-enter the main sync loop)
                         continue; // Continue outer loop to re-enter main sync loop
-                    } else {
-                        // Caught up - wait a bit then check again for new blocks
-                        // This keeps sync running continuously instead of stopping
-                        // Set stage to Complete to indicate we're monitoring
-                        // When monitoring, current_height == target_height, so complete() is safe
-                        {
-                            let progress = self.progress.read().await;
-                            if progress.stage() != SyncStage::Complete {
-                                drop(progress);
-                                let progress = self.progress.write().await;
-                                // Use complete() to set stage and ETA correctly
-                                // This is safe because when monitoring, current_height == target_height
-                                progress.complete();
-                            }
-                        }
-                        if last_idle_witness_maintenance.elapsed()
-                            >= IDLE_WITNESS_MAINTENANCE_INTERVAL
-                        {
-                            match self.run_idle_witness_maintenance(current, current).await {
-                                Ok((
-                                    sapling_repaired,
-                                    orchard_repaired,
-                                    checkpoint_persisted,
-                                    yielded_to_tip,
-                                )) => {
-                                    if yielded_to_tip {
-                                        tracing::debug!(
-                                            "Idle witness maintenance yielded to new tip at height {}",
-                                            current
-                                        );
-                                    }
-                                    if sapling_repaired > 0 || orchard_repaired > 0 {
-                                        tracing::info!(
-                                            "Idle witness maintenance repaired marks (sapling={}, orchard={}, checkpoint_persisted={})",
-                                            sapling_repaired,
-                                            orchard_repaired,
-                                            checkpoint_persisted
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Idle witness maintenance skipped due to error: {}",
-                                        e
-                                    );
-                                    let detail = e.to_string();
-                                    log_idle_witness_maintenance_event(
-                                        IdleWitnessMaintenanceEvent {
-                                            event: "error",
-                                            current_height: current,
-                                            checkpoint_height: current,
-                                            sapling_repaired: 0,
-                                            orchard_repaired: 0,
-                                            checkpoint_persisted: false,
-                                            yielded_to_tip: false,
-                                            duration_ms: 0,
-                                            detail: &detail,
-                                        },
-                                    );
-                                }
-                            }
-                            last_idle_witness_maintenance = Instant::now();
-                        }
-                        tracing::debug!(
-                            "Caught up to blockchain tip ({}), waiting for new blocks...",
-                            current
-                        );
-                        tokio::select! {
-                            _ = tokio::time::sleep(Duration::from_secs(10)) => {}
-                            _ = self.cancel.cancelled() => {
-                                Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
-                                Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
-                                return Err(Error::Cancelled);
-                            },
-                        }
-                        // Continue the outer loop to check again
-                        continue;
                     }
+
+                    // Caught up - wait a bit then check again for new blocks
+                    // This keeps sync running continuously instead of stopping
+                    // Set stage to Complete to indicate we're monitoring
+                    // When monitoring, current_height == target_height, so complete() is safe
+                    {
+                        let progress = self.progress.read().await;
+                        if progress.stage() != SyncStage::Complete {
+                            drop(progress);
+                            let progress = self.progress.write().await;
+                            // Use complete() to set stage and ETA correctly
+                            // This is safe because when monitoring, current_height == target_height
+                            progress.complete();
+                        }
+                    }
+                    tracing::debug!(
+                        "Caught up to blockchain tip ({}), waiting for new blocks...",
+                        current
+                    );
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                        _ = self.cancel.cancelled() => {
+                            Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
+                            Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                            return Err(Error::Cancelled);
+                        },
+                    }
+                    // Continue the outer loop to check again
+                    continue 'sync_outer;
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -3888,12 +3744,7 @@ impl SyncEngine {
 
                 if max_capped_end > current_height && verbose_sync_batch_logging_enabled() {
                     // #region agent log
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
+                    pirate_core::debug_log::with_locked_file(|file| {
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -3909,7 +3760,7 @@ impl SyncEngine {
                             self.config.max_batch_size,
                             batch_end - current_height + 1
                         );
-                    }
+                    });
                     // #endregion
                     tracing::debug!(
                         "Batch sizing: server {} blocks, desired {} blocks, chosen {} blocks",
@@ -3957,12 +3808,7 @@ impl SyncEngine {
             .await
             {
                 tracing::warn!("Background full-tx enrich failed: {}", e);
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -3973,7 +3819,7 @@ impl SyncEngine {
                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:spawn_background_enrich","message":"background enrich failed","data":{{"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                         id, ts, e
                     );
-                }
+                });
             }
         });
     }
@@ -4115,12 +3961,7 @@ impl SyncEngine {
                 .map(|key| key.orchard_fvk.is_some())
                 .unwrap_or(false);
 
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -4141,7 +3982,7 @@ impl SyncEngine {
                 has_orchard_ovk,
                 has_orchard_fvk
             );
-        }
+        });
 
         if !has_sapling_ivk && !has_orchard_ivk {
             return Ok(());
@@ -4191,7 +4032,11 @@ impl SyncEngine {
             let mut needs_memo_tx = false;
 
             if require_memos && note.memo_bytes().is_none() {
-                match sink.get_note_by_txid_and_index(&note.tx_hash, note.output_index as i64) {
+                match sink.get_note_by_txid_and_index(
+                    &note.tx_hash,
+                    note.output_index as i64,
+                    note.note_type,
+                ) {
                     Ok(Some(db_note)) => {
                         if let Some(memo) = db_note.memo {
                             note.set_memo_bytes(memo);
@@ -4240,12 +4085,7 @@ impl SyncEngine {
             }
         }
 
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -4271,7 +4111,7 @@ impl SyncEngine {
                 has_orchard_ivk,
                 has_orchard_fvk
             );
-        }
+        });
 
         let max_parallel = max_parallel.max(1);
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_parallel));
@@ -4293,12 +4133,7 @@ impl SyncEngine {
                     .and_then(|key| key.orchard_ovk.as_ref())
             });
 
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -4312,7 +4147,7 @@ impl SyncEngine {
                 tx_work.len(),
                 max_parallel
             );
-        }
+        });
 
         let txid_count = tx_work.len();
         let mut tasks = Vec::with_capacity(txid_count);
@@ -4346,12 +4181,7 @@ impl SyncEngine {
                         hex::encode(txid),
                         e
                     );
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(debug_log_path())
-                    {
-                        use std::io::Write;
+                    pirate_core::debug_log::with_locked_file(|file| {
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -4368,16 +4198,11 @@ impl SyncEngine {
                             work.index.unwrap_or(0),
                             e
                         );
-                    }
+                    });
                     continue;
                 }
             };
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -4394,7 +4219,7 @@ impl SyncEngine {
                     work.index.unwrap_or(0),
                     raw_tx_bytes.len()
                 );
-            }
+            });
 
             for note_idx in work.indices {
                 let note = &mut notes[note_idx];
@@ -4424,6 +4249,7 @@ impl SyncEngine {
                                     if let Err(e) = sink.update_note_memo(
                                         &note.tx_hash,
                                         note.output_index as i64,
+                                        NoteType::Sapling,
                                         Some(&memo),
                                     ) {
                                         tracing::warn!("Failed to update memo in database: {}", e);
@@ -4488,6 +4314,7 @@ impl SyncEngine {
                                     if let Err(e) = sink.update_note_memo(
                                         &note.tx_hash,
                                         note.output_index as i64,
+                                        NoteType::Orchard,
                                         Some(&memo),
                                     ) {
                                         tracing::warn!("Failed to update memo in database: {}", e);
@@ -4511,12 +4338,7 @@ impl SyncEngine {
                                                     "Failed to compute Orchard nullifier: {}",
                                                     e
                                                 );
-                                                if let Ok(mut file) = std::fs::OpenOptions::new()
-                                                    .create(true)
-                                                    .append(true)
-                                                    .open(debug_log_path())
-                                                {
-                                                    use std::io::Write;
+                                                pirate_core::debug_log::with_locked_file(|file| {
                                                     let ts = std::time::SystemTime::now()
                                                         .duration_since(std::time::UNIX_EPOCH)
                                                         .unwrap_or_default()
@@ -4532,19 +4354,14 @@ impl SyncEngine {
                                                         note.output_index,
                                                         e
                                                     );
-                                                }
+                                                });
                                             }
                                         }
                                     }
                                 }
 
                                 let nullifier_zero = note.nullifier.iter().all(|b| *b == 0);
-                                if let Ok(mut file) = std::fs::OpenOptions::new()
-                                    .create(true)
-                                    .append(true)
-                                    .open(debug_log_path())
-                                {
-                                    use std::io::Write;
+                                pirate_core::debug_log::with_locked_file(|file| {
                                     let ts = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .unwrap_or_default()
@@ -4561,15 +4378,10 @@ impl SyncEngine {
                                         nullifier_zero,
                                         note.memo_bytes().is_some()
                                     );
-                                }
+                                });
                             }
                             Ok(None) => {
-                                if let Ok(mut file) = std::fs::OpenOptions::new()
-                                    .create(true)
-                                    .append(true)
-                                    .open(debug_log_path())
-                                {
-                                    use std::io::Write;
+                                pirate_core::debug_log::with_locked_file(|file| {
                                     let ts = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .unwrap_or_default()
@@ -4580,16 +4392,11 @@ impl SyncEngine {
                                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"orchard full decrypt none","data":{{"txid_prefix":"{}","cmx_prefix":"{}","output_index":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                                         id, ts, txid_prefix, cmx_prefix, note.output_index
                                     );
-                                }
+                                });
                             }
                             Err(e) => {
                                 tracing::warn!("Error decrypting Orchard memo: {}", e);
-                                if let Ok(mut file) = std::fs::OpenOptions::new()
-                                    .create(true)
-                                    .append(true)
-                                    .open(debug_log_path())
-                                {
-                                    use std::io::Write;
+                                pirate_core::debug_log::with_locked_file(|file| {
                                     let ts = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .unwrap_or_default()
@@ -4600,7 +4407,7 @@ impl SyncEngine {
                                         r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_and_enrich_notes","message":"orchard full decrypt error","data":{{"txid_prefix":"{}","cmx_prefix":"{}","output_index":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
                                         id, ts, txid_prefix, cmx_prefix, note.output_index, e
                                     );
-                                }
+                                });
                             }
                         }
                     }
@@ -4623,12 +4430,7 @@ impl SyncEngine {
             }
         }
 
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -4642,7 +4444,7 @@ impl SyncEngine {
                 txid_count,
                 fetch_start.elapsed().as_millis()
             );
-        }
+        });
 
         Ok(())
     }
@@ -4695,12 +4497,7 @@ impl SyncEngine {
             return Ok(());
         }
 
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -4713,7 +4510,7 @@ impl SyncEngine {
                 ts,
                 refs.len()
             );
-        }
+        });
 
         for note_ref in refs {
             if note_ref.output_index < 0 || note_ref.txid.len() != 32 {
@@ -4829,15 +4626,18 @@ impl SyncEngine {
         Ok(())
     }
 
-    /// Update frontier with block commitments (replaces witness tree placeholder)
-    /// Returns (count, position_mappings) where position_mappings includes Sapling and Orchard positions.
-    async fn update_frontier(
+    /// Process block commitments into ShardTree batches and track positions.
+    ///
+    /// ShardTree is the single source of truth for commitment tree state.
+    /// Positions are tracked via simple counters (initialized from frontier at sync start).
+    async fn update_commitment_trees(
         &self,
         blocks: &[CompactBlockData],
         notes: &[DecryptedNote],
+        checkpoint_mode: FrontierCheckpointMode,
     ) -> Result<(u64, PositionMaps)> {
-        let mut sapling_frontier = self.frontier.write().await;
-        let mut orchard_frontier = self.orchard_frontier.write().await;
+        let mut sapling_pos = self.sapling_tree_position.write().await;
+        let mut orchard_pos = self.orchard_tree_position.write().await;
         let mut count = 0u64;
         let mut position_mappings = PositionMaps::default();
         let sapling_owned: HashSet<[u8; 32]> = notes
@@ -4850,64 +4650,54 @@ impl SyncEngine {
             .filter(|n| n.note_type == crate::pipeline::NoteType::Orchard)
             .map(|n| n.commitment)
             .collect();
+        let has_owned_sapling = !sapling_owned.is_empty();
+        let has_owned_orchard = !orchard_owned.is_empty();
+        let mut shardtree_batches: Vec<ShardtreeBatch> = Vec::with_capacity(blocks.len());
 
         for block in blocks {
+            let mut shardtree_batch = ShardtreeBatch::new(block.height);
+            let sapling_pos_ref = &mut *sapling_pos;
+            let orchard_pos_ref = &mut *orchard_pos;
+            let count_ref = &mut count;
+            let position_mappings_ref = &mut position_mappings;
+
             let mut process_tx = |tx: &crate::client::CompactTx| -> Result<()> {
                 let txid = tx.hash.as_slice();
-                // Process Sapling outputs
                 for (output_idx, output) in tx.outputs.iter().enumerate() {
-                    // Apply note commitments to Sapling frontier
                     if output.cmu.len() == 32 {
                         let mut cm = [0u8; 32];
                         cm.copy_from_slice(&output.cmu);
-                        let pos = sapling_frontier.apply_note_commitment_with_position(cm)?;
-                        if let Some(key) = TxOutputKey::new(txid, output_idx) {
-                            position_mappings.sapling_by_tx.insert(key, pos);
-                        }
-                        count += 1;
-                        if sapling_owned.contains(&cm) {
-                            let marked = sapling_frontier.mark_position()?;
-                            let marked_u64 = u64::from(marked);
-                            if marked_u64 != pos {
-                                tracing::warn!(
-                                    "Sapling mark position mismatch: appended={}, marked={}",
-                                    pos,
-                                    marked_u64
-                                );
+                        let pos = *sapling_pos_ref;
+                        *sapling_pos_ref = sapling_pos_ref.saturating_add(1);
+                        let is_owned = has_owned_sapling && sapling_owned.contains(&cm);
+                        if is_owned {
+                            if let Some(key) = TxOutputKey::new(txid, output_idx) {
+                                position_mappings_ref.sapling_by_tx.insert(key, pos);
                             }
                         }
+                        shardtree_batch.sapling.push((cm, is_owned));
+                        *count_ref += 1;
                     }
                 }
 
-                // Process Orchard actions
                 for action in &tx.actions {
-                    // Apply note commitments to Orchard frontier
                     if action.cmx.len() == 32 {
                         let mut cm = [0u8; 32];
                         cm.copy_from_slice(&action.cmx);
-                        let position = orchard_frontier.apply_note_commitment(cm)?;
-                        position_mappings.orchard_by_commitment.insert(cm, position);
-                        count += 1;
-
-                        if orchard_owned.contains(&cm) {
-                            let marked = orchard_frontier.mark_position()?;
-                            let marked_u64 = u64::from(marked);
-                            if marked_u64 != position {
-                                tracing::warn!(
-                                    "Orchard mark position mismatch: appended={}, marked={}",
-                                    position,
-                                    marked_u64
-                                );
-                            }
+                        let pos = *orchard_pos_ref;
+                        *orchard_pos_ref = orchard_pos_ref.saturating_add(1);
+                        let is_owned = has_owned_orchard && orchard_owned.contains(&cm);
+                        if is_owned {
+                            position_mappings_ref.orchard_by_commitment.insert(cm, pos);
                         }
+                        shardtree_batch.orchard.push((cm, is_owned));
+                        *count_ref += 1;
                     }
                 }
 
                 Ok(())
             };
 
-            // Compact txs include an explicit in-block index. Preserve canonical order for
-            // commitment application, but avoid allocations when tx order is already monotonic.
             let mut monotonic = true;
             let mut last_idx = 0u64;
             for (fallback_idx, tx) in block.transactions.iter().enumerate() {
@@ -4930,15 +4720,171 @@ impl SyncEngine {
                     process_tx(tx)?;
                 }
             }
+
+            shardtree_batches.push(shardtree_batch);
         }
 
+        self.persist_shardtree_batches(&shardtree_batches, checkpoint_mode)?;
         Ok((count, position_mappings))
     }
 
+    /// Persist commitment batches to the ShardTree (SQLite-backed).
+    ///
+    /// Uses `Retention::Marked` for owned notes and `Retention::Ephemeral` for
+    /// all others. Checkpoint cadence is controlled by `checkpoint_mode`.
+    fn persist_shardtree_batches(
+        &self,
+        batches: &[ShardtreeBatch],
+        checkpoint_mode: FrontierCheckpointMode,
+    ) -> Result<()> {
+        if batches.is_empty() {
+            return Ok(());
+        }
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(());
+        };
+
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let tx = db
+            .conn()
+            .unchecked_transaction()
+            .map_err(|e| Error::Sync(format!("Failed to start shardtree transaction: {}", e)))?;
+
+        let sapling_store =
+            SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
+                &tx,
+                SAPLING_TABLE_PREFIX,
+            )
+            .map_err(|e| Error::Sync(format!("Failed to open Sapling shard store: {}", e)))?;
+        let orchard_store =
+            SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
+                &tx,
+                ORCHARD_TABLE_PREFIX,
+            )
+            .map_err(|e| Error::Sync(format!("Failed to open Orchard shard store: {}", e)))?;
+
+        let mut sapling_tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT> =
+            ShardTree::new(sapling_store, SHARDTREE_PRUNING_DEPTH);
+        let mut orchard_tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT> =
+            ShardTree::new(orchard_store, SHARDTREE_PRUNING_DEPTH);
+
+        // Guard: find the highest block height already checkpointed so we can
+        // skip blocks that were already committed to the tree. Re-appending
+        // commitments for an already-processed block corrupts the tree because
+        // ShardTree::append() is NOT idempotent — each call adds a leaf at the
+        // next position regardless of whether the commitment was already present.
+        let max_existing_sapling_checkpoint: Option<u32> = tx
+            .query_row(
+                "SELECT MAX(checkpoint_id) FROM sapling_tree_checkpoints",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(None);
+        let max_existing_orchard_checkpoint: Option<u32> = tx
+            .query_row(
+                "SELECT MAX(checkpoint_id) FROM orchard_tree_checkpoints",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(None);
+        let max_committed_height = match (
+            max_existing_sapling_checkpoint,
+            max_existing_orchard_checkpoint,
+        ) {
+            (Some(s), Some(o)) => Some(s.max(o)),
+            (Some(s), None) => Some(s),
+            (None, Some(o)) => Some(o),
+            (None, None) => None,
+        };
+
+        for batch in batches {
+            let checkpoint_height = u32::try_from(batch.height).map_err(|_| {
+                Error::Sync(format!(
+                    "Checkpoint height {} exceeds u32::MAX",
+                    batch.height
+                ))
+            })?;
+
+            // Skip blocks already committed to either tree.
+            if let Some(max_h) = max_committed_height {
+                if checkpoint_height <= max_h {
+                    tracing::debug!(
+                        "Skipping already-committed block {} (max checkpoint={})",
+                        batch.height,
+                        max_h
+                    );
+                    continue;
+                }
+            }
+
+            let checkpoint_id = BlockHeight::from(checkpoint_height);
+            let has_wallet_mark = batch.sapling.iter().any(|(_, marked)| *marked)
+                || batch.orchard.iter().any(|(_, marked)| *marked);
+            let should_checkpoint = match checkpoint_mode {
+                FrontierCheckpointMode::PerBlock => true,
+                FrontierCheckpointMode::OwnedOnly => has_wallet_mark,
+            };
+
+            for (cmu, marked) in &batch.sapling {
+                let cmu_opt: Option<SaplingExtractedNoteCommitment> =
+                    SaplingExtractedNoteCommitment::from_bytes(cmu).into();
+                let Some(cmu_value) = cmu_opt else {
+                    continue;
+                };
+                let node = SaplingNode::from_cmu(&cmu_value);
+                let retention = if *marked {
+                    Retention::Marked
+                } else {
+                    Retention::Ephemeral
+                };
+                sapling_tree.append(node, retention).map_err(|e| {
+                    Error::Sync(format!(
+                        "Failed to append Sapling commitment to shardtree: {}",
+                        e
+                    ))
+                })?;
+            }
+
+            for (cmx_bytes, marked) in &batch.orchard {
+                let cmx_opt: Option<OrchardExtractedNoteCommitment> =
+                    OrchardExtractedNoteCommitment::from_bytes(cmx_bytes).into();
+                let Some(cmx) = cmx_opt else {
+                    continue;
+                };
+                let cmx_hash = MerkleHashOrchard::from_cmx(&cmx);
+                let retention = if *marked {
+                    Retention::Marked
+                } else {
+                    Retention::Ephemeral
+                };
+                orchard_tree.append(cmx_hash, retention).map_err(|e| {
+                    Error::Sync(format!(
+                        "Failed to append Orchard commitment to shardtree: {}",
+                        e
+                    ))
+                })?;
+            }
+
+            if should_checkpoint {
+                sapling_tree.checkpoint(checkpoint_id).map_err(|e| {
+                    Error::Sync(format!("Failed to checkpoint Sapling shardtree: {}", e))
+                })?;
+                orchard_tree.checkpoint(checkpoint_id).map_err(|e| {
+                    Error::Sync(format!("Failed to checkpoint Orchard shardtree: {}", e))
+                })?;
+            }
+        }
+
+        tx.commit()
+            .map_err(|e| Error::Sync(format!("Failed to commit shardtree transaction: {}", e)))?;
+
+        Ok(())
+    }
+
     async fn apply_positions(&self, notes: &mut [DecryptedNote], position_mappings: &PositionMaps) {
-        let orchard_frontier = self.orchard_frontier.read().await;
-        let orchard_root = orchard_frontier.root();
-        let sapling_frontier = self.frontier.read().await;
+        // Canonical path: persist stable note identity material (position, note bytes,
+        // nullifier, key mapping). Witness paths are ephemeral and are resolved from
+        // the active frontier at spend time, not persisted per-note.
         for note in notes.iter_mut() {
             match note.note_type {
                 crate::pipeline::NoteType::Sapling => {
@@ -4946,36 +4892,6 @@ impl SyncEngine {
                         .and_then(|key| position_mappings.sapling_by_tx.get(&key).copied());
                     if let Some(pos) = position {
                         note.position = Some(pos);
-                        match sapling_frontier.witness(pos) {
-                            Ok(Some(path)) => {
-                                let mut buf = Vec::new();
-                                if let Err(e) = write_merkle_path(&mut buf, path) {
-                                    tracing::warn!(
-                                        "Failed to serialize Sapling witness for tx {} output {}: {}",
-                                        hex::encode(&note.tx_hash),
-                                        note.output_index,
-                                        e
-                                    );
-                                } else {
-                                    note.merkle_path = buf;
-                                }
-                            }
-                            Ok(None) => {
-                                tracing::warn!(
-                                    "No Sapling witness available for tx {} output {}",
-                                    hex::encode(&note.tx_hash),
-                                    note.output_index
-                                );
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Failed to compute Sapling witness for tx {} output {}: {}",
-                                    hex::encode(&note.tx_hash),
-                                    note.output_index,
-                                    e
-                                );
-                            }
-                        }
                     }
                 }
                 crate::pipeline::NoteType::Orchard => {
@@ -4985,38 +4901,7 @@ impl SyncEngine {
                         .copied()
                     {
                         note.position = Some(position);
-                        match orchard_frontier.witness(position) {
-                            Ok(Some(path)) => {
-                                if let Some(encoded) = encode_orchard_merkle_path(&path) {
-                                    note.merkle_path = encoded;
-                                } else {
-                                    tracing::warn!(
-                                        "Failed to serialize Orchard witness for tx {} output {}: invalid position {}",
-                                        hex::encode(&note.tx_hash),
-                                        note.output_index,
-                                        position
-                                    );
-                                }
-                            }
-                            Ok(None) => {
-                                tracing::warn!(
-                                    "No Orchard witness available for tx {} output {} (position {})",
-                                    hex::encode(&note.tx_hash),
-                                    note.output_index,
-                                    position
-                                );
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Failed to compute Orchard witness for tx {} output {}: {}",
-                                    hex::encode(&note.tx_hash),
-                                    note.output_index,
-                                    e
-                                );
-                            }
-                        }
                     }
-                    note.anchor = orchard_root;
                 }
             }
         }
@@ -5433,11 +5318,24 @@ impl SyncEngine {
             }
         }
 
+        let mut wallet_relevant_spend_txids: HashSet<[u8; 32]> = matched_spend_txids;
+        for (_, txid) in &fallback_entries {
+            wallet_relevant_spend_txids.insert(*txid);
+        }
+
         let mut tx_updates: Vec<(String, i64, i64, i64)> =
-            Vec::with_capacity(matched_spend_txids.len());
-        for txid in matched_spend_txids.iter().copied() {
+            Vec::with_capacity(wallet_relevant_spend_txids.len() * 2);
+        for txid in wallet_relevant_spend_txids.iter().copied() {
             if let Some((height, timestamp, fee)) = spend_tx_meta.get(&txid) {
-                tx_updates.push((hex::encode(txid), *height, *timestamp, *fee));
+                let txid_internal_hex = hex::encode(txid);
+                tx_updates.push((txid_internal_hex.clone(), *height, *timestamp, *fee));
+
+                let mut txid_display = txid;
+                txid_display.reverse();
+                let txid_display_hex = hex::encode(txid_display);
+                if txid_display_hex != txid_internal_hex {
+                    tx_updates.push((txid_display_hex, *height, *timestamp, *fee));
+                }
             }
         }
         if !tx_updates.is_empty() {
@@ -5787,111 +5685,122 @@ impl SyncEngine {
         Ok(recovered)
     }
 
-    /// Get witness for a Sapling note at a given position.
-    /// Returns None if position is not marked or witness cannot be computed.
-    pub async fn get_sapling_witness(
-        &self,
-        position: u64,
-    ) -> Result<
-        Option<
-            incrementalmerkletree::MerklePath<
-                zcash_primitives::sapling::Node,
-                { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
-            >,
-        >,
-    > {
-        let mut sapling_frontier = self.frontier.write().await;
-        if let Some(path) = sapling_frontier.witness(position)? {
-            return Ok(Some(path));
-        }
-
-        if sapling_frontier.recover_mark(position)? {
-            tracing::info!(
-                "Recovered missing Sapling mark metadata for position {}",
-                position
-            );
-            return sapling_frontier.witness(position);
-        }
-
-        tracing::warn!(
-            "Sapling witness unavailable for position {} (not marked and recovery failed)",
-            position
-        );
-        Ok(None)
+    /// Get current Sapling anchor from the ShardTree, if available.
+    pub fn get_sapling_anchor_from_shardtree(&self) -> Option<[u8; 32]> {
+        let sink = self.storage.as_ref()?;
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone()).ok()?;
+        let repo = Repository::new(&db);
+        let spendability = SpendabilityStateStorage::new(&db);
+        let (_, anchor_height) = spendability
+            .get_target_and_anchor_heights_for_account(
+                SPENDABILITY_MIN_CONFIRMATIONS,
+                sink.account_id,
+            )
+            .ok()??;
+        repo.resolve_sapling_root_from_db_state(anchor_height)
+            .ok()?
     }
 
-    /// Get witness for an Orchard note at a given position
-    /// Returns None if position is not marked or witness cannot be computed
-    pub async fn get_orchard_witness(
-        &self,
-        position: u64,
-    ) -> Result<
-        Option<
-            incrementalmerkletree::MerklePath<
-                orchard::tree::MerkleHashOrchard,
-                { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
-            >,
-        >,
-    > {
-        let mut orchard_frontier = self.orchard_frontier.write().await;
-        if let Some(path) = orchard_frontier.witness(position)? {
-            return Ok(Some(path));
-        }
-
-        if orchard_frontier.recover_mark(position)? {
-            tracing::info!(
-                "Recovered missing Orchard mark metadata for position {}",
-                position
-            );
-            return orchard_frontier.witness(position);
-        }
-
-        tracing::warn!(
-            "Orchard witness unavailable for position {} (not marked and recovery failed)",
-            position
-        );
-        Ok(None)
+    /// Get current Orchard anchor from the ShardTree, if available.
+    pub fn get_orchard_anchor_from_shardtree(&self) -> Option<[u8; 32]> {
+        let sink = self.storage.as_ref()?;
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone()).ok()?;
+        let repo = Repository::new(&db);
+        let spendability = SpendabilityStateStorage::new(&db);
+        let (_, anchor_height) = spendability
+            .get_target_and_anchor_heights_for_account(
+                SPENDABILITY_MIN_CONFIRMATIONS,
+                sink.account_id,
+            )
+            .ok()??;
+        repo.resolve_orchard_anchor_from_db_state(anchor_height)
+            .ok()?
+            .map(|a| a.to_bytes())
     }
 
-    /// Get current Sapling anchor from the frontier, if available.
-    pub async fn get_sapling_anchor(&self) -> Option<[u8; 32]> {
-        let sapling_frontier = self.frontier.read().await;
-        if sapling_frontier.is_empty() {
-            None
-        } else {
-            Some(sapling_frontier.root())
-        }
-    }
-
-    /// Get current Orchard anchor from the frontier, if available.
-    pub async fn get_orchard_anchor(&self) -> Option<[u8; 32]> {
-        let orchard_frontier = self.orchard_frontier.read().await;
-        orchard_frontier.root()
-    }
-
+    /// Persist a ShardTree checkpoint for both pools at the requested height.
+    ///
+    /// This is idempotent: if both pools already have the checkpoint id, it
+    /// returns successfully without mutating tree state.
     async fn create_checkpoint(&self, height: u64) -> Result<()> {
-        let sapling_bytes = { self.frontier.read().await.serialize() };
-        let orchard_bytes = { self.orchard_frontier.read().await.serialize() };
-        let snapshot_bytes = encode_frontier_snapshot(&sapling_bytes, &orchard_bytes);
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(());
+        };
 
-        tracing::debug!(
-            "Creating checkpoint at height {} (sapling: {} bytes, orchard: {} bytes)",
-            height,
-            sapling_bytes.len(),
-            orchard_bytes.len()
-        );
+        let checkpoint_height = u32::try_from(height)
+            .map_err(|_| Error::Sync(format!("Checkpoint height {} exceeds u32::MAX", height)))?;
+        let checkpoint_id = BlockHeight::from(checkpoint_height);
 
-        if let Some(ref sink) = self.storage {
-            let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
-            let storage = FrontierStorage::new(&db);
-            storage.save_frontier_snapshot(
-                height as u32,
-                &snapshot_bytes,
-                env!("CARGO_PKG_VERSION"),
-            )?;
-            let _ = storage.prune_old_snapshots(FRONTIER_SNAPSHOT_RETAIN);
+        let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        let tx = db
+            .conn()
+            .unchecked_transaction()
+            .map_err(|e| Error::Sync(format!("Failed to start checkpoint transaction: {}", e)))?;
+
+        let checkpoint_exists = |table_prefix: &str| -> Result<bool> {
+            let exists: i64 = tx
+                .query_row(
+                    &format!(
+                        "SELECT EXISTS(SELECT 1 FROM {}_tree_checkpoints WHERE checkpoint_id = ?1)",
+                        table_prefix
+                    ),
+                    [checkpoint_height],
+                    |row| row.get(0),
+                )
+                .map_err(|e| {
+                    Error::Sync(format!(
+                        "Failed to query existing checkpoint {} for {}: {}",
+                        checkpoint_height, table_prefix, e
+                    ))
+                })?;
+            Ok(exists != 0)
+        };
+
+        let sapling_exists = checkpoint_exists(SAPLING_TABLE_PREFIX)?;
+        let orchard_exists = checkpoint_exists(ORCHARD_TABLE_PREFIX)?;
+
+        if !sapling_exists {
+            let sapling_store =
+                SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
+                    &tx,
+                    SAPLING_TABLE_PREFIX,
+                )
+                .map_err(|e| Error::Sync(format!("Failed to open Sapling shard store: {}", e)))?;
+            let mut sapling_tree: ShardTree<
+                _,
+                { NOTE_COMMITMENT_TREE_DEPTH },
+                SAPLING_SHARD_HEIGHT,
+            > = ShardTree::new(sapling_store, SHARDTREE_PRUNING_DEPTH);
+            sapling_tree.checkpoint(checkpoint_id).map_err(|e| {
+                Error::Sync(format!(
+                    "Failed to checkpoint Sapling shardtree at {}: {}",
+                    checkpoint_height, e
+                ))
+            })?;
         }
 
+        if !orchard_exists {
+            let orchard_store =
+                SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
+                    &tx,
+                    ORCHARD_TABLE_PREFIX,
+                )
+                .map_err(|e| Error::Sync(format!("Failed to open Orchard shard store: {}", e)))?;
+            let mut orchard_tree: ShardTree<
+                _,
+                { NOTE_COMMITMENT_TREE_DEPTH },
+                ORCHARD_SHARD_HEIGHT,
+            > = ShardTree::new(orchard_store, SHARDTREE_PRUNING_DEPTH);
+            orchard_tree.checkpoint(checkpoint_id).map_err(|e| {
+                Error::Sync(format!(
+                    "Failed to checkpoint Orchard shardtree at {}: {}",
+                    checkpoint_height, e
+                ))
+            })?;
+        }
+
+        tx.commit()
+            .map_err(|e| Error::Sync(format!("Failed to commit checkpoint transaction: {}", e)))?;
         Ok(())
     }
 
@@ -5901,31 +5810,98 @@ impl SyncEngine {
         local_height: u64,
         target_height: u64,
         last_checkpoint: u64,
+        include_aux_state_update: bool,
     ) -> Result<()> {
         if let Some(ref sink) = self.storage {
             sink.save_sync_state(local_height, target_height, last_checkpoint)?;
+            if !include_aux_state_update {
+                return Ok(());
+            }
+            let db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+            let scan_queue = ScanQueueStorage::new(&db);
+            let historic_start = (self.birthday_height as u64).max(1);
+            let historic_end = local_height.saturating_add(1);
+            scan_queue.record_historic_scanned_range(
+                historic_start,
+                historic_end.max(historic_start.saturating_add(1)),
+                Some("historic_sync_progress"),
+            )?;
+            let _ = scan_queue.mark_found_note_done_through(local_height.saturating_add(1));
+            let spendability = SpendabilityStateStorage::new(&db);
+            if let Some((computed_target, computed_anchor)) = spendability
+                .get_target_and_anchor_heights_for_account(
+                    SPENDABILITY_MIN_CONFIRMATIONS,
+                    sink.account_id,
+                )?
+            {
+                let next_found_note_row = scan_queue.next_found_note_range()?;
+                let has_found_note_work = next_found_note_row.is_some();
+                let current_state = spendability.load_state().unwrap_or_default();
+                let at_or_past_target = local_height.saturating_add(1) >= computed_target;
+                let validated_for_anchor = current_state.spendable
+                    && current_state.validated_anchor_height >= computed_anchor;
+
+                if has_found_note_work {
+                    let repair_from = next_found_note_row
+                        .as_ref()
+                        .map(|row| row.range_start.max(1))
+                        .unwrap_or_else(|| computed_anchor.max(1));
+                    spendability.mark_repair_pending_without_enqueue(
+                        repair_from,
+                        SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED,
+                    )?;
+                } else if !at_or_past_target || !validated_for_anchor {
+                    // Only downgrade to ERR_SYNC_FINALIZING if the wallet was NOT
+                    // previously validated, or if the anchor has drifted far enough
+                    // that the old validation is no longer trustworthy.
+                    //
+                    // When the chain advances by just a few blocks the previous
+                    // validated_anchor_height falls behind the new computed_anchor,
+                    // but the commitment tree at the old validated anchor is still
+                    // valid — the tip witness check will re-validate shortly.
+                    // Eagerly downgrading here creates a race where save_sync_state
+                    // keeps undoing the validation that check_witnesses just performed,
+                    // trapping the wallet in ERR_SYNC_FINALIZING forever.
+                    let confirmations_u64 = u64::from(SPENDABILITY_MIN_CONFIRMATIONS);
+                    let anchor_drift =
+                        computed_anchor.saturating_sub(current_state.validated_anchor_height);
+                    let recently_validated = current_state.spendable
+                        && current_state.validated_anchor_height > 0
+                        && anchor_drift <= confirmations_u64;
+
+                    if !recently_validated {
+                        spendability.mark_sync_finalizing(computed_target, computed_anchor)?;
+                    }
+                }
+            } else {
+                spendability.mark_sync_finalizing(0, 0)?;
+            }
         }
         Ok(())
     }
 
+    /// Rollback to a specific checkpoint height.
+    ///
+    /// Uses only ShardTree truncation (via `truncate_above_height`). Position counters
+    /// are recovered from the ShardTree's checkpoint state after truncation.
     async fn rollback_to_checkpoint(&mut self, checkpoint_height: u64) -> Result<u64> {
-        if let Some(ref sink) = self.storage {
-            {
-                let mut db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
-                truncate_above_height(&mut db, checkpoint_height)?;
-            }
-        }
+        let Some(ref sink) = self.storage else {
+            *self.sapling_tree_position.write().await = 0;
+            *self.orchard_tree_position.write().await = 0;
+            return Ok(checkpoint_height);
+        };
 
-        if let Some(snapshot_height) = self
-            .restore_frontiers_from_storage(checkpoint_height)
-            .await?
-        {
-            return Ok(snapshot_height);
-        }
+        let mut db = Database::open(&sink.db_path, &sink.key, sink.master_key.clone())?;
+        truncate_above_height(&mut db, checkpoint_height)?;
 
-        *self.frontier.write().await = SaplingFrontier::new();
-        *self.orchard_frontier.write().await = OrchardFrontier::new();
+        self.recover_position_counters_from_shardtree().await?;
 
+        tracing::info!(
+            "Rolled back to checkpoint height {} (sapling_pos={}, orchard_pos={})",
+            checkpoint_height,
+            *self.sapling_tree_position.read().await,
+            *self.orchard_tree_position.read().await,
+        );
         Ok(checkpoint_height)
     }
 
@@ -5946,10 +5922,9 @@ impl SyncEngine {
         };
 
         let rollback_height = self.rollback_to_checkpoint(checkpoint_height).await?;
-        let resume_height = std::cmp::max(
-            rollback_height.saturating_add(1),
-            self.birthday_height as u64,
-        );
+        // Resume must be contiguous from the rollback point; clamping to a later "birthday"
+        // can skip commitments and corrupt anchor roots.
+        let resume_height = rollback_height.saturating_add(1).max(1);
 
         // Resume sync from next height after rollback
         self.sync_range(resume_height, None).await
@@ -6027,6 +6002,11 @@ impl SyncEngine {
         }
     }
 
+    /// Fetch the latest block height from the configured lightwalletd endpoint.
+    pub async fn latest_block_height(&self) -> Result<u64> {
+        self.client.get_latest_block().await
+    }
+
     /// Disconnect from lightwalletd
     pub async fn disconnect(&self) {
         self.client.disconnect().await;
@@ -6043,8 +6023,7 @@ fn de_ct<T>(ct: CtOption<T>) -> Option<T> {
 
 const SAPLING_NOTE_BYTES_VERSION: u8 = 1;
 const ORCHARD_NOTE_BYTES_VERSION: u8 = 1;
-const FRONTIER_SNAPSHOT_MAGIC: [u8; 4] = *b"PFS1";
-const FRONTIER_SNAPSHOT_VERSION: u8 = 1;
+// BridgeTree snapshot magic/version removed.
 
 fn encode_sapling_note_bytes_from_address_bytes(
     address_bytes: [u8; 43],
@@ -6158,67 +6137,8 @@ fn orchard_address_from_ivk_diversifier(
     Ok(Some(ivk.address(orchard_div)))
 }
 
-fn encode_frontier_snapshot(sapling_bytes: &[u8], orchard_bytes: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(4 + 1 + 4 + sapling_bytes.len() + 4 + orchard_bytes.len());
-    out.extend_from_slice(&FRONTIER_SNAPSHOT_MAGIC);
-    out.push(FRONTIER_SNAPSHOT_VERSION);
-    out.extend_from_slice(&(sapling_bytes.len() as u32).to_le_bytes());
-    out.extend_from_slice(sapling_bytes);
-    out.extend_from_slice(&(orchard_bytes.len() as u32).to_le_bytes());
-    out.extend_from_slice(orchard_bytes);
-    out
-}
-
-fn decode_frontier_snapshot(bytes: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
-    if bytes.len() < FRONTIER_SNAPSHOT_MAGIC.len() + 1
-        || !bytes.starts_with(&FRONTIER_SNAPSHOT_MAGIC)
-    {
-        return Ok((bytes.to_vec(), Vec::new()));
-    }
-
-    let version = bytes[FRONTIER_SNAPSHOT_MAGIC.len()];
-    if version != FRONTIER_SNAPSHOT_VERSION {
-        return Err(Error::Sync(format!(
-            "Unsupported frontier snapshot version: {}",
-            version
-        )));
-    }
-
-    let mut offset = FRONTIER_SNAPSHOT_MAGIC.len() + 1;
-    if bytes.len() < offset + 4 {
-        return Err(Error::Sync("Frontier snapshot truncated".to_string()));
-    }
-    let sapling_len = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
-    offset += 4;
-    if bytes.len() < offset + sapling_len + 4 {
-        return Err(Error::Sync("Frontier snapshot truncated".to_string()));
-    }
-    let sapling_bytes = bytes[offset..offset + sapling_len].to_vec();
-    offset += sapling_len;
-    let orchard_len = u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
-    offset += 4;
-    if bytes.len() < offset + orchard_len {
-        return Err(Error::Sync("Frontier snapshot truncated".to_string()));
-    }
-    let orchard_bytes = bytes[offset..offset + orchard_len].to_vec();
-    Ok((sapling_bytes, orchard_bytes))
-}
-
-fn encode_orchard_merkle_path(
-    path: &incrementalmerkletree::MerklePath<
-        orchard::tree::MerkleHashOrchard,
-        { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
-    >,
-) -> Option<Vec<u8>> {
-    let position_u64: u64 = path.position().into();
-    let position = u32::try_from(position_u64).ok()?;
-    let mut out = Vec::with_capacity(4 + 32 * 32);
-    out.extend_from_slice(&position.to_le_bytes());
-    for node in path.path_elems() {
-        out.extend_from_slice(&node.to_bytes());
-    }
-    Some(out)
-}
+// BridgeTree frontier snapshot encode/decode removed -- ShardTree state is
+// persisted directly in SQLite tables. No snapshot blobs needed.
 
 fn orchard_nullifier_from_parts(
     fvk: &orchard::keys::FullViewingKey,
@@ -6326,7 +6246,7 @@ impl StorageSink {
             });
         }
         // Batch-local caches; populate lazily so we don't decrypt full tables each batch.
-        let mut existing_by_output: HashMap<(Vec<u8>, i64), NoteRecord> = HashMap::new();
+        let mut existing_by_output: HashMap<(Vec<u8>, i64, u8), NoteRecord> = HashMap::new();
         let mut address_cache: HashMap<String, i64> = HashMap::new();
 
         let derive_address_id = |note: &DecryptedNote,
@@ -6441,12 +6361,7 @@ impl StorageSink {
             let txid_hex = hex::encode(&n.txid);
             // #region agent log
             if verbose_note_logging_enabled() {
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(debug_log_path())
-                {
-                    use std::io::Write;
+                pirate_core::debug_log::with_locked_file(|file| {
                     let ts = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -6473,7 +6388,7 @@ impl StorageSink {
                         txid_short,
                         db_path
                     );
-                }
+                });
             }
             // #endregion
             // Block timestamp is the "first confirmation time" for mined txs.
@@ -6490,15 +6405,20 @@ impl StorageSink {
             }
 
             let address_id = derive_address_id(n, timestamp, &mut address_cache)?;
-            let output_key = (n.txid.clone(), n.output_index as i64);
+            let note_type_tag = match note_type {
+                pirate_storage_sqlite::models::NoteType::Sapling => 0u8,
+                pirate_storage_sqlite::models::NoteType::Orchard => 1u8,
+            };
+            let output_key = (n.txid.clone(), n.output_index as i64, note_type_tag);
             let existing_note = if let Some(existing) = existing_by_output.get(&output_key).cloned()
             {
                 Some(existing)
             } else {
-                let fetched = repo.get_note_by_txid_and_index(
+                let fetched = repo.get_note_by_txid_and_index_with_type(
                     self.account_id,
                     &n.txid,
                     n.output_index as i64,
+                    Some(note_type),
                 )?;
                 if let Some(ref existing) = fetched {
                     existing_by_output.insert(output_key.clone(), existing.clone());
@@ -6562,32 +6482,6 @@ impl StorageSink {
                     updated.note = Some(n.note_bytes.clone());
                     changed = true;
                 }
-
-                if existing.merkle_path.is_none() && !n.merkle_path.is_empty() {
-                    updated.merkle_path = Some(n.merkle_path.clone());
-                    changed = true;
-                }
-                if !n.merkle_path.is_empty()
-                    && existing.merkle_path.as_ref() != Some(&n.merkle_path)
-                {
-                    updated.merkle_path = Some(n.merkle_path.clone());
-                    changed = true;
-                }
-
-                if existing.anchor.is_none() {
-                    if let Some(anchor) = n.anchor {
-                        updated.anchor = Some(anchor.to_vec());
-                        changed = true;
-                    }
-                }
-                if let Some(anchor) = n.anchor {
-                    let anchor_vec = anchor.to_vec();
-                    if existing.anchor.as_ref() != Some(&anchor_vec) {
-                        updated.anchor = Some(anchor_vec);
-                        changed = true;
-                    }
-                }
-
                 if existing.position.is_none() {
                     if let Some(position) = n.position {
                         updated.position = Some(position as i64);
@@ -6681,17 +6575,11 @@ impl StorageSink {
                 } else {
                     None
                 },
-                merkle_path: if n.merkle_path.is_empty() {
-                    None
-                } else {
-                    Some(n.merkle_path.clone())
-                },
                 note: if !n.note_bytes.is_empty() {
                     Some(n.note_bytes.clone())
                 } else {
                     None
                 },
-                anchor: n.anchor.map(|a| a.to_vec()),
                 position: {
                     let fallback = match n.note_type {
                         crate::pipeline::NoteType::Sapling => {
@@ -6734,12 +6622,7 @@ impl StorageSink {
                 Err(e) => {
                     // #region agent log
                     if verbose_note_logging_enabled() {
-                        if let Ok(mut file) = std::fs::OpenOptions::new()
-                            .create(true)
-                            .append(true)
-                            .open(debug_log_path())
-                        {
-                            use std::io::Write;
+                        pirate_core::debug_log::with_locked_file(|file| {
                             let ts = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
@@ -6753,7 +6636,7 @@ impl StorageSink {
                                 &txid_hex[..txid_hex.len().min(12)],
                                 e
                             );
-                        }
+                        });
                     }
                     // #endregion
                 }
@@ -6773,10 +6656,20 @@ impl StorageSink {
         &self,
         txid: &[u8],
         output_index: i64,
+        note_type: NoteType,
     ) -> Result<Option<NoteRecord>> {
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
-        Ok(repo.get_note_by_txid_and_index(self.account_id, txid, output_index)?)
+        let note_type = match note_type {
+            NoteType::Sapling => pirate_storage_sqlite::models::NoteType::Sapling,
+            NoteType::Orchard => pirate_storage_sqlite::models::NoteType::Orchard,
+        };
+        Ok(repo.get_note_by_txid_and_index_with_type(
+            self.account_id,
+            txid,
+            output_index,
+            Some(note_type),
+        )?)
     }
 
     fn list_orchard_note_refs(&self) -> Result<Vec<OrchardNoteRef>> {
@@ -6785,10 +6678,26 @@ impl StorageSink {
         Ok(repo.get_orchard_note_refs(self.account_id)?)
     }
 
-    fn update_note_memo(&self, txid: &[u8], output_index: i64, memo: Option<&[u8]>) -> Result<()> {
+    fn update_note_memo(
+        &self,
+        txid: &[u8],
+        output_index: i64,
+        note_type: NoteType,
+        memo: Option<&[u8]>,
+    ) -> Result<()> {
         let db = Database::open(&self.db_path, &self.key, self.master_key.clone())?;
         let repo = Repository::new(&db);
-        Ok(repo.update_note_memo(self.account_id, txid, output_index, memo)?)
+        let note_type = match note_type {
+            NoteType::Sapling => pirate_storage_sqlite::models::NoteType::Sapling,
+            NoteType::Orchard => pirate_storage_sqlite::models::NoteType::Orchard,
+        };
+        Ok(repo.update_note_memo_with_type(
+            self.account_id,
+            txid,
+            output_index,
+            Some(note_type),
+            memo,
+        )?)
     }
 
     fn apply_spend_updates_with_txmeta(
@@ -6873,6 +6782,23 @@ impl TxOutputKey {
 struct PositionMaps {
     sapling_by_tx: HashMap<TxOutputKey, u64>,
     orchard_by_commitment: HashMap<[u8; 32], u64>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct ShardtreeBatch {
+    height: u64,
+    sapling: Vec<([u8; 32], bool)>,
+    orchard: Vec<([u8; 32], bool)>,
+}
+
+impl ShardtreeBatch {
+    fn new(height: u64) -> Self {
+        Self {
+            height,
+            sapling: Vec::new(),
+            orchard: Vec::new(),
+        }
+    }
 }
 
 /// Wallet keys cached for trial decryption
@@ -7240,7 +7166,6 @@ fn trial_decrypt_batch_impl(
                     commitment,
                     nullifier: [0u8; 32],
                     encrypted_memo: Vec::new(),
-                    anchor: None,
                     position: Some(0),
                 });
                 note_rec.set_tx_hash(meta.tx_hash.clone());
@@ -7322,7 +7247,9 @@ mod tests {
     fn test_sync_config_default() {
         let config = SyncConfig::default();
         assert_eq!(config.checkpoint_interval, 10_000);
-        assert_eq!(config.batch_size, 2_000);
+        assert_eq!(config.batch_size, 4_000);
+        assert_eq!(config.max_batch_size, 4_000);
+        assert_eq!(config.target_batch_bytes, 128_000_000);
         assert!(config.lazy_memo_decode);
     }
 

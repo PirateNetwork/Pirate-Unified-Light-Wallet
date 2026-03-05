@@ -78,12 +78,6 @@ pub struct BackgroundSyncOrchestrator {
     config: BackgroundSyncConfig,
 }
 
-#[allow(dead_code)]
-fn _assert_background_sync_orchestrator_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<BackgroundSyncOrchestrator>();
-}
-
 impl BackgroundSyncOrchestrator {
     /// Create new background sync orchestrator
     pub fn new(sync_engine: Arc<Mutex<SyncEngine>>, config: BackgroundSyncConfig) -> Self {

@@ -4,8 +4,8 @@
 //! 1. Stream compact blocks (gRPC) in ranges (2k blocks per batch)
 //! 2. Batched trial decryption in bounded thread pool
 //! 3. Lazy memo decode (only when displaying)
-//! 4. Apply note commitments to SaplingFrontier
-//! 5. Mini-checkpoint every N batches (N=5) to frontier_snapshots
+//! 4. Count note commitments
+//! 5. Mini-checkpoint every N batches (N=5)
 //!
 //! Performance counters:
 //! - blocks_per_second
@@ -13,7 +13,6 @@
 //! - last_batch_ms
 
 use crate::client::{CompactBlockData, LightClient};
-use crate::frontier::SaplingFrontier;
 use crate::sapling::trial_decrypt::try_decrypt_compact_output;
 use crate::{Error, Result};
 use pirate_storage_sqlite::models::AddressScope;
@@ -41,7 +40,7 @@ pub struct PerfCounters {
     pub blocks_processed: AtomicU64,
     /// Total notes decrypted (matched wallet)
     pub notes_decrypted: AtomicU64,
-    /// Total note commitments applied to frontier
+    /// Total note commitments counted
     pub commitments_applied: AtomicU64,
     /// Last batch processing time in milliseconds
     pub last_batch_ms: AtomicU64,
@@ -172,12 +171,8 @@ pub struct DecryptedNote {
     pub sapling_rseed_leadbyte: Option<u8>,
     /// Sapling note rseed bytes (32 bytes) for nullifier derivation
     pub sapling_rseed: Option<[u8; 32]>,
-    /// Serialized Sapling merkle path bytes
-    pub merkle_path: Vec<u8>,
     /// Serialized note bytes (for storage, Sapling/Orchard)
     pub note_bytes: Vec<u8>,
-    /// Anchor (Orchard commitment tree root, Orchard only)
-    pub anchor: Option<[u8; 32]>,
     /// Position in note commitment tree (Sapling/Orchard)
     pub position: Option<u64>,
     /// Orchard note rho bytes (for nullifier derivation)
@@ -203,8 +198,6 @@ pub struct OrchardDecryptedNoteInit {
     pub nullifier: [u8; 32],
     /// Encrypted memo payload (compact form).
     pub encrypted_memo: Vec<u8>,
-    /// Optional Orchard anchor for the witness tree.
-    pub anchor: Option<[u8; 32]>,
     /// Optional position in the Orchard note commitment tree.
     pub position: Option<u64>,
 }
@@ -237,9 +230,7 @@ impl DecryptedNote {
             diversifier: Vec::new(),
             sapling_rseed_leadbyte: None,
             sapling_rseed: None,
-            merkle_path: Vec::new(),
             note_bytes: Vec::new(),
-            anchor: None,
             position: None,
             orchard_rho: None,
             orchard_rseed: None,
@@ -265,9 +256,7 @@ impl DecryptedNote {
             diversifier: Vec::new(),
             sapling_rseed_leadbyte: None,
             sapling_rseed: None,
-            merkle_path: Vec::new(),
             note_bytes: Vec::new(),
-            anchor: init.anchor,
             position: init.position,
             orchard_rho: None,
             orchard_rseed: None,
@@ -387,8 +376,8 @@ pub struct SyncPipeline {
     client: LightClient,
     /// Pipeline configuration
     config: PipelineConfig,
-    /// Sapling frontier for commitment tree
-    frontier: Arc<RwLock<SaplingFrontier>>,
+    /// Commitment counter (replaces BridgeTree frontier)
+    commitment_count: Arc<RwLock<u64>>,
     /// Performance counters
     perf: Arc<PerfCounters>,
     /// Mini-checkpoint callback
@@ -405,7 +394,7 @@ impl SyncPipeline {
         Self {
             client: LightClient::new(endpoint),
             config,
-            frontier: Arc::new(RwLock::new(SaplingFrontier::new())),
+            commitment_count: Arc::new(RwLock::new(0)),
             perf: Arc::new(PerfCounters::new()),
             on_mini_checkpoint: None,
             cancelled: Arc::new(RwLock::new(false)),
@@ -425,20 +414,9 @@ impl SyncPipeline {
         self
     }
 
-    /// Set existing frontier
-    pub fn with_frontier(mut self, frontier: SaplingFrontier) -> Self {
-        self.frontier = Arc::new(RwLock::new(frontier));
-        self
-    }
-
     /// Get performance counters reference
     pub fn perf_counters(&self) -> Arc<PerfCounters> {
         Arc::clone(&self.perf)
-    }
-
-    /// Get frontier reference
-    pub fn frontier(&self) -> Arc<RwLock<SaplingFrontier>> {
-        Arc::clone(&self.frontier)
     }
 
     /// Cancel pipeline
@@ -617,21 +595,17 @@ impl SyncPipeline {
         Ok((all_notes, all_commitments))
     }
 
-    /// Apply note commitments to frontier
+    /// Count note commitments (ShardTree handles actual persistence in sync engine)
     async fn apply_commitments(&self, commitments: &[[u8; 32]]) -> Result<()> {
-        let mut frontier = self.frontier.write().await;
-        for cm in commitments {
-            frontier.apply_note_commitment(*cm)?;
-        }
+        let mut count = self.commitment_count.write().await;
+        *count += commitments.len() as u64;
         Ok(())
     }
 
     /// Create mini-checkpoint
     async fn create_mini_checkpoint(&self, height: u32) -> Result<()> {
         if let Some(ref callback) = self.on_mini_checkpoint {
-            let frontier = self.frontier.read().await;
-            let frontier_bytes = frontier.serialize();
-            callback(height, &frontier_bytes)?;
+            callback(height, &[])?;
             tracing::debug!("Mini-checkpoint at height {}", height);
         }
         Ok(())
