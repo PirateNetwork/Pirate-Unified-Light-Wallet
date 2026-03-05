@@ -757,6 +757,63 @@ class SignedTx {
           size == other.size;
 }
 
+/// Wallet spendability status for deterministic send gating.
+class SpendabilityStatus {
+  /// Whether spending is currently allowed.
+  final bool spendable;
+
+  /// Whether a full rescan is required before spending.
+  final bool rescanRequired;
+
+  /// Latest target height known by the wallet.
+  final BigInt targetHeight;
+
+  /// Latest anchor height observed by sync.
+  final BigInt anchorHeight;
+
+  /// Anchor height last validated for spending.
+  final BigInt validatedAnchorHeight;
+
+  /// Whether a repair/rescan request is queued.
+  final bool repairQueued;
+
+  /// Deterministic reason code.
+  final String reasonCode;
+
+  const SpendabilityStatus({
+    required this.spendable,
+    required this.rescanRequired,
+    required this.targetHeight,
+    required this.anchorHeight,
+    required this.validatedAnchorHeight,
+    required this.repairQueued,
+    required this.reasonCode,
+  });
+
+  @override
+  int get hashCode =>
+      spendable.hashCode ^
+      rescanRequired.hashCode ^
+      targetHeight.hashCode ^
+      anchorHeight.hashCode ^
+      validatedAnchorHeight.hashCode ^
+      repairQueued.hashCode ^
+      reasonCode.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SpendabilityStatus &&
+          runtimeType == other.runtimeType &&
+          spendable == other.spendable &&
+          rescanRequired == other.rescanRequired &&
+          targetHeight == other.targetHeight &&
+          anchorHeight == other.anchorHeight &&
+          validatedAnchorHeight == other.validatedAnchorHeight &&
+          repairQueued == other.repairQueued &&
+          reasonCode == other.reasonCode;
+}
+
 /// Sync log entry for diagnostics
 class SyncLogEntryFfi {
   /// Unix timestamp

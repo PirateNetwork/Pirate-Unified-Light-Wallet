@@ -214,6 +214,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignedTx dco_decode_signed_tx(dynamic raw);
 
   @protected
+  SpendabilityStatus dco_decode_spendability_status(dynamic raw);
+
+  @protected
   SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw);
 
   @protected
@@ -485,6 +488,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SignedTx sse_decode_signed_tx(SseDeserializer deserializer);
+
+  @protected
+  SpendabilityStatus sse_decode_spendability_status(
+    SseDeserializer deserializer,
+  );
 
   @protected
   SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer);
@@ -1013,6 +1021,20 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  JSAny cst_encode_spendability_status(SpendabilityStatus raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_bool(raw.spendable),
+      cst_encode_bool(raw.rescanRequired),
+      cst_encode_u_64(raw.targetHeight),
+      cst_encode_u_64(raw.anchorHeight),
+      cst_encode_u_64(raw.validatedAnchorHeight),
+      cst_encode_bool(raw.repairQueued),
+      cst_encode_String(raw.reasonCode),
+    ].jsify()!;
+  }
+
+  @protected
   JSAny cst_encode_sync_log_entry_ffi(SyncLogEntryFfi raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return [
@@ -1469,6 +1491,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_signed_tx(SignedTx self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_spendability_status(
+    SpendabilityStatus self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_sync_log_entry_ffi(
@@ -1947,6 +1975,11 @@ class RustLibWire implements BaseWire {
 
   void wire__crate__api__get_seed_export_warnings(NativePortType port_) =>
       wasmModule.wire__crate__api__get_seed_export_warnings(port_);
+
+  void wire__crate__api__get_spendability_status(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__get_spendability_status(port_, wallet_id);
 
   void wire__crate__api__get_sync_logs(
     NativePortType port_,
@@ -2695,6 +2728,11 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void wire__crate__api__get_seed_export_warnings(
     NativePortType port_,
+  );
+
+  external void wire__crate__api__get_spendability_status(
+    NativePortType port_,
+    String wallet_id,
   );
 
   external void wire__crate__api__get_sync_logs(

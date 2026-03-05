@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1248550582;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 236682528;
 
 // Section: executor
 
@@ -1523,6 +1523,29 @@ fn wire__crate__api__get_seed_export_warnings_impl(
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok = crate::api::get_seed_export_warnings()?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__get_spendability_status_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_spendability_status",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::get_spendability_status(api_wallet_id)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -3968,6 +3991,28 @@ impl SseDecode for crate::models::SignedTx {
     }
 }
 
+impl SseDecode for crate::models::SpendabilityStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_spendable = <bool>::sse_decode(deserializer);
+        let mut var_rescanRequired = <bool>::sse_decode(deserializer);
+        let mut var_targetHeight = <u64>::sse_decode(deserializer);
+        let mut var_anchorHeight = <u64>::sse_decode(deserializer);
+        let mut var_validatedAnchorHeight = <u64>::sse_decode(deserializer);
+        let mut var_repairQueued = <bool>::sse_decode(deserializer);
+        let mut var_reasonCode = <String>::sse_decode(deserializer);
+        return crate::models::SpendabilityStatus {
+            spendable: var_spendable,
+            rescan_required: var_rescanRequired,
+            target_height: var_targetHeight,
+            anchor_height: var_anchorHeight,
+            validated_anchor_height: var_validatedAnchorHeight,
+            repair_queued: var_repairQueued,
+            reason_code: var_reasonCode,
+        };
+    }
+}
+
 impl SseDecode for crate::models::SyncLogEntryFfi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4687,6 +4732,32 @@ impl flutter_rust_bridge::IntoDart for crate::models::SignedTx {
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::models::SignedTx {}
 impl flutter_rust_bridge::IntoIntoDart<crate::models::SignedTx> for crate::models::SignedTx {
     fn into_into_dart(self) -> crate::models::SignedTx {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::models::SpendabilityStatus {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.spendable.into_into_dart().into_dart(),
+            self.rescan_required.into_into_dart().into_dart(),
+            self.target_height.into_into_dart().into_dart(),
+            self.anchor_height.into_into_dart().into_dart(),
+            self.validated_anchor_height.into_into_dart().into_dart(),
+            self.repair_queued.into_into_dart().into_dart(),
+            self.reason_code.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::models::SpendabilityStatus
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::models::SpendabilityStatus>
+    for crate::models::SpendabilityStatus
+{
+    fn into_into_dart(self) -> crate::models::SpendabilityStatus {
         self
     }
 }
@@ -5455,6 +5526,19 @@ impl SseEncode for crate::models::SignedTx {
     }
 }
 
+impl SseEncode for crate::models::SpendabilityStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.spendable, serializer);
+        <bool>::sse_encode(self.rescan_required, serializer);
+        <u64>::sse_encode(self.target_height, serializer);
+        <u64>::sse_encode(self.anchor_height, serializer);
+        <u64>::sse_encode(self.validated_anchor_height, serializer);
+        <bool>::sse_encode(self.repair_queued, serializer);
+        <String>::sse_encode(self.reason_code, serializer);
+    }
+}
+
 impl SseEncode for crate::models::SyncLogEntryFfi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6126,6 +6210,20 @@ mod io {
             }
         }
     }
+    impl CstDecode<crate::models::SpendabilityStatus> for wire_cst_spendability_status {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::SpendabilityStatus {
+            crate::models::SpendabilityStatus {
+                spendable: self.spendable.cst_decode(),
+                rescan_required: self.rescan_required.cst_decode(),
+                target_height: self.target_height.cst_decode(),
+                anchor_height: self.anchor_height.cst_decode(),
+                validated_anchor_height: self.validated_anchor_height.cst_decode(),
+                repair_queued: self.repair_queued.cst_decode(),
+                reason_code: self.reason_code.cst_decode(),
+            }
+        }
+    }
     impl CstDecode<crate::models::SyncLogEntryFfi> for wire_cst_sync_log_entry_ffi {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> crate::models::SyncLogEntryFfi {
@@ -6556,6 +6654,24 @@ mod io {
         }
     }
     impl Default for wire_cst_signed_tx {
+        fn default() -> Self {
+            Self::new_with_null_ptr()
+        }
+    }
+    impl NewWithNullPtr for wire_cst_spendability_status {
+        fn new_with_null_ptr() -> Self {
+            Self {
+                spendable: Default::default(),
+                rescan_required: Default::default(),
+                target_height: Default::default(),
+                anchor_height: Default::default(),
+                validated_anchor_height: Default::default(),
+                repair_queued: Default::default(),
+                reason_code: core::ptr::null_mut(),
+            }
+        }
+    }
+    impl Default for wire_cst_spendability_status {
         fn default() -> Self {
             Self::new_with_null_ptr()
         }
@@ -7221,6 +7337,14 @@ mod io {
     #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_seed_export_warnings(port_: i64) {
         wire__crate__api__get_seed_export_warnings_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_spendability_status(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__get_spendability_status_impl(port_, wallet_id)
     }
 
     #[unsafe(no_mangle)]
@@ -8282,6 +8406,17 @@ mod io {
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
+    pub struct wire_cst_spendability_status {
+        spendable: bool,
+        rescan_required: bool,
+        target_height: u64,
+        anchor_height: u64,
+        validated_anchor_height: u64,
+        repair_queued: bool,
+        reason_code: *mut wire_cst_list_prim_u_8_strict,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
     pub struct wire_cst_sync_log_entry_ffi {
         timestamp: i64,
         level: *mut wire_cst_list_prim_u_8_strict,
@@ -8990,6 +9125,31 @@ mod web {
                 txid: self_.get(0).cst_decode(),
                 raw: self_.get(1).cst_decode(),
                 size: self_.get(2).cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::models::SpendabilityStatus>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::SpendabilityStatus {
+            let self_ = self
+                .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap();
+            assert_eq!(
+                self_.length(),
+                7,
+                "Expected 7 elements, got {}",
+                self_.length()
+            );
+            crate::models::SpendabilityStatus {
+                spendable: self_.get(0).cst_decode(),
+                rescan_required: self_.get(1).cst_decode(),
+                target_height: self_.get(2).cst_decode(),
+                anchor_height: self_.get(3).cst_decode(),
+                validated_anchor_height: self_.get(4).cst_decode(),
+                repair_queued: self_.get(5).cst_decode(),
+                reason_code: self_.get(6).cst_decode(),
             }
         }
     }
@@ -9852,6 +10012,14 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
     ) {
         wire__crate__api__get_seed_export_warnings_impl(port_)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__get_spendability_status(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+    ) {
+        wire__crate__api__get_spendability_status_impl(port_, wallet_id)
     }
 
     #[wasm_bindgen]

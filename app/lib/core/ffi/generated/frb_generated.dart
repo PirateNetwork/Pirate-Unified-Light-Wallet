@@ -65,7 +65,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1248550582;
+  int get rustContentHash => 236682528;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -286,6 +286,10 @@ abstract class RustLibApi extends BaseApi {
   Future<String> crateApiGetSeedExportState();
 
   Future<SeedExportWarnings> crateApiGetSeedExportWarnings();
+
+  Future<SpendabilityStatus> crateApiGetSpendabilityStatus({
+    required String walletId,
+  });
 
   Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs({
     required String walletId,
@@ -2202,6 +2206,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiGetSeedExportWarningsConstMeta =>
       const TaskConstMeta(debugName: "get_seed_export_warnings", argNames: []);
+
+  @override
+  Future<SpendabilityStatus> crateApiGetSpendabilityStatus({
+    required String walletId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__get_spendability_status(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_spendability_status,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetSpendabilityStatusConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGetSpendabilityStatusConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_spendability_status",
+        argNames: ["walletId"],
+      );
 
   @override
   Future<List<SyncLogEntryFfi>> crateApiGetSyncLogs({
@@ -4586,6 +4617,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SpendabilityStatus dco_decode_spendability_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return SpendabilityStatus(
+      spendable: dco_decode_bool(arr[0]),
+      rescanRequired: dco_decode_bool(arr[1]),
+      targetHeight: dco_decode_u_64(arr[2]),
+      anchorHeight: dco_decode_u_64(arr[3]),
+      validatedAnchorHeight: dco_decode_u_64(arr[4]),
+      repairQueued: dco_decode_bool(arr[5]),
+      reasonCode: dco_decode_String(arr[6]),
+    );
+  }
+
+  @protected
   SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -5526,6 +5574,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SpendabilityStatus sse_decode_spendability_status(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_spendable = sse_decode_bool(deserializer);
+    var var_rescanRequired = sse_decode_bool(deserializer);
+    var var_targetHeight = sse_decode_u_64(deserializer);
+    var var_anchorHeight = sse_decode_u_64(deserializer);
+    var var_validatedAnchorHeight = sse_decode_u_64(deserializer);
+    var var_repairQueued = sse_decode_bool(deserializer);
+    var var_reasonCode = sse_decode_String(deserializer);
+    return SpendabilityStatus(
+      spendable: var_spendable,
+      rescanRequired: var_rescanRequired,
+      targetHeight: var_targetHeight,
+      anchorHeight: var_anchorHeight,
+      validatedAnchorHeight: var_validatedAnchorHeight,
+      repairQueued: var_repairQueued,
+      reasonCode: var_reasonCode,
+    );
+  }
+
+  @protected
   SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_timestamp = sse_decode_i_64(deserializer);
@@ -6456,6 +6527,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.txid, serializer);
     sse_encode_list_prim_u_8_strict(self.raw, serializer);
     sse_encode_usize(self.size, serializer);
+  }
+
+  @protected
+  void sse_encode_spendability_status(
+    SpendabilityStatus self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.spendable, serializer);
+    sse_encode_bool(self.rescanRequired, serializer);
+    sse_encode_u_64(self.targetHeight, serializer);
+    sse_encode_u_64(self.anchorHeight, serializer);
+    sse_encode_u_64(self.validatedAnchorHeight, serializer);
+    sse_encode_bool(self.repairQueued, serializer);
+    sse_encode_String(self.reasonCode, serializer);
   }
 
   @protected

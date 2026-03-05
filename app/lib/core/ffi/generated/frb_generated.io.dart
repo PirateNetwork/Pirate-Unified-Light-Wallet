@@ -212,6 +212,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignedTx dco_decode_signed_tx(dynamic raw);
 
   @protected
+  SpendabilityStatus dco_decode_spendability_status(dynamic raw);
+
+  @protected
   SyncLogEntryFfi dco_decode_sync_log_entry_ffi(dynamic raw);
 
   @protected
@@ -483,6 +486,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SignedTx sse_decode_signed_tx(SseDeserializer deserializer);
+
+  @protected
+  SpendabilityStatus sse_decode_spendability_status(
+    SseDeserializer deserializer,
+  );
 
   @protected
   SyncLogEntryFfi sse_decode_sync_log_entry_ffi(SseDeserializer deserializer);
@@ -1180,6 +1188,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  void cst_api_fill_to_wire_spendability_status(
+    SpendabilityStatus apiObj,
+    wire_cst_spendability_status wireObj,
+  ) {
+    wireObj.spendable = cst_encode_bool(apiObj.spendable);
+    wireObj.rescan_required = cst_encode_bool(apiObj.rescanRequired);
+    wireObj.target_height = cst_encode_u_64(apiObj.targetHeight);
+    wireObj.anchor_height = cst_encode_u_64(apiObj.anchorHeight);
+    wireObj.validated_anchor_height = cst_encode_u_64(
+      apiObj.validatedAnchorHeight,
+    );
+    wireObj.repair_queued = cst_encode_bool(apiObj.repairQueued);
+    wireObj.reason_code = cst_encode_String(apiObj.reasonCode);
+  }
+
+  @protected
   void cst_api_fill_to_wire_sync_log_entry_ffi(
     SyncLogEntryFfi apiObj,
     wire_cst_sync_log_entry_ffi wireObj,
@@ -1629,6 +1653,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_signed_tx(SignedTx self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_spendability_status(
+    SpendabilityStatus self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_sync_log_entry_ffi(
@@ -3095,6 +3125,28 @@ class RustLibWire implements BaseWire {
   late final _wire__crate__api__get_seed_export_warnings =
       _wire__crate__api__get_seed_export_warningsPtr
           .asFunction<void Function(int)>();
+
+  void wire__crate__api__get_spendability_status(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+  ) {
+    return _wire__crate__api__get_spendability_status(port_, wallet_id);
+  }
+
+  late final _wire__crate__api__get_spendability_statusPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )
+        >
+      >('frbgen_pirate_wallet_wire__crate__api__get_spendability_status');
+  late final _wire__crate__api__get_spendability_status =
+      _wire__crate__api__get_spendability_statusPtr
+          .asFunction<
+            void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
+          >();
 
   void wire__crate__api__get_sync_logs(
     int port_,
@@ -5461,6 +5513,28 @@ final class wire_cst_seed_export_warnings extends ffi.Struct {
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> backup_instructions;
 
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> clipboard_warning;
+}
+
+final class wire_cst_spendability_status extends ffi.Struct {
+  @ffi.Bool()
+  external bool spendable;
+
+  @ffi.Bool()
+  external bool rescan_required;
+
+  @ffi.Uint64()
+  external int target_height;
+
+  @ffi.Uint64()
+  external int anchor_height;
+
+  @ffi.Uint64()
+  external int validated_anchor_height;
+
+  @ffi.Bool()
+  external bool repair_queued;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> reason_code;
 }
 
 final class wire_cst_sync_status extends ffi.Struct {
