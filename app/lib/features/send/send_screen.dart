@@ -44,6 +44,7 @@ const int kMaxRecipients = 50;
 
 /// Additional fee per extra output in arrrtoshis.
 const int kAdditionalOutputFeeArrrtoshis = 5000;
+const Duration _spendSourceLoadTimeout = Duration(seconds: 8);
 
 class PiratePaymentRequest {
   final String address;
@@ -250,7 +251,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   double? _cachedBalance;
 
   WalletId? _walletId;
-  bool _isLoadingSpendSources = false;
+  Future<void>? _spendSourcesLoadInFlight;
   List<KeyGroupInfo> _spendableKeys = [];
   List<KeyGroupInfo> _selectableKeys = [];
   List<AddressBalanceInfo> _addressBalances = [];
@@ -326,35 +327,62 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   }
 
   Future<void> _loadSpendSources() async {
+    final existingLoad = _spendSourcesLoadInFlight;
+    if (existingLoad != null) {
+      return existingLoad;
+    }
+
+    final loadFuture = _loadSpendSourcesInner();
+    _spendSourcesLoadInFlight = loadFuture;
+    try {
+      await loadFuture;
+    } finally {
+      if (identical(_spendSourcesLoadInFlight, loadFuture)) {
+        _spendSourcesLoadInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _loadSpendSourcesInner() async {
     final walletId = _walletId;
     if (walletId == null) return;
-    setState(() => _isLoadingSpendSources = true);
     try {
-      final keys = await FfiBridge.listKeyGroups(walletId);
+      final keys = await FfiBridge.listKeyGroups(
+        walletId,
+      ).timeout(_spendSourceLoadTimeout);
       final spendableKeys = keys.where((k) => k.spendable).toList();
       final spendSourceChunks = await Future.wait(
         spendableKeys.map((key) async {
-          final balances = await FfiBridge.listAddressBalances(
-            walletId,
-            keyId: key.id,
-          );
-          Set<String> externalAddresses = <String>{};
           try {
-            final keyAddresses = await FfiBridge.listAddressesForKey(
+            final balances = await FfiBridge.listAddressBalances(
               walletId,
-              key.id,
+              keyId: key.id,
+            ).timeout(_spendSourceLoadTimeout);
+            Set<String> externalAddresses = <String>{};
+            try {
+              final keyAddresses = await FfiBridge.listAddressesForKey(
+                walletId,
+                key.id,
+              ).timeout(_spendSourceLoadTimeout);
+              externalAddresses = keyAddresses
+                  .map((addr) => addr.address)
+                  .toSet();
+            } catch (_) {
+              // Keep spend-source loading resilient; we can still spend if this lookup fails.
+            }
+            return _KeySpendSources(
+              keyId: key.id,
+              balances: balances,
+              externalAddresses: externalAddresses,
             );
-            externalAddresses = keyAddresses
-                .map((addr) => addr.address)
-                .toSet();
           } catch (_) {
-            // Keep spend-source loading resilient; we can still spend if this lookup fails.
+            // Never fail the whole selector because one key source is slow or unavailable.
+            return _KeySpendSources(
+              keyId: key.id,
+              balances: const [],
+              externalAddresses: const <String>{},
+            );
           }
-          return _KeySpendSources(
-            keyId: key.id,
-            balances: balances,
-            externalAddresses: externalAddresses,
-          );
         }),
       );
 
@@ -410,10 +438,6 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       }
     } catch (_) {
       // Ignore spend source load errors
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingSpendSources = false);
-      }
     }
     await _maybeShowAutoConsolidationPrompt();
   }
@@ -632,6 +656,16 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     return total;
   }
 
+  BigInt _internalPendingForKey(int keyId) {
+    var total = BigInt.zero;
+    for (final addr in _addressBalances) {
+      if (addr.keyId == keyId && _isInternalAddress(addr)) {
+        total += addr.pending;
+      }
+    }
+    return total;
+  }
+
   bool _isInternalAddress(AddressBalanceInfo address) {
     final keyId = address.keyId;
     if (keyId == null) return false;
@@ -672,13 +706,6 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   }
 
   Future<void> _openSpendFromSelector() async {
-    if (_isLoadingSpendSources) {
-      while (_isLoadingSpendSources && mounted) {
-        await Future<void>.delayed(const Duration(milliseconds: 120));
-      }
-    } else if (_spendableKeys.isEmpty && _addressBalances.isEmpty) {
-      await _loadSpendSources();
-    }
     if (!mounted) return;
 
     final loadFuture = _loadSpendSources();
@@ -834,21 +861,36 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                   const SizedBox(height: AppSpacing.xs),
                                 ]);
                                 for (final key in _selectableKeys) {
-                                  final balance = _formatArrr(
-                                    _spendableForKey(key.id),
-                                  );
-                                  final changeBalance =
-                                      _internalSpendableForKey(key.id);
-                                  final changeSuffix =
-                                      changeBalance > BigInt.zero
-                                      ? ' • Change ${_formatArrr(changeBalance)}'
+                                  final spendable = _spendableForKey(key.id);
+                                  final pending = _pendingForKey(key.id);
+                                  final balance = _formatArrr(spendable);
+                                  final pendingSuffix = pending > BigInt.zero
+                                      ? ' • Pending ${_formatArrr(pending)}'
                                       : '';
+
+                                  final changeSpendable =
+                                      _internalSpendableForKey(key.id);
+                                  final changePending = _internalPendingForKey(
+                                    key.id,
+                                  );
+                                  String changeSuffix = '';
+                                  if (changeSpendable > BigInt.zero &&
+                                      changePending > BigInt.zero) {
+                                    changeSuffix =
+                                        ' • Change ${_formatArrr(changeSpendable)} (+${_formatArrr(changePending)} pending)';
+                                  } else if (changeSpendable > BigInt.zero) {
+                                    changeSuffix =
+                                        ' • Change ${_formatArrr(changeSpendable)}';
+                                  } else if (changePending > BigInt.zero) {
+                                    changeSuffix =
+                                        ' • Change pending ${_formatArrr(changePending)}';
+                                  }
                                   selectorItems.add(
                                     _buildSpendOption(
                                       context,
                                       title: _displayKeyLabel(key),
                                       subtitle:
-                                          'Spendable $balance$changeSuffix',
+                                          'Spendable $balance$pendingSuffix$changeSuffix',
                                       selected:
                                           pendingKey?.id == key.id &&
                                           pendingAddressIds.isEmpty,
@@ -914,6 +956,10 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                   final balance = _formatArrr(
                                     address.spendable,
                                   );
+                                  final pending = address.pending;
+                                  final pendingSuffix = pending > BigInt.zero
+                                      ? ' • Pending ${_formatArrr(pending)}'
+                                      : '';
                                   final kind = isInternal
                                       ? 'Internal change'
                                       : 'Receive';
@@ -925,7 +971,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                       context,
                                       title: name,
                                       subtitle:
-                                          '$balance - $kind • $keyLabel • ${_truncateAddress(address.address)}',
+                                          'Spendable $balance$pendingSuffix - $kind • $keyLabel • ${_truncateAddress(address.address)}',
                                       selected: selected,
                                       onTap: () => toggleAddress(address),
                                     ),
@@ -1818,24 +1864,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       }
     }
 
-    // Check total doesn't exceed balance
+    // Keep review totals fresh even when sync/spendability gating blocks send.
     _updateFeePreview();
-    final total = _totalAmount + _calculatedFee;
-    final available = _availableBalanceForSelection;
-    final pending = _pendingBalanceForSelection;
-    if (total > available) {
-      if (available <= 0 && pending > 0) {
-        _errorMessage =
-            'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '
-            'have ${available.toStringAsFixed(8)} ARRR. '
-            '${pending.toStringAsFixed(8)} ARRR is pending and becomes spendable after 10 confirmations.';
-      } else {
-        _errorMessage =
-            'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '
-            'have ${available.toStringAsFixed(8)} ARRR';
-      }
-      allValid = false;
-    }
 
     setState(() {});
     return allValid;
@@ -1864,6 +1894,53 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       final walletId = ref.read(activeWalletProvider);
       if (walletId == null) {
         throw StateError('No active wallet');
+      }
+      final spendability = await FfiBridge.getSpendabilityStatus(walletId);
+      if (!spendability.spendable) {
+        String message;
+        switch (spendability.reasonCode) {
+          case 'ERR_RESCAN_REQUIRED':
+            message =
+                'Wallet spendability requires a full rescan before sending.';
+            break;
+          case 'ERR_WITNESS_REPAIR_QUEUED':
+            message =
+                'Witness repair was queued. Let sync complete, then retry send.';
+            break;
+          case 'ERR_SYNC_FINALIZING':
+          default:
+            message =
+                'Sync is finalizing spendability. Please retry in a moment.';
+            break;
+        }
+        setState(() {
+          _errorMessage = message;
+          _isValidating = false;
+        });
+        return;
+      }
+
+      // Only enforce balance checks once spendability is confirmed. During rescan/sync,
+      // the wallet may not have discovered notes yet; current UX is to block send
+      // with a deterministic spendability reason instead of "insufficient funds".
+      final total = _totalAmount + _calculatedFee;
+      final available = _availableBalanceForSelection;
+      final pending = _pendingBalanceForSelection;
+      if (total > available) {
+        setState(() {
+          if (pending > 0) {
+            _errorMessage =
+                'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '
+                'have ${available.toStringAsFixed(8)} ARRR. '
+                '${pending.toStringAsFixed(8)} ARRR is pending and becomes spendable after 10 confirmations.';
+          } else {
+            _errorMessage =
+                'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '
+                'have ${available.toStringAsFixed(8)} ARRR';
+          }
+          _isValidating = false;
+        });
+        return;
       }
 
       // Convert outputs to FFI format

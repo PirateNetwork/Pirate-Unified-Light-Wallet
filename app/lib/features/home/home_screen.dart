@@ -202,69 +202,12 @@ class _HomeHeader extends ConsumerWidget {
   final bool hideBalance;
   final VoidCallback onToggleVisibility;
 
-  int _confirmationsForTx(TxInfo tx, int? currentHeight) {
-    final txHeight = tx.height;
-    if (txHeight == null || txHeight <= 0 || currentHeight == null) {
-      return 0;
-    }
-    if (currentHeight < txHeight) {
-      return 0;
-    }
-    return (currentHeight - txHeight) + 1;
-  }
-
-  bool _isConfirmedTx(TxInfo tx, int? currentHeight) {
-    if (tx.confirmed) {
-      return true;
-    }
-    return _confirmationsForTx(tx, currentHeight) >= 10;
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final syncStatusAsync = ref.watch(syncProgressStreamProvider);
     final balanceAsync = ref.watch(balanceStreamProvider);
-    final transactionsAsync = ref.watch(transactionsProvider);
-    final tunnelMode = ref.watch(tunnelModeProvider);
-    final torStatus = ref.watch(torStatusProvider);
-    final transportConfig = ref.watch(transportConfigProvider);
-    final isDecoy = ref.watch(decoyModeProvider);
     final currency = ref.watch(currencyPreferenceProvider);
     final priceQuote = ref.watch(arrrPriceQuoteProvider).asData?.value;
     final primaryFiat = ref.watch(balancePrimaryFiatProvider);
-    final decoyHeight = ref
-        .watch(decoySyncHeightProvider)
-        .maybeWhen(data: (height) => height, orElse: () => 0);
-
-    final syncStatus = syncStatusAsync.when(
-      data: (status) => status,
-      loading: () => null,
-      error: (_, _) => null,
-      skipLoadingOnRefresh: false,
-    );
-
-    final decoySyncStatus = isDecoy ? _buildDecoySyncStatus(decoyHeight) : null;
-    final i2pEndpoint = transportConfig.i2pEndpoint.trim();
-    final i2pEndpointReady =
-        tunnelMode is! TunnelMode_I2p || i2pEndpoint.isNotEmpty;
-    final usesPrivacyTunnel =
-        (tunnelMode is TunnelMode_Tor) ||
-        (tunnelMode is TunnelMode_I2p) ||
-        (tunnelMode is TunnelMode_Socks5);
-    final tunnelReady =
-        (tunnelMode is! TunnelMode_Tor || torStatus.isReady) &&
-        i2pEndpointReady;
-    final tunnelBlocked = !isDecoy && usesPrivacyTunnel && !tunnelReady;
-    final displaySyncStatus = isDecoy
-        ? decoySyncStatus
-        : (tunnelBlocked ? null : syncStatus);
-
-    final isSyncing = !tunnelBlocked && (displaySyncStatus?.isSyncing ?? false);
-    final isComplete =
-        !tunnelBlocked && (displaySyncStatus?.isComplete ?? false);
-    final currentHeight =
-        (displaySyncStatus?.targetHeight ?? displaySyncStatus?.localHeight)
-            ?.toInt();
 
     final balanceData = balanceAsync.when(
       data: (b) => b,
@@ -272,25 +215,12 @@ class _HomeHeader extends ConsumerWidget {
       error: (_, _) => null,
     );
     final totalBalance = balanceData?.total ?? BigInt.zero;
-    final spendableBalance = balanceData?.spendable ?? BigInt.zero;
-    final pendingBalanceFromBackend = balanceData?.pending ?? BigInt.zero;
-    final pendingBalance = transactionsAsync.when(
-      data: (txs) {
-        var pendingIncoming = BigInt.zero;
-        for (final tx in txs) {
-          final amountValue = tx.amount;
-          if (amountValue <= 0) continue;
-          if (_isConfirmedTx(tx, currentHeight)) continue;
-          pendingIncoming += BigInt.from(amountValue);
-        }
-        return pendingIncoming;
-      },
-      loading: () => pendingBalanceFromBackend,
-      error: (_, _) => pendingBalanceFromBackend,
-    );
-    final displayBalance = (isSyncing || !isComplete)
-        ? spendableBalance
-        : totalBalance;
+    // Use backend pending value so "pending change" is shown consistently (matches
+    // spendability rules used by send flow).
+    final pendingBalance = balanceData?.pending ?? BigInt.zero;
+    // Keep balance display stable during incremental sync at tip.
+    // Spendability is enforced in send flow, not by zeroing the home balance.
+    final displayBalance = totalBalance;
     final balanceArrr = displayBalance.toDouble() / 100000000.0;
     final pendingArrr = pendingBalance.toDouble() / 100000000.0;
     final arrrText = ArrrPriceFormatter.formatArrr(balanceArrr);

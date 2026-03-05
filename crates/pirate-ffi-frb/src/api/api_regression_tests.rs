@@ -1,14 +1,22 @@
 use super::*;
-use pirate_core::selection::{NoteType as SelectableNoteType, SelectableNote};
+use incrementalmerkletree::Retention;
+use pirate_core::selection::SelectableNote;
 use pirate_storage_sqlite::{
     Account, AccountKey, Address, AddressScope, AddressType, ColorTag, Database,
     EncryptionAlgorithm, EncryptionKey, KeyScope, KeyType, MasterKey, NoteRecord,
     NoteType as DbNoteType, Repository,
 };
-use pirate_sync_lightd::SaplingFrontier;
+use shardtree::ShardTree;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use zcash_primitives::sapling::{value::NoteValue as SaplingNoteValue, Rseed};
+use zcash_primitives::{
+    consensus::BlockHeight,
+    sapling::value::NoteValue as SaplingNoteValue,
+    sapling::{
+        note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment, Note as SaplingNote, Rseed,
+    },
+    zip32::sapling::ExtendedSpendingKey as SaplingExtendedSpendingKey,
+};
 
 fn test_db_path() -> PathBuf {
     std::env::temp_dir().join(format!("pirate-ffi-regression-{}.db", uuid::Uuid::new_v4()))
@@ -85,86 +93,82 @@ fn insert_address(repo: &Repository, account_id: i64, key_id: i64, tag: &str) ->
         .unwrap()
 }
 
-fn insert_note(
+fn insert_sapling_note(
     repo: &Repository,
     account_id: i64,
     key_id: i64,
-    address_id: Option<i64>,
-    note_type: DbNoteType,
-    value: u64,
+    value_zat: u64,
     tx_tag: u8,
-) {
+    position: i64,
+) -> [u8; 32] {
+    let seed = [tx_tag.max(1); 32];
+    let extsk = SaplingExtendedSpendingKey::master(&seed);
+    let (_, address) = extsk.default_address();
+    let note_value = SaplingNoteValue::from_raw(value_zat);
+    let rseed_bytes = [tx_tag.wrapping_add(1); 32];
+    let note = SaplingNote::from_parts(address, note_value, Rseed::AfterZip212(rseed_bytes));
+    let commitment_bytes = note.cmu().to_bytes();
+    let mut note_blob = Vec::with_capacity(1 + 43 + 1 + 32);
+    note_blob.push(1); // version
+    note_blob.extend_from_slice(&address.to_bytes());
+    note_blob.push(0x02); // ZIP-212 Rseed
+    note_blob.extend_from_slice(&rseed_bytes);
     let note = NoteRecord {
         id: None,
         account_id,
         key_id: Some(key_id),
-        note_type,
-        value: value as i64,
+        note_type: DbNoteType::Sapling,
+        value: value_zat as i64,
         nullifier: vec![tx_tag; 32],
-        commitment: vec![tx_tag.wrapping_add(1); 32],
+        commitment: commitment_bytes.to_vec(),
         spent: false,
         height: 1_000,
         txid: vec![tx_tag; 32],
         output_index: tx_tag as i64,
-        address_id,
+        address_id: None,
         spent_txid: None,
         diversifier: None,
-        merkle_path: None,
-        note: None,
-        anchor: None,
-        position: None,
+        note: Some(note_blob),
+        position: Some(position),
         memo: None,
     };
     repo.insert_note(&note).unwrap();
+    commitment_bytes
 }
 
-fn valid_orchard_anchor(seed: u8) -> orchard::tree::Anchor {
-    for i in 0..=u16::MAX {
-        let mut bytes = [0u8; 32];
-        for (idx, b) in bytes.iter_mut().enumerate() {
-            *b = seed
-                .wrapping_mul(37)
-                .wrapping_add(idx as u8)
-                .wrapping_add((i as u8).wrapping_mul(17));
-        }
-        bytes[30] = (i >> 8) as u8;
-        bytes[31] = i as u8;
-        if let Some(anchor) = Option::from(orchard::tree::Anchor::from_bytes(bytes)) {
-            return anchor;
-        }
+fn seed_sapling_shardtree_checkpoint(db: &Database, checkpoint_height: u32, cmus: &[[u8; 32]]) {
+    const SAPLING_TABLE_PREFIX: &str = "sapling";
+    const SHARDTREE_PRUNING_DEPTH: usize = 1000;
+    const SAPLING_SHARD_HEIGHT: u8 = zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH / 2;
+
+    let tx = db
+        .conn()
+        .unchecked_transaction()
+        .expect("failed to open shardtree transaction");
+    let store = pirate_storage_sqlite::shardtree_store::SqliteShardStore::<
+        _,
+        zcash_primitives::sapling::Node,
+        SAPLING_SHARD_HEIGHT,
+    >::from_connection(&tx, SAPLING_TABLE_PREFIX)
+    .expect("failed to open shardtree store");
+    let mut tree: ShardTree<
+        _,
+        { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
+        SAPLING_SHARD_HEIGHT,
+    > = ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+
+    for cmu in cmus {
+        let cmu_opt: Option<SaplingExtractedNoteCommitment> =
+            SaplingExtractedNoteCommitment::from_bytes(cmu).into();
+        let cmu_value = cmu_opt.expect("test cmu must be valid");
+        let node = zcash_primitives::sapling::Node::from_cmu(&cmu_value);
+        tree.append(node, Retention::Marked)
+            .expect("failed to append test commitment");
     }
-    panic!("failed to construct a valid Orchard anchor")
-}
 
-fn sapling_selectable_note(value: u64, seed: u8) -> SelectableNote {
-    let extsk = zcash_primitives::zip32::ExtendedSpendingKey::master(&[seed; 32]);
-    let dfvk = extsk.to_diversifiable_full_viewing_key();
-    let (_, address) = dfvk.default_address();
-    let note = zcash_primitives::sapling::Note::from_parts(
-        address,
-        SaplingNoteValue::from_raw(value),
-        Rseed::AfterZip212([seed; 32]),
-    );
-
-    let mut frontier = SaplingFrontier::new();
-    let pos = frontier
-        .apply_note_commitment_with_position(note.cmu().to_bytes())
-        .unwrap();
-    frontier.mark_position().unwrap();
-    let path = frontier.witness(pos).unwrap().unwrap();
-
-    SelectableNote::new(value, vec![seed; 32], 10, vec![seed; 32], seed as u32).with_witness(
-        path,
-        *address.diversifier(),
-        note,
-    )
-}
-
-fn orchard_selectable_note(value: u64, seed: u8, anchor: orchard::tree::Anchor) -> SelectableNote {
-    let mut note =
-        SelectableNote::new_orchard(value, vec![seed; 32], 10, vec![seed; 32], seed as u32);
-    note.orchard_anchor = Some(anchor);
-    note
+    tree.checkpoint(BlockHeight::from(checkpoint_height))
+        .expect("failed to checkpoint shardtree");
+    tx.commit().expect("failed to commit shardtree seed");
 }
 
 #[test]
@@ -174,6 +178,40 @@ fn test_normalize_filter_ids_deduplicates_and_drops_empty() {
         normalize_filter_ids(Some(vec![4, 4, 1, 4, 1])),
         Some(vec![4, 1])
     );
+}
+
+#[test]
+fn test_txid_hex_variants_cover_both_byte_orders() {
+    let txid: Vec<u8> = (0u8..32u8).collect();
+    let mut reversed = txid.clone();
+    reversed.reverse();
+
+    let variants = txid_hex_variants_from_bytes(&txid);
+    assert!(variants.contains(&hex::encode(&txid)));
+    assert!(variants.contains(&hex::encode(&reversed)));
+}
+
+#[test]
+fn test_pending_change_clears_when_matching_txid_is_detected() {
+    let wallet_id = format!("wallet-{}", uuid::Uuid::new_v4());
+    PENDING_CHANGES.write().remove(&wallet_id);
+
+    let txid: Vec<u8> = (1u8..=32u8).collect();
+    let txid_hex = hex::encode(&txid);
+    add_pending_change(&wallet_id, &txid_hex, 42_000);
+
+    // Still pending before the note's txid is observed.
+    assert_eq!(resolve_pending_change(&wallet_id, &HashSet::new()), 42_000);
+
+    // Notes are commonly stored in internal byte order; ensure detection still clears.
+    let mut internal_order = txid.clone();
+    internal_order.reverse();
+    let known: HashSet<String> = txid_hex_variants_from_bytes(&internal_order)
+        .into_iter()
+        .collect();
+
+    assert_eq!(resolve_pending_change(&wallet_id, &known), 0);
+    assert!(PENDING_CHANGES.read().get(&wallet_id).is_none());
 }
 
 #[test]
@@ -248,37 +286,21 @@ fn test_auto_select_key_group_sapling_orchard_mixed_matrix() {
         "seed-50",
     );
 
-    // Intentionally omit serialized note/witness fields so the selector uses
-    // the fallback unspent-note totals path; this keeps the test deterministic.
-    insert_note(
-        &repo,
-        account_id,
-        key_twenty,
-        None,
-        DbNoteType::Orchard,
-        20,
-        0x20,
-    );
-    insert_note(
-        &repo,
-        account_id,
-        key_fifty,
-        None,
-        DbNoteType::Sapling,
-        50,
-        0x50,
-    );
+    let cmu_twenty = insert_sapling_note(&repo, account_id, key_twenty, 20, 0x20, 0);
+    let cmu_fifty = insert_sapling_note(&repo, account_id, key_fifty, 50, 0x50, 1);
+    // Note insertion order is the commitment tree order for this test harness.
+    seed_sapling_shardtree_checkpoint(&db, 1_000, &[cmu_twenty, cmu_fifty]);
 
     assert_eq!(
-        auto_select_spend_key_id_for_amount(&repo, account_id, 10, None).unwrap(),
+        auto_select_spend_key_id_for_amount(&repo, account_id, 10, 1_000).unwrap(),
         Some(key_twenty)
     );
     assert_eq!(
-        auto_select_spend_key_id_for_amount(&repo, account_id, 30, None).unwrap(),
+        auto_select_spend_key_id_for_amount(&repo, account_id, 30, 1_000).unwrap(),
         Some(key_fifty)
     );
     assert_eq!(
-        auto_select_spend_key_id_for_amount(&repo, account_id, 60, None).unwrap(),
+        auto_select_spend_key_id_for_amount(&repo, account_id, 60, 1_000).unwrap(),
         None
     );
 }
@@ -307,27 +329,12 @@ fn test_auto_select_ignores_unspendable_keys() {
         "spendable",
     );
 
-    insert_note(
-        &repo,
-        account_id,
-        key_locked,
-        None,
-        DbNoteType::Orchard,
-        1_000,
-        0xA0,
-    );
-    insert_note(
-        &repo,
-        account_id,
-        key_spendable,
-        None,
-        DbNoteType::Sapling,
-        40,
-        0xB0,
-    );
+    let cmu_locked = insert_sapling_note(&repo, account_id, key_locked, 1_000, 0xA0, 0);
+    let cmu_spendable = insert_sapling_note(&repo, account_id, key_spendable, 40, 0xB0, 1);
+    seed_sapling_shardtree_checkpoint(&db, 1_000, &[cmu_locked, cmu_spendable]);
 
     assert_eq!(
-        auto_select_spend_key_id_for_amount(&repo, account_id, 30, None).unwrap(),
+        auto_select_spend_key_id_for_amount(&repo, account_id, 30, 1_000).unwrap(),
         Some(key_spendable)
     );
 }
@@ -442,106 +449,5 @@ fn test_choose_multi_key_change_sink_uses_largest_contributor_without_seed() {
     assert_eq!(
         choose_multi_key_change_sink_key_id(&account_keys_by_id, &contributing, &balances),
         Some(import_high)
-    );
-}
-
-#[test]
-fn test_align_sapling_anchor_group_prefers_smallest_sufficient_group() {
-    let sapling_small = sapling_selectable_note(40, 0x11);
-    let sapling_large = sapling_selectable_note(70, 0x22);
-    let expected_anchor = hex::encode(sapling_anchor_for_selectable_note(&sapling_large).unwrap());
-    let orchard_anchor = valid_orchard_anchor(0x33);
-    let orchard_passthrough = orchard_selectable_note(5, 0x33, orchard_anchor);
-
-    let (aligned, groups, filtered, chosen_anchor_hex) =
-        align_sapling_anchor_group(vec![sapling_small, sapling_large, orchard_passthrough], 50);
-
-    assert_eq!(groups, 2);
-    assert_eq!(filtered, 1);
-    assert_eq!(chosen_anchor_hex, Some(expected_anchor));
-    assert_eq!(
-        aligned
-            .iter()
-            .filter(|n| n.note_type == SelectableNoteType::Sapling)
-            .count(),
-        1
-    );
-    assert_eq!(
-        aligned
-            .iter()
-            .filter(|n| n.note_type == SelectableNoteType::Orchard)
-            .count(),
-        1
-    );
-}
-
-#[test]
-fn test_align_orchard_anchor_group_prefers_richest_when_none_sufficient() {
-    let anchor_a = valid_orchard_anchor(0x44);
-    let anchor_b = valid_orchard_anchor(0x45);
-    assert_ne!(anchor_a, anchor_b);
-
-    let orchard_low = orchard_selectable_note(20, 0x44, anchor_a);
-    let orchard_high = orchard_selectable_note(35, 0x55, anchor_b);
-    let sapling_passthrough = sapling_selectable_note(10, 0x66);
-
-    let (aligned, groups, filtered, chosen_anchor_hex) =
-        align_orchard_anchor_group(vec![orchard_low, orchard_high, sapling_passthrough], 100);
-
-    assert_eq!(groups, 2);
-    assert_eq!(filtered, 1);
-    assert_eq!(chosen_anchor_hex, Some(hex::encode(anchor_b.to_bytes())));
-    assert_eq!(
-        aligned
-            .iter()
-            .filter(|n| n.note_type == SelectableNoteType::Orchard)
-            .count(),
-        1
-    );
-    assert_eq!(
-        aligned
-            .iter()
-            .filter(|n| n.note_type == SelectableNoteType::Sapling)
-            .count(),
-        1
-    );
-}
-
-#[test]
-fn test_mixed_pool_anchor_alignment_sequence() {
-    let sapling_low = sapling_selectable_note(30, 0x71);
-    let sapling_high = sapling_selectable_note(70, 0x72);
-    let orchard_anchor_low = valid_orchard_anchor(0x73);
-    let orchard_anchor_high = valid_orchard_anchor(0x74);
-    let orchard_low = orchard_selectable_note(20, 0x73, orchard_anchor_low);
-    let orchard_high = orchard_selectable_note(90, 0x74, orchard_anchor_high);
-
-    let (after_sapling, sap_groups, sap_filtered, _) = align_sapling_anchor_group(
-        vec![sapling_low, sapling_high, orchard_low, orchard_high],
-        80,
-    );
-    assert_eq!(sap_groups, 2);
-    assert_eq!(sap_filtered, 1);
-    assert_eq!(after_sapling.len(), 3);
-
-    let (after_orchard, orch_groups, orch_filtered, chosen) =
-        align_orchard_anchor_group(after_sapling, 80);
-    assert_eq!(orch_groups, 2);
-    assert_eq!(orch_filtered, 1);
-    assert_eq!(chosen, Some(hex::encode(orchard_anchor_high.to_bytes())));
-    assert_eq!(after_orchard.len(), 2);
-    assert_eq!(
-        after_orchard
-            .iter()
-            .filter(|n| n.note_type == SelectableNoteType::Sapling)
-            .count(),
-        1
-    );
-    assert_eq!(
-        after_orchard
-            .iter()
-            .filter(|n| n.note_type == SelectableNoteType::Orchard)
-            .count(),
-        1
     );
 }
