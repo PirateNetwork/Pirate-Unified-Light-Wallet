@@ -173,6 +173,25 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   static const String _storageNonI2pEndpointKey =
       'transport_non_i2p_endpoint_v1';
   static const String _storageNonI2pTlsPinKey = 'transport_non_i2p_tls_pin_v1';
+  static const TransportConfig _defaultConfig = TransportConfig(
+    mode: 'tor',
+    dnsProvider: 'cloudflare_doh',
+    socks5Config: {
+      'host': 'localhost',
+      'port': '1080',
+      'username': null,
+      'password': null,
+    },
+    i2pEndpoint: '',
+    tlsPins: [],
+    torBridge: TorBridgeConfig(
+      useBridges: false,
+      fallbackToBridges: true,
+      transport: 'snowflake',
+      bridgeLines: [],
+      transportPath: null,
+    ),
+  );
   Future<void> _applyQueue = Future.value();
   int _applyRequestId = 0;
 
@@ -180,25 +199,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   TransportConfig build() {
     _storage = const FlutterSecureStorage();
     _load();
-    return const TransportConfig(
-      mode: 'tor',
-      dnsProvider: 'cloudflare_doh',
-      socks5Config: {
-        'host': 'localhost',
-        'port': '1080',
-        'username': null,
-        'password': null,
-      },
-      i2pEndpoint: '',
-      tlsPins: [],
-      torBridge: TorBridgeConfig(
-        useBridges: false,
-        fallbackToBridges: true,
-        transport: 'snowflake',
-        bridgeLines: [],
-        transportPath: null,
-      ),
-    );
+    return _defaultConfig;
   }
 
   Future<void> setMode(String mode) async {
@@ -248,7 +249,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
 
   Future<void> _load() async {
     var loadedFromStorage = false;
-    TransportConfig nextState = state;
+    TransportConfig nextState = _defaultConfig;
     String? raw;
     try {
       raw = await _storage.read(key: _storageKey);
@@ -261,59 +262,19 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
         nextState = TransportConfig.fromJson(decoded);
         loadedFromStorage = true;
       } catch (_) {
-        nextState = const TransportConfig(
-          mode: 'tor',
-          dnsProvider: 'cloudflare_doh',
-          socks5Config: {
-            'host': 'localhost',
-            'port': '1080',
-            'username': null,
-            'password': null,
-          },
-          i2pEndpoint: '',
-          tlsPins: [],
-          torBridge: TorBridgeConfig(
-            useBridges: false,
-            fallbackToBridges: true,
-            transport: 'snowflake',
-            bridgeLines: [],
-            transportPath: null,
-          ),
-        );
+        nextState = _defaultConfig;
       }
     }
     if (!loadedFromStorage) {
-      nextState = const TransportConfig(
-        mode: 'tor',
-        dnsProvider: 'cloudflare_doh',
-        socks5Config: {
-          'host': 'localhost',
-          'port': '1080',
-          'username': null,
-          'password': null,
-        },
-        i2pEndpoint: '',
-        tlsPins: [],
-        torBridge: TorBridgeConfig(
-          useBridges: false,
-          fallbackToBridges: true,
-          transport: 'snowflake',
-          bridgeLines: [],
-          transportPath: null,
-        ),
-      );
+      nextState = _defaultConfig;
     }
 
     state = nextState;
 
     try {
-      // Backend is the single source of truth for active tunnel mode.
-      // Storage keeps supplemental config (SOCKS5/I2P/Tor bridge) only.
-      final backendMode = (await FfiBridge.getTunnel()).name.toLowerCase();
-      final backendState = nextState.copyWith(mode: backendMode);
-      state = backendState;
-      await _applyTunnel(backendState);
-      await _reconcileTunnelMode();
+      // Startup source-of-truth is the stored user preference.
+      // Apply stored mode to backend first; do not pre-override from backend.
+      await _applyTunnel(nextState);
       await _persist();
     } catch (_) {
       // Keep current backend untouched when mode cannot be resolved yet.
