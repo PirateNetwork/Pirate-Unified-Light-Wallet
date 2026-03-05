@@ -50,7 +50,9 @@ fn test_anchor_target_heights_come_from_scan_queue_extrema() {
     )
     .unwrap();
 
-    // Tree checkpoints should not pin canonical anchor derivation.
+    // Tree checkpoints pin the effective anchor by snapping to the highest
+    // checkpoint at-or-below the ideal anchor, using the more conservative
+    // (lower) pool checkpoint when both exist.
     conn.execute(
         "INSERT INTO sapling_tree_checkpoints (checkpoint_id, position) VALUES (220, NULL)",
         [],
@@ -78,8 +80,8 @@ fn test_anchor_target_heights_come_from_scan_queue_extrema() {
         "target should derive from queue max + 1"
     );
     assert_eq!(
-        anchor_height, 230,
-        "anchor should derive from target-min_confirmations floored by scan_queue minimum"
+        anchor_height, 225,
+        "anchor should snap to the conservative checkpoint at/below ideal anchor"
     );
 }
 
@@ -163,8 +165,8 @@ fn test_anchor_derivation_ignores_stale_pre_birthday_pool_checkpoint_for_account
 
     assert_eq!(target_height, 240);
     assert_eq!(
-        anchor_height, 230,
-        "account-aware anchor should follow canonical target-min_confirmations floor"
+        anchor_height, 228,
+        "account-aware anchor should snap to checkpoint at/below ideal anchor with birthday floor"
     );
 }
 

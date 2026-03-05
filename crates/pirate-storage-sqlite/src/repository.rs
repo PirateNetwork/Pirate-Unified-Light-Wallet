@@ -1,21 +1,23 @@
 //! Data access layer
 
 use crate::address_book::ColorTag;
+use crate::frontier_witness::{
+    construct_anchor_witnesses_from_db_state, resolve_orchard_anchor_from_db_state,
+};
 use crate::{models::*, Database, Result};
-use directories::ProjectDirs;
 use pirate_core::DEFAULT_FEE;
 use pirate_params::consensus::ConsensusParams;
 use rusqlite::params_from_iter;
 use rusqlite::{params, OptionalExtension};
 use std::collections::{HashMap, HashSet};
-use std::env;
-use std::path::PathBuf;
+use std::io::Write;
 
 type NullifierBytes = [u8; 32];
 type SpendingTxidBytes = [u8; 32];
 type TypedNullifier = (NoteType, NullifierBytes);
 type TypedUnlinkedSpend = (NoteType, NullifierBytes, SpendingTxidBytes);
 type TypedUnlinkedSpendMap = HashMap<TypedNullifier, SpendingTxidBytes>;
+const NOTE_SHARD_INDEX_BITS: u32 = 16;
 
 /// Repository for database operations
 pub struct Repository<'a> {
@@ -35,22 +37,17 @@ pub struct OrchardNoteRef {
     pub height: i64,
 }
 
-fn debug_log_path() -> PathBuf {
-    let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
-        PathBuf::from(path)
-    } else {
-        ProjectDirs::from("com", "Pirate", "PirateWallet")
-            .map(|dirs| dirs.data_local_dir().join("logs").join("debug.log"))
-            .unwrap_or_else(|| {
-                env::current_dir()
-                    .map(|dir| dir.join(".cursor").join("debug.log"))
-                    .unwrap_or_else(|_| PathBuf::from(".cursor").join("debug.log"))
-            })
-    };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    path
+/// Result of a witness-consistency check at a fixed anchor height.
+#[derive(Debug, Clone, Default)]
+pub struct WitnessCheckResult {
+    /// Total eligible unspent notes considered.
+    pub considered_notes: usize,
+    /// Missing witness/material count for Sapling notes.
+    pub sapling_missing: usize,
+    /// Missing witness/material count for Orchard notes.
+    pub orchard_missing: usize,
+    /// Deterministic queued repair ranges `(start, end_exclusive)`.
+    pub repair_ranges: Vec<(u64, u64)>,
 }
 
 fn note_value_is_valid(value: i64) -> bool {
@@ -58,6 +55,10 @@ fn note_value_is_valid(value: i64) -> bool {
         return false;
     }
     value as u64 <= ConsensusParams::mainnet().max_money
+}
+
+fn memo_bytes_are_effectively_empty(memo: &[u8]) -> bool {
+    memo.is_empty() || memo.iter().all(|b| *b == 0)
 }
 
 /// Convert raw txid bytes (internal/little-endian) into canonical display hex.
@@ -180,6 +181,84 @@ impl<'a> Repository<'a> {
             .map_err(|e| crate::Error::Encryption(format!("Failed to decode string: {}", e)))
     }
 
+    fn shard_index_from_position(&self, position: i64) -> Option<i64> {
+        if position < 0 {
+            return None;
+        }
+        let pos_u64 = u64::try_from(position).ok()?;
+        i64::try_from(pos_u64 >> NOTE_SHARD_INDEX_BITS).ok()
+    }
+
+    fn upsert_note_shard_metadata(
+        &self,
+        note_type: crate::models::NoteType,
+        position: Option<i64>,
+        height: i64,
+    ) -> Result<()> {
+        if height <= 0 {
+            return Ok(());
+        }
+        let Some(position_i64) = position else {
+            return Ok(());
+        };
+        let Some(shard_index) = self.shard_index_from_position(position_i64) else {
+            return Ok(());
+        };
+        let start_position = shard_index << NOTE_SHARD_INDEX_BITS;
+        let end_position_exclusive = (shard_index + 1) << NOTE_SHARD_INDEX_BITS;
+        let sql = match note_type {
+            crate::models::NoteType::Sapling => {
+                r#"
+                INSERT INTO sapling_note_shards (
+                    shard_index,
+                    start_position,
+                    end_position_exclusive,
+                    subtree_start_height,
+                    subtree_end_height,
+                    contains_marked
+                ) VALUES (?1, ?2, ?3, ?4, ?4, 1)
+                ON CONFLICT(shard_index) DO UPDATE SET
+                    start_position = excluded.start_position,
+                    end_position_exclusive = excluded.end_position_exclusive,
+                    subtree_start_height = MIN(subtree_start_height, excluded.subtree_start_height),
+                    subtree_end_height = CASE
+                        WHEN subtree_end_height IS NULL THEN excluded.subtree_end_height
+                        WHEN excluded.subtree_end_height IS NULL THEN subtree_end_height
+                        ELSE MAX(subtree_end_height, excluded.subtree_end_height)
+                    END,
+                    contains_marked = 1
+                "#
+            }
+            crate::models::NoteType::Orchard => {
+                r#"
+                INSERT INTO orchard_note_shards (
+                    shard_index,
+                    start_position,
+                    end_position_exclusive,
+                    subtree_start_height,
+                    subtree_end_height,
+                    contains_marked
+                ) VALUES (?1, ?2, ?3, ?4, ?4, 1)
+                ON CONFLICT(shard_index) DO UPDATE SET
+                    start_position = excluded.start_position,
+                    end_position_exclusive = excluded.end_position_exclusive,
+                    subtree_start_height = MIN(subtree_start_height, excluded.subtree_start_height),
+                    subtree_end_height = CASE
+                        WHEN subtree_end_height IS NULL THEN excluded.subtree_end_height
+                        WHEN excluded.subtree_end_height IS NULL THEN subtree_end_height
+                        ELSE MAX(subtree_end_height, excluded.subtree_end_height)
+                    END,
+                    contains_marked = 1
+                "#
+            }
+        };
+        self.db.conn().execute(
+            sql,
+            params![shard_index, start_position, end_position_exclusive, height],
+        )?;
+        Ok(())
+    }
+
     /// Insert account
     pub fn insert_account(&self, account: &Account) -> Result<i64> {
         self.db.conn().execute(
@@ -205,6 +284,16 @@ impl<'a> Repository<'a> {
             conn.execute("DELETE FROM frontier_snapshots", [])?;
             conn.execute("DELETE FROM sync_logs", [])?;
             conn.execute("DELETE FROM addresses", [])?;
+            conn.execute("DELETE FROM sapling_note_shards", [])?;
+            conn.execute("DELETE FROM orchard_note_shards", [])?;
+            conn.execute("DELETE FROM sapling_tree_cap", [])?;
+            conn.execute("DELETE FROM sapling_tree_checkpoint_marks_removed", [])?;
+            conn.execute("DELETE FROM sapling_tree_checkpoints", [])?;
+            conn.execute("DELETE FROM sapling_tree_shards", [])?;
+            conn.execute("DELETE FROM orchard_tree_cap", [])?;
+            conn.execute("DELETE FROM orchard_tree_checkpoint_marks_removed", [])?;
+            conn.execute("DELETE FROM orchard_tree_checkpoints", [])?;
+            conn.execute("DELETE FROM orchard_tree_shards", [])?;
             conn.execute(
                 r#"
                 UPDATE sync_state SET
@@ -262,10 +351,7 @@ impl<'a> Repository<'a> {
         let encrypted_output_index = self.encrypt_int64(note.output_index)?;
         let encrypted_diversifier =
             self.encrypt_blob(note.diversifier.as_deref().unwrap_or(&[]))?;
-        let encrypted_merkle_path =
-            self.encrypt_blob(note.merkle_path.as_deref().unwrap_or(&[]))?;
         let encrypted_note = self.encrypt_blob(note.note.as_deref().unwrap_or(&[]))?;
-        let encrypted_anchor = self.encrypt_optional_blob(note.anchor.as_deref())?;
         let encrypted_position = self.encrypt_optional_int64(note.position)?;
         let encrypted_memo = self.encrypt_optional_blob(note.memo.as_deref())?;
         let encrypted_spent_txid = self.encrypt_optional_blob(note.spent_txid.as_deref())?;
@@ -273,7 +359,7 @@ impl<'a> Repository<'a> {
         let encrypted_key_id = self.encrypt_optional_int64(note.key_id)?;
 
         self.db.conn().execute(
-            "INSERT INTO notes (account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+            "INSERT INTO notes (account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, note, position, memo, address_id, key_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 encrypted_account_id,
                 note_type_str,
@@ -286,16 +372,23 @@ impl<'a> Repository<'a> {
                 encrypted_output_index,
                 encrypted_spent_txid,
                 encrypted_diversifier,
-                encrypted_merkle_path,
                 encrypted_note,
-                encrypted_anchor,
                 encrypted_position,
                 encrypted_memo,
                 encrypted_address_id,
                 encrypted_key_id,
             ],
         )?;
-        Ok(self.db.conn().last_insert_rowid())
+        let inserted_id = self.db.conn().last_insert_rowid();
+        if let Err(e) = self.upsert_note_shard_metadata(note.note_type, note.position, note.height)
+        {
+            let _ = self
+                .db
+                .conn()
+                .execute("DELETE FROM notes WHERE id = ?1", params![inserted_id]);
+            return Err(e);
+        }
+        Ok(inserted_id)
     }
 
     /// Update an existing note by row id (encrypts before storage)
@@ -317,10 +410,7 @@ impl<'a> Repository<'a> {
         let encrypted_output_index = self.encrypt_int64(note.output_index)?;
         let encrypted_diversifier =
             self.encrypt_blob(note.diversifier.as_deref().unwrap_or(&[]))?;
-        let encrypted_merkle_path =
-            self.encrypt_blob(note.merkle_path.as_deref().unwrap_or(&[]))?;
         let encrypted_note = self.encrypt_blob(note.note.as_deref().unwrap_or(&[]))?;
-        let encrypted_anchor = self.encrypt_optional_blob(note.anchor.as_deref())?;
         let encrypted_position = self.encrypt_optional_int64(note.position)?;
         let encrypted_memo = self.encrypt_optional_blob(note.memo.as_deref())?;
         let encrypted_spent_txid = self.encrypt_optional_blob(note.spent_txid.as_deref())?;
@@ -328,7 +418,7 @@ impl<'a> Repository<'a> {
         let encrypted_key_id = self.encrypt_optional_int64(note.key_id)?;
 
         self.db.conn().execute(
-            "UPDATE notes SET account_id = ?1, note_type = ?2, value = ?3, nullifier = ?4, commitment = ?5, spent = ?6, height = ?7, txid = ?8, output_index = ?9, spent_txid = ?10, diversifier = ?11, merkle_path = ?12, note = ?13, anchor = ?14, position = ?15, memo = ?16, address_id = ?17, key_id = ?18 WHERE id = ?19",
+            "UPDATE notes SET account_id = ?1, note_type = ?2, value = ?3, nullifier = ?4, commitment = ?5, spent = ?6, height = ?7, txid = ?8, output_index = ?9, spent_txid = ?10, diversifier = ?11, note = ?12, position = ?13, memo = ?14, address_id = ?15, key_id = ?16 WHERE id = ?17",
             params![
                 encrypted_account_id,
                 note_type_str,
@@ -341,9 +431,7 @@ impl<'a> Repository<'a> {
                 encrypted_output_index,
                 encrypted_spent_txid,
                 encrypted_diversifier,
-                encrypted_merkle_path,
                 encrypted_note,
-                encrypted_anchor,
                 encrypted_position,
                 encrypted_memo,
                 encrypted_address_id,
@@ -351,6 +439,7 @@ impl<'a> Repository<'a> {
                 id,
             ],
         )?;
+        self.upsert_note_shard_metadata(note.note_type, note.position, note.height)?;
         Ok(())
     }
 
@@ -553,7 +642,7 @@ impl<'a> Repository<'a> {
         // Since account_id is encrypted, we need to decrypt all notes and filter
         // This is less efficient but necessary for maximum privacy
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
+            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, note, position, memo, address_id, key_id FROM notes",
         )?;
 
         let notes = stmt
@@ -575,13 +664,11 @@ impl<'a> Repository<'a> {
                 let encrypted_output_index: Vec<u8> = row.get::<_, Vec<u8>>(9)?;
                 let encrypted_spent_txid: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(10)?;
                 let encrypted_diversifier: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(11)?;
-                let encrypted_merkle_path: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(12)?;
-                let encrypted_note: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(13)?;
-                let encrypted_anchor: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(14)?;
-                let encrypted_position: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(15)?;
-                let encrypted_memo: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(16)?;
-                let encrypted_address_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(17)?;
-                let encrypted_key_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(18)?;
+                let encrypted_note: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(12)?;
+                let encrypted_position: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(13)?;
+                let encrypted_memo: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(14)?;
+                let encrypted_address_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(15)?;
+                let encrypted_key_id: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(16)?;
 
                 // Note: Decryption happens after collecting to handle errors properly
                 Ok((
@@ -597,9 +684,7 @@ impl<'a> Repository<'a> {
                     encrypted_output_index,
                     encrypted_spent_txid,
                     encrypted_diversifier,
-                    encrypted_merkle_path,
                     encrypted_note,
-                    encrypted_anchor,
                     encrypted_position,
                     encrypted_memo,
                     encrypted_address_id,
@@ -629,9 +714,7 @@ impl<'a> Repository<'a> {
             enc_output_index,
             enc_spent_txid,
             enc_diversifier,
-            enc_merkle_path,
             enc_note,
-            enc_anchor,
             enc_position,
             enc_memo,
             enc_address_id,
@@ -675,9 +758,7 @@ impl<'a> Repository<'a> {
                 output_index: decrypted_output_index,
                 spent_txid: self.decrypt_optional_blob(enc_spent_txid)?,
                 diversifier: self.decrypt_optional_blob(enc_diversifier)?,
-                merkle_path: self.decrypt_optional_blob(enc_merkle_path)?,
                 note: self.decrypt_optional_blob(enc_note)?,
-                anchor: self.decrypt_optional_blob(enc_anchor)?,
                 position: self.decrypt_optional_int64(enc_position)?,
                 memo: self.decrypt_optional_blob(enc_memo)?,
                 address_id: self.decrypt_optional_int64(enc_address_id)?,
@@ -701,12 +782,7 @@ impl<'a> Repository<'a> {
         let matched = decrypted_notes.len();
 
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -716,7 +792,7 @@ impl<'a> Repository<'a> {
                 r#"{{"id":"log_unspent_notes","timestamp":{},"location":"repository.rs:344","message":"get_unspent_notes","data":{{"account_id":{},"rows":{},"matched":{},"invalid_values":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 ts, account_id, total_rows, matched, invalid_values
             );
-        }
+        });
         // #endregion
 
         Ok(decrypted_notes)
@@ -733,7 +809,7 @@ impl<'a> Repository<'a> {
     /// the same priority class.
     pub fn get_spend_reconciliation_notes(&self, account_id: i64) -> Result<Vec<NoteRecord>> {
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
+            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, note, position, memo, address_id, key_id FROM notes",
         )?;
 
         let notes = stmt
@@ -757,13 +833,11 @@ impl<'a> Repository<'a> {
                     row.get::<_, Vec<u8>>(9)?,          // encrypted output_index
                     row.get::<_, Option<Vec<u8>>>(10)?, // encrypted spent_txid
                     row.get::<_, Option<Vec<u8>>>(11)?, // encrypted diversifier
-                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted merkle_path
-                    row.get::<_, Option<Vec<u8>>>(13)?, // encrypted note
-                    row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
-                    row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
-                    row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
-                    row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
-                    row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
+                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted note
+                    row.get::<_, Option<Vec<u8>>>(13)?, // encrypted position
+                    row.get::<_, Option<Vec<u8>>>(14)?, // encrypted memo
+                    row.get::<_, Option<Vec<u8>>>(15)?, // encrypted address_id
+                    row.get::<_, Option<Vec<u8>>>(16)?, // encrypted key_id
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -786,9 +860,7 @@ impl<'a> Repository<'a> {
             enc_output_index,
             enc_spent_txid,
             enc_diversifier,
-            enc_merkle_path,
             enc_note,
-            enc_anchor,
             enc_position,
             enc_memo,
             enc_address_id,
@@ -832,9 +904,7 @@ impl<'a> Repository<'a> {
                 address_id: self.decrypt_optional_int64(enc_address_id)?,
                 spent_txid,
                 diversifier: self.decrypt_optional_blob(enc_diversifier)?,
-                merkle_path: self.decrypt_optional_blob(enc_merkle_path)?,
                 note: self.decrypt_optional_blob(enc_note)?,
-                anchor: self.decrypt_optional_blob(enc_anchor)?,
                 position: self.decrypt_optional_int64(enc_position)?,
                 memo: self.decrypt_optional_blob(enc_memo)?,
             };
@@ -1196,15 +1266,11 @@ impl<'a> Repository<'a> {
         use orchard::note::{
             Note as OrchardNote, Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed,
         };
-        use orchard::tree::{
-            Anchor as OrchardAnchor, MerkleHashOrchard, MerklePath as OrchardMerklePath,
-        };
         use orchard::value::NoteValue as OrchardNoteValue;
         use orchard::Address as OrchardAddress;
         use pirate_core::selection::SelectableNote;
-        use zcash_primitives::merkle_tree::merkle_path_from_slice;
         use zcash_primitives::sapling::value::NoteValue as SaplingNoteValue;
-        use zcash_primitives::sapling::{Node, Note as SaplingNote, PaymentAddress, Rseed};
+        use zcash_primitives::sapling::{Note as SaplingNote, PaymentAddress, Rseed};
 
         const SAPLING_NOTE_BYTES_VERSION: u8 = 1;
         const ORCHARD_NOTE_BYTES_VERSION: u8 = 1;
@@ -1257,26 +1323,6 @@ impl<'a> Repository<'a> {
             }
 
             None
-        }
-
-        fn parse_orchard_merkle_path(bytes: &[u8]) -> Option<OrchardMerklePath> {
-            const ORCHARD_PATH_LEN: usize = 4 + 32 * 32;
-            if bytes.len() != ORCHARD_PATH_LEN {
-                return None;
-            }
-
-            let position = u32::from_le_bytes(bytes[0..4].try_into().ok()?);
-            let mut auth = Vec::with_capacity(32);
-            let mut offset = 4;
-            for _ in 0..32 {
-                let mut hash_bytes = [0u8; 32];
-                hash_bytes.copy_from_slice(&bytes[offset..offset + 32]);
-                offset += 32;
-                let hash = Option::from(MerkleHashOrchard::from_bytes(&hash_bytes))?;
-                auth.push(hash);
-            }
-            let auth_path: [MerkleHashOrchard; 32] = auth.try_into().ok()?;
-            Some(OrchardMerklePath::from_parts(position, auth_path))
         }
 
         let key_filter = key_ids_filter.map(|ids| ids.into_iter().collect::<HashSet<_>>());
@@ -1351,7 +1397,7 @@ impl<'a> Repository<'a> {
         };
         let total_notes = notes.len();
         let mut result = Vec::with_capacity(total_notes);
-        let mut skipped_missing_merkle = 0usize;
+        let mut skipped_missing_position = 0usize;
         let mut skipped_missing_note = 0usize;
         let mut skipped_invalid_address = 0usize;
         let mut skipped_invalid_rseed = 0usize;
@@ -1360,18 +1406,6 @@ impl<'a> Repository<'a> {
         for n in notes {
             match n.note_type {
                 crate::models::NoteType::Sapling => {
-                    let merkle_path = n.merkle_path.as_ref().and_then(|merkle_path| {
-                        if merkle_path.is_empty() {
-                            None
-                        } else {
-                            merkle_path_from_slice::<
-                                Node,
-                                { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
-                            >(&merkle_path[..])
-                            .ok()
-                        }
-                    });
-
                     let (address_bytes, leadbyte, rseed_bytes) =
                         match n.note.as_deref().and_then(parse_sapling_note_bytes) {
                             Some(data) => data,
@@ -1430,16 +1464,8 @@ impl<'a> Repository<'a> {
                     {
                         sn = sn.with_nullifier(nullifier);
                     }
-
-                    let merkle_path = match merkle_path {
-                        Some(path) => path,
-                        None => {
-                            skipped_missing_merkle += 1;
-                            continue;
-                        }
-                    };
-
-                    sn = sn.with_witness(merkle_path, *address.diversifier(), note);
+                    sn.diversifier = Some(*address.diversifier());
+                    sn.note = Some(note);
                     result.push(sn);
                 }
                 crate::models::NoteType::Orchard => {
@@ -1484,7 +1510,7 @@ impl<'a> Repository<'a> {
                         Err(_) => continue,
                     };
                     let note_value = OrchardNoteValue::from_raw(value);
-                    let note = match Option::from(OrchardNote::from_parts(
+                    let note: OrchardNote = match Option::from(OrchardNote::from_parts(
                         address, note_value, rho, rseed,
                     )) {
                         Some(value) => value,
@@ -1511,72 +1537,29 @@ impl<'a> Repository<'a> {
                         sn = sn.with_nullifier(nullifier);
                     }
 
-                    let anchor = if let Some(ref anchor_bytes) = n.anchor {
-                        if anchor_bytes.len() == 32 {
-                            let mut anchor_array = [0u8; 32];
-                            anchor_array.copy_from_slice(&anchor_bytes[..32]);
-                            let ct_option = OrchardAnchor::from_bytes(anchor_array);
-                            let opt: Option<OrchardAnchor> = ct_option.into();
-                            opt
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-
                     let position = match n.position {
                         Some(pos) => pos as u64,
                         None => {
-                            skipped_missing_merkle += 1;
+                            skipped_missing_position += 1;
                             continue;
                         }
                     };
-
-                    let merkle_path = n.merkle_path.as_ref().and_then(|merkle_path| {
-                        if merkle_path.is_empty() {
-                            None
-                        } else {
-                            parse_orchard_merkle_path(merkle_path)
-                        }
-                    });
-
-                    let merkle_path = match merkle_path {
-                        Some(path) => path,
-                        None => {
-                            skipped_missing_merkle += 1;
-                            continue;
-                        }
-                    };
-
-                    let anchor = match anchor {
-                        Some(value) => value,
-                        None => {
-                            skipped_missing_merkle += 1;
-                            continue;
-                        }
-                    };
-
-                    sn = sn.with_orchard_witness(anchor, position, merkle_path, note);
+                    sn.orchard_position = Some(position);
+                    sn.orchard_note = Some(note);
                     result.push(sn);
                 }
             }
         }
 
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis();
             let _ = writeln!(
                 file,
-                r#"{{"id":"log_selectable_notes","timestamp":{},"location":"repository.rs:621","message":"get_unspent_selectable_notes","data":{{"account_id":{},"key_id":{},"address_id":{},"key_ids_count":{},"address_ids_count":{},"notes":{},"selectable":{},"missing_merkle":{},"missing_note":{},"invalid_address":{},"invalid_rseed":{},"invalid_note":{},"skipped_key_mismatch":{},"skipped_key_missing":{},"skipped_address_mismatch":{},"skipped_address_missing":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                r#"{{"id":"log_selectable_notes","timestamp":{},"location":"repository.rs:621","message":"get_unspent_selectable_notes","data":{{"account_id":{},"key_id":{},"address_id":{},"key_ids_count":{},"address_ids_count":{},"notes":{},"selectable":{},"missing_position":{},"missing_note":{},"invalid_address":{},"invalid_rseed":{},"invalid_note":{},"skipped_key_mismatch":{},"skipped_key_missing":{},"skipped_address_mismatch":{},"skipped_address_missing":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 ts,
                 account_id,
                 key_id_log,
@@ -1585,7 +1568,7 @@ impl<'a> Repository<'a> {
                 address_ids_count,
                 total_notes,
                 result.len(),
-                skipped_missing_merkle,
+                skipped_missing_position,
                 skipped_missing_note,
                 skipped_invalid_address,
                 skipped_invalid_rseed,
@@ -1595,9 +1578,428 @@ impl<'a> Repository<'a> {
                 skipped_address_mismatch,
                 skipped_address_missing
             );
-        }
+        });
         // #endregion
 
+        Ok(result)
+    }
+
+    /// Get selectable notes constrained to a fixed anchor-height spendability epoch.
+    ///
+    /// This filters notes to those confirmed at or before `anchor_height`, which
+    /// aligns spend selection with canonical fixed-anchor behavior.
+    pub fn get_unspent_selectable_notes_at_anchor_filtered(
+        &self,
+        account_id: i64,
+        anchor_height: u64,
+        _min_confirmations: u32,
+        key_ids_filter: Option<Vec<i64>>,
+        address_ids_filter: Option<Vec<i64>>,
+    ) -> Result<Vec<pirate_core::selection::SelectableNote>> {
+        if anchor_height == 0 {
+            return Ok(Vec::new());
+        }
+        let wallet_birthday = self.get_wallet_birthday_height(account_id)?.unwrap_or(0);
+        let anchor_height_i64 = i64::try_from(anchor_height).map_err(|_| {
+            crate::Error::Storage(format!("anchor_height {} exceeds i64::MAX", anchor_height))
+        })?;
+        let wallet_birthday_i64 = i64::try_from(wallet_birthday).map_err(|_| {
+            crate::Error::Storage(format!(
+                "wallet_birthday {} exceeds i64::MAX",
+                wallet_birthday
+            ))
+        })?;
+
+        let mut notes = self.get_unspent_selectable_notes_filtered(
+            account_id,
+            key_ids_filter,
+            address_ids_filter,
+        )?;
+        if notes.is_empty() {
+            return Ok(notes);
+        }
+
+        // Keep only notes at/below anchor and at/above wallet birthday.
+        notes.retain(|note| note.height <= anchor_height && note.height >= wallet_birthday);
+        if notes.is_empty() {
+            return Ok(notes);
+        }
+
+        // Canonical shard-gate filtering:
+        // - use persistent v_* shard-unscanned views from migration
+        // - evaluate scannability in SQL using NOT EXISTS semantics
+        // - keep deterministic wallet-birthday + fixed-anchor constraints
+        notes.retain(|note| match note.note_type {
+            pirate_core::selection::NoteType::Sapling => note.sapling_position.is_some(),
+            pirate_core::selection::NoteType::Orchard => note.orchard_position.is_some(),
+        });
+        if notes.is_empty() {
+            return Ok(notes);
+        }
+
+        let mut sapling_block_stmt = self.db.conn().prepare(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM v_sapling_shard_unscanned_ranges unscanned
+                WHERE unscanned.block_range_start <= ?1
+                  AND unscanned.block_range_end > ?2
+                  AND ?3 >= unscanned.start_position
+                  AND ?3 < unscanned.end_position_exclusive
+            )
+            "#,
+        )?;
+        let mut orchard_block_stmt = self.db.conn().prepare(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM v_orchard_shard_unscanned_ranges unscanned
+                WHERE unscanned.block_range_start <= ?1
+                  AND unscanned.block_range_end > ?2
+                  AND ?3 >= unscanned.start_position
+                  AND ?3 < unscanned.end_position_exclusive
+            )
+            "#,
+        )?;
+
+        let mut filtered = Vec::with_capacity(notes.len());
+        for note in notes {
+            let note_position_i64 = match note.note_type {
+                pirate_core::selection::NoteType::Sapling => note
+                    .sapling_position
+                    .and_then(|position| i64::try_from(position).ok()),
+                pirate_core::selection::NoteType::Orchard => note
+                    .orchard_position
+                    .and_then(|position| i64::try_from(position).ok()),
+            };
+            let Some(note_position_i64) = note_position_i64 else {
+                continue;
+            };
+            let blocked = match note.note_type {
+                pirate_core::selection::NoteType::Sapling => sapling_block_stmt.query_row(
+                    params![anchor_height_i64, wallet_birthday_i64, note_position_i64],
+                    |row| row.get::<_, bool>(0),
+                )?,
+                pirate_core::selection::NoteType::Orchard => orchard_block_stmt.query_row(
+                    params![anchor_height_i64, wallet_birthday_i64, note_position_i64],
+                    |row| row.get::<_, bool>(0),
+                )?,
+            };
+            if !blocked {
+                filtered.push(note);
+            }
+        }
+        notes = filtered;
+        construct_anchor_witnesses_from_db_state(self.db, anchor_height, notes)
+    }
+
+    /// Resolve Orchard anchor from persisted DB state at-or-below `anchor_height`.
+    pub fn resolve_orchard_anchor_from_db_state(
+        &self,
+        anchor_height: u64,
+    ) -> Result<Option<orchard::tree::Anchor>> {
+        resolve_orchard_anchor_from_db_state(self.db, anchor_height)
+    }
+
+    /// Resolve Sapling anchor root bytes from persisted DB state at-or-below `anchor_height`.
+    pub fn resolve_sapling_root_from_db_state(
+        &self,
+        anchor_height: u64,
+    ) -> Result<Option<[u8; 32]>> {
+        crate::frontier_witness::resolve_sapling_root_from_db_state(self.db, anchor_height)
+            .map(|root| root.map(|node| node.to_bytes()))
+    }
+
+    /// Get the minimum wallet birthday height across account keys for an account.
+    ///
+    /// Uses wallet-birthday semantics for constraining spendability
+    /// gates and repair ranges.
+    pub fn get_wallet_birthday_height(&self, account_id: i64) -> Result<Option<u64>> {
+        let birthday_i64: Option<i64> = self.db.conn().query_row(
+            "SELECT MIN(birthday_height) FROM account_keys WHERE account_id = ?1 AND birthday_height > 0",
+            params![account_id],
+            |row| row.get(0),
+        )?;
+        birthday_i64
+            .map(|value| {
+                u64::try_from(value).map_err(|_| {
+                    crate::Error::Storage(format!(
+                        "wallet birthday height out of range for account {}: {}",
+                        account_id, value
+                    ))
+                })
+            })
+            .transpose()
+    }
+
+    /// Check witness/material availability and return deterministic FoundNote repair ranges.
+    ///
+    /// This function is intentionally queue-first: it never mutates note rows and does not
+    /// repair inline. Callers should enqueue returned ranges via scan-queue processing.
+    pub fn check_witnesses(
+        &self,
+        account_id: i64,
+        anchor_height: u64,
+        wallet_birthday: u64,
+    ) -> Result<WitnessCheckResult> {
+        let mut result = WitnessCheckResult::default();
+        if anchor_height == 0 {
+            return Ok(result);
+        }
+
+        let notes = self.get_unspent_notes(account_id)?;
+        if notes.is_empty() {
+            return Ok(result);
+        }
+
+        let birthday = wallet_birthday.max(1);
+        let mut pending_ranges: Vec<(u64, u64)> = Vec::new();
+        let anchor_height_i64 = i64::try_from(anchor_height).map_err(|_| {
+            crate::Error::Storage(format!("anchor_height {} exceeds i64::MAX", anchor_height))
+        })?;
+        let birthday_i64 = i64::try_from(birthday).map_err(|_| {
+            crate::Error::Storage(format!("wallet_birthday {} exceeds i64::MAX", birthday))
+        })?;
+        let mut sapling_note_range_stmt = self.db.conn().prepare(
+            r#"
+            SELECT block_range_start, block_range_end
+            FROM v_sapling_shard_unscanned_ranges
+            WHERE block_range_start <= ?1
+              AND block_range_end > ?2
+              AND ?3 >= start_position
+              AND ?3 < end_position_exclusive
+            ORDER BY block_range_start ASC
+            "#,
+        )?;
+        let mut orchard_note_range_stmt = self.db.conn().prepare(
+            r#"
+            SELECT block_range_start, block_range_end
+            FROM v_orchard_shard_unscanned_ranges
+            WHERE block_range_start <= ?1
+              AND block_range_end > ?2
+              AND ?3 >= start_position
+              AND ?3 < end_position_exclusive
+            ORDER BY block_range_start ASC
+            "#,
+        )?;
+
+        for note in notes {
+            let note_height = match u64::try_from(note.height) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            // Skip unconfirmed notes (height 0). Witnesses/anchors are only meaningful for mined notes.
+            if note_height == 0 {
+                continue;
+            }
+            if note_height < birthday || note_height > anchor_height {
+                continue;
+            }
+            result.considered_notes = result.considered_notes.saturating_add(1);
+
+            let missing_note_material = note.note.as_ref().is_none_or(|v| v.is_empty());
+            let missing_position = note.position.is_none_or(|pos| pos < 0);
+            let note_position_i64 = note.position.filter(|position| *position >= 0);
+            let mut derived_range_count = 0usize;
+            if let Some(position_i64) = note_position_i64 {
+                let mut rows =
+                    match note.note_type {
+                        crate::models::NoteType::Sapling => sapling_note_range_stmt
+                            .query(params![anchor_height_i64, birthday_i64, position_i64])?,
+                        crate::models::NoteType::Orchard => orchard_note_range_stmt
+                            .query(params![anchor_height_i64, birthday_i64, position_i64])?,
+                    };
+                while let Some(row) = rows.next()? {
+                    let start_i64: i64 = row.get(0)?;
+                    let end_i64: i64 = row.get(1)?;
+                    let Ok(start_u64) = u64::try_from(start_i64) else {
+                        continue;
+                    };
+                    let Ok(end_u64) = u64::try_from(end_i64) else {
+                        continue;
+                    };
+                    let range_start = start_u64.max(birthday).max(1);
+                    let capped_end_exclusive = end_u64.min(anchor_height.saturating_add(1));
+                    let range_end = capped_end_exclusive.max(range_start.saturating_add(1));
+                    pending_ranges.push((range_start, range_end));
+                    derived_range_count = derived_range_count.saturating_add(1);
+                }
+            }
+
+            // Queue-first behavior: if this note is blocked by unscanned shard ranges at
+            // the fixed anchor, mark it as witness-unavailable and enqueue repair ranges
+            // even when note material/position itself is present.
+            if derived_range_count > 0 {
+                match note.note_type {
+                    crate::models::NoteType::Sapling => {
+                        result.sapling_missing = result.sapling_missing.saturating_add(1);
+                    }
+                    crate::models::NoteType::Orchard => {
+                        result.orchard_missing = result.orchard_missing.saturating_add(1);
+                    }
+                }
+                continue;
+            }
+
+            if missing_note_material || missing_position {
+                match note.note_type {
+                    crate::models::NoteType::Sapling => {
+                        result.sapling_missing = result.sapling_missing.saturating_add(1);
+                    }
+                    crate::models::NoteType::Orchard => {
+                        result.orchard_missing = result.orchard_missing.saturating_add(1);
+                    }
+                }
+                let mut queued_range = false;
+                if let Some(position_i64) = note_position_i64 {
+                    let shard_table = match note.note_type {
+                        crate::models::NoteType::Sapling => "sapling_note_shards",
+                        crate::models::NoteType::Orchard => "orchard_note_shards",
+                    };
+                    if let Some(shard_index) = self.shard_index_from_position(position_i64) {
+                        let mut shard_stmt = self.db.conn().prepare(&format!(
+                            "SELECT subtree_start_height, subtree_end_height FROM {} WHERE shard_index = ?1",
+                            shard_table
+                        ))?;
+                        if let Some((start_i64, end_i64_opt)) = shard_stmt
+                            .query_row(params![shard_index], |row| {
+                                Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?))
+                            })
+                            .optional()?
+                        {
+                            if let Ok(start_u64) = u64::try_from(start_i64) {
+                                let range_start = start_u64.max(birthday).max(1);
+                                let end_u64 = end_i64_opt
+                                    .and_then(|value| u64::try_from(value).ok())
+                                    .unwrap_or(anchor_height);
+                                let capped_end = end_u64.min(anchor_height);
+                                let range_end = capped_end
+                                    .saturating_add(1)
+                                    .max(range_start.saturating_add(1));
+                                pending_ranges.push((range_start, range_end));
+                                queued_range = true;
+                            }
+                        }
+                    }
+                }
+                // If we can't derive a shard-address-based range (missing/invalid position or
+                // absent shard metadata), fall back to a deterministic height-based replay window.
+                // Fail-closed behavior: notes missing required spend
+                // material must be repaired via re-scan before spending.
+                if !queued_range {
+                    let range_start = note_height.max(birthday).max(1);
+                    let range_end = anchor_height
+                        .saturating_add(1)
+                        .max(range_start.saturating_add(1));
+                    pending_ranges.push((range_start, range_end));
+                }
+            }
+        }
+
+        // Validate anchor witness-construction readiness (not only metadata/scannability).
+        //
+        // If fixed-anchor candidate notes exist but cannot be hydrated from the
+        // current shardtree checkpoint state, queue a deterministic FoundNote replay
+        // range so maintenance runs before send-time.
+        let mut anchor_candidates =
+            self.get_unspent_selectable_notes_filtered(account_id, None, None)?;
+        anchor_candidates.retain(|note| note.height >= birthday && note.height <= anchor_height);
+        if !anchor_candidates.is_empty() {
+            let anchor_ready = self.get_unspent_selectable_notes_at_anchor_filtered(
+                account_id,
+                anchor_height,
+                10,
+                None,
+                None,
+            )?;
+            if anchor_ready.len() < anchor_candidates.len() {
+                let mut ready_keys: HashSet<(Vec<u8>, u32, u8)> =
+                    HashSet::with_capacity(anchor_ready.len());
+                for note in &anchor_ready {
+                    let note_pool = match note.note_type {
+                        pirate_core::selection::NoteType::Sapling => 0u8,
+                        pirate_core::selection::NoteType::Orchard => 1u8,
+                    };
+                    ready_keys.insert((note.txid.clone(), note.output_index, note_pool));
+                }
+
+                let mut missing_sapling = 0usize;
+                let mut missing_orchard = 0usize;
+                let mut earliest_missing_height = anchor_height;
+                for note in &anchor_candidates {
+                    let note_pool = match note.note_type {
+                        pirate_core::selection::NoteType::Sapling => 0u8,
+                        pirate_core::selection::NoteType::Orchard => 1u8,
+                    };
+                    let note_key = (note.txid.clone(), note.output_index, note_pool);
+                    if !ready_keys.contains(&note_key) {
+                        earliest_missing_height = earliest_missing_height.min(note.height);
+                        match note.note_type {
+                            pirate_core::selection::NoteType::Sapling => {
+                                missing_sapling = missing_sapling.saturating_add(1);
+                            }
+                            pirate_core::selection::NoteType::Orchard => {
+                                missing_orchard = missing_orchard.saturating_add(1);
+                            }
+                        }
+                    }
+                }
+
+                if missing_sapling + missing_orchard > 0 {
+                    result.sapling_missing = result.sapling_missing.saturating_add(missing_sapling);
+                    result.orchard_missing = result.orchard_missing.saturating_add(missing_orchard);
+                    let range_start = earliest_missing_height.max(birthday).max(1);
+                    let range_end = anchor_height
+                        .saturating_add(1)
+                        .max(range_start.saturating_add(1));
+                    pending_ranges.push((range_start, range_end));
+
+                    // #region agent log
+                    pirate_core::debug_log::with_locked_file(|file| {
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+                        let _ = writeln!(
+                            file,
+                            r#"{{"id":"log_check_witnesses_anchor_state_gap","timestamp":{},"location":"repository.rs:check_witnesses","message":"anchor witness-state gap queued","data":{{"account_id":{},"anchor_height":{},"birthday":{},"candidates":{},"ready":{},"missing_sapling":{},"missing_orchard":{},"range_start":{},"range_end_exclusive":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                            ts,
+                            account_id,
+                            anchor_height,
+                            birthday,
+                            anchor_candidates.len(),
+                            anchor_ready.len(),
+                            missing_sapling,
+                            missing_orchard,
+                            range_start,
+                            range_end
+                        );
+                    });
+                    // #endregion
+                }
+            }
+        }
+
+        if pending_ranges.is_empty() {
+            result.repair_ranges = Vec::new();
+            return Ok(result);
+        }
+
+        pending_ranges.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut merged_ranges: Vec<(u64, u64)> = Vec::with_capacity(pending_ranges.len());
+        for (start, end) in pending_ranges {
+            if let Some((_, last_end)) = merged_ranges.last_mut() {
+                if start <= *last_end {
+                    *last_end = (*last_end).max(end);
+                } else {
+                    merged_ranges.push((start, end));
+                }
+            } else {
+                merged_ranges.push((start, end));
+            }
+        }
+
+        result.repair_ranges = merged_ranges;
         Ok(result)
     }
 
@@ -1621,15 +2023,21 @@ impl<'a> Repository<'a> {
         let mut spendable = 0u64;
         let mut pending = 0u64;
 
-        // Calculate confirmation threshold
-        let confirmation_threshold = current_height.saturating_sub(min_depth);
+        // Note confirmation depth is defined as the number of blocks since and including
+        // the block a note was produced in. This matches the UI confirmation display and
+        // wallet summary semantics.
+        //
+        // confirmations = (current_height - note_height) + 1
+        // confirmations >= min_depth  <=>  note_height <= current_height - (min_depth - 1)
+        let min_depth = min_depth.max(1);
+        let confirmation_threshold = current_height.saturating_sub(min_depth.saturating_sub(1));
 
         for note in notes {
             let note_height = note.height as u64;
             let note_value = note.value as u64;
 
             // Note is confirmed if it has at least min_depth confirmations
-            // (i.e., note_height <= current_height - min_depth)
+            // (i.e., note_height <= current_height - (min_depth - 1)).
             // This applies to both Sapling and Orchard notes
             if note_height > 0 && note_height <= confirmation_threshold {
                 spendable = spendable
@@ -2115,7 +2523,9 @@ impl<'a> Repository<'a> {
                 continue;
             }
             let spent = self.decrypt_bool(&enc_spent)?;
-            let memo = self.decrypt_optional_blob(encrypted_memo)?;
+            let memo = self
+                .decrypt_optional_blob(encrypted_memo)?
+                .filter(|m| !memo_bytes_are_effectively_empty(m));
             let spent_txid = self.decrypt_optional_blob(enc_spent_txid)?;
             let address_id = self.decrypt_optional_int64(enc_address_id)?;
             let address_scope = address_id
@@ -2240,45 +2650,58 @@ impl<'a> Repository<'a> {
         let mut debug_records: Vec<TxDebugRow> = Vec::new();
 
         for (txid, entry) in tx_map.iter_mut() {
-            let stored_height = heights_map
-                .get(txid)
-                .copied()
-                .or_else(|| reverse_txid_hex(txid).and_then(|alt| heights_map.get(&alt).copied()));
-            if let Some(height) = stored_height {
-                if height > 0 {
-                    entry.height = height;
-                }
+            let alt_txid = reverse_txid_hex(txid);
+            let direct_height = heights_map.get(txid).copied().unwrap_or(0);
+            let alt_height = alt_txid
+                .as_ref()
+                .and_then(|alt| heights_map.get(alt).copied())
+                .unwrap_or(0);
+            let best_height = direct_height.max(alt_height);
+            if best_height > 0 {
+                entry.height = best_height;
             }
         }
 
         // Convert to TransactionRecord and calculate net amount
         let mut transactions: Vec<TransactionRecord> = Vec::new();
         for (txid, entry) in tx_map.into_iter() {
+            let alt_txid = reverse_txid_hex(&txid);
+            let direct_height = heights_map.get(&txid).copied().unwrap_or(0);
+            let alt_height = alt_txid
+                .as_ref()
+                .and_then(|alt| heights_map.get(alt).copied())
+                .unwrap_or(0);
             // Net amount: positive for receive, negative for send
             let total_received = entry
                 .received_external
                 .saturating_add(entry.received_internal);
             let net_amount = total_received.saturating_sub(entry.sent);
-            let memo = entry.memo.or_else(|| {
-                memo_map
-                    .get(&txid)
-                    .cloned()
-                    .or_else(|| reverse_txid_hex(&txid).and_then(|alt| memo_map.get(&alt).cloned()))
-            });
+            let memo = entry
+                .memo
+                .or_else(|| {
+                    memo_map.get(&txid).cloned().or_else(|| {
+                        reverse_txid_hex(&txid).and_then(|alt| memo_map.get(&alt).cloned())
+                    })
+                })
+                .filter(|m| !memo_bytes_are_effectively_empty(m));
 
             // Use stored transaction timestamp if available (first confirmation time).
             // Fallback: current time (unconfirmed or not yet populated).
-            let timestamp = ts_map
-                .get(&txid)
-                .copied()
-                .or_else(|| reverse_txid_hex(&txid).and_then(|alt| ts_map.get(&alt).copied()))
-                .unwrap_or_else(|| chrono::Utc::now().timestamp());
+            let direct_timestamp = ts_map.get(&txid).copied();
+            let alt_timestamp = alt_txid.as_ref().and_then(|alt| ts_map.get(alt).copied());
+            let timestamp = if alt_height > direct_height {
+                alt_timestamp.or(direct_timestamp)
+            } else {
+                direct_timestamp.or(alt_timestamp)
+            }
+            .unwrap_or_else(|| chrono::Utc::now().timestamp());
 
-            let stored_fee = fee_map
-                .get(&txid)
-                .copied()
-                .or_else(|| reverse_txid_hex(&txid).and_then(|alt| fee_map.get(&alt).copied()))
+            let direct_fee = fee_map.get(&txid).copied().unwrap_or(0);
+            let alt_fee = alt_txid
+                .as_ref()
+                .and_then(|alt| fee_map.get(alt).copied())
                 .unwrap_or(0);
+            let stored_fee = direct_fee.max(alt_fee);
             let fee = if stored_fee == 0 && entry.sent > 0 && net_amount < 0 {
                 DEFAULT_FEE
             } else {
@@ -2377,12 +2800,7 @@ impl<'a> Repository<'a> {
             }
         }
 
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
-            use std::io::Write;
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -2426,7 +2844,7 @@ impl<'a> Repository<'a> {
                     row.spent_targets
                 );
             }
-        }
+        });
 
         // Sort by height descending (newest first), then by txid and amount
         transactions.sort_by(|a, b| {
@@ -2502,18 +2920,22 @@ impl<'a> Repository<'a> {
         Ok(refs)
     }
 
-    /// Get note by transaction ID and output index with decrypted fields
-    /// Note: Since all fields are encrypted, we decrypt all notes and filter in memory for privacy
-    pub fn get_note_by_txid_and_index(
+    /// Get note by transaction ID and output index with decrypted fields.
+    ///
+    /// If `note_type_filter` is provided, only rows in that pool are considered.
+    /// This prevents Sapling/Orchard collisions on shared (txid, output_index) pairs.
+    /// Note: Since all fields are encrypted, we decrypt rows and filter in memory.
+    pub fn get_note_by_txid_and_index_with_type(
         &self,
         account_id: i64,
         txid: &[u8],
         output_index: i64,
+        note_type_filter: Option<crate::models::NoteType>,
     ) -> Result<Option<NoteRecord>> {
         // Since fields are encrypted, we need to decrypt all and filter
         // For efficiency with large datasets, this could be optimized with an index table
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
+            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, note, position, memo, address_id, key_id FROM notes",
         )?;
 
         let notes = stmt
@@ -2537,18 +2959,17 @@ impl<'a> Repository<'a> {
                     row.get::<_, Vec<u8>>(9)?,          // encrypted output_index
                     row.get::<_, Option<Vec<u8>>>(10)?, // encrypted spent_txid
                     row.get::<_, Option<Vec<u8>>>(11)?, // encrypted diversifier
-                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted merkle_path
-                    row.get::<_, Option<Vec<u8>>>(13)?, // encrypted note
-                    row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
-                    row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
-                    row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
-                    row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
-                    row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
+                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted note
+                    row.get::<_, Option<Vec<u8>>>(13)?, // encrypted position
+                    row.get::<_, Option<Vec<u8>>>(14)?, // encrypted memo
+                    row.get::<_, Option<Vec<u8>>>(15)?, // encrypted address_id
+                    row.get::<_, Option<Vec<u8>>>(16)?, // encrypted key_id
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
-        // Decrypt and filter in memory
+        // Decrypt and filter in memory. If duplicates exist, choose latest row id.
+        let mut best_match: Option<NoteRecord> = None;
         for (
             id,
             enc_account_id,
@@ -2562,9 +2983,7 @@ impl<'a> Repository<'a> {
             enc_output_index,
             enc_spent_txid,
             enc_diversifier,
-            enc_merkle_path,
             enc_note,
-            enc_anchor,
             enc_position,
             enc_memo,
             enc_address_id,
@@ -2576,37 +2995,138 @@ impl<'a> Repository<'a> {
             let decrypted_output_index = self.decrypt_int64(&enc_output_index)?;
 
             // Filter by search criteria
-            if decrypted_account_id == account_id
-                && decrypted_txid == txid
-                && decrypted_output_index == output_index
+            if decrypted_account_id != account_id
+                || decrypted_txid != txid
+                || decrypted_output_index != output_index
             {
-                return Ok(Some(NoteRecord {
-                    id: Some(id),
-                    account_id: decrypted_account_id,
-                    key_id: self.decrypt_optional_int64(enc_key_id)?,
-                    note_type,
-                    value: self.decrypt_int64(&enc_value)?,
-                    nullifier: self.decrypt_blob(&enc_nullifier)?,
-                    commitment: self.decrypt_blob(&enc_commitment)?,
-                    spent: self.decrypt_bool(&enc_spent)?,
-                    height: self.decrypt_int64(&enc_height)?,
-                    txid: decrypted_txid,
-                    output_index: decrypted_output_index,
-                    address_id: self.decrypt_optional_int64(enc_address_id)?,
-                    spent_txid: self.decrypt_optional_blob(enc_spent_txid)?,
-                    diversifier: self.decrypt_optional_blob(enc_diversifier)?,
-                    merkle_path: self.decrypt_optional_blob(enc_merkle_path)?,
-                    note: self.decrypt_optional_blob(enc_note)?,
-                    anchor: self.decrypt_optional_blob(enc_anchor)?,
-                    position: self.decrypt_optional_int64(enc_position)?,
-                    memo: self.decrypt_optional_blob(enc_memo)?,
-                }));
+                continue;
+            }
+            if note_type_filter
+                .as_ref()
+                .is_some_and(|filter| filter != &note_type)
+            {
+                continue;
+            }
+
+            let candidate = NoteRecord {
+                id: Some(id),
+                account_id: decrypted_account_id,
+                key_id: self.decrypt_optional_int64(enc_key_id)?,
+                note_type,
+                value: self.decrypt_int64(&enc_value)?,
+                nullifier: self.decrypt_blob(&enc_nullifier)?,
+                commitment: self.decrypt_blob(&enc_commitment)?,
+                spent: self.decrypt_bool(&enc_spent)?,
+                height: self.decrypt_int64(&enc_height)?,
+                txid: decrypted_txid,
+                output_index: decrypted_output_index,
+                address_id: self.decrypt_optional_int64(enc_address_id)?,
+                spent_txid: self.decrypt_optional_blob(enc_spent_txid)?,
+                diversifier: self.decrypt_optional_blob(enc_diversifier)?,
+                note: self.decrypt_optional_blob(enc_note)?,
+                position: self.decrypt_optional_int64(enc_position)?,
+                memo: self.decrypt_optional_blob(enc_memo)?,
+            };
+            let candidate_id = candidate.id.unwrap_or_default();
+            let replace = best_match
+                .as_ref()
+                .map(|existing| candidate_id > existing.id.unwrap_or_default())
+                .unwrap_or(true);
+            if replace {
+                best_match = Some(candidate);
             }
         }
 
-        Ok(None)
+        Ok(best_match)
     }
 
+    /// Backward-compatible helper that searches by txid/output across all pools.
+    pub fn get_note_by_txid_and_index(
+        &self,
+        account_id: i64,
+        txid: &[u8],
+        output_index: i64,
+    ) -> Result<Option<NoteRecord>> {
+        self.get_note_by_txid_and_index_with_type(account_id, txid, output_index, None)
+    }
+
+    /// Update memo for a note (encrypts before storage)
+    /// Note: Since all fields are encrypted, we need to decrypt all notes and filter in memory
+    pub fn update_note_memo_with_type(
+        &self,
+        account_id: i64,
+        txid: &[u8],
+        output_index: i64,
+        note_type_filter: Option<crate::models::NoteType>,
+        memo: Option<&[u8]>,
+    ) -> Result<()> {
+        // Encrypt memo for storage
+        let encrypted_memo = self.encrypt_optional_blob(memo)?;
+
+        // Since fields are encrypted, we need to find the note by decrypting all.
+        let mut stmt = self
+            .db
+            .conn()
+            .prepare("SELECT id, account_id, note_type, txid, output_index FROM notes")?;
+
+        let notes = stmt
+            .query_map([], |row| {
+                let note_type_str: String = row.get::<_, String>(2)?;
+                let note_type = match note_type_str.as_str() {
+                    "Orchard" => crate::models::NoteType::Orchard,
+                    _ => crate::models::NoteType::Sapling,
+                };
+                Ok((
+                    row.get::<_, i64>(0)?,     // id
+                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
+                    note_type,
+                    row.get::<_, Vec<u8>>(3)?, // encrypted txid
+                    row.get::<_, Vec<u8>>(4)?, // encrypted output_index
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut best_id: Option<i64> = None;
+        for (id, enc_acc_id, note_type, enc_tx, enc_out_idx) in notes {
+            let decrypted_account_id = self.decrypt_int64(&enc_acc_id)?;
+            if decrypted_account_id != account_id {
+                continue;
+            }
+            let decrypted_txid = self.decrypt_blob(&enc_tx)?;
+            let decrypted_output_index = self.decrypt_int64(&enc_out_idx)?;
+            if decrypted_txid != txid || decrypted_output_index != output_index {
+                continue;
+            }
+            if note_type_filter
+                .as_ref()
+                .is_some_and(|filter| filter != &note_type)
+            {
+                continue;
+            }
+            if best_id.map(|current| id > current).unwrap_or(true) {
+                best_id = Some(id);
+            }
+        }
+
+        if let Some(id) = best_id {
+            self.db.conn().execute(
+                "UPDATE notes SET memo = ?1 WHERE id = ?2",
+                params![encrypted_memo, id],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Update memo across all pools (legacy behavior).
+    pub fn update_note_memo(
+        &self,
+        account_id: i64,
+        txid: &[u8],
+        output_index: i64,
+        memo: Option<&[u8]>,
+    ) -> Result<()> {
+        self.update_note_memo_with_type(account_id, txid, output_index, None, memo)
+    }
     /// Delete a note by transaction ID and output index (with encrypted fields).
     /// Note: Since all fields are encrypted, we decrypt all notes and filter in memory for privacy.
     pub fn delete_note_by_txid_and_index(
@@ -2649,59 +3169,6 @@ impl<'a> Repository<'a> {
         }
 
         Ok(deleted)
-    }
-
-    /// Update memo for a note (encrypts before storage)
-    /// Note: Since all fields are encrypted, we need to decrypt all notes and filter in memory
-    pub fn update_note_memo(
-        &self,
-        account_id: i64,
-        txid: &[u8],
-        output_index: i64,
-        memo: Option<&[u8]>,
-    ) -> Result<()> {
-        // Encrypt memo for storage
-        let encrypted_memo = self.encrypt_optional_blob(memo)?;
-
-        // Since fields are encrypted, we need to find the note by decrypting all
-        // This is less efficient but necessary for maximum privacy
-        let mut stmt = self
-            .db
-            .conn()
-            .prepare("SELECT id, account_id, txid, output_index FROM notes")?;
-
-        let notes = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,     // id
-                    row.get::<_, Vec<u8>>(1)?, // encrypted account_id
-                    row.get::<_, Vec<u8>>(2)?, // encrypted txid
-                    row.get::<_, Vec<u8>>(3)?, // encrypted output_index
-                ))
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-
-        // Find matching note by decrypting and comparing
-        for (id, enc_acc_id, enc_tx, enc_out_idx) in notes {
-            let decrypted_account_id = self.decrypt_int64(&enc_acc_id)?;
-            let decrypted_txid = self.decrypt_blob(&enc_tx)?;
-            let decrypted_output_index = self.decrypt_int64(&enc_out_idx)?;
-
-            if decrypted_account_id == account_id
-                && decrypted_txid == txid
-                && decrypted_output_index == output_index
-            {
-                // Found the note, update it using the id
-                self.db.conn().execute(
-                    "UPDATE notes SET memo = ?1 WHERE id = ?2",
-                    params![encrypted_memo, id],
-                )?;
-                return Ok(());
-            }
-        }
-
-        // Note not found
-        Ok(())
     }
 
     /// Mark a note as spent by nullifier.
@@ -2813,7 +3280,7 @@ impl<'a> Repository<'a> {
 
     /// Persist spends that could not yet be linked to known notes.
     ///
-    /// This mirrors the upstream "unlinked nullifier map" concept:
+    /// This follows an "unlinked nullifier map" concept:
     /// when a spend nullifier is observed before the corresponding note exists
     /// locally, we store it and reconcile later when the note arrives.
     pub fn upsert_unlinked_spend_nullifiers_with_txid(
@@ -3547,7 +4014,7 @@ impl<'a> Repository<'a> {
     pub fn get_notes_by_txid(&self, account_id: i64, txid: &[u8]) -> Result<Vec<NoteRecord>> {
         // Since fields are encrypted, we need to decrypt all and filter
         let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, merkle_path, note, anchor, position, memo, address_id, key_id FROM notes",
+            "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, note, position, memo, address_id, key_id FROM notes",
         )?;
 
         let notes_data = stmt
@@ -3571,13 +4038,11 @@ impl<'a> Repository<'a> {
                     row.get::<_, Vec<u8>>(9)?,          // encrypted output_index
                     row.get::<_, Option<Vec<u8>>>(10)?, // encrypted spent_txid
                     row.get::<_, Option<Vec<u8>>>(11)?, // encrypted diversifier
-                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted merkle_path
-                    row.get::<_, Option<Vec<u8>>>(13)?, // encrypted note
-                    row.get::<_, Option<Vec<u8>>>(14)?, // encrypted anchor
-                    row.get::<_, Option<Vec<u8>>>(15)?, // encrypted position
-                    row.get::<_, Option<Vec<u8>>>(16)?, // encrypted memo
-                    row.get::<_, Option<Vec<u8>>>(17)?, // encrypted address_id
-                    row.get::<_, Option<Vec<u8>>>(18)?, // encrypted key_id
+                    row.get::<_, Option<Vec<u8>>>(12)?, // encrypted note
+                    row.get::<_, Option<Vec<u8>>>(13)?, // encrypted position
+                    row.get::<_, Option<Vec<u8>>>(14)?, // encrypted memo
+                    row.get::<_, Option<Vec<u8>>>(15)?, // encrypted address_id
+                    row.get::<_, Option<Vec<u8>>>(16)?, // encrypted key_id
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -3597,9 +4062,7 @@ impl<'a> Repository<'a> {
             enc_output_index,
             enc_spent_txid,
             enc_diversifier,
-            enc_merkle_path,
             enc_note,
-            enc_anchor,
             enc_position,
             enc_memo,
             enc_address_id,
@@ -3626,9 +4089,7 @@ impl<'a> Repository<'a> {
                     address_id: self.decrypt_optional_int64(enc_address_id)?,
                     spent_txid: self.decrypt_optional_blob(enc_spent_txid)?,
                     diversifier: self.decrypt_optional_blob(enc_diversifier)?,
-                    merkle_path: self.decrypt_optional_blob(enc_merkle_path)?,
                     note: self.decrypt_optional_blob(enc_note)?,
-                    anchor: self.decrypt_optional_blob(enc_anchor)?,
                     position: self.decrypt_optional_int64(enc_position)?,
                     memo: self.decrypt_optional_blob(enc_memo)?,
                 });
@@ -3689,7 +4150,16 @@ mod tests {
         security::{EncryptionAlgorithm, MasterKey},
         FrontierStorage,
     };
+    use incrementalmerkletree::Retention;
+    use shardtree::ShardTree;
     use tempfile::NamedTempFile;
+    use zcash_primitives::consensus::BlockHeight;
+    use zcash_primitives::sapling::note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment;
+    use zcash_primitives::sapling::value::NoteValue as SaplingNoteValue;
+    use zcash_primitives::sapling::{
+        Node as SaplingNode, Note as SaplingNote, Rseed, NOTE_COMMITMENT_TREE_DEPTH,
+    };
+    use zcash_primitives::zip32::sapling::ExtendedSpendingKey as SaplingExtendedSpendingKey;
 
     fn test_db() -> Database {
         let file = NamedTempFile::new().unwrap();
@@ -3704,6 +4174,98 @@ mod tests {
         let salt = crate::security::generate_salt();
         let key = EncryptionKey::from_passphrase("test", &salt).unwrap();
         Database::open(file.path(), &key, master_key).unwrap()
+    }
+
+    fn insert_spendable_account_key(
+        repo: &Repository,
+        account_id: i64,
+        birthday_height: i64,
+    ) -> i64 {
+        let key = AccountKey {
+            id: None,
+            account_id,
+            key_type: KeyType::Seed,
+            key_scope: KeyScope::Account,
+            label: Some("seed".to_string()),
+            birthday_height,
+            created_at: chrono::Utc::now().timestamp(),
+            spendable: true,
+            sapling_extsk: Some(vec![0x11; 169]),
+            sapling_dfvk: None,
+            orchard_extsk: None,
+            orchard_fvk: None,
+            encrypted_mnemonic: None,
+        };
+        let encrypted = repo.encrypt_account_key_fields(&key).unwrap();
+        repo.upsert_account_key(&encrypted).unwrap()
+    }
+
+    fn make_sapling_note_blob_and_commitment(
+        value_zat: u64,
+        seed_tag: u8,
+        rseed_tag: u8,
+    ) -> (Vec<u8>, [u8; 32]) {
+        let seed = [seed_tag.max(1); 32];
+        let extsk = SaplingExtendedSpendingKey::master(&seed);
+        let (_, address) = extsk.default_address();
+        let rseed_bytes = [rseed_tag; 32];
+        let note_value = SaplingNoteValue::from_raw(value_zat);
+        let note = SaplingNote::from_parts(address, note_value, Rseed::AfterZip212(rseed_bytes));
+        let commitment_bytes = note.cmu().to_bytes();
+        let mut bytes = Vec::with_capacity(1 + 43 + 1 + 32);
+        bytes.push(1); // version
+        bytes.extend_from_slice(&address.to_bytes());
+        bytes.push(0x02); // ZIP-212 rseed variant
+        bytes.extend_from_slice(&rseed_bytes);
+        (bytes, commitment_bytes)
+    }
+
+    fn make_sapling_note_blob(seed_tag: u8, rseed_tag: u8) -> Vec<u8> {
+        make_sapling_note_blob_and_commitment(1, seed_tag, rseed_tag).0
+    }
+
+    fn seed_sapling_shardtree_checkpoint(
+        db: &Database,
+        checkpoint_height: u32,
+        leaf_count: usize,
+        default_cmu: [u8; 32],
+        overrides: &[(usize, [u8; 32])],
+    ) {
+        const SAPLING_TABLE_PREFIX: &str = "sapling";
+        const SHARDTREE_PRUNING_DEPTH: usize = 1000;
+        const SAPLING_SHARD_HEIGHT: u8 = NOTE_COMMITMENT_TREE_DEPTH / 2;
+
+        let mut override_map = std::collections::HashMap::<usize, [u8; 32]>::new();
+        for (pos, cmu) in overrides {
+            override_map.insert(*pos, *cmu);
+        }
+
+        let tx = db
+            .conn()
+            .unchecked_transaction()
+            .expect("failed to open shardtree transaction");
+        let store = crate::shardtree_store::SqliteShardStore::<
+            _,
+            SaplingNode,
+            SAPLING_SHARD_HEIGHT,
+        >::from_connection(&tx, SAPLING_TABLE_PREFIX)
+        .expect("failed to open shardtree store");
+        let mut tree: ShardTree<_, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT> =
+            ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+
+        for idx in 0..leaf_count {
+            let cmu_bytes = override_map.get(&idx).copied().unwrap_or(default_cmu);
+            let cmu_opt: Option<SaplingExtractedNoteCommitment> =
+                SaplingExtractedNoteCommitment::from_bytes(&cmu_bytes).into();
+            let cmu_value = cmu_opt.expect("test cmu must be valid");
+            let node = SaplingNode::from_cmu(&cmu_value);
+            tree.append(node, Retention::Marked)
+                .expect("failed to append test commitment");
+        }
+
+        tree.checkpoint(BlockHeight::from(checkpoint_height))
+            .expect("failed to checkpoint shardtree");
+        tx.commit().expect("failed to commit shardtree seed");
     }
 
     #[test]
@@ -3831,9 +4393,7 @@ mod tests {
             address_id: None,
             spent_txid: None,
             diversifier: Some(b"diversifier11".to_vec()),
-            merkle_path: Some(b"merkle_path_data".to_vec()),
             note: Some(b"serialized_note_data".to_vec()),
-            anchor: None,
             position: None,
             memo: Some(b"test memo".to_vec()),
         };
@@ -3851,9 +4411,7 @@ mod tests {
         assert_eq!(retrieved.nullifier, note.nullifier);
         assert_eq!(retrieved.commitment, note.commitment);
         assert_eq!(retrieved.diversifier, note.diversifier);
-        assert_eq!(retrieved.merkle_path, note.merkle_path);
         assert_eq!(retrieved.note, note.note);
-        assert_eq!(retrieved.anchor, note.anchor);
         assert_eq!(retrieved.memo, note.memo);
     }
 
@@ -3894,9 +4452,7 @@ mod tests {
             address_id: None,
             spent_txid: None,
             diversifier: None,
-            merkle_path: None,
             note: None,
-            anchor: None,
             position: None,
             memo: Some(plaintext_memo.to_vec()),
         };
@@ -3948,6 +4504,58 @@ mod tests {
                 "Encrypted memo should be larger (includes metadata and nonce)"
             );
         }
+    }
+
+    #[test]
+    fn test_transactions_use_tx_memo_when_note_memo_is_empty_payload() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+
+        let account = Account {
+            id: None,
+            name: "Memo fallback".to_string(),
+            created_at: chrono::Utc::now().timestamp(),
+        };
+        let account_id = repo.insert_account(&account).unwrap();
+
+        let txid = vec![
+            0x01, 0x10, 0x02, 0x20, 0x03, 0x30, 0x04, 0x40, 0x05, 0x50, 0x06, 0x60, 0x07, 0x70,
+            0x08, 0x80, 0x09, 0x90, 0x0a, 0xa0, 0x0b, 0xb0, 0x0c, 0xc0, 0x0d, 0xd0, 0x0e, 0xe0,
+            0x0f, 0xf0, 0xaa, 0xbb,
+        ];
+        let note = NoteRecord {
+            id: None,
+            account_id,
+            key_id: None,
+            note_type: NoteType::Sapling,
+            value: 123_000,
+            nullifier: vec![0x11; 32],
+            commitment: vec![0x22; 32],
+            spent: false,
+            height: 77_777,
+            txid: txid.clone(),
+            output_index: 0,
+            address_id: None,
+            spent_txid: None,
+            diversifier: None,
+            note: None,
+            position: None,
+            memo: Some(vec![0u8; 512]),
+        };
+        repo.insert_note(&note).unwrap();
+
+        let txid_hex = txid_hex_from_bytes(&txid);
+        repo.upsert_tx_memo(&txid_hex, b"real memo text").unwrap();
+
+        let txs = repo
+            .get_transactions_with_options(account_id, None, 80_000, 10, false)
+            .unwrap();
+        let tx = txs
+            .into_iter()
+            .find(|entry| entry.txid == txid_hex)
+            .expect("expected transaction entry");
+
+        assert_eq!(tx.memo, Some(b"real memo text".to_vec()));
     }
 
     #[test]
@@ -4049,6 +4657,367 @@ mod tests {
         assert_eq!(
             loaded.1, plaintext_frontier,
             "Decrypted frontier should match original"
+        );
+    }
+
+    #[test]
+    fn test_anchor_filtered_notes_use_sql_shard_unscanned_gate() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Anchor SQL Gate".to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+            })
+            .unwrap();
+        let key_id = insert_spendable_account_key(&repo, account_id, 1);
+
+        // Two Sapling notes in different commitment-tree shards.
+        let (note_blob_a, cmu_a) = make_sapling_note_blob_and_commitment(10_000, 0x21, 0x31);
+        let (note_blob_b, cmu_b) = make_sapling_note_blob_and_commitment(20_000, 0x22, 0x32);
+        let note_a = NoteRecord {
+            id: None,
+            account_id,
+            key_id: Some(key_id),
+            note_type: NoteType::Sapling,
+            value: 10_000,
+            nullifier: vec![0xA1; 32],
+            commitment: cmu_a.to_vec(),
+            spent: false,
+            height: 100,
+            txid: vec![0xC1; 32],
+            output_index: 0,
+            address_id: None,
+            spent_txid: None,
+            diversifier: None,
+            note: Some(note_blob_a),
+            position: Some(5), // shard 0
+            memo: None,
+        };
+        let note_b = NoteRecord {
+            id: None,
+            account_id,
+            key_id: Some(key_id),
+            note_type: NoteType::Sapling,
+            value: 20_000,
+            nullifier: vec![0xA2; 32],
+            commitment: cmu_b.to_vec(),
+            spent: false,
+            height: 120,
+            txid: vec![0xC2; 32],
+            output_index: 1,
+            address_id: None,
+            spent_txid: None,
+            diversifier: None,
+            note: Some(note_blob_b),
+            position: Some(60), // synthetic shard 1 (see shard metadata split below)
+            memo: None,
+        };
+        repo.insert_note(&note_a).unwrap();
+        repo.insert_note(&note_b).unwrap();
+
+        // Split shard metadata into two synthetic shards so this test doesn't need
+        // to build a full 2^16 leaf tree just to cross shard boundaries.
+        // shard 0 covers positions [0, 50) at height 100
+        // shard 1 covers positions [50, 100) at height 120
+        db.conn()
+            .execute(
+                "UPDATE sapling_note_shards SET start_position = 0, end_position_exclusive = 50, subtree_start_height = 100, subtree_end_height = 100 WHERE shard_index = 0",
+                [],
+            )
+            .unwrap();
+        db.conn()
+            .execute(
+                r#"
+                INSERT INTO sapling_note_shards (
+                    shard_index,
+                    start_position,
+                    end_position_exclusive,
+                    subtree_start_height,
+                    subtree_end_height,
+                    contains_marked
+                ) VALUES (?1, ?2, ?3, ?4, ?5, 1)
+                "#,
+                params![1_i64, 50_i64, 100_i64, 120_i64, 120_i64],
+            )
+            .unwrap();
+
+        // Mark only note_a's height range as unscanned.
+        db.conn()
+            .execute(
+                r#"
+                INSERT INTO scan_queue (range_start, range_end, priority, status, reason, created_at, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'), datetime('now'))
+                "#,
+                params![90_i64, 110_i64, 40_i64, "pending", "test_unscanned"],
+            )
+            .unwrap();
+
+        seed_sapling_shardtree_checkpoint(
+            &db,
+            200,
+            (note_b.position.unwrap() as usize) + 1,
+            cmu_b,
+            &[(note_a.position.unwrap() as usize, cmu_a)],
+        );
+
+        let selectable = repo
+            .get_unspent_selectable_notes_at_anchor_filtered(account_id, 200, 10, None, None)
+            .unwrap();
+        let values = selectable.iter().map(|n| n.value).collect::<Vec<_>>();
+        assert_eq!(
+            values,
+            vec![20_000],
+            "only shard-unblocked note must remain spendable"
+        );
+    }
+
+    #[test]
+    fn test_anchor_filtered_notes_respect_wallet_birthday_floor() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Birthday Floor".to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+            })
+            .unwrap();
+        let key_id = insert_spendable_account_key(&repo, account_id, 110);
+
+        let (old_note_blob, old_cmu) = make_sapling_note_blob_and_commitment(7_000, 0x41, 0x51);
+        let (new_note_blob, new_cmu) = make_sapling_note_blob_and_commitment(9_000, 0x42, 0x52);
+        let old_note = NoteRecord {
+            id: None,
+            account_id,
+            key_id: Some(key_id),
+            note_type: NoteType::Sapling,
+            value: 7_000,
+            nullifier: vec![0xD1; 32],
+            commitment: old_cmu.to_vec(),
+            spent: false,
+            height: 100,
+            txid: vec![0xF1; 32],
+            output_index: 0,
+            address_id: None,
+            spent_txid: None,
+            diversifier: None,
+            note: Some(old_note_blob),
+            position: Some(12),
+            memo: None,
+        };
+        let new_note = NoteRecord {
+            id: None,
+            account_id,
+            key_id: Some(key_id),
+            note_type: NoteType::Sapling,
+            value: 9_000,
+            nullifier: vec![0xD2; 32],
+            commitment: new_cmu.to_vec(),
+            spent: false,
+            height: 130,
+            txid: vec![0xF2; 32],
+            output_index: 1,
+            address_id: None,
+            spent_txid: None,
+            diversifier: None,
+            note: Some(new_note_blob),
+            position: Some(13),
+            memo: None,
+        };
+        repo.insert_note(&old_note).unwrap();
+        repo.insert_note(&new_note).unwrap();
+
+        seed_sapling_shardtree_checkpoint(
+            &db,
+            200,
+            (new_note.position.unwrap() as usize) + 1,
+            new_cmu,
+            &[(old_note.position.unwrap() as usize, old_cmu)],
+        );
+
+        let selectable = repo
+            .get_unspent_selectable_notes_at_anchor_filtered(account_id, 200, 10, None, None)
+            .unwrap();
+        let values = selectable.iter().map(|n| n.value).collect::<Vec<_>>();
+        assert_eq!(
+            values,
+            vec![9_000],
+            "notes below wallet birthday must not be spendable"
+        );
+    }
+
+    #[test]
+    fn test_anchor_filtered_notes_are_blocked_by_position_shard_ranges() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Position Gate".to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+            })
+            .unwrap();
+        let key_id = insert_spendable_account_key(&repo, account_id, 1);
+
+        let note = NoteRecord {
+            id: None,
+            account_id,
+            key_id: Some(key_id),
+            note_type: NoteType::Sapling,
+            value: 33_000,
+            nullifier: vec![0x91; 32],
+            commitment: vec![0x92; 32],
+            spent: false,
+            height: 100,
+            txid: vec![0x93; 32],
+            output_index: 0,
+            address_id: None,
+            spent_txid: None,
+            diversifier: None,
+            note: Some(make_sapling_note_blob(0x71, 0x81)),
+            position: Some(9), // shard 0
+            memo: None,
+        };
+        repo.insert_note(&note).unwrap();
+
+        // Force shard metadata to a range that differs from note.height so
+        // position/shard-index gating is required.
+        db.conn()
+            .execute(
+                "UPDATE sapling_note_shards SET subtree_start_height = 500, subtree_end_height = 520 WHERE shard_index = 0",
+                [],
+            )
+            .unwrap();
+        db.conn()
+            .execute(
+                r#"
+                INSERT INTO scan_queue (range_start, range_end, priority, status, reason, created_at, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'), datetime('now'))
+                "#,
+                params![500_i64, 521_i64, 60_i64, "pending", "position_gate_test"],
+            )
+            .unwrap();
+
+        let selectable = repo
+            .get_unspent_selectable_notes_at_anchor_filtered(account_id, 900, 10, None, None)
+            .unwrap();
+        assert!(
+            selectable.is_empty(),
+            "position/shard-index unscanned range should block note selection"
+        );
+    }
+
+    #[test]
+    fn test_check_witnesses_queues_subtree_ranges_from_note_position() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Witness Position Queue".to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+            })
+            .unwrap();
+        let key_id = insert_spendable_account_key(&repo, account_id, 1);
+
+        let note = NoteRecord {
+            id: None,
+            account_id,
+            key_id: Some(key_id),
+            note_type: NoteType::Sapling,
+            value: 44_000,
+            nullifier: vec![0xA3; 32],
+            commitment: vec![0xA4; 32],
+            spent: false,
+            height: 120,
+            txid: vec![0xA5; 32],
+            output_index: 0,
+            address_id: None,
+            spent_txid: None,
+            diversifier: None,
+            note: None,         // force witness-material missing
+            position: Some(11), // shard 0
+            memo: None,
+        };
+        repo.insert_note(&note).unwrap();
+
+        db.conn()
+            .execute(
+                "UPDATE sapling_note_shards SET subtree_start_height = 700, subtree_end_height = 709 WHERE shard_index = 0",
+                [],
+            )
+            .unwrap();
+        db.conn()
+            .execute(
+                r#"
+                INSERT INTO scan_queue (range_start, range_end, priority, status, reason, created_at, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'), datetime('now'))
+                "#,
+                params![700_i64, 710_i64, 75_i64, "pending", "witness_queue_test"],
+            )
+            .unwrap();
+
+        let result = repo.check_witnesses(account_id, 900, 1).unwrap();
+        assert_eq!(result.considered_notes, 1);
+        assert_eq!(result.sapling_missing, 1);
+        assert_eq!(
+            result.repair_ranges,
+            vec![(700, 710)],
+            "check_witnesses must queue subtree-derived range from note position"
+        );
+    }
+
+    #[test]
+    fn test_check_witnesses_queues_anchor_hydration_gap_range() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Anchor Hydration Gap".to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+            })
+            .unwrap();
+        let key_id = insert_spendable_account_key(&repo, account_id, 1);
+
+        let note = NoteRecord {
+            id: None,
+            account_id,
+            key_id: Some(key_id),
+            note_type: NoteType::Sapling,
+            value: 55_000,
+            nullifier: vec![0xB1; 32],
+            commitment: vec![0xB2; 32],
+            spent: false,
+            height: 120,
+            txid: vec![0xB3; 32],
+            output_index: 0,
+            address_id: None,
+            spent_txid: None,
+            diversifier: None,
+            note: Some(make_sapling_note_blob(0x72, 0x82)),
+            position: Some(9),
+            memo: None,
+        };
+        repo.insert_note(&note).unwrap();
+
+        // No shardtree checkpoints are present in this test DB, so anchored
+        // hydration should fail and queue a deterministic replay range.
+        let result = repo.check_witnesses(account_id, 900, 1).unwrap();
+        assert_eq!(result.considered_notes, 1);
+        assert_eq!(result.sapling_missing, 1);
+        assert_eq!(result.orchard_missing, 0);
+        assert_eq!(
+            result.repair_ranges,
+            vec![(120, 901)],
+            "anchor hydration gaps must queue replay from earliest missing note to anchor+1"
         );
     }
 }

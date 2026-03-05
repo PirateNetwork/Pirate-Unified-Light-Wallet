@@ -98,12 +98,8 @@ pub struct NoteRecord {
     pub spent_txid: Option<Vec<u8>>,
     /// Diversifier used to derive address (11 bytes, Sapling only)
     pub diversifier: Option<Vec<u8>>,
-    /// Serialized Sapling merkle path bytes (Sapling only)
-    pub merkle_path: Option<Vec<u8>>,
     /// Serialized note bytes (Sapling/Orchard)
     pub note: Option<Vec<u8>>,
-    /// Anchor (Orchard commitment tree root, Orchard only)
-    pub anchor: Option<Vec<u8>>,
     /// Position in Orchard note commitment tree (Orchard only)
     pub position: Option<i64>,
     /// Optional memo bytes
