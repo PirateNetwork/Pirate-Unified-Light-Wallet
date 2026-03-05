@@ -14,10 +14,14 @@ native-keystore = []
 pirate-core = { path = "../pirate-core" }
 pirate-params = { path = "../pirate-params" }
 
-# Zcash primitives for note deserialization
+# Protocol primitives for note deserialization
 zcash_primitives = { workspace = true }
+zcash_client_backend = { workspace = true }
 orchard = { workspace = true }
 incrementalmerkletree = { workspace = true }
+shardtree = "0.1"
+zcash_encoding = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
+byteorder = "1.5"
 jubjub = "0.10"
 
 rusqlite = { workspace = true }

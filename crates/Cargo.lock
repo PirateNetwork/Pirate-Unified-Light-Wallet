@@ -739,15 +739,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bridgetree"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbfcb6c5a091e80cb3d3b0c1a7f126af4631cd5065b1f9929b139f1be8f3fb62"
-dependencies = [
- "incrementalmerkletree 0.5.1",
-]
-
-[[package]]
 name = "bs58"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3696,6 +3687,7 @@ dependencies = [
  "bs58",
  "chacha20poly1305",
  "chrono",
+ "directories 5.0.1",
  "hex",
  "incrementalmerkletree 0.5.1",
  "once_cell",
@@ -3730,6 +3722,7 @@ dependencies = [
  "flutter_rust_bridge",
  "futures",
  "hex",
+ "incrementalmerkletree 0.5.1",
  "lazy_static",
  "num_cpus",
  "orchard",
@@ -3742,10 +3735,12 @@ dependencies = [
  "rusqlite",
  "serde",
  "sha2",
+ "shardtree",
  "tokio",
  "tracing",
  "uuid",
  "zcash_client_backend",
+ "zcash_note_encryption",
  "zcash_primitives",
 ]
 
@@ -3766,6 +3761,7 @@ dependencies = [
  "native-tls",
  "once_cell",
  "parking_lot",
+ "pirate-core",
  "rand 0.8.5",
  "reqwest",
  "rustls-pki-types",
@@ -3801,6 +3797,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "argon2",
+ "byteorder",
  "chacha20poly1305",
  "chrono",
  "directories 5.0.1",
@@ -3817,10 +3814,13 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shardtree",
  "tempfile",
  "thiserror 2.0.17",
  "tracing",
  "uuid",
+ "zcash_client_backend",
+ "zcash_encoding",
  "zcash_primitives",
  "zeroize",
 ]
@@ -3832,7 +3832,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "blake2b_simd",
- "bridgetree",
  "chacha20",
  "chacha20poly1305",
  "chrono",
@@ -3859,6 +3858,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "shardtree",
  "subtle",
  "sysinfo 0.30.13",
  "tempfile",

@@ -25,16 +25,22 @@ pub mod decoy_vault;
 pub mod encryption;
 pub mod error;
 pub mod frontier;
+mod frontier_witness;
 pub mod keystore;
 pub mod migrations;
 pub mod models;
 /// In-memory app passphrase storage.
 pub mod passphrase_store;
 pub mod repository;
+pub mod scan_queue;
 pub mod screenshot_guard;
 pub mod secure_clipboard;
 pub mod security;
 pub mod seed_export;
+mod shardtree_serialization;
+/// SQLite shardtree store implementation used for canonical witness/anchor state.
+pub mod shardtree_store;
+pub mod spendability_state;
 pub mod sync_state;
 pub mod watch_only;
 
@@ -58,6 +64,9 @@ pub use keystore::{
 pub use models::*;
 pub use passphrase_store::{clear_passphrase, get_passphrase, is_passphrase_set, set_passphrase};
 pub use repository::Repository;
+pub use scan_queue::{
+    ScanQueueStorage, ScanRangeRow, SCAN_PRIORITY_FOUND_NOTE, SCAN_PRIORITY_HISTORIC,
+};
 pub use screenshot_guard::{
     ProtectionReason, ProtectionState, ScreenshotGuard, ScreenshotProtectionGuard,
     ScreenshotProtectionStatus,
@@ -74,6 +83,7 @@ pub use seed_export::{
     warnings as seed_warnings, ExportAuditEntry, ExportFlowState, SeedExportManager,
     SeedExportRequest, SeedExportResult,
 };
+pub use spendability_state::{SpendabilityStateRow, SpendabilityStateStorage};
 pub use sync_state::{
     atomic_sync_update, truncate_above_height, SyncStateRow, SyncStateStorage, BASE_BACKOFF_MS,
     MAX_BACKOFF_MS, MAX_BUSY_RETRIES,
