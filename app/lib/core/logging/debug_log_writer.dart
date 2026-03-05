@@ -57,10 +57,10 @@ String _backupPath(String path, int index) {
 
 Future<int> _fileLength(File file) async {
   try {
-    if (!await file.exists()) {
+    if (!file.existsSync()) {
       return 0;
     }
-    return await file.length();
+    return file.lengthSync();
   } catch (_) {
     return 0;
   }
@@ -75,8 +75,8 @@ Future<void> _rotateDebugLog({
   final currentBytes = await _fileLength(activeFile);
   if (currentBytes > maxBytes) {
     try {
-      if (await activeFile.exists()) {
-        await activeFile.delete();
+      if (activeFile.existsSync()) {
+        activeFile.deleteSync();
       }
     } catch (_) {
       // Ignore rotation failures.
@@ -86,8 +86,8 @@ Future<void> _rotateDebugLog({
 
   if (backups <= 0) {
     try {
-      if (await activeFile.exists()) {
-        await activeFile.delete();
+      if (activeFile.existsSync()) {
+        activeFile.deleteSync();
       }
     } catch (_) {
       // Ignore rotation failures.
@@ -102,11 +102,11 @@ Future<void> _rotateDebugLog({
     final dst = File(dstPath);
 
     try {
-      if (await dst.exists()) {
-        await dst.delete();
+      if (dst.existsSync()) {
+        dst.deleteSync();
       }
-      if (await src.exists()) {
-        await src.rename(dstPath);
+      if (src.existsSync()) {
+        src.renameSync(dstPath);
       }
     } catch (_) {
       // Ignore rotation failures.
@@ -118,7 +118,7 @@ Future<void> appendDebugLogLine(String line, {String? logPath}) async {
   try {
     final resolvedPath = logPath ?? await resolveDebugLogPath();
     final file = File(resolvedPath);
-    await file.parent.create(recursive: true);
+    file.parent.createSync(recursive: true);
 
     final maxBytes = _maxDebugLogBytes();
     final backups = _debugLogBackupCount();
@@ -135,7 +135,7 @@ Future<void> appendDebugLogLine(String line, {String? logPath}) async {
       );
     }
 
-    await file.writeAsString(payload, mode: FileMode.append, flush: true);
+    file.writeAsStringSync(payload, mode: FileMode.append, flush: true);
 
     final afterWrite = await _fileLength(file);
     if (afterWrite > maxBytes) {
