@@ -12,7 +12,7 @@ test-helpers = []
 [dependencies]
 pirate-params = { path = "../pirate-params" }
 
-# Zcash/Librustzcash for Sapling support
+# Shielded protocol dependencies for Sapling support
 zcash_primitives = { workspace = true }
 zcash_client_backend = { workspace = true }
 zcash_proofs = { workspace = true }
@@ -55,6 +55,7 @@ tokio = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 once_cell = { workspace = true }
+directories = "5.0"
 
 [dev-dependencies]
 pirate-core = { path = ".", features = ["test-helpers"] }

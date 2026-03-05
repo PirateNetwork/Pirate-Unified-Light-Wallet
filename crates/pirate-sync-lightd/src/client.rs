@@ -8,7 +8,6 @@
 
 use crate::proto_types as proto;
 use crate::{Error, Result};
-use directories::ProjectDirs;
 use once_cell::sync::Lazy;
 use pirate_net::{
     DnsConfig as NetDnsConfig, I2pConfig as NetI2pConfig, Socks5Config as NetSocks5Config,
@@ -39,24 +38,6 @@ pub const DEFAULT_LIGHTD_PORT: u16 = 9067;
 pub const DEFAULT_LIGHTD_USE_TLS: bool = false;
 /// Default endpoint URL
 pub const DEFAULT_LIGHTD_URL: &str = "http://64.23.167.130:9067";
-
-fn debug_log_path() -> PathBuf {
-    let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
-        PathBuf::from(path)
-    } else {
-        ProjectDirs::from("com", "Pirate", "PirateWallet")
-            .map(|dirs| dirs.data_local_dir().join("logs").join("debug.log"))
-            .unwrap_or_else(|| {
-                env::current_dir()
-                    .map(|dir| dir.join(".cursor").join("debug.log"))
-                    .unwrap_or_else(|_| PathBuf::from(".cursor").join("debug.log"))
-            })
-    };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    path
-}
 
 /// Retry configuration for network operations
 #[derive(Debug, Clone)]
@@ -1034,18 +1015,6 @@ pub struct LightClient {
     channel: Arc<Mutex<Option<Channel>>>,
 }
 
-#[allow(dead_code)]
-fn _assert_light_client_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<LightClient>();
-}
-
-#[allow(dead_code)]
-fn _assert_channel_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<Channel>();
-}
-
 impl LightClient {
     fn is_non_retryable_status(code: tonic::Code) -> bool {
         matches!(
@@ -1171,11 +1140,7 @@ impl LightClient {
         );
 
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -1191,7 +1156,7 @@ impl LightClient {
                 self.config.transport,
                 self.config.tls.server_name
             );
-        }
+        });
         // #endregion
 
         // Build endpoint with timeouts
@@ -1226,11 +1191,7 @@ impl LightClient {
 
         // Configure TLS if enabled
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -1241,7 +1202,7 @@ impl LightClient {
                 r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:467","message":"TLS check","data":{{"tls_enabled":{},"endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}}"#,
                 id, ts, self.config.tls.enabled, endpoint_url
             );
-        }
+        });
         // #endregion
         if self.config.tls.enabled {
             let mut tls_config = ClientTlsConfig::new();
@@ -1374,11 +1335,7 @@ impl LightClient {
     /// Returns the current blockchain tip height.
     pub async fn get_latest_block(&self) -> Result<u64> {
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -1389,7 +1346,7 @@ impl LightClient {
                 r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:564","message":"get_latest_block entry","data":{{"endpoint":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                 id, ts, self.config.endpoint
             );
-        }
+        });
         // #endregion
 
         let mut result = self.get_latest_block_internal().await;
@@ -1410,11 +1367,7 @@ impl LightClient {
         }
 
         // #region agent log
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(debug_log_path())
-        {
+        pirate_core::debug_log::with_locked_file(|file| {
             let ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -1429,7 +1382,7 @@ impl LightClient {
                 result.as_ref().ok().copied().unwrap_or(0),
                 result.as_ref().err()
             );
-        }
+        });
         // #endregion
         result
     }
@@ -1496,12 +1449,7 @@ impl LightClient {
             ));
 
             debug!("Requesting blocks {}..{}", range.start, range.end);
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -1522,7 +1470,7 @@ impl LightClient {
                     self.config.endpoint,
                     self.config.transport
                 );
-            }
+            });
 
             let stream_response = tokio::time::timeout(open_timeout, client.get_block_range(request))
                 .await
@@ -1579,12 +1527,7 @@ impl LightClient {
                 0.0
             };
 
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(debug_log_path())
-            {
-                use std::io::Write;
+            pirate_core::debug_log::with_locked_file(|file| {
                 let ts = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
@@ -1606,7 +1549,7 @@ impl LightClient {
                     self.config.endpoint,
                     self.config.transport
                 );
-            }
+            });
 
             debug!("Received {} blocks", blocks.len());
             Ok(blocks)
@@ -1674,14 +1617,20 @@ impl LightClient {
             let send_response = response.into_inner();
 
             if send_response.error_code != 0 {
+                let error_message = send_response.error_message.to_ascii_lowercase();
+                let broadcast_msg = format!(
+                    "Broadcast failed: {} (code {})",
+                    send_response.error_message, send_response.error_code
+                );
                 error!(
                     "Transaction broadcast failed: code={}, message={}",
                     send_response.error_code, send_response.error_message
                 );
-                return Err(Error::Network(format!(
-                    "Broadcast failed: {} (code {})",
-                    send_response.error_message, send_response.error_code
-                )));
+                // Node policy/consensus rejection is deterministic and should not be retried.
+                if error_message.contains("bad-txns") || error_message.contains("unknown-anchor") {
+                    return Err(Error::Sync(format!("NON_RETRYABLE: {}", broadcast_msg)));
+                }
+                return Err(Error::Network(broadcast_msg));
             }
 
             // Compute txid from raw transaction
@@ -2014,7 +1963,7 @@ fn extract_host(url: &str) -> Option<String> {
 
 /// Compute transaction ID from raw transaction bytes
 fn compute_txid(raw_tx: &[u8]) -> String {
-    // Pirate/Zcash txid is double SHA256 of the tx, reversed
+    // Chain txid is double SHA256 of the tx, reversed
     use sha2::{Digest, Sha256};
 
     let hash1 = Sha256::digest(raw_tx);

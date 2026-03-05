@@ -15,6 +15,7 @@ import 'core/desktop/desktop_update_prompt_host.dart';
 import 'core/desktop/windows_version.dart';
 import 'core/i18n/arb_text_localizer.dart';
 import 'core/logging/debug_log_path.dart';
+import 'core/logging/debug_log_writer.dart';
 import 'design/theme.dart';
 import 'design/tokens/colors.dart';
 import 'features/settings/providers/preferences_providers.dart';
@@ -79,19 +80,13 @@ void main() async {
 void _installFlutterErrorLogging(String logPath) {
   Future<void> writeLog(String message, StackTrace? stack) async {
     try {
-      final logFile = File(logPath);
-      await logFile.parent.create(recursive: true);
       final payload = jsonEncode({
         'id': 'log_flutter_error',
         'timestamp': DateTime.now().millisecondsSinceEpoch,
         'message': message,
         'stack': stack?.toString(),
       });
-      await logFile.writeAsString(
-        '$payload\n',
-        mode: FileMode.append,
-        flush: true,
-      );
+      await appendDebugLogLine(payload, logPath: logPath);
     } catch (_) {
       // Ignore logging failures.
     }

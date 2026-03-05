@@ -1,8 +1,8 @@
 /// Settings screen - Wallet configuration
 library;
 
-import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +22,7 @@ import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/logging/debug_log_path.dart';
+import '../../core/logging/debug_log_writer.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 
 final appVersionProvider = FutureProvider<String>((ref) async {
@@ -42,11 +43,12 @@ class SettingsScreen extends ConsumerWidget {
   static Future<void> _appendRescanLog(String message) async {
     try {
       final logPath = await resolveDebugLogPath();
-      final file = File(logPath);
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final line =
-          '{"id":"log_dart_rescan","timestamp":$ts,"message":"$message"}\n';
-      await file.writeAsString(line, mode: FileMode.append, flush: true);
+      final payload = jsonEncode({
+        'id': 'log_dart_rescan',
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'message': message,
+      });
+      await appendDebugLogLine(payload, logPath: logPath);
     } catch (_) {
       // Ignore logging failures.
     }

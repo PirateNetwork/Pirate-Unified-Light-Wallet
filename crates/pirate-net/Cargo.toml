@@ -7,6 +7,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+pirate-core = { path = "../pirate-core" }
+
 # Tor/Arti for privacy-first networking
 arti-client = { workspace = true, features = ["bridge-client", "pt-client"] }
 tor-rtcompat = { workspace = true }
