@@ -34,6 +34,7 @@ class BirthdayPickerScreen extends ConsumerStatefulWidget {
 class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
   static const int _blocksPerDay = 720;
   static const int _minYear = 2018;
+  static final DateTime _pirateGenesisUtc = DateTime.utc(2018, 8, 29);
   static const List<String> _monthLabels = [
     'January',
     'February',
@@ -94,13 +95,17 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
   }
 
   int? _heightFromDate() {
-    if (_latestHeight == null) return null;
-    final now = DateTime.now();
-    final selected = DateTime(_selectedYear, _selectedMonth, 1);
-    final daysAgo = now.difference(selected).inDays;
-    final safeDays = daysAgo < 0 ? 0 : daysAgo;
-    final offset = safeDays * _blocksPerDay;
-    return (_latestHeight! - offset).clamp(1, _latestHeight!);
+    final selected = DateTime.utc(_selectedYear, _selectedMonth, 1);
+    if (selected.isBefore(_pirateGenesisUtc)) {
+      return 1;
+    }
+
+    final daysFromGenesis = selected.difference(_pirateGenesisUtc).inDays;
+    final estimate = (daysFromGenesis * _blocksPerDay) + 1;
+    if (_latestHeight != null) {
+      return estimate.clamp(1, _latestHeight!);
+    }
+    return estimate < 1 ? 1 : estimate;
   }
 
   Future<void> _loadLatestHeight() async {
@@ -115,17 +120,19 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
       if (result.success && result.latestBlockHeight != null) {
         setState(() {
           _latestHeight = result.latestBlockHeight;
+          _heightError = null;
         });
       } else {
         setState(() {
           _heightError =
-              result.errorMessage ?? 'Unable to fetch latest block height.';
+              'Tor is still connecting. Latest network height will appear when available.';
         });
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _heightError = 'Unable to fetch latest block height.';
+        _heightError =
+            'Tor is still connecting. Latest network height will appear when available.';
       });
     } finally {
       if (mounted) {
@@ -145,12 +152,6 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     }
 
     final selectedHeight = _selectedHeight;
-    if (_inputMode == BirthdayInputMode.approxDate && _latestHeight == null) {
-      setState(
-        () => _error = 'Load the latest block height or enter one manually.',
-      );
-      return;
-    }
     if (selectedHeight == null || selectedHeight <= 0) {
       setState(() => _error = 'Enter a valid block height.');
       return;
@@ -312,7 +313,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                               _loadingHeight
                                   ? 'Fetching latest block height...'
                                   : tip == null
-                                  ? 'Latest block height unavailable'
+                                  ? 'Latest network height unavailable while Tor connects'
                                   : 'Network tip: ${_formatHeight(tip)}',
                               style: AppTypography.body.copyWith(
                                 color: AppColors.textPrimary,
@@ -335,7 +336,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                     Text(
                       _heightError!,
                       style: AppTypography.caption.copyWith(
-                        color: AppColors.error,
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ],
@@ -538,7 +539,8 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                           child: Text(
                             isRestore
                                 ? 'If you are unsure, choose an earlier start. '
-                                      'Sync takes longer but avoids missing activity.'
+                                      'Sync takes longer but avoids missing activity. '
+                                      'Latest network height is optional during restore and will appear once Tor connects.'
                                 : 'You can use the app while it syncs in the background.',
                             style: AppTypography.caption.copyWith(
                               color: AppColors.textPrimary,
