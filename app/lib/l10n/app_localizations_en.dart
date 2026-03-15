@@ -86,6 +86,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Installer launched. Closing app to finish update...';
 
   @override
+  String get installerLaunchedDoNotClose =>
+      'Installer launched. Follow the installer prompts. Only close the app if the installer asks.';
+
+  @override
   String automaticUpdateFailedMessage(String error) {
     return 'Automatic update failed: $error. Use Changelog to download manually.';
   }

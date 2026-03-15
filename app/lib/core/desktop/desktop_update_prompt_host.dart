@@ -181,18 +181,26 @@ class _DesktopUpdatePromptHostState
     );
 
     try {
-      await DesktopUpdateService.instance.launchUpdate(candidate);
+      final result = await DesktopUpdateService.instance.launchUpdate(
+        candidate,
+      );
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
       }
       if (!mounted) {
         return;
       }
+      final message = result.shouldCloseApp
+          ? l10n.installerLaunchedClosing
+          : l10n.installerLaunchedDoNotClose;
       PSnack.show(
         context: context,
-        message: l10n.installerLaunchedClosing,
+        message: message,
         variant: PSnackVariant.success,
       );
+      if (!result.shouldCloseApp) {
+        return;
+      }
       await Future<void>.delayed(const Duration(milliseconds: 450));
       await _closeAppForUpdate();
     } catch (e) {

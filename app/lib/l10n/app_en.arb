@@ -33,6 +33,7 @@
   "cancelButton": "Cancel",
   "preparingUpdateInstaller": "Preparing update installer...",
   "installerLaunchedClosing": "Installer launched. Closing app to finish update...",
+  "installerLaunchedDoNotClose": "Installer launched. Follow the installer prompts. Only close the app if the installer asks.",
   "automaticUpdateFailedMessage": "Automatic update failed: {error}. Use Changelog to download manually.",
   "@automaticUpdateFailedMessage": {
     "placeholders": {

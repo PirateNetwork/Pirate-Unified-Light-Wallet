@@ -232,6 +232,12 @@ abstract class AppLocalizations {
   /// **'Installer launched. Closing app to finish update...'**
   String get installerLaunchedClosing;
 
+  /// No description provided for @installerLaunchedDoNotClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Installer launched. Follow the installer prompts. Only close the app if the installer asks.'**
+  String get installerLaunchedDoNotClose;
+
   /// No description provided for @automaticUpdateFailedMessage.
   ///
   /// In en, this message translates to:

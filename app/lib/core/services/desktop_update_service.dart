@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-
+import 'package:archive/archive.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -36,6 +37,8 @@ enum DesktopUpdateAssetKind {
   windowsPortableZip,
   macDmg,
   linuxAppImage,
+  linuxDeb,
+  linuxFlatpak,
 }
 
 class DesktopUpdateCandidate {
@@ -51,6 +54,21 @@ class DesktopUpdateCandidate {
   final DesktopReleaseAsset asset;
   final DesktopUpdateAssetKind assetKind;
 }
+
+class DesktopUpdateLaunchResult {
+  const DesktopUpdateLaunchResult({required this.shouldCloseApp});
+
+  final bool shouldCloseApp;
+}
+
+class _ChecksumResult {
+  const _ChecksumResult({required this.entries, required this.sourceName});
+
+  final Map<String, String> entries;
+  final String? sourceName;
+}
+
+enum _LinuxInstallMode { appImage, flatpak, systemPackage, unknown }
 
 /// Checks GitHub releases for desktop updates and can launch updater scripts.
 class DesktopUpdateService {
@@ -106,7 +124,9 @@ class DesktopUpdateService {
     );
   }
 
-  Future<void> launchUpdate(DesktopUpdateCandidate candidate) async {
+  Future<DesktopUpdateLaunchResult> launchUpdate(
+    DesktopUpdateCandidate candidate,
+  ) async {
     final tempDir = await Directory.systemTemp.createTemp(
       'pirate_wallet_update_',
     );
@@ -114,6 +134,7 @@ class DesktopUpdateService {
       '${tempDir.path}${Platform.pathSeparator}${candidate.asset.name}',
     );
     await _downloadToFile(candidate.asset.downloadUrl, downloadFile);
+    await _verifyDownloadedAsset(candidate, downloadFile);
 
     switch (candidate.assetKind) {
       case DesktopUpdateAssetKind.windowsInstaller:
@@ -122,12 +143,37 @@ class DesktopUpdateService {
           const <String>[],
           mode: ProcessStartMode.detached,
         );
+        return const DesktopUpdateLaunchResult(shouldCloseApp: false);
       case DesktopUpdateAssetKind.windowsPortableZip:
-        await _launchWindowsZipUpdater(downloadFile.path);
+        await _launchWindowsZipUpdater(
+          downloadFile.path,
+          candidate.release.releaseUrl,
+        );
+        return const DesktopUpdateLaunchResult(shouldCloseApp: false);
       case DesktopUpdateAssetKind.linuxAppImage:
-        await _launchLinuxAppImageUpdater(downloadFile.path);
+        await _launchLinuxAppImageUpdater(
+          downloadFile.path,
+          candidate.release.releaseUrl,
+        );
+        return const DesktopUpdateLaunchResult(shouldCloseApp: false);
+      case DesktopUpdateAssetKind.linuxDeb:
+        await _launchLinuxDebUpdater(
+          downloadFile.path,
+          candidate.release.releaseUrl,
+        );
+        return const DesktopUpdateLaunchResult(shouldCloseApp: false);
+      case DesktopUpdateAssetKind.linuxFlatpak:
+        await _launchLinuxFlatpakUpdater(
+          downloadFile.path,
+          candidate.release.releaseUrl,
+        );
+        return const DesktopUpdateLaunchResult(shouldCloseApp: false);
       case DesktopUpdateAssetKind.macDmg:
-        await _launchMacDmgUpdater(downloadFile.path);
+        await _launchMacDmgUpdater(
+          downloadFile.path,
+          candidate.release.releaseUrl,
+        );
+        return const DesktopUpdateLaunchResult(shouldCloseApp: false);
     }
   }
 
@@ -211,13 +257,22 @@ class DesktopUpdateService {
     }
 
     DesktopReleaseAsset? prefer(
-      bool Function(DesktopReleaseAsset asset) predicate,
-    ) {
+      bool Function(DesktopReleaseAsset asset) predicate, {
+      bool signedOnly = false,
+    }) {
       for (final asset in assets) {
-        if (predicate(asset) &&
-            !asset.name.toLowerCase().contains('unsigned')) {
+        if (!predicate(asset)) {
+          continue;
+        }
+        if (signedOnly && _isUnsignedAsset(asset.name)) {
+          continue;
+        }
+        if (!_isUnsignedAsset(asset.name)) {
           return asset;
         }
+      }
+      if (signedOnly) {
+        return null;
       }
       for (final asset in assets) {
         if (predicate(asset)) {
@@ -228,57 +283,94 @@ class DesktopUpdateService {
     }
 
     if (Platform.isWindows) {
-      final installer = prefer(
-        (asset) =>
-            asset.name.toLowerCase().endsWith('.exe') &&
-            asset.name.toLowerCase().contains('windows') &&
-            asset.name.toLowerCase().contains('installer'),
-      );
+      final installer =
+          prefer(_isWindowsInstallerAsset, signedOnly: true) ??
+          prefer(_isWindowsInstallerAsset) ??
+          prefer(_isWindowsExecutableAsset, signedOnly: true) ??
+          prefer(_isWindowsExecutableAsset);
       if (installer != null) {
         return (
           asset: installer,
           kind: DesktopUpdateAssetKind.windowsInstaller,
         );
       }
-      final portable = prefer(
-        (asset) =>
-            asset.name.toLowerCase().endsWith('.zip') &&
-            asset.name.toLowerCase().contains('windows') &&
-            asset.name.toLowerCase().contains('portable'),
-      );
+      final portable = prefer(_isWindowsPortableAsset);
       if (portable != null) {
         return (
           asset: portable,
           kind: DesktopUpdateAssetKind.windowsPortableZip,
         );
       }
-      final anyExe = prefer(
-        (asset) => asset.name.toLowerCase().endsWith('.exe'),
-      );
-      if (anyExe != null) {
-        return (asset: anyExe, kind: DesktopUpdateAssetKind.windowsInstaller);
-      }
       return null;
     }
 
     if (Platform.isLinux) {
-      final appImage = prefer(
-        (asset) =>
-            asset.name.toLowerCase().endsWith('.appimage') &&
-            asset.name.toLowerCase().contains('linux'),
-      );
-      if (appImage != null) {
-        return (asset: appImage, kind: DesktopUpdateAssetKind.linuxAppImage);
+      final appImage = prefer(_isLinuxAppImageAsset);
+      final deb = prefer(_isLinuxDebAsset);
+      final flatpak = prefer(_isLinuxFlatpakAsset);
+      switch (_detectLinuxInstallMode()) {
+        case _LinuxInstallMode.appImage:
+          if (appImage != null) {
+            return (
+              asset: appImage,
+              kind: DesktopUpdateAssetKind.linuxAppImage,
+            );
+          }
+          if (deb != null) {
+            return (asset: deb, kind: DesktopUpdateAssetKind.linuxDeb);
+          }
+          if (flatpak != null) {
+            return (asset: flatpak, kind: DesktopUpdateAssetKind.linuxFlatpak);
+          }
+          return null;
+        case _LinuxInstallMode.flatpak:
+          if (flatpak != null) {
+            return (asset: flatpak, kind: DesktopUpdateAssetKind.linuxFlatpak);
+          }
+          if (deb != null) {
+            return (asset: deb, kind: DesktopUpdateAssetKind.linuxDeb);
+          }
+          if (appImage != null) {
+            return (
+              asset: appImage,
+              kind: DesktopUpdateAssetKind.linuxAppImage,
+            );
+          }
+          return null;
+        case _LinuxInstallMode.systemPackage:
+          if (deb != null) {
+            return (asset: deb, kind: DesktopUpdateAssetKind.linuxDeb);
+          }
+          if (flatpak != null) {
+            return (asset: flatpak, kind: DesktopUpdateAssetKind.linuxFlatpak);
+          }
+          if (appImage != null) {
+            return (
+              asset: appImage,
+              kind: DesktopUpdateAssetKind.linuxAppImage,
+            );
+          }
+          return null;
+        case _LinuxInstallMode.unknown:
+          if (deb != null) {
+            return (asset: deb, kind: DesktopUpdateAssetKind.linuxDeb);
+          }
+          if (appImage != null) {
+            return (
+              asset: appImage,
+              kind: DesktopUpdateAssetKind.linuxAppImage,
+            );
+          }
+          if (flatpak != null) {
+            return (asset: flatpak, kind: DesktopUpdateAssetKind.linuxFlatpak);
+          }
+          return null;
       }
-      return null;
     }
 
     if (Platform.isMacOS) {
-      final dmg = prefer(
-        (asset) =>
-            asset.name.toLowerCase().endsWith('.dmg') &&
-            asset.name.toLowerCase().contains('macos'),
-      );
+      final dmg =
+          prefer(_isMacDmgAsset, signedOnly: true) ?? prefer(_isMacDmgAsset);
       if (dmg != null) {
         return (asset: dmg, kind: DesktopUpdateAssetKind.macDmg);
       }
@@ -286,6 +378,63 @@ class DesktopUpdateService {
     }
 
     return null;
+  }
+
+  Future<void> _verifyDownloadedAsset(
+    DesktopUpdateCandidate candidate,
+    File destination,
+  ) async {
+    final checksums = await _fetchChecksums(candidate.release.assets);
+    if (checksums.entries.isEmpty) {
+      throw Exception('No published checksums were found for this release.');
+    }
+
+    final expected = _lookupChecksum(checksums.entries, candidate.asset.name);
+    if (expected == null) {
+      throw Exception(
+        'No published checksum was found for ${candidate.asset.name}.',
+      );
+    }
+
+    final actual = await _hashFile(destination);
+    if (_normalizeHash(actual) != _normalizeHash(expected)) {
+      throw Exception(
+        'Checksum verification failed for ${candidate.asset.name}.',
+      );
+    }
+
+    if (candidate.assetKind == DesktopUpdateAssetKind.windowsInstaller &&
+        !_isUnsignedAsset(candidate.asset.name)) {
+      await _verifyWindowsAuthenticode(destination.path);
+    }
+  }
+
+  Future<void> _verifyWindowsAuthenticode(String path) async {
+    if (!Platform.isWindows) {
+      return;
+    }
+
+    final escapedPath = path.replaceAll("'", "''");
+    final command =
+        r'''$sig = Get-AuthenticodeSignature -LiteralPath '__PATH__'; '''
+                r'''Write-Output $sig.Status; '''
+                r'''if ($sig.Status -ne "Valid") { exit 1 }'''
+            .replaceAll('__PATH__', escapedPath);
+    final result = await Process.run('powershell.exe', <String>[
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      command,
+    ]);
+
+    final status = result.stdout.toString().trim();
+    if (result.exitCode != 0) {
+      final details = status.isNotEmpty
+          ? status
+          : result.stderr.toString().trim();
+      throw Exception('Windows signature verification failed: $details');
+    }
   }
 
   Future<void> _downloadToFile(String url, File destination) async {
@@ -307,7 +456,218 @@ class DesktopUpdateService {
     }
   }
 
-  Future<void> _launchWindowsZipUpdater(String zipPath) async {
+  Future<Uint8List> _downloadBytes(String url) async {
+    final client = HttpClient()..connectionTimeout = _networkTimeout;
+    try {
+      final request = await client.getUrl(Uri.parse(url));
+      request.headers.set('Accept', 'application/vnd.github+json');
+      request.headers.set('User-Agent', 'PirateWallet-DesktopUpdater');
+      final response = await request.close().timeout(_networkTimeout);
+      if (response.statusCode >= 400) {
+        throw Exception('Download failed with status ${response.statusCode}');
+      }
+      final bytes = await consolidateHttpClientResponseBytes(response);
+      return bytes;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<String> _downloadText(String url) async {
+    final bytes = await _downloadBytes(url);
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  Future<String> _hashFile(File file) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
+  }
+
+  bool _isUnsignedAsset(String name) {
+    return name.toLowerCase().contains('unsigned');
+  }
+
+  bool _isWindowsInstallerAsset(DesktopReleaseAsset asset) {
+    final lower = asset.name.toLowerCase();
+    return lower.endsWith('.exe') &&
+        (lower.contains('installer') || lower.contains('setup'));
+  }
+
+  bool _isWindowsPortableAsset(DesktopReleaseAsset asset) {
+    final lower = asset.name.toLowerCase();
+    return lower.endsWith('.zip') && lower.contains('portable');
+  }
+
+  bool _isWindowsExecutableAsset(DesktopReleaseAsset asset) {
+    final lower = asset.name.toLowerCase();
+    return lower.endsWith('.exe') && !lower.contains('portable');
+  }
+
+  bool _isLinuxAppImageAsset(DesktopReleaseAsset asset) {
+    return asset.name.toLowerCase().endsWith('.appimage');
+  }
+
+  bool _isLinuxDebAsset(DesktopReleaseAsset asset) {
+    return asset.name.toLowerCase().endsWith('.deb');
+  }
+
+  bool _isLinuxFlatpakAsset(DesktopReleaseAsset asset) {
+    return asset.name.toLowerCase().endsWith('.flatpak');
+  }
+
+  bool _isMacDmgAsset(DesktopReleaseAsset asset) {
+    return asset.name.toLowerCase().endsWith('.dmg');
+  }
+
+  _LinuxInstallMode _detectLinuxInstallMode() {
+    final env = Platform.environment;
+    final executable = Platform.resolvedExecutable;
+    if (env.containsKey('FLATPAK_ID') || executable.startsWith('/app/')) {
+      return _LinuxInstallMode.flatpak;
+    }
+    final appImage = env['APPIMAGE'];
+    if (appImage != null && appImage.isNotEmpty) {
+      return _LinuxInstallMode.appImage;
+    }
+    if (executable.toLowerCase().endsWith('.appimage')) {
+      return _LinuxInstallMode.appImage;
+    }
+    if (executable.startsWith('/usr/') || executable.startsWith('/opt/')) {
+      return _LinuxInstallMode.systemPackage;
+    }
+    return _LinuxInstallMode.unknown;
+  }
+
+  Future<_ChecksumResult> _fetchChecksums(
+    List<DesktopReleaseAsset> assets,
+  ) async {
+    final entries = <String, String>{};
+    String? sourceName;
+
+    final checksumAssets = assets.where(
+      (asset) => _isDirectChecksumAsset(asset.name),
+    );
+    for (final asset in checksumAssets) {
+      final text = await _downloadText(asset.downloadUrl);
+      final parsed = _parseChecksums(text, asset.name);
+      if (parsed.isNotEmpty) {
+        entries.addAll(parsed);
+        sourceName ??= asset.name;
+      }
+    }
+
+    final checksumBundles = assets.where(
+      (asset) => _isChecksumBundleAsset(asset.name),
+    );
+    for (final asset in checksumBundles) {
+      final bundleBytes = await _downloadBytes(asset.downloadUrl);
+      final parsed = _parseChecksumsFromZip(bundleBytes);
+      if (parsed.isNotEmpty) {
+        entries.addAll(parsed);
+        sourceName ??= asset.name;
+      }
+    }
+
+    return _ChecksumResult(entries: entries, sourceName: sourceName);
+  }
+
+  bool _isDirectChecksumAsset(String name) {
+    final lower = name.toLowerCase();
+    return lower.endsWith('.sha256') ||
+        lower.endsWith('.sha256sum') ||
+        lower.contains('checksums');
+  }
+
+  bool _isChecksumBundleAsset(String name) {
+    final lower = name.toLowerCase();
+    return lower.endsWith('.zip') &&
+        (lower.contains('metadata') ||
+            lower.contains('checksum') ||
+            lower.contains('sha256'));
+  }
+
+  Map<String, String> _parseChecksumsFromZip(Uint8List bytes) {
+    final map = <String, String>{};
+    Archive archive;
+    try {
+      archive = ZipDecoder().decodeBytes(bytes);
+    } catch (_) {
+      return map;
+    }
+
+    for (final file in archive.files) {
+      if (!file.isFile || !_isDirectChecksumAsset(file.name)) {
+        continue;
+      }
+
+      try {
+        final text = utf8.decode(
+          file.content as List<int>,
+          allowMalformed: true,
+        );
+        map.addAll(_parseChecksums(text, file.name));
+      } catch (_) {
+        // Ignore malformed entries and keep parsing the rest.
+      }
+    }
+    return map;
+  }
+
+  Map<String, String> _parseChecksums(String text, String assetName) {
+    final map = <String, String>{};
+    final lines = LineSplitter.split(text);
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('#')) {
+        continue;
+      }
+
+      final parts = trimmed.split(RegExp(r'\s+'));
+      if (parts.length == 1) {
+        final fallbackName = assetName.replaceAll(
+          RegExp(r'\.sha256(sum)?$', caseSensitive: false),
+          '',
+        );
+        map[_canonicalAssetName(fallbackName)] = parts.first;
+        continue;
+      }
+
+      final hash = parts.first.trim();
+      final filename = parts.sublist(1).join(' ').replaceFirst('*', '').trim();
+      if (hash.isNotEmpty && filename.isNotEmpty) {
+        map[_canonicalAssetName(filename)] = hash;
+      }
+    }
+    return map;
+  }
+
+  String? _lookupChecksum(Map<String, String> checksums, String assetName) {
+    final canonicalName = _canonicalAssetName(assetName);
+    for (final entry in checksums.entries) {
+      if (_canonicalAssetName(entry.key) == canonicalName) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  String _canonicalAssetName(String value) {
+    final normalizedPath = value
+        .replaceAll(String.fromCharCode(92), '/')
+        .trim();
+    return normalizedPath.split('/').last.toLowerCase();
+  }
+
+  String _normalizeHash(String value) => value.trim().toLowerCase();
+
+  String _shQuote(String value) {
+    return "'${value.replaceAll("'", "'\"'\"'")}'";
+  }
+
+  Future<void> _launchWindowsZipUpdater(
+    String zipPath,
+    String releaseUrl,
+  ) async {
     final currentExe = Platform.resolvedExecutable;
     final appDir = File(currentExe).parent.path;
     final exeName = currentExe.split(Platform.pathSeparator).last;
@@ -320,14 +680,23 @@ setlocal
 set "ZIP_PATH=$zipPath"
 set "APP_DIR=$appDir"
 set "EXE_NAME=$exeName"
+set "RELEASE_URL=$releaseUrl"
 set "STAGE_DIR=%TEMP%\\pirate_wallet_update_%RANDOM%%RANDOM%"
 timeout /t 2 /nobreak >nul
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '%ZIP_PATH%' -DestinationPath '%STAGE_DIR%' -Force"
+if errorlevel 1 goto fail
 robocopy "%STAGE_DIR%" "%APP_DIR%" /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP >nul
+set "ROBOCOPY_EXIT=%ERRORLEVEL%"
+if %ROBOCOPY_EXIT% GEQ 8 goto fail
+if not exist "%APP_DIR%\\%EXE_NAME%" goto fail
 start "" "%APP_DIR%\\%EXE_NAME%"
 rmdir /S /Q "%STAGE_DIR%" >nul 2>&1
 del "%ZIP_PATH%" >nul 2>&1
 del "%~f0" >nul 2>&1
+exit /b 0
+:fail
+start "" "%RELEASE_URL%"
+exit /b 0
 ''', flush: true);
     await Process.start('cmd.exe', <String>[
       '/c',
@@ -335,60 +704,233 @@ del "%~f0" >nul 2>&1
     ], mode: ProcessStartMode.detached);
   }
 
-  Future<void> _launchLinuxAppImageUpdater(String appImagePath) async {
-    final currentExe = Platform.resolvedExecutable;
+  String? _resolveLinuxAppImagePath() {
+    final envPath = Platform.environment['APPIMAGE'];
+    if (envPath != null && envPath.isNotEmpty) {
+      return envPath;
+    }
+    final executable = Platform.resolvedExecutable;
+    if (executable.toLowerCase().endsWith('.appimage')) {
+      return executable;
+    }
+    return null;
+  }
+
+  Future<void> _launchLinuxAppImageUpdater(
+    String appImagePath,
+    String releaseUrl,
+  ) async {
+    final currentAppImage = _resolveLinuxAppImagePath();
+    if (currentAppImage == null) {
+      throw Exception(
+        'Unable to determine the current AppImage path for in-place update.',
+      );
+    }
+
     final script = File(
-      '${Directory.systemTemp.path}${Platform.pathSeparator}pirate_wallet_update.sh',
+      '${Directory.systemTemp.path}${Platform.pathSeparator}pirate_wallet_update_linux_appimage.sh',
     );
-    await script.writeAsString('''
+    final scriptContents =
+        r'''
 #!/usr/bin/env bash
 set -euo pipefail
+NEW_APP=__NEW_APP__
+CURRENT_APP=__CURRENT_APP__
+RELEASE_URL=__RELEASE_URL__
+BACKUP_APP=__BACKUP_APP__
+notify_fail() {
+  if [ -f "$BACKUP_APP" ] && [ ! -f "$CURRENT_APP" ]; then
+    mv -f "$BACKUP_APP" "$CURRENT_APP" >/dev/null 2>&1 || true
+  fi
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$RELEASE_URL" >/dev/null 2>&1 || true
+  fi
+  exit 0
+}
 sleep 2
-cp "$appImagePath" "$currentExe.new"
-chmod +x "$currentExe.new"
-mv "$currentExe.new" "$currentExe"
-"$currentExe" >/dev/null 2>&1 &
-''', flush: true);
+cp "$CURRENT_APP" "$BACKUP_APP" || notify_fail
+cp "$NEW_APP" "$CURRENT_APP.new" || notify_fail
+chmod +x "$CURRENT_APP.new" || notify_fail
+mv -f "$CURRENT_APP.new" "$CURRENT_APP" || notify_fail
+"$CURRENT_APP" >/dev/null 2>&1 &
+rm -f "$BACKUP_APP" "$NEW_APP" "$0" >/dev/null 2>&1 || true
+'''
+            .replaceAll('__NEW_APP__', _shQuote(appImagePath))
+            .replaceAll('__CURRENT_APP__', _shQuote(currentAppImage))
+            .replaceAll('__RELEASE_URL__', _shQuote(releaseUrl))
+            .replaceAll('__BACKUP_APP__', _shQuote('$currentAppImage.backup'));
+    await script.writeAsString(scriptContents, flush: true);
     await Process.run('chmod', <String>['+x', script.path]);
     await Process.start('bash', <String>[
       script.path,
     ], mode: ProcessStartMode.detached);
   }
 
-  Future<void> _launchMacDmgUpdater(String dmgPath) async {
+  Future<void> _launchLinuxDebUpdater(String debPath, String releaseUrl) async {
+    final script = File(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}pirate_wallet_update_linux_deb.sh',
+    );
+    final scriptContents =
+        r'''
+#!/usr/bin/env bash
+set -euo pipefail
+DEB_PATH=__DEB_PATH__
+RELEASE_URL=__RELEASE_URL__
+sleep 2
+if command -v pkcon >/dev/null 2>&1; then
+  pkcon install-local -y "$DEB_PATH" && exit 0
+fi
+if command -v pkexec >/dev/null 2>&1 && command -v apt >/dev/null 2>&1; then
+  pkexec apt install -y "$DEB_PATH" && exit 0
+fi
+if command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "$DEB_PATH" >/dev/null 2>&1 && exit 0
+  xdg-open "$RELEASE_URL" >/dev/null 2>&1 || true
+fi
+exit 0
+'''
+            .replaceAll('__DEB_PATH__', _shQuote(debPath))
+            .replaceAll('__RELEASE_URL__', _shQuote(releaseUrl));
+    await script.writeAsString(scriptContents, flush: true);
+    await Process.run('chmod', <String>['+x', script.path]);
+    await Process.start('bash', <String>[
+      script.path,
+    ], mode: ProcessStartMode.detached);
+  }
+
+  Future<void> _launchLinuxFlatpakUpdater(
+    String flatpakPath,
+    String releaseUrl,
+  ) async {
+    final script = File(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}pirate_wallet_update_linux_flatpak.sh',
+    );
+    final scriptContents =
+        r'''
+#!/usr/bin/env bash
+set -euo pipefail
+FLATPAK_PATH=__FLATPAK_PATH__
+RELEASE_URL=__RELEASE_URL__
+sleep 2
+if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null 2>&1; then
+  flatpak-spawn --host flatpak install --user -y "$FLATPAK_PATH" && exit 0
+fi
+if command -v flatpak >/dev/null 2>&1; then
+  flatpak install --user -y "$FLATPAK_PATH" && exit 0
+fi
+if command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "$FLATPAK_PATH" >/dev/null 2>&1 && exit 0
+  xdg-open "$RELEASE_URL" >/dev/null 2>&1 || true
+fi
+exit 0
+'''
+            .replaceAll('__FLATPAK_PATH__', _shQuote(flatpakPath))
+            .replaceAll('__RELEASE_URL__', _shQuote(releaseUrl));
+    await script.writeAsString(scriptContents, flush: true);
+    await Process.run('chmod', <String>['+x', script.path]);
+    await Process.start('bash', <String>[
+      script.path,
+    ], mode: ProcessStartMode.detached);
+  }
+
+  Future<void> _launchMacDmgUpdater(String dmgPath, String releaseUrl) async {
     final currentExe = File(Platform.resolvedExecutable);
     final appBundle = _resolveMacAppBundlePath(currentExe.path);
     final appName = appBundle.split('/').last;
     final script = File(
       '${Directory.systemTemp.path}${Platform.pathSeparator}pirate_wallet_update_macos.sh',
     );
-    await script.writeAsString('''
+    final scriptContents =
+        r'''
 #!/usr/bin/env bash
 set -euo pipefail
+DMG_PATH=__DMG_PATH__
+CURRENT_APP=__CURRENT_APP__
+APP_NAME=__APP_NAME__
+RELEASE_URL=__RELEASE_URL__
+show_manual() {
+  /usr/bin/osascript -e 'display dialog "Automatic update failed. Open the release page to download and install manually." buttons {"OK"} default button "OK"' >/dev/null 2>&1 || true
+  open "$RELEASE_URL" >/dev/null 2>&1 || true
+}
+verify_bundle() {
+  codesign --verify --deep --strict --verbose=2 "$1" >/dev/null 2>&1 && spctl --assess --type execute -v "$1" >/dev/null 2>&1
+}
+do_install() {
+  local source_app="$1"
+  local target_app="$2"
+  local backup_app="${2}.backup"
+  rm -rf "$backup_app"
+  if [ -e "$target_app" ]; then
+    mv "$target_app" "$backup_app" || return 1
+  fi
+  if ! cp -R "$source_app" "$target_app"; then
+    rm -rf "$target_app"
+    if [ -e "$backup_app" ]; then
+      mv "$backup_app" "$target_app" >/dev/null 2>&1 || true
+    fi
+    return 1
+  fi
+  if ! verify_bundle "$target_app"; then
+    rm -rf "$target_app"
+    if [ -e "$backup_app" ]; then
+      mv "$backup_app" "$target_app" >/dev/null 2>&1 || true
+    fi
+    return 1
+  fi
+  rm -rf "$backup_app"
+  open "$target_app" >/dev/null 2>&1 || true
+  return 0
+}
+if [ "${1:-}" = "--install" ]; then
+  do_install "$2" "$3"
+  exit $?
+fi
 sleep 2
-DMG_PATH="$dmgPath"
-CURRENT_APP="$appBundle"
-TARGET_APP="\$CURRENT_APP"
-if [ ! -w "\$(dirname "\$TARGET_APP")" ]; then
-  TARGET_APP="/Applications/$appName"
+TARGET_APP="$CURRENT_APP"
+if [ ! -w "$(dirname "$TARGET_APP")" ]; then
+  TARGET_APP="/Applications/$APP_NAME"
 fi
-
-MOUNT_POINT=\$(hdiutil attach "\$DMG_PATH" -nobrowse -readonly | awk '/\\/Volumes\\// {print \$3; exit}')
-if [ -z "\$MOUNT_POINT" ]; then
-  open "\$DMG_PATH"
+MOUNT_POINT=$(hdiutil attach "$DMG_PATH" -nobrowse -readonly | awk '/\/Volumes\// {print $3; exit}')
+if [ -z "$MOUNT_POINT" ]; then
+  open "$DMG_PATH" >/dev/null 2>&1 || true
+  show_manual
   exit 0
 fi
-SOURCE_APP=\$(find "\$MOUNT_POINT" -maxdepth 1 -name "*.app" -print -quit)
-if [ -z "\$SOURCE_APP" ]; then
-  hdiutil detach "\$MOUNT_POINT" || true
-  open "\$DMG_PATH"
+SOURCE_APP=$(find "$MOUNT_POINT" -maxdepth 1 -name "*.app" -print -quit)
+if [ -z "$SOURCE_APP" ]; then
+  hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
+  open "$DMG_PATH" >/dev/null 2>&1 || true
+  show_manual
   exit 0
 fi
-rm -rf "\$TARGET_APP"
-cp -R "\$SOURCE_APP" "\$TARGET_APP"
-hdiutil detach "\$MOUNT_POINT" || true
-open "\$TARGET_APP"
-''', flush: true);
+if ! verify_bundle "$SOURCE_APP"; then
+  hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
+  show_manual
+  exit 0
+fi
+if [ -w "$(dirname "$TARGET_APP")" ]; then
+  if ! "$0" --install "$SOURCE_APP" "$TARGET_APP"; then
+    hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
+    show_manual
+    exit 0
+  fi
+  hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
+  exit 0
+fi
+INSTALL_CMD=$(printf '%s' "bash \"$0\" --install \"$SOURCE_APP\" \"$TARGET_APP\"" | sed 's/\\/\\\\/g; s/"/\\"/g')
+if /usr/bin/osascript -e "do shell script \"$INSTALL_CMD\" with administrator privileges" >/dev/null 2>&1; then
+  hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
+  exit 0
+fi
+hdiutil detach "$MOUNT_POINT" >/dev/null 2>&1 || true
+open "$DMG_PATH" >/dev/null 2>&1 || true
+show_manual
+'''
+            .replaceAll('__DMG_PATH__', _shQuote(dmgPath))
+            .replaceAll('__CURRENT_APP__', _shQuote(appBundle))
+            .replaceAll('__APP_NAME__', _shQuote(appName))
+            .replaceAll('__RELEASE_URL__', _shQuote(releaseUrl));
+    await script.writeAsString(scriptContents, flush: true);
     await Process.run('chmod', <String>['+x', script.path]);
     await Process.start('bash', <String>[
       script.path,
@@ -433,6 +975,7 @@ class _SimpleSemver implements Comparable<_SimpleSemver> {
         .split('-')
         .first;
     final parts = normalized.split('.');
+
     int parsePart(int index) {
       if (index >= parts.length) {
         return 0;
