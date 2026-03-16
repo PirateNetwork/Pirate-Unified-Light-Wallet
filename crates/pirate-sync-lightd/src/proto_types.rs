@@ -32,7 +32,7 @@
 
 #![allow(missing_docs)] // Proto fields don't need individual docs
 
-use prost::Message;
+use prost::{Enumeration, Message};
 
 /// Compact block format for efficient sync.
 /// Contains only the data needed for trial decryption.
@@ -212,6 +212,36 @@ pub struct TreeState {
     pub sapling_frontier: String,
     #[prost(string, tag = "7")]
     pub orchard_tree: String,
+}
+
+/// Shielded pool selector for subtree-root RPCs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Enumeration)]
+#[repr(i32)]
+pub enum ShieldedProtocol {
+    Sapling = 0,
+    Orchard = 1,
+}
+
+/// Request subtree roots starting from a given subtree index.
+#[derive(Clone, PartialEq, Message)]
+pub struct GetSubtreeRootsArg {
+    #[prost(uint32, tag = "1")]
+    pub start_index: u32,
+    #[prost(enumeration = "ShieldedProtocol", tag = "2")]
+    pub shielded_protocol: i32,
+    #[prost(uint32, tag = "3")]
+    pub max_entries: u32,
+}
+
+/// A single subtree root returned by lightwalletd.
+#[derive(Clone, PartialEq, Message)]
+pub struct SubtreeRoot {
+    #[prost(bytes = "vec", tag = "2")]
+    pub root_hash: Vec<u8>,
+    #[prost(bytes = "vec", tag = "3")]
+    pub completing_block_hash: Vec<u8>,
+    #[prost(uint64, tag = "4")]
+    pub completing_block_height: u64,
 }
 
 // ============================================================================
@@ -477,6 +507,27 @@ pub mod compact_tx_streamer_client {
                 "GetLiteWalletBlockGroup",
             ));
             self.inner.unary(req, path, codec).await
+        }
+
+        /// Stream subtree roots for historical warp-style sync.
+        pub async fn get_subtree_roots(
+            &mut self,
+            request: impl tonic::IntoRequest<GetSubtreeRootsArg>,
+        ) -> std::result::Result<tonic::Response<tonic::codec::Streaming<SubtreeRoot>>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/pirate.wallet.sdk.rpc.CompactTxStreamer/GetSubtreeRoots",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut().insert(GrpcMethod::new(
+                "pirate.wallet.sdk.rpc.CompactTxStreamer",
+                "GetSubtreeRoots",
+            ));
+            self.inner.server_streaming(req, path, codec).await
         }
     }
 }

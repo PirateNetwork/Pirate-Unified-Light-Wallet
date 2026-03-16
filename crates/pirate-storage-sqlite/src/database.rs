@@ -4,6 +4,12 @@ use crate::{encryption::EncryptionKey, migrations, security::MasterKey, Result};
 use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OpenMode {
+    Full,
+    ExistingHot,
+}
+
 /// Database connection wrapper
 pub struct Database {
     conn: Connection,
@@ -17,27 +23,51 @@ impl Database {
         key: &EncryptionKey,
         master_key: MasterKey,
     ) -> Result<Self> {
-        // Check if database exists before opening (path is moved in open_with_flags)
+        Self::open_internal(path, key, master_key, OpenMode::Full)
+    }
+
+    /// Open an existing encrypted database for hot-path use.
+    ///
+    /// This skips migration work that has already been performed by wallet attach / startup
+    /// paths, while preserving SQLCipher validation and basic readability checks.
+    pub fn open_existing<P: AsRef<Path>>(
+        path: P,
+        key: &EncryptionKey,
+        master_key: MasterKey,
+    ) -> Result<Self> {
+        Self::open_internal(path, key, master_key, OpenMode::ExistingHot)
+    }
+
+    fn open_internal<P: AsRef<Path>>(
+        path: P,
+        key: &EncryptionKey,
+        master_key: MasterKey,
+        mode: OpenMode,
+    ) -> Result<Self> {
         let db_exists = path.as_ref().exists();
         let path_buf = path.as_ref().to_path_buf();
 
-        let conn = Connection::open_with_flags(
-            &path_buf,
-            OpenFlags::SQLITE_OPEN_READ_WRITE
-                | OpenFlags::SQLITE_OPEN_CREATE
-                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
+        if mode == OpenMode::ExistingHot && !db_exists {
+            return Err(crate::Error::Storage(format!(
+                "Database does not exist at {}",
+                path_buf.display()
+            )));
+        }
+
+        let mut flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        if mode == OpenMode::Full {
+            flags |= OpenFlags::SQLITE_OPEN_CREATE;
+        }
+        let conn = Connection::open_with_flags(&path_buf, flags)?;
 
         // CRITICAL: PRAGMA key MUST be the FIRST statement executed after opening the connection
         // Any other PRAGMA or SQL statement executed before PRAGMA key will cause the database
         // to be created in an unencrypted state, leading to "file is not a database" errors
         let key_hex = hex::encode(key.as_bytes());
-        // Execute PRAGMA key - ignore "Execute returned results" error as PRAGMA statements can return values
         if let Err(e) = conn.execute(
             &format!("PRAGMA key = '{}';", key_hex.replace("'", "''")),
             [],
         ) {
-            // If error is "Execute returned results", that's okay for PRAGMA key
             if !e.to_string().contains("Execute returned results") {
                 return Err(crate::Error::Encryption(format!(
                     "Failed to set database encryption key: {}",
@@ -46,14 +76,9 @@ impl Database {
             }
         }
 
-        // Now we can safely set other PRAGMAs after the encryption key is set
-        // Enable WAL mode
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
-        // Foreign key checks must be disabled because account_id and other columns
-        // are field-level encrypted and no longer match the plain FK values.
         conn.execute_batch("PRAGMA foreign_keys=OFF;")?;
 
-        // Verify SQLCipher encryption is active
         let cipher_version: std::result::Result<String, rusqlite::Error> =
             conn.query_row("PRAGMA cipher_version", [], |row| row.get(0));
 
@@ -69,20 +94,13 @@ impl Database {
             }
         }
 
-        // Test that we can read encrypted data
-        // For new databases, skip this check as the database is empty
         if db_exists {
-            // Try to read from sqlite_master to verify encryption is working
-            // If this fails, the database might be corrupted or encrypted with wrong key
             let test_result: std::result::Result<i64, rusqlite::Error> =
                 conn.query_row("SELECT COUNT(*) FROM sqlite_master", [], |row| row.get(0));
 
             if test_result.is_err() {
-                // Database exists but we can't read it - might be corrupted or wrong key
-                // Check if file is actually a valid SQLite database by trying to read raw header
                 let file_size = std::fs::metadata(&path_buf).map(|m| m.len()).unwrap_or(0);
 
-                // If file is very small (< 100 bytes), it's likely corrupted/empty
                 if file_size < 100 {
                     tracing::warn!(
                         "Database file exists but is too small ({} bytes), may be corrupted",
@@ -100,8 +118,9 @@ impl Database {
             }
         }
 
-        // Run migrations
-        migrations::run_migrations(&conn)?;
+        if mode == OpenMode::Full {
+            migrations::run_migrations(&conn)?;
+        }
 
         Ok(Self { conn, master_key })
     }

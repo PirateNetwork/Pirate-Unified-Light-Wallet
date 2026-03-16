@@ -103,6 +103,23 @@ message TreeState {
     string orchardTree = 7; // orchard commitment tree state
 }
 
+enum ShieldedProtocol {
+    sapling = 0;
+    orchard = 1;
+}
+
+message GetSubtreeRootsArg {
+    uint32 startIndex = 1;
+    ShieldedProtocol shieldedProtocol = 2;
+    uint32 maxEntries = 3;
+}
+
+message SubtreeRoot {
+    bytes rootHash = 2;
+    bytes completingBlockHash = 3;
+    uint64 completingBlockHeight = 4;
+}
+
 service CompactTxStreamer {
     // Get latest block ID (height + hash)
     rpc GetLatestBlock(ChainSpec) returns (BlockID);
@@ -137,4 +154,7 @@ service CompactTxStreamer {
     // Groups blocks into ~4MB chunks for efficient sync
     // Returns the last block in a group starting from the given height
     rpc GetLiteWalletBlockGroup(BlockID) returns (BlockID);
+
+    // Get subtree roots for historical warp-style sync.
+    rpc GetSubtreeRoots(GetSubtreeRootsArg) returns (stream SubtreeRoot);
 }

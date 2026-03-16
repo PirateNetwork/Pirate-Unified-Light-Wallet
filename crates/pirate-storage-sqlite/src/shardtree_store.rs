@@ -8,15 +8,43 @@ use std::{
     sync::Arc,
 };
 
-use incrementalmerkletree::{Address, Level, Position};
+use incrementalmerkletree::{Address, Hashable, Level, Position, Retention};
 use shardtree::{
+    error::ShardTreeError,
     store::{Checkpoint, ShardStore, TreeState},
-    LocatedPrunableTree, PrunableTree,
+    LocatedPrunableTree, LocatedTree, PrunableTree, RetentionFlags,
 };
 
 use zcash_primitives::{consensus::BlockHeight, merkle_tree::HashSer};
 
 use crate::shardtree_serialization::{read_shard, write_shard};
+
+/// Metadata describing a complete subtree root fetched from lightwalletd.
+#[derive(Debug, Clone)]
+pub struct PersistedSubtreeRoot<H> {
+    subtree_end_height: BlockHeight,
+    root_hash: H,
+}
+
+impl<H> PersistedSubtreeRoot<H> {
+    /// Creates a new persisted subtree-root record.
+    pub fn new(subtree_end_height: BlockHeight, root_hash: H) -> Self {
+        Self {
+            subtree_end_height,
+            root_hash,
+        }
+    }
+
+    /// Returns the block height that completed this subtree.
+    pub fn subtree_end_height(&self) -> BlockHeight {
+        self.subtree_end_height
+    }
+
+    /// Returns the subtree root hash.
+    pub fn root_hash(&self) -> &H {
+        &self.root_hash
+    }
+}
 
 /// Errors that can appear in SQLite-back [`ShardStore`] implementation operations.
 #[derive(Debug)]
@@ -718,6 +746,40 @@ pub(crate) fn add_checkpoint(
     checkpoint_id: BlockHeight,
     checkpoint: Checkpoint,
 ) -> Result<(), Error> {
+    let mut stmt_insert_checkpoint = conn
+        .prepare_cached(&format!(
+            "INSERT OR IGNORE INTO {}_tree_checkpoints (checkpoint_id, position)
+             VALUES (:checkpoint_id, :position)",
+            table_prefix
+        ))
+        .map_err(Error::Query)?;
+
+    let inserted = stmt_insert_checkpoint
+        .execute(named_params![
+            ":checkpoint_id": u32::from(checkpoint_id),
+            ":position": checkpoint.position().map(|p| u64::from(p) as i64)
+        ])
+        .map_err(Error::Query)?;
+    if inserted > 0 {
+        let mut stmt_insert_mark_removed = conn
+            .prepare_cached(&format!(
+                "INSERT INTO {}_tree_checkpoint_marks_removed (checkpoint_id, mark_removed_position)
+                 VALUES (:checkpoint_id, :position)",
+                table_prefix
+            ))
+            .map_err(Error::Query)?;
+
+        for pos in checkpoint.marks_removed() {
+            stmt_insert_mark_removed
+                .execute(named_params![
+                    ":checkpoint_id": u32::from(checkpoint_id),
+                    ":position": u64::from(*pos) as i64
+                ])
+                .map_err(Error::Query)?;
+        }
+        return Ok(());
+    }
+
     let extant_tree_state = conn
         .query_row(
             &format!(
@@ -766,21 +828,6 @@ pub(crate) fn add_checkpoint(
             }
         }
         None => {
-            let mut stmt_insert_checkpoint = conn
-                .prepare_cached(&format!(
-                    "INSERT INTO {}_tree_checkpoints (checkpoint_id, position)
-                     VALUES (:checkpoint_id, :position)",
-                    table_prefix
-                ))
-                .map_err(Error::Query)?;
-
-            stmt_insert_checkpoint
-                .execute(named_params![
-                    ":checkpoint_id": u32::from(checkpoint_id),
-                    ":position": checkpoint.position().map(|p| u64::from(p) as i64)
-                ])
-                .map_err(Error::Query)?;
-
             let mut stmt_insert_mark_removed = conn
                 .prepare_cached(&format!(
                     "INSERT INTO {}_tree_checkpoint_marks_removed (checkpoint_id, mark_removed_position)
@@ -1068,6 +1115,116 @@ pub(crate) fn truncate_checkpoints(
         [u32::from(checkpoint_id)],
     )
     .map_err(Error::Query)?;
+
+    Ok(())
+}
+
+/// Persists canonical subtree roots into the shardtree tables.
+pub fn put_shard_roots<
+    H: Hashable + HashSer + Clone + Eq,
+    const DEPTH: u8,
+    const SHARD_HEIGHT: u8,
+>(
+    conn: &rusqlite::Transaction<'_>,
+    table_prefix: &'static str,
+    start_index: u64,
+    roots: &[PersistedSubtreeRoot<H>],
+) -> Result<(), ShardTreeError<Error>> {
+    if roots.is_empty() {
+        return Ok(());
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct LevelShifter<H, const SHARD_HEIGHT: u8>(H);
+    impl<H: Hashable, const SHARD_HEIGHT: u8> Hashable for LevelShifter<H, SHARD_HEIGHT> {
+        fn empty_leaf() -> Self {
+            Self(H::empty_root(SHARD_HEIGHT.into()))
+        }
+
+        fn combine(level: Level, a: &Self, b: &Self) -> Self {
+            Self(H::combine(level + SHARD_HEIGHT, &a.0, &b.0))
+        }
+
+        fn empty_root(level: Level) -> Self
+        where
+            Self: Sized,
+        {
+            Self(H::empty_root(level + SHARD_HEIGHT))
+        }
+    }
+    impl<H: HashSer, const SHARD_HEIGHT: u8> HashSer for LevelShifter<H, SHARD_HEIGHT> {
+        fn read<R: io::Read>(reader: R) -> io::Result<Self>
+        where
+            Self: Sized,
+        {
+            H::read(reader).map(Self)
+        }
+
+        fn write<W: io::Write>(&self, writer: W) -> io::Result<()> {
+            self.0.write(writer)
+        }
+    }
+
+    let cap = LocatedTree::from_parts(
+        Address::from_parts((DEPTH - SHARD_HEIGHT).into(), 0),
+        get_cap::<LevelShifter<H, SHARD_HEIGHT>>(conn, table_prefix)
+            .map_err(ShardTreeError::Storage)?,
+    );
+
+    let cap_result = cap
+        .batch_insert(
+            Position::from(start_index),
+            roots.iter().map(|r| {
+                (
+                    LevelShifter(r.root_hash().clone()),
+                    Retention::Checkpoint {
+                        id: (),
+                        is_marked: false,
+                    },
+                )
+            }),
+        )
+        .map_err(ShardTreeError::Insert)?
+        .expect("slice of inserted roots was verified to be nonempty");
+
+    put_cap(conn, table_prefix, cap_result.subtree.take_root()).map_err(ShardTreeError::Storage)?;
+
+    check_shard_discontinuity(
+        conn,
+        table_prefix,
+        start_index..start_index + (roots.len() as u64),
+    )
+    .map_err(ShardTreeError::Storage)?;
+
+    for (root, i) in roots.iter().zip(0u64..) {
+        let mut stmt = conn
+            .prepare_cached(&format!(
+                "INSERT INTO {}_tree_shards (shard_index, subtree_end_height, root_hash, shard_data)
+                 VALUES (:shard_index, :subtree_end_height, :root_hash, :shard_data)
+                 ON CONFLICT (shard_index) DO UPDATE
+                 SET subtree_end_height = :subtree_end_height, root_hash = :root_hash",
+                table_prefix
+            ))
+            .map_err(|e| ShardTreeError::Storage(Error::Query(e)))?;
+
+        let mut shard_data: Vec<u8> = vec![];
+        let tree = PrunableTree::leaf((root.root_hash().clone(), RetentionFlags::EPHEMERAL));
+        write_shard(&mut shard_data, &tree)
+            .map_err(|e| ShardTreeError::Storage(Error::Serialization(e)))?;
+
+        let mut root_hash_data: Vec<u8> = vec![];
+        root.root_hash()
+            .write(&mut root_hash_data)
+            .map_err(|e| ShardTreeError::Storage(Error::Serialization(e)))?;
+
+        stmt.execute(named_params![
+            ":shard_index": (start_index + i) as i64,
+            ":subtree_end_height": u32::from(root.subtree_end_height()),
+            ":root_hash": root_hash_data,
+            ":shard_data": shard_data,
+        ])
+        .map_err(|e| ShardTreeError::Storage(Error::Query(e)))?;
+    }
 
     Ok(())
 }

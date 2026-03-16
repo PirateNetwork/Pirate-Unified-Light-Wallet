@@ -83,7 +83,9 @@ pub use seed_export::{
     warnings as seed_warnings, ExportAuditEntry, ExportFlowState, SeedExportManager,
     SeedExportRequest, SeedExportResult,
 };
-pub use spendability_state::{SpendabilityStateRow, SpendabilityStateStorage};
+pub use spendability_state::{
+    PerPoolAnchorHeights, SpendabilityStateRow, SpendabilityStateStorage,
+};
 pub use sync_state::{
     atomic_sync_update, truncate_above_height, SyncStateRow, SyncStateStorage, BASE_BACKOFF_MS,
     MAX_BACKOFF_MS, MAX_BUSY_RETRIES,

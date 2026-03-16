@@ -82,11 +82,11 @@ fn checkpoint_depth_at_or_below(
 }
 
 fn sapling_witness_for_position(
-    tree: &SaplingTree<'_>,
+    tree: &mut SaplingTree<'_>,
     position: u64,
     checkpoint_depth: usize,
 ) -> Result<Option<incrementalmerkletree::MerklePath<SaplingNode, NOTE_COMMITMENT_TREE_DEPTH>>> {
-    match tree.witness(Position::from(position), checkpoint_depth) {
+    match tree.witness_caching(Position::from(position), checkpoint_depth) {
         Ok(path) => Ok(Some(path)),
         Err(ShardTreeError::Query(_)) => Ok(None),
         Err(err) => Err(map_shardtree_error(
@@ -97,10 +97,10 @@ fn sapling_witness_for_position(
 }
 
 fn sapling_anchor_root_at_depth(
-    tree: &SaplingTree<'_>,
+    tree: &mut SaplingTree<'_>,
     checkpoint_depth: usize,
 ) -> Result<Option<SaplingNode>> {
-    match tree.root_at_checkpoint(checkpoint_depth) {
+    match tree.root_at_checkpoint_caching(checkpoint_depth) {
         Ok(root) => Ok(Some(root)),
         Err(ShardTreeError::Query(_)) => Ok(None),
         Err(err) => Err(map_shardtree_error(
@@ -111,11 +111,11 @@ fn sapling_anchor_root_at_depth(
 }
 
 fn orchard_witness_for_position(
-    tree: &OrchardTree<'_>,
+    tree: &mut OrchardTree<'_>,
     position: u64,
     checkpoint_depth: usize,
 ) -> Result<Option<OrchardMerklePath>> {
-    let path = match tree.witness(Position::from(position), checkpoint_depth) {
+    let path = match tree.witness_caching(Position::from(position), checkpoint_depth) {
         Ok(path) => path,
         Err(ShardTreeError::Query(_)) => return Ok(None),
         Err(err) => {
@@ -147,10 +147,10 @@ fn orchard_witness_for_position(
 }
 
 fn orchard_anchor_at_depth(
-    tree: &OrchardTree<'_>,
+    tree: &mut OrchardTree<'_>,
     checkpoint_depth: usize,
 ) -> Result<Option<orchard::tree::Anchor>> {
-    let root = match tree.root_at_checkpoint(checkpoint_depth) {
+    let root = match tree.root_at_checkpoint_caching(checkpoint_depth) {
         Ok(root) => root,
         Err(ShardTreeError::Query(_)) => return Ok(None),
         Err(err) => {
@@ -179,8 +179,8 @@ pub(crate) fn resolve_orchard_anchor_from_db_state(
         conn,
         ORCHARD_TABLE_PREFIX,
     )?;
-    let tree: OrchardTree<'_> = ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
-    orchard_anchor_at_depth(&tree, checkpoint_depth)
+    let mut tree: OrchardTree<'_> = ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+    orchard_anchor_at_depth(&mut tree, checkpoint_depth)
 }
 
 pub(crate) fn resolve_sapling_root_from_db_state(
@@ -198,8 +198,8 @@ pub(crate) fn resolve_sapling_root_from_db_state(
         conn,
         SAPLING_TABLE_PREFIX,
     )?;
-    let tree: SaplingTree<'_> = ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
-    sapling_anchor_root_at_depth(&tree, checkpoint_depth)
+    let mut tree: SaplingTree<'_> = ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+    sapling_anchor_root_at_depth(&mut tree, checkpoint_depth)
 }
 
 pub(crate) fn construct_anchor_witnesses_from_db_state(
@@ -217,7 +217,7 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
     let orchard_checkpoint =
         checkpoint_depth_at_or_below(conn, ORCHARD_TABLE_PREFIX, anchor_height)?;
 
-    let sapling_tree = if sapling_checkpoint.is_some() {
+    let mut sapling_tree = if sapling_checkpoint.is_some() {
         let store = SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
             conn,
             SAPLING_TABLE_PREFIX,
@@ -226,7 +226,7 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
     } else {
         None
     };
-    let orchard_tree = if orchard_checkpoint.is_some() {
+    let mut orchard_tree = if orchard_checkpoint.is_some() {
         let store =
             SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
                 conn,
@@ -237,15 +237,15 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
         None
     };
 
-    let orchard_anchor = if let (Some(tree), Some((_, depth))) = (&orchard_tree, orchard_checkpoint)
-    {
-        orchard_anchor_at_depth(tree, depth)?
-    } else {
-        None
-    };
+    let orchard_anchor =
+        if let (Some(tree), Some((_, depth))) = (&mut orchard_tree, orchard_checkpoint) {
+            orchard_anchor_at_depth(tree, depth)?
+        } else {
+            None
+        };
 
     let sapling_anchor_root =
-        if let (Some(tree), Some((_, depth))) = (&sapling_tree, sapling_checkpoint) {
+        if let (Some(tree), Some((_, depth))) = (&mut sapling_tree, sapling_checkpoint) {
             sapling_anchor_root_at_depth(tree, depth)?
         } else {
             None
@@ -263,7 +263,7 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
                     true
                 } else if let (Some(position), Some(tree), Some((_, depth))) = (
                     note.sapling_position,
-                    sapling_tree.as_ref(),
+                    sapling_tree.as_mut(),
                     sapling_checkpoint,
                 ) {
                     if let Some(witness) = sapling_witness_for_position(tree, position, depth)? {
@@ -305,7 +305,7 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
                         if note.orchard_merkle_path.is_some() && note.orchard_anchor.is_some() {
                             true
                         } else if let (Some(tree), Some((_, depth)), Some(anchor)) =
-                            (orchard_tree.as_ref(), orchard_checkpoint, orchard_anchor)
+                            (orchard_tree.as_mut(), orchard_checkpoint, orchard_anchor)
                         {
                             if let Some(merkle_path) =
                                 orchard_witness_for_position(tree, position, depth)?

@@ -171,6 +171,57 @@ fn test_anchor_derivation_ignores_stale_pre_birthday_pool_checkpoint_for_account
 }
 
 #[test]
+fn test_anchor_target_heights_by_pool_for_account_are_independent() {
+    let db = test_db();
+    let conn = db.conn();
+
+    conn.execute(
+        r#"
+        INSERT INTO scan_queue (range_start, range_end, priority, status, reason, created_at, updated_at)
+        VALUES (200, 240, 10, 'done', 'historic', datetime('now'), datetime('now'))
+        "#,
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        r#"
+        INSERT INTO account_keys (
+            account_id, key_type, key_scope, label, birthday_height, created_at, spendable,
+            sapling_extsk, sapling_dfvk, orchard_extsk, orchard_fvk, encrypted_mnemonic
+        )
+        VALUES (?1, 'seed', 'account', 'k', ?2, 0, 1, NULL, NULL, NULL, NULL, NULL)
+        "#,
+        [1i64, 61i64],
+    )
+    .unwrap();
+
+    conn.execute(
+        "INSERT INTO sapling_tree_checkpoints (checkpoint_id, position) VALUES (228, NULL)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO orchard_tree_checkpoints (checkpoint_id, position) VALUES (225, NULL)",
+        [],
+    )
+    .unwrap();
+
+    let spendability = SpendabilityStateStorage::new(&db);
+    let anchors = spendability
+        .get_target_and_anchor_heights_by_pool_for_account(10, 1)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(anchors.target_height, 240);
+    assert_eq!(anchors.sapling_anchor_height, 228);
+    assert_eq!(anchors.orchard_anchor_height, 225);
+    assert_eq!(
+        anchors.conservative_anchor_height, 225,
+        "conservative anchor should remain the lower pool checkpoint"
+    );
+}
+
+#[test]
 fn test_queue_repair_range_sets_deterministic_state_and_merges() {
     let db = test_db();
     let spendability = SpendabilityStateStorage::new(&db);

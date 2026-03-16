@@ -8,6 +8,7 @@ use crate::{models::*, Database, Result};
 use pirate_core::DEFAULT_FEE;
 use pirate_params::consensus::ConsensusParams;
 use rusqlite::params_from_iter;
+use rusqlite::types::Value;
 use rusqlite::{params, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -48,6 +49,16 @@ pub struct WitnessCheckResult {
     pub orchard_missing: usize,
     /// Deterministic queued repair ranges `(start, end_exclusive)`.
     pub repair_ranges: Vec<(u64, u64)>,
+}
+
+#[derive(Debug, Clone)]
+struct WitnessCheckNoteMeta {
+    note_type: crate::models::NoteType,
+    height: i64,
+    txid: Vec<u8>,
+    output_index: i64,
+    position: Option<i64>,
+    has_note_material: bool,
 }
 
 fn note_value_is_valid(value: i64) -> bool {
@@ -187,6 +198,47 @@ impl<'a> Repository<'a> {
         }
         let pos_u64 = u64::try_from(position).ok()?;
         i64::try_from(pos_u64 >> NOTE_SHARD_INDEX_BITS).ok()
+    }
+
+    fn tree_shard_height_range_for_position(
+        &self,
+        note_type: crate::models::NoteType,
+        position: i64,
+    ) -> Result<Option<(u64, u64)>> {
+        let Some(shard_index) = self.shard_index_from_position(position) else {
+            return Ok(None);
+        };
+        let table = match note_type {
+            crate::models::NoteType::Sapling => "sapling_tree_shards",
+            crate::models::NoteType::Orchard => "orchard_tree_shards",
+        };
+        let mut stmt = self.db.conn().prepare(&format!(
+            "SELECT
+                (SELECT subtree_end_height FROM {table} prev WHERE prev.shard_index = shards.shard_index - 1),
+                shards.subtree_end_height
+             FROM {table} shards
+             WHERE shards.shard_index = ?1"
+        ))?;
+        let row = stmt
+            .query_row(params![shard_index], |row| {
+                Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?))
+            })
+            .optional()?;
+        let Some((prev_end_opt, end_opt)) = row else {
+            return Ok(None);
+        };
+        let Some(end_i64) = end_opt else {
+            return Ok(None);
+        };
+        let start_u64 = prev_end_opt
+            .and_then(|value| u64::try_from(value).ok())
+            .map(|value| value.saturating_add(1))
+            .unwrap_or(1);
+        let end_u64 = match u64::try_from(end_i64) {
+            Ok(value) => value.saturating_add(1),
+            Err(_) => return Ok(None),
+        };
+        Ok(Some((start_u64, end_u64)))
     }
 
     fn upsert_note_shard_metadata(
@@ -333,8 +385,11 @@ impl<'a> Repository<'a> {
         Ok(account)
     }
 
-    /// Insert note with encrypted sensitive fields
-    pub fn insert_note(&self, note: &NoteRecord) -> Result<i64> {
+    fn insert_note_with_options(
+        &self,
+        note: &NoteRecord,
+        update_shard_metadata: bool,
+    ) -> Result<i64> {
         let note_type_str = match note.note_type {
             crate::models::NoteType::Sapling => "Sapling",
             crate::models::NoteType::Orchard => "Orchard",
@@ -380,19 +435,36 @@ impl<'a> Repository<'a> {
             ],
         )?;
         let inserted_id = self.db.conn().last_insert_rowid();
-        if let Err(e) = self.upsert_note_shard_metadata(note.note_type, note.position, note.height)
-        {
-            let _ = self
-                .db
-                .conn()
-                .execute("DELETE FROM notes WHERE id = ?1", params![inserted_id]);
-            return Err(e);
+        if update_shard_metadata {
+            if let Err(e) =
+                self.upsert_note_shard_metadata(note.note_type, note.position, note.height)
+            {
+                let _ = self
+                    .db
+                    .conn()
+                    .execute("DELETE FROM notes WHERE id = ?1", params![inserted_id]);
+                return Err(e);
+            }
         }
         Ok(inserted_id)
     }
 
+    /// Insert note with encrypted sensitive fields
+    pub fn insert_note(&self, note: &NoteRecord) -> Result<i64> {
+        self.insert_note_with_options(note, true)
+    }
+
+    /// Insert note without updating shard metadata. Intended for batch sync persistence.
+    pub fn insert_note_without_shard_metadata(&self, note: &NoteRecord) -> Result<i64> {
+        self.insert_note_with_options(note, false)
+    }
+
     /// Update an existing note by row id (encrypts before storage)
-    pub fn update_note_by_id(&self, note: &NoteRecord) -> Result<()> {
+    fn update_note_by_id_with_options(
+        &self,
+        note: &NoteRecord,
+        update_shard_metadata: bool,
+    ) -> Result<()> {
         let id = note.id.ok_or_else(|| {
             crate::error::Error::Storage("Missing note id for update".to_string())
         })?;
@@ -439,7 +511,114 @@ impl<'a> Repository<'a> {
                 id,
             ],
         )?;
-        self.upsert_note_shard_metadata(note.note_type, note.position, note.height)?;
+        if update_shard_metadata {
+            self.upsert_note_shard_metadata(note.note_type, note.position, note.height)?;
+        }
+        Ok(())
+    }
+
+    /// Update an existing note by row id (encrypts before storage)
+    pub fn update_note_by_id(&self, note: &NoteRecord) -> Result<()> {
+        self.update_note_by_id_with_options(note, true)
+    }
+
+    /// Update an existing note without updating shard metadata. Intended for batch sync persistence.
+    pub fn update_note_by_id_without_shard_metadata(&self, note: &NoteRecord) -> Result<()> {
+        self.update_note_by_id_with_options(note, false)
+    }
+
+    /// Batch-update note shard metadata for a sync batch.
+    pub fn upsert_note_shard_metadata_batch<I>(&self, entries: I) -> Result<()>
+    where
+        I: IntoIterator<Item = (crate::models::NoteType, Option<i64>, i64)>,
+    {
+        let mut aggregated: HashMap<(crate::models::NoteType, i64), (i64, i64, i64, i64)> =
+            HashMap::new();
+        for (note_type, position, height) in entries {
+            if height <= 0 {
+                continue;
+            }
+            let Some(position_i64) = position else {
+                continue;
+            };
+            let Some(shard_index) = self.shard_index_from_position(position_i64) else {
+                continue;
+            };
+            let start_position = shard_index << NOTE_SHARD_INDEX_BITS;
+            let end_position_exclusive = (shard_index + 1) << NOTE_SHARD_INDEX_BITS;
+            let entry = aggregated.entry((note_type, shard_index)).or_insert((
+                start_position,
+                end_position_exclusive,
+                height,
+                height,
+            ));
+            entry.2 = entry.2.min(height);
+            entry.3 = entry.3.max(height);
+        }
+
+        for (
+            (note_type, shard_index),
+            (start_position, end_position_exclusive, min_height, max_height),
+        ) in aggregated
+        {
+            let sql = match note_type {
+                crate::models::NoteType::Sapling => {
+                    r#"
+                    INSERT INTO sapling_note_shards (
+                        shard_index,
+                        start_position,
+                        end_position_exclusive,
+                        subtree_start_height,
+                        subtree_end_height,
+                        contains_marked
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, 1)
+                    ON CONFLICT(shard_index) DO UPDATE SET
+                        start_position = excluded.start_position,
+                        end_position_exclusive = excluded.end_position_exclusive,
+                        subtree_start_height = MIN(subtree_start_height, excluded.subtree_start_height),
+                        subtree_end_height = CASE
+                            WHEN subtree_end_height IS NULL THEN excluded.subtree_end_height
+                            WHEN excluded.subtree_end_height IS NULL THEN subtree_end_height
+                            ELSE MAX(subtree_end_height, excluded.subtree_end_height)
+                        END,
+                        contains_marked = 1
+                    "#
+                }
+                crate::models::NoteType::Orchard => {
+                    r#"
+                    INSERT INTO orchard_note_shards (
+                        shard_index,
+                        start_position,
+                        end_position_exclusive,
+                        subtree_start_height,
+                        subtree_end_height,
+                        contains_marked
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, 1)
+                    ON CONFLICT(shard_index) DO UPDATE SET
+                        start_position = excluded.start_position,
+                        end_position_exclusive = excluded.end_position_exclusive,
+                        subtree_start_height = MIN(subtree_start_height, excluded.subtree_start_height),
+                        subtree_end_height = CASE
+                            WHEN subtree_end_height IS NULL THEN excluded.subtree_end_height
+                            WHEN excluded.subtree_end_height IS NULL THEN subtree_end_height
+                            ELSE MAX(subtree_end_height, excluded.subtree_end_height)
+                        END,
+                        contains_marked = 1
+                    "#
+                }
+            };
+            self.db.conn().execute(
+                sql,
+                params![
+                    shard_index,
+                    start_position,
+                    end_position_exclusive,
+                    min_height,
+                    max_height
+                ],
+            )?;
+        }
+
         Ok(())
     }
 
@@ -796,6 +975,147 @@ impl<'a> Repository<'a> {
         // #endregion
 
         Ok(decrypted_notes)
+    }
+
+    fn get_unspent_note_witness_metas(&self, account_id: i64) -> Result<Vec<WitnessCheckNoteMeta>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT id, account_id, note_type, spent, height, txid, output_index, position, note FROM notes",
+        )?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                let note_type_str: String = row.get(2)?;
+                let note_type = match note_type_str.as_str() {
+                    "Orchard" => crate::models::NoteType::Orchard,
+                    _ => crate::models::NoteType::Sapling,
+                };
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Vec<u8>>(1)?,
+                    note_type,
+                    row.get::<_, Vec<u8>>(3)?,
+                    row.get::<_, Vec<u8>>(4)?,
+                    row.get::<_, Vec<u8>>(5)?,
+                    row.get::<_, Vec<u8>>(6)?,
+                    row.get::<_, Option<Vec<u8>>>(7)?,
+                    row.get::<_, Option<Vec<u8>>>(8)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let mut spent_outputs: HashSet<(Vec<u8>, i64, crate::models::NoteType)> = HashSet::new();
+        let mut metas_by_output: HashMap<
+            (Vec<u8>, i64, crate::models::NoteType),
+            (i64, WitnessCheckNoteMeta),
+        > = HashMap::new();
+
+        for (
+            id,
+            enc_account_id,
+            note_type,
+            enc_spent,
+            enc_height,
+            enc_txid,
+            enc_output_index,
+            enc_position,
+            enc_note,
+        ) in rows
+        {
+            let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
+            if decrypted_account_id != account_id {
+                continue;
+            }
+
+            let txid = self.decrypt_blob(&enc_txid)?;
+            let output_index = self.decrypt_int64(&enc_output_index)?;
+            let key = (txid.clone(), output_index, note_type);
+
+            let spent = self.decrypt_bool(&enc_spent)?;
+            if spent {
+                spent_outputs.insert(key.clone());
+                metas_by_output.remove(&key);
+                continue;
+            }
+            if spent_outputs.contains(&key) {
+                continue;
+            }
+
+            let note_meta = WitnessCheckNoteMeta {
+                note_type,
+                height: self.decrypt_int64(&enc_height)?,
+                txid,
+                output_index,
+                position: self.decrypt_optional_int64(enc_position)?,
+                has_note_material: self
+                    .decrypt_optional_blob(enc_note)?
+                    .is_some_and(|value| !value.is_empty()),
+            };
+
+            match metas_by_output.get(&key) {
+                Some((existing_id, _)) if *existing_id >= id => {}
+                _ => {
+                    metas_by_output.insert(key, (id, note_meta));
+                }
+            }
+        }
+
+        Ok(metas_by_output
+            .into_values()
+            .map(|(_, meta)| meta)
+            .collect())
+    }
+
+    fn load_blocked_shard_ranges(
+        &self,
+        note_type: crate::models::NoteType,
+        anchor_height: i64,
+        wallet_birthday: i64,
+        shard_indices: &HashSet<i64>,
+    ) -> Result<HashMap<i64, Vec<(u64, u64)>>> {
+        if shard_indices.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let view_name = match note_type {
+            crate::models::NoteType::Sapling => "v_sapling_shard_unscanned_ranges",
+            crate::models::NoteType::Orchard => "v_orchard_shard_unscanned_ranges",
+        };
+        let placeholders = std::iter::repeat_n("?", shard_indices.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "SELECT shard_index, block_range_start, block_range_end
+             FROM {view_name}
+             WHERE block_range_start <= ?1
+               AND block_range_end > ?2
+               AND shard_index IN ({placeholders})
+             ORDER BY shard_index ASC, block_range_start ASC"
+        );
+        let mut params_vec = vec![Value::from(anchor_height), Value::from(wallet_birthday)];
+        let mut ordered_indices: Vec<_> = shard_indices.iter().copied().collect();
+        ordered_indices.sort_unstable();
+        params_vec.extend(ordered_indices.into_iter().map(Value::from));
+
+        let mut stmt = self.db.conn().prepare(&sql)?;
+        let mut rows = stmt.query(params_from_iter(params_vec.iter()))?;
+        let mut blocked: HashMap<i64, Vec<(u64, u64)>> = HashMap::new();
+        while let Some(row) = rows.next()? {
+            let shard_index: i64 = row.get(0)?;
+            let start_i64: i64 = row.get(1)?;
+            let end_i64: i64 = row.get(2)?;
+            let Ok(start_u64) = u64::try_from(start_i64) else {
+                continue;
+            };
+            let Ok(end_u64) = u64::try_from(end_i64) else {
+                continue;
+            };
+            blocked
+                .entry(shard_index)
+                .or_default()
+                .push((start_u64, end_u64));
+        }
+
+        Ok(blocked)
     }
 
     /// Get notes that are eligible for spend reconciliation.
@@ -1637,29 +1957,43 @@ impl<'a> Repository<'a> {
             return Ok(notes);
         }
 
-        let mut sapling_block_stmt = self.db.conn().prepare(
-            r#"
-            SELECT EXISTS (
-                SELECT 1
-                FROM v_sapling_shard_unscanned_ranges unscanned
-                WHERE unscanned.block_range_start <= ?1
-                  AND unscanned.block_range_end > ?2
-                  AND ?3 >= unscanned.start_position
-                  AND ?3 < unscanned.end_position_exclusive
-            )
-            "#,
+        let mut sapling_shard_indices: HashSet<i64> = HashSet::new();
+        let mut orchard_shard_indices: HashSet<i64> = HashSet::new();
+        for note in &notes {
+            let note_position_i64 = match note.note_type {
+                pirate_core::selection::NoteType::Sapling => note
+                    .sapling_position
+                    .and_then(|position| i64::try_from(position).ok()),
+                pirate_core::selection::NoteType::Orchard => note
+                    .orchard_position
+                    .and_then(|position| i64::try_from(position).ok()),
+            };
+            let Some(position_i64) = note_position_i64 else {
+                continue;
+            };
+            let Some(shard_index) = self.shard_index_from_position(position_i64) else {
+                continue;
+            };
+            match note.note_type {
+                pirate_core::selection::NoteType::Sapling => {
+                    sapling_shard_indices.insert(shard_index);
+                }
+                pirate_core::selection::NoteType::Orchard => {
+                    orchard_shard_indices.insert(shard_index);
+                }
+            }
+        }
+        let blocked_sapling_shards = self.load_blocked_shard_ranges(
+            crate::models::NoteType::Sapling,
+            anchor_height_i64,
+            wallet_birthday_i64,
+            &sapling_shard_indices,
         )?;
-        let mut orchard_block_stmt = self.db.conn().prepare(
-            r#"
-            SELECT EXISTS (
-                SELECT 1
-                FROM v_orchard_shard_unscanned_ranges unscanned
-                WHERE unscanned.block_range_start <= ?1
-                  AND unscanned.block_range_end > ?2
-                  AND ?3 >= unscanned.start_position
-                  AND ?3 < unscanned.end_position_exclusive
-            )
-            "#,
+        let blocked_orchard_shards = self.load_blocked_shard_ranges(
+            crate::models::NoteType::Orchard,
+            anchor_height_i64,
+            wallet_birthday_i64,
+            &orchard_shard_indices,
         )?;
 
         let mut filtered = Vec::with_capacity(notes.len());
@@ -1675,15 +2009,16 @@ impl<'a> Repository<'a> {
             let Some(note_position_i64) = note_position_i64 else {
                 continue;
             };
+            let Some(shard_index) = self.shard_index_from_position(note_position_i64) else {
+                continue;
+            };
             let blocked = match note.note_type {
-                pirate_core::selection::NoteType::Sapling => sapling_block_stmt.query_row(
-                    params![anchor_height_i64, wallet_birthday_i64, note_position_i64],
-                    |row| row.get::<_, bool>(0),
-                )?,
-                pirate_core::selection::NoteType::Orchard => orchard_block_stmt.query_row(
-                    params![anchor_height_i64, wallet_birthday_i64, note_position_i64],
-                    |row| row.get::<_, bool>(0),
-                )?,
+                pirate_core::selection::NoteType::Sapling => {
+                    blocked_sapling_shards.contains_key(&shard_index)
+                }
+                pirate_core::selection::NoteType::Orchard => {
+                    blocked_orchard_shards.contains_key(&shard_index)
+                }
             };
             if !blocked {
                 filtered.push(note);
@@ -1747,8 +2082,8 @@ impl<'a> Repository<'a> {
             return Ok(result);
         }
 
-        let notes = self.get_unspent_notes(account_id)?;
-        if notes.is_empty() {
+        let note_metas = self.get_unspent_note_witness_metas(account_id)?;
+        if note_metas.is_empty() {
             return Ok(result);
         }
 
@@ -1760,30 +2095,47 @@ impl<'a> Repository<'a> {
         let birthday_i64 = i64::try_from(birthday).map_err(|_| {
             crate::Error::Storage(format!("wallet_birthday {} exceeds i64::MAX", birthday))
         })?;
-        let mut sapling_note_range_stmt = self.db.conn().prepare(
-            r#"
-            SELECT block_range_start, block_range_end
-            FROM v_sapling_shard_unscanned_ranges
-            WHERE block_range_start <= ?1
-              AND block_range_end > ?2
-              AND ?3 >= start_position
-              AND ?3 < end_position_exclusive
-            ORDER BY block_range_start ASC
-            "#,
+        let mut sapling_shard_indices: HashSet<i64> = HashSet::new();
+        let mut orchard_shard_indices: HashSet<i64> = HashSet::new();
+        for note in &note_metas {
+            let note_height = match u64::try_from(note.height) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            if note_height == 0 || note_height < birthday || note_height > anchor_height {
+                continue;
+            }
+            let Some(position_i64) = note.position.filter(|position| *position >= 0) else {
+                continue;
+            };
+            let Some(shard_index) = self.shard_index_from_position(position_i64) else {
+                continue;
+            };
+            match note.note_type {
+                crate::models::NoteType::Sapling => {
+                    sapling_shard_indices.insert(shard_index);
+                }
+                crate::models::NoteType::Orchard => {
+                    orchard_shard_indices.insert(shard_index);
+                }
+            }
+        }
+        let blocked_sapling_shards = self.load_blocked_shard_ranges(
+            crate::models::NoteType::Sapling,
+            anchor_height_i64,
+            birthday_i64,
+            &sapling_shard_indices,
         )?;
-        let mut orchard_note_range_stmt = self.db.conn().prepare(
-            r#"
-            SELECT block_range_start, block_range_end
-            FROM v_orchard_shard_unscanned_ranges
-            WHERE block_range_start <= ?1
-              AND block_range_end > ?2
-              AND ?3 >= start_position
-              AND ?3 < end_position_exclusive
-            ORDER BY block_range_start ASC
-            "#,
+        let blocked_orchard_shards = self.load_blocked_shard_ranges(
+            crate::models::NoteType::Orchard,
+            anchor_height_i64,
+            birthday_i64,
+            &orchard_shard_indices,
         )?;
+        type AnchorCandidate = (Vec<u8>, u32, u8, u64, Option<i64>);
+        let mut anchor_candidates: Vec<AnchorCandidate> = Vec::new();
 
-        for note in notes {
+        for note in note_metas {
             let note_height = match u64::try_from(note.height) {
                 Ok(value) => value,
                 Err(_) => continue,
@@ -1797,32 +2149,45 @@ impl<'a> Repository<'a> {
             }
             result.considered_notes = result.considered_notes.saturating_add(1);
 
-            let missing_note_material = note.note.as_ref().is_none_or(|v| v.is_empty());
+            let missing_note_material = !note.has_note_material;
             let missing_position = note.position.is_none_or(|pos| pos < 0);
             let note_position_i64 = note.position.filter(|position| *position >= 0);
+            if !missing_note_material && note_position_i64.is_some() {
+                let note_pool = match note.note_type {
+                    crate::models::NoteType::Sapling => 0u8,
+                    crate::models::NoteType::Orchard => 1u8,
+                };
+                if let Ok(output_index) = u32::try_from(note.output_index) {
+                    anchor_candidates.push((
+                        note.txid.clone(),
+                        output_index,
+                        note_pool,
+                        note_height,
+                        note_position_i64,
+                    ));
+                }
+            }
             let mut derived_range_count = 0usize;
             if let Some(position_i64) = note_position_i64 {
-                let mut rows =
-                    match note.note_type {
-                        crate::models::NoteType::Sapling => sapling_note_range_stmt
-                            .query(params![anchor_height_i64, birthday_i64, position_i64])?,
-                        crate::models::NoteType::Orchard => orchard_note_range_stmt
-                            .query(params![anchor_height_i64, birthday_i64, position_i64])?,
+                if let Some(shard_index) = self.shard_index_from_position(position_i64) {
+                    let blocked_ranges = match note.note_type {
+                        crate::models::NoteType::Sapling => {
+                            blocked_sapling_shards.get(&shard_index)
+                        }
+                        crate::models::NoteType::Orchard => {
+                            blocked_orchard_shards.get(&shard_index)
+                        }
                     };
-                while let Some(row) = rows.next()? {
-                    let start_i64: i64 = row.get(0)?;
-                    let end_i64: i64 = row.get(1)?;
-                    let Ok(start_u64) = u64::try_from(start_i64) else {
-                        continue;
-                    };
-                    let Ok(end_u64) = u64::try_from(end_i64) else {
-                        continue;
-                    };
-                    let range_start = start_u64.max(birthday).max(1);
-                    let capped_end_exclusive = end_u64.min(anchor_height.saturating_add(1));
-                    let range_end = capped_end_exclusive.max(range_start.saturating_add(1));
-                    pending_ranges.push((range_start, range_end));
-                    derived_range_count = derived_range_count.saturating_add(1);
+                    if let Some(ranges) = blocked_ranges {
+                        for (start_u64, end_u64) in ranges {
+                            let range_start = (*start_u64).max(birthday).max(1);
+                            let capped_end_exclusive =
+                                (*end_u64).min(anchor_height.saturating_add(1));
+                            let range_end = capped_end_exclusive.max(range_start.saturating_add(1));
+                            pending_ranges.push((range_start, range_end));
+                            derived_range_count = derived_range_count.saturating_add(1);
+                        }
+                    }
                 }
             }
 
@@ -1901,9 +2266,6 @@ impl<'a> Repository<'a> {
         // If fixed-anchor candidate notes exist but cannot be hydrated from the
         // current shardtree checkpoint state, queue a deterministic FoundNote replay
         // range so maintenance runs before send-time.
-        let mut anchor_candidates =
-            self.get_unspent_selectable_notes_filtered(account_id, None, None)?;
-        anchor_candidates.retain(|note| note.height >= birthday && note.height <= anchor_height);
         if !anchor_candidates.is_empty() {
             let anchor_ready = self.get_unspent_selectable_notes_at_anchor_filtered(
                 account_id,
@@ -1926,20 +2288,39 @@ impl<'a> Repository<'a> {
                 let mut missing_sapling = 0usize;
                 let mut missing_orchard = 0usize;
                 let mut earliest_missing_height = anchor_height;
-                for note in &anchor_candidates {
-                    let note_pool = match note.note_type {
-                        pirate_core::selection::NoteType::Sapling => 0u8,
-                        pirate_core::selection::NoteType::Orchard => 1u8,
-                    };
-                    let note_key = (note.txid.clone(), note.output_index, note_pool);
+                let mut derived_range_start: Option<u64> = None;
+                let mut derived_range_end: Option<u64> = None;
+                for (txid, output_index, note_pool, note_height, note_position_i64) in
+                    &anchor_candidates
+                {
+                    let note_key = (txid.clone(), *output_index, *note_pool);
                     if !ready_keys.contains(&note_key) {
-                        earliest_missing_height = earliest_missing_height.min(note.height);
-                        match note.note_type {
-                            pirate_core::selection::NoteType::Sapling => {
+                        earliest_missing_height = earliest_missing_height.min(*note_height);
+                        match *note_pool {
+                            0 => {
                                 missing_sapling = missing_sapling.saturating_add(1);
                             }
-                            pirate_core::selection::NoteType::Orchard => {
+                            _ => {
                                 missing_orchard = missing_orchard.saturating_add(1);
+                            }
+                        }
+                        if let Some(position_i64) = note_position_i64 {
+                            let note_type = match *note_pool {
+                                0 => crate::models::NoteType::Sapling,
+                                _ => crate::models::NoteType::Orchard,
+                            };
+                            if let Some((range_start, range_end_exclusive)) =
+                                self.tree_shard_height_range_for_position(note_type, *position_i64)?
+                            {
+                                derived_range_start = Some(
+                                    derived_range_start
+                                        .map_or(range_start, |current| current.min(range_start)),
+                                );
+                                derived_range_end = Some(
+                                    derived_range_end.map_or(range_end_exclusive, |current| {
+                                        current.max(range_end_exclusive)
+                                    }),
+                                );
                             }
                         }
                     }
@@ -1948,9 +2329,13 @@ impl<'a> Repository<'a> {
                 if missing_sapling + missing_orchard > 0 {
                     result.sapling_missing = result.sapling_missing.saturating_add(missing_sapling);
                     result.orchard_missing = result.orchard_missing.saturating_add(missing_orchard);
-                    let range_start = earliest_missing_height.max(birthday).max(1);
-                    let range_end = anchor_height
-                        .saturating_add(1)
+                    let range_start = derived_range_start
+                        .unwrap_or(earliest_missing_height)
+                        .max(birthday)
+                        .max(1);
+                    let range_end = derived_range_end
+                        .unwrap_or_else(|| anchor_height.saturating_add(1))
+                        .min(anchor_height.saturating_add(1))
                         .max(range_start.saturating_add(1));
                     pending_ranges.push((range_start, range_end));
 

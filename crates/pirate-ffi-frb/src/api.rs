@@ -2376,6 +2376,86 @@ fn require_spendability_ready_with_sync_trigger(
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SpendSelectionAnchors {
+    target_height: u64,
+    conservative_anchor_height: u64,
+    sapling_anchor_height: u64,
+    orchard_anchor_height: u64,
+}
+
+fn compute_spend_selection_anchors(
+    db: &Database,
+    account_id: i64,
+) -> Result<SpendSelectionAnchors> {
+    let spendability_storage = SpendabilityStateStorage::new(db);
+    let anchors = spendability_storage
+        .get_target_and_anchor_heights_by_pool_for_account(
+            SPENDABILITY_MIN_CONFIRMATIONS,
+            account_id,
+        )?
+        .ok_or_else(|| anyhow!("Anchor height unavailable for spend selection"))?;
+    Ok(SpendSelectionAnchors {
+        target_height: anchors.target_height,
+        conservative_anchor_height: anchors.conservative_anchor_height.max(1),
+        sapling_anchor_height: anchors.sapling_anchor_height.max(1),
+        orchard_anchor_height: anchors.orchard_anchor_height.max(1),
+    })
+}
+
+fn load_selectable_notes_for_send(
+    repo: &Repository,
+    account_id: i64,
+    anchors: SpendSelectionAnchors,
+    key_ids_filter: Option<Vec<i64>>,
+    address_ids_filter: Option<Vec<i64>>,
+) -> Result<Vec<pirate_core::selection::SelectableNote>> {
+    if anchors.sapling_anchor_height == anchors.orchard_anchor_height {
+        return Ok(repo.get_unspent_selectable_notes_at_anchor_filtered(
+            account_id,
+            anchors.conservative_anchor_height,
+            SPENDABILITY_MIN_CONFIRMATIONS,
+            key_ids_filter,
+            address_ids_filter,
+        )?);
+    }
+
+    let mut combined = Vec::new();
+    let mut seen: HashSet<(Vec<u8>, u32, u8)> = HashSet::new();
+    for note in repo.get_unspent_selectable_notes_at_anchor_filtered(
+        account_id,
+        anchors.sapling_anchor_height,
+        SPENDABILITY_MIN_CONFIRMATIONS,
+        key_ids_filter.clone(),
+        address_ids_filter.clone(),
+    )? {
+        if note.note_type != pirate_core::selection::NoteType::Sapling {
+            continue;
+        }
+        let key = (note.txid.clone(), note.output_index, 0u8);
+        if seen.insert(key) {
+            combined.push(note);
+        }
+    }
+    for note in repo.get_unspent_selectable_notes_at_anchor_filtered(
+        account_id,
+        anchors.orchard_anchor_height,
+        SPENDABILITY_MIN_CONFIRMATIONS,
+        key_ids_filter,
+        address_ids_filter,
+    )? {
+        if note.note_type != pirate_core::selection::NoteType::Orchard {
+            continue;
+        }
+        let key = (note.txid.clone(), note.output_index, 1u8);
+        if seen.insert(key) {
+            combined.push(note);
+        }
+    }
+
+    Ok(combined)
+}
+
 fn mark_spendability_rescan_required(wallet_id: &str, reason_code: &str) {
     if let Ok((db, _repo)) = open_wallet_db_for(wallet_id) {
         let storage = SpendabilityStateStorage::new(db);
@@ -4465,7 +4545,7 @@ fn auto_select_spend_key_id_for_amount(
     repo: &Repository,
     account_id: i64,
     required_total: u64,
-    anchor_height: u64,
+    anchors: SpendSelectionAnchors,
 ) -> Result<Option<i64>> {
     let spendable_keys = repo
         .get_account_keys(account_id)?
@@ -4480,13 +4560,8 @@ fn auto_select_spend_key_id_for_amount(
 
     let mut totals_by_key = HashMap::<i64, u64>::new();
     for key_id in spendable_keys {
-        let notes = repo.get_unspent_selectable_notes_at_anchor_filtered(
-            account_id,
-            anchor_height,
-            SPENDABILITY_MIN_CONFIRMATIONS,
-            Some(vec![key_id]),
-            None,
-        )?;
+        let notes =
+            load_selectable_notes_for_send(repo, account_id, anchors, Some(vec![key_id]), None)?;
         let total = notes
             .iter()
             .fold(0u64, |acc, note| acc.saturating_add(note.value));
@@ -4954,16 +5029,9 @@ fn build_tx_internal(
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
     let spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
-    let spendability_storage = SpendabilityStateStorage::new(db);
-    let (computed_target_height, computed_anchor_height) = match spendability_storage
-        .get_target_and_anchor_heights_for_account(
-            SPENDABILITY_MIN_CONFIRMATIONS,
-            secret.account_id,
-        )? {
-        Some(heights) => heights,
-        None => return Err(anyhow!("Anchor height unavailable for spend selection")),
-    };
-    let anchor_height = computed_anchor_height.max(1);
+    let anchors = compute_spend_selection_anchors(db, secret.account_id)?;
+    let computed_target_height = anchors.target_height;
+    let anchor_height = anchors.conservative_anchor_height;
     let resolved_key_id = resolve_spend_key_id(
         &repo,
         secret.account_id,
@@ -4978,7 +5046,7 @@ fn build_tx_internal(
                 &repo,
                 secret.account_id,
                 required_total,
-                anchor_height,
+                anchors,
             )?,
         };
 
@@ -4993,10 +5061,10 @@ fn build_tx_internal(
         }
     }
 
-    let selectable_notes_raw = repo.get_unspent_selectable_notes_at_anchor_filtered(
+    let selectable_notes_raw = load_selectable_notes_for_send(
+        &repo,
         secret.account_id,
-        anchor_height,
-        SPENDABILITY_MIN_CONFIRMATIONS,
+        anchors,
         effective_key_ids_filter.clone(),
         address_ids_filter.clone(),
     )?;
@@ -5191,15 +5259,15 @@ pub fn build_consolidation_tx(
     fee_opt: Option<u64>,
 ) -> Result<PendingTx> {
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    let spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
-    let anchor_height = spendability.anchor_height.max(1);
+    let _spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let selectable_notes_raw = repo.get_unspent_selectable_notes_at_anchor_filtered(
+    let anchors = compute_spend_selection_anchors(_db, secret.account_id)?;
+    let selectable_notes_raw = load_selectable_notes_for_send(
+        &repo,
         secret.account_id,
-        anchor_height,
-        SPENDABILITY_MIN_CONFIRMATIONS,
+        anchors,
         Some(vec![key_id]),
         None,
     )?;
@@ -5246,11 +5314,11 @@ pub fn build_sweep_tx(
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<PendingTx> {
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    let spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
-    let anchor_height = spendability.anchor_height.max(1);
+    let _spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
+    let anchors = compute_spend_selection_anchors(_db, secret.account_id)?;
 
     let key_ids_filter = normalize_filter_ids(key_ids_filter);
     let address_ids_filter = normalize_filter_ids(address_ids_filter);
@@ -5261,10 +5329,10 @@ pub fn build_sweep_tx(
         address_ids_filter.as_deref(),
     )?;
 
-    let selectable_notes_raw = repo.get_unspent_selectable_notes_at_anchor_filtered(
+    let selectable_notes_raw = load_selectable_notes_for_send(
+        &repo,
         secret.account_id,
-        anchor_height,
-        SPENDABILITY_MIN_CONFIRMATIONS,
+        anchors,
         key_ids_filter.clone(),
         address_ids_filter.clone(),
     )?;
@@ -5394,7 +5462,9 @@ fn sign_tx_internal(
         .checked_add(pending.fee)
         .ok_or_else(|| anyhow!("Amount + fee overflow"))?;
     let spendability = require_spendability_ready_with_sync_trigger(&wallet_id)?;
-    let anchor_height = spendability.anchor_height.max(1);
+    let anchors = compute_spend_selection_anchors(_db, secret.account_id)?;
+    let anchor_height = anchors.conservative_anchor_height;
+    let orchard_anchor_height = anchors.orchard_anchor_height;
     log_step(
         "spendability_status",
         &format!(
@@ -5421,7 +5491,7 @@ fn sign_tx_internal(
                 &repo,
                 secret.account_id,
                 required_total,
-                anchor_height,
+                anchors,
             )?;
         }
         if let Some(key_id) = signing_key_id {
@@ -5724,13 +5794,13 @@ fn sign_tx_internal(
         log_step("orchard_anchor_fetch_start", "outputs_only");
 
         let anchor_opt = repo
-            .resolve_orchard_anchor_from_db_state(anchor_height)
+            .resolve_orchard_anchor_from_db_state(orchard_anchor_height)
             .map_err(|e| anyhow!("Failed to resolve Orchard anchor from DB state: {}", e))?;
 
         if anchor_opt.is_some() {
             log_step(
                 "orchard_anchor_fetch_ok",
-                &format!("anchor_height<={}", anchor_height),
+                &format!("anchor_height<={}", orchard_anchor_height),
             );
         } else {
             log_step("orchard_anchor_sync_required", "missing_db_anchor_state");

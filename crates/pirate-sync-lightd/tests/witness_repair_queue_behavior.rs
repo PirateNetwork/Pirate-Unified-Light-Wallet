@@ -141,3 +141,37 @@ fn follow_tip_start_ahead_keeps_queue_worker_path_active() {
         "follow-tip start-ahead branch should preserve resume height semantics so fetch loop no-ops and queue worker/monitor path remains active"
     );
 }
+
+#[test]
+fn shardtree_persistence_uses_batched_insertion_not_leaf_append() {
+    let src = sync_rs();
+    let persist_start = src
+        .find("fn persist_shardtree_batches(")
+        .expect("persist_shardtree_batches exists");
+    let helper_start = src
+        .find("fn apply_shardtree_batches_to_trees<")
+        .expect("apply_shardtree_batches_to_trees exists");
+    let helper_end = src[helper_start..]
+        .find("/// Wallet keys cached for trial decryption")
+        .map(|idx| helper_start + idx)
+        .expect("wallet key section exists");
+    let persist_body = &src[persist_start..helper_start];
+    let helper_body = &src[helper_start..helper_end];
+
+    assert!(
+        persist_body.contains("apply_shardtree_batches_to_trees("),
+        "frontier persistence should delegate to the shared batched shardtree helper"
+    );
+    assert!(
+        helper_body.contains(".batch_insert("),
+        "shared shardtree helper should use batched insertion"
+    );
+    assert!(
+        !helper_body.contains("sapling_tree.append("),
+        "shared shardtree helper should not append Sapling commitments leaf-by-leaf"
+    );
+    assert!(
+        !helper_body.contains("orchard_tree.append("),
+        "shared shardtree helper should not append Orchard commitments leaf-by-leaf"
+    );
+}

@@ -28,7 +28,10 @@ use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tracing::{debug, error, info, warn};
 
 use proto::compact_tx_streamer_client::CompactTxStreamerClient;
-use proto::{BlockId, BlockRange, ChainSpec, Empty, RawTransaction, TxFilter};
+use proto::{
+    BlockId, BlockRange, ChainSpec, Empty, GetSubtreeRootsArg, RawTransaction, ShieldedProtocol,
+    SubtreeRoot, TxFilter,
+};
 
 /// Default lightwalletd endpoint (Pirate Chain official)
 pub const DEFAULT_LIGHTD_HOST: &str = "64.23.167.130";
@@ -1872,6 +1875,32 @@ impl LightClient {
             );
 
             Ok(block_id.height)
+        })
+        .await
+    }
+
+    /// Fetch historical subtree roots for a shielded pool.
+    pub async fn get_subtree_roots(
+        &self,
+        start_index: u32,
+        shielded_protocol: ShieldedProtocol,
+        max_entries: u32,
+    ) -> Result<Vec<SubtreeRoot>> {
+        self.with_retry(|| async {
+            let mut client = self.get_client().await?;
+            let mut request = tonic::Request::new(GetSubtreeRootsArg {
+                start_index,
+                shielded_protocol: shielded_protocol as i32,
+                max_entries,
+            });
+            request.set_timeout(self.config.request_timeout);
+
+            let mut stream = client.get_subtree_roots(request).await?.into_inner();
+            let mut roots = Vec::new();
+            while let Some(root) = stream.message().await? {
+                roots.push(root);
+            }
+            Ok(roots)
         })
         .await
     }

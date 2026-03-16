@@ -124,3 +124,17 @@ fn forbidden_path_guard_script_exists() {
         "missing witness/anchor forbidden-paths guard script"
     );
 }
+
+#[test]
+fn anchor_witness_hydration_uses_shardtree_caching() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/frontier_witness.rs");
+    let src = fs::read_to_string(path).expect("read frontier_witness");
+    assert!(
+        src.contains("witness_caching("),
+        "anchor witness construction should cache witness ommers during hydration"
+    );
+    assert!(
+        src.contains("root_at_checkpoint_caching("),
+        "anchor witness construction should cache checkpoint roots during hydration"
+    );
+}

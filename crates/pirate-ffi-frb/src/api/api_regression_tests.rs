@@ -43,6 +43,15 @@ fn setup_repo() -> (Database, i64) {
     (db, account_id)
 }
 
+fn test_selection_anchors(anchor_height: u64) -> SpendSelectionAnchors {
+    SpendSelectionAnchors {
+        target_height: anchor_height.saturating_add(1),
+        conservative_anchor_height: anchor_height,
+        sapling_anchor_height: anchor_height,
+        orchard_anchor_height: anchor_height,
+    }
+}
+
 fn insert_account_key(
     repo: &Repository,
     account_id: i64,
@@ -292,15 +301,18 @@ fn test_auto_select_key_group_sapling_orchard_mixed_matrix() {
     seed_sapling_shardtree_checkpoint(&db, 1_000, &[cmu_twenty, cmu_fifty]);
 
     assert_eq!(
-        auto_select_spend_key_id_for_amount(&repo, account_id, 10, 1_000).unwrap(),
+        auto_select_spend_key_id_for_amount(&repo, account_id, 10, test_selection_anchors(1_000))
+            .unwrap(),
         Some(key_twenty)
     );
     assert_eq!(
-        auto_select_spend_key_id_for_amount(&repo, account_id, 30, 1_000).unwrap(),
+        auto_select_spend_key_id_for_amount(&repo, account_id, 30, test_selection_anchors(1_000))
+            .unwrap(),
         Some(key_fifty)
     );
     assert_eq!(
-        auto_select_spend_key_id_for_amount(&repo, account_id, 60, 1_000).unwrap(),
+        auto_select_spend_key_id_for_amount(&repo, account_id, 60, test_selection_anchors(1_000))
+            .unwrap(),
         None
     );
 }
@@ -334,7 +346,8 @@ fn test_auto_select_ignores_unspendable_keys() {
     seed_sapling_shardtree_checkpoint(&db, 1_000, &[cmu_locked, cmu_spendable]);
 
     assert_eq!(
-        auto_select_spend_key_id_for_amount(&repo, account_id, 30, 1_000).unwrap(),
+        auto_select_spend_key_id_for_amount(&repo, account_id, 30, test_selection_anchors(1_000))
+            .unwrap(),
         Some(key_spendable)
     );
 }

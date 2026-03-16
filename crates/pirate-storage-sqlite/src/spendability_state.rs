@@ -31,6 +31,19 @@ pub struct SpendabilityStateRow {
     pub updated_at: String,
 }
 
+/// Canonical target height with independently snapped Sapling and Orchard anchors.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PerPoolAnchorHeights {
+    /// Latest target height derived from scan queue extrema.
+    pub target_height: u64,
+    /// Sapling anchor snapped to the highest Sapling checkpoint at-or-below the ideal anchor.
+    pub sapling_anchor_height: u64,
+    /// Orchard anchor snapped to the highest Orchard checkpoint at-or-below the ideal anchor.
+    pub orchard_anchor_height: u64,
+    /// Conservative anchor equal to `min(sapling_anchor_height, orchard_anchor_height)`.
+    pub conservative_anchor_height: u64,
+}
+
 impl Default for SpendabilityStateRow {
     fn default() -> Self {
         Self {
@@ -195,6 +208,43 @@ impl<'a> SpendabilityStateStorage<'a> {
         self.get_target_and_anchor_heights_for_account_opt(min_confirmations, Some(account_id))
     }
 
+    /// Compute canonical target height plus per-pool snapped anchors for an account.
+    pub fn get_target_and_anchor_heights_by_pool_for_account(
+        &self,
+        min_confirmations: u32,
+        account_id: i64,
+    ) -> Result<Option<PerPoolAnchorHeights>> {
+        let min_confirmations = min_confirmations.max(1) as u64;
+        let Some((min_height, max_height)) = self.scan_queue_extrema()? else {
+            return Ok(None);
+        };
+        let target_height = max_height.saturating_add(1);
+        let anchor_floor = min_height
+            .max(1)
+            .max(self.birthday_height_for_account(account_id)?.max(1));
+        let ideal_anchor = target_height
+            .saturating_sub(min_confirmations)
+            .max(anchor_floor);
+        if ideal_anchor > target_height {
+            return Ok(None);
+        }
+
+        let sapling_anchor_height = self
+            .snap_to_checkpoint_for_table("sapling_tree_checkpoints", ideal_anchor, anchor_floor)?
+            .unwrap_or(ideal_anchor);
+        let orchard_anchor_height = self
+            .snap_to_checkpoint_for_table("orchard_tree_checkpoints", ideal_anchor, anchor_floor)?
+            .unwrap_or(ideal_anchor);
+        let conservative_anchor_height = sapling_anchor_height.min(orchard_anchor_height);
+
+        Ok(Some(PerPoolAnchorHeights {
+            target_height,
+            sapling_anchor_height,
+            orchard_anchor_height,
+            conservative_anchor_height,
+        }))
+    }
+
     fn get_target_and_anchor_heights_for_account_opt(
         &self,
         min_confirmations: u32,
@@ -243,33 +293,10 @@ impl<'a> SpendabilityStateStorage<'a> {
     /// conservative (lower) of the two, ensuring both pools can produce valid
     /// witnesses at the returned height.
     fn snap_to_checkpoint(&self, ceiling: u64, floor: u64) -> Result<Option<u64>> {
-        let ceiling_u32 = match u32::try_from(ceiling) {
-            Ok(v) => v,
-            Err(_) => return Ok(None),
-        };
-        let floor_u32 = u32::try_from(floor).unwrap_or(0);
-
-        let sapling_max: Option<u32> = self
-            .db
-            .conn()
-            .query_row(
-                "SELECT MAX(checkpoint_id) FROM sapling_tree_checkpoints \
-                 WHERE checkpoint_id <= ?1 AND checkpoint_id >= ?2",
-                params![ceiling_u32, floor_u32],
-                |row| row.get(0),
-            )
-            .map_err(|e| Error::Storage(format!("sapling checkpoint query: {}", e)))?;
-
-        let orchard_max: Option<u32> = self
-            .db
-            .conn()
-            .query_row(
-                "SELECT MAX(checkpoint_id) FROM orchard_tree_checkpoints \
-                 WHERE checkpoint_id <= ?1 AND checkpoint_id >= ?2",
-                params![ceiling_u32, floor_u32],
-                |row| row.get(0),
-            )
-            .map_err(|e| Error::Storage(format!("orchard checkpoint query: {}", e)))?;
+        let sapling_max =
+            self.snap_to_checkpoint_for_table("sapling_tree_checkpoints", ceiling, floor)?;
+        let orchard_max =
+            self.snap_to_checkpoint_for_table("orchard_tree_checkpoints", ceiling, floor)?;
 
         let snapped = match (sapling_max, orchard_max) {
             (Some(s), Some(o)) => Some(s.min(o)),
@@ -278,7 +305,30 @@ impl<'a> SpendabilityStateStorage<'a> {
             (None, None) => None,
         };
 
-        Ok(snapped.map(u64::from))
+        Ok(snapped)
+    }
+
+    fn snap_to_checkpoint_for_table(
+        &self,
+        table_name: &str,
+        ceiling: u64,
+        floor: u64,
+    ) -> Result<Option<u64>> {
+        let ceiling_u32 = match u32::try_from(ceiling) {
+            Ok(v) => v,
+            Err(_) => return Ok(None),
+        };
+        let floor_u32 = u32::try_from(floor).unwrap_or(0);
+        let sql = format!(
+            "SELECT MAX(checkpoint_id) FROM {table_name} WHERE checkpoint_id <= ?1 AND checkpoint_id >= ?2"
+        );
+        self.db
+            .conn()
+            .query_row(&sql, params![ceiling_u32, floor_u32], |row| {
+                row.get::<_, Option<u32>>(0)
+            })
+            .map(|value| value.map(u64::from))
+            .map_err(|e| Error::Storage(format!("{table_name} checkpoint query: {}", e)))
     }
 
     /// Persist the full state.
