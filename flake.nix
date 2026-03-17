@@ -1,391 +1,282 @@
 {
-  description = "Pirate Unified Wallet - Privacy-first cryptocurrency wallet for Pirate Chain";
+  description = "Pirate Unified Wallet";
 
   inputs = {
-    # Pin to specific commit for reproducibility
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
-    
+
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    
+
     flutter-nix = {
       url = "github:maximoffua/flutter.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    
-    # SBOM and provenance tools
-    syft = {
-      url = "github:anchore/syft";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, flutter-nix, syft }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs = {
+    self,
+    nixpkgs,
+    flake-utils,
+    rust-overlay,
+    flutter-nix,
+  }:
+    flake-utils.lib.eachSystem [
+      "x86_64-linux"
+      "aarch64-linux"
+      "x86_64-darwin"
+      "aarch64-darwin"
+    ] (
+      system:
       let
-        overlays = [ (import rust-overlay) ];
+        overlays = [ rust-overlay.overlays.default ];
         pkgs = import nixpkgs {
           inherit system overlays;
-          config.allowUnfree = true; # Required for Android SDK
+          config.allowUnfree = true;
           config.android_sdk.accept_license = true;
         };
+        lib = pkgs.lib;
 
-        # Latest stable Rust version (auto-tracks latest)
-        # Using "latest" instead of pinning to specific version for fresh starts
-        rustVersion = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
-          targets = [ 
-            "x86_64-unknown-linux-gnu"
-            "x86_64-pc-windows-gnu"
-            "x86_64-apple-darwin"
-            "aarch64-apple-darwin"
-            "aarch64-linux-android"
-            "armv7-linux-androideabi"
-            "x86_64-linux-android"
-            "i686-linux-android"
-            "aarch64-apple-ios"
-            "x86_64-apple-ios"
-          ];
-        };
-
-        # Flutter setup
+        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         flutterPkg = flutter-nix.packages.${system}.flutter;
 
-        # Android SDK components (latest versions)
-        androidComposition = pkgs.androidenv.composeAndroidPackages {
-          platformVersions = [ "34" "35" ];  # Latest stable
-          buildToolsVersions = [ "34.0.0" "35.0.0" ];  # Latest
-          includeNDK = true;
-          ndkVersions = [ "27.0.12077973" ];  # Latest NDK
-          cmakeVersions = [ "3.30.5" ];  # Latest CMake
-          includeEmulator = false;
-          includeSystemImages = false;
-        };
+        androidSdk =
+          if pkgs.stdenv.isLinux then
+            (
+              pkgs.androidenv.composeAndroidPackages {
+                platformVersions = [ "34" ];
+                buildToolsVersions = [ "34.0.0" ];
+                includeNDK = true;
+                ndkVersions = [ "26.1.10909125" ];
+                cmakeVersions = [ "3.22.1" ];
+                includeEmulator = false;
+                includeSystemImages = false;
+              }
+            ).androidsdk
+          else
+            null;
 
-        androidSdk = androidComposition.androidsdk;
-
-        # Build inputs common to all platforms
-        commonBuildInputs = with pkgs; [
-          # Rust toolchain
-          rustVersion
-          
-          # Rust dependency management & security tools
-          cargo-audit          # Check for known security vulnerabilities
-          cargo-deny           # Lint your Cargo.toml for security/license issues
-          cargo-outdated       # Check for outdated dependencies
-          cargo-edit           # cargo add, cargo rm, cargo upgrade commands
-          cargo-upgrades       # Show available version upgrades
-          cargo-tarpaulin      # Code coverage
-          cargo-watch          # Watch for changes and run commands
-          cargo-nextest        # Next-generation test runner
-          
-          # Flutter toolchain
-          flutterPkg
-
-          # Go (for gomobile) - Latest stable
-          go_1_23
-
-          # Build tools
-          pkg-config
-          cmake
-          ninja
-          protobuf
-
-          # Development tools
-          git
-          curl
-          wget
-          gnupg
-          jq                   # JSON processor for scripts
-          yq                   # YAML processor
-          
-          # Documentation
-          mdbook
-          
-          # Code quality tools
-          shellcheck           # Shell script linter
-        ];
-
-        # Platform-specific inputs
-        darwinInputs = with pkgs; lib.optionals stdenv.isDarwin [
-          darwin.apple_sdk.frameworks.Security
-          darwin.apple_sdk.frameworks.CoreFoundation
-          darwin.apple_sdk.frameworks.CoreServices
-          darwin.apple_sdk.frameworks.SystemConfiguration
-          libiconv
-        ];
-
-        linuxInputs = with pkgs; lib.optionals stdenv.isLinux [
-          openssl
-          sqlite
-          zlib
-          libsodium
-          
-          # GTK for Linux desktop
-          gtk3
-          glib
-          pcre
-          util-linux
-          libselinux
-          libsepol
-          libthai
-          libdatrie
-          xorg.libXdmcp
-          libxkbcommon
-          dbus
-          at-spi2-core
-          libsecret
-          jsoncpp
-          
-          # Wayland support
-          wayland
-          wayland-protocols
-        ];
-
-        # Shell environment
-        shellEnv = {
-          ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
-          ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
-          JAVA_HOME = "${pkgs.jdk21}";  # Latest LTS (was 17)
-          
-          # Flutter configuration
-          FLUTTER_ROOT = "${flutterPkg}";
-          
-          # Rust configuration
-          RUST_BACKTRACE = "1";
-          RUSTFLAGS = "-D warnings";  # Treat warnings as errors in CI
-          CARGO_HOME = "${placeholder "out"}/.cargo";
-          
-          # Build optimization
-          CARGO_BUILD_JOBS = "8";
-          CARGO_INCREMENTAL = "1";  # Enable incremental compilation in dev
-          
-          # Security: disable telemetry
-          FLUTTER_SUPPRESS_ANALYTICS = "true";
-          DART_SUPPRESS_ANALYTICS = "true";
-          DO_NOT_TRACK = "1";  # Universal opt-out
-        };
-
-      in
-      {
-        # Development shell
-        devShells.default = pkgs.mkShell {
-          buildInputs = commonBuildInputs 
-            ++ darwinInputs 
-            ++ linuxInputs
-            ++ [ androidSdk pkgs.jdk21 ];  # Latest LTS
-
-          inherit shellEnv;
-
-          shellHook = ''
-            echo " Pirate Unified Wallet Development Environment"
-            echo ""
-            echo " Versions:"
-            echo "  Rust:    $(rustc --version)"
-            echo "  Cargo:   $(cargo --version)"
-            echo "  Flutter: $(flutter --version | head -n1)"
-            echo "  Dart:    $(dart --version 2>&1 | head -n1)"
-            echo "  Go:      $(go version)"
-            echo "  Java:    $(java -version 2>&1 | head -n1)"
-            echo ""
-            echo " Android SDK: $ANDROID_HOME"
-            echo ""
-            echo " Available commands:"
-            echo "  make bootstrap       - Install dependencies"
-            echo "  make build:all       - Build all targets"
-            echo "  make test:all        - Run all tests"
-            echo "  make ci              - Run CI checks locally"
-            echo "  make check-updates   - Check for outdated dependencies"
-            echo ""
-            echo " Security tools available:"
-            echo "  cargo audit          - Check for vulnerabilities"
-            echo "  cargo outdated       - Check for outdated crates"
-            echo "  flutter pub outdated - Check for outdated packages"
-            echo ""
-            
-            # Set up git hooks if not already done
-            if [ ! -f .git/hooks/pre-commit ]; then
-              echo "Setting up git hooks..."
-              mkdir -p .git/hooks
-              cat > .git/hooks/pre-commit << 'EOF'
-#!/usr/bin/env bash
-set -e
-echo "Running pre-commit checks..."
-make lint
-make test:rust
-EOF
-              chmod +x .git/hooks/pre-commit
-              echo "✅ Git hooks installed"
-            fi
-            
-            # Verify Android licenses
-            if [ ! -d "$ANDROID_HOME/licenses" ]; then
-              echo "⚠️  Android SDK licenses not accepted"
-              echo "Run: flutter doctor --android-licenses"
-            fi
-            
-            export PATH="$PWD/bin:$PATH"
-          '';
-        };
-
-        # CI/CD shell (minimal, reproducible)
-        devShells.ci = pkgs.mkShell {
-          buildInputs = commonBuildInputs ++ [ androidSdk pkgs.jdk21 ];
-          inherit shellEnv;
-        };
-
-        # Minimal shell for building only
-        devShells.build = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            rustVersion
-            flutterPkg
+        commonPackageInputs =
+          (with pkgs; [
+            bash
+            git
+            curl
+            wget
+            jq
+            zip
+            unzip
+            file
             pkg-config
             cmake
+            ninja
             protobuf
-          ] ++ darwinInputs ++ linuxInputs;
-          
-          inherit shellEnv;
+            rustToolchain
+            flutterPkg
+          ])
+          ++ lib.optionals pkgs.stdenv.isLinux [
+            pkgs.go_1_23
+            pkgs.openssl
+            pkgs.sqlite
+            pkgs.zlib
+            pkgs.libsodium
+          ]
+          ++ lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.cocoapods
+            pkgs.libiconv
+          ];
+
+        commonShellInputs =
+          commonPackageInputs
+          ++ lib.optionals pkgs.stdenv.isLinux [
+            pkgs.android-tools
+            pkgs.flatpak
+            pkgs.flatpak-builder
+            pkgs.dpkg
+          ]
+          ++ lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.cocoapods
+          ];
+
+        shellEnv =
+          {
+            FLUTTER_SUPPRESS_ANALYTICS = "true";
+            DART_SUPPRESS_ANALYTICS = "true";
+            RUST_BACKTRACE = "1";
+            CARGO_INCREMENTAL = "0";
+          }
+          // lib.optionalAttrs pkgs.stdenv.isLinux {
+            ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
+            ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
+            JAVA_HOME = "${pkgs.jdk21}";
+          };
+
+        mkNativeScriptPackage =
+          {
+            pname,
+            script,
+            args ? "",
+            extraNativeBuildInputs ? [ ],
+            installPhase,
+          }:
+          pkgs.stdenv.mkDerivation (
+            shellEnv
+            // {
+              inherit pname;
+              version = "1.0.6";
+              src = ./.;
+              nativeBuildInputs = commonPackageInputs ++ extraNativeBuildInputs;
+              dontConfigure = true;
+              buildPhase = ''
+                export HOME="$TMPDIR/home"
+                export PUB_CACHE="$TMPDIR/pub-cache"
+                mkdir -p "$HOME" "$PUB_CACHE"
+                export SOURCE_DATE_EPOCH="${toString self.lastModified}"
+                chmod +x ./scripts/*.sh
+                bash ${script} ${args}
+              '';
+              inherit installPhase;
+            }
+          );
+
+        linuxPackages = lib.optionalAttrs pkgs.stdenv.isLinux {
+          android-apk = mkNativeScriptPackage {
+            pname = "pirate-unified-wallet-android-apk";
+            script = ./scripts/build-android.sh;
+            args = "apk";
+            extraNativeBuildInputs = [ androidSdk pkgs.jdk21 ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -r dist/android/. "$out/"
+            '';
+          };
+
+          android-bundle = mkNativeScriptPackage {
+            pname = "pirate-unified-wallet-android-bundle";
+            script = ./scripts/build-android.sh;
+            args = "bundle";
+            extraNativeBuildInputs = [ androidSdk pkgs.jdk21 ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -r dist/android/. "$out/"
+            '';
+          };
+
+          linux-appimage = mkNativeScriptPackage {
+            pname = "pirate-unified-wallet-linux-appimage";
+            script = ./scripts/build-linux.sh;
+            args = "appimage";
+            installPhase = ''
+              mkdir -p "$out"
+              cp -r dist/linux/. "$out/"
+            '';
+          };
+
+          linux-flatpak = mkNativeScriptPackage {
+            pname = "pirate-unified-wallet-linux-flatpak";
+            script = ./scripts/build-linux.sh;
+            args = "flatpak";
+            extraNativeBuildInputs = [ pkgs.flatpak pkgs.flatpak-builder ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -r dist/linux/. "$out/"
+            '';
+          };
+
+          linux-deb = mkNativeScriptPackage {
+            pname = "pirate-unified-wallet-linux-deb";
+            script = ./scripts/build-linux.sh;
+            args = "deb";
+            extraNativeBuildInputs = [ pkgs.dpkg ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -r dist/linux/. "$out/"
+            '';
+          };
         };
 
-        # Formatter
+        darwinPackages = lib.optionalAttrs pkgs.stdenv.isDarwin {
+          macos-dmg = mkNativeScriptPackage {
+            pname = "pirate-unified-wallet-macos-dmg";
+            script = ./scripts/build-macos.sh;
+            installPhase = ''
+              mkdir -p "$out"
+              cp -r dist/macos/. "$out/"
+            '';
+          };
+
+          ios-ipa = mkNativeScriptPackage {
+            pname = "pirate-unified-wallet-ios-ipa";
+            script = ./scripts/build-ios.sh;
+            args = "false";
+            extraNativeBuildInputs = [ pkgs.cocoapods ];
+            installPhase = ''
+              mkdir -p "$out"
+              cp -r dist/ios/. "$out/"
+            '';
+          };
+        };
+
+        fallbackPackage = pkgs.runCommand "pirate-unified-wallet-no-native-package" { } ''
+          mkdir -p "$out"
+          cat > "$out/README.txt" <<'EOF'
+This flake does not define native release packages for the current system.
+Use one of the supported native systems:
+- Linux for Android and Linux packages
+- macOS for macOS and iOS packages
+EOF
+        '';
+      in
+      {
+        devShells.default = pkgs.mkShell (
+          shellEnv
+          // {
+            packages =
+              commonShellInputs
+              ++ lib.optionals pkgs.stdenv.isLinux [ androidSdk pkgs.jdk21 ];
+            shellHook = ''
+              echo "Pirate Unified Wallet development shell"
+              echo "Rust:    $(rustc --version)"
+              echo "Cargo:   $(cargo --version)"
+              echo "Flutter: $(flutter --version | head -n1)"
+              ${lib.optionalString pkgs.stdenv.isLinux ''
+                echo "Android SDK: $ANDROID_SDK_ROOT"
+                echo "Java:       $(java -version 2>&1 | head -n1)"
+              ''}
+            '';
+          }
+        );
+
+        devShells.ci = pkgs.mkShell (
+          shellEnv
+          // {
+            packages =
+              commonPackageInputs
+              ++ lib.optionals pkgs.stdenv.isLinux [ androidSdk pkgs.jdk21 ];
+          }
+        );
+
+        devShells.build = pkgs.mkShell (
+          shellEnv
+          // {
+            packages =
+              commonPackageInputs
+              ++ lib.optionals pkgs.stdenv.isLinux [ androidSdk pkgs.jdk21 ];
+          }
+        );
+
         formatter = pkgs.nixpkgs-fmt;
 
-        # Reproducible build helpers
-        reproducibleBuildEnv = {
-          # SOURCE_DATE_EPOCH for reproducible timestamps
-          SOURCE_DATE_EPOCH = toString self.lastModified;
-          
-          # Disable network during build
-          HOME = "/homeless-shelter";
-          
-          # Rust reproducibility
-          RUSTFLAGS = "-C strip=none -C debuginfo=0 -C opt-level=3";
-          CARGO_BUILD_INCREMENTAL = "false";
-          
-          # Flutter reproducibility
-          FLUTTER_SUPPRESS_ANALYTICS = "true";
-          DART_SUPPRESS_ANALYTICS = "true";
-        };
-
-        # Packages for each platform
-        packages = rec {
-          # Android APK (signed)
-          android-apk = pkgs.stdenv.mkDerivation {
-            pname = "pirate-unified-wallet-android";
-            version = "1.0.4";
-            
-            src = ./.;
-            
-            buildInputs = commonBuildInputs ++ [ androidSdk pkgs.jdk21 ];
-            
-            buildPhase = ''
-              export SOURCE_DATE_EPOCH=${toString self.lastModified}
-              cd app
-              flutter build apk --release
-            '';
-            
-            installPhase = ''
-              mkdir -p $out
-              cp build/app/outputs/flutter-apk/app-release.apk $out/
-            '';
-          };
-          
-          # Android AAB (signed, Play Store ready)
-          android-bundle = pkgs.stdenv.mkDerivation {
-            pname = "pirate-unified-wallet-android-bundle";
-            version = "1.0.4";
-            
-            src = ./.;
-            
-            buildInputs = commonBuildInputs ++ [ androidSdk pkgs.jdk21 ];
-            
-            buildPhase = ''
-              export SOURCE_DATE_EPOCH=${toString self.lastModified}
-              cd app
-              flutter build appbundle --release
-            '';
-            
-            installPhase = ''
-              mkdir -p $out
-              cp build/app/outputs/bundle/release/app-release.aab $out/
-            '';
-          };
-          
-          # Linux AppImage
-          linux-appimage = pkgs.stdenv.mkDerivation {
-            pname = "pirate-unified-wallet-linux";
-            version = "1.0.4";
-            
-            src = ./.;
-            
-            buildInputs = commonBuildInputs ++ linuxInputs ++ [ pkgs.appimage-run ];
-            
-            buildPhase = ''
-              export SOURCE_DATE_EPOCH=${toString self.lastModified}
-              cd app
-              flutter build linux --release
-            '';
-            
-            installPhase = ''
-              mkdir -p $out
-              cp -r build/linux/x64/release/bundle $out/
-            '';
-          };
-          
-          # macOS DMG (universal binary)
-          macos-dmg = pkgs.stdenv.mkDerivation {
-            pname = "pirate-unified-wallet-macos";
-            version = "1.0.4";
-            
-            src = ./.;
-            
-            buildInputs = commonBuildInputs ++ darwinInputs;
-            
-            buildPhase = ''
-              export SOURCE_DATE_EPOCH=${toString self.lastModified}
-              cd app
-              flutter build macos --release
-            '';
-            
-            installPhase = ''
-              mkdir -p $out
-              cp -r build/macos/Build/Products/Release/Pirate\ Unified\ Wallet.app $out/
-            '';
-          };
-          
-          # Windows desktop build output
-          windows-desktop = pkgs.stdenv.mkDerivation {
-            pname = "pirate-unified-wallet-windows";
-            version = "1.0.4";
-            
-            src = ./.;
-            
-            buildInputs = commonBuildInputs;
-            
-            buildPhase = ''
-              export SOURCE_DATE_EPOCH=${toString self.lastModified}
-              cd app
-              flutter build windows --release
-            '';
-            
-            installPhase = ''
-              mkdir -p $out
-              cp -r build/windows/runner/Release $out/
-            '';
-          };
-
-          # Aliases for verification docs / CI naming.
-          windows-installer = windows-desktop;
-          windows-portable = windows-desktop;
-          windows-msix = windows-desktop; # Legacy alias.
-          
-          # Default to Linux
-          default = linux-appimage;
+        packages = linuxPackages // darwinPackages // {
+          default =
+            if pkgs.stdenv.isLinux then
+              linuxPackages.linux-appimage
+            else if pkgs.stdenv.isDarwin then
+              darwinPackages.macos-dmg
+            else
+              fallbackPackage;
         };
       }
     );
 }
-

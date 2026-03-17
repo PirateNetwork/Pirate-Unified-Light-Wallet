@@ -1,5 +1,23 @@
 {
   "nodes": {
+    "flake-parts": {
+      "inputs": {
+        "nixpkgs-lib": "nixpkgs-lib"
+      },
+      "locked": {
+        "lastModified": 1743550720,
+        "narHash": "sha256-hIshGgKZCgWh6AYJpJmRgFdR3WUbkY04o82X05xqQiY=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "c621e8422220273271f52058f618c94e405bb0f5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -20,16 +38,17 @@
     },
     "flutter-nix": {
       "inputs": {
+        "flake-parts": "flake-parts",
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1704842712,
-        "narHash": "sha256-NGf6cwYD7dP2r9W3vlKLcKGkLHxcKLzKjMHLvLdkqkY=",
+        "lastModified": 1749377900,
+        "narHash": "sha256-KTMOQwhhP1GQt+a6kpwCgKeEx7XKjnWN8OgNk86Dug0=",
         "owner": "maximoffua",
         "repo": "flutter.nix",
-        "rev": "4f3f6752c95e47e6f3c3d33f5e3b75e1c5dfc38a",
+        "rev": "8bbd971c8b23e9dbeba408105fdca704e73ce03d",
         "type": "github"
       },
       "original": {
@@ -54,6 +73,21 @@
         "type": "github"
       }
     },
+    "nixpkgs-lib": {
+      "locked": {
+        "lastModified": 1743296961,
+        "narHash": "sha256-b1EdN3cULCqtorQ4QeWgLMrd5ZGOjLSLemfa00heasc=",
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "rev": "e4822aea2a6d1cdd36653c134cacfd64c97ff4fa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "nixpkgs.lib",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
@@ -69,11 +103,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1704198149,
-        "narHash": "sha256-LKjR+xHl4QVLhj4LqH/vZMQXLhkBvfCKsdd5L5a9Nz8=",
+        "lastModified": 1773716879,
+        "narHash": "sha256-vXCTasEzzTTd0ZGEuyle20H2hjRom66JeNr7i2ktHD0=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "5c2c92e6a4a8b281a0f2a77f6a5c6d3cae8f0a4c",
+        "rev": "1a9ddeb45c5751b800331363703641b84d1f41f0",
         "type": "github"
       },
       "original": {
@@ -101,4 +135,3 @@
   "root": "root",
   "version": 7
 }
-
