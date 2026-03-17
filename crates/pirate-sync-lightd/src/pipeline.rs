@@ -365,7 +365,9 @@ impl Default for PipelineConfig {
             batch_size: PIPELINE_BATCH_SIZE,
             mini_checkpoint_interval: MINI_CHECKPOINT_INTERVAL,
             max_decrypt_concurrency: MAX_DECRYPT_CONCURRENCY,
-            app_version: env!("CARGO_PKG_VERSION").to_string(),
+            app_version: option_env!("APP_VERSION")
+                .unwrap_or(env!("CARGO_PKG_VERSION"))
+                .to_string(),
         }
     }
 }

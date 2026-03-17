@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+build = "build.rs"
 
 [features]
 default = []
@@ -59,6 +60,8 @@ directories = "5.0"
 
 # Note: No build-dependencies needed - we use manual proto types in src/proto_types.rs
 # If you need to regenerate from proto/service.proto, install protoc and use tonic-build manually
+
+[build-dependencies]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

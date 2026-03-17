@@ -12,6 +12,32 @@ Before building release artifacts:
 - ensure platform signing inputs are available where required
 - ensure release notes and published checksums will be prepared with the artifacts
 
+Versioning from tags
+--------------------
+
+Release builds use `scripts/sync-version-from-tag.sh` before platform packaging.
+
+For a tag such as:
+
+```text
+v1.1.1
+```
+
+the script updates `app/pubspec.yaml` for the build so that Flutter platform metadata uses:
+
+- build name: `1.1.1`
+- build number: `1` by default, unless `VERSION_BUILD_NUMBER` is set
+
+That version then flows into:
+
+- Android `versionName` and `versionCode`
+- iOS `CFBundleShortVersionString` and `CFBundleVersion`
+- macOS `CFBundleShortVersionString` and `CFBundleVersion`
+- Windows `FileVersion` and `ProductVersion`
+- the in-app settings version display via `package_info_plus`
+
+Rust build info used by the Verify Build screen is also resolved from `app/pubspec.yaml`, so it matches the app release version instead of the crate workspace version.
+
 Required checks
 ---------------
 

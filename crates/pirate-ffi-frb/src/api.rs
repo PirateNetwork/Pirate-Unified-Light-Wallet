@@ -11243,7 +11243,9 @@ pub fn get_ivk_clipboard_remaining() -> Result<Option<u64>> {
 /// Get build information for verification
 pub fn get_build_info() -> Result<BuildInfo> {
     Ok(BuildInfo {
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: option_env!("APP_VERSION")
+            .unwrap_or(env!("CARGO_PKG_VERSION"))
+            .to_string(),
         git_commit: option_env!("GIT_COMMIT").unwrap_or("unknown").to_string(),
         build_date: option_env!("BUILD_DATE").unwrap_or("unknown").to_string(),
         rust_version: option_env!("RUSTC_VERSION")
