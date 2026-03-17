@@ -1,102 +1,179 @@
 # Verify Builds
 
-This guide explains how to verify official release artifacts and reproduce
-builds from source.
+This document describes how to verify published Pirate Unified Wallet artifacts and how to reproduce repository outputs locally.
 
-## Verify an official release
+Release artifacts
+-----------------
 
-1) Download the release asset and checksums.
+The project build scripts currently generate these artifact names:
+
+- Windows
+  - `pirate-unified-wallet-windows-installer.exe`
+  - `pirate-unified-wallet-windows-installer-unsigned.exe`
+  - `pirate-unified-wallet-windows-portable.zip`
+  - `pirate-unified-wallet-windows-portable-unsigned.zip`
+- Linux
+  - `pirate-unified-wallet-linux-x86_64.AppImage`
+  - `pirate-unified-wallet.flatpak`
+  - `pirate-unified-wallet-amd64.deb`
+- macOS
+  - `pirate-unified-wallet-macos.dmg`
+  - `pirate-unified-wallet-macos-unsigned.dmg`
+- Android
+  - `pirate-unified-wallet-android-V8.apk`
+  - `pirate-unified-wallet-android-V8-unsigned.apk`
+  - `pirate-unified-wallet-android-V7.apk`
+  - `pirate-unified-wallet-android-V7-unsigned.apk`
+  - `pirate-unified-wallet-android-x86.apk`
+  - `pirate-unified-wallet-android-x86-unsigned.apk`
+  - `pirate-unified-wallet-android.aab`
+  - `pirate-unified-wallet-android-unsigned.aab`
+- iOS
+  - `pirate-unified-wallet-ios.ipa`
+  - `pirate-unified-wallet-ios-unsigned.ipa`
+
+Each release artifact should have a matching `.sha256` file or be covered by a published checksum bundle.
+
+Verify an official release
+--------------------------
+
+1. Download the release assets.
 
 ```bash
 gh release download <tag> -R PirateNetwork/Pirate-Unified-Light-Wallet
-# If checksums are bundled in release metadata:
-unzip -o pirate-unified-wallet-release-metadata.zip "*.sha256"
 ```
 
-2) Verify the checksum.
+2. Locate the checksum source.
+
+The repository currently supports either:
+
+- per-artifact checksum files such as `pirate-unified-wallet-windows-installer.exe.sha256`
+- checksum bundles whose filenames include `checksum` or `checksums`
+
+3. Compare the local file hash to the published hash.
+
+Linux:
 
 ```bash
-# Linux/macOS
-EXPECTED="$(awk '{print $1}' <artifact>.sha256)"
-ACTUAL="$(sha256sum <artifact> | awk '{print $1}')"
-test "$EXPECTED" = "$ACTUAL" && echo MATCH || echo MISMATCH
-
-# Windows (PowerShell)
-$local = (Get-FileHash <artifact> -Algorithm SHA256).Hash.ToLower()
-$expected = (Get-Content <artifact>.sha256 | Select-Object -First 1).Split()[0].ToLower()
-if ($local -eq $expected) { "MATCH" } else { "MISMATCH" }
+expected="$(awk '{print $1}' pirate-unified-wallet-windows-installer.exe.sha256)"
+actual="$(sha256sum pirate-unified-wallet-windows-installer.exe | awk '{print $1}')"
+test "$expected" = "$actual" && echo MATCH || echo MISMATCH
 ```
 
-## Unsigned vs signed artifacts
-
-Reproducible builds correspond to the `-unsigned` artifacts. Signed releases
-(code-signed, notarized, or store-signed) will not be byte-for-byte identical.
-We publish checksums for both. To reproduce locally, compare against the
-`-unsigned` checksums.
-
-## Reproduce with Nix
-
-We provide a Nix flake for pinned, reproducible builds.
+macOS:
 
 ```bash
-git clone https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet.git
-cd Pirate-Unified-Light-Wallet
-git checkout <tag-or-commit>
+expected="$(awk '{print $1}' pirate-unified-wallet-macos-unsigned.dmg.sha256)"
+actual="$(shasum -a 256 pirate-unified-wallet-macos-unsigned.dmg | awk '{print $1}')"
+test "$expected" = "$actual" && echo MATCH || echo MISMATCH
 ```
 
-Build the target you want:
+Windows PowerShell:
+
+```powershell
+$expected = (Get-Content .\pirate-unified-wallet-windows-installer.exe.sha256 | Select-Object -First 1).Split()[0].ToLower()
+$actual = (Get-FileHash .\pirate-unified-wallet-windows-installer.exe -Algorithm SHA256).Hash.ToLower()
+if ($expected -eq $actual) { 'MATCH' } else { 'MISMATCH' }
+```
+
+Signed and unsigned outputs
+---------------------------
+
+Unsigned artifacts are the best fit for deterministic comparison because signing, notarization, and store packaging change the final bytes.
+
+Use the unsigned variants when you want a close comparison with a locally reproduced build:
+
+- `*-unsigned.exe`
+- `*-unsigned.zip`
+- `*-unsigned.dmg`
+- `*-unsigned.apk`
+- `*-unsigned.aab`
+- `*-unsigned.ipa`
+
+Reproduce repository outputs
+----------------------------
+
+Local platform scripts are the authoritative way to generate the packaged outputs listed above.
+
+Examples:
 
 ```bash
+bash scripts/build-windows.sh
+bash scripts/build-linux.sh appimage
+bash scripts/build-linux.sh flatpak
+bash scripts/build-linux.sh deb
+bash scripts/build-macos.sh
+bash scripts/build-android.sh apk
+bash scripts/build-android.sh bundle
+bash scripts/build-ios.sh false
+```
+
+Nix flake builds
+----------------
+
+The checked-in flake exposes native build targets that follow the committed release scripts:
+
+Linux hosts:
+
+```bash
+nix build .#linux-appimage
+nix build .#linux-flatpak
+nix build .#linux-deb
 nix build .#android-apk
 nix build .#android-bundle
-nix build .#ios-ipa
-nix build .#linux-appimage
-nix build .#linux-deb
-nix build .#macos-dmg
-nix build .#windows-installer
-# or
-nix build .#windows-portable
 ```
 
-The build output is available under the `result/` symlink.
-Look for `*-unsigned.*` artifacts when comparing reproducible builds.
-
-## Compare build outputs
-
-Hash the artifact you built and compare it to the published checksum.
+macOS hosts:
 
 ```bash
-# Linux
-sha256sum result/<artifact>
-
-# macOS
-shasum -a 256 result/<artifact>
-
-# Windows (PowerShell)
-Get-FileHash result/<artifact> -Algorithm SHA256
+nix build .#macos-dmg
+nix build .#ios-ipa
 ```
 
-## Generate SBOMs (optional)
+Notes:
+
+- The flake is host-native. It does not expose Windows packaging targets.
+- The flake packages collect the outputs produced by the committed platform scripts.
+- Use the platform scripts directly if you need a platform that is not exposed by the flake on your current host.
+
+Compare local outputs
+---------------------
+
+After building locally, hash the artifact and compare it to the published checksum.
+
+```bash
+sha256sum dist/windows/pirate-unified-wallet-windows-portable-unsigned.zip
+sha256sum dist/linux/pirate-unified-wallet-linux-x86_64.AppImage
+shasum -a 256 dist/macos/pirate-unified-wallet-macos-unsigned.dmg
+sha256sum dist/android/pirate-unified-wallet-android-V8-unsigned.apk
+shasum -a 256 dist/ios/pirate-unified-wallet-ios-unsigned.ipa
+```
+
+SBOM and provenance
+-------------------
+
+To generate release metadata locally:
 
 ```bash
 scripts/generate-sbom.sh dist/sbom
-```
-
-Outputs include:
-- `dist/sbom/rust-sbom.json`
-- `dist/sbom/flutter-sbom.spdx.json`
-- `dist/sbom/flutter-sbom.cdx.json`
-- `dist/sbom/SBOM-SUMMARY.md`
-
-## Generate provenance (optional)
-
-```bash
 scripts/generate-provenance.sh <artifact> dist/provenance
 ```
 
-This produces a provenance JSON file, checksum, and optional Sigstore bundles
-if `cosign` is installed.
+The provenance script writes:
 
-## Notes
+- `{artifact}.provenance.json`
+- `{artifact}.provenance.json.sha256`
+- optional Sigstore bundles if `cosign` is installed
+- `{artifact}.VERIFY.md`
 
-- The in-app verification page will compare your local hash to the published checksums automatically.
+Verify Build screen
+-------------------
+
+The application includes a Verify Build screen that:
+
+- fetches GitHub release metadata
+- locates published checksums
+- hashes local artifacts
+- reports whether the local artifact matches a published checksum
+
+That screen depends on outbound GitHub access being enabled in application settings.

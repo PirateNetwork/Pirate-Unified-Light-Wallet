@@ -1,119 +1,207 @@
 Pirate Unified Wallet
 =====================
 
-Warning: This software is under active development and should not be used outside of testing
+Pirate Unified Wallet is a cross-platform Pirate Chain wallet with a Flutter user interface and a Rust core. The repository includes the application, the Rust wallet and sync crates, build scripts, and the project-owned documentation used for release and verification work.
 
-Cross-platform Pirate Chain wallet with Rust core and Flutter UI. Full README and
-extended docs are coming soon.
+This repository is under active development. Before distributing builds, review the release notes, the security notes, and the verification instructions in `docs/`.
 
-Quick Build (Windows + Android)
--------------------------------
+Repository layout
+-----------------
 
-Prereqs:
-- Rust toolchain (stable)
-- Flutter SDK (stable)
-- Android SDK/NDK (for Android builds)
-- Visual Studio 2022 (Windows desktop build)
-- OpenSSL (Windows desktop build)
+- `app/`  
+  Flutter application code, desktop packaging hooks, generated localization files, and the desktop updater.
+- `crates/`  
+  Rust wallet, storage, sync, FFI, and supporting crates.
+- `docs/`  
+  Project-owned documentation for security, build verification, and localization.
+- `scripts/`  
+  Platform build, packaging, SBOM, provenance, and asset-fetch scripts.
+- `generate_ffi_bindings.sh`  
+  Generates Flutter Rust Bridge bindings for the app and Rust FFI layer.
 
-1) Install dependencies
+Supported build outputs
+-----------------------
 
-- Windows: install Rust + Flutter + VS Build Tools + OpenSSL.
-- Android: install Android Studio + SDK/NDK, then run `flutter doctor`.
+Current build scripts produce the following release artifacts:
 
-2) Fetch Tor/I2P assets (desktop builds only)
+- Windows: installer `.exe` and portable `.zip`
+- Linux: `.AppImage`, `.flatpak`, and `.deb`
+- macOS: `.dmg`
+- Android: split APKs and `.aab`
+- iOS: `.ipa`
 
-The build scripts pull official Tor Browser bundles + i2pd, verify pinned hashes,
-extract Snowflake/obfs4, and bundle them into desktop builds.
+Platform packaging is handled by the scripts in `scripts/`. A plain `flutter build` is useful for development, but it does not replace the release packaging scripts.
 
-- macOS/Linux:
+Toolchain
+---------
+
+The project is built and tested in CI with these pinned versions:
+
+- Rust `1.90.0`
+- Flutter `3.41.1`
+- `flutter_rust_bridge_codegen` `2.11.1`
+- CocoaPods `1.16.2` for macOS and iOS builds
+
+The Rust pin is defined in `rust-toolchain.toml`. CI pins are defined in `.github/workflows/ci.yml`.
+
+To check local tools against the current pins:
+
+```bash
+FLUTTER_VERSION=3.41.1 \
+COCOAPODS_VERSION=1.16.2 \
+scripts/verify-toolchain.sh
 ```
-bash scripts/fetch-tor-i2p-assets.sh
+
+Nix flake
+---------
+
+The repository includes a checked-in flake that mirrors the committed native build scripts.
+
+Development shells:
+
+```bash
+nix develop
+nix develop .#ci
+nix develop .#build
 ```
 
-- Windows (requires 7-Zip or set `SEVEN_ZIP_PATH`):
+Native flake package outputs:
+
+- Linux hosts:
+  - `.#linux-appimage`
+  - `.#linux-flatpak`
+  - `.#linux-deb`
+  - `.#android-apk`
+  - `.#android-bundle`
+- macOS hosts:
+  - `.#macos-dmg`
+  - `.#ios-ipa`
+
+Windows packaging is not exposed through the flake. Use `scripts/build-windows.sh` for Windows release artifacts.
+
+Build prerequisites
+-------------------
+
+Common requirements:
+
+- Rust toolchain with `rustfmt` and `clippy`
+- Flutter stable SDK
+- `flutter_rust_bridge_codegen`
+- `protoc`
+
+Platform-specific requirements:
+
+- Windows:
+  - Visual Studio 2022 C++ build tools
+  - OpenSSL
+  - PowerShell
+  - Inno Setup if you want the installer artifact
+- Linux:
+  - Flutter Linux desktop dependencies
+  - `flatpak-builder` for Flatpak output
+  - `dpkg-deb` and `dpkg-scanpackages` for Debian and APT output
+  - `appimagetool` or pinned `APPIMAGETOOL_URL` and `APPIMAGETOOL_SHA256`
+- macOS:
+  - Xcode and CocoaPods
+  - Apple signing and notarization credentials for signed distribution
+- Android:
+  - Android SDK and NDK
+  - Java runtime compatible with your Android toolchain
+- iOS:
+  - macOS
+  - Xcode
+  - CocoaPods
+  - Apple signing configuration for signed IPA export
+
+Getting started
+---------------
+
+1. Fetch Flutter dependencies:
+
+```bash
+cd app
+flutter pub get --enforce-lockfile
+cd ..
 ```
-powershell -ExecutionPolicy Bypass -File scripts\fetch-tor-i2p-assets.ps1
-```
 
-Optional overrides (advanced):
-- Tor Browser:
-  - `TOR_BROWSER_VERSION` (default 15.0.5)
-  - `TOR_BROWSER_BASE_URL` (defaults to `https://dist.torproject.org/torbrowser/$TOR_BROWSER_VERSION`)
-  - `TOR_BROWSER_LINUX_URL` / `TOR_BROWSER_MACOS_URL` / `TOR_BROWSER_WINDOWS_URL`
-  - `TOR_BROWSER_LINUX_SHA256` / `TOR_BROWSER_MACOS_SHA256` / `TOR_BROWSER_WINDOWS_SHA256`
-- i2pd:
-  - `I2PD_VERSION` (default 2.58.0)
-  - `I2PD_BASE_URL`
-  - `I2PD_LINUX_AMD64_SHA512` / `I2PD_LINUX_ARM64_SHA512`
-  - `I2PD_MACOS_SHA512` / `I2PD_WINDOWS_SHA512`
-- Set `SKIP_TOR_I2P_FETCH=1` to skip fetching assets.
+2. Generate Flutter Rust Bridge bindings:
 
-3) Generate bindings
-
-From repo root:
-
-```
+```bash
 bash generate_ffi_bindings.sh
 ```
 
-4) Build Rust libs (multi-target)
+3. Build the target you need.
 
-- Windows (DLL):
-```
-powershell -ExecutionPolicy Bypass -File .\build-rust-libs.ps1 -Windows
-```
+Release build commands
+----------------------
 
-- Android (MSYS2 shell) or WSL:
-```
-bash scripts/build-android-msys2.sh
-```
-or
-```
-bash build-android-wsl.sh
+Windows:
+
+```bash
+bash scripts/build-windows.sh
 ```
 
-5) Build Flutter apps (multi-target)
+Linux:
 
-- Windows:
-```
-cd app
-flutter build windows --release
-```
-
-- Android (APK split per ABI):
-```
-cd app
-flutter build apk --release --split-per-abi
+```bash
+bash scripts/build-linux.sh appimage
+bash scripts/build-linux.sh flatpak
+bash scripts/build-linux.sh deb
 ```
 
-Outputs
--------
-- Windows: `app/build/windows/x64/runner/Release/`
-- Android: `app/build/app/outputs/flutter-apk/`
+macOS:
 
-Reproducible Packaging Notes
-----------------------------
-- Windows packaging: produces a portable ZIP and installer EXE.
-- Linux AppImage packaging: install `appimagetool` or set `APPIMAGETOOL_URL` and
-  `APPIMAGETOOL_SHA256` to download a pinned binary.
-- Android: release builds are unsigned by default for reproducibility. Use
-  `scripts/build-android.sh <apk|bundle> true` to sign after building.
-- Set `REPRODUCIBLE=1` to force unsigned outputs (skip signing/notarization).
-
-Reproducible Toolchain Pins
----------------------------
-- Rust: `1.90.0` (see `rust-toolchain.toml`)
-- Flutter: `3.41.1` (stable)
-- Java: `21`
-- Gradle: `8.11.1` (see `app/android/gradle/wrapper/gradle-wrapper.properties`)
-- Android build-tools: `34.0.0` (apksigner)
-- Android platform: `36`
-- CocoaPods: `1.16.2`
-- flutter_rust_bridge_codegen: `2.11.1`
-- Syft: `1.40.1`
-
-Verify versions:
+```bash
+bash scripts/build-macos.sh
 ```
-scripts/verify-toolchain.sh
+
+Android:
+
+```bash
+bash scripts/build-android.sh apk
+bash scripts/build-android.sh bundle
 ```
+
+iOS:
+
+```bash
+bash scripts/build-ios.sh false
+```
+
+The desktop build scripts fetch and verify the pinned Tor Browser and i2pd assets before packaging. If you intentionally want to skip that step for a local build, set `SKIP_TOR_I2P_FETCH=1`.
+
+Development notes
+-----------------
+
+- The generated Flutter FFI files live under `app/lib/core/ffi/generated/`.
+- The generated localization files live under `app/lib/l10n/`.
+- Rust quality checks:
+
+```bash
+cd crates
+cargo fmt --all
+cargo clippy --all-targets --all-features --locked -- -D warnings
+cargo test --all-features --locked
+```
+
+Documentation index
+-------------------
+
+- Build verification: `docs/verify-build.md`
+- Security notes: `docs/security.md`
+- Release process: `docs/release-process.md`
+- Translation workflow: `docs/localization/TRANSLATION_WORKFLOW.md`
+- Contribution guide: `CONTRIBUTING.md`
+- Flutter app notes: `app/README.md`
+- UI structure: `app/DESIGN_SYSTEM.md`
+
+Release and verification outputs
+--------------------------------
+
+Project scripts also generate or consume:
+
+- SHA-256 checksum files for release artifacts
+- SBOMs via `scripts/generate-sbom.sh`
+- provenance files via `scripts/generate-provenance.sh`
+
+For verification and release handling details, use the documents under `docs/` rather than this README.
