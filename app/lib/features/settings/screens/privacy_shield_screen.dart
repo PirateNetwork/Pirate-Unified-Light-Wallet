@@ -413,6 +413,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             label: 'Port'.tr,
             value: config['port'] ?? '1080',
             keyboardType: TextInputType.number,
+            maxLength: 5,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             onChanged: (value) {
               ref.read(transportConfigProvider.notifier).setSocks5Config({
                 ...config,

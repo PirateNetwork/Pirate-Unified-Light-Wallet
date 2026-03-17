@@ -3845,6 +3845,7 @@ dependencies = [
  "once_cell",
  "orchard",
  "parking_lot",
+ "percent-encoding",
  "pirate-core",
  "pirate-net",
  "pirate-params",

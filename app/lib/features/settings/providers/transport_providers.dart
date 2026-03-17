@@ -43,6 +43,36 @@ final torStatusProvider = NotifierProvider<TorStatusNotifier, TorStatusDetails>(
   TorStatusNotifier.new,
 );
 
+const String _defaultSocks5Host = 'localhost';
+const String _defaultSocks5Port = '1080';
+
+Map<String, String?> _normalizeSocks5Config(
+  Map<String, String?> config, {
+  required bool fillDefaults,
+}) {
+  final host = (config['host'] ?? '').trim();
+  final portRaw = (config['port'] ?? '').trim();
+  final username = config['username']?.trim();
+  final password = config['password'];
+  final parsedPort = int.tryParse(portRaw);
+  final validPort = parsedPort != null && parsedPort > 0 && parsedPort <= 65535;
+
+  return {
+    'host': host.isEmpty && fillDefaults ? _defaultSocks5Host : host,
+    'port': validPort
+        ? parsedPort.toString()
+        : (fillDefaults ? _defaultSocks5Port : portRaw),
+    'username': (username == null || username.isEmpty) ? null : username,
+    'password': (password == null || password.isEmpty) ? null : password,
+  };
+}
+
+bool _isUsableSocks5Config(Map<String, String?> config) {
+  final host = (config['host'] ?? '').trim();
+  final port = int.tryParse((config['port'] ?? '').trim());
+  return host.isNotEmpty && port != null && port > 0 && port <= 65535;
+}
+
 /// Transport configuration persistence
 class TorBridgeConfig {
   final bool useBridges;
@@ -203,7 +233,18 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> setMode(String mode) async {
-    state = state.copyWith(mode: mode.toLowerCase());
+    final normalizedMode = mode.toLowerCase();
+    if (normalizedMode == 'socks5') {
+      state = state.copyWith(
+        mode: normalizedMode,
+        socks5Config: _normalizeSocks5Config(
+          state.socks5Config,
+          fillDefaults: true,
+        ),
+      );
+    } else {
+      state = state.copyWith(mode: normalizedMode);
+    }
     await _applyTunnel(state);
     await _reconcileTunnelMode();
     await _persist();
@@ -215,9 +256,11 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   Future<void> setSocks5Config(Map<String, String?> config) async {
-    state = state.copyWith(socks5Config: config);
+    state = state.copyWith(
+      socks5Config: _normalizeSocks5Config(config, fillDefaults: false),
+    );
     await _persist();
-    if (state.mode == 'socks5') {
+    if (state.mode == 'socks5' && _isUsableSocks5Config(state.socks5Config)) {
       await _applyTunnel(state);
     }
   }
@@ -267,6 +310,14 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
     }
     if (!loadedFromStorage) {
       nextState = _defaultConfig;
+    }
+    if (nextState.mode == 'socks5') {
+      nextState = nextState.copyWith(
+        socks5Config: _normalizeSocks5Config(
+          nextState.socks5Config,
+          fillDefaults: true,
+        ),
+      );
     }
 
     state = nextState;
@@ -451,13 +502,11 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
   }
 
   String _buildSocks5Url(Map<String, String?> config) {
-    final host = (config['host'] ?? '').trim();
-    final port = (config['port'] ?? '1080').trim();
-    final username = config['username'];
-    final password = config['password'];
-    if (host.isEmpty) {
-      return 'socks5://localhost:1080';
-    }
+    final normalized = _normalizeSocks5Config(config, fillDefaults: true);
+    final host = normalized['host']!;
+    final port = normalized['port']!;
+    final username = normalized['username'];
+    final password = normalized['password'];
 
     final hasUser = username != null && username.isNotEmpty;
     final hasPass = password != null && password.isNotEmpty;

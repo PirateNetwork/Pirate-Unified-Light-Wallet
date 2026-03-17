@@ -4,10 +4,19 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import androidx.work.*
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import android.util.Base64
 import java.util.concurrent.TimeUnit
+import java.nio.charset.StandardCharsets
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import io.flutter.embedding.engine.FlutterEngine
@@ -54,6 +63,7 @@ class SyncWorker(
         private const val KEY_TUNNEL_MODE = "tunnel_mode"
         private const val KEY_SOCKS5_URL = "socks5_url"
         private const val KEY_ACTIVE_WALLET_ID = "active_wallet_id"
+        private const val SOCKS5_URL_KEY_ALIAS = "pirate_sync_socks5_url_v1"
         
         // Sync intervals
         const val COMPACT_INTERVAL_MINUTES = 15L
@@ -204,7 +214,9 @@ class SyncWorker(
             prefs.edit().apply {
                 putString(KEY_TUNNEL_MODE, mode)
                 if (mode == TUNNEL_SOCKS5 && socks5Url != null) {
-                    putString(KEY_SOCKS5_URL, socks5Url)
+                    putString(KEY_SOCKS5_URL, encryptString(SOCKS5_URL_KEY_ALIAS, socks5Url))
+                } else {
+                    remove(KEY_SOCKS5_URL)
                 }
                 apply()
             }
@@ -230,6 +242,52 @@ class SyncWorker(
                 lastDeepSync = prefs.getLong(KEY_LAST_DEEP_SYNC, 0),
                 tunnelMode = prefs.getString(KEY_TUNNEL_MODE, TUNNEL_TOR) ?: TUNNEL_TOR
             )
+        }
+
+        private fun getOrCreateSecretKey(alias: String): SecretKey {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            val existingKey = keyStore.getKey(alias, null) as? SecretKey
+            if (existingKey != null) {
+                return existingKey
+            }
+
+            val keyGenerator = KeyGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_AES,
+                "AndroidKeyStore"
+            )
+            val builder = KeyGenParameterSpec.Builder(
+                alias,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+            keyGenerator.init(builder.build())
+            return keyGenerator.generateKey()
+        }
+
+        private fun encryptString(alias: String, plaintext: String): String {
+            val secretKey = getOrCreateSecretKey(alias)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+            val iv = cipher.iv
+            val ciphertext = cipher.doFinal(plaintext.toByteArray(StandardCharsets.UTF_8))
+            val out = ByteArray(iv.size + ciphertext.size)
+            System.arraycopy(iv, 0, out, 0, iv.size)
+            System.arraycopy(ciphertext, 0, out, iv.size, ciphertext.size)
+            return Base64.encodeToString(out, Base64.NO_WRAP)
+        }
+
+        private fun decryptString(alias: String, sealedBase64: String): String {
+            val sealed = Base64.decode(sealedBase64, Base64.NO_WRAP)
+            require(sealed.size >= 13) { "sealed data too short" }
+            val secretKey = getOrCreateSecretKey(alias)
+            val iv = sealed.copyOfRange(0, 12)
+            val ciphertext = sealed.copyOfRange(12, sealed.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
+            return String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
         }
     }
 
@@ -353,7 +411,22 @@ class SyncWorker(
      */
     private fun getTunnelConfig(): TunnelConfig {
         val mode = prefs.getString(KEY_TUNNEL_MODE, TUNNEL_TOR) ?: TUNNEL_TOR
-        val socks5Url = prefs.getString(KEY_SOCKS5_URL, null)
+        val storedSocks5 = prefs.getString(KEY_SOCKS5_URL, null)
+        val socks5Url = storedSocks5?.let { raw ->
+            try {
+                decryptString(SOCKS5_URL_KEY_ALIAS, raw)
+            } catch (_: Exception) {
+                // Migration path for older builds that stored the raw URL.
+                if (raw.startsWith("socks5://") || raw.startsWith("socks5h://")) {
+                    prefs.edit()
+                        .putString(KEY_SOCKS5_URL, encryptString(SOCKS5_URL_KEY_ALIAS, raw))
+                        .apply()
+                    raw
+                } else {
+                    null
+                }
+            }
+        }
         
         return TunnelConfig(
             mode = mode,

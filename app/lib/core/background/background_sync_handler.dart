@@ -9,7 +9,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../ffi/ffi_bridge.dart';
-import '../ffi/generated/models.dart';
+import '../ffi/generated/models.dart' hide NodeTestResult;
 
 /// Method channel name (must match native code)
 const String kBackgroundSyncChannel = 'com.pirate.wallet/background_sync';
@@ -128,13 +128,13 @@ class BackgroundSyncHandler {
           );
         }
       } else if (currentTunnel is TunnelMode_Socks5) {
-        // Test SOCKS5 connection
-        final socks5Working = await _testSocks5Connection(socks5Url);
-        if (!socks5Working) {
+        final socks5Check = await _testSocks5Connection(resolvedWalletId);
+        if (!socks5Check.success) {
           throw PlatformException(
             code: BackgroundSyncErrorCodes.socks5ConnectionFailed,
             message:
-                'Unable to connect to SOCKS5 proxy at ${socks5Url ?? "unknown"}',
+                socks5Check.errorMessage ??
+                'Unable to reach the configured node through the SOCKS5 proxy.',
           );
         }
       }
@@ -195,26 +195,28 @@ class BackgroundSyncHandler {
     }
   }
 
-  /// Test SOCKS5 proxy connection
-  Future<bool> _testSocks5Connection(String? proxyUrl) async {
-    if (proxyUrl == null || proxyUrl.isEmpty) {
-      return false;
-    }
-
+  /// Test SOCKS5 proxy routing by querying the configured lightwalletd endpoint
+  /// through the active tunnel. This verifies the actual end-to-end path rather
+  /// than only checking whether the proxy port accepts TCP connections.
+  Future<NodeTestResult> _testSocks5Connection(String? walletId) async {
     try {
-      // In production, this would test the actual SOCKS5 connection
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      // Parse and validate proxy URL
-      final uri = Uri.tryParse(proxyUrl);
-      if (uri == null || uri.host.isEmpty) {
-        return false;
-      }
-
-      return true;
+      final endpointConfig =
+          (walletId == null || walletId.isEmpty)
+          ? const LightdEndpointConfig(url: FfiBridge.defaultLightdUrl)
+          : await FfiBridge.getLightdEndpointConfig(walletId);
+      return await FfiBridge.testNode(
+        url: endpointConfig.url,
+        tlsPin: endpointConfig.tlsPin,
+      );
     } catch (e) {
       debugPrint('[BackgroundSyncHandler] SOCKS5 connection test failed: $e');
-      return false;
+      return NodeTestResult(
+        success: false,
+        transportMode: 'socks5',
+        tlsEnabled: false,
+        errorMessage: e.toString(),
+        responseTimeMs: 0,
+      );
     }
   }
 

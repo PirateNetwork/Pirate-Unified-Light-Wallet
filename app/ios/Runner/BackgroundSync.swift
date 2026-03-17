@@ -37,6 +37,7 @@ class BackgroundSyncManager: NSObject {
     // MARK: - Configuration
     
     private let defaults = UserDefaults.standard
+    private let keychainService = "com.pirate.wallet.backgroundsync"
     
     private let lastCompactSyncKey = "lastCompactSync"
     private let lastDeepSyncKey = "lastDeepSync"
@@ -433,7 +434,13 @@ class BackgroundSyncManager: NSObject {
     func getTunnelConfig() -> TunnelConfig {
         let modeString = defaults.string(forKey: tunnelModeKey) ?? TunnelMode.tor.rawValue
         let mode = TunnelMode(rawValue: modeString) ?? .tor
-        let socks5Url = defaults.string(forKey: socks5UrlKey)
+        let legacySocks5Url = defaults.string(forKey: socks5UrlKey)
+        let keychainSocks5Url = try? loadKeychainString(account: socks5UrlKey)
+        let socks5Url = keychainSocks5Url ?? legacySocks5Url
+        if keychainSocks5Url == nil, let legacy = legacySocks5Url {
+            try? storeKeychainString(legacy, account: socks5UrlKey)
+            defaults.removeObject(forKey: socks5UrlKey)
+        }
         
         return TunnelConfig(
             mode: mode,
@@ -447,7 +454,11 @@ class BackgroundSyncManager: NSObject {
     func setTunnelMode(_ mode: TunnelMode, socks5Url: String? = nil) {
         defaults.set(mode.rawValue, forKey: tunnelModeKey)
         if mode == .socks5, let url = socks5Url {
-            defaults.set(url, forKey: socks5UrlKey)
+            try? storeKeychainString(url, account: socks5UrlKey)
+            defaults.removeObject(forKey: socks5UrlKey)
+        } else {
+            try? deleteKeychainString(account: socks5UrlKey)
+            defaults.removeObject(forKey: socks5UrlKey)
         }
         print("[BackgroundSync] Set tunnel mode: \(mode.rawValue)")
     }
@@ -458,6 +469,69 @@ class BackgroundSyncManager: NSObject {
     func setActiveWalletId(_ walletId: String) {
         defaults.set(walletId, forKey: activeWalletIdKey)
         print("[BackgroundSync] Set active wallet ID: \(walletId)")
+    }
+
+    private func storeKeychainString(_ value: String, account: String) throws {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecValueData as String: data
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let update: [String: Any] = [
+                kSecValueData as String: data
+            ]
+            let queryUpdate: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: keychainService,
+                kSecAttrAccount as String: account
+            ]
+            let updateStatus = SecItemUpdate(queryUpdate as CFDictionary, update as CFDictionary)
+            if updateStatus != errSecSuccess {
+                throw NSError(domain: "BackgroundSyncKeychainError", code: Int(updateStatus), userInfo: nil)
+            }
+        } else if status != errSecSuccess {
+            throw NSError(domain: "BackgroundSyncKeychainError", code: Int(status), userInfo: nil)
+        }
+    }
+
+    private func loadKeychainString(account: String) throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound {
+            return nil
+        }
+        if status != errSecSuccess {
+            throw NSError(domain: "BackgroundSyncKeychainError", code: Int(status), userInfo: nil)
+        }
+        guard let data = item as? Data else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func deleteKeychainString(account: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            throw NSError(domain: "BackgroundSyncKeychainError", code: Int(status), userInfo: nil)
+        }
     }
     
     // MARK: - Last Sync Tracking

@@ -9,6 +9,7 @@
 use crate::proto_types as proto;
 use crate::{Error, Result};
 use once_cell::sync::Lazy;
+use percent_encoding::percent_decode_str;
 use pirate_net::{
     DnsConfig as NetDnsConfig, I2pConfig as NetI2pConfig, Socks5Config as NetSocks5Config,
     TorBridgeConfig, TorBridgeTransport, TorConfig as NetTorConfig,
@@ -401,13 +402,13 @@ fn parse_socks5_url(url: &str) -> Result<NetSocks5Config> {
         if let Some((userinfo, _)) = authority.as_str().rsplit_once('@') {
             if let Some((user, pass)) = userinfo.split_once(':') {
                 if !user.is_empty() {
-                    username = Some(user.to_string());
+                    username = Some(decode_socks5_userinfo_component(user)?);
                 }
                 if !pass.is_empty() {
-                    password = Some(pass.to_string());
+                    password = Some(decode_socks5_userinfo_component(pass)?);
                 }
             } else if !userinfo.is_empty() {
-                username = Some(userinfo.to_string());
+                username = Some(decode_socks5_userinfo_component(userinfo)?);
             }
         }
     }
@@ -418,6 +419,13 @@ fn parse_socks5_url(url: &str) -> Result<NetSocks5Config> {
         username,
         password,
     })
+}
+
+fn decode_socks5_userinfo_component(value: &str) -> Result<String> {
+    percent_decode_str(value)
+        .decode_utf8()
+        .map(|decoded| decoded.into_owned())
+        .map_err(|e| Error::Connection(format!("Invalid SOCKS5 credentials encoding: {}", e)))
 }
 
 fn tor_config_from_env_raw() -> NetTorConfig {
@@ -2054,6 +2062,28 @@ mod tests {
         assert_eq!(
             config.socks5_url,
             Some("socks5://127.0.0.1:9050".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_socks5_url_decodes_credentials() {
+        let parsed =
+            parse_socks5_url("socks5://user%40name:pa%3Ass@proxy.example.com:1080").unwrap();
+        assert_eq!(parsed.host, "proxy.example.com");
+        assert_eq!(parsed.port, 1080);
+        assert_eq!(parsed.username.as_deref(), Some("user@name"));
+        assert_eq!(parsed.password.as_deref(), Some("pa:ss"));
+    }
+
+    #[test]
+    fn test_parse_socks5_url_rejects_bad_scheme() {
+        let err = parse_socks5_url("http://proxy.example.com:1080")
+            .err()
+            .expect("expected invalid scheme");
+        assert!(
+            format!("{}", err).contains("Unsupported SOCKS5 URL scheme"),
+            "unexpected error: {}",
+            err
         );
     }
 

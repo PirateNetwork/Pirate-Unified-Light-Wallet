@@ -110,7 +110,7 @@ impl TunnelManager {
 
         let client = match config {
             TunnelConfig::Tor { socks_port } => {
-                let proxy = reqwest::Proxy::all(format!("socks5://127.0.0.1:{}", socks_port))
+                let proxy = reqwest::Proxy::all(format!("socks5h://127.0.0.1:{}", socks_port))
                     .map_err(|e| Error::Network(format!("Failed to create Tor proxy: {}", e)))?;
 
                 client_builder
@@ -125,9 +125,9 @@ impl TunnelManager {
                 password,
             } => {
                 let proxy_url = if let (Some(user), Some(pass)) = (username, password) {
-                    format!("socks5://{}:{}@{}:{}", user, pass, host, port)
+                    format!("socks5h://{}:{}@{}:{}", user, pass, host, port)
                 } else {
-                    format!("socks5://{}:{}", host, port)
+                    format!("socks5h://{}:{}", host, port)
                 };
 
                 let proxy = reqwest::Proxy::all(proxy_url)
