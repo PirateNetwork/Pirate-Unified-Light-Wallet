@@ -4323,8 +4323,16 @@ class RustLibWire implements BaseWire {
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> mode,
+    ffi.Pointer<ffi.Uint64> max_duration_secs,
+    ffi.Pointer<ffi.Uint64> max_blocks,
   ) {
-    return _wire__crate__api__start_background_sync(port_, wallet_id, mode);
+    return _wire__crate__api__start_background_sync(
+      port_,
+      wallet_id,
+      mode,
+      max_duration_secs,
+      max_blocks,
+    );
   }
 
   late final _wire__crate__api__start_background_syncPtr =
@@ -4334,6 +4342,8 @@ class RustLibWire implements BaseWire {
             ffi.Int64,
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<ffi.Uint64>,
+            ffi.Pointer<ffi.Uint64>,
           )
         >
       >('frbgen_pirate_wallet_wire__crate__api__start_background_sync');
@@ -4344,14 +4354,23 @@ class RustLibWire implements BaseWire {
               int,
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<ffi.Uint64>,
+              ffi.Pointer<ffi.Uint64>,
             )
           >();
 
   void wire__crate__api__start_background_sync_round_robin(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> mode,
+    ffi.Pointer<ffi.Uint64> max_duration_secs,
+    ffi.Pointer<ffi.Uint64> max_blocks,
   ) {
-    return _wire__crate__api__start_background_sync_round_robin(port_, mode);
+    return _wire__crate__api__start_background_sync_round_robin(
+      port_,
+      mode,
+      max_duration_secs,
+      max_blocks,
+    );
   }
 
   late final _wire__crate__api__start_background_sync_round_robinPtr =
@@ -4360,6 +4379,8 @@ class RustLibWire implements BaseWire {
           ffi.Void Function(
             ffi.Int64,
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<ffi.Uint64>,
+            ffi.Pointer<ffi.Uint64>,
           )
         >
       >(
@@ -4368,7 +4389,12 @@ class RustLibWire implements BaseWire {
   late final _wire__crate__api__start_background_sync_round_robin =
       _wire__crate__api__start_background_sync_round_robinPtr
           .asFunction<
-            void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<ffi.Uint64>,
+              ffi.Pointer<ffi.Uint64>,
+            )
           >();
 
   void wire__crate__api__start_seed_export(

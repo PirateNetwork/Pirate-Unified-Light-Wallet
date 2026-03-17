@@ -8,9 +8,9 @@ import Flutter
  * Background sync manager for iOS
  * 
  * Handles background blockchain synchronization using:
- * - BGAppRefreshTask for quick updates (15-30 min intervals)
+ * - BGAppRefreshTask for quick updates
  * - BGProcessingTask for deep sync (daily, when idle + charging)
- * - Privacy-respecting network tunnel (Tor/SOCKS5)
+ * - Privacy-respecting network tunnel (Tor/I2P/SOCKS5)
  * - Local notifications for received funds
  * - All RPC calls routed through configured NetTunnel
  * 
@@ -45,20 +45,70 @@ class BackgroundSyncManager: NSObject {
     private let socks5UrlKey = "socks5Url"
     private let notificationsEnabledKey = "notificationsEnabled"
     private let activeWalletIdKey = "activeWalletId"
+    private let syncPausedKey = "syncPaused"
+    private let compactIntervalSecondsKey = "compactIntervalSeconds"
+    private let deepIntervalSecondsKey = "deepIntervalSeconds"
+    private let compactMaxDurationSecsKey = "compactMaxDurationSecs"
+    private let deepMaxDurationSecsKey = "deepMaxDurationSecs"
+    private let compactMaxBlocksKey = "compactMaxBlocks"
+    private let deepMaxBlocksKey = "deepMaxBlocks"
+    private let deepRequiresExternalPowerKey = "deepRequiresExternalPower"
     
-    // Sync intervals
-    let compactIntervalSeconds: TimeInterval = 15 * 60  // 15 minutes
-    let deepIntervalSeconds: TimeInterval = 24 * 60 * 60  // 24 hours
+    private let defaultCompactIntervalSeconds: TimeInterval = 24 * 60 * 60
+    private let defaultDeepIntervalSeconds: TimeInterval = 24 * 60 * 60
+    private let defaultCompactMaxDurationSecs = 25
+    private let defaultDeepMaxDurationSecs = 300
+    private let defaultCompactMaxBlocks = 250_000
+    private let defaultDeepMaxBlocks = 5_000_000
+    private let defaultDeepRequiresExternalPower = true
     
     // Tunnel modes (must match Rust TunnelMode enum)
     enum TunnelMode: String {
         case tor = "tor"
+        case i2p = "i2p"
         case socks5 = "socks5"
         case direct = "direct"
     }
     
     private override init() {
         super.init()
+    }
+
+    private var compactIntervalSeconds: TimeInterval {
+        let stored = defaults.double(forKey: compactIntervalSecondsKey)
+        return stored > 0 ? stored : defaultCompactIntervalSeconds
+    }
+
+    private var deepIntervalSeconds: TimeInterval {
+        let stored = defaults.double(forKey: deepIntervalSecondsKey)
+        return stored > 0 ? stored : defaultDeepIntervalSeconds
+    }
+
+    private var compactMaxDurationSecs: Int {
+        let stored = defaults.integer(forKey: compactMaxDurationSecsKey)
+        return stored > 0 ? stored : defaultCompactMaxDurationSecs
+    }
+
+    private var deepMaxDurationSecs: Int {
+        let stored = defaults.integer(forKey: deepMaxDurationSecsKey)
+        return stored > 0 ? stored : defaultDeepMaxDurationSecs
+    }
+
+    private var compactMaxBlocks: Int {
+        let stored = defaults.integer(forKey: compactMaxBlocksKey)
+        return stored > 0 ? stored : defaultCompactMaxBlocks
+    }
+
+    private var deepMaxBlocks: Int {
+        let stored = defaults.integer(forKey: deepMaxBlocksKey)
+        return stored > 0 ? stored : defaultDeepMaxBlocks
+    }
+
+    private var deepRequiresExternalPower: Bool {
+        if defaults.object(forKey: deepRequiresExternalPowerKey) == nil {
+            return defaultDeepRequiresExternalPower
+        }
+        return defaults.bool(forKey: deepRequiresExternalPowerKey)
     }
     
     // MARK: - Flutter Engine Setup
@@ -72,7 +122,8 @@ class BackgroundSyncManager: NSObject {
         }
         
         let engine = FlutterEngine(name: "BackgroundSyncEngine")
-        engine.run(withEntrypoint: nil)
+        engine.run(withEntrypoint: "backgroundSyncMain")
+        GeneratedPluginRegistrant.register(with: engine)
         
         methodChannel = FlutterMethodChannel(
             name: channelName,
@@ -125,7 +176,22 @@ class BackgroundSyncManager: NSObject {
      * iOS will execute when convenient (typically 15-30 minutes)
      * Limited to ~30 seconds execution time
      */
-    func scheduleCompactSync() {
+    func scheduleCompactSync(
+        intervalMinutes: Int? = nil,
+        maxDurationSecs: Int? = nil,
+        maxBlocks: Int? = nil
+    ) {
+        if let intervalMinutes = intervalMinutes, intervalMinutes > 0 {
+            defaults.set(TimeInterval(intervalMinutes * 60), forKey: compactIntervalSecondsKey)
+        }
+        if let maxDurationSecs = maxDurationSecs, maxDurationSecs > 0 {
+            defaults.set(maxDurationSecs, forKey: compactMaxDurationSecsKey)
+        }
+        if let maxBlocks = maxBlocks, maxBlocks > 0 {
+            defaults.set(maxBlocks, forKey: compactMaxBlocksKey)
+        }
+
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BackgroundSyncManager.compactTaskIdentifier)
         let request = BGAppRefreshTaskRequest(identifier: BackgroundSyncManager.compactTaskIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: compactIntervalSeconds)
         
@@ -148,11 +214,30 @@ class BackgroundSyncManager: NSObject {
      * iOS will execute when device is idle, charging, and has WiFi
      * Can run for several minutes
      */
-    func scheduleDeepSync() {
+    func scheduleDeepSync(
+        intervalHours: Int? = nil,
+        maxDurationSecs: Int? = nil,
+        maxBlocks: Int? = nil,
+        requiresCharging: Bool? = nil
+    ) {
+        if let intervalHours = intervalHours, intervalHours > 0 {
+            defaults.set(TimeInterval(intervalHours * 3600), forKey: deepIntervalSecondsKey)
+        }
+        if let maxDurationSecs = maxDurationSecs, maxDurationSecs > 0 {
+            defaults.set(maxDurationSecs, forKey: deepMaxDurationSecsKey)
+        }
+        if let maxBlocks = maxBlocks, maxBlocks > 0 {
+            defaults.set(maxBlocks, forKey: deepMaxBlocksKey)
+        }
+        if let requiresCharging = requiresCharging {
+            defaults.set(requiresCharging, forKey: deepRequiresExternalPowerKey)
+        }
+
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BackgroundSyncManager.deepTaskIdentifier)
         let request = BGProcessingTaskRequest(identifier: BackgroundSyncManager.deepTaskIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: deepIntervalSeconds)
         request.requiresNetworkConnectivity = true
-        request.requiresExternalPower = true  // Only when charging
+        request.requiresExternalPower = deepRequiresExternalPower
         
         do {
             try BGTaskScheduler.shared.submit(request)
@@ -191,6 +276,12 @@ class BackgroundSyncManager: NSObject {
      */
     private func handleCompactSync(task: BGAppRefreshTask) {
         print("[BackgroundSync] Starting compact sync...")
+
+        if defaults.bool(forKey: syncPausedKey) {
+            print("[BackgroundSync] Background sync is paused")
+            task.setTaskCompleted(success: true)
+            return
+        }
         
         // Schedule next compact sync immediately
         scheduleCompactSync()
@@ -219,7 +310,8 @@ class BackgroundSyncManager: NSObject {
                 let result = try await executeSync(
                     walletId: useRoundRobin ? nil : walletId,
                     mode: .compact,
-                    maxDurationSecs: 25,  // Leave buffer for cleanup
+                    maxDurationSecs: compactMaxDurationSecs,
+                    maxBlocks: compactMaxBlocks,
                     tunnelConfig: tunnelConfig,
                     useRoundRobin: useRoundRobin
                 )
@@ -262,6 +354,12 @@ class BackgroundSyncManager: NSObject {
      */
     private func handleDeepSync(task: BGProcessingTask) {
         print("[BackgroundSync] Starting deep sync...")
+
+        if defaults.bool(forKey: syncPausedKey) {
+            print("[BackgroundSync] Background sync is paused")
+            task.setTaskCompleted(success: true)
+            return
+        }
         
         // Schedule next deep sync
         scheduleDeepSync()
@@ -290,7 +388,8 @@ class BackgroundSyncManager: NSObject {
                 let result = try await executeSync(
                     walletId: useRoundRobin ? nil : walletId,
                     mode: .deep,
-                    maxDurationSecs: 180,  // 3 minutes max
+                    maxDurationSecs: deepMaxDurationSecs,
+                    maxBlocks: deepMaxBlocks,
                     tunnelConfig: tunnelConfig,
                     useRoundRobin: useRoundRobin
                 )
@@ -337,6 +436,7 @@ class BackgroundSyncManager: NSObject {
         walletId: String?,
         mode: SyncMode,
         maxDurationSecs: Int,
+        maxBlocks: Int,
         tunnelConfig: TunnelConfig,
         useRoundRobin: Bool
     ) async throws -> SyncResult {
@@ -359,7 +459,7 @@ class BackgroundSyncManager: NSObject {
                 "walletId": walletId,
                 "mode": mode == .deep ? "deep" : "compact",
                 "maxDurationSecs": maxDurationSecs,
-                "maxBlocks": mode == .deep ? 50000 : 5000,
+                "maxBlocks": maxBlocks,
                 "useRoundRobin": useRoundRobin,
                 "tunnelMode": tunnelConfig.mode.rawValue,
                 "socks5Url": tunnelConfig.socks5Url as Any
@@ -471,6 +571,39 @@ class BackgroundSyncManager: NSObject {
         print("[BackgroundSync] Set active wallet ID: \(walletId)")
     }
 
+    func clearActiveWalletId() {
+        defaults.removeObject(forKey: activeWalletIdKey)
+        print("[BackgroundSync] Cleared active wallet ID")
+    }
+
+    func setPaused(_ paused: Bool) {
+        defaults.set(paused, forKey: syncPausedKey)
+        print("[BackgroundSync] Set paused=\(paused)")
+    }
+
+    func runImmediateSync(
+        mode: String,
+        maxDurationSecs: Int? = nil,
+        maxBlocks: Int? = nil
+    ) async {
+        guard !defaults.bool(forKey: syncPausedKey) else {
+            print("[BackgroundSync] Immediate sync skipped because background sync is paused")
+            return
+        }
+        let syncMode: SyncMode = mode.lowercased() == "deep" ? .deep : .compact
+        let walletId = defaults.string(forKey: activeWalletIdKey)
+        let useRoundRobin = walletId == nil || walletId?.isEmpty == true
+        let tunnelConfig = getTunnelConfig()
+        _ = try? await executeSync(
+            walletId: useRoundRobin ? nil : walletId,
+            mode: syncMode,
+            maxDurationSecs: maxDurationSecs ?? (syncMode == .deep ? deepMaxDurationSecs : compactMaxDurationSecs),
+            maxBlocks: maxBlocks ?? (syncMode == .deep ? deepMaxBlocks : compactMaxBlocks),
+            tunnelConfig: tunnelConfig,
+            useRoundRobin: useRoundRobin
+        )
+    }
+
     private func storeKeychainString(_ value: String, account: String) throws {
         let data = Data(value.utf8)
         let query: [String: Any] = [
@@ -580,8 +713,7 @@ class BackgroundSyncManager: NSObject {
      * Show local notification for received funds
      */
     private func showReceivedFundsNotification(count: Int, balance: UInt64) async {
-        // Check if notifications are enabled
-        guard defaults.bool(forKey: notificationsEnabledKey) else {
+        guard await refreshNotificationAuthorizationStatus() else {
             print("[BackgroundSync] Notifications disabled by user preference")
             return
         }
@@ -620,6 +752,10 @@ class BackgroundSyncManager: NSObject {
      * This provides a clean user-facing message when Tor is disabled or fails
      */
     private func showTorFailureNotification(message: String) async {
+        guard await refreshNotificationAuthorizationStatus() else {
+            print("[BackgroundSync] Notifications unavailable, skipping Tor failure alert")
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = "Privacy Connection Failed"
         content.body = "Unable to connect via Tor. Tap to configure network settings."
@@ -650,6 +786,10 @@ class BackgroundSyncManager: NSObject {
      * Show notification for general network errors
      */
     private func showNetworkErrorNotification(message: String) async {
+        guard await refreshNotificationAuthorizationStatus() else {
+            print("[BackgroundSync] Notifications unavailable, skipping network alert")
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = "Sync Connection Issue"
         content.body = message
@@ -743,6 +883,21 @@ class BackgroundSyncManager: NSObject {
     func checkNotificationStatus() async -> UNAuthorizationStatus {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         return settings.authorizationStatus
+    }
+
+    @discardableResult
+    func refreshNotificationAuthorizationStatus() async -> Bool {
+        let status = await checkNotificationStatus()
+        let granted: Bool
+        if status == .authorized || status == .provisional {
+            granted = true
+        } else if #available(iOS 14.0, *), status == .ephemeral {
+            granted = true
+        } else {
+            granted = false
+        }
+        defaults.set(granted, forKey: notificationsEnabledKey)
+        return granted
     }
     
     // MARK: - Status
@@ -852,10 +1007,9 @@ extension AppDelegate {
     func setupBackgroundSync() {
         // Register background tasks (MUST be done before app finishes launching)
         BackgroundSyncManager.shared.registerBackgroundTasks()
-        
-        // Request notification permissions
+
         Task {
-            _ = await BackgroundSyncManager.shared.requestNotificationPermissions()
+            _ = await BackgroundSyncManager.shared.refreshNotificationAuthorizationStatus()
         }
         
         // Schedule initial tasks

@@ -26,12 +26,12 @@ class BackgroundSyncConfig {
   final int maxDeepDurationSecs;
 
   const BackgroundSyncConfig({
-    this.compactIntervalMinutes = 15,
+    this.compactIntervalMinutes = 24 * 60,
     this.deepIntervalHours = 24,
     this.useForegroundService = true,
     this.notifyOnReceive = true,
-    this.maxCompactDurationSecs = 60,
-    this.maxDeepDurationSecs = 300,
+    this.maxCompactDurationSecs = 90,
+    this.maxDeepDurationSecs = 600,
   });
 
   Map<String, dynamic> toMap() => {
@@ -126,6 +126,9 @@ enum TunnelMode {
   /// Tor (default, maximum privacy)
   tor,
 
+  /// I2P eepsite routing
+  i2p,
+
   /// SOCKS5 proxy
   socks5,
 
@@ -138,6 +141,8 @@ extension TunnelModeExtension on TunnelMode {
     switch (this) {
       case TunnelMode.tor:
         return 'tor';
+      case TunnelMode.i2p:
+        return 'i2p';
       case TunnelMode.socks5:
         return 'socks5';
       case TunnelMode.direct:
@@ -147,6 +152,8 @@ extension TunnelModeExtension on TunnelMode {
 
   static TunnelMode fromName(String name) {
     switch (name) {
+      case 'i2p':
+        return TunnelMode.i2p;
       case 'socks5':
         return TunnelMode.socks5;
       case 'direct':
@@ -234,18 +241,20 @@ class BackgroundSyncManager {
       // Create notification channels
       await _channel.invokeMethod('createNotificationChannels');
 
-      // Schedule compact sync (every 15 minutes)
+      // Schedule compact sync (daily, short runtime)
       await _channel.invokeMethod('scheduleCompactSync', {
         'intervalMinutes': config.compactIntervalMinutes,
-        'flexMinutes': 5,
+        'flexMinutes': 60,
         'maxDurationSecs': config.maxCompactDurationSecs,
+        'maxBlocks': 250000,
       });
 
-      // Schedule deep sync (daily)
+      // Schedule deep sync (daily, charging + unmetered)
       await _channel.invokeMethod('scheduleDeepSync', {
         'intervalHours': config.deepIntervalHours,
         'flexHours': 2,
         'maxDurationSecs': config.maxDeepDurationSecs,
+        'maxBlocks': 5000000,
         'requiresCharging': true,
         'requiresWifi': true,
       });
@@ -263,22 +272,18 @@ class BackgroundSyncManager {
   /// Initialize iOS BackgroundTasks
   Future<void> _initializeIOS() async {
     try {
-      // Register BGAppRefreshTask for compact sync
-      await _channel.invokeMethod('registerCompactSyncTask', {
-        'identifier': 'com.pirate.wallet.sync.compact',
-        'intervalSeconds': config.compactIntervalMinutes * 60,
+      await _channel.invokeMethod('scheduleCompactSync', {
+        'intervalMinutes': config.compactIntervalMinutes,
+        'maxDurationSecs': 25,
+        'maxBlocks': 250000,
       });
 
-      // Register BGProcessingTask for deep sync
-      await _channel.invokeMethod('registerDeepSyncTask', {
-        'identifier': 'com.pirate.wallet.sync.deep',
-        'intervalSeconds': config.deepIntervalHours * 3600,
-        'requiresExternalPower': true,
-        'requiresNetworkConnectivity': true,
+      await _channel.invokeMethod('scheduleDeepSync', {
+        'intervalHours': config.deepIntervalHours,
+        'maxDurationSecs': 300,
+        'maxBlocks': 5000000,
+        'requiresCharging': true,
       });
-
-      // Request notification permissions
-      await _channel.invokeMethod('requestNotificationPermissions');
 
       debugPrint('[BackgroundSync] iOS BackgroundTasks initialized');
       debugPrint(
@@ -335,6 +340,7 @@ class BackgroundSyncManager {
         'maxDurationSecs': mode == 'compact'
             ? config.maxCompactDurationSecs
             : config.maxDeepDurationSecs,
+        'maxBlocks': mode == 'compact' ? 250000 : 5000000,
       });
     } catch (e) {
       debugPrint('[BackgroundSync] Failed to trigger immediate sync: $e');
@@ -347,16 +353,32 @@ class BackgroundSyncManager {
     debugPrint('[BackgroundSync] Setting tunnel mode: ${mode.name}');
 
     try {
-      await _channel.invokeMethod('setTunnelMode', {
-        'mode': mode.name,
-        'socks5Url': socks5Url,
-      });
+      await syncNativeTunnelMode(mode, socks5Url: socks5Url);
 
       // Also update FFI
       await FfiBridge.setTunnelMode(mode: mode.name, socks5Url: socks5Url);
     } catch (e) {
       debugPrint('[BackgroundSync] Failed to set tunnel mode: $e');
       rethrow;
+    }
+  }
+
+  Future<void> syncNativeTunnelMode(TunnelMode mode, {String? socks5Url}) async {
+    await _channel.invokeMethod('setTunnelMode', {
+      'mode': mode.name,
+      'socks5Url': socks5Url,
+    });
+  }
+
+  Future<void> setActiveWalletId(String? walletId) async {
+    try {
+      if (walletId == null || walletId.isEmpty) {
+        await _channel.invokeMethod('clearActiveWalletId');
+      } else {
+        await _channel.invokeMethod('setActiveWalletId', {'walletId': walletId});
+      }
+    } catch (e) {
+      debugPrint('[BackgroundSync] Failed to set active wallet ID: $e');
     }
   }
 

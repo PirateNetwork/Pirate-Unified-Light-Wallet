@@ -722,6 +722,34 @@ impl SyncEngine {
         Arc::clone(&self.progress)
     }
 
+    /// Resolve the next block height that should be scanned for background work.
+    pub fn background_resume_height(&self) -> Result<u64> {
+        let mut start_height = self.birthday_height as u64;
+
+        if let Some(ref sink) = self.storage {
+            let stored_height = sink.load_sync_state()?.local_height;
+            if stored_height > 0 {
+                start_height = stored_height.saturating_add(1);
+            }
+        }
+
+        Ok(start_height.max(self.birthday_height as u64))
+    }
+
+    /// Prepare background sync bounds by loading the local resume height and
+    /// refreshing the remote target height immediately before the sync starts.
+    pub async fn prepare_background_sync(&self) -> Result<(u64, u64)> {
+        let start_height = self.background_resume_height()?;
+        {
+            let progress = self.progress.write().await;
+            progress.set_current(start_height.saturating_sub(1));
+            progress.set_stage(SyncStage::Headers);
+        }
+        self.update_target_height().await?;
+        let target_height = self.progress.read().await.target_height();
+        Ok((start_height, target_height))
+    }
+
     /// Start sync from birthday height.
     ///
     /// ShardTree state is persistent in SQLite, so we just need the stored

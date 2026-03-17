@@ -7,6 +7,7 @@ import LocalAuthentication
 
 @UIApplicationMain
 @objc class AppDelegate: FlutterAppDelegate {
+    private var backgroundSyncChannel: FlutterMethodChannel?
     private var keystoreChannel: FlutterMethodChannel?
     private var securityChannel: FlutterMethodChannel?
     private let keystoreService = "com.pirate.wallet.keystore"
@@ -26,6 +27,16 @@ import LocalAuthentication
         GeneratedPluginRegistrant.register(with: self)
 
         if let controller = window?.rootViewController as? FlutterViewController {
+            let background = FlutterMethodChannel(
+                name: "com.pirate.wallet/background_sync",
+                binaryMessenger: controller.binaryMessenger
+            )
+            backgroundSyncChannel = background
+            background.setMethodCallHandler { [weak self] call, result in
+                guard let self = self else { return }
+                self.handleBackgroundSyncCall(call: call, result: result)
+            }
+
             let channel = FlutterMethodChannel(
                 name: "com.pirate.wallet/keystore",
                 binaryMessenger: controller.binaryMessenger
@@ -68,7 +79,7 @@ import LocalAuthentication
             BackgroundSyncManager.shared.scheduleCompactSync()
         }
         
-        completionHandler(.newData)
+        completionHandler(.noData)
     }
     
     // Handle entering background
@@ -185,6 +196,98 @@ import LocalAuthentication
             }
             setBiometricsEnabled(enabled)
             result(true)
+        default:
+            result(FlutterMethodNotImplemented)
+        }
+    }
+
+    private func handleBackgroundSyncCall(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard #available(iOS 13.0, *) else {
+            result(FlutterError(code: "UNAVAILABLE", message: "Background sync requires iOS 13 or later", details: nil))
+            return
+        }
+
+        switch call.method {
+        case "scheduleCompactSync":
+            let args = call.arguments as? [String: Any]
+            let intervalMinutes = args?["intervalMinutes"] as? Int
+            let maxDurationSecs = args?["maxDurationSecs"] as? Int
+            let maxBlocks = args?["maxBlocks"] as? Int
+            BackgroundSyncManager.shared.scheduleCompactSync(
+                intervalMinutes: intervalMinutes,
+                maxDurationSecs: maxDurationSecs,
+                maxBlocks: maxBlocks
+            )
+            result(true)
+        case "scheduleDeepSync":
+            let args = call.arguments as? [String: Any]
+            let intervalHours = args?["intervalHours"] as? Int
+            let maxDurationSecs = args?["maxDurationSecs"] as? Int
+            let maxBlocks = args?["maxBlocks"] as? Int
+            let requiresCharging = args?["requiresCharging"] as? Bool
+            BackgroundSyncManager.shared.scheduleDeepSync(
+                intervalHours: intervalHours,
+                maxDurationSecs: maxDurationSecs,
+                maxBlocks: maxBlocks,
+                requiresCharging: requiresCharging
+            )
+            result(true)
+        case "requestNotificationPermissions":
+            Task {
+                let granted = await BackgroundSyncManager.shared.requestNotificationPermissions()
+                result(granted)
+            }
+        case "cancelAllTasks":
+            BackgroundSyncManager.shared.cancelAllTasks()
+            result(true)
+        case "getSyncStatus":
+            let status = BackgroundSyncManager.shared.getSyncStatus()
+            let lastCompactSync = status.lastCompactSync.map { Int($0.timeIntervalSince1970 * 1000) } ?? NSNull()
+            let lastDeepSync = status.lastDeepSync.map { Int($0.timeIntervalSince1970 * 1000) } ?? NSNull()
+            result([
+                "last_compact_sync": lastCompactSync,
+                "last_deep_sync": lastDeepSync,
+                "tunnel_mode": status.tunnelMode.rawValue,
+                "is_running": false,
+                "current_mode": NSNull()
+            ])
+        case "getTunnelMode":
+            result(BackgroundSyncManager.shared.getTunnelConfig().mode.rawValue)
+        case "setTunnelMode":
+            let args = call.arguments as? [String: Any]
+            let modeRaw = (args?["mode"] as? String) ?? "tor"
+            let socks5Url = args?["socks5Url"] as? String
+            let mode = BackgroundSyncManager.TunnelMode(rawValue: modeRaw) ?? .tor
+            BackgroundSyncManager.shared.setTunnelMode(mode, socks5Url: socks5Url)
+            result(true)
+        case "setActiveWalletId":
+            let args = call.arguments as? [String: Any]
+            if let walletId = args?["walletId"] as? String, !walletId.isEmpty {
+                BackgroundSyncManager.shared.setActiveWalletId(walletId)
+            }
+            result(true)
+        case "clearActiveWalletId":
+            BackgroundSyncManager.shared.clearActiveWalletId()
+            result(true)
+        case "pauseSync":
+            BackgroundSyncManager.shared.setPaused(true)
+            result(true)
+        case "resumeSync":
+            BackgroundSyncManager.shared.setPaused(false)
+            result(true)
+        case "triggerImmediateSync":
+            let args = call.arguments as? [String: Any]
+            let modeRaw = (args?["mode"] as? String) ?? "compact"
+            let maxDurationSecs = args?["maxDurationSecs"] as? Int
+            let maxBlocks = args?["maxBlocks"] as? Int
+            Task {
+                await BackgroundSyncManager.shared.runImmediateSync(
+                    mode: modeRaw,
+                    maxDurationSecs: maxDurationSecs,
+                    maxBlocks: maxBlocks
+                )
+                result(true)
+            }
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -485,4 +588,3 @@ import LocalAuthentication
         #endif
     }
 }
-

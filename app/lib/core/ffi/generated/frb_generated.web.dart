@@ -2318,18 +2318,26 @@ class RustLibWire implements BaseWire {
     NativePortType port_,
     String wallet_id,
     String? mode,
+    JSAny? max_duration_secs,
+    JSAny? max_blocks,
   ) => wasmModule.wire__crate__api__start_background_sync(
     port_,
     wallet_id,
     mode,
+    max_duration_secs,
+    max_blocks,
   );
 
   void wire__crate__api__start_background_sync_round_robin(
     NativePortType port_,
     String? mode,
+    JSAny? max_duration_secs,
+    JSAny? max_blocks,
   ) => wasmModule.wire__crate__api__start_background_sync_round_robin(
     port_,
     mode,
+    max_duration_secs,
+    max_blocks,
   );
 
   void wire__crate__api__start_seed_export(
@@ -2987,11 +2995,15 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     NativePortType port_,
     String wallet_id,
     String? mode,
+    JSAny? max_duration_secs,
+    JSAny? max_blocks,
   );
 
   external void wire__crate__api__start_background_sync_round_robin(
     NativePortType port_,
     String? mode,
+    JSAny? max_duration_secs,
+    JSAny? max_blocks,
   );
 
   external void wire__crate__api__start_seed_export(

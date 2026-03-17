@@ -21,7 +21,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
+import io.flutter.FlutterInjector
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugins.GeneratedPluginRegistrant
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -63,11 +65,12 @@ class SyncWorker(
         private const val KEY_TUNNEL_MODE = "tunnel_mode"
         private const val KEY_SOCKS5_URL = "socks5_url"
         private const val KEY_ACTIVE_WALLET_ID = "active_wallet_id"
+        private const val KEY_SYNC_PAUSED = "sync_paused"
         private const val SOCKS5_URL_KEY_ALIAS = "pirate_sync_socks5_url_v1"
         
         // Sync intervals
-        const val COMPACT_INTERVAL_MINUTES = 15L
-        const val COMPACT_FLEX_MINUTES = 5L
+        const val COMPACT_INTERVAL_MINUTES = 24L * 60L
+        const val COMPACT_FLEX_MINUTES = 60L
         const val DEEP_INTERVAL_HOURS = 24L
         const val DEEP_FLEX_HOURS = 2L
         
@@ -83,21 +86,27 @@ class SyncWorker(
          * Schedule periodic compact sync (every 15 minutes)
          * Uses battery and network constraints for efficiency
          */
-        fun scheduleCompactSync(context: Context) {
+        fun scheduleCompactSync(
+            context: Context,
+            intervalMinutes: Long = COMPACT_INTERVAL_MINUTES,
+            flexMinutes: Long = COMPACT_FLEX_MINUTES,
+            maxDurationSecs: Long = 120L,
+            maxBlocks: Long = 250000L,
+        ) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .setRequiresBatteryNotLow(true)
                 .build()
 
             val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(
-                COMPACT_INTERVAL_MINUTES, TimeUnit.MINUTES,
-                COMPACT_FLEX_MINUTES, TimeUnit.MINUTES
+                intervalMinutes, TimeUnit.MINUTES,
+                flexMinutes, TimeUnit.MINUTES
             )
                 .setConstraints(constraints)
                 .setInputData(workDataOf(
                     "sync_mode" to "compact",
-                    "max_duration_secs" to 60L,
-                    "max_blocks" to 5000L
+                    "max_duration_secs" to maxDurationSecs,
+                    "max_blocks" to maxBlocks
                 ))
                 .setBackoffCriteria(
                     BackoffPolicy.EXPONENTIAL,
@@ -114,29 +123,39 @@ class SyncWorker(
                 syncRequest
             )
             
-            android.util.Log.i(TAG, "Scheduled compact sync: every ${COMPACT_INTERVAL_MINUTES}m (flex ${COMPACT_FLEX_MINUTES}m)")
+            android.util.Log.i(TAG, "Scheduled compact sync: every ${intervalMinutes}m (flex ${flexMinutes}m)")
         }
 
         /**
          * Schedule periodic deep sync (daily)
          * Requires WiFi (unmetered) and charging for battery efficiency
          */
-        fun scheduleDeepSync(context: Context) {
+        fun scheduleDeepSync(
+            context: Context,
+            intervalHours: Long = DEEP_INTERVAL_HOURS,
+            flexHours: Long = DEEP_FLEX_HOURS,
+            maxDurationSecs: Long = 600L,
+            maxBlocks: Long = 5000000L,
+            requiresCharging: Boolean = true,
+            requiresWifi: Boolean = true,
+        ) {
             val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.UNMETERED) // WiFi only
-                .setRequiresCharging(true)
+                .setRequiredNetworkType(
+                    if (requiresWifi) NetworkType.UNMETERED else NetworkType.CONNECTED
+                )
+                .setRequiresCharging(requiresCharging)
                 .setRequiresBatteryNotLow(true)
                 .build()
 
             val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(
-                DEEP_INTERVAL_HOURS, TimeUnit.HOURS,
-                DEEP_FLEX_HOURS, TimeUnit.HOURS
+                intervalHours, TimeUnit.HOURS,
+                flexHours, TimeUnit.HOURS
             )
                 .setConstraints(constraints)
                 .setInputData(workDataOf(
                     "sync_mode" to "deep",
-                    "max_duration_secs" to 300L,  // 5 minutes
-                    "max_blocks" to 50000L
+                    "max_duration_secs" to maxDurationSecs,
+                    "max_blocks" to maxBlocks
                 ))
                 .setBackoffCriteria(
                     BackoffPolicy.EXPONENTIAL,
@@ -153,7 +172,7 @@ class SyncWorker(
                 syncRequest
             )
             
-            android.util.Log.i(TAG, "Scheduled deep sync: every ${DEEP_INTERVAL_HOURS}h (flex ${DEEP_FLEX_HOURS}h), WiFi + charging")
+            android.util.Log.i(TAG, "Scheduled deep sync: every ${intervalHours}h (flex ${flexHours}h), charging=$requiresCharging wifi=$requiresWifi")
         }
 
         /**
@@ -168,7 +187,12 @@ class SyncWorker(
         /**
          * Trigger immediate sync (for user-initiated refresh)
          */
-        fun triggerImmediateSync(context: Context, mode: String = "compact") {
+        fun triggerImmediateSync(
+            context: Context,
+            mode: String = "compact",
+            maxDurationSecs: Long = if (mode == "deep") 600L else 120L,
+            maxBlocks: Long = if (mode == "deep") 5000000L else 250000L,
+        ) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
@@ -177,7 +201,8 @@ class SyncWorker(
                 .setConstraints(constraints)
                 .setInputData(workDataOf(
                     "sync_mode" to mode,
-                    "max_duration_secs" to if (mode == "deep") 300L else 120L,
+                    "max_duration_secs" to maxDurationSecs,
+                    "max_blocks" to maxBlocks,
                     "immediate" to true
                 ))
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
@@ -230,6 +255,18 @@ class SyncWorker(
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putString(KEY_ACTIVE_WALLET_ID, walletId).apply()
             android.util.Log.i(TAG, "Set active wallet ID: $walletId")
+        }
+
+        fun clearActiveWalletId(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().remove(KEY_ACTIVE_WALLET_ID).apply()
+            android.util.Log.i(TAG, "Cleared active wallet ID")
+        }
+
+        fun setPaused(context: Context, paused: Boolean) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(KEY_SYNC_PAUSED, paused).apply()
+            android.util.Log.i(TAG, "Set background sync paused=$paused")
         }
 
         /**
@@ -302,6 +339,11 @@ class SyncWorker(
         val isImmediate = inputData.getBoolean("immediate", false)
         
         android.util.Log.i(TAG, "Starting sync: mode=$syncMode, attempt=${runAttemptCount}, immediate=$isImmediate")
+
+        if (prefs.getBoolean(KEY_SYNC_PAUSED, false)) {
+            android.util.Log.i(TAG, "Background sync is paused, skipping work")
+            return@withContext Result.success()
+        }
 
         // Prefer active wallet if available; otherwise fall back to round-robin selection.
         val walletId = prefs.getString(KEY_ACTIVE_WALLET_ID, null)
@@ -499,8 +541,10 @@ class SyncWorker(
             try {
                 // Create headless Flutter engine for FFI calls
                 val flutterEngine = FlutterEngine(applicationContext)
+                GeneratedPluginRegistrant.registerWith(flutterEngine)
+                val appBundlePath = FlutterInjector.instance().flutterLoader().findAppBundlePath()
                 flutterEngine.dartExecutor.executeDartEntrypoint(
-                    DartExecutor.DartEntrypoint.createDefault()
+                    DartExecutor.DartEntrypoint(appBundlePath, "backgroundSyncMain")
                 )
                 
                 val channel = MethodChannel(

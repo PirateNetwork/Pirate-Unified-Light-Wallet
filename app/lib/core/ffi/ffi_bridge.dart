@@ -1680,21 +1680,25 @@ class FfiBridge {
     required String walletId,
     required String mode,
     int maxDurationSecs = 60,
+    int? maxBlocks,
   }) async {
     if (kUseFrbBindings) {
-      final startTime = DateTime.now();
       final result = await api.startBackgroundSync(
         walletId: walletId,
         mode: mode,
+        maxDurationSecs: BigInt.from(maxDurationSecs),
+        maxBlocks: maxBlocks == null ? null : BigInt.from(maxBlocks),
       );
       final tunnelMode = await getTunnel();
 
       return {
         'mode': result.mode,
-        'blocks_synced': result.blocksSynced,
-        'duration_secs': DateTime.now().difference(startTime).inSeconds,
+        'blocks_synced': result.blocksSynced.toInt(),
+        'start_height': result.startHeight.toInt(),
+        'end_height': result.endHeight.toInt(),
+        'duration_secs': result.durationSecs.toInt(),
         'new_transactions': result.newTransactions,
-        'new_balance': result.newBalance,
+        'new_balance': result.newBalance?.toInt(),
         'tunnel_used': tunnelMode.name,
         'errors': result.errors,
       };
@@ -1708,16 +1712,27 @@ class FfiBridge {
   static Future<Map<String, dynamic>> executeBackgroundSyncRoundRobin({
     required String mode,
     int maxDurationSecs = 60,
+    int? maxBlocks,
   }) async {
     if (kUseFrbBindings) {
-      final result = await api.startBackgroundSyncRoundRobin(mode: mode);
+      final result = await api.startBackgroundSyncRoundRobin(
+        mode: mode,
+        maxDurationSecs: BigInt.from(maxDurationSecs),
+        maxBlocks: maxBlocks == null ? null : BigInt.from(maxBlocks),
+      );
+      final tunnelMode = await getTunnel();
       return {
         'walletId': result.walletId,
+        'wallet_id': result.walletId,
         'mode': result.mode,
-        'blocksSynced': result.blocksSynced.toString(),
-        'startHeight': result.startHeight.toString(),
-        'endHeight': result.endHeight.toString(),
-        'durationSecs': result.durationSecs.toString(),
+        'blocks_synced': result.blocksSynced.toInt(),
+        'start_height': result.startHeight.toInt(),
+        'end_height': result.endHeight.toInt(),
+        'duration_secs': result.durationSecs.toInt(),
+        'new_transactions': result.newTransactions,
+        'new_balance': result.newBalance?.toInt(),
+        'tunnel_used': tunnelMode.name,
+        'errors': result.errors,
       };
     }
     throw UnimplementedError('FRB bindings not available');
@@ -1732,7 +1747,7 @@ class FfiBridge {
       'tor' => const TunnelMode.tor(),
       'i2p' => const TunnelMode.i2P(),
       'socks5' => TunnelMode.socks5(
-        url: socks5Url ?? 'socks5://localhost:1080',
+        url: socks5Url ?? 'socks5h://localhost:1080',
       ),
       'direct' => const TunnelMode.direct(),
       _ => const TunnelMode.tor(),

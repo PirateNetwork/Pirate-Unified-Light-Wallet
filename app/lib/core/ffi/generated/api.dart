@@ -590,9 +590,13 @@ Future<bool> isSyncRunning({required String walletId}) =>
 Future<BackgroundSyncResult> startBackgroundSync({
   required String walletId,
   String? mode,
+  BigInt? maxDurationSecs,
+  BigInt? maxBlocks,
 }) => RustLib.instance.api.crateApiStartBackgroundSync(
   walletId: walletId,
   mode: mode,
+  maxDurationSecs: maxDurationSecs,
+  maxBlocks: maxBlocks,
 );
 
 /// Start background sync using round-robin scheduling with warm-wallet priority.
@@ -601,7 +605,13 @@ Future<BackgroundSyncResult> startBackgroundSync({
 /// across wallets over successive runs.
 Future<WalletBackgroundSyncResult> startBackgroundSyncRoundRobin({
   String? mode,
-}) => RustLib.instance.api.crateApiStartBackgroundSyncRoundRobin(mode: mode);
+  BigInt? maxDurationSecs,
+  BigInt? maxBlocks,
+}) => RustLib.instance.api.crateApiStartBackgroundSyncRoundRobin(
+  mode: mode,
+  maxDurationSecs: maxDurationSecs,
+  maxBlocks: maxBlocks,
+);
 
 /// Check if background sync is needed for a wallet
 Future<bool> isBackgroundSyncNeeded({required String walletId}) =>

@@ -8,6 +8,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'core/background/background_sync_handler.dart';
+import 'core/background/background_sync_manager.dart';
 import 'core/ffi/ffi_bridge.dart';
 import 'core/ffi/generated/models.dart' show SyncMode;
 import 'core/desktop/single_instance.dart';
@@ -75,6 +77,12 @@ void main() async {
   }
 
   runApp(const ProviderScope(child: PirateWalletApp()));
+}
+
+@pragma('vm:entry-point')
+Future<void> backgroundSyncMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  initializeBackgroundSyncHandler();
 }
 
 void _installFlutterErrorLogging(String logPath) {
@@ -151,8 +159,12 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    initializeBackgroundSyncHandler();
     FfiBridge.setAppActive(true);
     unawaited(ArbTextLocalizer.instance.bootstrap());
+    if (Platform.isAndroid || Platform.isIOS) {
+      unawaited(ref.read(backgroundSyncInitProvider.future));
+    }
     if (_isDesktop) {
       windowManager
         ..addListener(this)

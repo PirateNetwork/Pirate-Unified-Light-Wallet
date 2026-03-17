@@ -3625,7 +3625,8 @@ fn wire__crate__api__start_background_sync_impl(
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
                         let output_ok =
-                            crate::api::start_background_sync(api_wallet_id, api_mode).await?;
+                            crate::api::start_background_sync(api_wallet_id, api_mode, None, None)
+                                .await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -3661,8 +3662,10 @@ fn wire__crate__api__start_background_sync_round_robin_impl(
             move |context| async move {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
-                        let output_ok =
-                            crate::api::start_background_sync_round_robin(api_mode).await?;
+                        let output_ok = crate::api::start_background_sync_round_robin(
+                            api_mode, None, None,
+                        )
+                        .await?;
                         Ok(output_ok)
                     })()
                     .await,

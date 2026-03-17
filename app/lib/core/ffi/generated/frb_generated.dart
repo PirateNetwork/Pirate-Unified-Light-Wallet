@@ -482,10 +482,14 @@ abstract class RustLibApi extends BaseApi {
   Future<BackgroundSyncResult> crateApiStartBackgroundSync({
     required String walletId,
     String? mode,
+    BigInt? maxDurationSecs,
+    BigInt? maxBlocks,
   });
 
   Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin({
     String? mode,
+    BigInt? maxDurationSecs,
+    BigInt? maxBlocks,
   });
 
   Future<String> crateApiStartSeedExport({required String walletId});
@@ -3616,16 +3620,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<BackgroundSyncResult> crateApiStartBackgroundSync({
     required String walletId,
     String? mode,
+    BigInt? maxDurationSecs,
+    BigInt? maxBlocks,
   }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           var arg0 = cst_encode_String(walletId);
           var arg1 = cst_encode_opt_String(mode);
+          var arg2 = cst_encode_opt_box_autoadd_u_64(maxDurationSecs);
+          var arg3 = cst_encode_opt_box_autoadd_u_64(maxBlocks);
           return wire.wire__crate__api__start_background_sync(
             port_,
             arg0,
             arg1,
+            arg2,
+            arg3,
           );
         },
         codec: DcoCodec(
@@ -3633,7 +3643,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiStartBackgroundSyncConstMeta,
-        argValues: [walletId, mode],
+        argValues: [walletId, mode, maxDurationSecs, maxBlocks],
         apiImpl: this,
       ),
     );
@@ -3642,20 +3652,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiStartBackgroundSyncConstMeta =>
       const TaskConstMeta(
         debugName: "start_background_sync",
-        argNames: ["walletId", "mode"],
+        argNames: ["walletId", "mode", "maxDurationSecs", "maxBlocks"],
       );
 
   @override
   Future<WalletBackgroundSyncResult> crateApiStartBackgroundSyncRoundRobin({
     String? mode,
+    BigInt? maxDurationSecs,
+    BigInt? maxBlocks,
   }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           var arg0 = cst_encode_opt_String(mode);
+          var arg1 = cst_encode_opt_box_autoadd_u_64(maxDurationSecs);
+          var arg2 = cst_encode_opt_box_autoadd_u_64(maxBlocks);
           return wire.wire__crate__api__start_background_sync_round_robin(
             port_,
             arg0,
+            arg1,
+            arg2,
           );
         },
         codec: DcoCodec(
@@ -3663,7 +3679,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiStartBackgroundSyncRoundRobinConstMeta,
-        argValues: [mode],
+        argValues: [mode, maxDurationSecs, maxBlocks],
         apiImpl: this,
       ),
     );
@@ -3672,7 +3688,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiStartBackgroundSyncRoundRobinConstMeta =>
       const TaskConstMeta(
         debugName: "start_background_sync_round_robin",
-        argNames: ["mode"],
+        argNames: ["mode", "maxDurationSecs", "maxBlocks"],
       );
 
   @override

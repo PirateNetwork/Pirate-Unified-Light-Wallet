@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../background/background_sync_handler.dart';
+import '../background/background_sync_manager.dart' as bg;
 import '../ffi/ffi_bridge.dart';
 import '../ffi/generated/models.dart' hide SyncLogEntryFfi;
 import '../ffi/generated/api.dart' as api;
@@ -45,6 +46,7 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
       state = walletId;
       if (walletId != null) {
         BackgroundSyncHandler().updateActiveWallet(walletId);
+        unawaited(ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(walletId));
         // Auto-start sync when loading active wallet on app startup
         unawaited(_startWalletSessions(walletId));
       }
@@ -83,6 +85,7 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
   void clearActiveWallet() {
     state = null;
     BackgroundSyncHandler().updateActiveWallet(null);
+    unawaited(ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(null));
   }
 
   Future<void> _stopWalletSessions(WalletId walletId) async {
@@ -103,6 +106,7 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
 
   void _notifyBackgroundHandler(WalletId walletId) {
     BackgroundSyncHandler().updateActiveWallet(walletId);
+    unawaited(ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(walletId));
   }
 }
 

@@ -24,7 +24,7 @@ import com.pirate.wallet.background.NotificationChannels
 
 class MainActivity: FlutterFragmentActivity() {
     
-    private val CHANNEL = "com.pirate.wallet/background"
+    private val CHANNEL = "com.pirate.wallet/background_sync"
     private val KEYSTORE_CHANNEL = "com.pirate.wallet/keystore"
     private val SECURITY_CHANNEL = "com.pirate.wallet/security"
     private val PREFS_NAME = "pirate_keystore_v1"
@@ -42,13 +42,101 @@ class MainActivity: FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "initializeBackgroundSync" -> {
-                    // Schedule WorkManager jobs
                     SyncWorker.scheduleCompactSync(this)
                     SyncWorker.scheduleDeepSync(this)
                     result.success(true)
                 }
+                "createNotificationChannels" -> {
+                    NotificationChannels.createChannels(this)
+                    result.success(true)
+                }
+                "scheduleCompactSync" -> {
+                    val intervalMinutes = (call.argument<Number>("intervalMinutes")?.toLong()
+                        ?: SyncWorker.COMPACT_INTERVAL_MINUTES)
+                    val flexMinutes = (call.argument<Number>("flexMinutes")?.toLong()
+                        ?: SyncWorker.COMPACT_FLEX_MINUTES)
+                    val maxDurationSecs = (call.argument<Number>("maxDurationSecs")?.toLong() ?: 120L)
+                    val maxBlocks = (call.argument<Number>("maxBlocks")?.toLong() ?: 250000L)
+                    SyncWorker.scheduleCompactSync(this, intervalMinutes, flexMinutes, maxDurationSecs, maxBlocks)
+                    result.success(true)
+                }
+                "scheduleDeepSync" -> {
+                    val intervalHours = (call.argument<Number>("intervalHours")?.toLong()
+                        ?: SyncWorker.DEEP_INTERVAL_HOURS)
+                    val flexHours = (call.argument<Number>("flexHours")?.toLong()
+                        ?: SyncWorker.DEEP_FLEX_HOURS)
+                    val maxDurationSecs = (call.argument<Number>("maxDurationSecs")?.toLong() ?: 600L)
+                    val maxBlocks = (call.argument<Number>("maxBlocks")?.toLong() ?: 5000000L)
+                    val requiresCharging = call.argument<Boolean>("requiresCharging") ?: true
+                    val requiresWifi = call.argument<Boolean>("requiresWifi") ?: true
+                    SyncWorker.scheduleDeepSync(
+                        this,
+                        intervalHours,
+                        flexHours,
+                        maxDurationSecs,
+                        maxBlocks,
+                        requiresCharging,
+                        requiresWifi
+                    )
+                    result.success(true)
+                }
+                "triggerImmediateSync" -> {
+                    val mode = call.argument<String>("mode") ?: "compact"
+                    val maxDurationSecs = (call.argument<Number>("maxDurationSecs")?.toLong()
+                        ?: if (mode == "deep") 600L else 120L)
+                    val maxBlocks = (call.argument<Number>("maxBlocks")?.toLong()
+                        ?: if (mode == "deep") 5000000L else 250000L)
+                    SyncWorker.triggerImmediateSync(this, mode, maxDurationSecs, maxBlocks)
+                    result.success(true)
+                }
                 "cancelBackgroundSync" -> {
+                    SyncWorker.cancelBackgroundSync(this)
+                    result.success(true)
+                }
+                "cancelAllSync" -> {
                     SyncWorker.cancelAllSync(this)
+                    result.success(true)
+                }
+                "getSyncStatus" -> {
+                    val status = SyncWorker.getSyncStatus(this)
+                    result.success(
+                        mapOf(
+                            "last_compact_sync" to status.lastCompactSync,
+                            "last_deep_sync" to status.lastDeepSync,
+                            "tunnel_mode" to status.tunnelMode,
+                            "is_running" to false,
+                            "current_mode" to null
+                        )
+                    )
+                }
+                "getTunnelMode" -> {
+                    result.success(SyncWorker.getSyncStatus(this).tunnelMode)
+                }
+                "setTunnelMode" -> {
+                    val mode = call.argument<String>("mode") ?: SyncWorker.TUNNEL_TOR
+                    val socks5Url = call.argument<String>("socks5Url")
+                    SyncWorker.setTunnelMode(this, mode, socks5Url)
+                    result.success(true)
+                }
+                "setActiveWalletId" -> {
+                    val walletId = call.argument<String>("walletId")
+                    if (walletId.isNullOrEmpty()) {
+                        SyncWorker.clearActiveWalletId(this)
+                    } else {
+                        SyncWorker.setActiveWalletId(this, walletId)
+                    }
+                    result.success(true)
+                }
+                "clearActiveWalletId" -> {
+                    SyncWorker.clearActiveWalletId(this)
+                    result.success(true)
+                }
+                "pauseSync" -> {
+                    SyncWorker.setPaused(this, true)
+                    result.success(true)
+                }
+                "resumeSync" -> {
+                    SyncWorker.setPaused(this, false)
                     result.success(true)
                 }
                 else -> {

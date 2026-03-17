@@ -2794,6 +2794,8 @@ fn wire__crate__api__start_background_sync_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
     mode: impl CstDecode<Option<String>>,
+    max_duration_secs: impl CstDecode<Option<u64>>,
+    max_blocks: impl CstDecode<Option<u64>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -2804,11 +2806,18 @@ fn wire__crate__api__start_background_sync_impl(
         move || {
             let api_wallet_id = wallet_id.cst_decode();
             let api_mode = mode.cst_decode();
+            let api_max_duration_secs = max_duration_secs.cst_decode();
+            let api_max_blocks = max_blocks.cst_decode();
             move |context| async move {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
-                        let output_ok =
-                            crate::api::start_background_sync(api_wallet_id, api_mode).await?;
+                        let output_ok = crate::api::start_background_sync(
+                            api_wallet_id,
+                            api_mode,
+                            api_max_duration_secs,
+                            api_max_blocks,
+                        )
+                        .await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -2820,6 +2829,8 @@ fn wire__crate__api__start_background_sync_impl(
 fn wire__crate__api__start_background_sync_round_robin_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     mode: impl CstDecode<Option<String>>,
+    max_duration_secs: impl CstDecode<Option<u64>>,
+    max_blocks: impl CstDecode<Option<u64>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -2829,11 +2840,17 @@ fn wire__crate__api__start_background_sync_round_robin_impl(
         },
         move || {
             let api_mode = mode.cst_decode();
+            let api_max_duration_secs = max_duration_secs.cst_decode();
+            let api_max_blocks = max_blocks.cst_decode();
             move |context| async move {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
-                        let output_ok =
-                            crate::api::start_background_sync_round_robin(api_mode).await?;
+                        let output_ok = crate::api::start_background_sync_round_robin(
+                            api_mode,
+                            api_max_duration_secs,
+                            api_max_blocks,
+                        )
+                        .await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -7773,16 +7790,31 @@ mod io {
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
         mode: *mut wire_cst_list_prim_u_8_strict,
+        max_duration_secs: *mut u64,
+        max_blocks: *mut u64,
     ) {
-        wire__crate__api__start_background_sync_impl(port_, wallet_id, mode)
+        wire__crate__api__start_background_sync_impl(
+            port_,
+            wallet_id,
+            mode,
+            max_duration_secs,
+            max_blocks,
+        )
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__start_background_sync_round_robin(
         port_: i64,
         mode: *mut wire_cst_list_prim_u_8_strict,
+        max_duration_secs: *mut u64,
+        max_blocks: *mut u64,
     ) {
-        wire__crate__api__start_background_sync_round_robin_impl(port_, mode)
+        wire__crate__api__start_background_sync_round_robin_impl(
+            port_,
+            mode,
+            max_duration_secs,
+            max_blocks,
+        )
     }
 
     #[unsafe(no_mangle)]
@@ -10464,16 +10496,31 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
         mode: Option<String>,
+        max_duration_secs: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        max_blocks: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__start_background_sync_impl(port_, wallet_id, mode)
+        wire__crate__api__start_background_sync_impl(
+            port_,
+            wallet_id,
+            mode,
+            max_duration_secs,
+            max_blocks,
+        )
     }
 
     #[wasm_bindgen]
     pub fn wire__crate__api__start_background_sync_round_robin(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         mode: Option<String>,
+        max_duration_secs: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        max_blocks: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__start_background_sync_round_robin_impl(port_, mode)
+        wire__crate__api__start_background_sync_round_robin_impl(
+            port_,
+            mode,
+            max_duration_secs,
+            max_blocks,
+        )
     }
 
     #[wasm_bindgen]

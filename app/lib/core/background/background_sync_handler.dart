@@ -17,6 +17,7 @@ const String kBackgroundSyncChannel = 'com.pirate.wallet/background_sync';
 /// Error codes for method channel responses
 class BackgroundSyncErrorCodes {
   static const String torConnectionFailed = 'TOR_CONNECTION_FAILED';
+  static const String i2pConnectionFailed = 'I2P_CONNECTION_FAILED';
   static const String socks5ConnectionFailed = 'SOCKS5_CONNECTION_FAILED';
   static const String networkError = 'NETWORK_ERROR';
   static const String noWallet = 'NO_WALLET';
@@ -102,56 +103,91 @@ class BackgroundSyncHandler {
     final resolvedWalletId = (walletId == null || walletId.isEmpty)
         ? _activeWalletId
         : walletId;
+    final shouldUseRoundRobin =
+        useRoundRobin ||
+        resolvedWalletId == null ||
+        resolvedWalletId.isEmpty;
 
     try {
       // Configure tunnel mode if specified
       final selection = switch (tunnelMode.toLowerCase()) {
         'tor' => const TunnelMode.tor(),
+        'i2p' => const TunnelMode.i2P(),
         'socks5' => TunnelMode.socks5(
-          url: socks5Url ?? 'socks5://localhost:1080',
+          url: socks5Url ?? 'socks5h://localhost:1080',
         ),
         'direct' => const TunnelMode.direct(),
         _ => const TunnelMode.tor(),
       };
       await FfiBridge.setTunnel(selection, socksUrl: socks5Url);
 
-      // Verify tunnel is working before sync
-      final currentTunnel = await FfiBridge.getTunnel();
-      if (currentTunnel is TunnelMode_Tor) {
-        // Test Tor connection
-        final torWorking = await _testTorConnection();
-        if (!torWorking) {
-          throw PlatformException(
-            code: BackgroundSyncErrorCodes.torConnectionFailed,
-            message:
-                'Unable to establish Tor connection. Please check your network settings.',
-          );
-        }
-      } else if (currentTunnel is TunnelMode_Socks5) {
-        final socks5Check = await _testSocks5Connection(resolvedWalletId);
-        if (!socks5Check.success) {
-          throw PlatformException(
-            code: BackgroundSyncErrorCodes.socks5ConnectionFailed,
-            message:
-                socks5Check.errorMessage ??
-                'Unable to reach the configured node through the SOCKS5 proxy.',
-          );
+      if (shouldUseRoundRobin) {
+        final roundRobinWallets = await FfiBridge.listWallets();
+        if (roundRobinWallets.isEmpty) {
+          final currentTunnel = await FfiBridge.getTunnel();
+          return _emptyBackgroundSyncResult(syncMode, currentTunnel.name);
         }
       }
 
-      if (useRoundRobin ||
-          resolvedWalletId == null ||
-          resolvedWalletId.isEmpty) {
-        return await FfiBridge.executeBackgroundSyncRoundRobin(
-          mode: syncMode,
-          maxDurationSecs: maxDurationSecs,
-        );
+      // Verify tunnel is working before sync when the endpoint is known up front.
+      // Round-robin background sync can target different wallet-specific endpoints,
+      // so preflight validation is skipped in that case and the actual sync call
+      // becomes the source of truth for connection success/failure.
+      final currentTunnel = await FfiBridge.getTunnel();
+      if (!shouldUseRoundRobin) {
+        if (currentTunnel is TunnelMode_Tor) {
+          final torCheck = await _testTorConnection(resolvedWalletId);
+          if (!torCheck.success) {
+            throw PlatformException(
+              code: BackgroundSyncErrorCodes.torConnectionFailed,
+              message:
+                  torCheck.errorMessage ??
+                  'Unable to reach the configured node through Tor.',
+            );
+          }
+        } else if (currentTunnel is TunnelMode_I2p) {
+          final i2pCheck = await _testI2pConnection(resolvedWalletId);
+          if (!i2pCheck.success) {
+            throw PlatformException(
+              code: BackgroundSyncErrorCodes.i2pConnectionFailed,
+              message:
+                  i2pCheck.errorMessage ??
+                  'Unable to reach the configured node through I2P.',
+            );
+          }
+        } else if (currentTunnel is TunnelMode_Socks5) {
+          final socks5Check = await _testSocks5Connection(resolvedWalletId);
+          if (!socks5Check.success) {
+            throw PlatformException(
+              code: BackgroundSyncErrorCodes.socks5ConnectionFailed,
+              message:
+                  socks5Check.errorMessage ??
+                  'Unable to reach the configured node through the SOCKS5 proxy.',
+            );
+          }
+        }
+      }
+
+      if (shouldUseRoundRobin) {
+        try {
+          return await FfiBridge.executeBackgroundSyncRoundRobin(
+            mode: syncMode,
+            maxDurationSecs: maxDurationSecs,
+            maxBlocks: (args['maxBlocks'] as num?)?.toInt(),
+          );
+        } catch (e) {
+          if (_isNoWorkBackgroundSyncError(e)) {
+            return _emptyBackgroundSyncResult(syncMode, currentTunnel.name);
+          }
+          rethrow;
+        }
       }
 
       return await FfiBridge.executeBackgroundSync(
         walletId: resolvedWalletId,
         mode: syncMode,
         maxDurationSecs: maxDurationSecs,
+        maxBlocks: (args['maxBlocks'] as num?)?.toInt(),
       );
     } on PlatformException {
       rethrow;
@@ -162,6 +198,11 @@ class BackgroundSyncHandler {
       if (errorMessage.toLowerCase().contains('tor')) {
         throw PlatformException(
           code: BackgroundSyncErrorCodes.torConnectionFailed,
+          message: errorMessage,
+        );
+      } else if (errorMessage.toLowerCase().contains('i2p')) {
+        throw PlatformException(
+          code: BackgroundSyncErrorCodes.i2pConnectionFailed,
           message: errorMessage,
         );
       } else if (errorMessage.toLowerCase().contains('socks')) {
@@ -185,20 +226,25 @@ class BackgroundSyncHandler {
   }
 
   /// Test Tor connection
-  Future<bool> _testTorConnection() async {
-    try {
-      final status = await FfiBridge.getTorStatus();
-      return status == 'ready';
-    } catch (e) {
-      debugPrint('[BackgroundSyncHandler] Tor connection test failed: $e');
-      return false;
-    }
+  Future<NodeTestResult> _testTorConnection(String? walletId) async {
+    return _testEndpointConnection(walletId, transportMode: 'tor');
+  }
+
+  Future<NodeTestResult> _testI2pConnection(String? walletId) async {
+    return _testEndpointConnection(walletId, transportMode: 'i2p');
   }
 
   /// Test SOCKS5 proxy routing by querying the configured lightwalletd endpoint
   /// through the active tunnel. This verifies the actual end-to-end path rather
   /// than only checking whether the proxy port accepts TCP connections.
   Future<NodeTestResult> _testSocks5Connection(String? walletId) async {
+    return _testEndpointConnection(walletId, transportMode: 'socks5');
+  }
+
+  Future<NodeTestResult> _testEndpointConnection(
+    String? walletId, {
+    required String transportMode,
+  }) async {
     try {
       final endpointConfig =
           (walletId == null || walletId.isEmpty)
@@ -209,10 +255,12 @@ class BackgroundSyncHandler {
         tlsPin: endpointConfig.tlsPin,
       );
     } catch (e) {
-      debugPrint('[BackgroundSyncHandler] SOCKS5 connection test failed: $e');
+      debugPrint(
+        '[BackgroundSyncHandler] $transportMode connection test failed: $e',
+      );
       return NodeTestResult(
         success: false,
-        transportMode: 'socks5',
+        transportMode: transportMode,
         tlsEnabled: false,
         errorMessage: e.toString(),
         responseTimeMs: 0,
@@ -234,14 +282,38 @@ class BackgroundSyncHandler {
 
     final tunnelMode = switch (mode.toLowerCase()) {
       'tor' => const TunnelMode.tor(),
+      'i2p' => const TunnelMode.i2P(),
       'socks5' => TunnelMode.socks5(
-        url: socks5Url ?? 'socks5://localhost:1080',
+        url: socks5Url ?? 'socks5h://localhost:1080',
       ),
       'direct' => const TunnelMode.direct(),
       _ => const TunnelMode.tor(),
     };
 
     await FfiBridge.setTunnel(tunnelMode, socksUrl: socks5Url);
+  }
+
+  bool _isNoWorkBackgroundSyncError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('no wallets available for background sync') ||
+        message.contains('no eligible wallets for background sync');
+  }
+
+  Map<String, dynamic> _emptyBackgroundSyncResult(
+    String mode,
+    String tunnelUsed,
+  ) {
+    return {
+      'mode': mode,
+      'blocks_synced': 0,
+      'start_height': 0,
+      'end_height': 0,
+      'duration_secs': 0,
+      'new_transactions': 0,
+      'new_balance': null,
+      'tunnel_used': tunnelUsed,
+      'errors': const <String>[],
+    };
   }
 
   /// Get sync status for a wallet

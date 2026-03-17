@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../../../core/background/background_sync_manager.dart' as bg;
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/providers/wallet_providers.dart';
 
@@ -435,6 +437,25 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
       // the requested mode was not applied.
     } finally {
       if (applied && requestId == _applyRequestId) {
+        if (Platform.isAndroid || Platform.isIOS) {
+          try {
+            final mode = switch (config.mode.toLowerCase()) {
+              'i2p' => bg.TunnelMode.i2p,
+              'socks5' => bg.TunnelMode.socks5,
+              'direct' => bg.TunnelMode.direct,
+              _ => bg.TunnelMode.tor,
+            };
+            final socks5Url = mode == bg.TunnelMode.socks5
+                ? _buildSocks5Url(state.socks5Config)
+                : null;
+            await ref
+                .read(bg.backgroundSyncManagerProvider)
+                .syncNativeTunnelMode(mode, socks5Url: socks5Url);
+          } catch (_) {
+            // Keep the foreground transport active even if background sync prefs
+            // could not be updated on the platform side.
+          }
+        }
         _invalidateSyncProviders();
       }
     }
@@ -514,7 +535,7 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
         ? '${Uri.encodeComponent(username)}${hasPass ? ':${Uri.encodeComponent(password)}' : ''}@'
         : '';
     final portPart = port.isNotEmpty ? ':$port' : '';
-    return 'socks5://$auth$host$portPart';
+    return 'socks5h://$auth$host$portPart';
   }
 }
 

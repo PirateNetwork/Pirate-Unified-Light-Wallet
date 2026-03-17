@@ -8757,13 +8757,20 @@ const BG_SYNC_CURSOR_KEY: &str = "bg_rr_cursor";
 pub async fn start_background_sync(
     wallet_id: WalletId,
     mode: Option<String>,
+    max_duration_secs: Option<u64>,
+    max_blocks: Option<u64>,
 ) -> Result<crate::models::BackgroundSyncResult> {
-    run_on_runtime(move || start_background_sync_inner(wallet_id, mode)).await
+    run_on_runtime(move || {
+        start_background_sync_inner(wallet_id, mode, max_duration_secs, max_blocks)
+    })
+    .await
 }
 
 async fn start_background_sync_inner(
     wallet_id: WalletId,
     mode: Option<String>,
+    max_duration_secs: Option<u64>,
+    max_blocks: Option<u64>,
 ) -> Result<crate::models::BackgroundSyncResult> {
     tracing::info!(
         "Starting background sync for wallet {} with mode {:?}",
@@ -8826,7 +8833,13 @@ async fn start_background_sync_inner(
         .map_err(|e| anyhow!("Failed to initialize background sync engine: {}", e))?;
 
     // Create orchestrator
-    let bg_config = BackgroundSyncConfig::default();
+    let mut bg_config = BackgroundSyncConfig::default();
+    if let Some(value) = max_duration_secs {
+        bg_config.max_duration_secs = value.max(1);
+    }
+    if let Some(value) = max_blocks {
+        bg_config.max_blocks = value.max(1);
+    }
     let orchestrator =
         BackgroundSyncOrchestrator::new(Arc::new(TokioMutex::new(sync_engine)), bg_config);
 
@@ -8871,12 +8884,19 @@ async fn start_background_sync_inner(
 /// across wallets over successive runs.
 pub async fn start_background_sync_round_robin(
     mode: Option<String>,
+    max_duration_secs: Option<u64>,
+    max_blocks: Option<u64>,
 ) -> Result<crate::models::WalletBackgroundSyncResult> {
-    run_on_runtime(move || start_background_sync_round_robin_inner(mode)).await
+    run_on_runtime(move || {
+        start_background_sync_round_robin_inner(mode, max_duration_secs, max_blocks)
+    })
+    .await
 }
 
 async fn start_background_sync_round_robin_inner(
     mode: Option<String>,
+    max_duration_secs: Option<u64>,
+    max_blocks: Option<u64>,
 ) -> Result<crate::models::WalletBackgroundSyncResult> {
     ensure_wallet_registry_loaded()?;
 
@@ -8930,7 +8950,9 @@ async fn start_background_sync_round_robin_inner(
     }
 
     let next_wallet_id = ordered[0].id.clone();
-    let result = start_background_sync_inner(next_wallet_id.clone(), mode).await?;
+    let result =
+        start_background_sync_inner(next_wallet_id.clone(), mode, max_duration_secs, max_blocks)
+            .await?;
 
     if let Err(e) = set_registry_setting(&registry_db, BG_SYNC_CURSOR_KEY, Some(&next_wallet_id)) {
         tracing::warn!(

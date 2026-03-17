@@ -61,10 +61,10 @@ pub struct BackgroundSyncConfig {
 impl Default for BackgroundSyncConfig {
     fn default() -> Self {
         Self {
-            max_duration_secs: 60,  // 1 minute max per background task
-            max_blocks: 10_000,     // Normal max blocks
-            max_blocks_spam: 2_500, // Reduced max during spam (prevents timeouts)
-            compact_interval_mins: 15,
+            max_duration_secs: 90,
+            max_blocks: 5_000_000,
+            max_blocks_spam: 50_000,
+            compact_interval_mins: 24 * 60,
             deep_interval_hours: 24,
             use_foreground_service: true,
             notify_on_receive: true,
@@ -96,16 +96,10 @@ impl BackgroundSyncOrchestrator {
             mode, self.config.max_duration_secs, self.config.max_blocks
         );
 
-        // Get current state
-        let start_height = {
+        let (start_height, target_height) = {
             let engine = self.sync_engine.clone().lock_owned().await;
-            let progress = engine.progress();
-            let progress_guard = progress.read().await;
-            progress_guard.current_height()
+            engine.prepare_background_sync().await?
         };
-
-        // Determine sync range
-        let target_height = self.calculate_target_height(start_height, mode).await?;
 
         if target_height <= start_height {
             info!("Already synced to latest height: {}", start_height);
@@ -202,7 +196,7 @@ impl BackgroundSyncOrchestrator {
         };
 
         // Limit to max blocks (spam-aware)
-        let effective_target = std::cmp::min(target, start + max_blocks);
+        let effective_target = std::cmp::min(target, start + max_blocks.saturating_sub(1));
 
         // Sync with timeout
         let timeout = tokio::time::Duration::from_secs(self.config.max_duration_secs);
@@ -252,10 +246,9 @@ impl BackgroundSyncOrchestrator {
         };
 
         // Limit to max blocks (spam-aware) even for deep sync
-        let effective_target = std::cmp::min(target, start + max_blocks);
+        let effective_target = std::cmp::min(target, start + max_blocks.saturating_sub(1));
 
-        // Deep sync can take longer, but still respect max duration
-        let timeout = tokio::time::Duration::from_secs(self.config.max_duration_secs * 2);
+        let timeout = tokio::time::Duration::from_secs(self.config.max_duration_secs);
 
         match tokio::time::timeout(timeout, engine.sync_range(start, Some(effective_target))).await
         {
@@ -277,28 +270,11 @@ impl BackgroundSyncOrchestrator {
         }
     }
 
-    /// Calculate target height for sync
-    async fn calculate_target_height(
-        &self,
-        _current: u64,
-        _mode: BackgroundSyncMode,
-    ) -> Result<u64> {
-        let engine = self.sync_engine.clone().lock_owned().await;
-        let progress = engine.progress();
-        let progress_guard = progress.read().await;
-
-        // For both modes, sync to network height
-        Ok(progress_guard.target_height())
-    }
-
     /// Check if background sync is needed
     pub async fn is_sync_needed(&self) -> Result<bool> {
         let engine = self.sync_engine.clone().lock_owned().await;
-        let progress = engine.progress();
-        let progress_guard = progress.read().await;
-
-        // Sync needed if we're behind
-        Ok(progress_guard.current_height() < progress_guard.target_height())
+        let (start_height, target_height) = engine.prepare_background_sync().await?;
+        Ok(start_height < target_height)
     }
 
     /// Get recommended sync mode based on time since last sync
@@ -324,9 +300,9 @@ mod tests {
     #[test]
     fn test_background_sync_config_defaults() {
         let config = BackgroundSyncConfig::default();
-        assert_eq!(config.max_duration_secs, 60);
-        assert_eq!(config.max_blocks, 10_000);
-        assert_eq!(config.compact_interval_mins, 15);
+        assert_eq!(config.max_duration_secs, 90);
+        assert_eq!(config.max_blocks, 5_000_000);
+        assert_eq!(config.compact_interval_mins, 24 * 60);
         assert_eq!(config.deep_interval_hours, 24);
     }
 

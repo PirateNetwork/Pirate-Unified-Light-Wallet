@@ -57,7 +57,13 @@ pub async fn execute_background_sync(
     // Delegate to the real background sync implementation in `api.rs` (uses pirate-sync-lightd orchestrator).
     // We keep this wrapper to support legacy/background entrypoints.
     let start = std::time::Instant::now();
-    let bg = api::start_background_sync(wallet_id.clone(), Some(mode.clone())).await?;
+    let bg = api::start_background_sync(
+        wallet_id.clone(),
+        Some(mode.clone()),
+        Some(max_duration_secs),
+        None,
+    )
+    .await?;
 
     let mut result = HashMap::new();
     result.insert("mode".to_string(), bg.mode);
