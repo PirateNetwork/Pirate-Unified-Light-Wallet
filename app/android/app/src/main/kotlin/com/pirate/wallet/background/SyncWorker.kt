@@ -32,7 +32,7 @@ import kotlin.coroutines.resumeWithException
  * Background sync worker for Android
  * 
  * Handles periodic blockchain synchronization using WorkManager with:
- * - SyncCompact: Every 15 minutes with battery/network constraints
+ * - SyncCompact: Daily short maintenance sync with battery/network constraints
  * - SyncDeep: Daily when on charger and unmetered network (WiFi)
  * - Foreground service for long-running operations
  * - Privacy-respecting network tunnel (Tor/SOCKS5)
@@ -83,7 +83,7 @@ class SyncWorker(
         private const val CHANNEL_NAME = "com.pirate.wallet/background_sync"
 
         /**
-         * Schedule periodic compact sync (every 15 minutes)
+         * Schedule periodic compact sync (daily short maintenance pass)
          * Uses battery and network constraints for efficiency
          */
         fun scheduleCompactSync(

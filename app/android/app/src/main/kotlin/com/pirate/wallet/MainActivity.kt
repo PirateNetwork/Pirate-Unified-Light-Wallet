@@ -42,8 +42,46 @@ class MainActivity: FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "initializeBackgroundSync" -> {
-                    SyncWorker.scheduleCompactSync(this)
-                    SyncWorker.scheduleDeepSync(this)
+                    NotificationChannels.createChannels(this)
+                    val compactIntervalMinutes =
+                        (call.argument<Number>("compactIntervalMinutes")?.toLong()
+                            ?: SyncWorker.COMPACT_INTERVAL_MINUTES)
+                    val deepIntervalHours =
+                        (call.argument<Number>("deepIntervalHours")?.toLong()
+                            ?: SyncWorker.DEEP_INTERVAL_HOURS)
+                    val maxCompactDurationSecs =
+                        (call.argument<Number>("maxCompactDurationSecs")?.toLong() ?: 120L)
+                    val maxDeepDurationSecs =
+                        (call.argument<Number>("maxDeepDurationSecs")?.toLong() ?: 600L)
+                    val maxCompactBlocks =
+                        (call.argument<Number>("maxCompactBlocks")?.toLong() ?: 250000L)
+                    val maxDeepBlocks =
+                        (call.argument<Number>("maxDeepBlocks")?.toLong() ?: 5000000L)
+                    val compactFlexMinutes =
+                        (call.argument<Number>("compactFlexMinutes")?.toLong()
+                            ?: SyncWorker.COMPACT_FLEX_MINUTES)
+                    val deepFlexHours =
+                        (call.argument<Number>("deepFlexHours")?.toLong()
+                            ?: SyncWorker.DEEP_FLEX_HOURS)
+                    val requiresCharging = call.argument<Boolean>("requiresCharging") ?: true
+                    val requiresWifi = call.argument<Boolean>("requiresWifi") ?: true
+
+                    SyncWorker.scheduleCompactSync(
+                        this,
+                        compactIntervalMinutes,
+                        compactFlexMinutes,
+                        maxCompactDurationSecs,
+                        maxCompactBlocks
+                    )
+                    SyncWorker.scheduleDeepSync(
+                        this,
+                        deepIntervalHours,
+                        deepFlexHours,
+                        maxDeepDurationSecs,
+                        maxDeepBlocks,
+                        requiresCharging,
+                        requiresWifi
+                    )
                     result.success(true)
                 }
                 "createNotificationChannels" -> {
@@ -262,9 +300,6 @@ class MainActivity: FlutterFragmentActivity() {
         }
         super.onCreate(savedInstanceState)
         
-        // Initialize background sync on app start
-        SyncWorker.scheduleCompactSync(this)
-        SyncWorker.scheduleDeepSync(this)
     }
 
     private fun storeKey(keyId: String, data: ByteArray) {

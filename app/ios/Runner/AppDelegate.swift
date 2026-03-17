@@ -71,14 +71,7 @@ import LocalAuthentication
         _ application: UIApplication,
         performFetchWithCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        // This is called when system wakes app for background refresh
         print("[AppDelegate] Background fetch triggered")
-        
-        // Trigger compact sync (iOS 13+ only)
-        if #available(iOS 13.0, *) {
-            BackgroundSyncManager.shared.scheduleCompactSync()
-        }
-        
         completionHandler(.noData)
     }
     
@@ -208,6 +201,27 @@ import LocalAuthentication
         }
 
         switch call.method {
+        case "initializeBackgroundSync":
+            let args = call.arguments as? [String: Any]
+            let compactIntervalMinutes = args?["compactIntervalMinutes"] as? Int
+            let deepIntervalHours = args?["deepIntervalHours"] as? Int
+            let maxCompactDurationSecs = args?["maxCompactDurationSecs"] as? Int
+            let maxDeepDurationSecs = args?["maxDeepDurationSecs"] as? Int
+            let maxCompactBlocks = args?["maxCompactBlocks"] as? Int
+            let maxDeepBlocks = args?["maxDeepBlocks"] as? Int
+            let requiresCharging = args?["requiresCharging"] as? Bool
+            BackgroundSyncManager.shared.scheduleCompactSync(
+                intervalMinutes: compactIntervalMinutes,
+                maxDurationSecs: maxCompactDurationSecs,
+                maxBlocks: maxCompactBlocks
+            )
+            BackgroundSyncManager.shared.scheduleDeepSync(
+                intervalHours: deepIntervalHours,
+                maxDurationSecs: maxDeepDurationSecs,
+                maxBlocks: maxDeepBlocks,
+                requiresCharging: requiresCharging
+            )
+            result(true)
         case "scheduleCompactSync":
             let args = call.arguments as? [String: Any]
             let intervalMinutes = args?["intervalMinutes"] as? Int

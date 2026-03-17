@@ -8,7 +8,7 @@ import Flutter
  * Background sync manager for iOS
  * 
  * Handles background blockchain synchronization using:
- * - BGAppRefreshTask for quick updates
+ * - BGAppRefreshTask for short maintenance updates
  * - BGProcessingTask for deep sync (daily, when idle + charging)
  * - Privacy-respecting network tunnel (Tor/I2P/SOCKS5)
  * - Local notifications for received funds
@@ -173,8 +173,8 @@ class BackgroundSyncManager: NSObject {
     
     /**
      * Schedule compact sync (BGAppRefreshTask)
-     * iOS will execute when convenient (typically 15-30 minutes)
-     * Limited to ~30 seconds execution time
+     * iOS executes when convenient, using the persisted schedule policy.
+     * Compact runs are intentionally short.
      */
     func scheduleCompactSync(
         intervalMinutes: Int? = nil,
@@ -211,8 +211,8 @@ class BackgroundSyncManager: NSObject {
     
     /**
      * Schedule deep sync (BGProcessingTask)
-     * iOS will execute when device is idle, charging, and has WiFi
-     * Can run for several minutes
+     * iOS executes when device conditions allow. Deep runs are bounded and
+     * intended for charging/network-friendly maintenance.
      */
     func scheduleDeepSync(
         intervalHours: Int? = nil,
@@ -1011,9 +1011,6 @@ extension AppDelegate {
         Task {
             _ = await BackgroundSyncManager.shared.refreshNotificationAuthorizationStatus()
         }
-        
-        // Schedule initial tasks
-        BackgroundSyncManager.shared.scheduleAllSyncs()
         
         print("[AppDelegate] Background sync initialized")
     }

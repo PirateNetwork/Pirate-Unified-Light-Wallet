@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'background_sync_execution_result.dart';
 import '../ffi/ffi_bridge.dart';
 
 /// Background sync configuration
@@ -73,6 +74,20 @@ class BackgroundSyncResult {
       newBalance: map['new_balance'] as int?,
       tunnelUsed: map['tunnel_used'] as String? ?? 'tor',
       errors: (map['errors'] as List<dynamic>?)?.cast<String>() ?? [],
+    );
+  }
+
+  factory BackgroundSyncResult.fromExecution(
+    BackgroundSyncExecutionResult result,
+  ) {
+    return BackgroundSyncResult(
+      mode: result.mode,
+      blocksSynced: result.blocksSynced,
+      durationSecs: result.durationSecs,
+      newTransactions: result.newTransactions,
+      newBalance: result.newBalance,
+      tunnelUsed: result.tunnelUsed,
+      errors: result.errors,
     );
   }
 
@@ -238,23 +253,15 @@ class BackgroundSyncManager {
   /// Initialize Android WorkManager
   Future<void> _initializeAndroid() async {
     try {
-      // Create notification channels
-      await _channel.invokeMethod('createNotificationChannels');
-
-      // Schedule compact sync (daily, short runtime)
-      await _channel.invokeMethod('scheduleCompactSync', {
-        'intervalMinutes': config.compactIntervalMinutes,
-        'flexMinutes': 60,
-        'maxDurationSecs': config.maxCompactDurationSecs,
-        'maxBlocks': 250000,
-      });
-
-      // Schedule deep sync (daily, charging + unmetered)
-      await _channel.invokeMethod('scheduleDeepSync', {
-        'intervalHours': config.deepIntervalHours,
-        'flexHours': 2,
-        'maxDurationSecs': config.maxDeepDurationSecs,
-        'maxBlocks': 5000000,
+      await _channel.invokeMethod('initializeBackgroundSync', {
+        'compactIntervalMinutes': config.compactIntervalMinutes,
+        'deepIntervalHours': config.deepIntervalHours,
+        'maxCompactDurationSecs': config.maxCompactDurationSecs,
+        'maxDeepDurationSecs': config.maxDeepDurationSecs,
+        'maxCompactBlocks': 250000,
+        'maxDeepBlocks': 5000000,
+        'compactFlexMinutes': 60,
+        'deepFlexHours': 2,
         'requiresCharging': true,
         'requiresWifi': true,
       });
@@ -272,16 +279,13 @@ class BackgroundSyncManager {
   /// Initialize iOS BackgroundTasks
   Future<void> _initializeIOS() async {
     try {
-      await _channel.invokeMethod('scheduleCompactSync', {
-        'intervalMinutes': config.compactIntervalMinutes,
-        'maxDurationSecs': 25,
-        'maxBlocks': 250000,
-      });
-
-      await _channel.invokeMethod('scheduleDeepSync', {
-        'intervalHours': config.deepIntervalHours,
-        'maxDurationSecs': 300,
-        'maxBlocks': 5000000,
+      await _channel.invokeMethod('initializeBackgroundSync', {
+        'compactIntervalMinutes': config.compactIntervalMinutes,
+        'deepIntervalHours': config.deepIntervalHours,
+        'maxCompactDurationSecs': 25,
+        'maxDeepDurationSecs': 300,
+        'maxCompactBlocks': 250000,
+        'maxDeepBlocks': 5000000,
         'requiresCharging': true,
       });
 
@@ -315,7 +319,7 @@ class BackgroundSyncManager {
                 : config.maxDeepDurationSecs),
       );
 
-      final syncResult = BackgroundSyncResult.fromMap(result);
+      final syncResult = BackgroundSyncResult.fromExecution(result);
       debugPrint(
         '[BackgroundSync] Sync completed: ${syncResult.blocksSynced} blocks via ${syncResult.tunnelUsed}',
       );

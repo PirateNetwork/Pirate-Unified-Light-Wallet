@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show Int64List;
 
+import '../background/background_sync_execution_result.dart';
 import 'generated/api.dart' as api;
 import 'generated/models.dart'
     hide AddressBookColorTag, AddressBookEntryFfi, SyncLogEntryFfi;
@@ -1676,7 +1677,7 @@ class FfiBridge {
 
   /// Execute background sync via FFI
   /// All RPC calls are routed through the configured NetTunnel (Tor/SOCKS5/Direct)
-  static Future<Map<String, dynamic>> executeBackgroundSync({
+  static Future<BackgroundSyncExecutionResult> executeBackgroundSync({
     required String walletId,
     required String mode,
     int maxDurationSecs = 60,
@@ -1691,17 +1692,17 @@ class FfiBridge {
       );
       final tunnelMode = await getTunnel();
 
-      return {
-        'mode': result.mode,
-        'blocks_synced': result.blocksSynced.toInt(),
-        'start_height': result.startHeight.toInt(),
-        'end_height': result.endHeight.toInt(),
-        'duration_secs': result.durationSecs.toInt(),
-        'new_transactions': result.newTransactions,
-        'new_balance': result.newBalance?.toInt(),
-        'tunnel_used': tunnelMode.name,
-        'errors': result.errors,
-      };
+      return BackgroundSyncExecutionResult(
+        mode: result.mode,
+        blocksSynced: result.blocksSynced.toInt(),
+        startHeight: result.startHeight.toInt(),
+        endHeight: result.endHeight.toInt(),
+        durationSecs: result.durationSecs.toInt(),
+        newTransactions: result.newTransactions,
+        newBalance: result.newBalance?.toInt(),
+        tunnelUsed: tunnelMode.name,
+        errors: result.errors,
+      );
     }
 
     // Fallback stub (should not be reached if kUseFrbBindings is true)
@@ -1709,7 +1710,8 @@ class FfiBridge {
   }
 
   /// Execute background sync with round-robin wallet selection.
-  static Future<Map<String, dynamic>> executeBackgroundSyncRoundRobin({
+  static Future<BackgroundSyncExecutionResult>
+  executeBackgroundSyncRoundRobin({
     required String mode,
     int maxDurationSecs = 60,
     int? maxBlocks,
@@ -1721,19 +1723,18 @@ class FfiBridge {
         maxBlocks: maxBlocks == null ? null : BigInt.from(maxBlocks),
       );
       final tunnelMode = await getTunnel();
-      return {
-        'walletId': result.walletId,
-        'wallet_id': result.walletId,
-        'mode': result.mode,
-        'blocks_synced': result.blocksSynced.toInt(),
-        'start_height': result.startHeight.toInt(),
-        'end_height': result.endHeight.toInt(),
-        'duration_secs': result.durationSecs.toInt(),
-        'new_transactions': result.newTransactions,
-        'new_balance': result.newBalance?.toInt(),
-        'tunnel_used': tunnelMode.name,
-        'errors': result.errors,
-      };
+      return BackgroundSyncExecutionResult(
+        walletId: result.walletId,
+        mode: result.mode,
+        blocksSynced: result.blocksSynced.toInt(),
+        startHeight: result.startHeight.toInt(),
+        endHeight: result.endHeight.toInt(),
+        durationSecs: result.durationSecs.toInt(),
+        newTransactions: result.newTransactions,
+        newBalance: result.newBalance?.toInt(),
+        tunnelUsed: tunnelMode.name,
+        errors: result.errors,
+      );
     }
     throw UnimplementedError('FRB bindings not available');
   }

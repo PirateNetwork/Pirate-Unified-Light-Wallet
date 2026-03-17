@@ -8,6 +8,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'background_sync_execution_result.dart';
 import '../ffi/ffi_bridge.dart';
 import '../ffi/generated/models.dart' hide NodeTestResult;
 
@@ -125,7 +126,10 @@ class BackgroundSyncHandler {
         final roundRobinWallets = await FfiBridge.listWallets();
         if (roundRobinWallets.isEmpty) {
           final currentTunnel = await FfiBridge.getTunnel();
-          return _emptyBackgroundSyncResult(syncMode, currentTunnel.name);
+          return _emptyBackgroundSyncResult(
+            syncMode,
+            currentTunnel.name,
+          ).toPlatformMap();
         }
       }
 
@@ -174,10 +178,13 @@ class BackgroundSyncHandler {
             mode: syncMode,
             maxDurationSecs: maxDurationSecs,
             maxBlocks: (args['maxBlocks'] as num?)?.toInt(),
-          );
+          ).then((value) => value.toPlatformMap());
         } catch (e) {
           if (_isNoWorkBackgroundSyncError(e)) {
-            return _emptyBackgroundSyncResult(syncMode, currentTunnel.name);
+            return _emptyBackgroundSyncResult(
+              syncMode,
+              currentTunnel.name,
+            ).toPlatformMap();
           }
           rethrow;
         }
@@ -188,7 +195,7 @@ class BackgroundSyncHandler {
         mode: syncMode,
         maxDurationSecs: maxDurationSecs,
         maxBlocks: (args['maxBlocks'] as num?)?.toInt(),
-      );
+      ).then((value) => value.toPlatformMap());
     } on PlatformException {
       rethrow;
     } catch (e) {
@@ -299,21 +306,21 @@ class BackgroundSyncHandler {
         message.contains('no eligible wallets for background sync');
   }
 
-  Map<String, dynamic> _emptyBackgroundSyncResult(
+  BackgroundSyncExecutionResult _emptyBackgroundSyncResult(
     String mode,
     String tunnelUsed,
   ) {
-    return {
-      'mode': mode,
-      'blocks_synced': 0,
-      'start_height': 0,
-      'end_height': 0,
-      'duration_secs': 0,
-      'new_transactions': 0,
-      'new_balance': null,
-      'tunnel_used': tunnelUsed,
-      'errors': const <String>[],
-    };
+    return BackgroundSyncExecutionResult(
+      mode: mode,
+      blocksSynced: 0,
+      startHeight: 0,
+      endHeight: 0,
+      durationSecs: 0,
+      newTransactions: 0,
+      newBalance: null,
+      tunnelUsed: tunnelUsed,
+      errors: const <String>[],
+    );
   }
 
   /// Get sync status for a wallet
