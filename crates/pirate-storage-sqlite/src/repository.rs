@@ -1,5 +1,7 @@
 //! Data access layer
 
+mod address;
+
 use crate::address_book::ColorTag;
 use crate::frontier_witness::{
     construct_anchor_witnesses_from_db_state, resolve_orchard_anchor_from_db_state,
@@ -2452,20 +2454,7 @@ impl<'a> Repository<'a> {
         key_id: i64,
         scope: crate::models::AddressScope,
     ) -> Result<u32> {
-        let scope_str = match scope {
-            crate::models::AddressScope::External => "external",
-            crate::models::AddressScope::Internal => "internal",
-        };
-        let max_index: Option<i64> = self.db.conn().query_row(
-            "SELECT MAX(diversifier_index) FROM addresses WHERE account_id = ?1 AND key_id = ?2 AND address_scope = ?3",
-            params![account_id, key_id, scope_str],
-            |row| row.get(0),
-        )?;
-
-        Ok(match max_index {
-            Some(max) => max as u32,
-            None => 0,
-        })
+        address::get_current_diversifier_index_for_scope(self, account_id, key_id, scope)
     }
 
     /// Get the current diversifier index for external (receive) addresses.
@@ -2501,11 +2490,7 @@ impl<'a> Repository<'a> {
 
     /// Backfill missing key_id on legacy addresses (created before key management).
     pub fn backfill_address_key_id(&self, account_id: i64, key_id: i64) -> Result<usize> {
-        let rows = self.db.conn().execute(
-            "UPDATE addresses SET key_id = ?1 WHERE account_id = ?2 AND key_id IS NULL",
-            params![key_id, account_id],
-        )?;
-        Ok(rows)
+        address::backfill_address_key_id(self, account_id, key_id)
     }
 
     /// Backfill missing key_id on legacy notes (created before key management).
@@ -2520,81 +2505,12 @@ impl<'a> Repository<'a> {
 
     /// Insert or update address with diversifier index
     pub fn upsert_address(&self, address: &Address) -> Result<()> {
-        let address_type_str = match address.address_type {
-            crate::models::AddressType::Sapling => "Sapling",
-            crate::models::AddressType::Orchard => "Orchard",
-        };
-        self.db.conn().execute(
-            "INSERT INTO addresses (account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-             ON CONFLICT(address) DO UPDATE SET
-                 account_id = excluded.account_id,
-                 key_id = COALESCE(excluded.key_id, addresses.key_id),
-                 diversifier_index = CASE
-                     WHEN excluded.diversifier_index = 0 THEN addresses.diversifier_index
-                     ELSE excluded.diversifier_index
-                 END,
-                 address_type = excluded.address_type,
-                 label = COALESCE(excluded.label, addresses.label),
-                 created_at = addresses.created_at,
-                 color_tag = addresses.color_tag,
-                 address_scope = CASE
-                     WHEN addresses.address_scope = 'internal' THEN addresses.address_scope
-                     ELSE excluded.address_scope
-                 END",
-            params![
-                address.account_id,
-                address.key_id,
-                address.diversifier_index as i64,
-                address.address,
-                address_type_str,
-                address.label,
-                address.created_at,
-                address.color_tag.as_u8() as i64,
-                match address.address_scope {
-                    crate::models::AddressScope::External => "external",
-                    crate::models::AddressScope::Internal => "internal",
-                },
-            ],
-        )?;
-        Ok(())
+        address::upsert_address(self, address)
     }
 
     /// Get address by address string.
     pub fn get_address_by_string(&self, account_id: i64, address: &str) -> Result<Option<Address>> {
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses              WHERE account_id = ?1 AND address = ?2",
-        )?;
-
-        let result = stmt
-            .query_row(params![account_id, address], |row| {
-                let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
-                let address_type = match address_type_str.as_str() {
-                    "Orchard" => crate::models::AddressType::Orchard,
-                    _ => crate::models::AddressType::Sapling,
-                };
-                let address_scope_str: String =
-                    row.get(9).unwrap_or_else(|_| "external".to_string());
-                let address_scope = match address_scope_str.as_str() {
-                    "internal" => crate::models::AddressScope::Internal,
-                    _ => crate::models::AddressScope::External,
-                };
-                Ok(Address {
-                    id: Some(row.get(0)?),
-                    account_id: row.get(1)?,
-                    key_id: row.get(2)?,
-                    diversifier_index: row.get::<_, i64>(3)? as u32,
-                    address: row.get(4)?,
-                    address_type,
-                    label: row.get(6)?,
-                    created_at: row.get(7)?,
-                    color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
-                    address_scope,
-                })
-            })
-            .optional()?;
-
-        Ok(result)
+        address::get_address_by_string(self, account_id, address)
     }
 
     /// Get address by diversifier index for a key group and scope.
@@ -2605,48 +2521,7 @@ impl<'a> Repository<'a> {
         diversifier_index: u32,
         scope: crate::models::AddressScope,
     ) -> Result<Option<Address>> {
-        let scope_str = match scope {
-            crate::models::AddressScope::External => "external",
-            crate::models::AddressScope::Internal => "internal",
-        };
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses 
-             WHERE account_id = ?1 AND key_id = ?2 AND diversifier_index = ?3 AND address_scope = ?4",
-        )?;
-
-        let result = stmt
-            .query_row(
-                params![account_id, key_id, diversifier_index as i64, scope_str],
-                |row| {
-                    let address_type_str: String =
-                        row.get(5).unwrap_or_else(|_| "Sapling".to_string());
-                    let address_type = match address_type_str.as_str() {
-                        "Orchard" => crate::models::AddressType::Orchard,
-                        _ => crate::models::AddressType::Sapling, // Default to Sapling
-                    };
-                    let address_scope_str: String =
-                        row.get(9).unwrap_or_else(|_| "external".to_string());
-                    let address_scope = match address_scope_str.as_str() {
-                        "internal" => crate::models::AddressScope::Internal,
-                        _ => crate::models::AddressScope::External,
-                    };
-                    Ok(Address {
-                        id: Some(row.get(0)?),
-                        account_id: row.get(1)?,
-                        key_id: row.get(2)?,
-                        diversifier_index: row.get::<_, i64>(3)? as u32,
-                        address: row.get(4)?,
-                        address_type,
-                        label: row.get(6)?,
-                        created_at: row.get(7)?,
-                        color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
-                        address_scope,
-                    })
-                },
-            )
-            .optional()?;
-
-        Ok(result)
+        address::get_address_by_index_for_scope(self, account_id, key_id, diversifier_index, scope)
     }
 
     /// Get external address by diversifier index for a key group.
@@ -2666,80 +2541,12 @@ impl<'a> Repository<'a> {
 
     /// Get all addresses for an account
     pub fn get_all_addresses(&self, account_id: i64) -> Result<Vec<Address>> {
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses 
-             WHERE account_id = ?1 
-             ORDER BY diversifier_index ASC",
-        )?;
-
-        let addresses = stmt
-            .query_map([account_id], |row| {
-                let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
-                let address_type = match address_type_str.as_str() {
-                    "Orchard" => crate::models::AddressType::Orchard,
-                    _ => crate::models::AddressType::Sapling, // Default to Sapling
-                };
-                let address_scope_str: String =
-                    row.get(9).unwrap_or_else(|_| "external".to_string());
-                let address_scope = match address_scope_str.as_str() {
-                    "internal" => crate::models::AddressScope::Internal,
-                    _ => crate::models::AddressScope::External,
-                };
-                Ok(Address {
-                    id: Some(row.get(0)?),
-                    account_id: row.get(1)?,
-                    key_id: row.get(2)?,
-                    diversifier_index: row.get::<_, i64>(3)? as u32,
-                    address: row.get(4)?,
-                    address_type,
-                    label: row.get(6)?,
-                    created_at: row.get(7)?,
-                    color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
-                    address_scope,
-                })
-            })?
-            .collect::<std::result::Result<Vec<Address>, rusqlite::Error>>()?;
-
-        Ok(addresses)
+        address::get_all_addresses(self, account_id)
     }
 
     /// Get all addresses for a key group
     pub fn get_addresses_by_key(&self, account_id: i64, key_id: i64) -> Result<Vec<Address>> {
-        let mut stmt = self.db.conn().prepare(
-            "SELECT id, account_id, key_id, diversifier_index, address, address_type, label, created_at, color_tag, address_scope FROM addresses 
-             WHERE account_id = ?1 AND key_id = ?2
-             ORDER BY diversifier_index ASC",
-        )?;
-
-        let addresses = stmt
-            .query_map([account_id, key_id], |row| {
-                let address_type_str: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
-                let address_type = match address_type_str.as_str() {
-                    "Orchard" => crate::models::AddressType::Orchard,
-                    _ => crate::models::AddressType::Sapling,
-                };
-                let address_scope_str: String =
-                    row.get(9).unwrap_or_else(|_| "external".to_string());
-                let address_scope = match address_scope_str.as_str() {
-                    "internal" => crate::models::AddressScope::Internal,
-                    _ => crate::models::AddressScope::External,
-                };
-                Ok(Address {
-                    id: Some(row.get(0)?),
-                    account_id: row.get(1)?,
-                    key_id: row.get(2)?,
-                    diversifier_index: row.get::<_, i64>(3)? as u32,
-                    address: row.get(4)?,
-                    address_type,
-                    label: row.get(6)?,
-                    created_at: row.get(7)?,
-                    color_tag: ColorTag::from_u8(row.get::<_, i64>(8)? as u8),
-                    address_scope,
-                })
-            })?
-            .collect::<std::result::Result<Vec<Address>, rusqlite::Error>>()?;
-
-        Ok(addresses)
+        address::get_addresses_by_key(self, account_id, key_id)
     }
 
     /// Update address label
@@ -2749,11 +2556,7 @@ impl<'a> Repository<'a> {
         address: &str,
         label: Option<String>,
     ) -> Result<()> {
-        self.db.conn().execute(
-            "UPDATE addresses SET label = ?1 WHERE account_id = ?2 AND address = ?3",
-            params![label, account_id, address],
-        )?;
-        Ok(())
+        address::update_address_label(self, account_id, address, label)
     }
 
     /// Update address color tag
@@ -2763,11 +2566,7 @@ impl<'a> Repository<'a> {
         address: &str,
         color_tag: ColorTag,
     ) -> Result<()> {
-        self.db.conn().execute(
-            "UPDATE addresses SET color_tag = ?1 WHERE account_id = ?2 AND address = ?3",
-            params![color_tag.as_u8() as i64, account_id, address],
-        )?;
-        Ok(())
+        address::update_address_color_tag(self, account_id, address, color_tag)
     }
 
     /// Get transaction history for an account

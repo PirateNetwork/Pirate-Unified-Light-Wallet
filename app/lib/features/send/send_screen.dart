@@ -35,6 +35,8 @@ import '../../core/errors/transaction_errors.dart';
 import '../../core/security/biometric_auth.dart';
 import '../settings/providers/preferences_providers.dart';
 import '../../core/i18n/arb_text_localizer.dart';
+import 'send_fee.dart';
+import 'send_fee_selector.dart';
 
 /// Maximum memo length in bytes
 const int kMaxMemoBytes = 512;
@@ -42,8 +44,6 @@ const int kMaxMemoBytes = 512;
 /// Maximum recipients per transaction
 const int kMaxRecipients = 50;
 
-/// Additional fee per extra output in arrrtoshis.
-const int kAdditionalOutputFeeArrrtoshis = 5000;
 const Duration _spendSourceLoadTimeout = Duration(seconds: 8);
 
 class PiratePaymentRequest {
@@ -190,23 +190,6 @@ enum SendStep {
   error,
 }
 
-enum FeePreset { low, standard, high, custom }
-
-extension FeePresetLabel on FeePreset {
-  String get label {
-    switch (this) {
-      case FeePreset.low:
-        return 'Low';
-      case FeePreset.standard:
-        return 'Standard';
-      case FeePreset.high:
-        return 'High';
-      case FeePreset.custom:
-        return 'Custom';
-    }
-  }
-}
-
 /// Send screen with multi-output support
 class SendScreen extends ConsumerStatefulWidget {
   const SendScreen({super.key});
@@ -224,14 +207,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   bool _isApplyingPaymentRequest = false;
 
   // Fee information
-  double _calculatedFee = 0.0001; // Will be recalculated on init
-  int _selectedFeeArrrtoshis = 10000;
-  int _defaultFeeArrrtoshis = 10000;
-  int _baseMinFeeArrrtoshis = 10000;
-  int _minFeeArrrtoshis = 10000;
-  int _maxFeeArrrtoshis = 1000000;
-  FeePreset _feePreset = FeePreset.standard;
-  int? _customFeeArrrtoshis;
+  SendFeeState _feeState = const SendFeeState();
   double _totalAmount = 0;
   double _change = 0;
   bool _isValidating = false;
@@ -263,6 +239,10 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   List<int>? _pendingAddressIds;
   bool _autoConsolidationPromptShown = false;
   bool _showInternalChangeAddresses = false;
+
+  double get _calculatedFee => _feeState.selectedFeeArrr;
+  int get _selectedFeeArrrtoshis => _feeState.selectedFeeArrrtoshis;
+  FeePreset get _feePreset => _feeState.preset;
 
   @override
   void initState() {
@@ -316,9 +296,11 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       final baseFee = info.defaultFee.toInt();
 
       setState(() {
-        _defaultFeeArrrtoshis = baseFee;
-        _baseMinFeeArrrtoshis = minFee;
-        _maxFeeArrrtoshis = maxFee;
+        _feeState = _feeState.withFeeInfo(
+          defaultFeeArrrtoshis: baseFee,
+          baseMinFeeArrrtoshis: minFee,
+          maxFeeArrrtoshis: maxFee,
+        );
         _updateFeePreview();
       });
     } catch (_) {
@@ -1006,227 +988,21 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   }
 
   Future<void> _openFeeSelector() async {
-    final inputFormatter = TextInputFormatter.withFunction((
-      oldValue,
-      newValue,
-    ) {
-      final text = newValue.text;
-      if (text.isEmpty) return newValue;
-      if (!RegExp(r'^\d+(\.\d{0,8})?$').hasMatch(text)) {
-        return oldValue;
-      }
-      return newValue;
-    });
-
-    var pendingPreset = _feePreset;
-    var pendingFee = _selectedFeeArrrtoshis;
-    String? feeError;
-    final controller = TextEditingController(
-      text: _feeArrrFromArrrtoshis(pendingFee).toStringAsFixed(8),
+    final selection = await showSendFeeSelectorSheet(
+      context: context,
+      feeState: _feeState,
     );
-
-    void syncController() {
-      final text = _feeArrrFromArrrtoshis(pendingFee).toStringAsFixed(8);
-      controller.value = controller.value.copyWith(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
-      );
+    if (selection == null || !mounted) {
+      return;
     }
 
-    void setPendingFee(int fee) {
-      pendingFee = _clampFee(fee);
-      feeError = null;
-      syncController();
-    }
-
-    void applyPreset(FeePreset preset, StateSetter setModalState) {
-      pendingPreset = preset;
-      if (preset != FeePreset.custom) {
-        setPendingFee(_feeForPreset(preset, _currentBaseFeeArrrtoshis()));
-      } else if (_customFeeArrrtoshis != null) {
-        setPendingFee(_customFeeArrrtoshis!);
-      }
-      setModalState(() {});
-    }
-
-    try {
-      await PBottomSheet.show<void>(
-        context: context,
-        title: 'Network fee'.tr,
-        content: StatefulBuilder(
-          builder: (context, setModalState) {
-            void onSliderChanged(double value) {
-              pendingPreset = FeePreset.custom;
-              setPendingFee(value.round());
-              setModalState(() {});
-            }
-
-            void onCustomChanged(String value) {
-              pendingPreset = FeePreset.custom;
-              final parsed = double.tryParse(value);
-              if (parsed == null) {
-                feeError = 'Enter a valid fee amount.';
-                setModalState(() {});
-                return;
-              }
-              final feeArrrtoshis = (parsed * 100000000).round();
-              if (feeArrrtoshis < _minFeeArrrtoshis ||
-                  feeArrrtoshis > _maxFeeArrrtoshis) {
-                feeError =
-                    'Fee must be between ${_formatFeeArrrtoshis(_minFeeArrrtoshis)} and ${_formatFeeArrrtoshis(_maxFeeArrrtoshis)}.';
-                setModalState(() {});
-                return;
-              }
-              pendingFee = feeArrrtoshis;
-              feeError = null;
-              setModalState(() {});
-            }
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Choose a fee speed'.tr, style: AppTypography.bodyMedium),
-                const SizedBox(height: AppSpacing.sm),
-                Wrap(
-                  spacing: AppSpacing.xs,
-                  runSpacing: AppSpacing.xs,
-                  children: FeePreset.values.map((preset) {
-                    return _FeePresetChip(
-                      label: preset.label,
-                      isSelected: pendingPreset == preset,
-                      onTap: () => applyPreset(preset, setModalState),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Selected'.tr,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.caption,
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Text(
-                      _formatFeeArrrtoshis(pendingFee),
-                      style: AppTypography.mono.copyWith(fontSize: 12),
-                    ),
-                  ],
-                ),
-                Slider(
-                  value: pendingFee.toDouble(),
-                  min: _minFeeArrrtoshis.toDouble(),
-                  max: _maxFeeArrrtoshis.toDouble(),
-                  divisions: 100,
-                  onChanged: onSliderChanged,
-                  activeColor: AppColors.accentPrimary,
-                  inactiveColor: AppColors.borderSubtle,
-                ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Low'.tr,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.caption,
-                      ),
-                    ),
-                    Text('High'.tr, style: AppTypography.caption),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.md),
-                PInput(
-                  label: 'Custom fee (ARRR)'.tr,
-                  controller: controller,
-                  hint: _feeArrrFromArrrtoshis(
-                    _minFeeArrrtoshis,
-                  ).toStringAsFixed(8),
-                  errorText: feeError,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [inputFormatter],
-                  onChanged: onCustomChanged,
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  'Min ${_formatFeeArrrtoshis(_minFeeArrrtoshis)} - Max ${_formatFeeArrrtoshis(_maxFeeArrrtoshis)}',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Pirate uses a fixed minimum fee. Higher fees may not speed up confirmations.'
-                      .tr,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Row(
-                  children: [
-                    Expanded(
-                      child: PButton(
-                        text: 'Cancel',
-                        variant: PButtonVariant.secondary,
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: PButton(
-                        text: 'Apply',
-                        onPressed: () {
-                          if (pendingPreset == FeePreset.custom) {
-                            final parsed = double.tryParse(
-                              controller.text.trim(),
-                            );
-                            if (parsed == null) {
-                              setModalState(() {
-                                feeError = 'Enter a valid fee amount.';
-                              });
-                              return;
-                            }
-                            final feeArrrtoshis = (parsed * 100000000).round();
-                            if (feeArrrtoshis < _minFeeArrrtoshis ||
-                                feeArrrtoshis > _maxFeeArrrtoshis) {
-                              setModalState(() {
-                                feeError =
-                                    'Fee must be between ${_formatFeeArrrtoshis(_minFeeArrrtoshis)} and ${_formatFeeArrrtoshis(_maxFeeArrrtoshis)}.';
-                              });
-                              return;
-                            }
-                            pendingFee = feeArrrtoshis;
-                            _customFeeArrrtoshis = feeArrrtoshis;
-                          }
-
-                          setState(() {
-                            _feePreset = pendingPreset;
-                            _selectedFeeArrrtoshis = pendingFee;
-                            _pendingTx = null;
-                            _pendingKeyIds = null;
-                            _pendingAddressIds = null;
-                            _updateFeePreview();
-                          });
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-      );
-    } finally {
-      controller.dispose();
-    }
+    setState(() {
+      _feeState = _feeState.applySelection(selection);
+      _pendingTx = null;
+      _pendingKeyIds = null;
+      _pendingAddressIds = null;
+      _updateFeePreview();
+    });
   }
 
   Widget _buildSpendOption(
@@ -1497,53 +1273,6 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     });
   }
 
-  double _feeArrrFromArrrtoshis(int feeArrrtoshis) {
-    return feeArrrtoshis / 100000000.0;
-  }
-
-  String _formatFeeArrrtoshis(int feeArrrtoshis) {
-    return '${_feeArrrFromArrrtoshis(feeArrrtoshis).toStringAsFixed(8)} ARRR';
-  }
-
-  int _feeForPreset(FeePreset preset, int baseFee) {
-    switch (preset) {
-      case FeePreset.low:
-        return (baseFee * 0.5).round();
-      case FeePreset.standard:
-        return baseFee;
-      case FeePreset.high:
-        return baseFee * 2;
-      case FeePreset.custom:
-        return _customFeeArrrtoshis ?? baseFee;
-    }
-  }
-
-  int _clampFee(int fee, {int? minFee, int? maxFee}) {
-    final minValue = minFee ?? _minFeeArrrtoshis;
-    final maxValue = maxFee ?? _maxFeeArrrtoshis;
-    return fee.clamp(minValue, maxValue);
-  }
-
-  int _extraOutputCount() {
-    if (_outputs.length <= 1) return 0;
-    return _outputs.length - 1;
-  }
-
-  int _currentMinFeeArrrtoshis() {
-    final fee =
-        _baseMinFeeArrrtoshis +
-        (_extraOutputCount() * kAdditionalOutputFeeArrrtoshis);
-    return fee.clamp(_baseMinFeeArrrtoshis, _maxFeeArrrtoshis);
-  }
-
-  int _currentBaseFeeArrrtoshis() {
-    final minFee = _currentMinFeeArrrtoshis();
-    final fee =
-        _defaultFeeArrrtoshis +
-        (_extraOutputCount() * kAdditionalOutputFeeArrrtoshis);
-    return fee.clamp(minFee, _maxFeeArrrtoshis);
-  }
-
   String _truncateAddress(String address) {
     if (address.length <= 16) return address;
     return '${address.substring(0, 8)}...${address.substring(address.length - 6)}';
@@ -1791,19 +1520,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
   /// Update fee preview using the selected fee.
   void _updateFeePreview() {
-    final minFee = _currentMinFeeArrrtoshis();
-    final baseFee = _currentBaseFeeArrrtoshis();
-    int selectedFee = _feePreset == FeePreset.custom
-        ? (_customFeeArrrtoshis ?? _selectedFeeArrrtoshis)
-        : _feeForPreset(_feePreset, baseFee);
-    selectedFee = selectedFee.clamp(minFee, _maxFeeArrrtoshis);
-    if (_feePreset == FeePreset.custom) {
-      _customFeeArrrtoshis = selectedFee;
-    }
-
-    _minFeeArrrtoshis = minFee;
-    _selectedFeeArrrtoshis = selectedFee;
-    _calculatedFee = _feeArrrFromArrrtoshis(selectedFee);
+    _feeState = _feeState.recalculate(recipientCount: _outputs.length);
     _totalAmount = _outputs.fold(0.0, (sum, o) {
       return sum + _parseInputAmountToArrr(o.amountController.text);
     });
@@ -1974,8 +1691,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         _pendingTx = pendingTx;
         _pendingKeyIds = keyIds;
         _pendingAddressIds = addressIds;
-        _selectedFeeArrrtoshis = pendingTx.fee.toInt();
-        _calculatedFee = pendingTx.fee.toDouble() / 100000000.0;
+        _feeState = _feeState.withSelectedFeeArrrtoshis(pendingTx.fee.toInt());
         _totalAmount = pendingTx.totalAmount.toDouble() / 100000000.0;
         _change = pendingTx.change.toDouble() / 100000000.0;
         _isValidating = false;
@@ -3463,49 +3179,6 @@ class _AmountPresetLabel extends StatelessWidget {
           vertical: AppSpacing.xs,
         ),
         child: Text(label, style: PTypography.labelSmall(color: color)),
-      ),
-    );
-  }
-}
-
-class _FeePresetChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _FeePresetChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final background = isSelected
-        ? AppColors.selectedBackground
-        : AppColors.backgroundSurface;
-    final border = isSelected
-        ? AppColors.selectedBorder
-        : AppColors.borderSubtle;
-    final textColor = isSelected
-        ? AppColors.textPrimary
-        : AppColors.textSecondary;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(PSpacing.radiusFull),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 44),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.xs,
-        ),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(PSpacing.radiusFull),
-          border: Border.all(color: border),
-        ),
-        child: Text(label, style: PTypography.labelSmall(color: textColor)),
       ),
     );
   }
