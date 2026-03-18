@@ -32,6 +32,25 @@ void main() {
     });
   });
 
+  test('typed execution result omits wallet keys when walletId is absent', () {
+    const result = BackgroundSyncExecutionResult(
+      mode: 'compact',
+      blocksSynced: 0,
+      startHeight: 10,
+      endHeight: 10,
+      durationSecs: 1,
+      newTransactions: 0,
+      newBalance: null,
+      tunnelUsed: 'tor',
+    );
+
+    final platformMap = result.toPlatformMap();
+
+    expect(platformMap, isNot(contains('wallet_id')));
+    expect(platformMap, isNot(contains('walletId')));
+    expect(platformMap['new_balance'], isNull);
+  });
+
   test('ui background sync result derives from typed execution result', () {
     const execution = BackgroundSyncExecutionResult(
       mode: 'deep',

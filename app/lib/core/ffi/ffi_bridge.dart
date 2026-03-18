@@ -16,6 +16,7 @@ import 'generated/models.dart'
 import 'generated/models.dart'
     as models
     show AddressBookColorTag, AddressBookEntryFfi, SyncLogEntryFfi;
+import 'wallet_lifecycle_sync_helper.dart';
 
 // Type aliases to avoid conflicts with local types
 typedef GeneratedAddressBookColorTag = models.AddressBookColorTag;
@@ -581,14 +582,10 @@ class FfiBridge {
 
   /// Helper to auto-start sync after wallet creation
   static Future<void> _startCompactSyncAfterCreate(WalletId walletId) async {
-    try {
-      // Small delay to let UI transition complete
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      await startSync(walletId, SyncMode.compact);
-    } catch (e) {
-      // Log error but don't throw - sync can be manually started later
-      print('Auto-sync start failed: $e');
-    }
+    await WalletLifecycleSyncHelper.startCompactSyncAfterCreate(
+      walletId: walletId,
+      startSync: (walletId) => startSync(walletId, SyncMode.compact),
+    );
   }
 
   // Addresses
