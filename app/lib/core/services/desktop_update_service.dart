@@ -5,6 +5,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+part 'desktop_update_service_asset_selection.dart';
+
 class DesktopReleaseAsset {
   const DesktopReleaseAsset({required this.name, required this.downloadUrl});
 
@@ -75,6 +77,8 @@ class DesktopUpdateService {
   DesktopUpdateService._();
 
   static final DesktopUpdateService instance = DesktopUpdateService._();
+  static final _DesktopUpdateAssetSelectionHelper _assetSelection =
+      _DesktopUpdateAssetSelectionHelper();
 
   static const String _releaseApiUrl =
       'https://api.github.com/repos/PirateNetwork/Pirate-Unified-Light-Wallet/releases';
@@ -111,7 +115,7 @@ class DesktopUpdateService {
       return null;
     }
 
-    final selection = _selectBestAsset(release.assets);
+    final selection = _assetSelection.selectBestAsset(release.assets);
     if (selection == null) {
       return null;
     }
@@ -249,137 +253,6 @@ class DesktopUpdateService {
     }
   }
 
-  ({DesktopReleaseAsset asset, DesktopUpdateAssetKind kind})? _selectBestAsset(
-    List<DesktopReleaseAsset> assets,
-  ) {
-    if (assets.isEmpty) {
-      return null;
-    }
-
-    DesktopReleaseAsset? prefer(
-      bool Function(DesktopReleaseAsset asset) predicate, {
-      bool signedOnly = false,
-    }) {
-      for (final asset in assets) {
-        if (!predicate(asset)) {
-          continue;
-        }
-        if (signedOnly && _isUnsignedAsset(asset.name)) {
-          continue;
-        }
-        if (!_isUnsignedAsset(asset.name)) {
-          return asset;
-        }
-      }
-      if (signedOnly) {
-        return null;
-      }
-      for (final asset in assets) {
-        if (predicate(asset)) {
-          return asset;
-        }
-      }
-      return null;
-    }
-
-    if (Platform.isWindows) {
-      final installer =
-          prefer(_isWindowsInstallerAsset, signedOnly: true) ??
-          prefer(_isWindowsInstallerAsset) ??
-          prefer(_isWindowsExecutableAsset, signedOnly: true) ??
-          prefer(_isWindowsExecutableAsset);
-      if (installer != null) {
-        return (
-          asset: installer,
-          kind: DesktopUpdateAssetKind.windowsInstaller,
-        );
-      }
-      final portable = prefer(_isWindowsPortableAsset);
-      if (portable != null) {
-        return (
-          asset: portable,
-          kind: DesktopUpdateAssetKind.windowsPortableZip,
-        );
-      }
-      return null;
-    }
-
-    if (Platform.isLinux) {
-      final appImage = prefer(_isLinuxAppImageAsset);
-      final deb = prefer(_isLinuxDebAsset);
-      final flatpak = prefer(_isLinuxFlatpakAsset);
-      switch (_detectLinuxInstallMode()) {
-        case _LinuxInstallMode.appImage:
-          if (appImage != null) {
-            return (
-              asset: appImage,
-              kind: DesktopUpdateAssetKind.linuxAppImage,
-            );
-          }
-          if (deb != null) {
-            return (asset: deb, kind: DesktopUpdateAssetKind.linuxDeb);
-          }
-          if (flatpak != null) {
-            return (asset: flatpak, kind: DesktopUpdateAssetKind.linuxFlatpak);
-          }
-          return null;
-        case _LinuxInstallMode.flatpak:
-          if (flatpak != null) {
-            return (asset: flatpak, kind: DesktopUpdateAssetKind.linuxFlatpak);
-          }
-          if (deb != null) {
-            return (asset: deb, kind: DesktopUpdateAssetKind.linuxDeb);
-          }
-          if (appImage != null) {
-            return (
-              asset: appImage,
-              kind: DesktopUpdateAssetKind.linuxAppImage,
-            );
-          }
-          return null;
-        case _LinuxInstallMode.systemPackage:
-          if (deb != null) {
-            return (asset: deb, kind: DesktopUpdateAssetKind.linuxDeb);
-          }
-          if (flatpak != null) {
-            return (asset: flatpak, kind: DesktopUpdateAssetKind.linuxFlatpak);
-          }
-          if (appImage != null) {
-            return (
-              asset: appImage,
-              kind: DesktopUpdateAssetKind.linuxAppImage,
-            );
-          }
-          return null;
-        case _LinuxInstallMode.unknown:
-          if (deb != null) {
-            return (asset: deb, kind: DesktopUpdateAssetKind.linuxDeb);
-          }
-          if (appImage != null) {
-            return (
-              asset: appImage,
-              kind: DesktopUpdateAssetKind.linuxAppImage,
-            );
-          }
-          if (flatpak != null) {
-            return (asset: flatpak, kind: DesktopUpdateAssetKind.linuxFlatpak);
-          }
-          return null;
-      }
-    }
-
-    if (Platform.isMacOS) {
-      final dmg =
-          prefer(_isMacDmgAsset, signedOnly: true) ?? prefer(_isMacDmgAsset);
-      if (dmg != null) {
-        return (asset: dmg, kind: DesktopUpdateAssetKind.macDmg);
-      }
-      return null;
-    }
-
-    return null;
-  }
-
   Future<void> _verifyDownloadedAsset(
     DesktopUpdateCandidate candidate,
     File destination,
@@ -404,7 +277,7 @@ class DesktopUpdateService {
     }
 
     if (candidate.assetKind == DesktopUpdateAssetKind.windowsInstaller &&
-        !_isUnsignedAsset(candidate.asset.name)) {
+        !_assetSelection.isUnsignedAsset(candidate.asset.name)) {
       await _verifyWindowsAuthenticode(destination.path);
     }
   }
@@ -481,61 +354,6 @@ class DesktopUpdateService {
   Future<String> _hashFile(File file) async {
     final digest = await sha256.bind(file.openRead()).first;
     return digest.toString();
-  }
-
-  bool _isUnsignedAsset(String name) {
-    return name.toLowerCase().contains('unsigned');
-  }
-
-  bool _isWindowsInstallerAsset(DesktopReleaseAsset asset) {
-    final lower = asset.name.toLowerCase();
-    return lower.endsWith('.exe') &&
-        (lower.contains('installer') || lower.contains('setup'));
-  }
-
-  bool _isWindowsPortableAsset(DesktopReleaseAsset asset) {
-    final lower = asset.name.toLowerCase();
-    return lower.endsWith('.zip') && lower.contains('portable');
-  }
-
-  bool _isWindowsExecutableAsset(DesktopReleaseAsset asset) {
-    final lower = asset.name.toLowerCase();
-    return lower.endsWith('.exe') && !lower.contains('portable');
-  }
-
-  bool _isLinuxAppImageAsset(DesktopReleaseAsset asset) {
-    return asset.name.toLowerCase().endsWith('.appimage');
-  }
-
-  bool _isLinuxDebAsset(DesktopReleaseAsset asset) {
-    return asset.name.toLowerCase().endsWith('.deb');
-  }
-
-  bool _isLinuxFlatpakAsset(DesktopReleaseAsset asset) {
-    return asset.name.toLowerCase().endsWith('.flatpak');
-  }
-
-  bool _isMacDmgAsset(DesktopReleaseAsset asset) {
-    return asset.name.toLowerCase().endsWith('.dmg');
-  }
-
-  _LinuxInstallMode _detectLinuxInstallMode() {
-    final env = Platform.environment;
-    final executable = Platform.resolvedExecutable;
-    if (env.containsKey('FLATPAK_ID') || executable.startsWith('/app/')) {
-      return _LinuxInstallMode.flatpak;
-    }
-    final appImage = env['APPIMAGE'];
-    if (appImage != null && appImage.isNotEmpty) {
-      return _LinuxInstallMode.appImage;
-    }
-    if (executable.toLowerCase().endsWith('.appimage')) {
-      return _LinuxInstallMode.appImage;
-    }
-    if (executable.startsWith('/usr/') || executable.startsWith('/opt/')) {
-      return _LinuxInstallMode.systemPackage;
-    }
-    return _LinuxInstallMode.unknown;
   }
 
   Future<_ChecksumResult> _fetchChecksums(
@@ -704,23 +522,11 @@ exit /b 0
     ], mode: ProcessStartMode.detached);
   }
 
-  String? _resolveLinuxAppImagePath() {
-    final envPath = Platform.environment['APPIMAGE'];
-    if (envPath != null && envPath.isNotEmpty) {
-      return envPath;
-    }
-    final executable = Platform.resolvedExecutable;
-    if (executable.toLowerCase().endsWith('.appimage')) {
-      return executable;
-    }
-    return null;
-  }
-
   Future<void> _launchLinuxAppImageUpdater(
     String appImagePath,
     String releaseUrl,
   ) async {
-    final currentAppImage = _resolveLinuxAppImagePath();
+    final currentAppImage = _assetSelection.resolveLinuxAppImagePath();
     if (currentAppImage == null) {
       throw Exception(
         'Unable to determine the current AppImage path for in-place update.',
