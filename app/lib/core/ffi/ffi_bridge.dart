@@ -18,6 +18,9 @@ import 'generated/models.dart'
     show AddressBookColorTag, AddressBookEntryFfi, SyncLogEntryFfi;
 import 'wallet_lifecycle_sync_helper.dart';
 
+part 'ffi_bridge_network_helpers.dart';
+part 'ffi_bridge_sync_streams.dart';
+
 // Type aliases to avoid conflicts with local types
 typedef GeneratedAddressBookColorTag = models.AddressBookColorTag;
 typedef GeneratedAddressBookEntryFfi = models.AddressBookEntryFfi;
@@ -108,183 +111,12 @@ class FfiBridgeStatus {
   }
 }
 
-class TorStatusDetails {
-  final String status;
-  final int? progress;
-  final String? blocked;
-  final String? error;
-
-  const TorStatusDetails({
-    required this.status,
-    this.progress,
-    this.blocked,
-    this.error,
-  });
-
-  bool get isReady => status == 'ready';
-
-  factory TorStatusDetails.fromRaw(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.startsWith('{')) {
-      try {
-        final decoded = jsonDecode(trimmed);
-        if (decoded is Map<String, dynamic>) {
-          final status = decoded['status'] as String? ?? trimmed;
-          final rawProgress = decoded['progress'];
-          final progress = rawProgress is num ? rawProgress.toInt() : null;
-          final blocked = decoded['blocked'] as String?;
-          final error = decoded['error'] as String?;
-          return TorStatusDetails(
-            status: status,
-            progress: progress,
-            blocked: blocked,
-            error: error,
-          );
-        }
-      } catch (_) {}
-    }
-    return TorStatusDetails(status: trimmed);
-  }
-}
-
 /// Watch-only wallet label constant
 const String kWatchOnlyLabel = 'View only';
 
 /// Watch-only wallet banner message
 const String kWatchOnlyBannerMessage =
     'This wallet can only view incoming transactions. Spending is not available.';
-
-// ============================================================================
-// EXCEPTIONS
-// ============================================================================
-
-/// Base exception for network tunnel errors
-class NetworkTunnelException implements Exception {
-  final String message;
-  const NetworkTunnelException(this.message);
-
-  @override
-  String toString() => 'NetworkTunnelException: $message';
-}
-
-/// Exception thrown when Tor connection fails
-class TorConnectionException extends NetworkTunnelException {
-  const TorConnectionException(super.message);
-
-  @override
-  String toString() => 'TorConnectionException: $message';
-}
-
-/// Exception thrown when SOCKS5 proxy connection fails
-class Socks5ConnectionException extends NetworkTunnelException {
-  const Socks5ConnectionException(super.message);
-
-  @override
-  String toString() => 'Socks5ConnectionException: $message';
-}
-
-/// Exception thrown when TLS pin verification fails
-class TlsPinMismatchException implements Exception {
-  final String expectedPin;
-  final String actualPin;
-
-  const TlsPinMismatchException({
-    required this.expectedPin,
-    required this.actualPin,
-  });
-
-  @override
-  String toString() =>
-      'TlsPinMismatchException: Expected $expectedPin, got $actualPin';
-}
-
-/// Result of testing node connection
-class NodeTestResult {
-  /// Whether the connection was successful
-  final bool success;
-
-  /// Latest block height from the node
-  final int? latestBlockHeight;
-
-  /// Transport mode used (Tor/SOCKS5/Direct)
-  final String transportMode;
-
-  /// Whether TLS was used
-  final bool tlsEnabled;
-
-  /// Whether the TLS pin matched (null if no pin was set)
-  final bool? tlsPinMatched;
-
-  /// The SPKI pin that was expected (if set)
-  final String? expectedPin;
-
-  /// The actual SPKI pin from the server (if TLS was used)
-  final String? actualPin;
-
-  /// Error message if connection failed
-  final String? errorMessage;
-
-  /// Response time in milliseconds
-  final int responseTimeMs;
-
-  /// Server version info (if available)
-  final String? serverVersion;
-
-  /// Chain name from server
-  final String? chainName;
-
-  NodeTestResult({
-    required this.success,
-    this.latestBlockHeight,
-    required this.transportMode,
-    required this.tlsEnabled,
-    this.tlsPinMatched,
-    this.expectedPin,
-    this.actualPin,
-    this.errorMessage,
-    required this.responseTimeMs,
-    this.serverVersion,
-    this.chainName,
-  });
-
-  /// Get a human-readable status message
-  String get statusMessage {
-    if (!success) {
-      return errorMessage ?? 'Connection failed';
-    }
-
-    final parts = <String>[];
-    parts.add('Connected via $transportMode');
-    if (tlsEnabled) {
-      parts.add('TLS enabled');
-      if (tlsPinMatched == true) {
-        parts.add('Pin verified (OK)');
-      } else if (tlsPinMatched == false) {
-        parts.add('Pin MISMATCH');
-      }
-    }
-    if (latestBlockHeight != null) {
-      parts.add('Block #$latestBlockHeight');
-    }
-    return parts.join(' - ');
-  }
-
-  /// Get transport icon name
-  String get transportIcon {
-    switch (transportMode.toLowerCase()) {
-      case 'tor':
-        return '🧅';
-      case 'i2p':
-        return 'dYO?';
-      case 'socks5':
-        return '🔌';
-      case 'direct':
-        return '⚡';
-      default:
-        return '🌐';
-    }
-  }
-}
 
 /// Lightwalletd endpoint configuration
 class LightdEndpointConfig {
@@ -1365,75 +1197,7 @@ class FfiBridge {
   static Future<NodeTestResult> testNode({
     required String url,
     String? tlsPin,
-  }) async {
-    final startTime = DateTime.now();
-    final tunnelMode = await getTunnel();
-    final transportName = tunnelMode.name;
-
-    // Determine if TLS is enabled
-    final useTls =
-        url.startsWith('https://') ||
-        (!url.startsWith('http://') && !url.contains('://'));
-
-    try {
-      // Note: This function needs to be implemented in Rust FFI layer
-      // The actual connection should be established via the configured tunnel (Tor/SOCKS5/Direct)
-      // and should:
-      // 1. Establish connection via configured tunnel
-      // 2. Perform TLS handshake and extract server certificate SPKI
-      // 3. Compare SPKI with provided pin (if any)
-      // 4. Call get_latest_block() gRPC method
-
-      if (kUseFrbBindings) {
-        // Call Rust FFI function
-        final result = await api.testNode(url: url, tlsPin: tlsPin);
-        return NodeTestResult(
-          success: result.success,
-          latestBlockHeight: result.latestBlockHeight?.toInt(),
-          transportMode: result.transportMode,
-          tlsEnabled: result.tlsEnabled,
-          tlsPinMatched: result.tlsPinMatched,
-          expectedPin: result.expectedPin,
-          actualPin: result.actualPin,
-          errorMessage: result.errorMessage,
-          responseTimeMs: result.responseTimeMs.toInt(),
-          serverVersion: result.serverVersion,
-          chainName: result.chainName,
-        );
-      }
-
-      // Fallback stub (should not be reached if kUseFrbBindings is true)
-      throw UnimplementedError('FRB bindings not available');
-    } on TorConnectionException catch (e) {
-      return NodeTestResult(
-        success: false,
-        transportMode: transportName,
-        tlsEnabled: useTls,
-        errorMessage:
-            'Tor connection failed: ${e.message}\n\n'
-            'Please check your Tor settings or try a different transport mode.',
-        responseTimeMs: DateTime.now().difference(startTime).inMilliseconds,
-      );
-    } on Socks5ConnectionException catch (e) {
-      return NodeTestResult(
-        success: false,
-        transportMode: transportName,
-        tlsEnabled: useTls,
-        errorMessage:
-            'SOCKS5 proxy connection failed: ${e.message}\n\n'
-            'Please verify your proxy settings.',
-        responseTimeMs: DateTime.now().difference(startTime).inMilliseconds,
-      );
-    } catch (e) {
-      return NodeTestResult(
-        success: false,
-        transportMode: transportName,
-        tlsEnabled: useTls,
-        errorMessage: 'Connection failed: $e',
-        responseTimeMs: DateTime.now().difference(startTime).inMilliseconds,
-      );
-    }
-  }
+  }) => _FfiBridgeNetworkHelper.testNode(url: url, tlsPin: tlsPin);
 
   static Future<String> formatAmount(int arrrtoshis) async {
     if (kUseFrbBindings) {
@@ -1452,208 +1216,17 @@ class FfiBridge {
     return (double.parse(arrr) * 100000000).toInt();
   }
 
-  static Future<bool> _isTunnelReadyForSync(TunnelMode mode) async {
-    if (mode is TunnelMode_Tor) {
-      try {
-        final status = await getTorStatusDetails();
-        if (status.status == 'ready') return true;
-        // Allow sync to proceed while Tor is actively bootstrapping; the sync
-        // engine already retries network operations until the transport is up.
-        if (status.status == 'bootstrapping') {
-          final blocked = status.blocked?.trim();
-          return blocked == null || blocked.isEmpty;
-        }
-        return false;
-      } catch (_) {
-        return false;
-      }
-    }
-    if (mode is TunnelMode_Socks5) {
-      return mode.url.trim().isNotEmpty;
-    }
-    return true;
-  }
-
   // Streams - Real sync progress from sync engine
-  static Stream<SyncStatus> syncProgressStream(WalletId id) async* {
-    int idleCount = 0;
-    int lastHeight = 0;
-    int lastTargetHeight = 0;
-    DateTime? lastRestartAttempt;
-    DateTime? lastStartAttempt;
-    while (true) {
-      try {
-        if (!_appIsActive) {
-          await Future<void>.delayed(const Duration(seconds: 2));
-          continue;
-        }
-        final tunnelMode = await getTunnel();
-        final tunnelReady = await _isTunnelReadyForSync(tunnelMode);
-
-        if (!tunnelReady) {
-          final status = await syncStatus(id);
-          yield status;
-          await Future<void>.delayed(const Duration(seconds: 2));
-          continue;
-        }
-
-        // Check if sync is running (even when caught up, sync monitors for new blocks)
-        final isRunning = await isSyncRunning(id);
-
-        // Get real sync status
-        final status = await syncStatus(id);
-
-        // Auto-restart sync whenever it stops after initial height discovery.
-        // Even when local == target, the running sync loop is what keeps the
-        // wallet tracking new blocks as they arrive.
-        if (!isRunning && status.targetHeight > BigInt.zero) {
-          final now = DateTime.now();
-          final shouldRestart =
-              lastRestartAttempt == null ||
-              now.difference(lastRestartAttempt!) > const Duration(seconds: 8);
-          if (shouldRestart) {
-            lastRestartAttempt = now;
-            try {
-              await startSync(id, SyncMode.compact);
-            } catch (_) {
-              // Ignore restart failures; stream will retry later
-            }
-          }
-        } else if (status.targetHeight == BigInt.zero) {
-          // Recover from stale/cleared session states (for example after
-          // transport-mode toggles) even when localHeight is non-zero.
-          final now = DateTime.now();
-          final shouldStart =
-              lastStartAttempt == null ||
-              now.difference(lastStartAttempt!) > const Duration(seconds: 3);
-          if (shouldStart) {
-            lastStartAttempt = now;
-            try {
-              await startSync(id, SyncMode.compact);
-            } catch (_) {
-              // Ignore start failures; stream will retry later
-            }
-          }
-        }
-        yield status;
-
-        // Track if progress is happening
-        final currentHeight = status.localHeight.toInt();
-        final targetHeight = status.targetHeight.toInt();
-        if (currentHeight != lastHeight || targetHeight != lastTargetHeight) {
-          lastHeight = currentHeight;
-          lastTargetHeight = targetHeight;
-          idleCount = 0;
-        } else {
-          idleCount++;
-        }
-
-        // Adjust polling interval based on sync activity
-        // Keep polling frequent when sync is running (even if caught up) to show new blocks quickly
-        Duration interval;
-        if (status.isSyncing) {
-          interval = const Duration(
-            milliseconds: 500,
-          ); // Fast updates during active sync
-        } else if (isRunning) {
-          // Sync is running but caught up - monitoring for new blocks
-          // Poll every 1 second to catch new blocks quickly
-          interval = const Duration(seconds: 1);
-        } else if (idleCount < 10) {
-          interval = const Duration(
-            seconds: 1,
-          ); // Normal updates after sync stops
-        } else {
-          interval = const Duration(
-            seconds: 2,
-          ); // Keep quick recovery when idle
-        }
-
-        await Future<void>.delayed(interval);
-      } catch (e) {
-        // If sync status fails, yield a default status instead of crashing the stream
-        // This allows the UI to continue working even if sync isn't available
-        yield SyncStatus(
-          localHeight: BigInt.zero,
-          targetHeight: BigInt.zero,
-          percent: 0.0,
-          stage: SyncStage.verify,
-          eta: null,
-          blocksPerSecond: 0.0,
-          notesDecrypted: BigInt.zero,
-          lastBatchMs: BigInt.zero,
-        );
-        // Wait longer before retrying on error
-        await Future<void>.delayed(const Duration(seconds: 5));
-      }
-    }
-  }
+  static Stream<SyncStatus> syncProgressStream(WalletId id) =>
+      _FfiBridgeSyncStreamHelper.syncProgressStream(id);
 
   /// Transaction discovery stream
   /// Emits when sync engine finds new transactions
   ///
   /// Polls the database periodically and emits new transactions as they are discovered.
   /// During active sync, polls every 2 seconds. When idle, polls every 5 seconds.
-  static Stream<TxInfo> transactionStream(WalletId id) async* {
-    if (!kUseFrbBindings) {
-      // Fallback: return empty stream
-      return;
-    }
-
-    // Track the last transaction state we've seen to detect new/updated ones
-    final Map<String, String> lastSeenStates = <String, String>{};
-    DateTime lastCheckTime = DateTime.now();
-
-    while (true) {
-      try {
-        if (!_appIsActive) {
-          await Future<void>.delayed(const Duration(seconds: 3));
-          continue;
-        }
-        // Check if sync is running to adjust poll interval
-        final isSyncing = await isSyncRunning(id);
-        final pollInterval = isSyncing
-            ? const Duration(seconds: 2) // Fast updates during sync
-            : const Duration(seconds: 5); // Slower updates when idle
-
-        await Future<void>.delayed(pollInterval);
-
-        // Get list of recent transactions from database
-        final transactions = await listTransactions(id, limit: 100);
-
-        // Find new transactions or status changes (e.g., pending -> confirmed)
-        for (final txInfo in transactions) {
-          final stateKey = '${txInfo.height ?? 0}:${txInfo.confirmed ? 1 : 0}';
-          final previousState = lastSeenStates[txInfo.txid];
-          if (previousState != stateKey) {
-            // New transaction or confirmation status changed.
-            lastSeenStates[txInfo.txid] = stateKey;
-            yield txInfo;
-          }
-        }
-
-        // Limit the size of lastSeenStates to prevent memory growth
-        // Keep only the most recent 1000 transaction IDs
-        if (lastSeenStates.length > 1000) {
-          final recentTxids = transactions
-              .take(1000)
-              .map((tx) => tx.txid)
-              .toSet();
-          lastSeenStates.removeWhere((key, _) => !recentTxids.contains(key));
-        }
-      } catch (e) {
-        // If we can't get transactions (e.g., wallet not loaded), log and continue
-        // Only log errors occasionally to avoid spam
-        if (DateTime.now().difference(lastCheckTime).inSeconds > 30) {
-          debugPrint('Failed to get transactions for wallet $id: $e');
-          lastCheckTime = DateTime.now();
-        }
-
-        // Wait before retrying on error
-        await Future<void>.delayed(const Duration(seconds: 5));
-      }
-    }
-  }
+  static Stream<TxInfo> transactionStream(WalletId id) =>
+      _FfiBridgeSyncStreamHelper.transactionStream(id);
 
   static Stream<Balance> balanceStream(WalletId id) async* {
     if (kUseFrbBindings) {
@@ -1707,8 +1280,7 @@ class FfiBridge {
   }
 
   /// Execute background sync with round-robin wallet selection.
-  static Future<BackgroundSyncExecutionResult>
-  executeBackgroundSyncRoundRobin({
+  static Future<BackgroundSyncExecutionResult> executeBackgroundSyncRoundRobin({
     required String mode,
     int maxDurationSecs = 60,
     int? maxBlocks,
