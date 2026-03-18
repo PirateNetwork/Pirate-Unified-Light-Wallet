@@ -1,7 +1,6 @@
 use super::*;
-use pirate_sync_lightd::client::{
-    LightClient, LightClientConfig, RetryConfig, TlsConfig, TransportMode,
-};
+use pirate_sync_lightd::client::{LightClient, RetryConfig, TransportMode};
+use std::time::Duration;
 
 fn parse_tunnel_mode_setting(mode: &str, socks5_url: Option<String>) -> Option<TunnelMode> {
     let normalized = mode.trim().to_lowercase();
@@ -73,6 +72,24 @@ pub(super) fn tunnel_transport_config() -> (TransportMode, Option<String>, bool)
     tunnel_transport_config_for(&tunnel_mode)
 }
 
+pub(super) fn light_client_config_for_endpoint(
+    endpoint: &endpoint::LightdEndpoint,
+    retry: RetryConfig,
+    connect_timeout: Duration,
+    request_timeout: Duration,
+) -> pirate_sync_lightd::client::LightClientConfig {
+    let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
+    endpoint::build_light_client_config(
+        endpoint,
+        transport,
+        socks5_url,
+        allow_direct_fallback,
+        retry,
+        connect_timeout,
+        request_timeout,
+    )
+}
+
 fn spawn_bootstrap_transport(mode: TunnelMode) {
     let (transport, socks5_url, _) = tunnel_transport_config_for(&mode);
     let task = async move {
@@ -93,55 +110,7 @@ fn spawn_bootstrap_transport(mode: TunnelMode) {
 }
 
 pub(super) async fn disconnect_active_sync_channels(reason: &'static str) {
-    let sessions: Vec<(WalletId, Arc<tokio::sync::Mutex<SyncSession>>)> = {
-        let sessions = SYNC_SESSIONS.read();
-        sessions
-            .iter()
-            .map(|(wallet_id, session)| (wallet_id.clone(), Arc::clone(session)))
-            .collect()
-    };
-
-    write_runtime_debug_event(
-        "log_transport_sync_disconnect_start",
-        "disconnect active sync channels",
-        &format!(
-            r#"{{"reason":"{}","session_count":{}}}"#,
-            escape_json(reason),
-            sessions.len()
-        ),
-    );
-
-    for (wallet_id, session_arc) in sessions {
-        let sync_opt = { session_arc.lock().await.sync.clone() };
-        if let Some(sync) = sync_opt {
-            let wallet_id_for_log = wallet_id.clone();
-            let result = run_sync_engine_task(sync.clone(), move |engine| {
-                Box::pin(async move {
-                    engine.disconnect().await;
-                    Ok(())
-                })
-            })
-            .await;
-            if let Err(e) = result {
-                tracing::warn!(
-                    "Failed to disconnect sync engine for {} after {}: {}",
-                    wallet_id_for_log,
-                    reason,
-                    e
-                );
-                write_runtime_debug_event(
-                    "log_transport_sync_disconnect_error",
-                    "disconnect active sync channels failed",
-                    &format!(
-                        r#"{{"reason":"{}","wallet_id":"{}","error":"{}"}}"#,
-                        escape_json(reason),
-                        wallet_id_for_log,
-                        escape_json(&format!("{}", e))
-                    ),
-                );
-            }
-        }
-    }
+    sync_control::disconnect_foreground_sync_channels(reason).await;
 }
 
 fn spawn_disconnect_active_sync_channels(reason: &'static str) {
@@ -238,6 +207,131 @@ pub async fn bootstrap_tunnel(mode: TunnelMode) -> Result<()> {
     Ok(())
 }
 
+/// Shutdown any active transport manager (Tor/I2P/SOCKS5).
+pub async fn shutdown_transport() -> Result<()> {
+    // #region agent log
+    pirate_core::debug_log::with_locked_file(|file| {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_tunnel_shutdown","timestamp":{},"location":"tunnel.rs:{}", "message":"shutdown_transport","data":{{}}}}"#,
+            ts,
+            line!()
+        );
+    });
+    // #endregion
+    pirate_sync_lightd::shutdown_transport().await;
+    mark_runtime_clean_shutdown("shutdown_transport");
+    Ok(())
+}
+
+/// Configure Tor bridge settings (Snowflake/obfs4/custom) for censorship circumvention.
+pub async fn set_tor_bridge_settings(
+    use_bridges: bool,
+    fallback_to_bridges: bool,
+    transport: String,
+    bridge_lines: Vec<String>,
+    transport_path: Option<String>,
+) -> Result<()> {
+    pirate_sync_lightd::client::set_tor_bridge_settings(
+        use_bridges,
+        fallback_to_bridges,
+        transport.clone(),
+        bridge_lines.clone(),
+        transport_path.clone(),
+    )?;
+
+    // #region agent log
+    pirate_core::debug_log::with_locked_file(|file| {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_tor_bridge_settings","timestamp":{},"location":"tunnel.rs:{}", "message":"set_tor_bridge_settings","data":{{"use_bridges":{},"fallback_to_bridges":{},"transport":"{}","bridge_lines":{},"transport_path_set":{}}}}}"#,
+            ts,
+            line!(),
+            use_bridges,
+            fallback_to_bridges,
+            escape_json(&transport),
+            bridge_lines.len(),
+            transport_path
+                .as_ref()
+                .map(|p| !p.trim().is_empty())
+                .unwrap_or(false)
+        );
+    });
+    // #endregion
+
+    let current = TUNNEL_MODE.read().clone();
+    if matches!(current, TunnelMode::Tor) {
+        pirate_sync_lightd::bootstrap_transport(TransportMode::Tor, None)
+            .await
+            .map_err(|e| anyhow!("Failed to bootstrap transport: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Get current Tor bootstrap status for UI.
+pub async fn get_tor_status() -> Result<String> {
+    let status = pirate_sync_lightd::tor_status().await;
+    let payload = match status {
+        Some(pirate_sync_lightd::TorStatus::Ready) => "{\"status\":\"ready\"}".to_string(),
+        Some(pirate_sync_lightd::TorStatus::Bootstrapping { progress, blocked }) => {
+            if let Some(blocked) = blocked {
+                format!(
+                    "{{\"status\":\"bootstrapping\",\"progress\":{},\"blocked\":\"{}\"}}",
+                    progress,
+                    escape_json(&blocked)
+                )
+            } else {
+                format!("{{\"status\":\"bootstrapping\",\"progress\":{}}}", progress)
+            }
+        }
+        Some(pirate_sync_lightd::TorStatus::Error(message)) => {
+            format!(
+                "{{\"status\":\"error\",\"error\":\"{}\"}}",
+                escape_json(&message)
+            )
+        }
+        Some(pirate_sync_lightd::TorStatus::NotStarted) | None => {
+            "{\"status\":\"not_started\"}".to_string()
+        }
+    };
+    Ok(payload)
+}
+
+/// Rotate Tor exit circuits for new streams and reconnect sync channels.
+pub async fn rotate_tor_exit() -> Result<()> {
+    pirate_sync_lightd::rotate_tor_exit()
+        .await
+        .map_err(|e| anyhow!("Failed to rotate Tor exit: {}", e))?;
+
+    // #region agent log
+    pirate_core::debug_log::with_locked_file(|file| {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(
+            file,
+            r#"{{"id":"log_tor_exit_rotate","timestamp":{},"location":"tunnel.rs:{}", "message":"tor_exit_rotate","data":{{}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+            ts,
+            line!()
+        );
+    });
+    // #endregion
+
+    disconnect_active_sync_channels("tor_exit_rotate").await;
+
+    Ok(())
+}
+
 pub async fn test_node(
     url: String,
     tls_pin: Option<String>,
@@ -259,56 +353,12 @@ async fn test_node_inner(
         url
     );
 
-    // Normalize endpoint URL - ensure it has the correct format for tonic
-    // Tonic requires format: https://host:port or http://host:port
-    let normalized_url = url.trim().to_string();
-
-    // Determine if TLS is enabled
-    // Explicitly check for http:// (no TLS) vs https:// (TLS) vs no protocol (default to TLS)
-    let tls_enabled = if normalized_url.starts_with("http://") {
-        false // Explicitly disable TLS for http:// URLs
-    } else if normalized_url.starts_with("https://") {
-        true // Explicitly enable TLS for https:// URLs
-    } else {
-        // No protocol specified - default to TLS (https) for security
-        true
-    };
-
-    // Remove protocol if present to parse host:port
-    let host_port = if let Some(stripped) = normalized_url.strip_prefix("https://") {
-        stripped.to_string()
-    } else if let Some(stripped) = normalized_url.strip_prefix("http://") {
-        stripped.to_string()
-    } else {
-        normalized_url.clone()
-    };
-
-    // Remove trailing slash
-    let host_port = host_port.trim_end_matches('/').to_string();
-
-    // Parse host and port
-    let (host, port) = if host_port.contains(':') {
-        let parts: Vec<&str> = host_port.split(':').collect();
-        if parts.len() != 2 {
-            return Err(anyhow!("Invalid endpoint format: expected host:port"));
-        }
-        (
-            parts[0].to_string(),
-            parts[1]
-                .parse::<u16>()
-                .map_err(|_| anyhow!("Invalid port number in endpoint"))?,
-        )
-    } else {
-        // No port specified, use default
-        (host_port, 9067)
-    };
-
-    // Check if host is an IP address
+    let endpoint_config = endpoint::endpoint_from_url(&url, true, tls_pin.clone(), None)?;
+    let host = endpoint_config.host.clone();
+    let port = endpoint_config.port;
+    let tls_enabled = endpoint_config.use_tls;
     let is_ip_address = host.parse::<std::net::IpAddr>().is_ok();
-
-    // Reconstruct endpoint URL in correct format for tonic
-    let scheme = if tls_enabled { "https" } else { "http" };
-    let endpoint = format!("{}://{}:{}", scheme, host, port);
+    let endpoint = endpoint_config.url();
 
     tracing::info!(
         "test_node: Parsed endpoint URL: {} (TLS: {}, host: {}, port: {}, is_ip: {})",
@@ -323,19 +373,10 @@ async fn test_node_inner(
     // For TLS SNI: If connecting via IP address, we need to use the hostname from the certificate
     // The certificate is likely issued for lightd1.piratechain.com, not the IP
     // So we should use the hostname for SNI even when connecting via IP
-    let tls_server_name = if tls_enabled {
-        if is_ip_address {
-            // If connecting via IP, use the known hostname for SNI to match the certificate
-            // This is required because the certificate is issued for the hostname, not the IP
-            tracing::info!("test_node: Connecting via IP {}, using hostname 'lightd1.piratechain.com' for TLS SNI to match certificate", host);
-            Some("lightd1.piratechain.com".to_string())
-        } else {
-            // Use hostname for SNI (required for proper TLS handshake with hostname-based certs)
-            Some(host.clone())
-        }
-    } else {
-        None
-    };
+    let tls_server_name = endpoint::tls_server_name(&endpoint_config);
+    if tls_enabled && is_ip_address {
+        tracing::info!("test_node: Connecting via IP {}, using hostname 'lightd1.piratechain.com' for TLS SNI to match certificate", host);
+    }
 
     let actual_pin = if tls_enabled {
         let server_name = tls_server_name.clone().unwrap_or_else(|| host.clone());
@@ -404,20 +445,15 @@ async fn test_node_inner(
         ),
     };
 
-    let config = LightClientConfig {
-        endpoint: endpoint.clone(),
+    let config = endpoint::build_light_client_config(
+        &endpoint_config,
         transport,
         socks5_url,
-        tls: TlsConfig {
-            enabled: tls_enabled,
-            spki_pin: tls_pin.clone(),
-            server_name: tls_server_name,
-        },
+        allow_direct_fallback,
         retry,
         connect_timeout,
         request_timeout,
-        allow_direct_fallback,
-    };
+    );
 
     let client = LightClient::with_config(config);
 

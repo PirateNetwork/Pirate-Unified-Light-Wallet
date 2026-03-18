@@ -1,5 +1,7 @@
+use super::tunnel::tunnel_transport_config;
 use super::*;
 use pirate_sync_lightd::{BackgroundSyncConfig, BackgroundSyncMode, BackgroundSyncOrchestrator};
+use pirate_sync_lightd::{SyncConfig, SyncEngine};
 use tokio::sync::Mutex as TokioMutex;
 
 const WARM_WALLET_WINDOW_SECS: i64 = 7 * 24 * 60 * 60;
@@ -36,35 +38,16 @@ async fn start_background_sync_inner(
         (birthday_height, endpoint_config)
     };
 
-    let endpoint_url = endpoint_config.url();
     let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
-    let tls_enabled = endpoint_config.use_tls;
-    let host = endpoint_config.host.clone();
-    let is_ip_address = host.parse::<std::net::IpAddr>().is_ok();
-    let tls_server_name = if tls_enabled {
-        if is_ip_address {
-            Some("lightd1.piratechain.com".to_string())
-        } else {
-            Some(host.clone())
-        }
-    } else {
-        None
-    };
-
-    let client_config = LightClientConfig {
-        endpoint: endpoint_url,
+    let client_config = endpoint::build_light_client_config(
+        &endpoint_config,
         transport,
         socks5_url,
-        tls: TlsConfig {
-            enabled: tls_enabled,
-            spki_pin: endpoint_config.tls_pin.clone(),
-            server_name: tls_server_name,
-        },
-        retry: RetryConfig::default(),
-        connect_timeout: std::time::Duration::from_secs(30),
-        request_timeout: std::time::Duration::from_secs(60),
         allow_direct_fallback,
-    };
+        RetryConfig::default(),
+        std::time::Duration::from_secs(30),
+        std::time::Duration::from_secs(60),
+    );
 
     let network_type = wallet_network_type(&wallet_id)?;
     let address_network_type = address_prefix_network_type(&wallet_id)?;
@@ -217,32 +200,17 @@ async fn start_background_sync_round_robin_inner(
 }
 
 pub async fn is_background_sync_needed(wallet_id: WalletId) -> Result<bool> {
-    let session_arc_opt = {
-        let sessions = SYNC_SESSIONS.read();
-        sessions.get(&wallet_id).map(Arc::clone)
-    };
+    if let Some(needs_work) = sync_control::foreground_sync_needs_work(&wallet_id).await {
+        return Ok(needs_work);
+    }
 
-    if let Some(session_arc) = session_arc_opt {
-        let sync_opt = { session_arc.lock().await.sync.clone() };
-        if let Some(sync) = sync_opt {
-            let progress_arc = {
-                let engine = sync.clone().lock_owned().await;
-                engine.progress()
-            };
-            let progress = progress_arc.read().await;
-            Ok(progress.current_height() < progress.target_height())
-        } else {
-            Ok(false)
-        }
-    } else {
-        let passphrase = app_passphrase()?;
-        let (db, _key, _master_key) = open_wallet_db_with_passphrase(&wallet_id, &passphrase)?;
-        let sync_state = pirate_storage_sqlite::SyncStateStorage::new(&db);
+    let passphrase = app_passphrase()?;
+    let (db, _key, _master_key) = open_wallet_db_with_passphrase(&wallet_id, &passphrase)?;
+    let sync_state = pirate_storage_sqlite::SyncStateStorage::new(&db);
 
-        match sync_state.load_sync_state() {
-            Ok(state) => Ok(state.local_height < state.target_height),
-            Err(_) => Ok(false),
-        }
+    match sync_state.load_sync_state() {
+        Ok(state) => Ok(state.local_height < state.target_height),
+        Err(_) => Ok(false),
     }
 }
 

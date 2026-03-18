@@ -111,7 +111,7 @@ pub(super) fn touch_wallet_last_synced(db: &Database, wallet_id: &str) -> Result
 pub(super) fn ensure_wallet_registry_loaded() -> Result<()> {
     install_debug_panic_hook();
     install_runtime_diagnostics();
-    if is_decoy_mode_active() {
+    if panic_duress::is_decoy_mode_active() {
         return Ok(());
     }
     if REGISTRY_LOADED.load(Ordering::SeqCst) {
@@ -128,37 +128,8 @@ pub(super) fn load_wallet_registry_state(db: &Database) -> Result<()> {
     *ACTIVE_WALLET.write() = active;
 
     {
-        let mut endpoints = LIGHTD_ENDPOINTS.write();
-        endpoints.clear();
-
-        for wallet in WALLETS.read().iter() {
-            let endpoint_key = format!("lightd_endpoint_{}", wallet.id);
-            let pin_key = format!("lightd_tls_pin_{}", wallet.id);
-            let endpoint_url = get_registry_setting(db, &endpoint_key)?;
-            let tls_pin = get_registry_setting(db, &pin_key)?;
-
-            if let Some(url) = endpoint_url {
-                match parse_endpoint_url(&url) {
-                    Ok((host, port, use_tls)) => {
-                        let endpoint = LightdEndpoint {
-                            host,
-                            port,
-                            use_tls,
-                            tls_pin,
-                            label: Some("Custom".to_string()),
-                        };
-                        endpoints.insert(wallet.id.clone(), endpoint);
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to parse stored endpoint for wallet {}: {}",
-                            wallet.id,
-                            e
-                        );
-                    }
-                }
-            }
-        }
+        let wallets = WALLETS.read();
+        endpoint::load_registry_endpoints(db, wallets.as_slice())?;
     }
 
     if let Ok(Some(mode)) = tunnel::load_registry_tunnel_mode(db) {
@@ -179,8 +150,8 @@ pub(super) fn load_wallet_registry_state(db: &Database) -> Result<()> {
 }
 
 pub(super) fn get_wallet_meta(wallet_id: &str) -> Result<WalletMeta> {
-    if is_decoy_mode_active() {
-        return Ok(decoy_wallet_meta());
+    if panic_duress::is_decoy_mode_active() {
+        return Ok(panic_duress::decoy_wallet_meta());
     }
     ensure_wallet_registry_loaded()?;
     let wallets = WALLETS.read();
@@ -213,8 +184,8 @@ pub(super) fn wallet_registry_exists() -> Result<bool> {
 }
 
 pub(super) fn list_wallets() -> Result<Vec<WalletMeta>> {
-    if is_decoy_mode_active() {
-        ensure_decoy_wallet_state();
+    if panic_duress::is_decoy_mode_active() {
+        panic_duress::ensure_decoy_wallet_state();
         return Ok(WALLETS.read().clone());
     }
     match ensure_wallet_registry_loaded() {
@@ -231,8 +202,8 @@ pub(super) fn list_wallets() -> Result<Vec<WalletMeta>> {
 }
 
 pub(super) fn switch_wallet(wallet_id: WalletId) -> Result<()> {
-    if is_decoy_mode_active() {
-        ensure_decoy_wallet_state();
+    if panic_duress::is_decoy_mode_active() {
+        panic_duress::ensure_decoy_wallet_state();
         return Ok(());
     }
     ensure_wallet_registry_loaded()?;
@@ -250,7 +221,7 @@ pub(super) fn switch_wallet(wallet_id: WalletId) -> Result<()> {
             let cancel_result = run_on_runtime_blocking({
                 let wallet_id_for_cancel = previous_wallet_id.clone();
                 move || async move {
-                    cancel_sync_internal(wallet_id_for_cancel.clone(), true).await?;
+                    sync_control::cancel_sync_internal(wallet_id_for_cancel.clone(), true).await?;
                     Ok(())
                 }
             });
@@ -310,9 +281,9 @@ pub(super) fn set_auto_consolidation_enabled(wallet_id: WalletId, enabled: bool)
 }
 
 pub(super) fn get_active_wallet() -> Result<Option<WalletId>> {
-    if is_decoy_mode_active() {
-        ensure_decoy_wallet_state();
-        return Ok(Some(DECOY_WALLET_ID.to_string()));
+    if panic_duress::is_decoy_mode_active() {
+        panic_duress::ensure_decoy_wallet_state();
+        return Ok(Some(panic_duress::DECOY_WALLET_ID.to_string()));
     }
     ensure_wallet_registry_loaded()?;
     if ACTIVE_WALLET.read().is_none() {
@@ -383,16 +354,9 @@ pub(super) fn delete_wallet(wallet_id: WalletId) -> Result<()> {
         }
     }
 
-    {
-        let mut sessions = SYNC_SESSIONS.write();
-        sessions.remove(&wallet_id);
-    }
-    clear_sync_runtime_cache(&wallet_id);
+    sync_control::clear_wallet_sync_state(&wallet_id);
 
-    {
-        let mut endpoints = LIGHTD_ENDPOINTS.write();
-        endpoints.remove(&wallet_id);
-    }
+    endpoint::remove_cached_lightd_endpoint(&wallet_id);
 
     let db_path = wallet_db_path_for(&wallet_id)?;
     let _ = fs::remove_file(db_path);

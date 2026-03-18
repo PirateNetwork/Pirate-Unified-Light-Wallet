@@ -526,8 +526,7 @@ pub(super) fn unlock_app(passphrase: String) -> Result<()> {
     }
 
     {
-        let vault = DECOY_VAULT.read();
-        vault.deactivate_decoy();
+        panic_duress::deactivate_decoy();
     }
 
     passphrase_store::set_passphrase(passphrase);
@@ -845,10 +844,18 @@ pub(super) fn change_app_passphrase(
         return Err(anyhow!("Failed to update passphrase hash: {}", e));
     }
 
-    if let Err(e) = refresh_duress_reverse_hash(&registry_db, &new_passphrase) {
+    if let Err(e) = panic_duress::refresh_duress_reverse_hash(&registry_db, &new_passphrase) {
         tracing::warn!("Failed to refresh duress passphrase: {}", e);
-        let _ = set_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY, None);
-        let _ = set_registry_setting(&registry_db, REGISTRY_DURESS_USE_REVERSE_KEY, None);
+        let _ = set_registry_setting(
+            &registry_db,
+            panic_duress::REGISTRY_DURESS_PASSPHRASE_HASH_KEY,
+            None,
+        );
+        let _ = set_registry_setting(
+            &registry_db,
+            panic_duress::REGISTRY_DURESS_USE_REVERSE_KEY,
+            None,
+        );
     }
 
     let registry_key_path = wallet_registry_key_path()?;
@@ -862,10 +869,7 @@ pub(super) fn change_app_passphrase(
     REGISTRY_LOADED.store(false, Ordering::SeqCst);
     ensure_wallet_registry_loaded()?;
 
-    SYNC_SESSIONS.write().clear();
-    SYNC_RUNTIME_HANDLES.write().clear();
-    SYNC_STATUS_SNAPSHOT_CACHE.write().clear();
-    TX_LIST_CACHE.write().clear();
+    sync_control::clear_passphrase_change_sync_state();
     tracing::info!("App passphrase updated successfully");
     Ok(())
 }
