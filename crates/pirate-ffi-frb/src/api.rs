@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports)]
+
 //! Public API exposed to Flutter via flutter_rust_bridge
 //!
 //! This module defines the complete FFI surface for the Pirate Unified Wallet.
@@ -41,6 +43,7 @@ use pirate_storage_sqlite::{
 use pirate_sync_lightd::client::{LightClient, RetryConfig};
 use pirate_sync_lightd::SyncEngine;
 use rusqlite::params;
+use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -60,20 +63,22 @@ use zcash_primitives::sapling::keys::OutgoingViewingKey as SaplingOutgoingViewin
 use zcash_primitives::sapling::note_encryption::try_sapling_output_recovery;
 use zcash_primitives::transaction::Transaction;
 
-mod address_book;
-mod addresses;
-mod background_sync;
-mod diagnostics;
-mod encrypted_db;
-mod endpoint;
-mod key_management;
-mod panic_duress;
-mod provisioning;
-mod seed_export;
-mod sync_control;
-mod tunnel;
-mod tx_flow;
-mod wallet_registry;
+use pirate_wallet_service as service;
+
+pub(crate) mod address_book;
+pub(crate) mod addresses;
+pub(crate) mod background_sync;
+pub(crate) mod diagnostics;
+pub(crate) mod encrypted_db;
+pub(crate) mod endpoint;
+pub(crate) mod key_management;
+pub(crate) mod panic_duress;
+pub(crate) mod provisioning;
+pub(crate) mod seed_export;
+pub(crate) mod sync_control;
+pub(crate) mod tunnel;
+pub(crate) mod tx_flow;
+pub(crate) mod wallet_registry;
 
 pub use self::diagnostics::CheckpointInfo;
 pub use self::endpoint::{
@@ -124,6 +129,22 @@ const SPENDABILITY_REASON_ERR_RESCAN_REQUIRED: &str = "ERR_RESCAN_REQUIRED";
 const SPENDABILITY_REASON_ERR_SYNC_FINALIZING: &str = "ERR_SYNC_FINALIZING";
 const SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED: &str = "ERR_WITNESS_REPAIR_QUEUED";
 const RUNTIME_MARKER_FILE: &str = "runtime_session.marker";
+
+pub(super) fn convert_from_service<T, U>(value: U) -> Result<T>
+where
+    T: DeserializeOwned,
+    U: serde::Serialize,
+{
+    Ok(serde_json::from_value(serde_json::to_value(value)?)?)
+}
+
+pub(super) fn convert_into_service<T, U>(value: T) -> Result<U>
+where
+    T: serde::Serialize,
+    U: DeserializeOwned,
+{
+    convert_from_service(value)
+}
 
 fn recover_outgoing_memo_from_raw_tx(
     raw_tx_bytes: &[u8],
@@ -529,7 +550,7 @@ pub fn create_wallet(
     _entropy_len: Option<u32>, // Deprecated: always generates 24-word seed
     birthday_opt: Option<u32>,
 ) -> Result<WalletId> {
-    provisioning::create_wallet(name, _entropy_len, birthday_opt)
+    service::create_wallet(name, _entropy_len, birthday_opt)
 }
 
 /// Restore wallet from mnemonic
@@ -543,14 +564,14 @@ pub fn restore_wallet(
     passphrase_opt: Option<String>,
     birthday_opt: Option<u32>,
 ) -> Result<WalletId> {
-    provisioning::restore_wallet(name, mnemonic, passphrase_opt, birthday_opt)
+    service::restore_wallet(name, mnemonic, passphrase_opt, birthday_opt)
 }
 
 /// Check if wallet registry database file exists (without opening it)
 ///
 /// This allows checking if wallets exist before the database is created or opened.
 pub fn wallet_registry_exists() -> Result<bool> {
-    wallet_registry::wallet_registry_exists()
+    service::wallet_registry_exists()
 }
 
 /// List all wallets
@@ -558,12 +579,12 @@ pub fn wallet_registry_exists() -> Result<bool> {
 /// Returns empty list if database can't be opened (e.g., passphrase not set)
 /// NOTE: This will CREATE the database file if it doesn't exist (via open_wallet_registry)
 pub fn list_wallets() -> Result<Vec<WalletMeta>> {
-    wallet_registry::list_wallets()
+    convert_from_service(service::list_wallets()?)
 }
 
 /// Switch active wallet
 pub fn switch_wallet(wallet_id: WalletId) -> Result<()> {
-    wallet_registry::switch_wallet(wallet_id)
+    service::switch_wallet(wallet_id)
 }
 
 async fn run_sync_engine_task<F, T>(sync: Arc<tokio::sync::Mutex<SyncEngine>>, task: F) -> Result<T>
@@ -649,33 +670,33 @@ fn escape_json(value: &str) -> String {
 /// IMPORTANT: This function opens/creates the database with the passphrase,
 /// then stores the hash and caches the passphrase in memory for this session.
 pub fn set_app_passphrase(passphrase: String) -> Result<()> {
-    encrypted_db::set_app_passphrase(passphrase)
+    service::set_app_passphrase(passphrase)
 }
 
 /// Check if app passphrase is configured
 pub fn has_app_passphrase() -> Result<bool> {
-    encrypted_db::has_app_passphrase()
+    service::has_app_passphrase()
 }
 
 /// Verify app passphrase by attempting to open the database with it
 pub fn verify_app_passphrase(passphrase: String) -> Result<bool> {
-    encrypted_db::verify_app_passphrase(passphrase)
+    service::verify_app_passphrase(passphrase)
 }
 
 /// Unlock app with passphrase (caches passphrase in memory for wallet access)
 /// This allows wallets to be decrypted using the passphrase
 pub fn unlock_app(passphrase: String) -> Result<()> {
-    encrypted_db::unlock_app(passphrase)
+    service::unlock_app(passphrase)
 }
 
 /// Change app passphrase and re-encrypt all wallet data with the new keys.
 pub fn change_app_passphrase(current_passphrase: String, new_passphrase: String) -> Result<()> {
-    encrypted_db::change_app_passphrase(current_passphrase, new_passphrase)
+    service::change_app_passphrase(current_passphrase, new_passphrase)
 }
 
 /// Change passphrase using the cached passphrase from the current session.
 pub fn change_app_passphrase_with_cached(new_passphrase: String) -> Result<()> {
-    encrypted_db::change_app_passphrase_with_cached(new_passphrase)
+    service::change_app_passphrase_with_cached(new_passphrase)
 }
 
 /// Reseal registry + wallet DB keys using current platform keystore mode.
@@ -683,42 +704,32 @@ pub fn change_app_passphrase_with_cached(new_passphrase: String) -> Result<()> {
 /// This is used when biometrics are enabled/disabled to rewrap the DB keys
 /// under the appropriate keystore policy without changing the passphrase.
 pub fn reseal_db_keys_for_biometrics() -> Result<()> {
-    encrypted_db::reseal_db_keys_for_biometrics()
+    service::reseal_db_keys_for_biometrics()
 }
 
 /// Get auto-consolidation setting for a wallet.
 pub fn get_auto_consolidation_enabled(wallet_id: WalletId) -> Result<bool> {
-    wallet_registry::get_auto_consolidation_enabled(wallet_id)
+    service::get_auto_consolidation_enabled(wallet_id)
 }
 
 /// Enable or disable auto-consolidation for a wallet.
 pub fn set_auto_consolidation_enabled(wallet_id: WalletId, enabled: bool) -> Result<()> {
-    wallet_registry::set_auto_consolidation_enabled(wallet_id, enabled)
+    service::set_auto_consolidation_enabled(wallet_id, enabled)
 }
 
 /// Get the note count threshold that triggers auto-consolidation prompts.
 pub fn get_auto_consolidation_threshold() -> Result<u32> {
-    Ok(AUTO_CONSOLIDATION_THRESHOLD as u32)
+    service::get_auto_consolidation_threshold()
 }
 
 /// Count selectable notes eligible for auto-consolidation.
 pub fn get_auto_consolidation_candidate_count(wallet_id: WalletId) -> Result<u32> {
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    let secret = repo
-        .get_wallet_secret(&wallet_id)?
-        .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let selectable_notes =
-        repo.get_unspent_selectable_notes_filtered(secret.account_id, None, None)?;
-    let count = selectable_notes
-        .iter()
-        .filter(|note| note.auto_consolidation_eligible)
-        .count();
-    Ok(count as u32)
+    service::get_auto_consolidation_candidate_count(wallet_id)
 }
 
 /// Return deterministic spendability status for the wallet.
 pub fn get_spendability_status(wallet_id: WalletId) -> Result<SpendabilityStatus> {
-    sync_control::get_spendability_status(wallet_id)
+    convert_from_service(service::get_spendability_status(wallet_id)?)
 }
 
 fn ensure_primary_account_key(
@@ -787,22 +798,22 @@ fn ensure_primary_account_key(
 
 /// Get active wallet ID
 pub fn get_active_wallet() -> Result<Option<WalletId>> {
-    wallet_registry::get_active_wallet()
+    service::get_active_wallet()
 }
 
 /// Rename wallet
 pub fn rename_wallet(wallet_id: WalletId, new_name: String) -> Result<()> {
-    wallet_registry::rename_wallet(wallet_id, new_name)
+    service::rename_wallet(wallet_id, new_name)
 }
 
 /// Update wallet birthday height
 pub fn set_wallet_birthday_height(wallet_id: WalletId, birthday_height: u32) -> Result<()> {
-    wallet_registry::set_wallet_birthday_height(wallet_id, birthday_height)
+    service::set_wallet_birthday_height(wallet_id, birthday_height)
 }
 
 /// Delete wallet and its local database
 pub fn delete_wallet(wallet_id: WalletId) -> Result<()> {
-    wallet_registry::delete_wallet(wallet_id)
+    service::delete_wallet(wallet_id)
 }
 
 // ============================================================================
@@ -863,7 +874,7 @@ fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
 /// If no address exists, generates and stores the first address (index 0).
 /// Call `next_receive_address` to rotate to a new unlinkable address.
 pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
-    addresses::current_receive_address(wallet_id)
+    service::current_receive_address(wallet_id)
 }
 
 /// Generate next receive address (diversifier rotation)
@@ -872,31 +883,12 @@ pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
 /// Address type (Sapling or Orchard) is determined by network and current block height.
 /// Previous addresses remain valid for receiving funds.
 pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
-    addresses::next_receive_address(wallet_id)
+    service::next_receive_address(wallet_id)
 }
 
 /// Label an address for address book
 pub fn label_address(wallet_id: WalletId, addr: String, label: String) -> Result<()> {
-    ensure_not_decoy("Label address")?;
-    // Open encrypted wallet DB
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-
-    // Get wallet secret to find account_id
-    let secret = repo
-        .get_wallet_secret(&wallet_id)?
-        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-
-    // Update address label (empty string means remove label)
-    let label_opt = if label.is_empty() {
-        None
-    } else {
-        Some(label.clone())
-    };
-
-    repo.update_address_label(secret.account_id, &addr, label_opt)?;
-
-    tracing::info!("Labeled address {} as '{}'", addr, label);
-    Ok(())
+    service::label_address(wallet_id, addr, label)
 }
 
 /// Set color tag for a wallet address
@@ -905,23 +897,16 @@ pub fn set_address_color_tag(
     addr: String,
     color_tag: AddressBookColorTag,
 ) -> Result<()> {
-    ensure_not_decoy("Update address color")?;
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-
-    let secret = repo
-        .get_wallet_secret(&wallet_id)?
-        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-
-    let db_tag = address_book_color_from_ffi(color_tag);
-    repo.update_address_color_tag(secret.account_id, &addr, db_tag)?;
-
-    tracing::info!("Updated address color tag for {}", addr);
-    Ok(())
+    service::set_address_color_tag(
+        convert_into_service(wallet_id)?,
+        addr,
+        convert_into_service(color_tag)?,
+    )
 }
 
 /// Get all addresses for wallet with labels
 pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
-    addresses::list_addresses(wallet_id)
+    convert_from_service(service::list_addresses(wallet_id)?)
 }
 
 /// Get per-address balances for a wallet (optionally filtered by key group).
@@ -929,7 +914,7 @@ pub fn list_address_balances(
     wallet_id: WalletId,
     key_id: Option<i64>,
 ) -> Result<Vec<AddressBalanceInfo>> {
-    addresses::list_address_balances(wallet_id, key_id)
+    convert_from_service(service::list_address_balances(wallet_id, key_id)?)
 }
 
 fn address_matches_expected_network_prefix(
@@ -981,7 +966,7 @@ pub(super) fn address_book_color_to_ffi(tag: DbColorTag) -> AddressBookColorTag 
 
 /// List address book entries for a wallet
 pub fn list_address_book(wallet_id: WalletId) -> Result<Vec<AddressBookEntryFfi>> {
-    address_book::list_address_book(wallet_id)
+    convert_from_service(service::list_address_book(wallet_id)?)
 }
 
 /// Add an address book entry
@@ -992,7 +977,13 @@ pub fn add_address_book_entry(
     notes: Option<String>,
     color_tag: AddressBookColorTag,
 ) -> Result<AddressBookEntryFfi> {
-    address_book::add_address_book_entry(wallet_id, address, label, notes, color_tag)
+    convert_from_service(service::add_address_book_entry(
+        wallet_id,
+        address,
+        label,
+        notes,
+        convert_into_service(color_tag)?,
+    )?)
 }
 
 /// Update an address book entry
@@ -1004,42 +995,52 @@ pub fn update_address_book_entry(
     color_tag: Option<AddressBookColorTag>,
     is_favorite: Option<bool>,
 ) -> Result<AddressBookEntryFfi> {
-    address_book::update_address_book_entry(wallet_id, id, label, notes, color_tag, is_favorite)
+    convert_from_service(service::update_address_book_entry(
+        wallet_id,
+        id,
+        label,
+        notes,
+        match color_tag {
+            Some(value) => Some(convert_into_service(value)?),
+            None => None,
+        },
+        is_favorite,
+    )?)
 }
 
 /// Delete an address book entry
 pub fn delete_address_book_entry(wallet_id: WalletId, id: i64) -> Result<()> {
-    address_book::delete_address_book_entry(wallet_id, id)
+    service::delete_address_book_entry(wallet_id, id)
 }
 
 /// Toggle favorite status for an entry
 pub fn toggle_address_book_favorite(wallet_id: WalletId, id: i64) -> Result<bool> {
-    address_book::toggle_address_book_favorite(wallet_id, id)
+    service::toggle_address_book_favorite(wallet_id, id)
 }
 
 /// Mark an address as used
 pub fn mark_address_used(wallet_id: WalletId, address: String) -> Result<()> {
-    address_book::mark_address_used(wallet_id, address)
+    service::mark_address_used(wallet_id, address)
 }
 
 /// Get label for an address
 pub fn get_label_for_address(wallet_id: WalletId, address: String) -> Result<Option<String>> {
-    address_book::get_label_for_address(wallet_id, address)
+    service::get_label_for_address(wallet_id, address)
 }
 
 /// Check if an address exists in the book
 pub fn address_exists_in_book(wallet_id: WalletId, address: String) -> Result<bool> {
-    address_book::address_exists_in_book(wallet_id, address)
+    service::address_exists_in_book(wallet_id, address)
 }
 
 /// Count address book entries
 pub fn get_address_book_count(wallet_id: WalletId) -> Result<u32> {
-    address_book::get_address_book_count(wallet_id)
+    service::get_address_book_count(wallet_id)
 }
 
 /// Get entry by ID
 pub fn get_address_book_entry(wallet_id: WalletId, id: i64) -> Result<Option<AddressBookEntryFfi>> {
-    address_book::get_address_book_entry(wallet_id, id)
+    convert_from_service(service::get_address_book_entry(wallet_id, id)?)
 }
 
 /// Get entry by address
@@ -1047,17 +1048,19 @@ pub fn get_address_book_entry_by_address(
     wallet_id: WalletId,
     address: String,
 ) -> Result<Option<AddressBookEntryFfi>> {
-    address_book::get_address_book_entry_by_address(wallet_id, address)
+    convert_from_service(service::get_address_book_entry_by_address(
+        wallet_id, address,
+    )?)
 }
 
 /// Search entries by query
 pub fn search_address_book(wallet_id: WalletId, query: String) -> Result<Vec<AddressBookEntryFfi>> {
-    address_book::search_address_book(wallet_id, query)
+    convert_from_service(service::search_address_book(wallet_id, query)?)
 }
 
 /// List favorites
 pub fn get_address_book_favorites(wallet_id: WalletId) -> Result<Vec<AddressBookEntryFfi>> {
-    address_book::get_address_book_favorites(wallet_id)
+    convert_from_service(service::get_address_book_favorites(wallet_id)?)
 }
 
 /// List recently used addresses
@@ -1065,7 +1068,7 @@ pub fn get_recently_used_addresses(
     wallet_id: WalletId,
     limit: u32,
 ) -> Result<Vec<AddressBookEntryFfi>> {
-    address_book::get_recently_used_addresses(wallet_id, limit)
+    convert_from_service(service::get_recently_used_addresses(wallet_id, limit)?)
 }
 
 // ============================================================================
@@ -1075,39 +1078,30 @@ pub fn get_recently_used_addresses(
 /// Export Sapling viewing key from full wallet.
 ///
 /// Uses the zxviews... Bech32 format for watch-only wallets.
-pub fn export_ivk(wallet_id: WalletId) -> Result<String> {
-    key_management::export_ivk(wallet_id)
+pub fn export_sapling_viewing_key(wallet_id: WalletId) -> Result<String> {
+    service::export_sapling_viewing_key(wallet_id)
 }
 
 /// Export Orchard Extended Full Viewing Key as Bech32 (for watch-only wallets)
 ///
 /// Returns Bech32-encoded string with the network-specific HRP.
 /// Uses the standard Orchard viewing key export format.
-/// Use export_ivk() for Sapling viewing keys (zxviews... format).
+/// Use export_sapling_viewing_key() for Sapling viewing keys (zxviews... format).
 pub fn export_orchard_viewing_key(wallet_id: WalletId) -> Result<String> {
-    key_management::export_orchard_viewing_key(wallet_id)
-}
-
-/// Export legacy Orchard viewing key (returns hex-encoded 64 bytes) - DEPRECATED
-///
-/// Use export_orchard_viewing_key() instead for watch-only wallets.
-/// This method is kept for backward compatibility.
-#[deprecated(note = "Use export_orchard_viewing_key() instead")]
-pub fn export_orchard_ivk(wallet_id: WalletId) -> Result<String> {
-    key_management::export_orchard_ivk(wallet_id)
+    service::export_orchard_viewing_key(wallet_id)
 }
 
 /// Import viewing keys (watch-only wallet).
 ///
 /// Supports Sapling viewing keys (zxviews...) and Orchard extended viewing keys (bech32).
 /// If both are provided, creates a watch-only wallet that can view both Sapling and Orchard transactions.
-pub fn import_ivk(
+pub fn import_viewing_wallet(
     name: String,
-    sapling_ivk: Option<String>,
-    orchard_ivk: Option<String>,
+    sapling_viewing_key: Option<String>,
+    orchard_viewing_key: Option<String>,
     birthday: u32,
 ) -> Result<WalletId> {
-    provisioning::import_ivk(name, sapling_ivk, orchard_ivk, birthday)
+    service::import_viewing_wallet(name, sapling_viewing_key, orchard_viewing_key, birthday)
 }
 
 // ============================================================================
@@ -1116,17 +1110,17 @@ pub fn import_ivk(
 
 /// List key groups for the active wallet account.
 pub fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> {
-    key_management::list_key_groups(wallet_id)
+    convert_from_service(service::list_key_groups(wallet_id)?)
 }
 
 /// Export viewing/spending keys for a specific key group.
 pub fn export_key_group_keys(wallet_id: WalletId, key_id: i64) -> Result<KeyExportInfo> {
-    key_management::export_key_group_keys(wallet_id, key_id)
+    convert_from_service(service::export_key_group_keys(wallet_id, key_id)?)
 }
 
 /// List addresses for a specific key group.
 pub fn list_addresses_for_key(wallet_id: WalletId, key_id: i64) -> Result<Vec<KeyAddressInfo>> {
-    key_management::list_addresses_for_key(wallet_id, key_id)
+    convert_from_service(service::list_addresses_for_key(wallet_id, key_id)?)
 }
 
 /// Generate a new address for a specific key group.
@@ -1135,7 +1129,7 @@ pub fn generate_address_for_key(
     key_id: i64,
     use_orchard: bool,
 ) -> Result<String> {
-    key_management::generate_address_for_key(wallet_id, key_id, use_orchard)
+    service::generate_address_for_key(wallet_id, key_id, use_orchard)
 }
 
 /// Import a spending key into an existing wallet.
@@ -1146,44 +1140,18 @@ pub fn import_spending_key(
     label: Option<String>,
     birthday_height: u32,
 ) -> Result<i64> {
-    key_management::import_spending_key(wallet_id, sapling_key, orchard_key, label, birthday_height)
+    service::import_spending_key(wallet_id, sapling_key, orchard_key, label, birthday_height)
 }
 
-/// Export mnemonic seed (DANGEROUS - requires authentication)
+/// Export mnemonic seed through the raw advanced path.
 ///
-/// This is a high-security operation that requires:
-/// 1. Passphrase verification (Argon2id)
-/// 2. Biometric confirmation (if available)
-/// 3. Screenshot blocking is enabled
-///
-/// Use `export_seed_with_passphrase` for the gated flow.
+/// This path is intended for advanced callers that implement their own local
+/// authorization UX. It does not use the app-gated seed export flow.
 ///
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
-pub fn export_seed(wallet_id: WalletId) -> Result<String> {
-    let wallet = get_wallet_meta(&wallet_id)?;
-
-    if wallet.watch_only {
-        return Err(anyhow!("Cannot export seed from watch-only wallet"));
-    }
-
-    // Load wallet secret from encrypted storage
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    let secret = repo
-        .get_wallet_secret(&wallet_id)?
-        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-
-    // Check if mnemonic is stored (wallet was created/restored from seed)
-    let mnemonic_bytes = secret.encrypted_mnemonic.ok_or_else(|| {
-        anyhow!("Seed not available. This wallet was imported from private key or is watch-only.")
-    })?;
-
-    // Decrypt mnemonic (database encryption handles decryption)
-    let mnemonic = String::from_utf8(mnemonic_bytes)
-        .map_err(|e| anyhow!("Failed to decode mnemonic: {}", e))?;
-
-    tracing::info!("Seed exported for wallet {}", wallet_id);
-    Ok(mnemonic)
+pub fn export_seed_raw(wallet_id: WalletId) -> Result<String> {
+    service::export_seed_raw(wallet_id)
 }
 
 // ============================================================================
@@ -1207,8 +1175,8 @@ pub fn build_tx(
     outputs: Vec<Output>,
     fee_opt: Option<u64>,
 ) -> Result<PendingTx> {
-    ensure_not_decoy("Build transaction")?;
-    tx_flow::build_tx(wallet_id, outputs, fee_opt)
+    let outputs = convert_into_service(outputs)?;
+    convert_from_service(service::build_tx(wallet_id, outputs, fee_opt)?)
 }
 
 /// Build transaction using notes from a specific key group.
@@ -1218,8 +1186,10 @@ pub fn build_tx_for_key(
     outputs: Vec<Output>,
     fee_opt: Option<u64>,
 ) -> Result<PendingTx> {
-    ensure_not_decoy("Build transaction")?;
-    tx_flow::build_tx_for_key(wallet_id, key_id, outputs, fee_opt)
+    let outputs = convert_into_service(outputs)?;
+    convert_from_service(service::build_tx_for_key(
+        wallet_id, key_id, outputs, fee_opt,
+    )?)
 }
 
 /// Build transaction using selected key groups or addresses.
@@ -1230,14 +1200,14 @@ pub fn build_tx_filtered(
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<PendingTx> {
-    ensure_not_decoy("Build transaction")?;
-    tx_flow::build_tx_filtered(
+    let outputs = convert_into_service(outputs)?;
+    convert_from_service(service::build_tx_filtered(
         wallet_id,
         outputs,
         fee_opt,
         key_ids_filter,
         address_ids_filter,
-    )
+    )?)
 }
 
 /// Build a consolidation transaction for a key group.
@@ -1247,7 +1217,12 @@ pub fn build_consolidation_tx(
     target_address: String,
     fee_opt: Option<u64>,
 ) -> Result<PendingTx> {
-    tx_flow::build_consolidation_tx(wallet_id, key_id, target_address, fee_opt)
+    convert_from_service(service::build_consolidation_tx(
+        wallet_id,
+        key_id,
+        target_address,
+        fee_opt,
+    )?)
 }
 
 /// Build a sweep transaction from selected key groups or addresses.
@@ -1259,25 +1234,25 @@ pub fn build_sweep_tx(
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<PendingTx> {
-    tx_flow::build_sweep_tx(
+    convert_from_service(service::build_sweep_tx(
         wallet_id,
         target_address,
         fee_opt,
         key_ids_filter,
         address_ids_filter,
-    )
+    )?)
 }
 
 /// Sign pending transaction (all spendable notes in the wallet)
 pub fn sign_tx(wallet_id: WalletId, pending: PendingTx) -> Result<SignedTx> {
-    ensure_not_decoy("Sign transaction")?;
-    tx_flow::sign_tx(wallet_id, pending)
+    let pending = convert_into_service(pending)?;
+    convert_from_service(service::sign_tx(wallet_id, pending)?)
 }
 
 /// Sign pending transaction using notes from a specific key group
 pub fn sign_tx_for_key(wallet_id: WalletId, pending: PendingTx, key_id: i64) -> Result<SignedTx> {
-    ensure_not_decoy("Sign transaction")?;
-    tx_flow::sign_tx_for_key(wallet_id, pending, key_id)
+    let pending = convert_into_service(pending)?;
+    convert_from_service(service::sign_tx_for_key(wallet_id, pending, key_id)?)
 }
 
 /// Sign pending transaction using selected key groups or addresses.
@@ -1287,8 +1262,13 @@ pub fn sign_tx_filtered(
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<SignedTx> {
-    ensure_not_decoy("Sign transaction")?;
-    tx_flow::sign_tx_filtered(wallet_id, pending, key_ids_filter, address_ids_filter)
+    let pending = convert_into_service(pending)?;
+    convert_from_service(service::sign_tx_filtered(
+        wallet_id,
+        pending,
+        key_ids_filter,
+        address_ids_filter,
+    )?)
 }
 
 /// Broadcast signed transaction to the network
@@ -1296,45 +1276,18 @@ pub fn sign_tx_filtered(
 /// Sends transaction via lightwalletd gRPC SendTransaction.
 /// Returns TxId on success, or error with details.
 pub async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
-    ensure_not_decoy("Broadcast transaction")?;
-    run_on_runtime(move || tx_flow::broadcast_tx(signed)).await
+    let signed = convert_into_service(signed)?;
+    service::broadcast_tx(signed).await
 }
 
 /// Estimate fee for transaction without building it
 pub fn estimate_fee(num_outputs: usize, has_memo: bool, fee_policy: Option<String>) -> Result<u64> {
-    let calculator = FeeCalculator::new();
-    let estimated_inputs = num_outputs.div_ceil(2);
-
-    let base_fee = calculator
-        .calculate_fee(estimated_inputs, num_outputs, has_memo)
-        .map_err(|e| anyhow!("Fee calculation error: {}", e))?;
-
-    // Apply fee policy
-    let policy = match fee_policy.as_deref() {
-        Some("low") => FeePolicy::Low,
-        Some("high") => FeePolicy::High,
-        Some("standard") | None => FeePolicy::Standard,
-        Some(custom) => {
-            let fee: u64 = custom
-                .parse()
-                .map_err(|_| anyhow!("Invalid fee: {}", custom))?;
-            FeePolicy::Custom(fee)
-        }
-    };
-
-    let fee = policy.apply(base_fee);
-    Ok(fee.clamp(MIN_FEE, MAX_FEE))
+    service::estimate_fee(num_outputs, has_memo, fee_policy)
 }
 
 /// Get fee information
 pub fn get_fee_info() -> Result<FeeInfo> {
-    Ok(FeeInfo {
-        default_fee: DEFAULT_FEE,
-        min_fee: MIN_FEE,
-        max_fee: MAX_FEE,
-        fee_per_output: 0,
-        memo_fee_multiplier: 1.0,
-    })
+    convert_from_service(service::get_fee_info()?)
 }
 
 /// Fee information for UI
@@ -1356,32 +1309,32 @@ pub struct FeeInfo {
 // Sync
 // ============================================================================
 pub async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()> {
-    sync_control::start_sync(wallet_id, mode).await
+    service::start_sync(wallet_id, convert_into_service(mode)?).await
 }
 
 /// Get sync status for a wallet with full performance metrics
 pub fn sync_status(wallet_id: WalletId) -> Result<SyncStatus> {
-    sync_control::sync_status(wallet_id)
+    convert_from_service(service::sync_status(wallet_id)?)
 }
 
 /// Get last checkpoint info for diagnostics
 pub fn get_last_checkpoint(wallet_id: WalletId) -> Result<Option<CheckpointInfo>> {
-    sync_control::get_last_checkpoint(wallet_id)
+    convert_from_service(service::get_last_checkpoint(wallet_id)?)
 }
 
 /// Rescan wallet from specific height
 pub async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> {
-    sync_control::rescan(wallet_id, from_height).await
+    service::rescan(wallet_id, from_height).await
 }
 
 /// Cancel ongoing sync for a wallet.
 pub async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
-    sync_control::cancel_sync(wallet_id).await
+    service::cancel_sync(wallet_id).await
 }
 
 /// Check if sync is running for a wallet
 pub fn is_sync_running(wallet_id: WalletId) -> Result<bool> {
-    sync_control::is_sync_running(wallet_id)
+    service::is_sync_running(wallet_id)
 }
 
 // ============================================================================
@@ -1453,105 +1406,17 @@ pub fn set_lightd_endpoint(
     url: String,
     tls_pin_opt: Option<String>,
 ) -> Result<()> {
-    ensure_wallet_registry_loaded()?;
-    let endpoint =
-        endpoint::endpoint_from_url(&url, DEFAULT_LIGHTD_USE_TLS, tls_pin_opt.clone(), None)?;
-    // Detect network type from endpoint (best effort).
-    // Unknown endpoints keep current wallet network instead of forcing mainnet.
-    let detected_network_type =
-        endpoint::detect_network_from_endpoint(&endpoint.host, endpoint.port);
-
-    let endpoint_url = endpoint.url();
-
-    tracing::info!(
-        "Set lightd endpoint for wallet {}: {} (detected network: {:?})",
-        wallet_id,
-        endpoint.url(),
-        detected_network_type
-    );
-
-    endpoint::cache_lightd_endpoint(wallet_id.clone(), endpoint.clone());
-
-    // Update wallet network type
-    let mut wallets = WALLETS.write();
-    if let Some(wallet) = wallets.iter_mut().find(|w| w.id == wallet_id) {
-        let old_network_type = match wallet.network_type.as_deref().unwrap_or("mainnet") {
-            "testnet" => NetworkType::Testnet,
-            "regtest" => NetworkType::Regtest,
-            _ => NetworkType::Mainnet,
-        };
-        let new_network_type = detected_network_type.unwrap_or(old_network_type);
-        wallet.network_type = Some(format!("{:?}", new_network_type).to_lowercase());
-        let registry_db = open_wallet_registry()?;
-        persist_wallet_meta(&registry_db, wallet)?;
-        tracing::info!(
-            "Updated wallet {} network type to {:?}",
-            wallet_id,
-            new_network_type
-        );
-
-        {
-            let ts = chrono::Utc::now().timestamp_millis();
-            pirate_core::debug_log::with_locked_file(|file| {
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_set_lightd_endpoint","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"set_lightd_endpoint","data":{{"wallet_id":"{}","endpoint":"{}","old_network":"{:?}","new_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                    ts, wallet_id, endpoint_url, old_network_type, new_network_type
-                );
-            });
-        }
-
-        if old_network_type != new_network_type {
-            if let Ok((_db, repo)) = open_wallet_db_for(&wallet_id) {
-                if let Err(err) = repo.clear_chain_state() {
-                    tracing::warn!(
-                        "Failed to clear chain state for wallet {} after network change: {:?}",
-                        wallet_id,
-                        err
-                    );
-                }
-            }
-        }
-
-        if old_network_type != new_network_type {
-            if let Err(err) =
-                rederive_wallet_keys_for_network(&wallet_id, old_network_type, new_network_type)
-            {
-                tracing::warn!(
-                    "Failed to re-derive keys for wallet {}: {:?}",
-                    wallet_id,
-                    err
-                );
-            }
-        } else {
-            let ts = chrono::Utc::now().timestamp_millis();
-            pirate_core::debug_log::with_locked_file(|file| {
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rederive_skip","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"rederive skipped (same network)","data":{{"wallet_id":"{}","network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                    ts, wallet_id, new_network_type
-                );
-            });
-        }
-
-        // Persist endpoint per wallet so it survives restarts.
-        let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
-        let pin_key = format!("lightd_tls_pin_{}", wallet_id);
-        set_registry_setting(&registry_db, &endpoint_key, Some(&endpoint_url))?;
-        set_registry_setting(&registry_db, &pin_key, tls_pin_opt.as_deref())?;
-    }
-
-    Ok(())
+    service::set_lightd_endpoint(wallet_id, url, tls_pin_opt)
 }
 
 /// Get lightwalletd endpoint
 pub fn get_lightd_endpoint(wallet_id: WalletId) -> Result<String> {
-    endpoint::get_lightd_endpoint(wallet_id)
+    service::get_lightd_endpoint(wallet_id)
 }
 
 /// Get full endpoint configuration
 pub fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEndpoint> {
-    endpoint::get_lightd_endpoint_config(wallet_id)
+    convert_from_service(service::get_lightd_endpoint_config(wallet_id)?)
 }
 
 fn infer_key_network_type_from_addresses(
@@ -1870,6 +1735,34 @@ pub async fn rotate_tor_exit() -> Result<()> {
     tunnel::rotate_tor_exit().await
 }
 
+/// Fetch arbitrary text over the currently selected network tunnel.
+pub async fn fetch_external_text(
+    url: String,
+    accept: Option<String>,
+    user_agent: Option<String>,
+) -> Result<String> {
+    service::fetch_external_text(url, accept, user_agent).await
+}
+
+/// Fetch arbitrary bytes over the currently selected network tunnel.
+pub async fn fetch_external_bytes(
+    url: String,
+    accept: Option<String>,
+    user_agent: Option<String>,
+) -> Result<Vec<u8>> {
+    service::fetch_external_bytes(url, accept, user_agent).await
+}
+
+/// Download an external resource to a local file over the currently selected network tunnel.
+pub async fn download_external_to_file(
+    url: String,
+    destination_path: String,
+    accept: Option<String>,
+    user_agent: Option<String>,
+) -> Result<()> {
+    service::download_external_to_file(url, destination_path, accept, user_agent).await
+}
+
 // ============================================================================
 // Balance & Transactions
 // ============================================================================
@@ -1881,164 +1774,7 @@ pub async fn rotate_tor_exit() -> Result<()> {
 /// - pending: Unconfirmed unspent notes
 /// - total: spendable + pending
 pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
-    if is_decoy_mode_active() {
-        return Ok(Balance {
-            total: 0,
-            spendable: 0,
-            pending: 0,
-        });
-    }
-    tracing::info!("Getting balance for wallet {}", wallet_id);
-
-    let suppress_live_reads = sync_control::should_suppress_live_tx_reads(&wallet_id);
-    if suppress_live_reads {
-        if let Some(cached) = sync_control::get_cached_balance(&wallet_id) {
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_get_balance_cached","timestamp":{},"location":"api.rs:get_balance","message":"returning cached balance during active sync mutation","data":{{"wallet_id":"{}","total":{},"spendable":{},"pending":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                    ts, wallet_id, cached.total, cached.spendable, cached.pending
-                );
-            });
-            return Ok(cached);
-        }
-    }
-
-    // Open encrypted wallet DB
-    let (db, repo) = open_wallet_db_for(&wallet_id)?;
-
-    // Get wallet secret to find account_id
-    let secret = repo
-        .get_wallet_secret(&wallet_id)?
-        .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-
-    // Get current height from sync state
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
-    let sync_state = sync_storage.load_sync_state()?;
-    // Confirmation math should be derived from locally-scanned chain state.
-    // During active sync mutation (including FoundNote replay), callers should use the stable
-    // cached balance above to avoid transient dips.
-    let current_height = sync_state.local_height;
-
-    // #region agent log
-    {
-        pirate_core::debug_log::with_locked_file(|file| {
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_get_balance","timestamp":{},"location":"api.rs:4186","message":"get_balance start","data":{{"wallet_id":"{}","account_id":{},"current_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts, wallet_id, secret.account_id, current_height
-            );
-        });
-    }
-    // #endregion
-
-    // Standard confirmation depth for Pirate Chain (10 blocks)
-    const MIN_DEPTH: u64 = 10;
-
-    let unspent = repo.get_unspent_notes(secret.account_id)?;
-
-    // #region agent log
-    {
-        let (count, sum_value, min_h, max_h) = if unspent.is_empty() {
-            (0usize, 0i64, None, None)
-        } else {
-            let mut sum = 0i64;
-            let mut min_height = i64::MAX;
-            let mut max_height = i64::MIN;
-            for n in &unspent {
-                sum = sum.saturating_add(n.value);
-                min_height = min_height.min(n.height);
-                max_height = max_height.max(n.height);
-            }
-            (unspent.len(), sum, Some(min_height), Some(max_height))
-        };
-        pirate_core::debug_log::with_locked_file(|file| {
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_get_balance","timestamp":{},"location":"api.rs:4196","message":"get_balance unspent","data":{{"wallet_id":"{}","unspent_count":{},"unspent_sum":{},"min_height":{},"max_height":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts,
-                wallet_id,
-                count,
-                sum_value,
-                min_h
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "null".to_string()),
-                max_h
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| "null".to_string())
-            );
-        });
-    }
-    // #endregion
-
-    // Match wallet-summary behavior for displayed balances:
-    // - spendable/pending are confirmation-depth based wallet balances
-    // - send gating remains controlled by spendability status checks
-    let (spendable, mut pending, mut total) =
-        repo.calculate_balance(secret.account_id, current_height, MIN_DEPTH)?;
-
-    // Include change from recently-broadcast TXs whose change note hasn't been
-    // mined and detected by sync yet. Without this, balance drops to zero between
-    // broadcast and the sync engine trial-decrypting the mined change output.
-    {
-        let known_txids: HashSet<String> = unspent
-            .iter()
-            .flat_map(|note| tx_flow::txid_hex_variants_from_bytes(&note.txid))
-            .collect();
-        let unseen_change = tx_flow::resolve_pending_change(&wallet_id, &known_txids);
-        if unseen_change > 0 {
-            pending = pending.saturating_add(unseen_change);
-            total = total.saturating_add(unseen_change);
-        }
-    }
-
-    // #region agent log
-    {
-        pirate_core::debug_log::with_locked_file(|file| {
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_get_balance","timestamp":{},"location":"api.rs:4204","message":"get_balance result","data":{{"wallet_id":"{}","total":{},"spendable":{},"pending":{},"min_depth":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts, wallet_id, total, spendable, pending, MIN_DEPTH
-            );
-        });
-    }
-    // #endregion
-
-    tracing::debug!(
-        "Balance for wallet {}: total={}, spendable={}, pending={} (height={})",
-        wallet_id,
-        total,
-        spendable,
-        pending,
-        current_height
-    );
-
-    let balance = Balance {
-        total,
-        spendable,
-        pending,
-    };
-    // Always refresh the cache, even during mutation mode. This lets the first
-    // fallback read populate a stable snapshot and avoids repeated heavy DB reads
-    // while sync is actively mutating state.
-    sync_control::put_cached_balance(&wallet_id, &balance);
-    Ok(balance)
+    convert_from_service(service::get_balance(wallet_id)?)
 }
 
 /// List transactions
@@ -2046,140 +1782,7 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
 /// Returns transaction history from the database, aggregated by transaction ID.
 /// Transactions are sorted by height descending (newest first).
 pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<TxInfo>> {
-    if is_decoy_mode_active() {
-        return Ok(Vec::new());
-    }
-    let suppress_live_reads = sync_control::should_suppress_live_tx_reads(&wallet_id);
-    if suppress_live_reads {
-        if let Some(cached) = sync_control::get_cached_transactions(&wallet_id, limit) {
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_list_transactions_cached","timestamp":{},"location":"api.rs:list_transactions","message":"returning cached tx list during active sync mutation","data":{{"wallet_id":"{}","limit":"{:?}","cached_count":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    ts,
-                    wallet_id,
-                    limit,
-                    cached.len()
-                );
-            });
-            return Ok(cached);
-        }
-    }
-    tracing::info!(
-        "Listing transactions for wallet {} (limit: {:?})",
-        wallet_id,
-        limit
-    );
-
-    // Open encrypted wallet DB
-    let (db, repo) = open_wallet_db_for(&wallet_id)?;
-
-    // Get wallet secret to find account_id
-    let secret = repo
-        .get_wallet_secret(&wallet_id)?
-        .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-
-    let spendable =
-        !secret.extsk.is_empty() || secret.orchard_extsk.as_ref().is_some_and(|k| !k.is_empty());
-    pirate_core::debug_log::with_locked_file(|file| {
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
-        let id = format!("{:08x}", ts);
-        let _ = writeln!(
-            file,
-            r#"{{"id":"log_{}","timestamp":{},"location":"api.rs:list_transactions","message":"list_transactions flags","data":{{"wallet_id":"{}","spendable":{},"extsk_len":{},"orchard_extsk_len":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-            id,
-            ts,
-            wallet_id,
-            spendable,
-            secret.extsk.len(),
-            secret.orchard_extsk.as_ref().map(|k| k.len()).unwrap_or(0)
-        );
-    });
-
-    // Get current height from sync state
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
-    let sync_state = sync_storage.load_sync_state()?;
-    // Use the best known synced height for confirmation display stability.
-    let current_height = sync_state.local_height.max(sync_state.target_height);
-
-    // Confirmation thresholds: receive requires 10, send requires 1.
-    const RECEIVE_MIN_DEPTH: u64 = 10;
-    const SEND_MIN_DEPTH: u64 = 1;
-
-    // Get transactions from database
-    let split_transfers = spendable;
-    let tx_records = repo.get_transactions_with_options(
-        secret.account_id,
-        limit,
-        current_height,
-        RECEIVE_MIN_DEPTH,
-        split_transfers,
-    )?;
-
-    // Convert to TxInfo format
-    let transactions: Vec<TxInfo> = tx_records
-        .into_iter()
-        .map(|tx| {
-            // Determine confirmed status
-            let confirmed = if tx.height > 0 {
-                let height = tx.height as u64;
-                let confirmations = if current_height >= height {
-                    current_height.saturating_sub(height).saturating_add(1)
-                } else {
-                    0
-                };
-                let min_depth = if tx.amount < 0 {
-                    SEND_MIN_DEPTH
-                } else {
-                    RECEIVE_MIN_DEPTH
-                };
-                confirmations >= min_depth
-            } else {
-                false
-            };
-
-            // Decode memo from bytes to string (if present).
-            // Use protocol-aware decoder so both Sapling and Orchard memo bytes
-            // render consistently in the transaction list.
-            let memo_str = tx.memo.and_then(|memo_bytes| {
-                pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_bytes)
-            });
-
-            TxInfo {
-                txid: tx.txid,
-                height: if tx.height > 0 {
-                    Some(tx.height as u32)
-                } else {
-                    None
-                },
-                timestamp: tx.timestamp,
-                amount: tx.amount,
-                fee: tx.fee,
-                memo: memo_str,
-                confirmed,
-            }
-        })
-        .collect();
-
-    tracing::debug!(
-        "Found {} transactions for wallet {}",
-        transactions.len(),
-        wallet_id
-    );
-
-    // Always refresh the cache, even during mutation mode. This lets the first
-    // fallback read populate a stable snapshot and avoids repeated heavy DB reads
-    // while sync is actively mutating state.
-    sync_control::put_cached_transactions(&wallet_id, limit, &transactions);
-
-    Ok(transactions)
+    convert_from_service(service::list_transactions(wallet_id, limit)?)
 }
 
 /// Fetch and decrypt memo for a specific transaction (lazy memo decoding)
@@ -2202,7 +1805,7 @@ pub async fn fetch_transaction_memo(
     txid: String,
     output_index: Option<u32>,
 ) -> Result<Option<String>> {
-    run_on_runtime(move || fetch_transaction_memo_inner(wallet_id, txid, output_index)).await
+    service::fetch_transaction_memo(wallet_id, txid, output_index).await
 }
 
 async fn fetch_transaction_memo_inner(
@@ -2690,46 +2293,27 @@ async fn fetch_transaction_memo_inner(
 /// # Returns
 /// BIP39 mnemonic phrase with the specified number of words
 pub fn generate_mnemonic(word_count: Option<u32>) -> Result<String> {
-    // Validate word count (must be 12, 18, or 24)
-    if let Some(count) = word_count {
-        if count != 12 && count != 18 && count != 24 {
-            return Err(anyhow!("Invalid word count: must be 12, 18, or 24"));
-        }
-    }
-
-    Ok(ExtendedSpendingKey::generate_mnemonic(word_count))
+    service::generate_mnemonic(word_count)
 }
 
 /// Validate mnemonic
 pub fn validate_mnemonic(mnemonic: String) -> Result<bool> {
-    match ExtendedSpendingKey::from_mnemonic(&mnemonic, "") {
-        Ok(_) => Ok(true),
-        Err(_) => Ok(false),
-    }
+    service::validate_mnemonic(mnemonic)
 }
 
 /// Get network info
 pub fn get_network_info() -> Result<NetworkInfo> {
-    let net = pirate_params::Network::mainnet();
-
-    Ok(NetworkInfo {
-        name: net.name.to_string(),
-        coin_type: net.coin_type,
-        rpc_port: net.rpc_port,
-        default_birthday: net.default_birthday_height,
-    })
+    convert_from_service(service::get_network_info()?)
 }
 
 /// Format amount (arrrtoshis to ARRR)
 pub fn format_amount(arrrtoshis: u64) -> Result<String> {
-    let arrr = arrrtoshis as f64 / 100_000_000.0;
-    Ok(format!("{:.8}", arrr))
+    service::format_amount(arrrtoshis)
 }
 
 /// Parse amount (ARRR to arrrtoshis)
 pub fn parse_amount(arrr: String) -> Result<u64> {
-    let value: f64 = arrr.parse().map_err(|_| anyhow!("Invalid amount"))?;
-    Ok((value * 100_000_000.0) as u64)
+    service::parse_amount(arrr)
 }
 
 // ============================================================================
@@ -2737,7 +2321,7 @@ pub fn parse_amount(arrr: String) -> Result<u64> {
 // ============================================================================
 
 use pirate_storage_sqlite::{
-    IvkImportRequest, WatchOnlyBanner, WatchOnlyCapabilities, WatchOnlyManager,
+    SaplingViewingKeyImportRequest, WatchOnlyBanner, WatchOnlyCapabilities, WatchOnlyManager,
 };
 
 lazy_static::lazy_static! {
@@ -2752,68 +2336,62 @@ lazy_static::lazy_static! {
 
 /// Set panic PIN for decoy vault
 pub fn set_panic_pin(pin: String) -> Result<()> {
-    panic_duress::set_panic_pin(pin)
+    service::set_panic_pin(pin)
 }
 
 /// Check if panic PIN is configured
 pub fn has_panic_pin() -> Result<bool> {
-    panic_duress::has_panic_pin()
+    service::has_panic_pin()
 }
 
 /// Verify panic PIN (returns true if PIN matches and activates decoy mode)
 pub fn verify_panic_pin(pin: String) -> Result<bool> {
-    panic_duress::verify_panic_pin(pin)
+    service::verify_panic_pin(pin)
 }
 
 /// Check if currently in decoy mode
 pub fn is_decoy_mode() -> Result<bool> {
-    panic_duress::is_decoy_mode()
+    service::is_decoy_mode()
 }
 
 /// Get current vault mode
 pub fn get_vault_mode() -> Result<String> {
-    panic_duress::get_vault_mode()
+    service::get_vault_mode()
 }
 
 /// Clear panic PIN and disable decoy vault
 pub fn clear_panic_pin() -> Result<()> {
-    panic_duress::clear_panic_pin()
+    service::clear_panic_pin()
 }
 
-/// Set duress passphrase for decoy vault
-/// Returns the Argon2id hash for secure storage on the client side.
-pub fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result<String> {
-    panic_duress::set_duress_passphrase(custom_passphrase)
+/// Set duress passphrase for decoy vault.
+pub fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result<()> {
+    service::set_duress_passphrase(custom_passphrase)
 }
 
 /// Check if a duress passphrase is configured
 pub fn has_duress_passphrase() -> Result<bool> {
-    panic_duress::has_duress_passphrase()
-}
-
-/// Get the stored duress passphrase hash (for client-side secure storage sync)
-pub fn get_duress_passphrase_hash() -> Result<Option<String>> {
-    panic_duress::get_duress_passphrase_hash()
+    service::has_duress_passphrase()
 }
 
 /// Clear duress passphrase configuration
 pub fn clear_duress_passphrase() -> Result<()> {
-    panic_duress::clear_duress_passphrase()
+    service::clear_duress_passphrase()
 }
 
 /// Verify duress passphrase (activates decoy mode if correct)
-pub fn verify_duress_passphrase(passphrase: String, hash: String) -> Result<bool> {
-    panic_duress::verify_duress_passphrase(passphrase, hash)
+pub fn verify_duress_passphrase(passphrase: String) -> Result<bool> {
+    service::verify_duress_passphrase(passphrase)
 }
 
 /// Set decoy wallet name
 pub fn set_decoy_wallet_name(name: String) -> Result<()> {
-    panic_duress::set_decoy_wallet_name(name)
+    service::set_decoy_wallet_name(name)
 }
 
-/// Exit decoy mode (requires real passphrase re-authentication)
-pub fn exit_decoy_mode() -> Result<()> {
-    panic_duress::exit_decoy_mode()
+/// Exit decoy mode (requires real passphrase re-authentication).
+pub fn exit_decoy_mode(passphrase: String) -> Result<()> {
+    service::exit_decoy_mode(passphrase)
 }
 
 // ============================================================================
@@ -2886,75 +2464,22 @@ pub fn get_seed_export_warnings() -> Result<SeedExportWarnings> {
 // ============================================================================
 
 /// Export Sapling viewing key from full wallet (for creating watch-only on another device)
-pub fn export_ivk_secure(wallet_id: WalletId) -> Result<String> {
-    let wallet = get_wallet_meta(&wallet_id)?;
-
-    if wallet.watch_only {
-        return Err(anyhow!("Cannot export viewing key from watch-only wallet"));
-    }
-    // Load wallet secret from encrypted storage and extract viewing key (same logic as export_ivk)
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    let secret = repo
-        .get_wallet_secret(&wallet_id)?
-        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-
-    // Derive xFVK from stored spending key
-    let extsk = ExtendedSpendingKey::from_bytes(&secret.extsk)
-        .map_err(|e| anyhow!("Invalid spending key bytes: {}", e))?;
-    let network_type_str = wallet.network_type.as_deref().unwrap_or("mainnet");
-    let network_type = match network_type_str {
-        "testnet" => NetworkType::Testnet,
-        "regtest" => NetworkType::Regtest,
-        _ => NetworkType::Mainnet,
-    };
-    let ivk = extsk.to_xfvk_bech32_for_network(network_type);
-
-    let manager = WATCH_ONLY.read();
-    let result = manager
-        .export_ivk(&wallet_id, ivk)
-        .map_err(|e| anyhow!("Failed to export viewing key: {}", e))?;
-
-    tracing::info!("Viewing key exported for wallet {}", wallet_id);
-
-    Ok(result.ivk().to_string())
+pub fn export_sapling_viewing_key_secure(wallet_id: WalletId) -> Result<String> {
+    service::export_sapling_viewing_key_secure(wallet_id)
 }
 
-/// Import viewing key to create watch-only wallet
-pub fn import_ivk_as_watch_only(
+/// Import Sapling viewing key to create watch-only wallet
+pub fn import_sapling_viewing_key_as_watch_only(
     name: String,
-    ivk: String,
+    sapling_viewing_key: String,
     birthday_height: u32,
 ) -> Result<WalletId> {
-    // Validate import request
-    let request = IvkImportRequest::new(name.clone(), ivk.clone(), birthday_height);
-    let manager = WATCH_ONLY.read();
-    manager
-        .validate_import(&request)
-        .map_err(|e| anyhow!("Invalid viewing key import: {}", e))?;
-
-    let wallet_id = import_ivk(name, Some(ivk), None, birthday_height)?;
-    tracing::info!("Watch-only wallet created: {}", wallet_id);
-    Ok(wallet_id)
+    service::import_sapling_viewing_key_as_watch_only(name, sapling_viewing_key, birthday_height)
 }
 
 /// Get watch-only capabilities for a wallet
 pub fn get_watch_only_capabilities(wallet_id: WalletId) -> Result<WatchOnlyCapabilitiesInfo> {
-    let wallet = get_wallet_meta(&wallet_id)?;
-
-    let caps = if wallet.watch_only {
-        WatchOnlyCapabilities::watch_only()
-    } else {
-        WatchOnlyCapabilities::full_wallet()
-    };
-
-    Ok(WatchOnlyCapabilitiesInfo {
-        can_view_incoming: caps.can_view_incoming,
-        can_view_outgoing: caps.can_view_outgoing,
-        can_spend: caps.can_spend,
-        can_export_seed: caps.can_export_seed,
-        can_generate_addresses: caps.can_generate_addresses,
-        is_watch_only: wallet.watch_only,
-    })
+    convert_from_service(service::get_watch_only_capabilities(wallet_id)?)
 }
 
 /// Watch-only capabilities for FFI
@@ -2970,20 +2495,7 @@ pub struct WatchOnlyCapabilitiesInfo {
 
 /// Get watch-only banner info for a wallet
 pub fn get_watch_only_banner(wallet_id: WalletId) -> Result<Option<WatchOnlyBannerInfo>> {
-    let wallet = get_wallet_meta(&wallet_id)?;
-
-    if !wallet.watch_only {
-        return Ok(None);
-    }
-
-    let banner = WatchOnlyBanner::incoming_only();
-
-    Ok(Some(WatchOnlyBannerInfo {
-        banner_type: format!("{:?}", banner.banner_type),
-        title: banner.title,
-        subtitle: banner.subtitle,
-        icon: banner.icon,
-    }))
+    convert_from_service(service::get_watch_only_banner(wallet_id)?)
 }
 
 /// Watch-only banner info for FFI
@@ -2997,8 +2509,7 @@ pub struct WatchOnlyBannerInfo {
 
 /// Check if viewing key clipboard should be cleared
 pub fn get_ivk_clipboard_remaining() -> Result<Option<u64>> {
-    let manager = WATCH_ONLY.read();
-    Ok(manager.clipboard_remaining_seconds())
+    service::get_ivk_clipboard_remaining()
 }
 
 /// Get build information for verification
