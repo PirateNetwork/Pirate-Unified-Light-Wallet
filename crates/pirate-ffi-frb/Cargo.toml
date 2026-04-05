@@ -16,6 +16,7 @@ default = []
 frb = []
 
 [dependencies]
+pirate-wallet-service = { path = "../pirate-wallet-service" }
 pirate-core = { path = "../pirate-core" }
 pirate-params = { path = "../pirate-params" }
 pirate-storage-sqlite = { path = "../pirate-storage-sqlite" }
@@ -27,6 +28,7 @@ flutter_rust_bridge = "=2.11.1"
 tokio = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 parking_lot = { workspace = true }
