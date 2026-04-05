@@ -189,14 +189,17 @@ pub(super) fn restore_wallet(
     Ok(wallet_id)
 }
 
-pub(super) fn import_ivk(
+pub(super) fn import_viewing_wallet(
     name: String,
-    sapling_ivk: Option<String>,
-    orchard_ivk: Option<String>,
+    sapling_viewing_key: Option<String>,
+    orchard_viewing_key: Option<String>,
     birthday: u32,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
-    let _wallet = Wallet::from_ivks(sapling_ivk.as_deref(), orchard_ivk.as_deref())?;
+    let _wallet = Wallet::from_viewing_keys(
+        sapling_viewing_key.as_deref(),
+        orchard_viewing_key.as_deref(),
+    )?;
 
     let wallet_id = uuid::Uuid::new_v4().to_string();
     let meta = WalletMeta {
@@ -223,14 +226,14 @@ pub(super) fn import_ivk(
     let account_id = repo.insert_account(&account)?;
 
     let mut dfvk_bytes: Option<Vec<u8>> = None;
-    if let Some(ref value) = sapling_ivk {
+    if let Some(ref value) = sapling_viewing_key {
         let dfvk = ExtendedFullViewingKey::from_xfvk_bech32_any(value)
             .map_err(|_| anyhow!("Invalid Sapling viewing key (xFVK)"))?;
         dfvk_bytes = Some(dfvk.to_bytes());
     }
 
     let mut orchard_fvk_bytes: Option<Vec<u8>> = None;
-    if let Some(ref value) = orchard_ivk {
+    if let Some(ref value) = orchard_viewing_key {
         let fvk = OrchardExtendedFullViewingKey::from_bech32_any(value)
             .map_err(|_| anyhow!("Invalid Orchard viewing key"))?;
         orchard_fvk_bytes = Some(fvk.to_bytes());
