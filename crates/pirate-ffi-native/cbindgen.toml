@@ -1,0 +1,13 @@
+language = "C"
+pragma_once = true
+include_guard = "PIRATE_WALLET_SERVICE_H"
+include_version = true
+
+[parse]
+expand = ["pirate-ffi-native"]
+
+[export]
+include = [
+  "pirate_wallet_service_invoke_json",
+  "pirate_wallet_service_free_string",
+]

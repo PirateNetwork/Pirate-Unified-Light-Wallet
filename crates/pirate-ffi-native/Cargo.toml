@@ -1,0 +1,18 @@
+[package]
+name = "pirate-ffi-native"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+pirate-wallet-service = { path = "../pirate-wallet-service" }
+
+serde_json = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
