@@ -40,6 +40,8 @@ target/
 # Cargo
 **/*.rs.bk
 *.pdb
+/tmp-*
+/NUL
 
 # ===================================
 # Flutter/Dart
@@ -57,6 +59,7 @@ target/
 .packages
 .pub-cache/
 .pub/
+**/node_modules/
 # Note: pubspec.lock should be tracked (commit it)
 
 # Flutter generated files
@@ -73,6 +76,7 @@ coverage/
 # Android
 # ===================================
 **/android/.gradle
+bindings/android-sdk/.gradle/
 **/android/captures/
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
@@ -81,6 +85,7 @@ app/android/key.properties
 app/android/keystore/
 *.jks
 *.keystore
+bindings/react-native-pirate-wallet/example/.bundle/
 
 # Android Studio
 *.iml
