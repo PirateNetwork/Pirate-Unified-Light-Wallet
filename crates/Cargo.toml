@@ -8,6 +8,11 @@ members = [
     "pirate-sync-lightd",
     "pirate-sync-oblivious",
     "pirate-net",
+    "pirate-wallet-service",
+    "pirate-cli-core",
+    "piratewallet-cli",
+    "pirate-qortal-cli",
+    "pirate-ffi-native",
     # "pirate-mm2",  # Feature-flagged, not implemented yet
     # "pirate-name-resolution",  # Feature-flagged, not implemented yet
     "pirate-ffi-frb",
