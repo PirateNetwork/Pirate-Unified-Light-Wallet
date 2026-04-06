@@ -36,12 +36,10 @@ Future<String> createWallet({
 Future<String> restoreWallet({
   required String name,
   required String mnemonic,
-  String? passphraseOpt,
   int? birthdayOpt,
 }) => RustLib.instance.api.crateApiRestoreWallet(
   name: name,
   mnemonic: mnemonic,
-  passphraseOpt: passphraseOpt,
   birthdayOpt: birthdayOpt,
 );
 

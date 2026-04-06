@@ -2496,7 +2496,6 @@ fn wire__crate__api__restore_wallet_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     name: impl CstDecode<String>,
     mnemonic: impl CstDecode<String>,
-    passphrase_opt: impl CstDecode<Option<String>>,
     birthday_opt: impl CstDecode<Option<u32>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
@@ -2508,17 +2507,12 @@ fn wire__crate__api__restore_wallet_impl(
         move || {
             let api_name = name.cst_decode();
             let api_mnemonic = mnemonic.cst_decode();
-            let api_passphrase_opt = passphrase_opt.cst_decode();
             let api_birthday_opt = birthday_opt.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::restore_wallet(
-                            api_name,
-                            api_mnemonic,
-                            api_passphrase_opt,
-                            api_birthday_opt,
-                        )?;
+                        let output_ok =
+                            crate::api::restore_wallet(api_name, api_mnemonic, api_birthday_opt)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -8091,10 +8085,9 @@ mod io {
         port_: i64,
         name: *mut wire_cst_list_prim_u_8_strict,
         mnemonic: *mut wire_cst_list_prim_u_8_strict,
-        passphrase_opt: *mut wire_cst_list_prim_u_8_strict,
         birthday_opt: *mut u32,
     ) {
-        wire__crate__api__restore_wallet_impl(port_, name, mnemonic, passphrase_opt, birthday_opt)
+        wire__crate__api__restore_wallet_impl(port_, name, mnemonic, birthday_opt)
     }
 
     #[unsafe(no_mangle)]
@@ -10947,10 +10940,9 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
         name: String,
         mnemonic: String,
-        passphrase_opt: Option<String>,
         birthday_opt: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__restore_wallet_impl(port_, name, mnemonic, passphrase_opt, birthday_opt)
+        wire__crate__api__restore_wallet_impl(port_, name, mnemonic, birthday_opt)
     }
 
     #[wasm_bindgen]

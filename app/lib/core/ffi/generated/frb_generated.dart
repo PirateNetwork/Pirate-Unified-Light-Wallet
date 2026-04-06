@@ -445,7 +445,6 @@ abstract class RustLibApi extends BaseApi {
   Future<String> crateApiRestoreWallet({
     required String name,
     required String mnemonic,
-    String? passphraseOpt,
     int? birthdayOpt,
   });
 
@@ -3371,7 +3370,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<String> crateApiRestoreWallet({
     required String name,
     required String mnemonic,
-    String? passphraseOpt,
     int? birthdayOpt,
   }) {
     return handler.executeNormal(
@@ -3379,22 +3377,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: (port_) {
           var arg0 = cst_encode_String(name);
           var arg1 = cst_encode_String(mnemonic);
-          var arg2 = cst_encode_opt_String(passphraseOpt);
-          var arg3 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
-          return wire.wire__crate__api__restore_wallet(
-            port_,
-            arg0,
-            arg1,
-            arg2,
-            arg3,
-          );
+          var arg2 = cst_encode_opt_box_autoadd_u_32(birthdayOpt);
+          return wire.wire__crate__api__restore_wallet(port_, arg0, arg1, arg2);
         },
         codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiRestoreWalletConstMeta,
-        argValues: [name, mnemonic, passphraseOpt, birthdayOpt],
+        argValues: [name, mnemonic, birthdayOpt],
         apiImpl: this,
       ),
     );
@@ -3402,7 +3393,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiRestoreWalletConstMeta => const TaskConstMeta(
     debugName: "restore_wallet",
-    argNames: ["name", "mnemonic", "passphraseOpt", "birthdayOpt"],
+    argNames: ["name", "mnemonic", "birthdayOpt"],
   );
 
   @override

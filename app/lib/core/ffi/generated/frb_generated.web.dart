@@ -2251,13 +2251,11 @@ class RustLibWire implements BaseWire {
     NativePortType port_,
     String name,
     String mnemonic,
-    String? passphrase_opt,
     int? birthday_opt,
   ) => wasmModule.wire__crate__api__restore_wallet(
     port_,
     name,
     mnemonic,
-    passphrase_opt,
     birthday_opt,
   );
 
@@ -3068,7 +3066,6 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     NativePortType port_,
     String name,
     String mnemonic,
-    String? passphrase_opt,
     int? birthday_opt,
   );
 

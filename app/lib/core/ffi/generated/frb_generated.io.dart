@@ -4044,14 +4044,12 @@ class RustLibWire implements BaseWire {
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> name,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> mnemonic,
-    ffi.Pointer<wire_cst_list_prim_u_8_strict> passphrase_opt,
     ffi.Pointer<ffi.Uint32> birthday_opt,
   ) {
     return _wire__crate__api__restore_wallet(
       port_,
       name,
       mnemonic,
-      passphrase_opt,
       birthday_opt,
     );
   }
@@ -4063,7 +4061,6 @@ class RustLibWire implements BaseWire {
             ffi.Int64,
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
-            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             ffi.Pointer<ffi.Uint32>,
           )
         >
@@ -4073,7 +4070,6 @@ class RustLibWire implements BaseWire {
           .asFunction<
             void Function(
               int,
-              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               ffi.Pointer<ffi.Uint32>,
