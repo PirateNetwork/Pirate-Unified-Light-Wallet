@@ -6,25 +6,27 @@ import 'package:flutter/foundation.dart';
 import '../core/i18n/arb_text_localizer.dart';
 
 /// Default lightwalletd server host (official mainnet)
-const String kDefaultLightdHost = '64.23.167.130';
+const String kDefaultLightdHost = 'lightd1.pirate.black';
 
 /// Default lightwalletd server port
-const int kDefaultLightdPort = 9067;
+const int kDefaultLightdPort = 443;
 
 /// Full default endpoint URL
 const String kDefaultLightd = '$kDefaultLightdHost:$kDefaultLightdPort';
 
-/// Orchard-capable mainnet endpoint (provided)
-const String kOrchardMainnetHost = '64.23.167.130';
-const int kOrchardMainnetPort = 9067;
+/// Orchard-capable mainnet endpoint (official)
+const String kOrchardMainnetHost = 'lightd1.pirate.black';
+const int kOrchardMainnetPort = 443;
 
 /// Orchard-capable testnet endpoint (provided)
 const String kOrchardTestnetHost = '64.23.167.130';
 const int kOrchardTestnetPort = 8067;
 
 /// Whether TLS is enabled by default
-/// Set to false since lightwalletd servers don't have valid certificates
-const bool kDefaultUseTls = false;
+const bool kDefaultUseTls = true;
+
+/// SPKI pin for the official mainnet endpoint.
+const String kDefaultTlsPin = 'KAdAVTuQa+N5ECezENJsgMEnZRM46E/cexfIojRp5ls=';
 
 /// Lightwalletd endpoint configuration
 @immutable
@@ -59,6 +61,7 @@ class LightdEndpoint {
     host: kOrchardMainnetHost,
     port: kOrchardMainnetPort,
     useTls: kDefaultUseTls,
+    tlsPin: kDefaultTlsPin,
     label: 'Pirate Chain Official'.tr,
   );
 
@@ -67,6 +70,7 @@ class LightdEndpoint {
     host: kOrchardMainnetHost,
     port: kOrchardMainnetPort,
     useTls: kDefaultUseTls,
+    tlsPin: kDefaultTlsPin,
     label: 'Pirate Chain Official'.tr,
   );
 
@@ -78,7 +82,7 @@ class LightdEndpoint {
   );
 
   /// Suggested endpoints presented in the node picker UI
-  /// Note: Removed old "Pirate Chain Official" (lightd1.piratechain.com) as it doesn't work
+  /// The official mainnet endpoint is TLS-enabled and pinned by default.
   static final List<LightdEndpoint> suggested = <LightdEndpoint>[
     orchardMainnet, // This is now the default and labeled "Pirate Chain Official"
     orchardTestnet,
@@ -101,8 +105,7 @@ class LightdEndpoint {
     String? label,
   }) {
     var normalized = input.trim();
-    var useTls =
-        kDefaultUseTls; // Default to false (no TLS) since servers don't have certificates
+    var useTls = kDefaultUseTls;
 
     // Handle scheme prefix
     if (normalized.startsWith('https://')) {

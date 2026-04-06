@@ -399,7 +399,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                       PInput(
                         controller: _endpointController,
                         label: 'Endpoint (host:port)'.tr,
-                        hint: 'lightd1.piratechain.com:9067',
+                        hint: 'lightd1.pirate.black:443',
                         keyboardType: TextInputType.url,
                         validator: _validateEndpoint,
                         onChanged: _onEndpointChanged,
