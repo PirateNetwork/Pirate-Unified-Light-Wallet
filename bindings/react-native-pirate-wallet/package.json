@@ -1,0 +1,23 @@
+{
+  "name": "react-native-pirate-wallet",
+  "version": "0.1.0",
+  "description": "React Native wrapper for the Pirate Unified Wallet native SDK surfaces",
+  "license": "MIT",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "files": [
+    "android/",
+    "ios/",
+    "src/",
+    "README.md",
+    "package.json",
+    "react-native.config.js",
+    "react-native-pirate-wallet.podspec"
+  ],
+  "scripts": {
+    "prepare-native": "bash ../../scripts/prepare-react-native-plugin.sh"
+  },
+  "peerDependencies": {
+    "react-native": ">=0.71.0 <1.0.0"
+  }
+}
