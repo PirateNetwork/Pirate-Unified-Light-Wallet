@@ -44,7 +44,6 @@ class SmokeConsumer(
                 walletId = walletId,
                 saplingSpendingKey = null,
                 orchardSpendingKey = null,
-                label = "smoke",
                 birthdayHeight = 1,
             ),
         )

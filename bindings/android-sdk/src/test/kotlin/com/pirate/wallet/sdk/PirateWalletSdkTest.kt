@@ -302,7 +302,6 @@ class PirateWalletSdkTest {
                 assertEquals("wallet-1", request.getString("wallet_id"))
                 assertEquals("secret-sapling", request.getString("sapling_key"))
                 assertEquals("secret-orchard", request.getString("orchard_key"))
-                assertEquals("Imported bundle", request.getString("label"))
                 assertEquals(2_345_678, request.getInt("birthday_height"))
                 ok(11L)
             },
@@ -320,7 +319,6 @@ class PirateWalletSdkTest {
             birthdayHeight = 2_345_678,
             saplingSpendingKey = "secret-sapling",
             orchardSpendingKey = "secret-orchard",
-            label = "Imported bundle",
         )
         val seedWords = sdk.advancedKeyManagement.exportSeed("wallet-1")
 
