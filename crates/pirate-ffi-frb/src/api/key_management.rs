@@ -5,7 +5,7 @@ use zcash_client_backend::encoding::{
 };
 use zcash_primitives::zip32::ExtendedFullViewingKey as SaplingExtendedFullViewingKey;
 
-pub(super) fn export_ivk(wallet_id: WalletId) -> Result<String> {
+pub(super) fn export_sapling_viewing_key(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
 
     if wallet.watch_only {
@@ -38,30 +38,6 @@ pub(super) fn export_orchard_viewing_key(wallet_id: WalletId) -> Result<String> 
         orchard_fvk
             .to_bech32_for_network(network_type)
             .map_err(|e| anyhow!("Failed to encode Orchard viewing key: {}", e))
-    } else {
-        Err(anyhow!("Orchard keys not available for this wallet"))
-    }
-}
-
-#[allow(deprecated)]
-pub(super) fn export_orchard_ivk(wallet_id: WalletId) -> Result<String> {
-    let wallet = get_wallet_meta(&wallet_id)?;
-
-    if wallet.watch_only {
-        return Err(anyhow!("Cannot export viewing key from watch-only wallet"));
-    }
-
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
-    let secret = repo
-        .get_wallet_secret(&wallet_id)?
-        .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
-
-    if let Some(orchard_extsk_bytes) = secret.orchard_extsk.as_ref() {
-        let orchard_extsk = OrchardExtendedSpendingKey::from_bytes(orchard_extsk_bytes)
-            .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
-        let orchard_fvk = orchard_extsk.to_extended_fvk();
-        let orchard_ivk_bytes = orchard_fvk.to_ivk_bytes();
-        Ok(hex::encode(orchard_ivk_bytes))
     } else {
         Err(anyhow!("Orchard keys not available for this wallet"))
     }
