@@ -44,8 +44,7 @@ export class PirateWalletAdvancedKeyManagement {
     requestOrWalletId: any,
     birthdayHeight?: number | null,
     saplingSpendingKey?: string | null,
-    orchardSpendingKey?: string | null,
-    label?: string | null
+    orchardSpendingKey?: string | null
   ): Promise<number>
   exportSeed(walletId: string): Promise<string>
 }
@@ -84,7 +83,7 @@ export class PirateWalletSdk {
   getActiveWallet(): Promise<WalletMeta | null>
   getWallet(walletId: string): Promise<WalletMeta | null>
   createWallet(requestOrName: any, birthdayHeight?: number | null): Promise<string>
-  restoreWallet(requestOrName: any, mnemonic?: string, passphrase?: string | null, birthdayHeight?: number | null): Promise<string>
+  restoreWallet(requestOrName: any, mnemonic?: string, birthdayHeight?: number | null): Promise<string>
   importViewingWallet(requestOrName: any, saplingViewingKey?: string | null, orchardViewingKey?: string | null, birthdayHeight?: number): Promise<string>
   switchWallet(walletId: string): Promise<any>
   renameWallet(walletId: string, newName: string): Promise<any>

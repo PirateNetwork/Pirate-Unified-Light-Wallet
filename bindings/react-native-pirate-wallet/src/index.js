@@ -109,13 +109,38 @@ function cloneCallbacks(callbacks) {
   }
 }
 
+function sanitizeAddressInfo(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return entry
+  }
+  const { label, colorTag, ...rest } = entry
+  return rest
+}
+
+function sanitizeAddressBalanceInfo(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return entry
+  }
+  const { label, colorTag, ...rest } = entry
+  return rest
+}
+
+function sanitizeKeyGroupInfo(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return entry
+  }
+  const { label, ...rest } = entry
+  return rest
+}
+
 class PirateWalletAdvancedKeyManagement {
   constructor(sdk) {
     this.sdk = sdk
   }
 
   async listKeyGroups(walletId) {
-    return this.sdk._call('list_key_groups', { wallet_id: walletId })
+    const result = await this.sdk._call('list_key_groups', { wallet_id: walletId })
+    return Array.isArray(result) ? result.map(sanitizeKeyGroupInfo) : result
   }
 
   async exportKeyGroupKeys(walletId, keyId) {
@@ -125,7 +150,7 @@ class PirateWalletAdvancedKeyManagement {
     })
   }
 
-  async importSpendingKey(requestOrWalletId, birthdayHeight, saplingSpendingKey, orchardSpendingKey, label) {
+  async importSpendingKey(requestOrWalletId, birthdayHeight, saplingSpendingKey, orchardSpendingKey) {
     const request =
       typeof requestOrWalletId === 'object' && requestOrWalletId !== null
         ? requestOrWalletId
@@ -133,15 +158,13 @@ class PirateWalletAdvancedKeyManagement {
             walletId: requestOrWalletId,
             birthdayHeight,
             saplingSpendingKey,
-            orchardSpendingKey,
-            label
+            orchardSpendingKey
           }
 
     return this.sdk._call('import_spending_key', {
       wallet_id: request.walletId,
       sapling_key: request.saplingSpendingKey,
       orchard_key: request.orchardSpendingKey,
-      label: request.label,
       birthday_height: request.birthdayHeight
     })
   }
@@ -429,16 +452,15 @@ class PirateWalletSdk {
     })
   }
 
-  restoreWallet(requestOrName, mnemonic, passphrase = null, birthdayHeight = null) {
+  restoreWallet(requestOrName, mnemonic, birthdayHeight = null) {
     const request =
       typeof requestOrName === 'object' && requestOrName !== null
         ? requestOrName
-        : { name: requestOrName, mnemonic, passphrase, birthdayHeight }
+        : { name: requestOrName, mnemonic, birthdayHeight }
 
     return this._call('restore_wallet', {
       name: request.name,
       mnemonic: request.mnemonic,
-      passphrase_opt: request.passphrase,
       birthday_opt: request.birthdayHeight
     })
   }
@@ -530,14 +552,16 @@ class PirateWalletSdk {
   }
 
   listAddresses(walletId) {
-    return this._call('list_addresses', { wallet_id: walletId })
+    return this._call('list_addresses', { wallet_id: walletId }).then(result =>
+      Array.isArray(result) ? result.map(sanitizeAddressInfo) : result
+    )
   }
 
   listAddressBalances(walletId, keyId = null) {
     return this._call('list_address_balances', {
       wallet_id: walletId,
       key_id: keyId
-    })
+    }).then(result => (Array.isArray(result) ? result.map(sanitizeAddressBalanceInfo) : result))
   }
 
   getBalance(walletId) {
