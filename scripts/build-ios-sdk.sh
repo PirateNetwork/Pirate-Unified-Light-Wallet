@@ -8,6 +8,7 @@ SDK_DIR="$PROJECT_ROOT/bindings/ios-sdk"
 FRAMEWORKS_DIR="$SDK_DIR/Frameworks"
 CRATE_DIR="$CRATES_DIR/pirate-ffi-native"
 HEADER="$CRATE_DIR/pirate_wallet_service.h"
+IOS_MIN_DEPLOYMENT_TARGET="${IOS_MIN_DEPLOYMENT_TARGET:-13.0}"
 
 if [[ "$OSTYPE" != "darwin"* ]]; then
   echo "iOS SDK packaging requires macOS." >&2
@@ -20,12 +21,15 @@ if [[ ! -f "$HEADER" ]]; then
 fi
 
 export CARGO_INCREMENTAL=0
+export IPHONEOS_DEPLOYMENT_TARGET="$IOS_MIN_DEPLOYMENT_TARGET"
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
 cd "$CRATES_DIR"
-cargo build --release --target aarch64-apple-ios --package pirate-ffi-native
-cargo build --release --target aarch64-apple-ios-sim --package pirate-ffi-native
-cargo build --release --target x86_64-apple-ios --package pirate-ffi-native
+# The XCFramework packages static libraries only. Build just the staticlib
+# artifact so iOS packaging does not waste time or fail linking an unused cdylib.
+cargo rustc --release --target aarch64-apple-ios --package pirate-ffi-native --lib -- --crate-type staticlib
+cargo rustc --release --target aarch64-apple-ios-sim --package pirate-ffi-native --lib -- --crate-type staticlib
+cargo rustc --release --target x86_64-apple-ios --package pirate-ffi-native --lib -- --crate-type staticlib
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -75,3 +79,4 @@ rm -f "$PACKAGE_ZIP" "$PACKAGE_ZIP.sha256"
 echo "Built iOS SDK XCFramework at $FRAMEWORKS_DIR/PirateWalletNative.xcframework"
 echo "Packaged $ZIP_PATH"
 echo "Packaged $PACKAGE_ZIP"
+echo "Rust iOS build deployment target: $IPHONEOS_DEPLOYMENT_TARGET"
