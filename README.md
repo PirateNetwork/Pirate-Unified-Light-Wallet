@@ -11,11 +11,15 @@ Repository layout
 - `app/`  
   Flutter application code, desktop packaging hooks, generated localization files, and the desktop updater.
 - `crates/`  
-  Rust wallet, storage, sync, FFI, and supporting crates.
+  Rust wallet, storage, sync, service, CLI, native FFI, and supporting crates.
+- `bindings/`
+  Native SDK and bridge wrappers for iOS, Android, and React Native on top of the repo-owned native FFI crate.
 - `docs/`  
   Project-owned documentation for security, build verification, and localization.
 - `scripts/`  
   Platform build, packaging, SBOM, provenance, and asset-fetch scripts.
+- `release-artifacts.toml`
+  Version manifest used to decide which backend deliverables should be published on release tags.
 - `generate_ffi_bindings.sh`  
   Generates Flutter Rust Bridge bindings for the app and Rust FFI layer.
 
@@ -29,6 +33,28 @@ Current build scripts produce the following release artifacts:
 - macOS: `.dmg`
 - Android: split APKs and `.aab`
 - iOS: `.ipa`
+
+Additional backend deliverables are built from the Rust workspace:
+
+- `piratewallet-cli` under `crates/piratewallet-cli/`
+- `pirate-qortal-cli` under `crates/pirate-qortal-cli/`
+- `pirate-ffi-native` under `crates/pirate-ffi-native/`
+- iOS SDK XCFramework inputs under `bindings/ios-sdk/`
+- Android SDK module and AAR packaging inputs under `bindings/android-sdk/`
+- React Native plugin under `bindings/react-native-pirate-wallet/`
+
+Backend architecture
+--------------------
+
+The shared app-facing wallet backend now lives in:
+
+- `crates/pirate-wallet-service`
+
+The Flutter Rust Bridge crate:
+
+- `crates/pirate-ffi-frb`
+
+is now a thin wrapper surface over that backend for Flutter-specific FFI generation.
 
 Platform packaging is handled by the scripts in `scripts/`. A plain `flutter build` is useful for development, but it does not replace the release packaging scripts.
 
@@ -162,6 +188,12 @@ bash scripts/build-android.sh apk
 bash scripts/build-android.sh bundle
 ```
 
+Android SDK packaging for release distribution:
+
+```bash
+bash scripts/build-android-sdk.sh
+```
+
 iOS:
 
 ```bash
@@ -190,6 +222,15 @@ Documentation index
 - Build verification: `docs/verify-build.md`
 - Security notes: `docs/security.md`
 - Release process: `docs/release-process.md`
+- CLI guide: `docs/cli.md`
+- Qortal adapter notes: `docs/qortal-cli.md`
+- iOS SDK notes: `docs/native-sdk-ios.md`
+- iOS SDK API reference: `docs/native-sdk-ios-api.md`
+- Android SDK notes: `docs/native-sdk-android.md`
+- Android SDK API reference: `docs/native-sdk-android-api.md`
+- React Native plugin notes: `docs/react-native-plugin.md`
+- Audit report: `docs/audit-2026-03-31.md`
+- Migration notes: `docs/migration.md`
 - Translation workflow: `docs/localization/TRANSLATION_WORKFLOW.md`
 - Contribution guide: `CONTRIBUTING.md`
 - Flutter app notes: `app/README.md`
