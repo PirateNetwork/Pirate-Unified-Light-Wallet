@@ -234,21 +234,18 @@ class FfiBridge {
   ///
   /// @param name - Wallet display name
   /// @param mnemonic - 24-word BIP-39 seed phrase
-  /// @param passphrase - Optional BIP-39 passphrase (not the app passphrase)
   /// @param birthday - Block height to scan from (critical for restore)
   ///
   /// After restore, automatically starts compact sync from birthday.
   static Future<WalletId> restoreWallet({
     required String name,
     required String mnemonic,
-    String? passphrase,
     int? birthday,
   }) async {
     if (kUseFrbBindings) {
       final walletId = await api.restoreWallet(
         name: name,
         mnemonic: mnemonic,
-        passphraseOpt: passphrase,
         birthdayOpt: birthday,
       );
       _activeWalletId = walletId;

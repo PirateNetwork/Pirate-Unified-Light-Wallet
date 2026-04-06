@@ -183,7 +183,6 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
         await FfiBridge.restoreWallet(
           name: 'Restored Wallet',
           mnemonic: state.mnemonic!,
-          passphrase: null, // BIP-39 passphrase, not app passphrase
           birthday: selectedHeight,
         );
       }

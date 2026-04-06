@@ -207,7 +207,6 @@ class OnboardingController extends Notifier<OnboardingState> {
           walletId = await ref.read(restoreWalletProvider)(
             name: walletName,
             mnemonic: state.mnemonic!,
-            passphrase: null, // BIP-39 passphrase, not app passphrase
             birthday: birthday,
           );
         } else {
@@ -235,7 +234,6 @@ class OnboardingController extends Notifier<OnboardingState> {
         await ref.read(restoreWalletProvider)(
           name: walletName,
           mnemonic: mnemonic,
-          passphrase: state.passphrase,
           birthday: state.birthdayHeight,
         );
         break;

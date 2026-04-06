@@ -183,20 +183,17 @@ final restoreWalletProvider =
       Future<WalletId> Function({
         required String name,
         required String mnemonic,
-        String? passphrase,
         int? birthday,
       })
     >((ref) {
       return ({
         required String name,
         required String mnemonic,
-        String? passphrase,
         int? birthday,
       }) async {
         final walletId = await FfiBridge.restoreWallet(
           name: name,
           mnemonic: mnemonic,
-          passphrase: passphrase,
           birthday: birthday,
         );
 
