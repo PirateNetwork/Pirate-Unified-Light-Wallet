@@ -1564,11 +1564,8 @@ fn rederive_wallet_keys_for_network(
         .map_err(|_| anyhow!("Stored mnemonic is not valid UTF-8"))?;
 
     let old_network = Network::from_type(old_network_type);
-    let current_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
-        &mnemonic,
-        old_network.network_type,
-        0,
-    )?;
+    let current_extsk =
+        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, old_network.network_type, 0)?;
 
     let mut matches_any = current_extsk.to_bytes() == secret.extsk;
     if !matches_any {

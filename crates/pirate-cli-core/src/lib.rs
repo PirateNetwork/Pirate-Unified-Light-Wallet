@@ -777,10 +777,7 @@ async fn legacy_default_fee(service: &WalletService) -> Result<Value> {
     Ok(json!({ "defaultfee": fee }))
 }
 
-async fn legacy_seed(
-    service: &WalletService,
-    wallet_id: Option<String>,
-) -> Result<Value> {
+async fn legacy_seed(service: &WalletService, wallet_id: Option<String>) -> Result<Value> {
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
     let seed = pirate_wallet_service::export_seed_raw(wallet_id.clone())?;
     let wallet = get_wallet_meta(service, &wallet_id).await?;
@@ -1182,8 +1179,7 @@ async fn repl(service: &WalletService, format: OutputFormat) -> Result<()> {
 mod tests {
     use super::{
         format_qortal_balance, format_qortal_list, format_qortal_syncstatus, format_qortal_txid,
-        sanitize_cli_value,
-        QortalCli, QortalCommand,
+        sanitize_cli_value, QortalCli, QortalCommand,
     };
     use clap::Parser;
     use pirate_wallet_service::{
@@ -1479,6 +1475,9 @@ mod tests {
             .expect("nested object");
         assert!(!nested.contains_key("label"));
         assert!(!nested.contains_key("color_tag"));
-        assert_eq!(nested.get("keep").and_then(|value| value.as_bool()), Some(true));
+        assert_eq!(
+            nested.get("keep").and_then(|value| value.as_bool()),
+            Some(true)
+        );
     }
 }

@@ -1995,11 +1995,8 @@ fn rederive_wallet_keys_for_network(
         .map_err(|_| anyhow!("Stored mnemonic is not valid UTF-8"))?;
 
     let old_network = Network::from_type(old_network_type);
-    let current_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
-        &mnemonic,
-        old_network.network_type,
-        0,
-    )?;
+    let current_extsk =
+        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, old_network.network_type, 0)?;
 
     let mut matches_any = current_extsk.to_bytes() == secret.extsk;
     if !matches_any {
@@ -2071,11 +2068,8 @@ fn rederive_wallet_keys_for_network(
     };
 
     let new_network = Network::from_type(key_network_type);
-    let new_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
-        &mnemonic,
-        new_network.network_type,
-        0,
-    )?;
+    let new_extsk =
+        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, new_network.network_type, 0)?;
     let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
     let orchard_extsk = orchard_master.derive_account(new_network.coin_type, 0)?;

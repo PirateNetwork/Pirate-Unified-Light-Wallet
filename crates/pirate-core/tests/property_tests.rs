@@ -44,15 +44,16 @@ fn output_count_strategy() -> impl Strategy<Value = usize> {
 
 #[test]
 fn prop_deterministic_key_derivation() {
-    let sk1 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC)
-        .expect("Valid mnemonic");
-    let sk2 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC)
-        .expect("Valid mnemonic");
+    let sk1 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC).expect("Valid mnemonic");
+    let sk2 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC).expect("Valid mnemonic");
 
     let fvk1 = sk1.to_extended_fvk();
     let fvk2 = sk2.to_extended_fvk();
 
-    assert_eq!(fvk1.derive_address(0).encode(), fvk2.derive_address(0).encode());
+    assert_eq!(
+        fvk1.derive_address(0).encode(),
+        fvk2.derive_address(0).encode()
+    );
 }
 
 proptest! {
