@@ -17,7 +17,7 @@ env:
   COCOAPODS_VERSION: "1.16.2"
   APPIMAGETOOL_URL: "https://github.com/AppImage/AppImageKit/releases/download/13/obsolete-appimagetool-x86_64.AppImage"
   APPIMAGETOOL_SHA256: "df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb"
-  ANDROID_BUILD_TOOLS_VERSION: "34.0.0"
+  ANDROID_BUILD_TOOLS_VERSION: "35.0.0"
   ANDROID_PLATFORM_VERSION: "36"
   ANDROID_NDK_VERSION: "26.1.10909125"
   SYFT_VERSION: "1.40.1"
@@ -31,25 +31,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  workflow-action-pinning:
+    name: Security - Pinned GitHub Actions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Verify immutable GitHub Action refs
+        run: python3 scripts/check_pinned_actions.py
+
   frb-codegen:
     name: FRB - Codegen
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/bin
@@ -83,22 +92,22 @@ jobs:
     name: Rust - Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt, clippy
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: crates/target
           key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
@@ -117,15 +126,15 @@ jobs:
     name: Rust - Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -138,19 +147,47 @@ jobs:
           cd crates
           cargo test --all-features --locked
 
-  rust-property-tests:
-    name: Rust - Property Tests
+  rust-qortal-tests:
+    name: Rust - Qortal Adapter Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/target
+          key: ${{ runner.os }}-cargo-qortal-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run Qortal-focused checks
+        run: |
+          cd crates
+          cargo test -p pirate-cli-core --lib qortal_ --locked
+          cargo check -p pirate-wallet-service --locked
+          cargo test -p pirate-core qortal_p2sh --locked -- --nocapture
+          cargo build --release -p pirate-qortal-cli --locked
+
+  rust-property-tests:
+    name: Rust - Property Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Cache cargo
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -166,15 +203,15 @@ jobs:
     name: Rust - Migration Snapshot Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -190,15 +227,15 @@ jobs:
     name: Rust - Performance Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: |
             ~/.cargo/registry
@@ -218,10 +255,10 @@ jobs:
     name: Security - Cargo Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -237,7 +274,7 @@ jobs:
     name: Security - Cargo Deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked --version ${{ env.CARGO_DENY_VERSION }}
@@ -251,10 +288,10 @@ jobs:
     name: Security - Semgrep (Rust)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.11"
 
@@ -274,10 +311,10 @@ jobs:
     # Dart layer is primarily UI - manual code review covers UI security
     if: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.11"
 
@@ -297,10 +334,10 @@ jobs:
     name: Flutter - Analyze
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -319,10 +356,10 @@ jobs:
     name: Flutter - Unit & Widget Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -338,7 +375,7 @@ jobs:
           flutter test --coverage $(find test -name '*_test.dart')
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238
         with:
           files: ./app/coverage/lcov.info
           flags: flutter
@@ -350,16 +387,16 @@ jobs:
     # Skip integration tests in CI - they require a live lightwalletd backend
     if: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -390,6 +427,8 @@ jobs:
   build-matrix:
     name: Build - ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    needs:
+      - workflow-action-pinning
     strategy:
       fail-fast: false
       matrix:
@@ -411,17 +450,17 @@ jobs:
             build-command: flutter build windows --release
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
 
       - name: Setup Android SDK
         if: matrix.platform == 'Android'
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
 
       - name: Install CocoaPods
         if: matrix.platform == 'iOS'
@@ -455,6 +494,436 @@ jobs:
           cd app
           ${{ matrix.build-command }}
 
+  backend-release-plan:
+    name: Release - Backend Artifact Diff
+    runs-on: ubuntu-latest
+    needs:
+      - workflow-action-pinning
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
+    outputs:
+      cli_changed: ${{ steps.diff.outputs.cli_changed }}
+      qortal_cli_changed: ${{ steps.diff.outputs.qortal_cli_changed }}
+      native_ffi_changed: ${{ steps.diff.outputs.native_ffi_changed }}
+      ios_sdk_changed: ${{ steps.diff.outputs.ios_sdk_changed }}
+      android_sdk_changed: ${{ steps.diff.outputs.android_sdk_changed }}
+      react_native_plugin_changed: ${{ steps.diff.outputs.react_native_plugin_changed }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Detect backend artifact version changes
+        id: diff
+        run: |
+          python3 scripts/detect-release-artifacts.py --github-output "$GITHUB_OUTPUT"
+          python3 scripts/detect-release-artifacts.py
+
+  package-cli:
+    name: Package - CLI (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    needs:
+      - rust-test
+      - backend-release-plan
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux
+            os: ubuntu-latest
+            bin-ext: ""
+            artifact-name: cli-linux
+          - platform: macOS
+            os: macos-latest
+            bin-ext: ""
+            artifact-name: cli-macos
+          - platform: Windows
+            os: windows-latest
+            bin-ext: ".exe"
+            artifact-name: cli-windows
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Build CLI binaries
+        run: |
+          cd crates
+          cargo build --release -p piratewallet-cli -p pirate-qortal-cli
+
+      - name: Collect CLI binaries
+        shell: bash
+        run: |
+          mkdir -p dist/cli
+          cp "crates/target/release/piratewallet-cli${{ matrix.bin-ext }}" dist/cli/
+          cp "crates/target/release/pirate-qortal-cli${{ matrix.bin-ext }}" dist/cli/
+
+      - name: Upload CLI binaries
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: dist/cli/*
+
+  package-native-ffi:
+    name: Package - Native FFI
+    runs-on: ubuntu-latest
+    needs:
+      - rust-test
+      - backend-release-plan
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Build native FFI
+        run: |
+          chmod +x scripts/build-native-ffi.sh
+          ./scripts/build-native-ffi.sh
+
+      - name: Collect native SDK inputs
+        run: |
+          set -euo pipefail
+          mkdir -p dist/native-ffi/ios-sdk dist/native-ffi/android-sdk
+          find crates/target/release -maxdepth 1 -type f \( \
+            -name 'libpirate_ffi_native.a' \
+            -o -name 'libpirate_ffi_native.so' \
+            -o -name 'pirate_ffi_native.dll' \
+            -o -name 'pirate_ffi_native.lib' \
+          \) -exec cp -f {} dist/native-ffi/ \;
+          if [ -f crates/pirate-ffi-native/pirate_wallet_service.h ]; then
+            cp -f crates/pirate-ffi-native/pirate_wallet_service.h dist/native-ffi/
+          fi
+          cp -R bindings/ios-sdk/. dist/native-ffi/ios-sdk/
+          cp -R bindings/android-sdk/. dist/native-ffi/android-sdk/
+
+      - name: Upload native FFI package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-ffi
+          path: dist/native-ffi/**/*
+
+  package-ios-sdk:
+    name: Package - iOS SDK
+    runs-on: macos-15
+    needs:
+      - rust-test
+      - backend-release-plan
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          if [ -d /Applications/Xcode_26.3.app ]; then
+            export DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer
+          elif [ -d /Applications/Xcode_26.2.app ]; then
+            export DEVELOPER_DIR=/Applications/Xcode_26.2.app/Contents/Developer
+          else
+            echo "No supported Xcode 26.x installation found on runner" >&2
+            ls -1 /Applications | grep '^Xcode' || true
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Build iOS SDK
+        run: |
+          chmod +x scripts/build-ios-sdk.sh
+          ./scripts/build-ios-sdk.sh
+
+      - name: Verify iOS SDK Swift package
+        run: |
+          SCHEME="$(xcodebuild -list -json -packagePath bindings/ios-sdk | python3 -c 'import json, sys; data = json.load(sys.stdin); schemes = data.get("workspace", {}).get("schemes") or data.get("project", {}).get("schemes") or []; preferred = ["PirateWalletSDK", "PirateWalletSDK-Package"]; print(next((name for name in preferred if name in schemes), schemes[0] if schemes else "")); sys.exit(0 if schemes else 1)')"
+          rm -rf /tmp/pirate-ios-sdk-derived-data
+          xcodebuild \
+            -packagePath bindings/ios-sdk \
+            -scheme "$SCHEME" \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/pirate-ios-sdk-derived-data \
+            build
+
+      - name: Smoke test iOS SDK package
+        run: |
+          SCHEME="$(xcodebuild -list -json -packagePath bindings/ios-sdk | python3 -c 'import json, sys; data = json.load(sys.stdin); schemes = data.get("workspace", {}).get("schemes") or data.get("project", {}).get("schemes") or []; preferred = ["PirateWalletSDK", "PirateWalletSDK-Package"]; print(next((name for name in preferred if name in schemes), schemes[0] if schemes else "")); sys.exit(0 if schemes else 1)')"
+          rm -rf /tmp/pirate-ios-sdk-tests
+          xcodebuild \
+            -packagePath bindings/ios-sdk \
+            -scheme "$SCHEME" \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -derivedDataPath /tmp/pirate-ios-sdk-tests \
+            test
+
+      - name: Upload iOS SDK package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ios-sdk
+          path: |
+            dist/ios-sdk/*
+            bindings/ios-sdk/Frameworks/PirateWalletNative.xcframework/**/*
+            bindings/ios-sdk/Package.swift
+            bindings/ios-sdk/Sources/PirateWalletSDK/*
+            bindings/ios-sdk/Tests/PirateWalletSDKTests/*
+
+  package-android-sdk:
+    name: Package - Android SDK
+    runs-on: ubuntu-latest
+    env:
+      JAVA_VERSION: "21"
+    needs:
+      - rust-test
+      - backend-release-plan
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Setup Java
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager "platforms;android-${{ env.ANDROID_PLATFORM_VERSION }}" "build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}" "ndk;${{ env.ANDROID_NDK_VERSION }}"
+          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+        with:
+          gradle-version: "8.13"
+
+      - name: Build Android SDK
+        run: |
+          chmod +x scripts/build-android-sdk.sh
+          ./scripts/build-android-sdk.sh
+
+      - name: Smoke test Android SDK consumer app
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-android-sdk-smoke
+        run: |
+          cd bindings/android-sdk
+          gradle --no-daemon :smoke-consumer:assembleDebug
+
+      - name: Upload Android SDK package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: android-sdk
+          path: |
+            dist/android-sdk/*
+            bindings/android-sdk/build/outputs/aar/*.aar
+            bindings/android-sdk/src/main/jniLibs/**/*
+            bindings/android-sdk/src/main/kotlin/com/pirate/wallet/sdk/*
+            bindings/android-sdk/smoke-consumer/**/*
+            bindings/android-sdk/build.gradle.kts
+            bindings/android-sdk/settings.gradle.kts
+
+  package-react-native-plugin:
+    name: Package - React Native Plugin
+    runs-on: ubuntu-latest
+    env:
+      JAVA_VERSION: "21"
+    needs:
+      - backend-release-plan
+      - package-ios-sdk
+      - package-android-sdk
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download iOS SDK artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ios-sdk
+          path: /tmp/pirate-ios-sdk-artifact
+
+      - name: Download Android SDK artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: android-sdk
+          path: /tmp/pirate-android-sdk-artifact
+
+      - name: Stage native artifacts for React Native plugin
+        run: |
+          mkdir -p bindings/android-sdk/src/main/jniLibs bindings/ios-sdk/Frameworks
+          cp -R /tmp/pirate-android-sdk-artifact/bindings/android-sdk/src/main/jniLibs/. bindings/android-sdk/src/main/jniLibs/
+          rm -rf bindings/ios-sdk/Frameworks/PirateWalletNative.xcframework
+          cp -R /tmp/pirate-ios-sdk-artifact/bindings/ios-sdk/Frameworks/PirateWalletNative.xcframework bindings/ios-sdk/Frameworks/
+          chmod +x scripts/prepare-react-native-plugin.sh
+          ./scripts/prepare-react-native-plugin.sh
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20'
+
+      - name: Install React Native example app dependencies
+        run: |
+          cd bindings/react-native-pirate-wallet/example
+          npm install
+
+      - name: Setup Java
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager "platforms;android-${{ env.ANDROID_PLATFORM_VERSION }}" "build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+        with:
+          gradle-version: "8.13"
+
+      - name: Smoke test React Native JS wrapper
+        run: |
+          node bindings/react-native-pirate-wallet/test/smoke.js
+
+      - name: Run React Native example app test
+        run: |
+          cd bindings/react-native-pirate-wallet/example
+          npm test -- --runInBand
+
+      - name: Build Android native bridge for React Native plugin
+        run: |
+          cd bindings/react-native-pirate-wallet/android
+          gradle --no-daemon assembleDebug
+
+      - name: Build Android example app for React Native plugin
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-rn-example-android
+        run: |
+          cd bindings/react-native-pirate-wallet/example/android
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Package React Native plugin
+        run: |
+          set -euo pipefail
+          mkdir -p dist/react-native-plugin/package
+          rsync -a \
+            --delete \
+            --exclude '.git' \
+            --exclude '.gradle' \
+            --exclude 'build' \
+            --exclude 'node_modules' \
+            bindings/react-native-pirate-wallet/ \
+            dist/react-native-plugin/package/
+          (
+            cd dist/react-native-plugin/package
+            zip -qr ../react-native-pirate-wallet-package.zip .
+          )
+          sha256sum dist/react-native-plugin/react-native-pirate-wallet-package.zip \
+            > dist/react-native-plugin/react-native-pirate-wallet-package.zip.sha256
+
+      - name: Upload React Native plugin package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: react-native-pirate-wallet
+          path: |
+            dist/react-native-plugin/**/*
+
+  verify-react-native-plugin-ios-example:
+    name: Verify - React Native Plugin iOS Example
+    runs-on: macos-15
+    needs:
+      - package-ios-sdk
+      - package-android-sdk
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Download iOS SDK artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ios-sdk
+          path: /tmp/pirate-ios-sdk-artifact
+
+      - name: Download Android SDK artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: android-sdk
+          path: /tmp/pirate-android-sdk-artifact
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          if [ -d /Applications/Xcode_26.3.app ]; then
+            export DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer
+          elif [ -d /Applications/Xcode_26.2.app ]; then
+            export DEVELOPER_DIR=/Applications/Xcode_26.2.app/Contents/Developer
+          else
+            echo "No supported Xcode 26.x installation found on runner" >&2
+            ls -1 /Applications | grep '^Xcode' || true
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Stage native artifacts for React Native plugin
+        run: |
+          mkdir -p bindings/android-sdk/src/main/jniLibs bindings/ios-sdk/Frameworks
+          cp -R /tmp/pirate-android-sdk-artifact/bindings/android-sdk/src/main/jniLibs/. bindings/android-sdk/src/main/jniLibs/
+          rm -rf bindings/ios-sdk/Frameworks/PirateWalletNative.xcframework
+          cp -R /tmp/pirate-ios-sdk-artifact/bindings/ios-sdk/Frameworks/PirateWalletNative.xcframework bindings/ios-sdk/Frameworks/
+          chmod +x scripts/prepare-react-native-plugin.sh
+          ./scripts/prepare-react-native-plugin.sh
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20'
+
+      - name: Install React Native example app dependencies
+        run: |
+          cd bindings/react-native-pirate-wallet/example
+          npm install
+
+      - name: Verify CocoaPods
+        run: |
+          pod --version
+
+      - name: Install iOS example app pods
+        run: |
+          cd bindings/react-native-pirate-wallet/example/ios
+          pod install
+
+      - name: Build iOS example app for React Native plugin
+        run: |
+          cd bindings/react-native-pirate-wallet/example/ios
+          rm -rf /tmp/pirate-rn-example-ios
+          xcodebuild \
+            -workspace PirateWalletPluginExample.xcworkspace \
+            -scheme PirateWalletPluginExample \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -derivedDataPath /tmp/pirate-rn-example-ios \
+            build
+
   # ========================================================================
   # Final Status Check
   # ========================================================================
@@ -476,18 +945,18 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0  # Full history for SOURCE_DATE_EPOCH
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
 
       - name: Install Android SDK packages
         run: |
@@ -496,31 +965,31 @@ jobs:
           echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${{ env.ANDROID_NDK_VERSION }}" >> $GITHUB_ENV
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -565,7 +1034,7 @@ jobs:
           ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-unsigned.aab dist/provenance
 
       - name: Upload APK (V8)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-apk-unsigned-v8
           path: |
@@ -573,7 +1042,7 @@ jobs:
             dist/android/pirate-unified-wallet-android-V8-unsigned.apk.sha256
 
       - name: Upload APK (V7)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-apk-unsigned-v7
           path: |
@@ -581,7 +1050,7 @@ jobs:
             dist/android/pirate-unified-wallet-android-V7-unsigned.apk.sha256
 
       - name: Upload APK (x86)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-apk-unsigned-x86
           path: |
@@ -589,7 +1058,7 @@ jobs:
             dist/android/pirate-unified-wallet-android-x86-unsigned.apk.sha256
 
       - name: Upload AAB
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-aab
           path: |
@@ -597,13 +1066,13 @@ jobs:
             dist/android/*.aab.sha256
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-provenance
           path: dist/provenance/**/*
@@ -619,24 +1088,24 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -701,7 +1170,7 @@ jobs:
           ./scripts/generate-provenance.sh dist/ios/pirate-unified-wallet-ios-unsigned.ipa dist/provenance
 
       - name: Upload IPA
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ios-ipa
           path: |
@@ -709,7 +1178,7 @@ jobs:
             dist/ios/*.ipa.sha256
 
       - name: Upload iOS Simulator app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ios-simulator-app
           path: |
@@ -717,13 +1186,13 @@ jobs:
             dist/ios/pirate-unified-wallet-ios-simulator.app.zip.sha256
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ios-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ios-provenance
           path: dist/provenance/**/*
@@ -739,30 +1208,30 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -823,7 +1292,7 @@ jobs:
           fi
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: windows-desktop
           path: |
@@ -832,13 +1301,13 @@ jobs:
             dist/windows/*.sha256
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: windows-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: windows-provenance
           path: dist/provenance/**/*
@@ -854,30 +1323,30 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -925,7 +1394,7 @@ jobs:
           ./scripts/generate-provenance.sh dist/macos/pirate-unified-wallet-macos-unsigned.dmg dist/provenance
 
       - name: Upload DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: macos-dmg
           path: |
@@ -933,13 +1402,13 @@ jobs:
             dist/macos/*.dmg.sha256
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: macos-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: macos-provenance
           path: dist/provenance/**/*
@@ -955,30 +1424,30 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1042,7 +1511,7 @@ jobs:
           ./scripts/generate-provenance.sh dist/linux/pirate-unified-wallet-amd64.deb dist/provenance
 
       - name: Upload AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: linux-appimage
           path: |
@@ -1050,7 +1519,7 @@ jobs:
             dist/linux/*.AppImage.sha256
 
       - name: Upload Flatpak
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: linux-flatpak
           path: |
@@ -1058,7 +1527,7 @@ jobs:
             com.pirate.wallet.yml
 
       - name: Upload Debian Package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: linux-deb
           path: |
@@ -1067,13 +1536,13 @@ jobs:
             dist/linux/apt-repo/**/*
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: linux-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: linux-provenance
           path: dist/provenance/**/*
@@ -1102,14 +1571,14 @@ jobs:
 
       - name: Setup Java
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Android SDK
         if: steps.signing.outputs.enabled == 'true'
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
 
       - name: Install Android Build Tools
         if: steps.signing.outputs.enabled == 'true'
@@ -1118,28 +1587,28 @@ jobs:
 
       - name: Download APK artifacts (V8)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: android-apk-unsigned-v8
           path: dist/android
 
       - name: Download APK artifacts (V7)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: android-apk-unsigned-v7
           path: dist/android
 
       - name: Download APK artifacts (x86)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: android-apk-unsigned-x86
           path: dist/android
 
       - name: Download AAB artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: android-aab
           path: dist/android
@@ -1202,7 +1671,7 @@ jobs:
 
       - name: Upload signed APK (V8)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-apk-signed-v8
           path: |
@@ -1212,7 +1681,7 @@ jobs:
 
       - name: Upload signed APK (V7)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-apk-signed-v7
           path: |
@@ -1222,7 +1691,7 @@ jobs:
 
       - name: Upload signed APK (x86)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-apk-signed-x86
           path: |
@@ -1232,7 +1701,7 @@ jobs:
 
       - name: Upload signed AAB
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: android-aab-signed
           path: |
@@ -1259,7 +1728,7 @@ jobs:
 
       - name: Download Windows artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: windows-desktop
           path: dist/windows
@@ -1364,7 +1833,7 @@ jobs:
 
       - name: Upload signed Windows artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: windows-signed
           path: |
@@ -1389,14 +1858,14 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Missing macOS signing/notarization secrets. Skipping signed+notarized macOS DMG." >&2
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         if: steps.signing.outputs.enabled == 'true'
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
         if: steps.signing.outputs.enabled == 'true'
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -1404,13 +1873,13 @@ jobs:
 
       - name: Setup Rust
         if: steps.signing.outputs.enabled == 'true'
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -1482,7 +1951,7 @@ jobs:
 
       - name: Upload signed DMG
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: macos-dmg-signed
           path: |
@@ -1506,14 +1975,14 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         if: steps.signing.outputs.enabled == 'true'
         with:
           fetch-depth: 0
 
       - name: Setup Flutter
         if: steps.signing.outputs.enabled == 'true'
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -1521,7 +1990,7 @@ jobs:
 
       - name: Setup Rust
         if: steps.signing.outputs.enabled == 'true'
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -1569,7 +2038,7 @@ jobs:
 
       - name: Upload signed IPA
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ios-ipa-signed
           path: |
@@ -1595,21 +2064,21 @@ jobs:
 
       - name: Download AppImage artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: linux-appimage
           path: dist/linux
 
       - name: Download Debian artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: linux-deb
           path: dist/linux
 
       - name: Download Flatpak artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: linux-flatpak
           path: dist/linux
@@ -1634,7 +2103,7 @@ jobs:
 
       - name: Upload Linux signatures
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: linux-signatures
           path: dist/linux/*.asc
@@ -1666,12 +2135,12 @@ jobs:
             echo "::warning::Missing VIRUSTOTAL_API_KEY secret. Skipping VirusTotal artifact scanning." >&2
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         if: steps.vt.outputs.enabled == 'true'
 
       - name: Download artifacts
         if: steps.vt.outputs.enabled == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: vt-artifacts
 
@@ -1691,7 +2160,7 @@ jobs:
 
       - name: Upload VirusTotal report
         if: steps.vt.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: virustotal-report
           path: vt-report/*
@@ -1705,6 +2174,12 @@ jobs:
       contents: write
     needs:
       - ci-success
+      - backend-release-plan
+      - package-cli
+      - package-native-ffi
+      - package-ios-sdk
+      - package-android-sdk
+      - package-react-native-plugin
       - sign-android
       - sign-windows
       - sign-macos
@@ -1713,12 +2188,12 @@ jobs:
       - virustotal-scan
     steps:
       - name: Checkout tag for release notes
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: release-artifacts
 
@@ -1769,6 +2244,49 @@ jobs:
             -o -name 'pirate-unified-wallet-ios-simulator.app.zip' \
           \) -exec cp -f {} release/ \;
 
+          if [ "${{ needs.backend-release-plan.outputs.cli_changed }}" = "true" ] || [ "${{ needs.backend-release-plan.outputs.qortal_cli_changed }}" = "true" ]; then
+            find release-artifacts -type f \( \
+              -name 'piratewallet-cli' \
+              -o -name 'piratewallet-cli.exe' \
+              -o -name 'pirate-qortal-cli' \
+              -o -name 'pirate-qortal-cli.exe' \
+            \) -exec cp -f {} release/ \;
+          fi
+
+          if [ "${{ needs.backend-release-plan.outputs.native_ffi_changed }}" = "true" ] || [ "${{ needs.backend-release-plan.outputs.ios_sdk_changed }}" = "true" ] || [ "${{ needs.backend-release-plan.outputs.android_sdk_changed }}" = "true" ]; then
+            find release-artifacts -type f \( \
+              -name 'libpirate_ffi_native.a' \
+              -o -name 'libpirate_ffi_native.so' \
+              -o -name 'pirate_ffi_native.dll' \
+              -o -name 'pirate_ffi_native.lib' \
+              -o -name 'pirate_wallet_service.h' \
+            \) -exec cp -f {} release/ \;
+          fi
+
+          if [ "${{ needs.backend-release-plan.outputs.ios_sdk_changed }}" = "true" ]; then
+            find release-artifacts -type f \( \
+              -name 'PirateWalletNative.xcframework.zip' \
+              -o -name 'PirateWalletNative.xcframework.zip.sha256' \
+              -o -name 'PirateWalletSDK-package.zip' \
+              -o -name 'PirateWalletSDK-package.zip.sha256' \
+            \) -exec cp -f {} release/ \;
+          fi
+
+          if [ "${{ needs.backend-release-plan.outputs.android_sdk_changed }}" = "true" ]; then
+            find release-artifacts -type f \( \
+              -name '*.aar' \
+              -o -name 'pirate-android-sdk-package.zip' \
+              -o -name 'pirate-android-sdk-package.zip.sha256' \
+            \) -exec cp -f {} release/ \;
+          fi
+
+          if [ "${{ needs.backend-release-plan.outputs.react_native_plugin_changed }}" = "true" ]; then
+            find release-artifacts -type f \( \
+              -name 'react-native-pirate-wallet-package.zip' \
+              -o -name 'react-native-pirate-wallet-package.zip.sha256' \
+            \) -exec cp -f {} release/ \;
+          fi
+
           # Hashes and signatures: keep both direct assets (for in-app verification)
           # and a bundled metadata zip (for manual download convenience).
           find release-artifacts -type f \( \
@@ -1792,6 +2310,21 @@ jobs:
             hash_name="release-meta/$(basename "$flatpak").sha256"
             if [ -f "$flatpak" ] && [ ! -f "$hash_name" ]; then
               sha256sum "$flatpak" > "$hash_name"
+            fi
+          done
+
+          for backend_asset in \
+            release/piratewallet-cli \
+            release/piratewallet-cli.exe \
+            release/pirate-qortal-cli \
+            release/pirate-qortal-cli.exe \
+            release/libpirate_ffi_native.a \
+            release/libpirate_ffi_native.so \
+            release/pirate_ffi_native.dll \
+            release/pirate_ffi_native.lib \
+            release/pirate_wallet_service.h; do
+            if [ -f "$backend_asset" ]; then
+              sha256sum "$backend_asset" > "release-meta/$(basename "$backend_asset").sha256"
             fi
           done
 
@@ -1830,8 +2363,28 @@ jobs:
           mkdir -p release-notes
           printf "%s\n" "$TAG_BODY" > release-notes/RELEASE_NOTES.md
 
+      - name: Generate iOS SPM release manifest
+        if: needs.backend-release-plan.outputs.ios_sdk_changed == 'true'
+        run: |
+          set -euo pipefail
+          XC_ZIP="release/PirateWalletNative.xcframework.zip"
+          XC_SHA="release/PirateWalletNative.xcframework.zip.sha256"
+          if [ ! -f "$XC_ZIP" ] || [ ! -f "$XC_SHA" ]; then
+            echo "iOS SDK release assets not found; skipping SPM manifest."
+            exit 0
+          fi
+          CHECKSUM="$(awk '{print $1}' "$XC_SHA")"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/PirateWalletNative.xcframework.zip"
+          chmod +x scripts/generate-ios-spm-release-manifest.sh
+          scripts/generate-ios-spm-release-manifest.sh \
+            "${GITHUB_REPOSITORY}" \
+            "${GITHUB_REF_NAME}" \
+            "$URL" \
+            "$CHECKSUM" \
+            > release/PirateWalletSDK-Package.swift
+
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe
         with:
           files: release/*
           body_path: release-notes/RELEASE_NOTES.md
@@ -1840,6 +2393,7 @@ jobs:
     name: CI - All Checks Passed
     runs-on: ubuntu-latest
     needs:
+      - workflow-action-pinning
       - frb-codegen
       - rust-lint
       - rust-test
@@ -1853,6 +2407,11 @@ jobs:
       - flutter-analyze
       - flutter-test
       - build-matrix
+      - backend-release-plan
+      - package-cli
+      - package-native-ffi
+      - package-ios-sdk
+      - package-android-sdk
       - package-android
       - package-ios
       - package-windows
