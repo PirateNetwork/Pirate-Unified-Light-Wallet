@@ -1,15 +1,15 @@
 use std::fs;
 use std::path::PathBuf;
 
-fn api_rs() -> String {
+fn tx_flow_rs() -> String {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let api_path = manifest_dir.join("src/api.rs");
-    fs::read_to_string(api_path).expect("read api.rs")
+    let tx_flow_path = manifest_dir.join("src/api/tx_flow.rs");
+    fs::read_to_string(tx_flow_path).expect("read tx_flow.rs")
 }
 
 #[test]
 fn forbids_send_time_witness_hydration_call() {
-    let src = api_rs();
+    let src = tx_flow_rs();
     assert!(
         !src.contains("hydrate_selectable_note_witnesses_from_snapshot("),
         "send path still performs witness hydration from snapshot"
@@ -18,7 +18,7 @@ fn forbids_send_time_witness_hydration_call() {
 
 #[test]
 fn forbids_send_time_witness_hydration_helper() {
-    let src = api_rs();
+    let src = tx_flow_rs();
     assert!(
         !src.contains("fn hydrate_selectable_note_witnesses_from_snapshot("),
         "send-time witness hydration helper still present"
@@ -31,7 +31,7 @@ fn forbids_send_time_witness_hydration_helper() {
 
 #[test]
 fn forbids_legacy_materialize_helper_symbol() {
-    let src = api_rs();
+    let src = tx_flow_rs();
     assert!(
         !src.contains("materialize_selectable_note_witnesses_from_snapshot("),
         "legacy materialize helper symbol must be removed from api send/build path"
@@ -40,12 +40,12 @@ fn forbids_legacy_materialize_helper_symbol() {
 
 #[test]
 fn forbids_send_time_materialization_call_in_sign_path() {
-    let src = api_rs();
+    let src = tx_flow_rs();
     let start = src
         .find("fn sign_tx_internal(")
         .expect("sign_tx_internal exists");
     let end = src[start..]
-        .find("pub fn sign_tx(")
+        .find("pub(super) fn sign_tx(")
         .map(|idx| start + idx)
         .expect("sign_tx exists");
     let sign_body = &src[start..end];
@@ -57,7 +57,7 @@ fn forbids_send_time_materialization_call_in_sign_path() {
 
 #[test]
 fn forbids_prepare_anchor_witness_callsites() {
-    let src = api_rs();
+    let src = tx_flow_rs();
     assert!(
         !src.contains("prepare_anchor_witness_ready_notes("),
         "send/build/balance paths must not call API-side witness preparation helper"
@@ -66,7 +66,7 @@ fn forbids_prepare_anchor_witness_callsites() {
 
 #[test]
 fn forbids_signing_active_sync_coupling() {
-    let src = api_rs();
+    let src = tx_flow_rs();
     assert!(
         !src.contains("SIGNING_ACTIVE"),
         "send/sync flow forbids signing-active global coupling"
@@ -79,7 +79,7 @@ fn forbids_signing_active_sync_coupling() {
 
 #[test]
 fn forbids_send_path_repair_queue_helper() {
-    let src = api_rs();
+    let src = tx_flow_rs();
     assert!(
         !src.contains("queue_spendability_repair("),
         "send path should not enqueue repair directly; queue worker handles repair scheduling"
