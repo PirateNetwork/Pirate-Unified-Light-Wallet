@@ -6,6 +6,7 @@ import '../../ui/atoms/p_text_button.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../design/compat.dart';
+import '../../design/tokens/colors.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../core/security/biometric_auth.dart';
@@ -99,11 +100,17 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
             }
           },
         ),
-        body: ColoredBox(
-          color: Colors.black,
-          child: SafeArea(top: false, child: _buildContent()),
+        body: _buildThemedBackground(
+          SafeArea(top: false, child: _buildContent()),
         ),
       ),
+    );
+  }
+
+  Widget _buildThemedBackground(Widget child) {
+    return DecoratedBox(
+      decoration: BoxDecoration(color: AppColors.backgroundBase),
+      child: child,
     );
   }
 
@@ -153,14 +160,38 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   Widget _buildWarningStep() {
     return _centeredStep(
       Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Spacer(),
-          Icon(Icons.warning_rounded, size: 80, color: Colors.red[400]),
+          Center(
+            child: Icon(
+              Icons.warning_rounded,
+              size: 88,
+              color: AppColors.error,
+            ),
+          ),
+          SizedBox(height: PirateSpacing.lg),
+          Text(
+            'High risk action'.tr,
+            style: PirateTypography.bodyLarge.copyWith(
+              color: AppColors.error,
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
+          ),
           SizedBox(height: PirateSpacing.xl),
           Text(
             'Reveal recovery phrase'.tr,
-            style: PirateTypography.h2.copyWith(color: Colors.white),
+            style: PirateTypography.h2.copyWith(color: AppColors.textPrimary),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: PirateSpacing.md),
+          Text(
+            'Review these warnings carefully, then choose whether to continue or go back.'
+                .tr,
+            style: PirateTypography.body.copyWith(
+              color: AppColors.textSecondary,
+            ),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.xl),
@@ -187,16 +218,39 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                 'Support will never ask for your recovery phrase. Anyone asking is a scam.'
                     .tr,
           ),
-          const Spacer(),
+          SizedBox(height: PirateSpacing.xl),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: PirateSpacing.lg,
+              vertical: PirateSpacing.lg,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSurface.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderStrong),
+            ),
+            child: Text(
+              'Choose one option below. The phrase will not be shown until you continue and finish verification.'
+                  .tr,
+              style: PirateTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(height: PirateSpacing.lg),
           PButton(
-            variant: PButtonVariant.danger,
+            variant: PButtonVariant.primary,
             onPressed: _isLoading ? null : _startSeedExport,
             loading: _isLoading,
-            child: Text('I understand the risk'.tr),
+            fullWidth: true,
+            icon: const Icon(Icons.warning_amber_rounded),
+            child: Text('Continue to recovery phrase'.tr),
           ),
           SizedBox(height: PirateSpacing.md),
-          PTextButton(
-            label: 'Cancel'.tr,
+          PButton(
+            variant: PButtonVariant.outline,
+            fullWidth: true,
             onPressed: () async {
               if (_exportStarted) {
                 await FfiBridge.cancelSeedExport();
@@ -206,7 +260,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                 Navigator.pop(context);
               }
             },
-            variant: PTextButtonVariant.subtle,
+            child: Text('Cancel and go back'.tr),
           ),
         ],
       ),
@@ -221,13 +275,21 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     return Container(
       padding: EdgeInsets.all(PirateSpacing.lg),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.1),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+        color: AppColors.backgroundSurface.withValues(alpha: 0.86),
+        border: Border.all(color: AppColors.errorBorder),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
-          Icon(icon, color: Colors.red[300], size: 32),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.errorBackground,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: AppColors.error, size: 24),
+          ),
           SizedBox(width: PirateSpacing.md),
           Expanded(
             child: Column(
@@ -236,7 +298,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                 Text(
                   title,
                   style: PirateTypography.bodyLarge.copyWith(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -244,7 +306,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                 Text(
                   description,
                   style: PirateTypography.body.copyWith(
-                    color: Colors.grey[400],
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -301,13 +363,15 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           SizedBox(height: PirateSpacing.xl),
           Text(
             'Confirm with biometrics'.tr,
-            style: PirateTypography.h2.copyWith(color: Colors.white),
+            style: PirateTypography.h2.copyWith(color: AppColors.textPrimary),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
             'Use biometrics to continue.'.tr,
-            style: PirateTypography.body.copyWith(color: Colors.grey[400]),
+            style: PirateTypography.body.copyWith(
+              color: AppColors.textSecondary,
+            ),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.xxl),
@@ -316,7 +380,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
               padding: EdgeInsets.only(bottom: PirateSpacing.lg),
               child: Text(
                 _error!,
-                style: PirateTypography.body.copyWith(color: Colors.red[400]),
+                style: PirateTypography.body.copyWith(color: AppColors.error),
                 textAlign: TextAlign.center,
               ),
             ),
@@ -347,13 +411,15 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           SizedBox(height: PirateSpacing.xl),
           Text(
             'Enter your passphrase'.tr,
-            style: PirateTypography.h2.copyWith(color: Colors.white),
+            style: PirateTypography.h2.copyWith(color: AppColors.textPrimary),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
             'Verify to reveal your recovery phrase.'.tr,
-            style: PirateTypography.body.copyWith(color: Colors.grey[400]),
+            style: PirateTypography.body.copyWith(
+              color: AppColors.textSecondary,
+            ),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.xxl),
@@ -368,7 +434,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
             SizedBox(height: PirateSpacing.md),
             Text(
               _error!,
-              style: PirateTypography.body.copyWith(color: Colors.red[400]),
+              style: PirateTypography.body.copyWith(color: AppColors.error),
               textAlign: TextAlign.center,
             ),
           ],
@@ -413,11 +479,13 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                   'Recovery phrase'.tr,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: PirateTypography.h3.copyWith(color: Colors.white),
+                  style: PirateTypography.h3.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
               IconButton(
-                icon: Icon(Icons.close, color: Colors.white),
+                icon: Icon(Icons.close, color: AppColors.textPrimary),
                 onPressed: _showExitConfirmation,
               ),
             ],
@@ -426,9 +494,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           Container(
             padding: EdgeInsets.all(PirateSpacing.lg),
             decoration: BoxDecoration(
-              color: Colors.grey[900],
+              color: AppColors.backgroundSurface.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey[800]!),
+              border: Border.all(color: AppColors.borderStrong),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,7 +504,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                 Text(
                   'Write these words down in order.'.tr,
                   style: PirateTypography.bodySmall.copyWith(
-                    color: Colors.grey[400],
+                    color: AppColors.textSecondary,
                   ),
                 ),
                 SizedBox(height: PirateSpacing.lg),
@@ -513,13 +581,14 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                 vertical: PirateSpacing.xs,
               ),
               decoration: BoxDecoration(
-                color: Colors.grey[850],
+                color: AppColors.backgroundElevated,
                 borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.borderDefault),
               ),
               child: Text(
                 '${index + 1}. ${words[index]}',
                 style: PirateTypography.bodySmall.copyWith(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontFamily: 'monospace',
                 ),
                 maxLines: 2,
@@ -701,11 +770,14 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: Text('Confirm backup'.tr, style: TextStyle(color: Colors.white)),
+        backgroundColor: AppColors.backgroundSurface,
+        title: Text(
+          'Confirm backup'.tr,
+          style: TextStyle(color: AppColors.textPrimary),
+        ),
         content: Text(
           'Have you written down your recovery phrase?'.tr,
-          style: TextStyle(color: Colors.grey[300]),
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           PTextButton(
@@ -736,15 +808,15 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: AppColors.backgroundSurface,
         title: Text(
           'Exit without saving?'.tr,
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: AppColors.textPrimary),
         ),
         content: Text(
           'Are you sure you want to exit? You will need this phrase to restore this wallet.'
               .tr,
-          style: TextStyle(color: Colors.grey[300]),
+          style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           PTextButton(
