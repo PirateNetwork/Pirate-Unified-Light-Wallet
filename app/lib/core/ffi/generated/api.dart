@@ -3,14 +3,16 @@
 
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
+import 'api/diagnostics.dart';
+import 'api/endpoint.dart';
+import 'api/seed_export.dart';
 import 'frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `acquire_rescan_guard`, `add_pending_change`, `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_book_entry_to_ffi`, `address_matches_expected_network_prefix`, `address_matches_type`, `address_prefix_network_type_for_endpoint`, `address_prefix_network_type`, `app_passphrase`, `auto_consolidation_enabled`, `auto_consolidation_setting_key`, `auto_select_spend_key_id_for_amount`, `broadcast_tx_inner`, `build_tx_internal`, `cache_sync_status`, `cancel_sync_internal`, `choose_multi_key_change_sink_key_id`, `clear_pending_sign_context`, `clear_sync_runtime_cache`, `compute_spend_selection_anchors`, `current_linux_fd_count`, `debug_log_path`, `decode_orchard_address_bytes_from_note_bytes`, `decode_sapling_address_bytes_from_note_bytes`, `decoy_wallet_meta`, `delete_wallet_meta`, `derive_db_key`, `detect_network_from_endpoint`, `disconnect_active_sync_channels`, `encode_hex_opt`, `encode_orchard_extsk`, `encode_sapling_xfvk_from_bytes`, `ensure_decoy_wallet_state`, `ensure_not_decoy`, `ensure_primary_account_key`, `ensure_wallet_registry_loaded`, `ensure_wallet_registry_schema`, `escape_json`, `extract_orchard_anchor_from_raw_tx`, `extract_sapling_anchor_from_raw_tx`, `fetch_transaction_memo_inner`, `force_store_sealed_db_key`, `get_cached_balance`, `get_cached_sync_status`, `get_cached_transactions`, `get_registry_setting`, `get_wallet_meta`, `infer_contributing_key_ids_for_amount`, `infer_key_network_type_from_addresses`, `install_debug_panic_hook`, `install_runtime_diagnostics`, `is_decoy_mode_active`, `is_rescan_active`, `key_type_to_info`, `load_registry_tunnel_mode`, `load_salt`, `load_sealed_key`, `load_selectable_notes_for_send`, `load_spendability_status_internal`, `load_wallet_registry_activity`, `load_wallet_registry_state`, `load_wallet_registry`, `log_orchard_address_samples`, `map_stage`, `mark_rescan_active`, `mark_runtime_clean_shutdown`, `mark_spendability_rescan_required`, `mark_spendability_sync_finalizing`, `maybe_schedule_sync_recovery`, `maybe_store_sealed_db_key`, `maybe_trigger_compact_sync`, `network_type_name`, `normalize_filter_ids`, `normalize_pending_sign_filter_ids`, `normalize_txid_hex`, `note_balances_by_key_id`, `open_encrypted_db_with_migration`, `open_wallet_db_for`, `open_wallet_db_with_passphrase`, `open_wallet_registry_with_passphrase`, `open_wallet_registry`, `orchard_activation_override`, `parse_endpoint_url`, `parse_orchard_root_from_tree_state`, `parse_rfc3339_timestamp`, `parse_sapling_root_from_tree_state`, `parse_tunnel_mode_setting`, `persist_registry_tunnel_mode`, `persist_wallet_meta`, `put_cached_balance`, `put_cached_transactions`, `read_runtime_marker`, `recover_outgoing_memo_from_raw_tx`, `redact_socks5_url`, `rederive_wallet_keys_for_network`, `reencrypt_blob`, `reencrypt_optional_blob`, `reencrypt_wallet_tables`, `refresh_duress_reverse_hash`, `registry_master_key`, `require_spendability_ready_with_sync_trigger`, `require_spendability_ready`, `reseal_registry_db_key`, `reseal_wallet_db_key`, `resolve_change_diversifier_index`, `resolve_pending_change`, `resolve_spend_key_id`, `resolve_wallet_birthday_height`, `reverse_passphrase`, `run_on_runtime_blocking`, `run_on_runtime`, `run_sync_engine_task`, `runtime_marker_path`, `sapling_extfvk_hrp_for_network`, `sapling_extsk_hrp_for_network`, `scan_sequential_addresses`, `schedule_target_height_update`, `set_active_wallet_registry`, `set_registry_setting`, `should_generate_orchard`, `should_suppress_live_tx_reads`, `sign_tx_internal`, `spawn_bootstrap_transport`, `spawn_disconnect_active_sync_channels`, `start_background_sync_inner`, `start_background_sync_round_robin_inner`, `store_broadcast_context`, `store_pending_sign_context`, `store_sealed_key`, `sync_mutation_snapshot`, `sync_status_inner`, `take_broadcast_context`, `take_pending_sign_context`, `test_node_inner`, `touch_wallet_last_synced`, `touch_wallet_last_used`, `truncate_for_log`, `try_unseal_db_key`, `tunnel_transport_config_for`, `tunnel_transport_config`, `txid_hex_variants_from_bytes`, `unix_timestamp_millis`, `update_runtime_marker`, `validate_custom_duress_passphrase`, `validate_spendable_key`, `verify_app_passphrase_with_db`, `wait_for_sync_stop`, `wallet_base_dir`, `wallet_db_key_path`, `wallet_db_keys`, `wallet_db_path_for`, `wallet_db_salt_path`, `wallet_master_key`, `wallet_network_type`, `wallet_registry_key_path`, `wallet_registry_path`, `wallet_registry_salt_path`, `write_runtime_debug_event`, `write_runtime_marker`, `write_salt`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `BALANCE_CACHE`, `BROADCAST_CONTEXTS`, `BroadcastContext`, `DECOY_VAULT`, `LIGHTD_ENDPOINTS`, `PENDING_CHANGES`, `PENDING_SIGN_CONTEXTS`, `PENDING_TUNNEL_MODE`, `PendingChangeEntry`, `PendingSignContext`, `RESCAN_ACTIVE`, `RESCAN_IN_FLIGHT`, `RescanActiveGuard`, `RescanGuard`, `SEED_EXPORT`, `SYNC_RUNTIME_HANDLES`, `SYNC_SESSIONS`, `SYNC_STATUS_SNAPSHOT_CACHE`, `SequentialAddressScan`, `SpendSelectionAnchors`, `SyncMutationSnapshot`, `SyncRuntimeHandles`, `SyncSession`, `TUNNEL_MODE`, `TX_LIST_CACHE`, `WALLETS`, `WATCH_ONLY`, `WalletRegistryActivity`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `deref`, `drop`, `drop`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
-// These functions are ignored (category: IgnoreBecauseOwnerTyShouldIgnore): `default`
+// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_matches_expected_network_prefix`, `address_prefix_network_type`, `convert_from_service`, `convert_into_service`, `current_linux_fd_count`, `debug_log_path`, `ensure_primary_account_key`, `escape_json`, `fetch_transaction_memo_inner`, `infer_key_network_type_from_addresses`, `install_debug_panic_hook`, `install_runtime_diagnostics`, `log_orchard_address_samples`, `mark_runtime_clean_shutdown`, `orchard_activation_override`, `read_runtime_marker`, `recover_outgoing_memo_from_raw_tx`, `rederive_wallet_keys_for_network`, `run_on_runtime_blocking`, `run_on_runtime`, `run_sync_engine_task`, `runtime_marker_path`, `should_generate_orchard`, `truncate_for_log`, `unix_timestamp_millis`, `update_runtime_marker`, `wallet_network_type`, `write_runtime_debug_event`, `write_runtime_marker`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `PENDING_TUNNEL_MODE`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
 
 /// Create new wallet
 ///
@@ -337,37 +339,30 @@ Future<List<AddressBookEntryFfi>> getRecentlyUsedAddresses({
 /// Export Sapling viewing key from full wallet.
 ///
 /// Uses the zxviews... Bech32 format for watch-only wallets.
-Future<String> exportIvk({required String walletId}) =>
-    RustLib.instance.api.crateApiExportIvk(walletId: walletId);
+Future<String> exportSaplingViewingKey({required String walletId}) =>
+    RustLib.instance.api.crateApiExportSaplingViewingKey(walletId: walletId);
 
 /// Export Orchard Extended Full Viewing Key as Bech32 (for watch-only wallets)
 ///
 /// Returns Bech32-encoded string with the network-specific HRP.
 /// Uses the standard Orchard viewing key export format.
-/// Use export_ivk() for Sapling viewing keys (zxviews... format).
+/// Use export_sapling_viewing_key() for Sapling viewing keys (zxviews... format).
 Future<String> exportOrchardViewingKey({required String walletId}) =>
     RustLib.instance.api.crateApiExportOrchardViewingKey(walletId: walletId);
-
-/// Export legacy Orchard viewing key (returns hex-encoded 64 bytes) - DEPRECATED
-///
-/// Use export_orchard_viewing_key() instead for watch-only wallets.
-/// This method is kept for backward compatibility.
-Future<String> exportOrchardIvk({required String walletId}) =>
-    RustLib.instance.api.crateApiExportOrchardIvk(walletId: walletId);
 
 /// Import viewing keys (watch-only wallet).
 ///
 /// Supports Sapling viewing keys (zxviews...) and Orchard extended viewing keys (bech32).
 /// If both are provided, creates a watch-only wallet that can view both Sapling and Orchard transactions.
-Future<String> importIvk({
+Future<String> importViewingWallet({
   required String name,
-  String? saplingIvk,
-  String? orchardIvk,
+  String? saplingViewingKey,
+  String? orchardViewingKey,
   required int birthday,
-}) => RustLib.instance.api.crateApiImportIvk(
+}) => RustLib.instance.api.crateApiImportViewingWallet(
   name: name,
-  saplingIvk: saplingIvk,
-  orchardIvk: orchardIvk,
+  saplingViewingKey: saplingViewingKey,
+  orchardViewingKey: orchardViewingKey,
   birthday: birthday,
 );
 
@@ -419,19 +414,15 @@ Future<PlatformInt64> importSpendingKey({
   birthdayHeight: birthdayHeight,
 );
 
-/// Export mnemonic seed (DANGEROUS - requires authentication)
+/// Export mnemonic seed through the raw advanced path.
 ///
-/// This is a high-security operation that requires:
-/// 1. Passphrase verification (Argon2id)
-/// 2. Biometric confirmation (if available)
-/// 3. Screenshot blocking is enabled
-///
-/// Use `export_seed_with_passphrase` for the gated flow.
+/// This path is intended for advanced callers that implement their own local
+/// authorization UX. It does not use the app-gated seed export flow.
 ///
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
-Future<String> exportSeed({required String walletId}) =>
-    RustLib.instance.api.crateApiExportSeed(walletId: walletId);
+Future<String> exportSeedRaw({required String walletId}) =>
+    RustLib.instance.api.crateApiExportSeedRaw(walletId: walletId);
 
 /// Build transaction with note selection, fee calculation, and change.
 Future<PendingTx> buildTx({
@@ -552,7 +543,6 @@ Future<BigInt> estimateFee({
 /// Get fee information
 Future<FeeInfo> getFeeInfo() => RustLib.instance.api.crateApiGetFeeInfo();
 
-/// Start sync for a wallet
 Future<void> startSync({required String walletId, required SyncMode mode}) =>
     RustLib.instance.api.crateApiStartSync(walletId: walletId, mode: mode);
 
@@ -681,6 +671,41 @@ Future<String> getTorStatus() => RustLib.instance.api.crateApiGetTorStatus();
 /// Rotate Tor exit circuits for new streams and reconnect sync channels.
 Future<void> rotateTorExit() => RustLib.instance.api.crateApiRotateTorExit();
 
+/// Fetch arbitrary text over the currently selected network tunnel.
+Future<String> fetchExternalText({
+  required String url,
+  String? accept,
+  String? userAgent,
+}) => RustLib.instance.api.crateApiFetchExternalText(
+  url: url,
+  accept: accept,
+  userAgent: userAgent,
+);
+
+/// Fetch arbitrary bytes over the currently selected network tunnel.
+Future<Uint8List> fetchExternalBytes({
+  required String url,
+  String? accept,
+  String? userAgent,
+}) => RustLib.instance.api.crateApiFetchExternalBytes(
+  url: url,
+  accept: accept,
+  userAgent: userAgent,
+);
+
+/// Download an external resource to a local file over the currently selected network tunnel.
+Future<void> downloadExternalToFile({
+  required String url,
+  required String destinationPath,
+  String? accept,
+  String? userAgent,
+}) => RustLib.instance.api.crateApiDownloadExternalToFile(
+  url: url,
+  destinationPath: destinationPath,
+  accept: accept,
+  userAgent: userAgent,
+);
+
 /// Get wallet balance
 ///
 /// Calculates balance from unspent notes in the database.
@@ -775,9 +800,8 @@ Future<String> getVaultMode() => RustLib.instance.api.crateApiGetVaultMode();
 /// Clear panic PIN and disable decoy vault
 Future<void> clearPanicPin() => RustLib.instance.api.crateApiClearPanicPin();
 
-/// Set duress passphrase for decoy vault
-/// Returns the Argon2id hash for secure storage on the client side.
-Future<String> setDuressPassphrase({String? customPassphrase}) => RustLib
+/// Set duress passphrase for decoy vault.
+Future<void> setDuressPassphrase({String? customPassphrase}) => RustLib
     .instance
     .api
     .crateApiSetDuressPassphrase(customPassphrase: customPassphrase);
@@ -786,29 +810,21 @@ Future<String> setDuressPassphrase({String? customPassphrase}) => RustLib
 Future<bool> hasDuressPassphrase() =>
     RustLib.instance.api.crateApiHasDuressPassphrase();
 
-/// Get the stored duress passphrase hash (for client-side secure storage sync)
-Future<String?> getDuressPassphraseHash() =>
-    RustLib.instance.api.crateApiGetDuressPassphraseHash();
-
 /// Clear duress passphrase configuration
 Future<void> clearDuressPassphrase() =>
     RustLib.instance.api.crateApiClearDuressPassphrase();
 
 /// Verify duress passphrase (activates decoy mode if correct)
-Future<bool> verifyDuressPassphrase({
-  required String passphrase,
-  required String hash,
-}) => RustLib.instance.api.crateApiVerifyDuressPassphrase(
-  passphrase: passphrase,
-  hash: hash,
-);
+Future<bool> verifyDuressPassphrase({required String passphrase}) =>
+    RustLib.instance.api.crateApiVerifyDuressPassphrase(passphrase: passphrase);
 
 /// Set decoy wallet name
 Future<void> setDecoyWalletName({required String name}) =>
     RustLib.instance.api.crateApiSetDecoyWalletName(name: name);
 
-/// Exit decoy mode (requires real passphrase re-authentication)
-Future<void> exitDecoyMode() => RustLib.instance.api.crateApiExitDecoyMode();
+/// Exit decoy mode (requires real passphrase re-authentication).
+Future<void> exitDecoyMode({required String passphrase}) =>
+    RustLib.instance.api.crateApiExitDecoyMode(passphrase: passphrase);
 
 /// Start seed export flow (step 1: show warning)
 Future<String> startSeedExport({required String walletId}) =>
@@ -869,17 +885,19 @@ Future<SeedExportWarnings> getSeedExportWarnings() =>
     RustLib.instance.api.crateApiGetSeedExportWarnings();
 
 /// Export Sapling viewing key from full wallet (for creating watch-only on another device)
-Future<String> exportIvkSecure({required String walletId}) =>
-    RustLib.instance.api.crateApiExportIvkSecure(walletId: walletId);
+Future<String> exportSaplingViewingKeySecure({required String walletId}) =>
+    RustLib.instance.api.crateApiExportSaplingViewingKeySecure(
+      walletId: walletId,
+    );
 
-/// Import viewing key to create watch-only wallet
-Future<String> importIvkAsWatchOnly({
+/// Import Sapling viewing key to create watch-only wallet
+Future<String> importSaplingViewingKeyAsWatchOnly({
   required String name,
-  required String ivk,
+  required String saplingViewingKey,
   required int birthdayHeight,
-}) => RustLib.instance.api.crateApiImportIvkAsWatchOnly(
+}) => RustLib.instance.api.crateApiImportSaplingViewingKeyAsWatchOnly(
   name: name,
-  ivk: ivk,
+  saplingViewingKey: saplingViewingKey,
   birthdayHeight: birthdayHeight,
 );
 
@@ -918,28 +936,6 @@ Future<CheckpointInfo?> getCheckpointDetails({
 /// Test connection to a lightwalletd endpoint
 Future<NodeTestResult> testNode({required String url, String? tlsPin}) =>
     RustLib.instance.api.crateApiTestNode(url: url, tlsPin: tlsPin);
-
-/// Checkpoint information for diagnostics
-class CheckpointInfo {
-  /// Checkpoint block height
-  final int height;
-
-  /// Unix timestamp when checkpoint was created
-  final PlatformInt64 timestamp;
-
-  const CheckpointInfo({required this.height, required this.timestamp});
-
-  @override
-  int get hashCode => height.hashCode ^ timestamp.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is CheckpointInfo &&
-          runtimeType == other.runtimeType &&
-          height == other.height &&
-          timestamp == other.timestamp;
-}
 
 /// Fee information for UI
 class FeeInfo {
@@ -984,94 +980,6 @@ class FeeInfo {
           maxFee == other.maxFee &&
           feePerOutput == other.feePerOutput &&
           memoFeeMultiplier == other.memoFeeMultiplier;
-}
-
-/// Lightwalletd endpoint configuration
-class LightdEndpoint {
-  /// Server host
-  final String host;
-
-  /// Server port
-  final int port;
-
-  /// Whether TLS is enabled
-  final bool useTls;
-
-  /// Optional TLS certificate pin (SPKI hash, base64)
-  final String? tlsPin;
-
-  /// User label
-  final String? label;
-
-  const LightdEndpoint({
-    required this.host,
-    required this.port,
-    required this.useTls,
-    this.tlsPin,
-    this.label,
-  });
-
-  static Future<LightdEndpoint> default_() =>
-      RustLib.instance.api.crateApiLightdEndpointDefault();
-
-  /// Display string (host:port)
-  Future<String> displayString() =>
-      RustLib.instance.api.crateApiLightdEndpointDisplayString(that: this);
-
-  /// Full URL for gRPC connection
-  Future<String> url() =>
-      RustLib.instance.api.crateApiLightdEndpointUrl(that: this);
-
-  @override
-  int get hashCode =>
-      host.hashCode ^
-      port.hashCode ^
-      useTls.hashCode ^
-      tlsPin.hashCode ^
-      label.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is LightdEndpoint &&
-          runtimeType == other.runtimeType &&
-          host == other.host &&
-          port == other.port &&
-          useTls == other.useTls &&
-          tlsPin == other.tlsPin &&
-          label == other.label;
-}
-
-/// Seed export warning messages for UI
-class SeedExportWarnings {
-  final String primary;
-  final String secondary;
-  final String backupInstructions;
-  final String clipboardWarning;
-
-  const SeedExportWarnings({
-    required this.primary,
-    required this.secondary,
-    required this.backupInstructions,
-    required this.clipboardWarning,
-  });
-
-  @override
-  int get hashCode =>
-      primary.hashCode ^
-      secondary.hashCode ^
-      backupInstructions.hashCode ^
-      clipboardWarning.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SeedExportWarnings &&
-          runtimeType == other.runtimeType &&
-          primary == other.primary &&
-          secondary == other.secondary &&
-          backupInstructions == other.backupInstructions &&
-          clipboardWarning == other.clipboardWarning;
 }
 
 /// Watch-only banner info for FFI

@@ -7,6 +7,11 @@
 // ignore_for_file: argument_type_not_assignable
 
 import 'api.dart';
+import 'api/background_sync.dart';
+import 'api/diagnostics.dart';
+import 'api/endpoint.dart';
+import 'api/seed_export.dart';
+import 'api/tunnel.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
@@ -1605,6 +1610,11 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__bootstrap_tunnel(NativePortType port_, JSAny mode) =>
       wasmModule.wire__crate__api__bootstrap_tunnel(port_, mode);
 
+  void wire__crate__api__tunnel__bootstrap_tunnel(
+    NativePortType port_,
+    JSAny mode,
+  ) => wasmModule.wire__crate__api__tunnel__bootstrap_tunnel(port_, mode);
+
   void wire__crate__api__broadcast_tx(NativePortType port_, JSAny signed) =>
       wasmModule.wire__crate__api__broadcast_tx(port_, signed);
 
@@ -1743,6 +1753,20 @@ class RustLibWire implements BaseWire {
     String wallet_id,
   ) => wasmModule.wire__crate__api__delete_wallet(port_, wallet_id);
 
+  void wire__crate__api__download_external_to_file(
+    NativePortType port_,
+    String url,
+    String destination_path,
+    String? accept,
+    String? user_agent,
+  ) => wasmModule.wire__crate__api__download_external_to_file(
+    port_,
+    url,
+    destination_path,
+    accept,
+    user_agent,
+  );
+
   void wire__crate__api__estimate_fee(
     NativePortType port_,
     JSAny num_outputs,
@@ -1755,16 +1779,10 @@ class RustLibWire implements BaseWire {
     fee_policy,
   );
 
-  void wire__crate__api__exit_decoy_mode(NativePortType port_) =>
-      wasmModule.wire__crate__api__exit_decoy_mode(port_);
-
-  void wire__crate__api__export_ivk(NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__export_ivk(port_, wallet_id);
-
-  void wire__crate__api__export_ivk_secure(
+  void wire__crate__api__exit_decoy_mode(
     NativePortType port_,
-    String wallet_id,
-  ) => wasmModule.wire__crate__api__export_ivk_secure(port_, wallet_id);
+    String passphrase,
+  ) => wasmModule.wire__crate__api__exit_decoy_mode(port_, passphrase);
 
   void wire__crate__api__export_key_group_keys(
     NativePortType port_,
@@ -1776,19 +1794,30 @@ class RustLibWire implements BaseWire {
     key_id,
   );
 
-  void wire__crate__api__export_orchard_ivk(
-    NativePortType port_,
-    String wallet_id,
-  ) => wasmModule.wire__crate__api__export_orchard_ivk(port_, wallet_id);
-
   void wire__crate__api__export_orchard_viewing_key(
     NativePortType port_,
     String wallet_id,
   ) =>
       wasmModule.wire__crate__api__export_orchard_viewing_key(port_, wallet_id);
 
-  void wire__crate__api__export_seed(NativePortType port_, String wallet_id) =>
-      wasmModule.wire__crate__api__export_seed(port_, wallet_id);
+  void wire__crate__api__export_sapling_viewing_key(
+    NativePortType port_,
+    String wallet_id,
+  ) =>
+      wasmModule.wire__crate__api__export_sapling_viewing_key(port_, wallet_id);
+
+  void wire__crate__api__export_sapling_viewing_key_secure(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__export_sapling_viewing_key_secure(
+    port_,
+    wallet_id,
+  );
+
+  void wire__crate__api__export_seed_raw(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__export_seed_raw(port_, wallet_id);
 
   void wire__crate__api__export_seed_with_cached_passphrase(
     NativePortType port_,
@@ -1806,6 +1835,30 @@ class RustLibWire implements BaseWire {
     port_,
     wallet_id,
     passphrase,
+  );
+
+  void wire__crate__api__fetch_external_bytes(
+    NativePortType port_,
+    String url,
+    String? accept,
+    String? user_agent,
+  ) => wasmModule.wire__crate__api__fetch_external_bytes(
+    port_,
+    url,
+    accept,
+    user_agent,
+  );
+
+  void wire__crate__api__fetch_external_text(
+    NativePortType port_,
+    String url,
+    String? accept,
+    String? user_agent,
+  ) => wasmModule.wire__crate__api__fetch_external_text(
+    port_,
+    url,
+    accept,
+    user_agent,
   );
 
   void wire__crate__api__fetch_transaction_memo(
@@ -1909,9 +1962,6 @@ class RustLibWire implements BaseWire {
     height,
   );
 
-  void wire__crate__api__get_duress_passphrase_hash(NativePortType port_) =>
-      wasmModule.wire__crate__api__get_duress_passphrase_hash(port_);
-
   void wire__crate__api__get_fee_info(NativePortType port_) =>
       wasmModule.wire__crate__api__get_fee_info(port_);
 
@@ -1959,13 +2009,24 @@ class RustLibWire implements BaseWire {
 
   void wire__crate__api__get_recommended_background_sync_mode(
     NativePortType port_,
-    String _wallet_id,
+    String wallet_id,
     int minutes_since_last,
   ) => wasmModule.wire__crate__api__get_recommended_background_sync_mode(
     port_,
-    _wallet_id,
+    wallet_id,
     minutes_since_last,
   );
+
+  void wire__crate__api__background_sync__get_recommended_background_sync_mode(
+    NativePortType port_,
+    String wallet_id,
+    int minutes_since_last,
+  ) => wasmModule
+      .wire__crate__api__background_sync__get_recommended_background_sync_mode(
+        port_,
+        wallet_id,
+        minutes_since_last,
+      );
 
   void wire__crate__api__get_seed_clipboard_remaining(NativePortType port_) =>
       wasmModule.wire__crate__api__get_seed_clipboard_remaining(port_);
@@ -1990,8 +2051,14 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__get_tor_status(NativePortType port_) =>
       wasmModule.wire__crate__api__get_tor_status(port_);
 
+  void wire__crate__api__tunnel__get_tor_status(NativePortType port_) =>
+      wasmModule.wire__crate__api__tunnel__get_tor_status(port_);
+
   void wire__crate__api__get_tunnel(NativePortType port_) =>
       wasmModule.wire__crate__api__get_tunnel(port_);
+
+  void wire__crate__api__tunnel__get_tunnel(NativePortType port_) =>
+      wasmModule.wire__crate__api__tunnel__get_tunnel(port_);
 
   void wire__crate__api__get_vault_mode(NativePortType port_) =>
       wasmModule.wire__crate__api__get_vault_mode(port_);
@@ -2018,29 +2085,15 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__has_panic_pin(NativePortType port_) =>
       wasmModule.wire__crate__api__has_panic_pin(port_);
 
-  void wire__crate__api__import_ivk(
+  void wire__crate__api__import_sapling_viewing_key_as_watch_only(
     NativePortType port_,
     String name,
-    String? sapling_ivk,
-    String? orchard_ivk,
-    int birthday,
-  ) => wasmModule.wire__crate__api__import_ivk(
-    port_,
-    name,
-    sapling_ivk,
-    orchard_ivk,
-    birthday,
-  );
-
-  void wire__crate__api__import_ivk_as_watch_only(
-    NativePortType port_,
-    String name,
-    String ivk,
+    String sapling_viewing_key,
     int birthday_height,
-  ) => wasmModule.wire__crate__api__import_ivk_as_watch_only(
+  ) => wasmModule.wire__crate__api__import_sapling_viewing_key_as_watch_only(
     port_,
     name,
-    ivk,
+    sapling_viewing_key,
     birthday_height,
   );
 
@@ -2060,10 +2113,32 @@ class RustLibWire implements BaseWire {
     birthday_height,
   );
 
+  void wire__crate__api__import_viewing_wallet(
+    NativePortType port_,
+    String name,
+    String? sapling_viewing_key,
+    String? orchard_viewing_key,
+    int birthday,
+  ) => wasmModule.wire__crate__api__import_viewing_wallet(
+    port_,
+    name,
+    sapling_viewing_key,
+    orchard_viewing_key,
+    birthday,
+  );
+
   void wire__crate__api__is_background_sync_needed(
     NativePortType port_,
     String wallet_id,
   ) => wasmModule.wire__crate__api__is_background_sync_needed(port_, wallet_id);
+
+  void wire__crate__api__background_sync__is_background_sync_needed(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__background_sync__is_background_sync_needed(
+    port_,
+    wallet_id,
+  );
 
   void wire__crate__api__is_decoy_mode(NativePortType port_) =>
       wasmModule.wire__crate__api__is_decoy_mode(port_);
@@ -2081,18 +2156,22 @@ class RustLibWire implements BaseWire {
   ) =>
       wasmModule.wire__crate__api__label_address(port_, wallet_id, addr, label);
 
-  void wire__crate__api__lightd_endpoint_default(NativePortType port_) =>
-      wasmModule.wire__crate__api__lightd_endpoint_default(port_);
+  void wire__crate__api__endpoint__lightd_endpoint_default(
+    NativePortType port_,
+  ) => wasmModule.wire__crate__api__endpoint__lightd_endpoint_default(port_);
 
-  void wire__crate__api__lightd_endpoint_display_string(
+  void wire__crate__api__endpoint__lightd_endpoint_display_string(
     NativePortType port_,
     JSAny that,
-  ) => wasmModule.wire__crate__api__lightd_endpoint_display_string(port_, that);
+  ) => wasmModule.wire__crate__api__endpoint__lightd_endpoint_display_string(
+    port_,
+    that,
+  );
 
-  void wire__crate__api__lightd_endpoint_url(
+  void wire__crate__api__endpoint__lightd_endpoint_url(
     NativePortType port_,
     JSAny that,
-  ) => wasmModule.wire__crate__api__lightd_endpoint_url(port_, that);
+  ) => wasmModule.wire__crate__api__endpoint__lightd_endpoint_url(port_, that);
 
   void wire__crate__api__list_address_balances(
     NativePortType port_,
@@ -2185,6 +2264,9 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__rotate_tor_exit(NativePortType port_) =>
       wasmModule.wire__crate__api__rotate_tor_exit(port_);
 
+  void wire__crate__api__tunnel__rotate_tor_exit(NativePortType port_) =>
+      wasmModule.wire__crate__api__tunnel__rotate_tor_exit(port_);
+
   void wire__crate__api__search_address_book(
     NativePortType port_,
     String wallet_id,
@@ -2263,8 +2345,27 @@ class RustLibWire implements BaseWire {
     transport_path,
   );
 
+  void wire__crate__api__tunnel__set_tor_bridge_settings(
+    NativePortType port_,
+    bool use_bridges,
+    bool fallback_to_bridges,
+    String transport,
+    JSAny bridge_lines,
+    String? transport_path,
+  ) => wasmModule.wire__crate__api__tunnel__set_tor_bridge_settings(
+    port_,
+    use_bridges,
+    fallback_to_bridges,
+    transport,
+    bridge_lines,
+    transport_path,
+  );
+
   void wire__crate__api__set_tunnel(NativePortType port_, JSAny mode) =>
       wasmModule.wire__crate__api__set_tunnel(port_, mode);
+
+  void wire__crate__api__tunnel__set_tunnel(NativePortType port_, JSAny mode) =>
+      wasmModule.wire__crate__api__tunnel__set_tunnel(port_, mode);
 
   void wire__crate__api__set_wallet_birthday_height(
     NativePortType port_,
@@ -2278,6 +2379,9 @@ class RustLibWire implements BaseWire {
 
   void wire__crate__api__shutdown_transport(NativePortType port_) =>
       wasmModule.wire__crate__api__shutdown_transport(port_);
+
+  void wire__crate__api__tunnel__shutdown_transport(NativePortType port_) =>
+      wasmModule.wire__crate__api__tunnel__shutdown_transport(port_);
 
   void wire__crate__api__sign_tx(
     NativePortType port_,
@@ -2328,6 +2432,20 @@ class RustLibWire implements BaseWire {
     max_blocks,
   );
 
+  void wire__crate__api__background_sync__start_background_sync(
+    NativePortType port_,
+    String wallet_id,
+    String? mode,
+    JSAny? max_duration_secs,
+    JSAny? max_blocks,
+  ) => wasmModule.wire__crate__api__background_sync__start_background_sync(
+    port_,
+    wallet_id,
+    mode,
+    max_duration_secs,
+    max_blocks,
+  );
+
   void wire__crate__api__start_background_sync_round_robin(
     NativePortType port_,
     String? mode,
@@ -2339,6 +2457,19 @@ class RustLibWire implements BaseWire {
     max_duration_secs,
     max_blocks,
   );
+
+  void wire__crate__api__background_sync__start_background_sync_round_robin(
+    NativePortType port_,
+    String? mode,
+    JSAny? max_duration_secs,
+    JSAny? max_blocks,
+  ) => wasmModule
+      .wire__crate__api__background_sync__start_background_sync_round_robin(
+        port_,
+        mode,
+        max_duration_secs,
+        max_blocks,
+      );
 
   void wire__crate__api__start_seed_export(
     NativePortType port_,
@@ -2364,6 +2495,12 @@ class RustLibWire implements BaseWire {
     String url,
     String? tls_pin,
   ) => wasmModule.wire__crate__api__test_node(port_, url, tls_pin);
+
+  void wire__crate__api__tunnel__test_node(
+    NativePortType port_,
+    String url,
+    String? tls_pin,
+  ) => wasmModule.wire__crate__api__tunnel__test_node(port_, url, tls_pin);
 
   void wire__crate__api__toggle_address_book_favorite(
     NativePortType port_,
@@ -2409,12 +2546,7 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__verify_duress_passphrase(
     NativePortType port_,
     String passphrase,
-    String hash,
-  ) => wasmModule.wire__crate__api__verify_duress_passphrase(
-    port_,
-    passphrase,
-    hash,
-  );
+  ) => wasmModule.wire__crate__api__verify_duress_passphrase(port_, passphrase);
 
   void wire__crate__api__verify_panic_pin(NativePortType port_, String pin) =>
       wasmModule.wire__crate__api__verify_panic_pin(port_, pin);
@@ -2457,6 +2589,11 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   );
 
   external void wire__crate__api__bootstrap_tunnel(
+    NativePortType port_,
+    JSAny mode,
+  );
+
+  external void wire__crate__api__tunnel__bootstrap_tunnel(
     NativePortType port_,
     JSAny mode,
   );
@@ -2557,6 +2694,14 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String wallet_id,
   );
 
+  external void wire__crate__api__download_external_to_file(
+    NativePortType port_,
+    String url,
+    String destination_path,
+    String? accept,
+    String? user_agent,
+  );
+
   external void wire__crate__api__estimate_fee(
     NativePortType port_,
     JSAny num_outputs,
@@ -2564,16 +2709,9 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String? fee_policy,
   );
 
-  external void wire__crate__api__exit_decoy_mode(NativePortType port_);
-
-  external void wire__crate__api__export_ivk(
+  external void wire__crate__api__exit_decoy_mode(
     NativePortType port_,
-    String wallet_id,
-  );
-
-  external void wire__crate__api__export_ivk_secure(
-    NativePortType port_,
-    String wallet_id,
+    String passphrase,
   );
 
   external void wire__crate__api__export_key_group_keys(
@@ -2582,17 +2720,22 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     JSAny key_id,
   );
 
-  external void wire__crate__api__export_orchard_ivk(
-    NativePortType port_,
-    String wallet_id,
-  );
-
   external void wire__crate__api__export_orchard_viewing_key(
     NativePortType port_,
     String wallet_id,
   );
 
-  external void wire__crate__api__export_seed(
+  external void wire__crate__api__export_sapling_viewing_key(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__export_sapling_viewing_key_secure(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__export_seed_raw(
     NativePortType port_,
     String wallet_id,
   );
@@ -2606,6 +2749,20 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     NativePortType port_,
     String wallet_id,
     String passphrase,
+  );
+
+  external void wire__crate__api__fetch_external_bytes(
+    NativePortType port_,
+    String url,
+    String? accept,
+    String? user_agent,
+  );
+
+  external void wire__crate__api__fetch_external_text(
+    NativePortType port_,
+    String url,
+    String? accept,
+    String? user_agent,
   );
 
   external void wire__crate__api__fetch_transaction_memo(
@@ -2683,10 +2840,6 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     int height,
   );
 
-  external void wire__crate__api__get_duress_passphrase_hash(
-    NativePortType port_,
-  );
-
   external void wire__crate__api__get_fee_info(NativePortType port_);
 
   external void wire__crate__api__get_ivk_clipboard_remaining(
@@ -2724,7 +2877,14 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void wire__crate__api__get_recommended_background_sync_mode(
     NativePortType port_,
-    String _wallet_id,
+    String wallet_id,
+    int minutes_since_last,
+  );
+
+  external void
+  wire__crate__api__background_sync__get_recommended_background_sync_mode(
+    NativePortType port_,
+    String wallet_id,
     int minutes_since_last,
   );
 
@@ -2751,7 +2911,11 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void wire__crate__api__get_tor_status(NativePortType port_);
 
+  external void wire__crate__api__tunnel__get_tor_status(NativePortType port_);
+
   external void wire__crate__api__get_tunnel(NativePortType port_);
+
+  external void wire__crate__api__tunnel__get_tunnel(NativePortType port_);
 
   external void wire__crate__api__get_vault_mode(NativePortType port_);
 
@@ -2771,18 +2935,10 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void wire__crate__api__has_panic_pin(NativePortType port_);
 
-  external void wire__crate__api__import_ivk(
+  external void wire__crate__api__import_sapling_viewing_key_as_watch_only(
     NativePortType port_,
     String name,
-    String? sapling_ivk,
-    String? orchard_ivk,
-    int birthday,
-  );
-
-  external void wire__crate__api__import_ivk_as_watch_only(
-    NativePortType port_,
-    String name,
-    String ivk,
+    String sapling_viewing_key,
     int birthday_height,
   );
 
@@ -2795,7 +2951,20 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     int birthday_height,
   );
 
+  external void wire__crate__api__import_viewing_wallet(
+    NativePortType port_,
+    String name,
+    String? sapling_viewing_key,
+    String? orchard_viewing_key,
+    int birthday,
+  );
+
   external void wire__crate__api__is_background_sync_needed(
+    NativePortType port_,
+    String wallet_id,
+  );
+
+  external void wire__crate__api__background_sync__is_background_sync_needed(
     NativePortType port_,
     String wallet_id,
   );
@@ -2814,14 +2983,16 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String label,
   );
 
-  external void wire__crate__api__lightd_endpoint_default(NativePortType port_);
+  external void wire__crate__api__endpoint__lightd_endpoint_default(
+    NativePortType port_,
+  );
 
-  external void wire__crate__api__lightd_endpoint_display_string(
+  external void wire__crate__api__endpoint__lightd_endpoint_display_string(
     NativePortType port_,
     JSAny that,
   );
 
-  external void wire__crate__api__lightd_endpoint_url(
+  external void wire__crate__api__endpoint__lightd_endpoint_url(
     NativePortType port_,
     JSAny that,
   );
@@ -2903,6 +3074,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
 
   external void wire__crate__api__rotate_tor_exit(NativePortType port_);
 
+  external void wire__crate__api__tunnel__rotate_tor_exit(NativePortType port_);
+
   external void wire__crate__api__search_address_book(
     NativePortType port_,
     String wallet_id,
@@ -2958,7 +3131,21 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String? transport_path,
   );
 
+  external void wire__crate__api__tunnel__set_tor_bridge_settings(
+    NativePortType port_,
+    bool use_bridges,
+    bool fallback_to_bridges,
+    String transport,
+    JSAny bridge_lines,
+    String? transport_path,
+  );
+
   external void wire__crate__api__set_tunnel(NativePortType port_, JSAny mode);
+
+  external void wire__crate__api__tunnel__set_tunnel(
+    NativePortType port_,
+    JSAny mode,
+  );
 
   external void wire__crate__api__set_wallet_birthday_height(
     NativePortType port_,
@@ -2967,6 +3154,10 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   );
 
   external void wire__crate__api__shutdown_transport(NativePortType port_);
+
+  external void wire__crate__api__tunnel__shutdown_transport(
+    NativePortType port_,
+  );
 
   external void wire__crate__api__sign_tx(
     NativePortType port_,
@@ -2999,7 +3190,23 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     JSAny? max_blocks,
   );
 
+  external void wire__crate__api__background_sync__start_background_sync(
+    NativePortType port_,
+    String wallet_id,
+    String? mode,
+    JSAny? max_duration_secs,
+    JSAny? max_blocks,
+  );
+
   external void wire__crate__api__start_background_sync_round_robin(
+    NativePortType port_,
+    String? mode,
+    JSAny? max_duration_secs,
+    JSAny? max_blocks,
+  );
+
+  external void
+  wire__crate__api__background_sync__start_background_sync_round_robin(
     NativePortType port_,
     String? mode,
     JSAny? max_duration_secs,
@@ -3028,6 +3235,12 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   );
 
   external void wire__crate__api__test_node(
+    NativePortType port_,
+    String url,
+    String? tls_pin,
+  );
+
+  external void wire__crate__api__tunnel__test_node(
     NativePortType port_,
     String url,
     String? tls_pin,
@@ -3067,7 +3280,6 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__verify_duress_passphrase(
     NativePortType port_,
     String passphrase,
-    String hash,
   );
 
   external void wire__crate__api__verify_panic_pin(
