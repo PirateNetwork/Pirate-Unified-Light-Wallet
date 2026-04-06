@@ -120,7 +120,7 @@ class SettingsScreen extends ConsumerWidget {
                 final subtitle = endpointAsync.when(
                   data: (config) => config.displayString,
                   loading: () => 'Loading...',
-                  error: (_, _) => 'lightd1.pirate.black:443',
+                  error: (_, _) => '64.23.167.130:9067',
                 );
                 return PListTile(
                   leading: const Icon(Icons.dns_outlined),

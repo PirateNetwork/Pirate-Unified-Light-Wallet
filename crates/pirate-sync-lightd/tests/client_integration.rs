@@ -8,7 +8,7 @@
 
 use pirate_sync_lightd::{
     CompactBlock, LightClient, LightClientConfig, RetryConfig, TransportMode, DEFAULT_LIGHTD_HOST,
-    DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_SPKI_PIN, DEFAULT_LIGHTD_URL,
+    DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_URL,
 };
 use std::time::Duration;
 
@@ -18,9 +18,9 @@ use std::time::Duration;
 
 #[test]
 fn test_default_endpoint_constants() {
-    assert_eq!(DEFAULT_LIGHTD_HOST, "lightd1.pirate.black");
-    assert_eq!(DEFAULT_LIGHTD_PORT, 443);
-    assert_eq!(DEFAULT_LIGHTD_URL, "https://lightd1.pirate.black:443");
+    assert_eq!(DEFAULT_LIGHTD_HOST, "64.23.167.130");
+    assert_eq!(DEFAULT_LIGHTD_PORT, 9067);
+    assert_eq!(DEFAULT_LIGHTD_URL, "http://64.23.167.130:9067");
 }
 
 #[test]
@@ -29,11 +29,8 @@ fn test_light_client_config_defaults() {
 
     assert_eq!(config.endpoint, DEFAULT_LIGHTD_URL);
     assert_eq!(config.transport, TransportMode::Tor);
-    assert!(config.tls.enabled);
-    assert_eq!(
-        config.tls.spki_pin,
-        Some(DEFAULT_LIGHTD_SPKI_PIN.to_string())
-    );
+    assert!(!config.tls.enabled);
+    assert_eq!(config.tls.spki_pin, None);
     assert_eq!(config.retry.max_attempts, 5);
 }
 

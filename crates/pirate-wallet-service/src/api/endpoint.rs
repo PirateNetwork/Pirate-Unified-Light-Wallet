@@ -6,13 +6,13 @@ use std::time::Duration;
 
 const IP_TLS_SERVER_NAME: &str = "lightd1.piratechain.com";
 const CUSTOM_ENDPOINT_LABEL: &str = "Custom";
-const OFFICIAL_ENDPOINT_LABEL: &str = "Pirate Chain Official";
+const OFFICIAL_ENDPOINT_LABEL: &str = "Pirate Chain Mainnet";
 
-/// Default lightwalletd endpoint (Pirate Chain official)
-pub const DEFAULT_LIGHTD_HOST: &str = "lightd1.pirate.black";
-pub const DEFAULT_LIGHTD_PORT: u16 = 443;
-pub const DEFAULT_LIGHTD_USE_TLS: bool = true;
-pub const DEFAULT_LIGHTD_SPKI_PIN: &str = "KAdAVTuQa+N5ECezENJsgMEnZRM46E/cexfIojRp5ls=";
+/// Default lightwalletd endpoint (known-working mainnet)
+pub const DEFAULT_LIGHTD_HOST: &str = "64.23.167.130";
+pub const DEFAULT_LIGHTD_PORT: u16 = 9067;
+pub const DEFAULT_LIGHTD_USE_TLS: bool = false;
+pub const DEFAULT_LIGHTD_SPKI_PIN: &str = "";
 
 lazy_static::lazy_static! {
     /// Persisted endpoint per wallet (in production, stored encrypted)
@@ -41,7 +41,11 @@ impl Default for LightdEndpoint {
             host: DEFAULT_LIGHTD_HOST.to_string(),
             port: DEFAULT_LIGHTD_PORT,
             use_tls: DEFAULT_LIGHTD_USE_TLS,
-            tls_pin: Some(DEFAULT_LIGHTD_SPKI_PIN.to_string()),
+            tls_pin: if DEFAULT_LIGHTD_USE_TLS && !DEFAULT_LIGHTD_SPKI_PIN.is_empty() {
+                Some(DEFAULT_LIGHTD_SPKI_PIN.to_string())
+            } else {
+                None
+            },
             label: Some(OFFICIAL_ENDPOINT_LABEL.to_string()),
         }
     }
@@ -178,10 +182,14 @@ pub(super) fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEn
 /// Detect network type from endpoint URL
 ///
 /// Detects network based on hostname and port:
-/// - `lightd1.pirate.black:443` -> Mainnet (official TLS endpoint)
+/// - `64.23.167.130:9067` -> Mainnet (known-working endpoint)
 /// - `64.23.167.130:8067` -> Testnet (Orchard activated at block 61)
 pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<NetworkType> {
     let host_lower = host.to_ascii_lowercase();
+
+    if host == DEFAULT_LIGHTD_HOST && port == DEFAULT_LIGHTD_PORT {
+        return Some(NetworkType::Mainnet);
+    }
 
     if port == 8067 {
         return Some(NetworkType::Testnet);
@@ -199,10 +207,6 @@ pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<Netw
         || host_lower.contains("piratechain.com")
         || host_lower.contains("pirate.black")
     {
-        return Some(NetworkType::Mainnet);
-    }
-
-    if host == DEFAULT_LIGHTD_HOST && port == DEFAULT_LIGHTD_PORT {
         return Some(NetworkType::Mainnet);
     }
 

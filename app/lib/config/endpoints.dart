@@ -5,28 +5,28 @@
 import 'package:flutter/foundation.dart';
 import '../core/i18n/arb_text_localizer.dart';
 
-/// Default lightwalletd server host (official mainnet)
-const String kDefaultLightdHost = 'lightd1.pirate.black';
+/// Default lightwalletd server host (known-working mainnet)
+const String kDefaultLightdHost = '64.23.167.130';
 
 /// Default lightwalletd server port
-const int kDefaultLightdPort = 443;
+const int kDefaultLightdPort = 9067;
 
 /// Full default endpoint URL
 const String kDefaultLightd = '$kDefaultLightdHost:$kDefaultLightdPort';
 
-/// Orchard-capable mainnet endpoint (official)
-const String kOrchardMainnetHost = 'lightd1.pirate.black';
-const int kOrchardMainnetPort = 443;
+/// Known-working mainnet endpoint
+const String kOrchardMainnetHost = '64.23.167.130';
+const int kOrchardMainnetPort = 9067;
 
 /// Orchard-capable testnet endpoint (provided)
 const String kOrchardTestnetHost = '64.23.167.130';
 const int kOrchardTestnetPort = 8067;
 
 /// Whether TLS is enabled by default
-const bool kDefaultUseTls = true;
+const bool kDefaultUseTls = false;
 
 /// SPKI pin for the official mainnet endpoint.
-const String kDefaultTlsPin = 'KAdAVTuQa+N5ECezENJsgMEnZRM46E/cexfIojRp5ls=';
+const String kDefaultTlsPin = '';
 
 /// Lightwalletd endpoint configuration
 @immutable
@@ -61,8 +61,8 @@ class LightdEndpoint {
     host: kOrchardMainnetHost,
     port: kOrchardMainnetPort,
     useTls: kDefaultUseTls,
-    tlsPin: kDefaultTlsPin,
-    label: 'Pirate Chain Official'.tr,
+    tlsPin: kDefaultTlsPin.isEmpty ? null : kDefaultTlsPin,
+    label: 'Pirate Chain Mainnet'.tr,
   );
 
   /// Orchard-capable preset endpoints for quick selection
@@ -70,21 +70,21 @@ class LightdEndpoint {
     host: kOrchardMainnetHost,
     port: kOrchardMainnetPort,
     useTls: kDefaultUseTls,
-    tlsPin: kDefaultTlsPin,
-    label: 'Pirate Chain Official'.tr,
+    tlsPin: kDefaultTlsPin.isEmpty ? null : kDefaultTlsPin,
+    label: 'Pirate Chain Mainnet'.tr,
   );
 
   static final LightdEndpoint orchardTestnet = LightdEndpoint(
     host: kOrchardTestnetHost,
     port: kOrchardTestnetPort,
-    useTls: kDefaultUseTls,
+    useTls: false,
     label: 'Orchard Testnet'.tr,
   );
 
   /// Suggested endpoints presented in the node picker UI
-  /// The official mainnet endpoint is TLS-enabled and pinned by default.
+  /// The suggested endpoints include the known-working mainnet endpoint.
   static final List<LightdEndpoint> suggested = <LightdEndpoint>[
-    orchardMainnet, // This is now the default and labeled "Pirate Chain Official"
+    orchardMainnet,
     orchardTestnet,
   ];
 

@@ -635,7 +635,7 @@ async fn test_node_inner(
                 || cleaned_error.contains("failed to lookup")
                 || cleaned_error.contains("Name or service not known")
             {
-                format!("DNS resolution failed: {}. The hostname '{}' cannot be resolved to an IP address. This may be a DNS configuration issue on your network. Try using a known good host such as lightd1.pirate.black:443 or check your DNS settings.", cleaned_error, host)
+                format!("DNS resolution failed: {}. The hostname '{}' cannot be resolved to an IP address. This may be a DNS configuration issue on your network. Try using a known good host such as 64.23.167.130:9067 or check your DNS settings.", cleaned_error, host)
             } else if cleaned_error.contains("transport error") {
                 format!("Connection failed: {}. The connection attempt failed before we could query the latest block height. This could be due to DNS resolution failure, TLS/certificate issues, or network connectivity problems. Check your network connection, DNS settings, and endpoint URL.", cleaned_error)
             } else {

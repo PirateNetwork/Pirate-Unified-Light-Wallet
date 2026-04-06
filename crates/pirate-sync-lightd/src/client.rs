@@ -34,16 +34,16 @@ use proto::{
     SubtreeRoot, TxFilter,
 };
 
-/// Default lightwalletd endpoint (Pirate Chain official)
-pub const DEFAULT_LIGHTD_HOST: &str = "lightd1.pirate.black";
+/// Default lightwalletd endpoint (known-working mainnet)
+pub const DEFAULT_LIGHTD_HOST: &str = "64.23.167.130";
 /// Default lightwalletd port
-pub const DEFAULT_LIGHTD_PORT: u16 = 443;
+pub const DEFAULT_LIGHTD_PORT: u16 = 9067;
 /// Default TLS usage for the default endpoint
-pub const DEFAULT_LIGHTD_USE_TLS: bool = true;
+pub const DEFAULT_LIGHTD_USE_TLS: bool = false;
 /// Default SPKI pin for the official lightwalletd endpoint.
-pub const DEFAULT_LIGHTD_SPKI_PIN: &str = "KAdAVTuQa+N5ECezENJsgMEnZRM46E/cexfIojRp5ls=";
+pub const DEFAULT_LIGHTD_SPKI_PIN: &str = "";
 /// Default endpoint URL
-pub const DEFAULT_LIGHTD_URL: &str = "https://lightd1.pirate.black:443";
+pub const DEFAULT_LIGHTD_URL: &str = "http://64.23.167.130:9067";
 
 /// Retry configuration for network operations
 #[derive(Debug, Clone)]
@@ -257,8 +257,16 @@ impl Default for LightClientConfig {
             socks5_url: None,
             tls: TlsConfig {
                 enabled: DEFAULT_LIGHTD_USE_TLS,
-                spki_pin: Some(DEFAULT_LIGHTD_SPKI_PIN.to_string()),
-                server_name: Some(DEFAULT_LIGHTD_HOST.to_string()),
+                spki_pin: if DEFAULT_LIGHTD_USE_TLS && !DEFAULT_LIGHTD_SPKI_PIN.is_empty() {
+                    Some(DEFAULT_LIGHTD_SPKI_PIN.to_string())
+                } else {
+                    None
+                },
+                server_name: if DEFAULT_LIGHTD_USE_TLS {
+                    Some(DEFAULT_LIGHTD_HOST.to_string())
+                } else {
+                    None
+                },
             },
             retry: RetryConfig::default(),
             connect_timeout: Duration::from_secs(30),
