@@ -13,6 +13,7 @@ use once_cell::sync::OnceCell;
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tempfile::{Builder, NamedTempFile};
 use zcash_proofs::prover::LocalTxProver;
 
 use orchard::circuit::{ProvingKey as OrchardProvingKey, VerifyingKey as OrchardVerifyingKey};
@@ -95,10 +96,22 @@ fn sapling_param_paths() -> (PathBuf, PathBuf) {
     static PATHS: OnceCell<(PathBuf, PathBuf)> = OnceCell::new();
     PATHS
         .get_or_init(|| {
-            let temp_dir = std::env::temp_dir();
-            let pid = std::process::id();
-            let spend_path = temp_dir.join(format!("pirate-sapling-spend-{}.params", pid));
-            let output_path = temp_dir.join(format!("pirate-sapling-output-{}.params", pid));
+            let spend_path = Builder::new()
+                .prefix("pirate-sapling-spend-")
+                .suffix(".params")
+                .tempfile()
+                .expect("failed to create secure Sapling spend params temp file")
+                .into_temp_path()
+                .keep()
+                .expect("failed to persist secure Sapling spend params temp file");
+            let output_path = Builder::new()
+                .prefix("pirate-sapling-output-")
+                .suffix(".params")
+                .tempfile()
+                .expect("failed to create secure Sapling output params temp file")
+                .into_temp_path()
+                .keep()
+                .expect("failed to persist secure Sapling output params temp file");
 
             ensure_sapling_param_files(&spend_path, &output_path);
 
@@ -125,8 +138,26 @@ fn ensure_params_file(path: &PathBuf, bytes: &[u8]) {
 }
 
 fn write_params_file(path: &PathBuf, bytes: &[u8]) {
-    let tmp_path = path.with_extension("tmp");
-    std::fs::write(&tmp_path, bytes).expect("Failed to write temporary params file");
-    let _ = std::fs::remove_file(path);
-    std::fs::rename(&tmp_path, path).expect("Failed to move params file into place");
+    let parent = path
+        .parent()
+        .expect("params path should always have a parent directory");
+    let mut tmp_file =
+        NamedTempFile::new_in(parent).expect("Failed to create secure temporary params file");
+    use std::io::Write as _;
+    tmp_file
+        .write_all(bytes)
+        .expect("Failed to write temporary params file");
+    tmp_file
+        .flush()
+        .expect("Failed to flush temporary params file");
+
+    let temp_path = tmp_file.into_temp_path();
+    temp_path
+        .persist(path)
+        .or_else(|e| {
+            let temp_path = e.path;
+            let _ = std::fs::remove_file(path);
+            temp_path.persist(path)
+        })
+        .expect("Failed to move params file into place");
 }

@@ -22,6 +22,7 @@ wagyu-zcash-parameters = { workspace = true }
 incrementalmerkletree = { workspace = true }
 bellman = { workspace = true }
 bls12_381 = { workspace = true }
+secp256k1 = "0.27"
 
 # Crypto primitives
 bip32 = { workspace = true }
@@ -56,8 +57,8 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 once_cell = { workspace = true }
 directories = "5.0"
+tempfile = { workspace = true }
 
 [dev-dependencies]
 pirate-core = { path = ".", features = ["test-helpers"] }
 proptest = { workspace = true }
-tempfile = { workspace = true }
