@@ -14,7 +14,7 @@ const TEST_MNEMONIC: &str =
 fn base_fvk() -> &'static ExtendedFullViewingKey {
     static BASE_FVK: OnceLock<ExtendedFullViewingKey> = OnceLock::new();
     BASE_FVK.get_or_init(|| {
-        let sk = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, "").expect("Valid mnemonic");
+        let sk = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC).expect("Valid mnemonic");
         sk.to_extended_fvk()
     })
 }
@@ -22,11 +22,6 @@ fn base_fvk() -> &'static ExtendedFullViewingKey {
 // ============================================================================
 // Property Test Strategies
 // ============================================================================
-
-/// Generate valid passphrase (0-100 chars)
-fn passphrase_strategy() -> impl Strategy<Value = String> {
-    prop::string::string_regex("[a-zA-Z0-9 ]{0,100}").unwrap()
-}
 
 /// Generate memo content (0-512 bytes)
 fn memo_content_strategy() -> impl Strategy<Value = String> {
@@ -47,45 +42,21 @@ fn output_count_strategy() -> impl Strategy<Value = usize> {
 // Key Derivation Properties
 // ============================================================================
 
+#[test]
+fn prop_deterministic_key_derivation() {
+    let sk1 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC)
+        .expect("Valid mnemonic");
+    let sk2 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC)
+        .expect("Valid mnemonic");
+
+    let fvk1 = sk1.to_extended_fvk();
+    let fvk2 = sk2.to_extended_fvk();
+
+    assert_eq!(fvk1.derive_address(0).encode(), fvk2.derive_address(0).encode());
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(64))]
-    /// Property: Same mnemonic + passphrase = same keys
-    #[test]
-    fn prop_deterministic_key_derivation(
-        passphrase in passphrase_strategy()
-    ) {
-        let sk1 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, &passphrase)
-            .expect("Valid mnemonic");
-        let sk2 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, &passphrase)
-            .expect("Valid mnemonic");
-
-        let fvk1 = sk1.to_extended_fvk();
-        let fvk2 = sk2.to_extended_fvk();
-
-        // Same mnemonic should produce same addresses
-        prop_assert_eq!(fvk1.derive_address(0).encode(), fvk2.derive_address(0).encode());
-    }
-
-    /// Property: Different passphrases = different keys
-    #[test]
-    fn prop_passphrase_changes_keys(
-        pass1 in passphrase_strategy(),
-        pass2 in passphrase_strategy()
-    ) {
-        prop_assume!(pass1 != pass2);
-
-        let sk1 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, &pass1)
-            .expect("Valid mnemonic");
-        let sk2 = ExtendedSpendingKey::from_mnemonic(TEST_MNEMONIC, &pass2)
-            .expect("Valid mnemonic");
-
-        let addr1 = sk1.to_extended_fvk().derive_address(0).encode();
-        let addr2 = sk2.to_extended_fvk().derive_address(0).encode();
-
-        // Different passphrases should produce different addresses
-        prop_assert_ne!(addr1, addr2);
-    }
-
     /// Property: Address derivation at same index = same address
     #[test]
     fn prop_deterministic_address_derivation(

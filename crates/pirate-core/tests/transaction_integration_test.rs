@@ -214,14 +214,14 @@ fn test_mnemonic_generation_and_restoration() {
     assert_eq!(words.len(), 24);
 
     // Should be restorable
-    let result = ExtendedSpendingKey::from_mnemonic(&mnemonic, "");
+    let result = ExtendedSpendingKey::from_mnemonic(&mnemonic);
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_address_derivation() {
     let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
-    let xsk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap();
+    let xsk = ExtendedSpendingKey::from_mnemonic(&mnemonic).unwrap();
 
     // Derive extended full viewing key
     let xfvk = xsk.to_extended_fvk();
