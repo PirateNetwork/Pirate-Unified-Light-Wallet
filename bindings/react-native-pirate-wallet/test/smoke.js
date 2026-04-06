@@ -119,8 +119,7 @@ async function main() {
     'wallet-1',
     2345678,
     'secret-sapling',
-    'secret-orchard',
-    'Imported bundle'
+    'secret-orchard'
   )
   assert.strictEqual(importedKeyId, 11)
 
