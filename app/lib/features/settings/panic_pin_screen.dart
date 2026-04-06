@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ffi/ffi_bridge.dart';
-import '../../core/security/duress_passphrase_store.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -49,20 +48,13 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
 
   Future<void> _checkExisting() async {
     try {
-      final checks = await Future.wait<bool>([
-        FfiBridge.hasDuressPassphrase(),
-        DuressPassphraseStore.exists(),
-      ]);
-      final hasConfigured = checks[0];
-      final hasStored = checks[1];
+      final hasConfigured = await FfiBridge.hasDuressPassphrase();
       if (mounted) {
         setState(() {
-          _hasExisting = hasConfigured && hasStored;
+          _hasExisting = hasConfigured;
           _showSetup = !_hasExisting;
           _isLoading = false;
-          if (hasConfigured && !hasStored) {
-            _error = 'Duress passphrase needs reconfiguration on this device.';
-          }
+          _error = null;
         });
       }
     } catch (e) {
@@ -399,10 +391,9 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
     });
 
     try {
-      final hash = await FfiBridge.setDuressPassphrase(
+      await FfiBridge.setDuressPassphrase(
         customPassphrase: _useCustom ? _customController.text.trim() : null,
       );
-      await DuressPassphraseStore.store(hash);
       if (mounted) {
         setState(() {
           _hasExisting = true;
@@ -471,7 +462,6 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
     if (confirmed ?? false) {
       try {
         await FfiBridge.clearDuressPassphrase();
-        await DuressPassphraseStore.clear();
         setState(() {
           _hasExisting = false;
           _showSetup = true;

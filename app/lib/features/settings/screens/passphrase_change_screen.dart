@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/security/biometric_auth.dart';
-import '../../../core/security/duress_passphrase_store.dart';
 import '../../../core/security/passphrase_cache.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../features/settings/providers/preferences_providers.dart';
@@ -262,17 +261,6 @@ class _PassphraseChangeScreenState
             );
           }
         }
-      }
-
-      try {
-        final duressHash = await FfiBridge.getDuressPassphraseHash();
-        if (duressHash == null || duressHash.isEmpty) {
-          await DuressPassphraseStore.clear();
-        } else {
-          await DuressPassphraseStore.store(duressHash);
-        }
-      } catch (_) {
-        // Ignore; duress passphrase can be reconfigured if needed.
       }
 
       if (mounted) {
