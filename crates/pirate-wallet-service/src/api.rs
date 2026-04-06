@@ -831,7 +831,11 @@ where
             .map_err(|e| anyhow!("Failed to build sync runtime: {}", e))?;
         runtime.block_on(async move {
             let mut engine = sync.lock().await;
-            task(&mut engine).await
+            let cancel = engine.cancel_flag();
+            tokio::select! {
+                _ = cancel.cancelled() => Err(anyhow!("Sync cancelled")),
+                result = task(&mut engine) => result,
+            }
         })
     };
 
@@ -1727,6 +1731,7 @@ pub fn set_lightd_endpoint(
     tls_pin_opt: Option<String>,
 ) -> Result<()> {
     ensure_wallet_registry_loaded()?;
+    let was_running = sync_control::is_sync_running(wallet_id.clone()).unwrap_or(false);
     let endpoint =
         endpoint::endpoint_from_url(&url, DEFAULT_LIGHTD_USE_TLS, tls_pin_opt.clone(), None)?;
     // Detect network type from endpoint (best effort).
@@ -1812,6 +1817,23 @@ pub fn set_lightd_endpoint(
         let pin_key = format!("lightd_tls_pin_{}", wallet_id);
         set_registry_setting(&registry_db, &endpoint_key, Some(&endpoint_url))?;
         set_registry_setting(&registry_db, &pin_key, tls_pin_opt.as_deref())?;
+    }
+
+    if let Err(err) = run_on_runtime_blocking({
+        let wallet_id = wallet_id.clone();
+        move || async move { sync_control::cancel_sync_internal(wallet_id, true).await }
+    }) {
+        tracing::warn!(
+            "Failed to cancel stale sync session after endpoint change for {}: {}",
+            wallet_id,
+            err
+        );
+    }
+
+    sync_control::clear_wallet_sync_state(&wallet_id);
+
+    if was_running {
+        sync_control::maybe_trigger_compact_sync(wallet_id.clone());
     }
 
     Ok(())
