@@ -66,7 +66,7 @@ Reporting vulnerabilities
 
 If you find a security issue, contact the Pirate Chain engineering team:
 
-- https://piratechain.com/team
+- dev@piratechainfoundation.com
 
 When reporting an issue, include:
 

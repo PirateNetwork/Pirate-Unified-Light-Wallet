@@ -31,6 +31,15 @@ The project build scripts currently generate these artifact names:
 - iOS
   - `pirate-unified-wallet-ios.ipa`
   - `pirate-unified-wallet-ios-unsigned.ipa`
+- Backend
+  - `piratewallet-cli`
+  - `piratewallet-cli.exe`
+  - `pirate-qortal-cli`
+  - `pirate-qortal-cli.exe`
+  - `libpirate_ffi_native.a`
+  - `libpirate_ffi_native.so`
+  - `pirate_ffi_native.dll`
+  - `pirate_wallet_service.h`
 
 Each release artifact should have a matching `.sha256` file or be covered by a published checksum bundle.
 

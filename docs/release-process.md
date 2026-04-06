@@ -11,6 +11,12 @@ Before building release artifacts:
 - ensure Rust, Flutter, and dependency checks pass
 - ensure platform signing inputs are available where required
 - ensure release notes and published checksums will be prepared with the artifacts
+- update `release-artifacts.toml` for any backend deliverable that should publish on the next tag:
+  - `cli`
+  - `qortal_cli`
+  - `native_ffi`
+  - `ios_sdk`
+  - `android_sdk`
 
 Versioning from tags
 --------------------
@@ -37,6 +43,26 @@ That version then flows into:
 - the in-app settings version display via `package_info_plus`
 
 Rust build info used by the Verify Build screen is also resolved from `app/pubspec.yaml`, so it matches the app release version instead of the crate workspace version.
+
+Backend artifact version gating
+-------------------------------
+
+Backend deliverables are not published on every GUI tag by default.
+
+The workflow compares `release-artifacts.toml` in the current tag against the previous tag.
+
+Publication is gated by the backend artifact versions in that file:
+
+- `cli`
+- `qortal_cli`
+- `native_ffi`
+- `ios_sdk`
+- `android_sdk`
+
+Practical effect:
+
+- frontend-only GUI release: GUI artifacts publish, backend artifacts stay unchanged
+- backend/service release: publish the backend artifacts whose versions changed
 
 Required checks
 ---------------
@@ -93,6 +119,22 @@ iOS:
 ```bash
 bash scripts/build-ios.sh true
 ```
+
+Backend artifacts:
+
+```bash
+bash scripts/build-cli.sh
+bash scripts/build-native-ffi.sh
+bash scripts/build-android-sdk.sh
+bash scripts/build-ios-sdk.sh
+```
+
+Android SDK packaging publishes two layers:
+
+- the AAR at `bindings/android-sdk/build/outputs/aar/pirate-android-sdk-release.aar`
+- the source/package bundle at `dist/android-sdk/pirate-android-sdk-package.zip`
+
+On tagged releases, CI includes the AAR and package zip in the release when `release-artifacts.toml` marks `android_sdk` as changed.
 
 Nix-backed native entry points
 ------------------------------
@@ -151,6 +193,19 @@ Current script outputs are:
 - iOS
   - `pirate-unified-wallet-ios.ipa`
   - `pirate-unified-wallet-ios-unsigned.ipa`
+- Backend
+  - `piratewallet-cli`
+  - `piratewallet-cli.exe`
+  - `pirate-qortal-cli`
+  - `pirate-qortal-cli.exe`
+  - `libpirate_ffi_native.a`
+  - `libpirate_ffi_native.so`
+  - `pirate_ffi_native.dll`
+  - `pirate_wallet_service.h`
+  - `PirateWalletNative.xcframework.zip`
+  - Android SDK `.aar`
+  - Android SDK Maven repo zip
+  - Android SDK package zip
 
 Checksums, SBOMs, and provenance
 --------------------------------
