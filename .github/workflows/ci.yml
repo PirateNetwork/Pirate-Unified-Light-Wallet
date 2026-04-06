@@ -646,10 +646,10 @@ jobs:
 
       - name: Verify iOS SDK Swift package
         run: |
-          SCHEME="$(xcodebuild -list -json -packagePath bindings/ios-sdk | python3 -c 'import json, sys; data = json.load(sys.stdin); schemes = data.get("workspace", {}).get("schemes") or data.get("project", {}).get("schemes") or []; preferred = ["PirateWalletSDK", "PirateWalletSDK-Package"]; print(next((name for name in preferred if name in schemes), schemes[0] if schemes else "")); sys.exit(0 if schemes else 1)')"
+          cd bindings/ios-sdk
+          SCHEME="$(xcodebuild -list -json | python3 -c 'import json, sys; data = json.load(sys.stdin); schemes = data.get("workspace", {}).get("schemes") or data.get("project", {}).get("schemes") or []; preferred = ["PirateWalletSDK", "PirateWalletSDK-Package"]; print(next((name for name in preferred if name in schemes), schemes[0] if schemes else "")); sys.exit(0 if schemes else 1)')"
           rm -rf /tmp/pirate-ios-sdk-derived-data
           xcodebuild \
-            -packagePath bindings/ios-sdk \
             -scheme "$SCHEME" \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath /tmp/pirate-ios-sdk-derived-data \
@@ -657,10 +657,10 @@ jobs:
 
       - name: Smoke test iOS SDK package
         run: |
-          SCHEME="$(xcodebuild -list -json -packagePath bindings/ios-sdk | python3 -c 'import json, sys; data = json.load(sys.stdin); schemes = data.get("workspace", {}).get("schemes") or data.get("project", {}).get("schemes") or []; preferred = ["PirateWalletSDK", "PirateWalletSDK-Package"]; print(next((name for name in preferred if name in schemes), schemes[0] if schemes else "")); sys.exit(0 if schemes else 1)')"
+          cd bindings/ios-sdk
+          SCHEME="$(xcodebuild -list -json | python3 -c 'import json, sys; data = json.load(sys.stdin); schemes = data.get("workspace", {}).get("schemes") or data.get("project", {}).get("schemes") or []; preferred = ["PirateWalletSDK", "PirateWalletSDK-Package"]; print(next((name for name in preferred if name in schemes), schemes[0] if schemes else "")); sys.exit(0 if schemes else 1)')"
           rm -rf /tmp/pirate-ios-sdk-tests
           xcodebuild \
-            -packagePath bindings/ios-sdk \
             -scheme "$SCHEME" \
             -destination 'platform=iOS Simulator,name=iPhone 15' \
             -derivedDataPath /tmp/pirate-ios-sdk-tests \
