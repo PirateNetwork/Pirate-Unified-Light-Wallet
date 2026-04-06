@@ -755,7 +755,7 @@ mod tests {
 
     fn sample_spending_key() -> ExtendedSpendingKey {
         let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
-        ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap()
+        ExtendedSpendingKey::from_mnemonic(&mnemonic).unwrap()
     }
 
     fn transparent_recipient(tag: u8, amount: u64) -> QortalRecipient {

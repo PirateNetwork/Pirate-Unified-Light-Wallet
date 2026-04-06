@@ -31,20 +31,15 @@ pub struct Wallet {
 
 impl Wallet {
     /// Create from mnemonic (full wallet)
-    pub fn from_mnemonic(mnemonic: &str, passphrase: &str) -> Result<Self> {
+    pub fn from_mnemonic(mnemonic: &str) -> Result<Self> {
         let network = Network::mainnet();
-        let spending_key = ExtendedSpendingKey::from_mnemonic_with_account(
-            mnemonic,
-            passphrase,
-            network.network_type,
-            0,
-        )?;
+        let spending_key =
+            ExtendedSpendingKey::from_mnemonic_with_account(mnemonic, network.network_type, 0)?;
         let viewing_key = spending_key.to_extended_fvk();
 
         // Derive Orchard keys from the same seed
         // Get seed bytes from mnemonic (same as used for Sapling)
-        let seed_bytes =
-            crate::keys::ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic, passphrase)?;
+        let seed_bytes = crate::keys::ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic)?;
         let orchard_master = crate::keys::OrchardExtendedSpendingKey::master(&seed_bytes)?;
         let orchard_extsk = orchard_master.derive_account(network.coin_type, 0)?;
         let orchard_viewing_key = orchard_extsk.to_extended_fvk();

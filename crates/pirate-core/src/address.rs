@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_address_manager_fresh_addresses() {
         let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap();
+        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic).unwrap();
         let fvk = sk.to_extended_fvk();
 
         let mut manager = AddressManager::new_with_viewing_key(fvk);
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn test_address_labeling() {
         let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap();
+        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic).unwrap();
         let fvk = sk.to_extended_fvk();
         let mut manager = AddressManager::new_with_viewing_key(fvk);
 
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn test_list_addresses() {
         let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap();
+        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic).unwrap();
         let fvk = sk.to_extended_fvk();
         let mut manager = AddressManager::new_with_viewing_key(fvk);
 

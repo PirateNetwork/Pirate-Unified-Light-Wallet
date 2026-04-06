@@ -105,8 +105,8 @@ impl ExtendedSpendingKey {
     }
 
     /// Generate from mnemonic seed phrase
-    pub fn from_mnemonic(mnemonic: &str, passphrase: &str) -> Result<Self> {
-        Self::from_mnemonic_with_account(mnemonic, passphrase, NetworkType::Mainnet, 0)
+    pub fn from_mnemonic(mnemonic: &str) -> Result<Self> {
+        Self::from_mnemonic_with_account(mnemonic, NetworkType::Mainnet, 0)
     }
 
     /// Generate from mnemonic seed phrase using ZIP-32 account derivation.
@@ -114,14 +114,13 @@ impl ExtendedSpendingKey {
     /// Path: m/32'/coin_type'/account'
     pub fn from_mnemonic_with_account(
         mnemonic: &str,
-        passphrase: &str,
         network: NetworkType,
         account: u32,
     ) -> Result<Self> {
         let mnemonic = Mnemonic::parse_in_normalized(Language::English, mnemonic)
             .map_err(|e| Error::InvalidSeed(e.to_string()))?;
 
-        let seed_bytes = mnemonic.to_seed(passphrase);
+        let seed_bytes = mnemonic.to_seed("");
         let network_params = Network::from_type(network);
         let extsk = sapling_keys::spending_key(
             &seed_bytes,
@@ -133,10 +132,10 @@ impl ExtendedSpendingKey {
     }
 
     /// Get seed bytes from mnemonic (for Orchard derivation)
-    pub fn seed_bytes_from_mnemonic(mnemonic: &str, passphrase: &str) -> Result<Vec<u8>> {
+    pub fn seed_bytes_from_mnemonic(mnemonic: &str) -> Result<Vec<u8>> {
         let mnemonic = Mnemonic::parse_in_normalized(Language::English, mnemonic)
             .map_err(|e| Error::InvalidSeed(e.to_string()))?;
-        Ok(mnemonic.to_seed(passphrase).to_vec())
+        Ok(mnemonic.to_seed("").to_vec())
     }
 
     /// Generate new random mnemonic
@@ -1083,14 +1082,14 @@ mod tests {
     #[test]
     fn test_from_mnemonic() {
         let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
-        let result = ExtendedSpendingKey::from_mnemonic(&mnemonic, "");
+        let result = ExtendedSpendingKey::from_mnemonic(&mnemonic);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_derive_address() {
         let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
-        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic, "").unwrap();
+        let sk = ExtendedSpendingKey::from_mnemonic(&mnemonic).unwrap();
         let fvk = sk.to_extended_fvk();
 
         let addr1 = fvk.derive_address(0);
