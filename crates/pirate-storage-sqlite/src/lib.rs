@@ -13,7 +13,7 @@
 //! - **Screenshot Blocking**: FLAG_SECURE on Android, secure text field on iOS
 //! - **Panic PIN**: Decoy vault for plausible deniability under duress
 //! - **Seed Export**: Gated flow with warning → biometric → passphrase
-//! - **Watch-Only**: IVK import/export for incoming-only wallets
+//! - **Watch-Only**: Sapling viewing key import/export for incoming-only wallets
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -91,6 +91,7 @@ pub use sync_state::{
     MAX_BACKOFF_MS, MAX_BUSY_RETRIES,
 };
 pub use watch_only::{
-    messages as watch_only_messages, IvkExportResult, IvkImportRequest, WatchOnlyBanner,
-    WatchOnlyBannerType, WatchOnlyCapabilities, WatchOnlyManager, WatchOnlyWalletMeta,
+    messages as watch_only_messages, SaplingViewingKeyExportResult, SaplingViewingKeyImportRequest,
+    WatchOnlyBanner, WatchOnlyBannerType, WatchOnlyCapabilities, WatchOnlyManager,
+    WatchOnlyWalletMeta,
 };

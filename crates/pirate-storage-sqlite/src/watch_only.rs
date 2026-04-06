@@ -54,69 +54,71 @@ impl WatchOnlyCapabilities {
     }
 }
 
-/// Viewing key export result
-pub struct IvkExportResult {
-    /// The viewing key string
-    ivk: Zeroizing<String>,
+/// Sapling viewing key export result
+pub struct SaplingViewingKeyExportResult {
+    /// The Sapling viewing key string
+    sapling_viewing_key: Zeroizing<String>,
     /// Wallet ID source
     pub wallet_id: String,
     /// Export timestamp
     pub exported_at: i64,
 }
 
-impl IvkExportResult {
+impl SaplingViewingKeyExportResult {
     /// Create new result
-    pub fn new(ivk: String, wallet_id: String) -> Self {
+    pub fn new(sapling_viewing_key: String, wallet_id: String) -> Self {
         Self {
-            ivk: Zeroizing::new(ivk),
+            sapling_viewing_key: Zeroizing::new(sapling_viewing_key),
             wallet_id,
             exported_at: chrono::Utc::now().timestamp(),
         }
     }
 
-    /// Get viewing key string
-    pub fn ivk(&self) -> &str {
-        &self.ivk
+    /// Get Sapling viewing key string
+    pub fn sapling_viewing_key(&self) -> &str {
+        &self.sapling_viewing_key
     }
 
-    /// Get viewing key for clipboard (zeroized copy)
+    /// Get Sapling viewing key for clipboard (zeroized copy)
     pub fn as_clipboard_string(&self) -> Zeroizing<String> {
-        Zeroizing::new((*self.ivk).clone())
+        Zeroizing::new((*self.sapling_viewing_key).clone())
     }
 }
 
-/// Viewing key import request
+/// Sapling viewing key import request
 #[derive(Debug, Clone)]
-pub struct IvkImportRequest {
+pub struct SaplingViewingKeyImportRequest {
     /// Wallet name
     pub name: String,
-    /// Viewing key string
-    pub ivk: String,
+    /// Sapling viewing key string
+    pub sapling_viewing_key: String,
     /// Birthday height
     pub birthday_height: u32,
 }
 
-impl IvkImportRequest {
+impl SaplingViewingKeyImportRequest {
     /// Create new import request
-    pub fn new(name: String, ivk: String, birthday_height: u32) -> Self {
+    pub fn new(name: String, sapling_viewing_key: String, birthday_height: u32) -> Self {
         Self {
             name,
-            ivk,
+            sapling_viewing_key,
             birthday_height,
         }
     }
 
-    /// Validate viewing key format
+    /// Validate Sapling viewing key format
     pub fn validate(&self) -> Result<()> {
-        if self.ivk.trim().is_empty() {
-            return Err(Error::Validation("Viewing key cannot be empty".to_string()));
+        if self.sapling_viewing_key.trim().is_empty() {
+            return Err(Error::Validation(
+                "Sapling viewing key cannot be empty".to_string(),
+            ));
         }
 
-        let key = self.ivk.trim();
-        let is_sapling = key.starts_with("zxviews");
-        let is_orchard = key.starts_with("pirate-extended-viewing-key");
-        if !(is_sapling || is_orchard) {
-            return Err(Error::Validation("Invalid viewing key format".to_string()));
+        let key = self.sapling_viewing_key.trim();
+        if !key.starts_with("zxviews") {
+            return Err(Error::Validation(
+                "Invalid Sapling viewing key format".to_string(),
+            ));
         }
 
         // Validate name
@@ -155,19 +157,24 @@ pub struct WatchOnlyWalletMeta {
     /// Created timestamp
     pub created_at: i64,
     /// Viewing key fingerprint (for identification, not the actual key)
-    pub ivk_fingerprint: String,
+    pub viewing_key_fingerprint: String,
 }
 
 impl WatchOnlyWalletMeta {
     /// Create new metadata
-    pub fn new(id: String, name: String, birthday_height: u32, ivk_fingerprint: String) -> Self {
+    pub fn new(
+        id: String,
+        name: String,
+        birthday_height: u32,
+        viewing_key_fingerprint: String,
+    ) -> Self {
         Self {
             id,
             name,
             watch_only: true,
             birthday_height,
             created_at: chrono::Utc::now().timestamp(),
-            ivk_fingerprint,
+            viewing_key_fingerprint,
         }
     }
 
@@ -198,27 +205,40 @@ impl WatchOnlyManager {
         }
     }
 
-    /// Export viewing key from full wallet
+    /// Export Sapling viewing key from full wallet
     ///
     /// This requires the wallet to be unlocked and not watch-only.
-    pub fn export_ivk(&self, wallet_id: &str, ivk: String) -> Result<IvkExportResult> {
+    pub fn export_sapling_viewing_key(
+        &self,
+        wallet_id: &str,
+        sapling_viewing_key: String,
+    ) -> Result<SaplingViewingKeyExportResult> {
         // Enable screenshot protection during export
         let _guard = self.screenshot_guard.enable(ProtectionReason::ViewingKey);
 
-        tracing::info!("Exporting viewing key for wallet {}", wallet_id);
+        tracing::info!("Exporting Sapling viewing key for wallet {}", wallet_id);
 
-        Ok(IvkExportResult::new(ivk, wallet_id.to_string()))
+        Ok(SaplingViewingKeyExportResult::new(
+            sapling_viewing_key,
+            wallet_id.to_string(),
+        ))
     }
 
-    /// Copy viewing key to clipboard with auto-clear
-    pub fn copy_ivk_to_clipboard(&self, result: &IvkExportResult) -> Zeroizing<String> {
+    /// Copy Sapling viewing key to clipboard with auto-clear
+    pub fn copy_sapling_viewing_key_to_clipboard(
+        &self,
+        result: &SaplingViewingKeyExportResult,
+    ) -> Zeroizing<String> {
         let ivk_string = result.as_clipboard_string();
         self.clipboard
             .prepare_copy_sensitive(&ivk_string, ClipboardDataType::ViewingKey)
     }
 
-    /// Import viewing key to create watch-only wallet
-    pub fn validate_import(&self, request: &IvkImportRequest) -> Result<()> {
+    /// Import Sapling viewing key to create watch-only wallet
+    pub fn validate_sapling_viewing_key_import(
+        &self,
+        request: &SaplingViewingKeyImportRequest,
+    ) -> Result<()> {
         request.validate()
     }
 
@@ -342,7 +362,7 @@ mod tests {
     #[test]
     fn test_import_validation() {
         // Valid request
-        let valid = IvkImportRequest::new(
+        let valid = SaplingViewingKeyImportRequest::new(
             "My Watch Wallet".to_string(),
             "zxviews-test-key".to_string(),
             2_000_000,
@@ -350,25 +370,35 @@ mod tests {
         assert!(valid.validate().is_ok());
 
         // Empty viewing key
-        let empty_ivk = IvkImportRequest::new("Test".to_string(), "".to_string(), 1000);
+        let empty_ivk =
+            SaplingViewingKeyImportRequest::new("Test".to_string(), "".to_string(), 1000);
         assert!(empty_ivk.validate().is_err());
 
         // Empty name
-        let empty_name =
-            IvkImportRequest::new("".to_string(), "zxviews-test-key".to_string(), 1000);
+        let empty_name = SaplingViewingKeyImportRequest::new(
+            "".to_string(),
+            "zxviews-test-key".to_string(),
+            1000,
+        );
         assert!(empty_name.validate().is_err());
 
         // Zero birthday
-        let zero_birthday =
-            IvkImportRequest::new("Test".to_string(), "zxviews-test-key".to_string(), 0);
+        let zero_birthday = SaplingViewingKeyImportRequest::new(
+            "Test".to_string(),
+            "zxviews-test-key".to_string(),
+            0,
+        );
         assert!(zero_birthday.validate().is_err());
     }
 
     #[test]
     fn test_ivk_export_result() {
-        let result = IvkExportResult::new("test_ivk_123".to_string(), "wallet_456".to_string());
+        let result = SaplingViewingKeyExportResult::new(
+            "test_ivk_123".to_string(),
+            "wallet_456".to_string(),
+        );
 
-        assert_eq!(result.ivk(), "test_ivk_123");
+        assert_eq!(result.sapling_viewing_key(), "test_ivk_123");
         assert_eq!(result.wallet_id, "wallet_456");
     }
 

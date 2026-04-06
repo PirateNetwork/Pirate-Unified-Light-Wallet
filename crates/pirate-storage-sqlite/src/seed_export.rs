@@ -248,12 +248,30 @@ impl SeedExportManager {
         app_passphrase.verify(passphrase)
     }
 
+    /// Ensure the current export flow belongs to the expected wallet.
+    pub fn ensure_wallet_id(&self, wallet_id: &str) -> Result<()> {
+        let request = self.request.read().unwrap();
+        let Some(ref req) = *request else {
+            return Err(Error::Security("No active seed export request".to_string()));
+        };
+
+        if req.wallet_id != wallet_id {
+            return Err(Error::Security(
+                "Seed export request is bound to a different wallet".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Complete export with verified passphrase
     pub fn complete_export(
         &self,
+        wallet_id: &str,
         passphrase: &str,
         seed_words: Vec<String>,
     ) -> Result<SeedExportResult> {
+        self.ensure_wallet_id(wallet_id)?;
         let verified = self.verify_passphrase(passphrase)?;
 
         if !verified {
@@ -277,7 +295,12 @@ impl SeedExportManager {
     }
 
     /// Complete export after passphrase verification
-    pub fn complete_export_verified(&self, seed_words: Vec<String>) -> Result<SeedExportResult> {
+    pub fn complete_export_verified(
+        &self,
+        wallet_id: &str,
+        seed_words: Vec<String>,
+    ) -> Result<SeedExportResult> {
+        self.ensure_wallet_id(wallet_id)?;
         if self.state() != ExportFlowState::AwaitingPassphrase {
             return Err(Error::Security("Invalid export flow state".to_string()));
         }
