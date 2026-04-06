@@ -1,40 +1,9 @@
 package com.pirate.wallet.sdk
 
-public enum class AddressBookColorTag(
-    internal val jsonValue: String,
-) {
-    None("None"),
-    Red("Red"),
-    Orange("Orange"),
-    Yellow("Yellow"),
-    Green("Green"),
-    Blue("Blue"),
-    Purple("Purple"),
-    Pink("Pink"),
-    Gray("Gray");
-
-    public companion object {
-        public fun fromJson(value: Any?): AddressBookColorTag = when (value?.toString()?.lowercase()) {
-            "none" -> None
-            "red" -> Red
-            "orange" -> Orange
-            "yellow" -> Yellow
-            "green" -> Green
-            "blue" -> Blue
-            "purple" -> Purple
-            "pink" -> Pink
-            "gray" -> Gray
-            else -> throw PirateWalletSdkException("Unknown address book color tag: $value")
-        }
-    }
-}
-
 public data class AddressInfo(
     val address: String,
     val diversifierIndex: Int,
-    val label: String?,
     val createdAt: Long,
-    val colorTag: AddressBookColorTag,
 )
 
 public data class AddressBalanceInfo(
@@ -44,9 +13,7 @@ public data class AddressBalanceInfo(
     val pending: Long,
     val keyId: Long?,
     val addressId: Long,
-    val label: String?,
     val createdAt: Long,
-    val colorTag: AddressBookColorTag,
     val diversifierIndex: Int,
 )
 
@@ -86,7 +53,6 @@ public enum class KeyTypeInfo {
 
 public data class KeyGroupInfo(
     val id: Long,
-    val label: String?,
     val keyType: KeyTypeInfo,
     val spendable: Boolean,
     val hasSapling: Boolean,
@@ -107,7 +73,6 @@ public data class ImportSpendingKeyRequest(
     val walletId: String,
     val saplingSpendingKey: String? = null,
     val orchardSpendingKey: String? = null,
-    val label: String? = null,
     val birthdayHeight: Int,
 )
 
