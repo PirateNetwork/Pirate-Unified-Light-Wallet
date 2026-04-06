@@ -1,14 +1,13 @@
 use anyhow::{anyhow, Result};
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use pirate_core::keys::{
     ExtendedFullViewingKey as SaplingExtendedFullViewingKey, ExtendedSpendingKey,
     OrchardExtendedFullViewingKey, OrchardExtendedSpendingKey,
 };
-use pirate_storage_sqlite::{clear_passphrase, is_passphrase_set};
 use pirate_wallet_service::{
     AddressBalanceInfo, Balance, KeyAddressInfo, KeyExportInfo, KeyGroupInfo, Output, PendingTx,
-    QortalP2shRedeemRequest, QortalP2shSendRequest, SignedTx, SyncMode, SyncStatus, TunnelMode,
-    TxInfo, WalletMeta, WalletService, WalletServiceRequest,
+    QortalP2shRedeemRequest, QortalP2shSendRequest, SignedTx, SyncMode, SyncStatus, TxInfo,
+    WalletMeta, WalletService, WalletServiceRequest,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -24,14 +23,6 @@ enum OutputFormat {
 enum SyncModeArg {
     Compact,
     Deep,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum TunnelKind {
-    Tor,
-    I2p,
-    Direct,
-    Socks5,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -56,16 +47,19 @@ struct Cli {
 enum Command {
     BuildInfo,
     NetworkInfo,
+    GenerateMnemonic {
+        #[arg(long)]
+        word_count: Option<u32>,
+    },
+    ValidateMnemonic {
+        mnemonic: String,
+    },
     ExecJson {
         request_json: String,
     },
     Wallet {
         #[command(subcommand)]
         command: WalletCommand,
-    },
-    App {
-        #[command(subcommand)]
-        command: AppCommand,
     },
     Address {
         #[command(subcommand)]
@@ -121,8 +115,6 @@ enum Command {
     Seed {
         #[arg(long)]
         wallet_id: Option<String>,
-        #[arg(long)]
-        passphrase: Option<String>,
     },
     Import {
         key: String,
@@ -151,22 +143,6 @@ enum Command {
         #[arg(long)]
         wallet_id: Option<String>,
     },
-    Encryptionstatus,
-    Encrypt {
-        passphrase: String,
-    },
-    Unlock {
-        passphrase: String,
-    },
-    Lock,
-    Endpoint {
-        #[command(subcommand)]
-        command: EndpointCommand,
-    },
-    Tunnel {
-        #[command(subcommand)]
-        command: TunnelCommand,
-    },
     Sync {
         #[command(subcommand)]
         command: Option<SyncCommand>,
@@ -179,10 +155,6 @@ enum Command {
         #[command(subcommand)]
         command: Option<SendCommand>,
         request_json: Option<String>,
-    },
-    SeedExport {
-        #[command(subcommand)]
-        command: SeedExportCommand,
     },
     Diag {
         #[command(subcommand)]
@@ -203,8 +175,6 @@ enum WalletCommand {
     Restore {
         name: String,
         mnemonic: String,
-        #[arg(long)]
-        passphrase: Option<String>,
         #[arg(long)]
         birthday: Option<u32>,
     },
@@ -234,34 +204,6 @@ enum WalletCommand {
 }
 
 #[derive(Debug, Subcommand)]
-enum AppCommand {
-    SetPassphrase {
-        passphrase: String,
-    },
-    HasPassphrase,
-    VerifyPassphrase {
-        passphrase: String,
-    },
-    Unlock {
-        passphrase: String,
-    },
-    ChangePassphrase {
-        current_passphrase: String,
-        new_passphrase: String,
-    },
-    ChangePassphraseWithCached {
-        new_passphrase: String,
-    },
-    GenerateMnemonic {
-        #[arg(long)]
-        word_count: Option<u32>,
-    },
-    ValidateMnemonic {
-        mnemonic: String,
-    },
-}
-
-#[derive(Debug, Subcommand)]
 enum AddressCommand {
     Current {
         #[arg(long)]
@@ -281,41 +223,6 @@ enum AddressCommand {
         #[arg(long)]
         key_id: Option<i64>,
     },
-}
-
-#[derive(Debug, Subcommand)]
-enum EndpointCommand {
-    Get {
-        wallet_id: String,
-    },
-    GetConfig {
-        wallet_id: String,
-    },
-    Set {
-        wallet_id: String,
-        url: String,
-        #[arg(long)]
-        tls_pin: Option<String>,
-    },
-    Test {
-        url: String,
-        #[arg(long)]
-        tls_pin: Option<String>,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum TunnelCommand {
-    Get,
-    Set(TunnelArgs),
-}
-
-#[derive(Debug, Args)]
-struct TunnelArgs {
-    #[arg(value_enum)]
-    kind: TunnelKind,
-    #[arg(long)]
-    url: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -356,28 +263,6 @@ enum SendCommand {
     Broadcast {
         signed_json: String,
     },
-}
-
-#[derive(Debug, Subcommand)]
-enum SeedExportCommand {
-    Start {
-        wallet_id: String,
-    },
-    Acknowledge,
-    CompleteBiometric {
-        success: bool,
-    },
-    SkipBiometric,
-    ExportWithPassphrase {
-        wallet_id: String,
-        passphrase: String,
-    },
-    ExportWithCached {
-        wallet_id: String,
-    },
-    Cancel,
-    State,
-    Warnings,
 }
 
 #[derive(Debug, Subcommand)]
@@ -519,6 +404,12 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
     match command {
         Command::BuildInfo => service.execute(Req::GetBuildInfo).await,
         Command::NetworkInfo => service.execute(Req::GetNetworkInfo).await,
+        Command::GenerateMnemonic { word_count } => {
+            service.execute(Req::GenerateMnemonic { word_count }).await
+        }
+        Command::ValidateMnemonic { mnemonic } => {
+            service.execute(Req::ValidateMnemonic { mnemonic }).await
+        }
         Command::ExecJson { request_json } => {
             let output = service.execute_json(&request_json, true);
             Ok(serde_json::from_str(&output)?)
@@ -538,14 +429,12 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             WalletCommand::Restore {
                 name,
                 mnemonic,
-                passphrase,
                 birthday,
             } => {
                 service
                     .execute(Req::RestoreWallet {
                         name,
                         mnemonic,
-                        passphrase_opt: passphrase,
                         birthday_opt: birthday,
                     })
                     .await
@@ -594,42 +483,6 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
                 service.execute(Req::DeleteWallet { wallet_id }).await
             }
         },
-        Command::App { command } => match command {
-            AppCommand::SetPassphrase { passphrase } => {
-                service.execute(Req::SetAppPassphrase { passphrase }).await
-            }
-            AppCommand::HasPassphrase => service.execute(Req::HasAppPassphrase).await,
-            AppCommand::VerifyPassphrase { passphrase } => {
-                service
-                    .execute(Req::VerifyAppPassphrase { passphrase })
-                    .await
-            }
-            AppCommand::Unlock { passphrase } => {
-                service.execute(Req::UnlockApp { passphrase }).await
-            }
-            AppCommand::ChangePassphrase {
-                current_passphrase,
-                new_passphrase,
-            } => {
-                service
-                    .execute(Req::ChangeAppPassphrase {
-                        current_passphrase,
-                        new_passphrase,
-                    })
-                    .await
-            }
-            AppCommand::ChangePassphraseWithCached { new_passphrase } => {
-                service
-                    .execute(Req::ChangeAppPassphraseWithCached { new_passphrase })
-                    .await
-            }
-            AppCommand::GenerateMnemonic { word_count } => {
-                service.execute(Req::GenerateMnemonic { word_count }).await
-            }
-            AppCommand::ValidateMnemonic { mnemonic } => {
-                service.execute(Req::ValidateMnemonic { mnemonic }).await
-            }
-        },
         Command::Address { command } => match command {
             AddressCommand::Current { wallet_id } => {
                 let wallet_id = resolve_wallet_id(service, wallet_id).await?;
@@ -643,13 +496,15 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             }
             AddressCommand::List { wallet_id } => {
                 let wallet_id = resolve_wallet_id(service, wallet_id).await?;
-                service.execute(Req::ListAddresses { wallet_id }).await
+                let value = service.execute(Req::ListAddresses { wallet_id }).await?;
+                Ok(sanitize_cli_value(value, &["label", "color_tag"]))
             }
             AddressCommand::Balances { wallet_id, key_id } => {
                 let wallet_id = resolve_wallet_id(service, wallet_id).await?;
-                service
+                let value = service
                     .execute(Req::ListAddressBalances { wallet_id, key_id })
-                    .await
+                    .await?;
+                Ok(sanitize_cli_value(value, &["label", "color_tag"]))
             }
         },
         Command::Addresses { wallet_id } => legacy_addresses(service, wallet_id).await,
@@ -679,10 +534,7 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             key_id,
             pool,
         } => legacy_new_address(service, wallet_id, key_id, pool).await,
-        Command::Seed {
-            wallet_id,
-            passphrase,
-        } => legacy_seed(service, wallet_id, passphrase).await,
+        Command::Seed { wallet_id } => legacy_seed(service, wallet_id).await,
         Command::Import {
             key,
             birthday,
@@ -700,54 +552,6 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             let wallet_id = resolve_wallet_id(service, wallet_id).await?;
             service.execute(Req::CancelSync { wallet_id }).await
         }
-        Command::Encryptionstatus => legacy_encryption_status(),
-        Command::Encrypt { passphrase } => {
-            service.execute(Req::SetAppPassphrase { passphrase }).await
-        }
-        Command::Unlock { passphrase } => service.execute(Req::UnlockApp { passphrase }).await,
-        Command::Lock => legacy_lock(),
-        Command::Endpoint { command } => match command {
-            EndpointCommand::Get { wallet_id } => {
-                service.execute(Req::GetLightdEndpoint { wallet_id }).await
-            }
-            EndpointCommand::GetConfig { wallet_id } => {
-                service
-                    .execute(Req::GetLightdEndpointConfig { wallet_id })
-                    .await
-            }
-            EndpointCommand::Set {
-                wallet_id,
-                url,
-                tls_pin,
-            } => {
-                service
-                    .execute(Req::SetLightdEndpoint {
-                        wallet_id,
-                        url,
-                        tls_pin_opt: tls_pin,
-                    })
-                    .await
-            }
-            EndpointCommand::Test { url, tls_pin } => {
-                service.execute(Req::TestNode { url, tls_pin }).await
-            }
-        },
-        Command::Tunnel { command } => match command {
-            TunnelCommand::Get => service.execute(Req::GetTunnel).await,
-            TunnelCommand::Set(args) => {
-                let mode = match args.kind {
-                    TunnelKind::Tor => TunnelMode::Tor,
-                    TunnelKind::I2p => TunnelMode::I2p,
-                    TunnelKind::Direct => TunnelMode::Direct,
-                    TunnelKind::Socks5 => TunnelMode::Socks5 {
-                        url: args
-                            .url
-                            .ok_or_else(|| anyhow!("--url is required for socks5 mode"))?,
-                    },
-                };
-                service.execute(Req::SetTunnel { mode }).await
-            }
-        },
         Command::Sync {
             command: Some(command),
             wallet_id: _,
@@ -838,37 +642,6 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             })?;
             legacy_send(service, &request_json).await
         }
-        Command::SeedExport { command } => match command {
-            SeedExportCommand::Start { wallet_id } => {
-                service.execute(Req::StartSeedExport { wallet_id }).await
-            }
-            SeedExportCommand::Acknowledge => service.execute(Req::AcknowledgeSeedWarning).await,
-            SeedExportCommand::CompleteBiometric { success } => {
-                service
-                    .execute(Req::CompleteSeedBiometric { success })
-                    .await
-            }
-            SeedExportCommand::SkipBiometric => service.execute(Req::SkipSeedBiometric).await,
-            SeedExportCommand::ExportWithPassphrase {
-                wallet_id,
-                passphrase,
-            } => {
-                service
-                    .execute(Req::ExportSeedWithPassphrase {
-                        wallet_id,
-                        passphrase,
-                    })
-                    .await
-            }
-            SeedExportCommand::ExportWithCached { wallet_id } => {
-                service
-                    .execute(Req::ExportSeedWithCachedPassphrase { wallet_id })
-                    .await
-            }
-            SeedExportCommand::Cancel => service.execute(Req::CancelSeedExport).await,
-            SeedExportCommand::State => service.execute(Req::GetSeedExportState).await,
-            SeedExportCommand::Warnings => service.execute(Req::GetSeedExportWarnings).await,
-        },
         Command::Diag { command } => match command {
             DiagCommand::Logs { wallet_id, limit } => {
                 service.execute(Req::GetSyncLogs { wallet_id, limit }).await
@@ -910,19 +683,28 @@ async fn resolve_wallet_id(service: &WalletService, wallet_id: Option<String>) -
     active_wallet.ok_or_else(|| anyhow!("No active wallet selected"))
 }
 
-fn legacy_encryption_status() -> Result<Value> {
-    let encrypted = pirate_wallet_service::has_app_passphrase()?;
-    let unlocked = !encrypted || is_passphrase_set();
-    Ok(json!({
-        "encrypted": encrypted,
-        "locked": encrypted && !unlocked,
-        "unlocked": unlocked,
-    }))
+fn sanitize_cli_value(mut value: Value, hidden_fields: &[&str]) -> Value {
+    strip_hidden_fields(&mut value, hidden_fields);
+    value
 }
 
-fn legacy_lock() -> Result<Value> {
-    clear_passphrase();
-    Ok(json!({ "result": "success" }))
+fn strip_hidden_fields(value: &mut Value, hidden_fields: &[&str]) {
+    match value {
+        Value::Array(entries) => {
+            for entry in entries {
+                strip_hidden_fields(entry, hidden_fields);
+            }
+        }
+        Value::Object(map) => {
+            for field in hidden_fields {
+                map.remove(*field);
+            }
+            for entry in map.values_mut() {
+                strip_hidden_fields(entry, hidden_fields);
+            }
+        }
+        _ => {}
+    }
 }
 
 async fn legacy_addresses(service: &WalletService, wallet_id: Option<String>) -> Result<Value> {
@@ -975,24 +757,14 @@ async fn legacy_height(service: &WalletService, wallet_id: Option<String>) -> Re
     Ok(json!({ "height": status.local_height }))
 }
 
-async fn legacy_info(service: &WalletService, wallet_id: Option<String>) -> Result<Value> {
+async fn legacy_info(service: &WalletService, _wallet_id: Option<String>) -> Result<Value> {
     let build = service.execute(WalletServiceRequest::GetBuildInfo).await?;
     let network = service
         .execute(WalletServiceRequest::GetNetworkInfo)
         .await?;
-    let endpoint = if let Ok(wallet_id) = resolve_wallet_id(service, wallet_id).await {
-        Some(
-            service
-                .execute(WalletServiceRequest::GetLightdEndpoint { wallet_id })
-                .await?,
-        )
-    } else {
-        None
-    };
     Ok(json!({
         "build": build,
         "network": network,
-        "endpoint": endpoint,
     }))
 }
 
@@ -1008,16 +780,9 @@ async fn legacy_default_fee(service: &WalletService) -> Result<Value> {
 async fn legacy_seed(
     service: &WalletService,
     wallet_id: Option<String>,
-    passphrase: Option<String>,
 ) -> Result<Value> {
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
-    let seed = if let Some(passphrase) = passphrase {
-        let words =
-            pirate_wallet_service::export_seed_with_passphrase(wallet_id.clone(), passphrase)?;
-        words.join(" ")
-    } else {
-        pirate_wallet_service::export_seed_raw(wallet_id.clone())?
-    };
+    let seed = pirate_wallet_service::export_seed_raw(wallet_id.clone())?;
     let wallet = get_wallet_meta(service, &wallet_id).await?;
     Ok(json!({
         "seed": seed,
@@ -1417,6 +1182,7 @@ async fn repl(service: &WalletService, format: OutputFormat) -> Result<()> {
 mod tests {
     use super::{
         format_qortal_balance, format_qortal_list, format_qortal_syncstatus, format_qortal_txid,
+        sanitize_cli_value,
         QortalCli, QortalCommand,
     };
     use clap::Parser;
@@ -1687,5 +1453,32 @@ mod tests {
             redeem_object.get("txid").and_then(|value| value.as_str()),
             Some("redeemtx")
         );
+    }
+
+    #[test]
+    fn sanitize_cli_value_strips_frontend_local_fields() {
+        let value = json!([{
+            "address": "zs1recipient",
+            "label": "Main",
+            "color_tag": "Blue",
+            "nested": {
+                "label": "Inner",
+                "color_tag": "Red",
+                "keep": true
+            }
+        }]);
+
+        let sanitized = sanitize_cli_value(value, &["label", "color_tag"]);
+        let entry = sanitized[0].as_object().expect("sanitized entry");
+        assert!(!entry.contains_key("label"));
+        assert!(!entry.contains_key("color_tag"));
+
+        let nested = entry
+            .get("nested")
+            .and_then(|value| value.as_object())
+            .expect("nested object");
+        assert!(!nested.contains_key("label"));
+        assert!(!nested.contains_key("color_tag"));
+        assert_eq!(nested.get("keep").and_then(|value| value.as_bool()), Some(true));
     }
 }
