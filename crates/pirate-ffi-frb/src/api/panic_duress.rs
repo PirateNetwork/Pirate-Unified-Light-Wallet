@@ -166,7 +166,7 @@ pub(super) fn clear_panic_pin() -> Result<()> {
     Ok(())
 }
 
-pub(super) fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result<String> {
+pub(super) fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result<()> {
     let app_passphrase =
         passphrase_store::get_passphrase().map_err(|e| anyhow!("App is locked: {}", e))?;
     let app_passphrase = app_passphrase.as_str();
@@ -217,7 +217,7 @@ pub(super) fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result
         .map_err(|e| anyhow!("Failed to enable decoy vault: {}", e))?;
 
     tracing::info!("Duress passphrase configured");
-    Ok(duress_hash.hash_string().to_string())
+    Ok(())
 }
 
 pub(super) fn has_duress_passphrase() -> Result<bool> {
@@ -226,14 +226,6 @@ pub(super) fn has_duress_passphrase() -> Result<bool> {
     }
     let registry_db = open_wallet_registry()?;
     Ok(get_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY)?.is_some())
-}
-
-pub(super) fn get_duress_passphrase_hash() -> Result<Option<String>> {
-    if !wallet_registry_path()?.exists() {
-        return Ok(None);
-    }
-    let registry_db = open_wallet_registry()?;
-    get_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY)
 }
 
 pub(super) fn clear_duress_passphrase() -> Result<()> {
@@ -251,7 +243,17 @@ pub(super) fn clear_duress_passphrase() -> Result<()> {
     Ok(())
 }
 
-pub(super) fn verify_duress_passphrase(passphrase: String, hash: String) -> Result<bool> {
+pub(super) fn verify_duress_passphrase(passphrase: String) -> Result<bool> {
+    if !wallet_registry_path()?.exists() {
+        return Ok(false);
+    }
+
+    let registry_db = open_wallet_registry()?;
+    let Some(hash) = get_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY)?
+    else {
+        return Ok(false);
+    };
+
     let verifier = AppPassphrase::from_hash(hash.clone());
     let is_match = verifier
         .verify(&passphrase)
@@ -279,10 +281,9 @@ pub(super) fn set_decoy_wallet_name(name: String) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn exit_decoy_mode() -> Result<()> {
-    let vault = DECOY_VAULT.read();
-    vault.deactivate_decoy();
-    tracing::info!("Exited decoy mode");
+pub(super) fn exit_decoy_mode(passphrase: String) -> Result<()> {
+    super::encrypted_db::unlock_app(passphrase)?;
+    tracing::info!("Exited decoy mode via real passphrase re-authentication");
     Ok(())
 }
 
