@@ -5,6 +5,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../ffi/ffi_bridge.dart';
+
 part 'desktop_update_service_asset_selection.dart';
 
 class DesktopReleaseAsset {
@@ -201,56 +203,47 @@ class DesktopUpdateService {
   }
 
   Future<List<DesktopReleaseInfo>> _fetchReleases() async {
-    final client = HttpClient()..connectionTimeout = _networkTimeout;
-    try {
-      final request = await client.getUrl(Uri.parse(_releaseApiUrl));
-      request.headers.set('Accept', 'application/vnd.github+json');
-      request.headers.set('User-Agent', 'PirateWallet-DesktopUpdater');
-      final response = await request.close().timeout(_networkTimeout);
-      if (response.statusCode >= 400) {
-        throw Exception('GitHub API returned ${response.statusCode}');
-      }
-
-      final body = await response.transform(utf8.decoder).join();
-      final json = jsonDecode(body);
-      if (json is! List) {
-        throw Exception('Unexpected releases payload');
-      }
-
-      final releases = <DesktopReleaseInfo>[];
-      for (final entry in json.whereType<Map<String, dynamic>>()) {
-        final assets = <DesktopReleaseAsset>[];
-        final rawAssets = entry['assets'];
-        if (rawAssets is List) {
-          for (final asset in rawAssets.whereType<Map<String, dynamic>>()) {
-            final name = asset['name']?.toString() ?? '';
-            final url = asset['browser_download_url']?.toString() ?? '';
-            if (name.isEmpty || url.isEmpty) {
-              continue;
-            }
-            assets.add(DesktopReleaseAsset(name: name, downloadUrl: url));
-          }
-        }
-
-        final publishedRaw = entry['published_at']?.toString();
-        releases.add(
-          DesktopReleaseInfo(
-            tagName: entry['tag_name']?.toString() ?? '',
-            name: entry['name']?.toString() ?? '',
-            releaseUrl: entry['html_url']?.toString() ?? '',
-            publishedAt: publishedRaw == null || publishedRaw.isEmpty
-                ? null
-                : DateTime.tryParse(publishedRaw),
-            isDraft: entry['draft'] == true,
-            isPrerelease: entry['prerelease'] == true,
-            assets: assets,
-          ),
-        );
-      }
-      return releases;
-    } finally {
-      client.close(force: true);
+    final body = await FfiBridge.fetchExternalText(
+      url: _releaseApiUrl,
+      accept: 'application/vnd.github+json',
+      userAgent: 'PirateWallet-DesktopUpdater',
+    ).timeout(_networkTimeout);
+    final json = jsonDecode(body);
+    if (json is! List) {
+      throw Exception('Unexpected releases payload');
     }
+
+    final releases = <DesktopReleaseInfo>[];
+    for (final entry in json.whereType<Map<String, dynamic>>()) {
+      final assets = <DesktopReleaseAsset>[];
+      final rawAssets = entry['assets'];
+      if (rawAssets is List) {
+        for (final asset in rawAssets.whereType<Map<String, dynamic>>()) {
+          final name = asset['name']?.toString() ?? '';
+          final url = asset['browser_download_url']?.toString() ?? '';
+          if (name.isEmpty || url.isEmpty) {
+            continue;
+          }
+          assets.add(DesktopReleaseAsset(name: name, downloadUrl: url));
+        }
+      }
+
+      final publishedRaw = entry['published_at']?.toString();
+      releases.add(
+        DesktopReleaseInfo(
+          tagName: entry['tag_name']?.toString() ?? '',
+          name: entry['name']?.toString() ?? '',
+          releaseUrl: entry['html_url']?.toString() ?? '',
+          publishedAt: publishedRaw == null || publishedRaw.isEmpty
+              ? null
+              : DateTime.tryParse(publishedRaw),
+          isDraft: entry['draft'] == true,
+          isPrerelease: entry['prerelease'] == true,
+          assets: assets,
+        ),
+      );
+    }
+    return releases;
   }
 
   Future<void> _verifyDownloadedAsset(
@@ -311,39 +304,18 @@ class DesktopUpdateService {
   }
 
   Future<void> _downloadToFile(String url, File destination) async {
-    final client = HttpClient()..connectionTimeout = _networkTimeout;
-    try {
-      final request = await client.getUrl(Uri.parse(url));
-      request.headers.set('User-Agent', 'PirateWallet-DesktopUpdater');
-      final response = await request.close().timeout(_networkTimeout);
-      if (response.statusCode >= 400) {
-        throw Exception('Download failed with status ${response.statusCode}');
-      }
-      await destination.parent.create(recursive: true);
-      final sink = destination.openWrite(mode: FileMode.writeOnly);
-      await response.pipe(sink);
-      await sink.flush();
-      await sink.close();
-    } finally {
-      client.close(force: true);
-    }
+    await FfiBridge.downloadExternalToFile(
+      url: url,
+      destinationPath: destination.path,
+      userAgent: 'PirateWallet-DesktopUpdater',
+    ).timeout(_networkTimeout);
   }
 
   Future<Uint8List> _downloadBytes(String url) async {
-    final client = HttpClient()..connectionTimeout = _networkTimeout;
-    try {
-      final request = await client.getUrl(Uri.parse(url));
-      request.headers.set('Accept', 'application/vnd.github+json');
-      request.headers.set('User-Agent', 'PirateWallet-DesktopUpdater');
-      final response = await request.close().timeout(_networkTimeout);
-      if (response.statusCode >= 400) {
-        throw Exception('Download failed with status ${response.statusCode}');
-      }
-      final bytes = await consolidateHttpClientResponseBytes(response);
-      return bytes;
-    } finally {
-      client.close(force: true);
-    }
+    return FfiBridge.fetchExternalBytes(
+      url: url,
+      userAgent: 'PirateWallet-DesktopUpdater',
+    ).timeout(_networkTimeout);
   }
 
   Future<String> _downloadText(String url) async {

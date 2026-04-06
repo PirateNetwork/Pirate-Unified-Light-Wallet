@@ -14,6 +14,7 @@ import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/api.dart' as api;
 import 'providers/preferences_providers.dart';
 import '../../core/i18n/arb_text_localizer.dart';
@@ -444,19 +445,10 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
   }
 
   Future<Uint8List> _downloadBytes(String url) async {
-    final client = HttpClient();
-    try {
-      final request = await client.getUrl(Uri.parse(url));
-      request.headers.set('User-Agent', 'PirateWallet');
-      final response = await request.close();
-      if (response.statusCode >= 400) {
-        throw Exception('Failed to download checksum asset');
-      }
-      final bytes = await consolidateHttpClientResponseBytes(response);
-      return bytes;
-    } finally {
-      client.close(force: true);
-    }
+    return FfiBridge.fetchExternalBytes(
+      url: url,
+      userAgent: 'PirateWallet',
+    );
   }
 
   Map<String, String> _parseChecksumsFromZip(Uint8List bytes) {
@@ -524,55 +516,41 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
   }
 
   Future<List<_ReleaseInfo>> _fetchReleases() async {
-    final client = HttpClient();
-    try {
-      final uri = Uri.parse(
-        'https://api.github.com/repos/PirateNetwork/Pirate-Unified-Light-Wallet/releases',
-      );
-      final request = await client.getUrl(uri);
-      request.headers.set('Accept', 'application/vnd.github+json');
-      request.headers.set('User-Agent', 'PirateWallet');
-      final response = await request.close();
-      if (response.statusCode == 404) {
-        return [];
-      }
-      if (response.statusCode >= 400) {
-        throw Exception('GitHub API returned ${response.statusCode}');
-      }
+    final body = await FfiBridge.fetchExternalText(
+      url:
+          'https://api.github.com/repos/PirateNetwork/Pirate-Unified-Light-Wallet/releases',
+      accept: 'application/vnd.github+json',
+      userAgent: 'PirateWallet',
+    );
+    final data = jsonDecode(body);
+    if (data is! List) {
+      throw Exception('Unexpected GitHub API response');
+    }
 
-      final body = await response.transform(utf8.decoder).join();
-      final data = jsonDecode(body);
-      if (data is! List) {
-        throw Exception('Unexpected GitHub API response');
-      }
-
-      return data.whereType<Map<String, dynamic>>().map<_ReleaseInfo>((entry) {
-        final assets = <_ReleaseAsset>[];
-        final rawAssets = entry['assets'];
-        if (rawAssets is List) {
-          for (final asset in rawAssets) {
-            if (asset is Map<String, dynamic>) {
-              final name = asset['name']?.toString() ?? '';
-              final url = asset['browser_download_url']?.toString() ?? '';
-              if (name.isNotEmpty && url.isNotEmpty) {
-                assets.add(_ReleaseAsset(name: name, url: url));
-              }
+    return data.whereType<Map<String, dynamic>>().map<_ReleaseInfo>((entry) {
+      final assets = <_ReleaseAsset>[];
+      final rawAssets = entry['assets'];
+      if (rawAssets is List) {
+        for (final asset in rawAssets) {
+          if (asset is Map<String, dynamic>) {
+            final name = asset['name']?.toString() ?? '';
+            final url = asset['browser_download_url']?.toString() ?? '';
+            if (name.isNotEmpty && url.isNotEmpty) {
+              assets.add(_ReleaseAsset(name: name, url: url));
             }
           }
         }
+      }
 
-        return _ReleaseInfo(
-          tagName: entry['tag_name']?.toString() ?? '',
-          name: entry['name']?.toString() ?? '',
-          url: entry['html_url']?.toString() ?? '',
-          isDraft: entry['draft'] == true,
-          isPrerelease: entry['prerelease'] == true,
-          assets: assets,
-        );
-      }).toList();
-    } finally {
-      client.close(force: true);
-    }
+      return _ReleaseInfo(
+        tagName: entry['tag_name']?.toString() ?? '',
+        name: entry['name']?.toString() ?? '',
+        url: entry['html_url']?.toString() ?? '',
+        isDraft: entry['draft'] == true,
+        isPrerelease: entry['prerelease'] == true,
+        assets: assets,
+      );
+    }).toList();
   }
 
   _ReleaseInfo _selectRelease(List<_ReleaseInfo> releases) {

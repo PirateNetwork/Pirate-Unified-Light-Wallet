@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ffi/ffi_bridge.dart';
 import '../../features/settings/providers/preferences_providers.dart';
 
 enum ArrrPriceSource { coingecko, coinMarketCap }
@@ -256,21 +256,15 @@ class _ArrrPriceService {
   }
 
   static Future<dynamic> _downloadJson(Uri uri, {String? userAgent}) async {
-    final client = HttpClient();
     try {
-      final request = await client.getUrl(uri).timeout(_timeout);
-      if (userAgent != null && userAgent.isNotEmpty) {
-        request.headers.set('User-Agent', userAgent);
-      }
-      request.headers.set('Accept', 'application/json');
-      final response = await request.close().timeout(_timeout);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return null;
-      }
-      final body = await response.transform(utf8.decoder).join();
+      final body = await FfiBridge.fetchExternalText(
+        url: uri.toString(),
+        accept: 'application/json',
+        userAgent: userAgent,
+      ).timeout(_timeout);
       return jsonDecode(body);
-    } finally {
-      client.close(force: true);
+    } catch (_) {
+      return null;
     }
   }
 
