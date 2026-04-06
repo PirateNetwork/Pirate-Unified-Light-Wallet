@@ -60,18 +60,6 @@ public enum SyncStage: String, Codable {
     }
 }
 
-public enum AddressBookColorTag: String, Codable {
-    case none = "None"
-    case red = "Red"
-    case orange = "Orange"
-    case yellow = "Yellow"
-    case green = "Green"
-    case blue = "Blue"
-    case purple = "Purple"
-    case pink = "Pink"
-    case gray = "Gray"
-}
-
 public enum ShieldedAddressType: String, Codable {
     case sapling = "Sapling"
     case orchard = "Orchard"
@@ -113,18 +101,15 @@ public struct CreateWalletRequest: Codable, Equatable {
 public struct RestoreWalletRequest: Codable, Equatable {
     public let name: String
     public let mnemonic: String
-    public let passphrase: String?
     public let birthdayHeight: Int?
 
     public init(
         name: String,
         mnemonic: String,
-        passphrase: String? = nil,
         birthdayHeight: Int? = nil
     ) {
         self.name = name
         self.mnemonic = mnemonic
-        self.passphrase = passphrase
         self.birthdayHeight = birthdayHeight
     }
 }
@@ -164,20 +149,17 @@ public struct ImportSpendingKeyRequest: Codable, Equatable {
     public let walletId: String
     public let saplingSpendingKey: String?
     public let orchardSpendingKey: String?
-    public let label: String?
     public let birthdayHeight: Int
 
     public init(
         walletId: String,
         saplingSpendingKey: String? = nil,
         orchardSpendingKey: String? = nil,
-        label: String? = nil,
         birthdayHeight: Int
     ) {
         self.walletId = walletId
         self.saplingSpendingKey = saplingSpendingKey
         self.orchardSpendingKey = orchardSpendingKey
-        self.label = label
         self.birthdayHeight = birthdayHeight
     }
 }
@@ -353,9 +335,7 @@ public struct CheckpointInfo: Codable, Equatable {
 public struct AddressInfo: Codable, Equatable {
     public let address: String
     public let diversifierIndex: Int
-    public let label: String?
     public let createdAt: Int64
-    public let colorTag: AddressBookColorTag
 }
 
 public struct AddressBalanceInfo: Codable, Equatable {
@@ -365,9 +345,7 @@ public struct AddressBalanceInfo: Codable, Equatable {
     public let pending: Int64
     public let keyId: Int64?
     public let addressId: Int64
-    public let label: String?
     public let createdAt: Int64
-    public let colorTag: AddressBookColorTag
     public let diversifierIndex: Int
 }
 
@@ -403,7 +381,6 @@ public struct WatchOnlyCapabilities: Codable, Equatable {
 
 public struct KeyGroupInfo: Codable, Equatable {
     public let id: Int64
-    public let label: String?
     public let keyType: KeyTypeInfo
     public let spendable: Bool
     public let hasSapling: Bool

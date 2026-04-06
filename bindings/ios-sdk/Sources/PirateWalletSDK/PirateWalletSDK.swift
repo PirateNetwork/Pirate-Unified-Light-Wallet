@@ -116,7 +116,6 @@ public final class PirateWalletSDK {
             params: [
                 "name": request.name,
                 "mnemonic": request.mnemonic,
-                "passphrase_opt": request.passphrase,
                 "birthday_opt": request.birthdayHeight,
             ]
         )
@@ -125,14 +124,12 @@ public final class PirateWalletSDK {
     public func restoreWallet(
         name: String,
         mnemonic: String,
-        passphrase: String? = nil,
         birthdayHeight: Int? = nil
     ) throws -> String {
         try restoreWallet(
             request: RestoreWalletRequest(
                 name: name,
                 mnemonic: mnemonic,
-                passphrase: passphrase,
                 birthdayHeight: birthdayHeight
             )
         )
@@ -508,7 +505,6 @@ public final class PirateWalletAdvancedKeyManagement {
                 "wallet_id": request.walletId,
                 "sapling_key": request.saplingSpendingKey,
                 "orchard_key": request.orchardSpendingKey,
-                "label": request.label,
                 "birthday_height": request.birthdayHeight,
             ]
         )
@@ -518,15 +514,13 @@ public final class PirateWalletAdvancedKeyManagement {
         walletId: String,
         birthdayHeight: Int,
         saplingSpendingKey: String? = nil,
-        orchardSpendingKey: String? = nil,
-        label: String? = nil
+        orchardSpendingKey: String? = nil
     ) throws -> Int64 {
         try importSpendingKey(
             request: ImportSpendingKeyRequest(
                 walletId: walletId,
                 saplingSpendingKey: saplingSpendingKey,
                 orchardSpendingKey: orchardSpendingKey,
-                label: label,
                 birthdayHeight: birthdayHeight
             )
         )
@@ -738,7 +732,6 @@ extension PirateWalletSDK {
             params: [
                 "name": request.name,
                 "mnemonic": request.mnemonic,
-                "passphrase_opt": request.passphrase,
                 "birthday_opt": request.birthdayHeight,
             ]
         )
@@ -747,14 +740,12 @@ extension PirateWalletSDK {
     public func restoreWalletAsync(
         name: String,
         mnemonic: String,
-        passphrase: String? = nil,
         birthdayHeight: Int? = nil
     ) async throws -> String {
         try await restoreWalletAsync(
             request: RestoreWalletRequest(
                 name: name,
                 mnemonic: mnemonic,
-                passphrase: passphrase,
                 birthdayHeight: birthdayHeight
             )
         )
@@ -1114,7 +1105,6 @@ extension PirateWalletAdvancedKeyManagement {
                 "wallet_id": request.walletId,
                 "sapling_key": request.saplingSpendingKey,
                 "orchard_key": request.orchardSpendingKey,
-                "label": request.label,
                 "birthday_height": request.birthdayHeight,
             ]
         )
@@ -1124,15 +1114,13 @@ extension PirateWalletAdvancedKeyManagement {
         walletId: String,
         birthdayHeight: Int,
         saplingSpendingKey: String? = nil,
-        orchardSpendingKey: String? = nil,
-        label: String? = nil
+        orchardSpendingKey: String? = nil
     ) async throws -> Int64 {
         try await importSpendingKeyAsync(
             request: ImportSpendingKeyRequest(
                 walletId: walletId,
                 saplingSpendingKey: saplingSpendingKey,
                 orchardSpendingKey: orchardSpendingKey,
-                label: label,
                 birthdayHeight: birthdayHeight
             )
         )
