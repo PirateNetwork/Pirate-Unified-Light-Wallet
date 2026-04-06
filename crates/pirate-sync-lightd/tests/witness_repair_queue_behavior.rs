@@ -7,6 +7,12 @@ fn sync_rs() -> String {
     fs::read_to_string(sync_path).expect("read sync.rs")
 }
 
+fn shardtree_support_rs() -> String {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let support_path = manifest_dir.join("src/sync/shardtree_support.rs");
+    fs::read_to_string(support_path).expect("read shardtree_support.rs")
+}
+
 #[test]
 fn forbids_custom_tip_loop_witness_repair_function() {
     let src = sync_rs();
@@ -144,19 +150,24 @@ fn follow_tip_start_ahead_keeps_queue_worker_path_active() {
 
 #[test]
 fn shardtree_persistence_uses_batched_insertion_not_leaf_append() {
-    let src = sync_rs();
-    let persist_start = src
+    let sync_src = sync_rs();
+    let support_src = shardtree_support_rs();
+    let persist_start = sync_src
         .find("fn persist_shardtree_batches(")
         .expect("persist_shardtree_batches exists");
-    let helper_start = src
+    let persist_end = sync_src[persist_start..]
+        .find("async fn apply_positions(")
+        .map(|idx| persist_start + idx)
+        .expect("apply_positions section exists");
+    let helper_start = support_src
         .find("fn apply_shardtree_batches_to_trees<")
         .expect("apply_shardtree_batches_to_trees exists");
-    let helper_end = src[helper_start..]
-        .find("/// Wallet keys cached for trial decryption")
+    let helper_end = support_src[helper_start..]
+        .find("pub(super) fn append_sapling_leaf(")
         .map(|idx| helper_start + idx)
-        .expect("wallet key section exists");
-    let persist_body = &src[persist_start..helper_start];
-    let helper_body = &src[helper_start..helper_end];
+        .expect("append_sapling_leaf exists");
+    let persist_body = &sync_src[persist_start..persist_end];
+    let helper_body = &support_src[helper_start..helper_end];
 
     assert!(
         persist_body.contains("apply_shardtree_batches_to_trees("),
