@@ -792,10 +792,9 @@ pub fn create_wallet(
 pub fn restore_wallet(
     name: String,
     mnemonic: String,
-    passphrase_opt: Option<String>,
     birthday_opt: Option<u32>,
 ) -> Result<WalletId> {
-    provisioning::restore_wallet(name, mnemonic, passphrase_opt, birthday_opt)
+    provisioning::restore_wallet(name, mnemonic, birthday_opt)
 }
 
 /// Check if wallet registry database file exists (without opening it)
@@ -1848,7 +1847,7 @@ fn infer_key_network_type_from_addresses(
         return Ok(None);
     }
 
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic, "")?;
+    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic)?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
     let candidates = [
         NetworkType::Mainnet,
@@ -1864,7 +1863,6 @@ fn infer_key_network_type_from_addresses(
         let candidate_network = Network::from_type(candidate);
         let sapling_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
             mnemonic,
-            "",
             candidate_network.network_type,
             0,
         )?;
@@ -1977,7 +1975,6 @@ fn rederive_wallet_keys_for_network(
     let old_network = Network::from_type(old_network_type);
     let current_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
         &mnemonic,
-        "",
         old_network.network_type,
         0,
     )?;
@@ -1996,7 +1993,6 @@ fn rederive_wallet_keys_for_network(
             let candidate_net = Network::from_type(candidate);
             let candidate_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
                 &mnemonic,
-                "",
                 candidate_net.network_type,
                 0,
             )?;
@@ -2055,11 +2051,10 @@ fn rederive_wallet_keys_for_network(
     let new_network = Network::from_type(key_network_type);
     let new_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
         &mnemonic,
-        "",
         new_network.network_type,
         0,
     )?;
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic, "")?;
+    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
     let orchard_extsk = orchard_master.derive_account(new_network.coin_type, 0)?;
 
@@ -3174,7 +3169,7 @@ pub fn generate_mnemonic(word_count: Option<u32>) -> Result<String> {
 
 /// Validate mnemonic
 pub fn validate_mnemonic(mnemonic: String) -> Result<bool> {
-    match ExtendedSpendingKey::from_mnemonic(&mnemonic, "") {
+    match ExtendedSpendingKey::from_mnemonic(&mnemonic) {
         Ok(_) => Ok(true),
         Err(_) => Ok(false),
     }

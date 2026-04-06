@@ -25,7 +25,6 @@ pub enum WalletServiceRequest {
     RestoreWallet {
         name: String,
         mnemonic: String,
-        passphrase_opt: Option<String>,
         birthday_opt: Option<u32>,
     },
     ImportViewingWallet {
@@ -396,14 +395,8 @@ impl WalletService {
             WalletServiceRequest::RestoreWallet {
                 name,
                 mnemonic,
-                passphrase_opt,
                 birthday_opt,
-            } => serialize(ffi::restore_wallet(
-                name,
-                mnemonic,
-                passphrase_opt,
-                birthday_opt,
-            )?),
+            } => serialize(ffi::restore_wallet(name, mnemonic, birthday_opt)?),
             WalletServiceRequest::ImportViewingWallet {
                 name,
                 sapling_viewing_key,
