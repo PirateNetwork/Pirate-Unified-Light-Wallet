@@ -13,24 +13,12 @@ pub const DEFAULT_FEE: u64 = 10_000;
 /// Change smaller than this threshold is treated as dust and folded into fee.
 pub const CHANGE_DUST_THRESHOLD: u64 = DEFAULT_FEE;
 
-/// Legacy ZIP-317 constants kept for backward compatibility.
-#[deprecated(note = "Pirate uses a fixed fee; use DEFAULT_FEE instead.")]
-pub const ZIP317_MARGINAL_FEE: u64 = DEFAULT_FEE;
-
-/// Legacy ZIP-317 grace action count (kept for compatibility).
-#[deprecated(note = "ZIP-317 is not used on Pirate; use DEFAULT_FEE instead.")]
-pub const ZIP317_GRACE_ACTIONS: u64 = 2;
-
 /// Minimum fee (in arrrtoshis)
 pub const MIN_FEE: u64 = DEFAULT_FEE;
 
 /// Maximum fee (safety limit, in arrrtoshis)
 /// 0.01 ARRR = 1,000,000 arrrtoshis
 pub const MAX_FEE: u64 = 1_000_000;
-
-/// Legacy constant for backward compatibility
-#[deprecated(note = "Use DEFAULT_FEE instead")]
-pub const DEFAULT_FEE_PER_ACTION: u64 = DEFAULT_FEE;
 
 /// Fee calculator using a fixed Pirate Chain fee.
 #[derive(Debug, Clone)]

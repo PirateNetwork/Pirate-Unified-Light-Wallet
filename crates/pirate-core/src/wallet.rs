@@ -6,7 +6,6 @@ use crate::keys::{
 };
 use crate::notes::Note;
 use crate::{Error, Result};
-use hex;
 use orchard::keys::IncomingViewingKey as OrchardIncomingViewingKey;
 use pirate_params::Network;
 
@@ -97,10 +96,13 @@ impl Wallet {
     }
 
     /// Create from both Sapling and Orchard viewing keys (watch-only wallet).
-    pub fn from_ivks(sapling_ivk: Option<&str>, orchard_ivk: Option<&str>) -> Result<Self> {
+    pub fn from_viewing_keys(
+        sapling_viewing_key_str: Option<&str>,
+        orchard_viewing_key_str: Option<&str>,
+    ) -> Result<Self> {
         let mut sapling_viewing_key = None;
         let mut sapling = None;
-        if let Some(value) = sapling_ivk {
+        if let Some(value) = sapling_viewing_key_str {
             let (dfvk, ivk) = parse_sapling_watch_key(value)?;
             sapling_viewing_key = dfvk;
             sapling = Some(ivk);
@@ -108,7 +110,7 @@ impl Wallet {
 
         let mut orchard_viewing_key = None;
         let mut orchard = None;
-        if let Some(value) = orchard_ivk {
+        if let Some(value) = orchard_viewing_key_str {
             let (fvk, ivk) = parse_orchard_watch_key(value)?;
             orchard_viewing_key = fvk;
             orchard = Some(ivk);
@@ -166,8 +168,8 @@ impl Wallet {
         self.wallet_type == WalletType::WatchOnly
     }
 
-    /// Export Sapling IVK
-    pub fn export_ivk(&self) -> String {
+    /// Export Sapling viewing key (xFVK)
+    pub fn export_sapling_viewing_key(&self) -> String {
         if let Some(ivk) = self.incoming_ivk.as_ref() {
             ivk.to_string()
         } else {
@@ -189,22 +191,6 @@ impl Wallet {
         } else {
             None
         }
-    }
-
-    /// Export Orchard IVK (returns hex-encoded 64 bytes) - DEPRECATED
-    ///
-    /// Use export_orchard_viewing_key() instead for watch-only wallets.
-    /// This method is kept for backward compatibility.
-    #[deprecated(note = "Use export_orchard_viewing_key() instead")]
-    pub fn export_orchard_ivk(&self) -> Option<String> {
-        self.orchard_incoming_ivk
-            .as_ref()
-            .map(|ivk| hex::encode(ivk.to_bytes()))
-            .or_else(|| {
-                self.orchard_viewing_key
-                    .as_ref()
-                    .map(|fvk| hex::encode(fvk.to_ivk_bytes()))
-            })
     }
 
     /// Get default address

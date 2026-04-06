@@ -15,6 +15,7 @@ pub mod keys;
 pub mod memo;
 pub mod notes;
 pub mod params;
+pub mod qortal_p2sh;
 pub mod selection;
 pub mod shielded_builder;
 pub mod transaction;
@@ -32,6 +33,11 @@ pub use fees::{
 };
 pub use memo::{Memo, MAX_MEMO_LENGTH, MEMO_WARNING_LENGTH};
 pub use params::{orchard_params, sapling_params, sapling_prover};
+pub use qortal_p2sh::{
+    build_p2sh_script_sig, build_qortal_p2sh_funding_transaction,
+    build_qortal_p2sh_redeem_transaction, build_script_pubkey, QortalP2shFundingPlan,
+    QortalP2shRedeemPlan, QortalRecipient,
+};
 pub use selection::{NoteSelector, NoteType, SelectableNote, SelectionResult, SelectionStrategy};
 pub use shielded_builder::{
     BuildAndSignMultiInputs, PendingShieldedTransaction, ShieldedBuilder, ShieldedOutput,
