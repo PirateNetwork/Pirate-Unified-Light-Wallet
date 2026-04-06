@@ -126,10 +126,10 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
               });
 
               try {
-                await FfiBridge.importIvk(
+                await FfiBridge.importViewingWallet(
                   name: name,
-                  saplingIvk: saplingKey.isEmpty ? null : saplingKey,
-                  orchardIvk: orchardKey.isEmpty ? null : orchardKey,
+                  saplingViewingKey: saplingKey.isEmpty ? null : saplingKey,
+                  orchardViewingKey: orchardKey.isEmpty ? null : orchardKey,
                   birthday: birthday,
                 );
                 ref.read(refreshWalletsProvider)();

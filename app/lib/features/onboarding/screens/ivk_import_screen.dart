@@ -17,14 +17,16 @@ import '../../../core/providers/wallet_providers.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
 
 /// Viewing key import screen for creating watch-only wallets
-class IvkImportScreen extends ConsumerStatefulWidget {
-  const IvkImportScreen({super.key});
+class ViewingKeysImportScreen extends ConsumerStatefulWidget {
+  const ViewingKeysImportScreen({super.key});
 
   @override
-  ConsumerState<IvkImportScreen> createState() => _IvkImportScreenState();
+  ConsumerState<ViewingKeysImportScreen> createState() =>
+      _ViewingKeysImportScreenState();
 }
 
-class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
+class _ViewingKeysImportScreenState
+    extends ConsumerState<ViewingKeysImportScreen> {
   final _nameController = TextEditingController(text: 'View only wallet');
   final _saplingIvkController = TextEditingController();
   final _orchardIvkController = TextEditingController();
@@ -88,7 +90,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
     }
   }
 
-  Future<void> _importIvk() async {
+  Future<void> _importViewingKeys() async {
     if (!_isValid) return;
 
     setState(() {
@@ -118,10 +120,10 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
       }
 
       // Import viewing key via FFI
-      final walletId = await FfiBridge.importIvk(
+      final walletId = await FfiBridge.importViewingWallet(
         name: _nameController.text.trim(),
-        saplingIvk: saplingKey.isEmpty ? null : saplingKey,
-        orchardIvk: orchardKey.isEmpty ? null : orchardKey,
+        saplingViewingKey: saplingKey.isEmpty ? null : saplingKey,
+        orchardViewingKey: orchardKey.isEmpty ? null : orchardKey,
         birthday: birthday,
       );
 
@@ -179,9 +181,9 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
     return PScaffold(
-      title: 'Import Viewing Key'.tr,
+      title: 'Import Viewing Keys'.tr,
       appBar: PAppBar(
-        title: 'Import Viewing Key'.tr,
+        title: 'Import Viewing Keys'.tr,
         subtitle: 'Create a view only wallet'.tr,
         onBack: () => context.pop(),
       ),
@@ -378,7 +380,7 @@ class _IvkImportScreenState extends ConsumerState<IvkImportScreen> {
             // Import button
             PButton(
               text: _isImporting ? 'Importing...' : 'Import view only wallet',
-              onPressed: _isValid && !_isImporting ? _importIvk : null,
+              onPressed: _isValid && !_isImporting ? _importViewingKeys : null,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,
               isLoading: _isImporting,

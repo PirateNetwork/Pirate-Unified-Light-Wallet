@@ -8,8 +8,8 @@ import '../background/background_sync_manager.dart' as bg;
 import '../ffi/ffi_bridge.dart';
 import '../ffi/generated/models.dart' hide SyncLogEntryFfi;
 import '../ffi/generated/api.dart' as api;
+import '../ffi/generated/api/diagnostics.dart' as diagnostics;
 import 'rust_init_provider.dart';
-import '../security/duress_passphrase_store.dart';
 import '../sync/sync_status_cache.dart';
 import '../services/birthday_update_service.dart';
 
@@ -212,26 +212,26 @@ final restoreWalletProvider =
       };
     });
 
-/// Import viewing key for watch-only wallet
-final importIvkProvider =
+/// Import viewing keys for a watch-only wallet
+final importViewingWalletProvider =
     Provider<
       Future<WalletId> Function({
         required String name,
-        String? saplingIvk,
-        String? orchardIvk,
+        String? saplingViewingKey,
+        String? orchardViewingKey,
         required int birthday,
       })
     >((ref) {
       return ({
         required String name,
-        String? saplingIvk,
-        String? orchardIvk,
+        String? saplingViewingKey,
+        String? orchardViewingKey,
         required int birthday,
       }) async {
-        final walletId = await FfiBridge.importIvk(
+        final walletId = await FfiBridge.importViewingWallet(
           name: name,
-          saplingIvk: saplingIvk,
-          orchardIvk: orchardIvk,
+          saplingViewingKey: saplingViewingKey,
+          orchardViewingKey: orchardViewingKey,
           birthday: birthday,
         );
 
@@ -422,7 +422,9 @@ final isSyncRunningProvider = FutureProvider<bool>((ref) async {
 });
 
 /// Get last checkpoint info for diagnostics
-final lastCheckpointProvider = FutureProvider<api.CheckpointInfo?>((ref) async {
+final lastCheckpointProvider = FutureProvider<diagnostics.CheckpointInfo?>((
+  ref,
+) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return null;
 
@@ -857,11 +859,10 @@ final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
         rethrow;
       }
 
-      final duressHash = await DuressPassphraseStore.read();
-      if (duressHash != null && duressHash.isNotEmpty) {
+      final hasDuress = await FfiBridge.hasDuressPassphrase();
+      if (hasDuress) {
         final isDuress = await FfiBridge.verifyDuressPassphrase(
           passphrase: passphrase,
-          hash: duressHash,
         );
         if (isDuress) {
           ref.read(decoyModeProvider.notifier).enabled = true;

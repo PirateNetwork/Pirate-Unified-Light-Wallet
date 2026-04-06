@@ -246,7 +246,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _buildPageWithTransition(
           context: context,
           state: state,
-          child: const IvkImportScreen(),
+          child: const ViewingKeysImportScreen(),
         ),
       ),
 

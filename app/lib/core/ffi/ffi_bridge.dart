@@ -11,6 +11,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
 
 import '../background/background_sync_execution_result.dart';
 import 'generated/api.dart' as api;
+import 'generated/api/diagnostics.dart' as diagnostics;
 import 'generated/models.dart'
     hide AddressBookColorTag, AddressBookEntryFfi, SyncLogEntryFfi;
 import 'generated/models.dart'
@@ -554,10 +555,10 @@ class FfiBridge {
   // WATCH-ONLY WALLETS - Viewing Key Export/Import
   // ============================================================================
 
-  /// Export viewing key from full wallet for creating watch-only on another device
-  static Future<String> exportIvk(WalletId id) async {
+  /// Export Sapling viewing key from full wallet for creating watch-only on another device
+  static Future<String> exportSaplingViewingKey(WalletId id) async {
     if (kUseFrbBindings) {
-      return await api.exportIvk(walletId: id);
+      return await api.exportSaplingViewingKey(walletId: id);
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
@@ -571,7 +572,7 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
-  /// Import viewing key to create watch-only wallet
+  /// Import viewing keys to create watch-only wallet
   ///
   /// Watch-only wallets can only view incoming transactions.
   /// They CANNOT:
@@ -580,24 +581,24 @@ class FfiBridge {
   /// - Export seed phrase
   ///
   /// @param name - Wallet display name (will append " (View only)")
-  /// @param ivk - Viewing key string
+  /// @param saplingViewingKey - Sapling viewing key string
   /// @param birthday - Block height to scan from (required for viewing key import)
   ///
   /// After import, automatically starts compact sync from birthday.
-  static Future<WalletId> importIvk({
+  static Future<WalletId> importViewingWallet({
     required String name,
-    String? saplingIvk,
-    String? orchardIvk,
+    String? saplingViewingKey,
+    String? orchardViewingKey,
     required int birthday,
   }) async {
-    if (saplingIvk == null && orchardIvk == null) {
+    if (saplingViewingKey == null && orchardViewingKey == null) {
       throw ArgumentError('Provide a Sapling or Orchard viewing key.');
     }
     if (kUseFrbBindings) {
-      final walletId = await api.importIvk(
+      final walletId = await api.importViewingWallet(
         name: name,
-        saplingIvk: saplingIvk,
-        orchardIvk: orchardIvk,
+        saplingViewingKey: saplingViewingKey,
+        orchardViewingKey: orchardViewingKey,
         birthday: birthday,
       );
       _activeWalletId = walletId;
@@ -877,7 +878,7 @@ class FfiBridge {
 
   /// Get last checkpoint info for diagnostics
   /// @see Rust: pirate-ffi-frb/src/api.rs::get_last_checkpoint
-  static Future<api.CheckpointInfo?> getLastCheckpoint(WalletId id) async {
+  static Future<diagnostics.CheckpointInfo?> getLastCheckpoint(WalletId id) async {
     if (kUseFrbBindings) {
       return await api.getLastCheckpoint(walletId: id);
     }
@@ -953,13 +954,13 @@ class FfiBridge {
   // - set_lightd_endpoint(), get_lightd_endpoint(), get_lightd_endpoint_config()
   // ============================================================================
 
-  /// Default lightwalletd endpoint (Orchard-ready mainnet)
-  /// Changed from lightd1.piratechain.com to 64.23.167.130:9067 as the working endpoint
-  static const String defaultLightdHost = '64.23.167.130';
-  static const int defaultLightdPort = 9067;
-  static const bool defaultUseTls =
-      false; // Disabled by default since servers don't have certificates
-  static const String defaultLightdUrl = 'http://64.23.167.130:9067';
+  /// Default lightwalletd endpoint (official mainnet)
+  static const String defaultLightdHost = 'lightd1.pirate.black';
+  static const int defaultLightdPort = 443;
+  static const bool defaultUseTls = true;
+  static const String defaultLightdTlsPin =
+      'KAdAVTuQa+N5ECezENJsgMEnZRM46E/cexfIojRp5ls=';
+  static const String defaultLightdUrl = 'https://lightd1.pirate.black:443';
 
   static Future<void> setLightdEndpoint({
     required WalletId walletId,
@@ -1065,6 +1066,55 @@ class FfiBridge {
   static Future<void> rotateTorExit() async {
     if (kUseFrbBindings) {
       await api.rotateTorExit();
+      return;
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<String> fetchExternalText({
+    required String url,
+    String? accept,
+    String? userAgent,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.fetchExternalText(
+        url: url,
+        accept: accept,
+        userAgent: userAgent,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<Uint8List> fetchExternalBytes({
+    required String url,
+    String? accept,
+    String? userAgent,
+  }) async {
+    if (kUseFrbBindings) {
+      final bytes = await api.fetchExternalBytes(
+        url: url,
+        accept: accept,
+        userAgent: userAgent,
+      );
+      return Uint8List.fromList(bytes);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<void> downloadExternalToFile({
+    required String url,
+    required String destinationPath,
+    String? accept,
+    String? userAgent,
+  }) async {
+    if (kUseFrbBindings) {
+      await api.downloadExternalToFile(
+        url: url,
+        destinationPath: destinationPath,
+        accept: accept,
+        userAgent: userAgent,
+      );
       return;
     }
     throw UnimplementedError('FRB bindings not available');
@@ -1349,10 +1399,10 @@ class FfiBridge {
   // ============================================================================
 
   /// Set duress passphrase for decoy vault.
-  /// Returns the Argon2id hash for secure storage.
-  static Future<String> setDuressPassphrase({String? customPassphrase}) async {
+  static Future<void> setDuressPassphrase({String? customPassphrase}) async {
     if (kUseFrbBindings) {
-      return await api.setDuressPassphrase(customPassphrase: customPassphrase);
+      await api.setDuressPassphrase(customPassphrase: customPassphrase);
+      return;
     }
     throw UnimplementedError('FRB bindings not available');
   }
@@ -1365,24 +1415,10 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
-  /// Fetch the stored duress passphrase hash from the registry (if any).
-  static Future<String?> getDuressPassphraseHash() async {
-    if (kUseFrbBindings) {
-      return await api.getDuressPassphraseHash();
-    }
-    throw UnimplementedError('FRB bindings not available');
-  }
-
   /// Verify duress passphrase and activate decoy mode if correct.
-  static Future<bool> verifyDuressPassphrase({
-    required String passphrase,
-    required String hash,
-  }) async {
+  static Future<bool> verifyDuressPassphrase({required String passphrase}) async {
     if (kUseFrbBindings) {
-      return await api.verifyDuressPassphrase(
-        passphrase: passphrase,
-        hash: hash,
-      );
+      return await api.verifyDuressPassphrase(passphrase: passphrase);
     }
     throw UnimplementedError('FRB bindings not available');
   }
@@ -1465,9 +1501,9 @@ class FfiBridge {
   }
 
   /// Exit decoy mode (requires real passphrase re-auth)
-  static Future<void> exitDecoyMode() async {
+  static Future<void> exitDecoyMode(String passphrase) async {
     if (kUseFrbBindings) {
-      await api.exitDecoyMode();
+      await api.exitDecoyMode(passphrase: passphrase);
       return;
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
@@ -1579,32 +1615,32 @@ class FfiBridge {
   // ============================================================================
   //
   // Mirrors Rust: crates/pirate-ffi-frb/src/api.rs
-  // - export_ivk(), import_ivk()
+  // - export_sapling_viewing_key(), import_viewing_wallet()
   // ============================================================================
 
-  /// Export viewing key from full wallet (secure)
-  /// @see Rust: pirate-ffi-frb/src/api.rs::export_ivk
-  static Future<String> exportIvkSecure(WalletId walletId) async {
+  /// Export Sapling viewing key from full wallet (secure)
+  /// @see Rust: pirate-ffi-frb/src/api.rs::export_sapling_viewing_key_secure
+  static Future<String> exportSaplingViewingKeySecure(WalletId walletId) async {
     if (kUseFrbBindings) {
-      return await api.exportIvkSecure(walletId: walletId);
+      return await api.exportSaplingViewingKeySecure(walletId: walletId);
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
 
-  /// Import viewing key to create watch-only wallet (alternate API)
-  /// @see Rust: pirate-ffi-frb/src/api.rs::import_ivk
-  static Future<WalletId> importIvkAsWatchOnly({
+  /// Import Sapling viewing key to create watch-only wallet (alternate API)
+  /// @see Rust: pirate-ffi-frb/src/api.rs::import_sapling_viewing_key_as_watch_only
+  static Future<WalletId> importSaplingViewingKeyAsWatchOnly({
     required String name,
-    required String ivk,
-    String? orchardIvk,
+    required String saplingViewingKey,
+    String? orchardViewingKey,
     required int birthdayHeight,
   }) async {
-    // Delegate to main importIvk method
-    return importIvk(
+    // Delegate to main importViewingWallet method
+    return importViewingWallet(
       name: name,
-      saplingIvk: ivk,
-      orchardIvk: orchardIvk,
+      saplingViewingKey: saplingViewingKey,
+      orchardViewingKey: orchardViewingKey,
       birthday: birthdayHeight,
     );
   }

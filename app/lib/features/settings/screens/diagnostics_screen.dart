@@ -14,13 +14,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 import '../../../core/ffi/generated/models.dart' show SyncStatus;
-import '../../../core/ffi/generated/api.dart' as api;
 import '../../../core/providers/wallet_providers.dart';
 import '../../../ui/atoms/p_icon_button.dart';
 import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
+import '../../../core/ffi/generated/api/diagnostics.dart' as diagnostics;
 
 /// Diagnostics screen with real FFI integration
 class DiagnosticsScreen extends ConsumerStatefulWidget {
@@ -539,7 +539,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
   }
 
   Widget _buildCheckpointCardContent(
-    api.CheckpointInfo? checkpoint, {
+    diagnostics.CheckpointInfo? checkpoint, {
     bool isLoading = false,
   }) {
     return Container(
