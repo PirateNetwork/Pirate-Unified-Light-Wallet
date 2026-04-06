@@ -91,8 +91,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
             walletId: "wallet-1",
             birthdayHeight: 2_345_678,
             saplingSpendingKey: "secret-sapling",
-            orchardSpendingKey: "secret-orchard",
-            label: "Imported bundle"
+            orchardSpendingKey: "secret-orchard"
         )
         let seedWords = try sdk.advancedKeyManagement.exportSeed(walletId: "wallet-1")
 
