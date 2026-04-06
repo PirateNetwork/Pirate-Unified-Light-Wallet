@@ -157,7 +157,7 @@ abstract class AppLocalizations {
   /// No description provided for @verifyBuildGithubChecksSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Fetches releases and checksum files from GitHub when using Verify Build.'**
+  /// **'When enabled, Verify Build fetches releases and checksum files from GitHub over your selected transport.'**
   String get verifyBuildGithubChecksSubtitle;
 
   /// No description provided for @desktopUpdateChecksTitle.
@@ -169,7 +169,7 @@ abstract class AppLocalizations {
   /// No description provided for @desktopUpdateChecksSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Allows periodic GitHub release polling for in-app update notifications.'**
+  /// **'When enabled, periodically checks GitHub for desktop updates over your selected transport.'**
   String get desktopUpdateChecksSubtitle;
 
   /// No description provided for @disabledByMasterSwitch.
@@ -181,7 +181,7 @@ abstract class AppLocalizations {
   /// No description provided for @outboundApiFeaturesSummary.
   ///
   /// In en, this message translates to:
-  /// **'Current non-lightserver network features: live price feeds, Verify Build GitHub checks, and desktop release checks. Other wallet traffic stays on your selected lightwalletd transport.'**
+  /// **'Current non-lightserver network features: live price feeds, Verify Build GitHub checks, and desktop release checks. These outbound calls use your selected transport and can be disabled in Settings.'**
   String get outboundApiFeaturesSummary;
 
   /// No description provided for @updateAvailableTitle.
