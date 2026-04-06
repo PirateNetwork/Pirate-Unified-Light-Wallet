@@ -17,9 +17,6 @@ final bool _skipFfiTests =
 
 void main() {
   testWidgets('App button smoke test', (WidgetTester tester) async {
-    // Disable animations for testing
-    // Animate.restartOnHotReload = true;
-
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -32,7 +29,11 @@ void main() {
         ),
       ),
     );
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('Continue'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
   }, skip: _skipFfiTests);
 }

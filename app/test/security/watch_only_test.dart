@@ -14,8 +14,8 @@ void main() {
       );
 
       // Should show both tabs
-      expect(find.text('Export Viewing Key'), findsOneWidget);
-      expect(find.text('Import Viewing Key'), findsOneWidget);
+      expect(find.text('Export Sapling Viewing Key'), findsOneWidget);
+      expect(find.text('Import Sapling Viewing Key'), findsOneWidget);
     }, skip: _skipFfiTests);
 
     testWidgets('Export tab shows IVK info', (WidgetTester tester) async {
@@ -24,7 +24,7 @@ void main() {
       );
 
       // Should be on export tab by default
-      expect(find.text('Export incoming viewing key'), findsOneWidget);
+      expect(find.text('Export Sapling viewing key'), findsOneWidget);
       expect(find.text('About viewing keys'), findsOneWidget);
       expect(find.textContaining('View incoming transactions'), findsOneWidget);
       expect(find.textContaining('Cannot spend'), findsOneWidget);
@@ -37,11 +37,11 @@ void main() {
       );
 
       // Tap export button
-      await tester.tap(find.text('Export Viewing Key'));
+      await tester.tap(find.text('Export Sapling Viewing Key'));
       await tester.pumpAndSettle();
 
       // Should show IVK (after API call simulation)
-      expect(find.text('Incoming viewing key'), findsOneWidget);
+      expect(find.text('Sapling viewing key'), findsOneWidget);
       expect(find.textContaining('zxviews'), findsOneWidget);
 
       // Should show copy button
@@ -54,7 +54,7 @@ void main() {
       );
 
       // Export IVK
-      await tester.tap(find.text('Export Viewing Key'));
+      await tester.tap(find.text('Export Sapling Viewing Key'));
       await tester.pumpAndSettle();
 
       // Copy to clipboard
@@ -71,13 +71,13 @@ void main() {
       );
 
       // Switch to import tab
-      await tester.tap(find.text('Import Viewing Key'));
+      await tester.tap(find.text('Import Sapling Viewing Key'));
       await tester.pumpAndSettle();
 
       // Should show form fields
       expect(find.text('Import view only wallet'), findsOneWidget);
       expect(find.text('Wallet name'), findsOneWidget);
-      expect(find.text('Incoming viewing key'), findsOneWidget);
+      expect(find.text('Sapling viewing key'), findsOneWidget);
       expect(find.text('Birthday height (optional)'), findsOneWidget);
     }, skip: _skipFfiTests);
 
@@ -89,7 +89,7 @@ void main() {
       );
 
       // Switch to import tab
-      await tester.tap(find.text('Import Viewing Key'));
+      await tester.tap(find.text('Import Sapling Viewing Key'));
       await tester.pumpAndSettle();
 
       // Should show badge
@@ -106,7 +106,7 @@ void main() {
       );
 
       // Switch to import tab
-      await tester.tap(find.text('Import Viewing Key'));
+      await tester.tap(find.text('Import Sapling Viewing Key'));
       await tester.pumpAndSettle();
 
       // Try to import without name
@@ -123,7 +123,7 @@ void main() {
       );
 
       // Switch to import tab
-      await tester.tap(find.text('Import Viewing Key'));
+      await tester.tap(find.text('Import Sapling Viewing Key'));
       await tester.pumpAndSettle();
 
       // Enter name only
@@ -134,7 +134,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should show error
-      expect(find.text('Please enter a viewing key'), findsOneWidget);
+      expect(find.text('Please enter a Sapling viewing key'), findsOneWidget);
     }, skip: _skipFfiTests);
 
     testWidgets('Validates IVK format', (WidgetTester tester) async {
@@ -143,7 +143,7 @@ void main() {
       );
 
       // Switch to import tab
-      await tester.tap(find.text('Import Viewing Key'));
+      await tester.tap(find.text('Import Sapling Viewing Key'));
       await tester.pumpAndSettle();
 
       // Enter invalid IVK
@@ -155,7 +155,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Should show error
-      expect(find.text('Invalid viewing key format.'), findsOneWidget);
+      expect(find.text('Invalid Sapling viewing key format.'), findsOneWidget);
     }, skip: _skipFfiTests);
 
     testWidgets('Birthday height is optional', (WidgetTester tester) async {
@@ -164,7 +164,7 @@ void main() {
       );
 
       // Switch to import tab
-      await tester.tap(find.text('Import Viewing Key'));
+      await tester.tap(find.text('Import Sapling Viewing Key'));
       await tester.pumpAndSettle();
 
       // Enter valid data without birthday

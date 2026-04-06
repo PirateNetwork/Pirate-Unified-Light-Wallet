@@ -42,21 +42,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get verifyBuildGithubChecksSubtitle =>
-      'Fetches releases and checksum files from GitHub when using Verify Build.';
+      'When enabled, Verify Build fetches releases and checksum files from GitHub over your selected transport.';
 
   @override
   String get desktopUpdateChecksTitle => 'Desktop Update Checks';
 
   @override
   String get desktopUpdateChecksSubtitle =>
-      'Allows periodic GitHub release polling for in-app update notifications.';
+      'When enabled, periodically checks GitHub for desktop updates over your selected transport.';
 
   @override
   String get disabledByMasterSwitch => 'Disabled by master switch';
 
   @override
   String get outboundApiFeaturesSummary =>
-      'Current non-lightserver network features: live price feeds, Verify Build GitHub checks, and desktop release checks. Other wallet traffic stays on your selected lightwalletd transport.';
+      'Current non-lightserver network features: live price feeds, Verify Build GitHub checks, and desktop release checks. These outbound calls use your selected transport and can be disabled in Settings.';
 
   @override
   String get updateAvailableTitle => 'Update Available';
