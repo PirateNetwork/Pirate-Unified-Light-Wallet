@@ -40,27 +40,25 @@ class POverlayToastHost extends StatefulWidget {
 }
 
 class POverlayToastHostState extends State<POverlayToastHost> {
-  final OverlayPortalController _portalController = OverlayPortalController();
   Timer? _dismissTimer;
   POverlayToastPayload? _payload;
+  bool _visible = false;
 
   void show(POverlayToastPayload payload) {
     _dismissTimer?.cancel();
     setState(() {
       _payload = payload;
+      _visible = true;
     });
-    _portalController.show();
     _dismissTimer = Timer(payload.duration, hide);
   }
 
   void hide() {
     _dismissTimer?.cancel();
     _dismissTimer = null;
-    if (_portalController.isShowing) {
-      _portalController.hide();
-    }
-    if (_payload != null && mounted) {
+    if (mounted) {
       setState(() {
+        _visible = false;
         _payload = null;
       });
     }
@@ -75,25 +73,21 @@ class POverlayToastHostState extends State<POverlayToastHost> {
 
   @override
   Widget build(BuildContext context) {
-    return OverlayPortal.overlayChildLayoutBuilder(
-      controller: _portalController,
-      overlayLocation: OverlayChildLocation.rootOverlay,
-      overlayChildBuilder: (context, layoutInfo) {
-        final payload = _payload;
-        if (payload == null) {
-          return const SizedBox.shrink();
-        }
+    final payload = _payload;
+    final mediaQuery = MediaQuery.of(context);
+    final screenWidth = mediaQuery.size.width;
+    final bottomInset = mediaQuery.viewInsets.bottom;
+    final bottomPadding = mediaQuery.padding.bottom;
+    final maxWidth = math.max(
+      280.0,
+      math.min(720.0, screenWidth - (PSpacing.md * 2)),
+    );
 
-        final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-        final bottomPadding = MediaQuery.paddingOf(context).bottom;
-        final maxWidth = math.max(
-          280.0,
-          math.min(720.0, layoutInfo.overlaySize.width - (PSpacing.md * 2)),
-        );
-
-        return SafeArea(
-          child: IgnorePointer(
-            ignoring: false,
+    return Stack(
+      children: [
+        widget.child,
+        if (payload != null)
+          SafeArea(
             child: Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
@@ -103,59 +97,71 @@ class POverlayToastHostState extends State<POverlayToastHost> {
                   PSpacing.md,
                   16 + bottomInset + bottomPadding,
                 ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxWidth),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: AppColors.backgroundElevated,
-                        borderRadius: BorderRadius.circular(PSpacing.radiusMD),
-                        border: Border.all(color: payload.borderColor),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.shadowStrong,
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: PSpacing.md,
-                          vertical: PSpacing.sm,
-                        ),
-                        child: Row(
-                          children: [
-                            if (payload.icon != null) ...[
-                              Icon(
-                                payload.icon,
-                                size: PSpacing.iconMD,
-                                color:
-                                    payload.iconColor ??
-                                    AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: PSpacing.sm),
-                            ],
-                            Expanded(
-                              child: Text(
-                                payload.message,
-                                style: PTypography.bodyMedium(
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
+                child: AnimatedSlide(
+                  offset: _visible ? Offset.zero : const Offset(0, 0.2),
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  child: AnimatedOpacity(
+                    opacity: _visible ? 1 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxWidth),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppColors.backgroundElevated,
+                            borderRadius: BorderRadius.circular(
+                              PSpacing.radiusMD,
                             ),
-                            if (payload.actionLabel != null) ...[
-                              const SizedBox(width: PSpacing.sm),
-                              TextButton(
-                                onPressed: () {
-                                  payload.onAction?.call();
-                                  hide();
-                                },
-                                child: Text(payload.actionLabel!),
+                            border: Border.all(color: payload.borderColor),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.shadowStrong,
+                                blurRadius: 14,
+                                offset: const Offset(0, 6),
                               ),
                             ],
-                          ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: PSpacing.md,
+                              vertical: PSpacing.sm,
+                            ),
+                            child: Row(
+                              children: [
+                                if (payload.icon != null) ...[
+                                  Icon(
+                                    payload.icon,
+                                    size: PSpacing.iconMD,
+                                    color:
+                                        payload.iconColor ??
+                                        AppColors.textSecondary,
+                                  ),
+                                  const SizedBox(width: PSpacing.sm),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    payload.message,
+                                    style: PTypography.bodyMedium(
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                                if (payload.actionLabel != null) ...[
+                                  const SizedBox(width: PSpacing.sm),
+                                  TextButton(
+                                    onPressed: () {
+                                      payload.onAction?.call();
+                                      hide();
+                                    },
+                                    child: Text(payload.actionLabel!),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -164,9 +170,7 @@ class POverlayToastHostState extends State<POverlayToastHost> {
               ),
             ),
           ),
-        );
-      },
-      child: widget.child,
+      ],
     );
   }
 }
