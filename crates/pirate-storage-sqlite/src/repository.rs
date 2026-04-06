@@ -10,7 +10,7 @@ use crate::{models::*, Database, Result};
 use pirate_core::DEFAULT_FEE;
 use pirate_params::consensus::ConsensusParams;
 use rusqlite::params_from_iter;
-use rusqlite::types::Value;
+use rusqlite::types::{Value, ValueRef};
 use rusqlite::{params, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -182,16 +182,194 @@ impl<'a> Repository<'a> {
         Ok(decrypted[0] != 0)
     }
 
-    /// Encrypt string as BLOB (for privacy)
-    fn encrypt_string(&self, value: &str) -> Result<Vec<u8>> {
-        self.encrypt_blob(value.as_bytes())
-    }
-
     /// Decrypt string from BLOB
     fn decrypt_string(&self, encrypted: &[u8]) -> Result<String> {
         let decrypted = self.decrypt_blob(encrypted)?;
         String::from_utf8(decrypted)
             .map_err(|e| crate::Error::Encryption(format!("Failed to decode string: {}", e)))
+    }
+
+    fn decode_wallet_secret_wallet_id(&self, value: ValueRef<'_>) -> Result<(String, bool)> {
+        match value {
+            ValueRef::Text(text) => Ok((
+                String::from_utf8(text.to_vec()).map_err(|e| {
+                    crate::Error::Encryption(format!("Failed to decode plaintext wallet_id: {}", e))
+                })?,
+                false,
+            )),
+            ValueRef::Blob(blob) => {
+                if let Ok(wallet_id) = self.decrypt_string(blob) {
+                    return Ok((wallet_id, true));
+                }
+
+                Ok((
+                    String::from_utf8(blob.to_vec()).map_err(|e| {
+                        crate::Error::Encryption(format!("Failed to decode wallet_id bytes: {}", e))
+                    })?,
+                    false,
+                ))
+            }
+            _ => Err(crate::Error::Encryption(
+                "Unexpected wallet_id storage type in wallet_secrets".to_string(),
+            )),
+        }
+    }
+
+    /// Normalize wallet_secrets to a canonical layout keyed by plaintext wallet_id.
+    ///
+    /// Older versions stored wallet_id encrypted with a random nonce, which broke
+    /// `ON CONFLICT(wallet_id)` semantics and allowed duplicate logical rows.
+    pub fn normalize_wallet_secrets_storage(&self) -> Result<bool> {
+        #[derive(Clone)]
+        struct CanonicalWalletSecretRow {
+            wallet_id: String,
+            account_id: Vec<u8>,
+            extsk: Vec<u8>,
+            dfvk: Option<Vec<u8>>,
+            orchard_extsk: Option<Vec<u8>>,
+            sapling_ivk: Option<Vec<u8>>,
+            orchard_ivk: Option<Vec<u8>>,
+            encrypted_mnemonic: Option<Vec<u8>>,
+            created_at: Vec<u8>,
+            created_at_plain: i64,
+        }
+
+        let mut stmt = self.db.conn().prepare(
+            "SELECT rowid, wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at
+             FROM wallet_secrets
+             ORDER BY rowid ASC",
+        )?;
+
+        let mut rows = stmt.query([])?;
+        let mut logical_row_count = 0usize;
+        let mut saw_encrypted_wallet_id = false;
+        let mut canonical_rows: HashMap<String, CanonicalWalletSecretRow> = HashMap::new();
+
+        while let Some(row) = rows.next()? {
+            logical_row_count += 1;
+            let (wallet_id, was_encrypted) =
+                self.decode_wallet_secret_wallet_id(row.get_ref(1)?)?;
+            saw_encrypted_wallet_id |= was_encrypted;
+
+            let account_id: Vec<u8> = row.get(2)?;
+            let extsk: Vec<u8> = row.get(3)?;
+            let dfvk: Option<Vec<u8>> = row.get(4)?;
+            let orchard_extsk: Option<Vec<u8>> = row.get(5)?;
+            let sapling_ivk: Option<Vec<u8>> = row.get(6)?;
+            let orchard_ivk: Option<Vec<u8>> = row.get(7)?;
+            let encrypted_mnemonic: Option<Vec<u8>> = row.get(8)?;
+            let created_at: Vec<u8> = row.get(9)?;
+            let created_at_plain = self.decrypt_int64(&created_at)?;
+
+            canonical_rows
+                .entry(wallet_id.clone())
+                .and_modify(|existing| {
+                    existing.account_id = account_id.clone();
+                    if !extsk.is_empty() {
+                        existing.extsk = extsk.clone();
+                    }
+                    if dfvk.as_ref().is_some_and(|v| !v.is_empty()) {
+                        existing.dfvk = dfvk.clone();
+                    }
+                    if orchard_extsk.as_ref().is_some_and(|v| !v.is_empty()) {
+                        existing.orchard_extsk = orchard_extsk.clone();
+                    }
+                    if sapling_ivk.as_ref().is_some_and(|v| !v.is_empty()) {
+                        existing.sapling_ivk = sapling_ivk.clone();
+                    }
+                    if orchard_ivk.as_ref().is_some_and(|v| !v.is_empty()) {
+                        existing.orchard_ivk = orchard_ivk.clone();
+                    }
+                    if encrypted_mnemonic.as_ref().is_some_and(|v| !v.is_empty()) {
+                        existing.encrypted_mnemonic = encrypted_mnemonic.clone();
+                    }
+                    if created_at_plain < existing.created_at_plain {
+                        existing.created_at = created_at.clone();
+                        existing.created_at_plain = created_at_plain;
+                    }
+                })
+                .or_insert(CanonicalWalletSecretRow {
+                    wallet_id,
+                    account_id,
+                    extsk,
+                    dfvk,
+                    orchard_extsk,
+                    sapling_ivk,
+                    orchard_ivk,
+                    encrypted_mnemonic,
+                    created_at,
+                    created_at_plain,
+                });
+        }
+        drop(rows);
+        drop(stmt);
+
+        let duplicates_present = logical_row_count != canonical_rows.len();
+        if !saw_encrypted_wallet_id && !duplicates_present {
+            return Ok(false);
+        }
+
+        self.db
+            .conn()
+            .execute_batch("BEGIN IMMEDIATE TRANSACTION;")?;
+        let normalize_result: Result<()> = (|| {
+            self.db.conn().execute_batch(
+                r#"
+                CREATE TABLE wallet_secrets_normalized (
+                    wallet_id TEXT PRIMARY KEY,
+                    account_id INTEGER NOT NULL,
+                    extsk BLOB NOT NULL,
+                    dfvk BLOB,
+                    orchard_extsk BLOB,
+                    sapling_ivk BLOB,
+                    orchard_ivk BLOB,
+                    encrypted_mnemonic BLOB,
+                    created_at INTEGER NOT NULL
+                );
+                "#,
+            )?;
+
+            for row in canonical_rows.into_values() {
+                self.db.conn().execute(
+                    "INSERT INTO wallet_secrets_normalized (wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![
+                        row.wallet_id,
+                        row.account_id,
+                        row.extsk,
+                        row.dfvk,
+                        row.orchard_extsk,
+                        row.sapling_ivk,
+                        row.orchard_ivk,
+                        row.encrypted_mnemonic,
+                        row.created_at,
+                    ],
+                )?;
+            }
+
+            self.db.conn().execute_batch(
+                "DROP TABLE wallet_secrets;
+                 ALTER TABLE wallet_secrets_normalized RENAME TO wallet_secrets;",
+            )?;
+
+            Ok(())
+        })();
+
+        match normalize_result {
+            Ok(()) => {
+                self.db.conn().execute_batch("COMMIT;")?;
+                tracing::info!(
+                    "Normalized wallet_secrets storage (encrypted_wallet_ids={}, duplicates={})",
+                    saw_encrypted_wallet_id,
+                    duplicates_present
+                );
+                Ok(true)
+            }
+            Err(err) => {
+                let _ = self.db.conn().execute_batch("ROLLBACK;");
+                Err(err)
+            }
+        }
     }
 
     fn shard_index_from_position(&self, position: i64) -> Option<i64> {
@@ -1255,8 +1433,7 @@ impl<'a> Repository<'a> {
     /// Note: This function expects the secret fields to already be encrypted.
     /// Use the encrypt_wallet_secret_fields helper to encrypt before calling.
     pub fn upsert_wallet_secret(&self, secret: &WalletSecret) -> Result<()> {
-        // Encrypt metadata fields for privacy
-        let encrypted_wallet_id = self.encrypt_string(&secret.wallet_id)?;
+        // wallet_id is stored plaintext as the canonical lookup key.
         let encrypted_account_id = self.encrypt_int64(secret.account_id)?;
         let encrypted_created_at = self.encrypt_int64(secret.created_at)?;
 
@@ -1264,16 +1441,16 @@ impl<'a> Repository<'a> {
             "INSERT INTO wallet_secrets (wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(wallet_id) DO UPDATE SET account_id=excluded.account_id, extsk=excluded.extsk, dfvk=excluded.dfvk, orchard_extsk=excluded.orchard_extsk, sapling_ivk=excluded.sapling_ivk, orchard_ivk=excluded.orchard_ivk, encrypted_mnemonic=excluded.encrypted_mnemonic, created_at=excluded.created_at",
-            params![encrypted_wallet_id, encrypted_account_id, secret.extsk, secret.dfvk, secret.orchard_extsk, secret.sapling_ivk, secret.orchard_ivk, secret.encrypted_mnemonic, encrypted_created_at],
+            params![secret.wallet_id, encrypted_account_id, secret.extsk, secret.dfvk, secret.orchard_extsk, secret.sapling_ivk, secret.orchard_ivk, secret.encrypted_mnemonic, encrypted_created_at],
         )?;
         Ok(())
     }
 
     /// Encrypt wallet secret fields before storage
-    /// Note: wallet_id, account_id, and created_at are encrypted in upsert_wallet_secret
+    /// Note: account_id and created_at are encrypted in upsert_wallet_secret.
     pub fn encrypt_wallet_secret_fields(&self, secret: &WalletSecret) -> Result<WalletSecret> {
         Ok(WalletSecret {
-            wallet_id: secret.wallet_id.clone(), // Will be encrypted in upsert_wallet_secret
+            wallet_id: secret.wallet_id.clone(), // Stored plaintext as canonical lookup key
             account_id: secret.account_id,       // Will be encrypted in upsert_wallet_secret
             extsk: self.encrypt_blob(&secret.extsk)?,
             dfvk: self.encrypt_optional_blob(secret.dfvk.as_deref())?, // Encrypt viewing key for privacy
@@ -1285,52 +1462,46 @@ impl<'a> Repository<'a> {
         })
     }
 
-    /// Get wallet secret and decrypt encrypted fields
-    /// Note: Since wallet_id is encrypted, we decrypt all wallet_secrets and filter in memory for privacy
+    /// Get wallet secret and decrypt encrypted fields.
     pub fn get_wallet_secret(&self, wallet_id: &str) -> Result<Option<WalletSecret>> {
-        // Since wallet_id is encrypted, we need to decrypt all and filter
         let mut stmt = self.db.conn().prepare(
-            "SELECT wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at FROM wallet_secrets",
+            "SELECT wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at
+             FROM wallet_secrets
+             WHERE wallet_id = ?1",
         )?;
 
-        let mut rows = stmt.query([])?;
-        while let Some(row) = rows.next()? {
-            // Decrypt all encrypted fields including metadata and viewing keys for privacy
-            let encrypted_wallet_id_db: Vec<u8> = row.get::<_, Vec<u8>>(0)?;
-            let encrypted_account_id: Vec<u8> = row.get::<_, Vec<u8>>(1)?;
-            let encrypted_extsk: Vec<u8> = row.get::<_, Vec<u8>>(2)?;
-            let encrypted_dfvk: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(3)?;
-            let encrypted_orchard_extsk: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(4)?;
-            let encrypted_sapling_ivk: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(5)?;
-            let encrypted_orchard_ivk: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(6)?;
-            let encrypted_mnemonic: Option<Vec<u8>> = row.get::<_, Option<Vec<u8>>>(7)?;
-            let encrypted_created_at: Vec<u8> = row.get::<_, Vec<u8>>(8)?;
+        let mut rows = stmt.query(params![wallet_id])?;
+        if let Some(row) = rows.next()? {
+            let wallet_id_plain: String = row.get(0)?;
+            let encrypted_account_id: Vec<u8> = row.get(1)?;
+            let encrypted_extsk: Vec<u8> = row.get(2)?;
+            let encrypted_dfvk: Option<Vec<u8>> = row.get(3)?;
+            let encrypted_orchard_extsk: Option<Vec<u8>> = row.get(4)?;
+            let encrypted_sapling_ivk: Option<Vec<u8>> = row.get(5)?;
+            let encrypted_orchard_ivk: Option<Vec<u8>> = row.get(6)?;
+            let encrypted_mnemonic: Option<Vec<u8>> = row.get(7)?;
+            let encrypted_created_at: Vec<u8> = row.get(8)?;
 
-            let wallet_id_decrypted = self.decrypt_string(&encrypted_wallet_id_db)?;
+            let account_id = self.decrypt_int64(&encrypted_account_id)?;
+            let extsk = self.decrypt_blob(&encrypted_extsk)?;
+            let dfvk = self.decrypt_optional_blob(encrypted_dfvk)?; // Decrypt viewing key for privacy
+            let orchard_extsk = self.decrypt_optional_blob(encrypted_orchard_extsk)?;
+            let sapling_ivk = self.decrypt_optional_blob(encrypted_sapling_ivk)?; // Decrypt viewing key for privacy
+            let orchard_ivk = self.decrypt_optional_blob(encrypted_orchard_ivk)?; // Decrypt viewing key for privacy
+            let encrypted_mnemonic = self.decrypt_optional_blob(encrypted_mnemonic)?;
+            let created_at = self.decrypt_int64(&encrypted_created_at)?;
 
-            // Filter by wallet_id
-            if wallet_id_decrypted == wallet_id {
-                let account_id = self.decrypt_int64(&encrypted_account_id)?;
-                let extsk = self.decrypt_blob(&encrypted_extsk)?;
-                let dfvk = self.decrypt_optional_blob(encrypted_dfvk)?; // Decrypt viewing key for privacy
-                let orchard_extsk = self.decrypt_optional_blob(encrypted_orchard_extsk)?;
-                let sapling_ivk = self.decrypt_optional_blob(encrypted_sapling_ivk)?; // Decrypt viewing key for privacy
-                let orchard_ivk = self.decrypt_optional_blob(encrypted_orchard_ivk)?; // Decrypt viewing key for privacy
-                let encrypted_mnemonic = self.decrypt_optional_blob(encrypted_mnemonic)?;
-                let created_at = self.decrypt_int64(&encrypted_created_at)?;
-
-                return Ok(Some(WalletSecret {
-                    wallet_id: wallet_id_decrypted,
-                    account_id,
-                    extsk,
-                    dfvk,
-                    orchard_extsk,
-                    sapling_ivk,
-                    orchard_ivk,
-                    encrypted_mnemonic,
-                    created_at,
-                }));
-            }
+            return Ok(Some(WalletSecret {
+                wallet_id: wallet_id_plain,
+                account_id,
+                extsk,
+                dfvk,
+                orchard_extsk,
+                sapling_ivk,
+                orchard_ivk,
+                encrypted_mnemonic,
+                created_at,
+            }));
         }
 
         Ok(None)
@@ -4549,6 +4720,159 @@ mod tests {
     }
 
     #[test]
+    fn test_wallet_secret_upsert_keeps_single_row_per_wallet() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+
+        let secret_v1 = WalletSecret {
+            wallet_id: "test-wallet".to_string(),
+            account_id: 1,
+            extsk: b"extsk-v1".to_vec(),
+            dfvk: Some(b"dfvk-v1".to_vec()),
+            orchard_extsk: None,
+            sapling_ivk: None,
+            orchard_ivk: None,
+            encrypted_mnemonic: Some(b"mnemonic-v1".to_vec()),
+            created_at: 100,
+        };
+        let secret_v2 = WalletSecret {
+            wallet_id: "test-wallet".to_string(),
+            account_id: 1,
+            extsk: b"extsk-v2".to_vec(),
+            dfvk: Some(b"dfvk-v2".to_vec()),
+            orchard_extsk: Some(b"orchard-v2".to_vec()),
+            sapling_ivk: None,
+            orchard_ivk: None,
+            encrypted_mnemonic: Some(b"mnemonic-v2".to_vec()),
+            created_at: 100,
+        };
+
+        let encrypted_v1 = repo.encrypt_wallet_secret_fields(&secret_v1).unwrap();
+        repo.upsert_wallet_secret(&encrypted_v1).unwrap();
+        let encrypted_v2 = repo.encrypt_wallet_secret_fields(&secret_v2).unwrap();
+        repo.upsert_wallet_secret(&encrypted_v2).unwrap();
+
+        let row_count: i64 = db
+            .conn()
+            .query_row("SELECT COUNT(*) FROM wallet_secrets", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(row_count, 1);
+
+        let stored_wallet_id: String = db
+            .conn()
+            .query_row("SELECT wallet_id FROM wallet_secrets", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(stored_wallet_id, "test-wallet");
+
+        let retrieved = repo.get_wallet_secret("test-wallet").unwrap().unwrap();
+        assert_eq!(retrieved.extsk, secret_v2.extsk);
+        assert_eq!(retrieved.dfvk, secret_v2.dfvk);
+        assert_eq!(retrieved.orchard_extsk, secret_v2.orchard_extsk);
+        assert_eq!(retrieved.encrypted_mnemonic, secret_v2.encrypted_mnemonic);
+    }
+
+    #[test]
+    fn test_normalize_wallet_secrets_storage_repairs_legacy_duplicates() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+
+        let legacy_v1 = WalletSecret {
+            wallet_id: "legacy-wallet".to_string(),
+            account_id: 7,
+            extsk: b"legacy-extsk-v1".to_vec(),
+            dfvk: Some(b"legacy-dfvk-v1".to_vec()),
+            orchard_extsk: None,
+            sapling_ivk: None,
+            orchard_ivk: None,
+            encrypted_mnemonic: Some(b"legacy mnemonic v1".to_vec()),
+            created_at: 50,
+        };
+        let legacy_v2 = WalletSecret {
+            wallet_id: "legacy-wallet".to_string(),
+            account_id: 7,
+            extsk: b"legacy-extsk-v2".to_vec(),
+            dfvk: None,
+            orchard_extsk: Some(b"legacy-orchard-v2".to_vec()),
+            sapling_ivk: None,
+            orchard_ivk: None,
+            encrypted_mnemonic: None,
+            created_at: 75,
+        };
+
+        let encrypted_v1 = repo.encrypt_wallet_secret_fields(&legacy_v1).unwrap();
+        let encrypted_v2 = repo.encrypt_wallet_secret_fields(&legacy_v2).unwrap();
+
+        let encrypted_wallet_id_v1 = repo.encrypt_blob(legacy_v1.wallet_id.as_bytes()).unwrap();
+        let encrypted_wallet_id_v2 = repo.encrypt_blob(legacy_v2.wallet_id.as_bytes()).unwrap();
+        let encrypted_account_id = repo.encrypt_int64(legacy_v1.account_id).unwrap();
+        let encrypted_created_at_v1 = repo.encrypt_int64(legacy_v1.created_at).unwrap();
+        let encrypted_created_at_v2 = repo.encrypt_int64(legacy_v2.created_at).unwrap();
+
+        db.conn()
+            .execute(
+                "INSERT INTO wallet_secrets (wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    encrypted_wallet_id_v1,
+                    encrypted_account_id,
+                    encrypted_v1.extsk,
+                    encrypted_v1.dfvk,
+                    encrypted_v1.orchard_extsk,
+                    encrypted_v1.sapling_ivk,
+                    encrypted_v1.orchard_ivk,
+                    encrypted_v1.encrypted_mnemonic,
+                    encrypted_created_at_v1,
+                ],
+            )
+            .unwrap();
+        db.conn()
+            .execute(
+                "INSERT INTO wallet_secrets (wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    encrypted_wallet_id_v2,
+                    repo.encrypt_int64(legacy_v2.account_id).unwrap(),
+                    encrypted_v2.extsk,
+                    encrypted_v2.dfvk,
+                    encrypted_v2.orchard_extsk,
+                    encrypted_v2.sapling_ivk,
+                    encrypted_v2.orchard_ivk,
+                    encrypted_v2.encrypted_mnemonic,
+                    encrypted_created_at_v2,
+                ],
+            )
+            .unwrap();
+
+        let row_count_before: i64 = db
+            .conn()
+            .query_row("SELECT COUNT(*) FROM wallet_secrets", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(row_count_before, 2);
+
+        let normalized = repo.normalize_wallet_secrets_storage().unwrap();
+        assert!(normalized);
+
+        let row_count_after: i64 = db
+            .conn()
+            .query_row("SELECT COUNT(*) FROM wallet_secrets", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(row_count_after, 1);
+
+        let stored_wallet_id: String = db
+            .conn()
+            .query_row("SELECT wallet_id FROM wallet_secrets", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(stored_wallet_id, "legacy-wallet");
+
+        let repaired = repo.get_wallet_secret("legacy-wallet").unwrap().unwrap();
+        assert_eq!(repaired.extsk, legacy_v2.extsk);
+        assert_eq!(repaired.dfvk, legacy_v1.dfvk);
+        assert_eq!(repaired.orchard_extsk, legacy_v2.orchard_extsk);
+        assert_eq!(repaired.encrypted_mnemonic, legacy_v1.encrypted_mnemonic);
+        assert_eq!(repaired.created_at, 50);
+    }
+
+    #[test]
     fn test_note_encryption() {
         let db = test_db();
         let repo = Repository::new(&db);
@@ -4841,120 +5165,6 @@ mod tests {
         assert_eq!(
             loaded.1, plaintext_frontier,
             "Decrypted frontier should match original"
-        );
-    }
-
-    #[test]
-    fn test_anchor_filtered_notes_use_sql_shard_unscanned_gate() {
-        let db = test_db();
-        let repo = Repository::new(&db);
-
-        let account_id = repo
-            .insert_account(&Account {
-                id: None,
-                name: "Anchor SQL Gate".to_string(),
-                created_at: chrono::Utc::now().timestamp(),
-            })
-            .unwrap();
-        let key_id = insert_spendable_account_key(&repo, account_id, 1);
-
-        // Two Sapling notes in different commitment-tree shards.
-        let (note_blob_a, cmu_a) = make_sapling_note_blob_and_commitment(10_000, 0x21, 0x31);
-        let (note_blob_b, cmu_b) = make_sapling_note_blob_and_commitment(20_000, 0x22, 0x32);
-        let note_a = NoteRecord {
-            id: None,
-            account_id,
-            key_id: Some(key_id),
-            note_type: NoteType::Sapling,
-            value: 10_000,
-            nullifier: vec![0xA1; 32],
-            commitment: cmu_a.to_vec(),
-            spent: false,
-            height: 100,
-            txid: vec![0xC1; 32],
-            output_index: 0,
-            address_id: None,
-            spent_txid: None,
-            diversifier: None,
-            note: Some(note_blob_a),
-            position: Some(5), // shard 0
-            memo: None,
-        };
-        let note_b = NoteRecord {
-            id: None,
-            account_id,
-            key_id: Some(key_id),
-            note_type: NoteType::Sapling,
-            value: 20_000,
-            nullifier: vec![0xA2; 32],
-            commitment: cmu_b.to_vec(),
-            spent: false,
-            height: 120,
-            txid: vec![0xC2; 32],
-            output_index: 1,
-            address_id: None,
-            spent_txid: None,
-            diversifier: None,
-            note: Some(note_blob_b),
-            position: Some(60), // synthetic shard 1 (see shard metadata split below)
-            memo: None,
-        };
-        repo.insert_note(&note_a).unwrap();
-        repo.insert_note(&note_b).unwrap();
-
-        // Split shard metadata into two synthetic shards so this test doesn't need
-        // to build a full 2^16 leaf tree just to cross shard boundaries.
-        // shard 0 covers positions [0, 50) at height 100
-        // shard 1 covers positions [50, 100) at height 120
-        db.conn()
-            .execute(
-                "UPDATE sapling_note_shards SET start_position = 0, end_position_exclusive = 50, subtree_start_height = 100, subtree_end_height = 100 WHERE shard_index = 0",
-                [],
-            )
-            .unwrap();
-        db.conn()
-            .execute(
-                r#"
-                INSERT INTO sapling_note_shards (
-                    shard_index,
-                    start_position,
-                    end_position_exclusive,
-                    subtree_start_height,
-                    subtree_end_height,
-                    contains_marked
-                ) VALUES (?1, ?2, ?3, ?4, ?5, 1)
-                "#,
-                params![1_i64, 50_i64, 100_i64, 120_i64, 120_i64],
-            )
-            .unwrap();
-
-        // Mark only note_a's height range as unscanned.
-        db.conn()
-            .execute(
-                r#"
-                INSERT INTO scan_queue (range_start, range_end, priority, status, reason, created_at, updated_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'), datetime('now'))
-                "#,
-                params![90_i64, 110_i64, 40_i64, "pending", "test_unscanned"],
-            )
-            .unwrap();
-
-        seed_sapling_shardtree_checkpoint(
-            &db,
-            200,
-            (note_b.position.unwrap() as usize) + 1,
-            cmu_b,
-            &[(note_a.position.unwrap() as usize, cmu_a)],
-        );
-
-        let selectable = repo
-            .get_unspent_selectable_notes_at_anchor_filtered(account_id, 200, 10, None, None)
-            .unwrap();
-        let values = selectable.iter().map(|n| n.value).collect::<Vec<_>>();
-        assert_eq!(
-            values,
-            vec![20_000],
-            "only shard-unblocked note must remain spendable"
         );
     }
 
