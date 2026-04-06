@@ -256,8 +256,10 @@ import LocalAuthentication
             result(true)
         case "getSyncStatus":
             let status = BackgroundSyncManager.shared.getSyncStatus()
-            let lastCompactSync = status.lastCompactSync.map { Int($0.timeIntervalSince1970 * 1000) } ?? NSNull()
-            let lastDeepSync = status.lastDeepSync.map { Int($0.timeIntervalSince1970 * 1000) } ?? NSNull()
+            let lastCompactSync: Any =
+                status.lastCompactSync.map { Int($0.timeIntervalSince1970 * 1000) } ?? NSNull()
+            let lastDeepSync: Any =
+                status.lastDeepSync.map { Int($0.timeIntervalSince1970 * 1000) } ?? NSNull()
             result([
                 "last_compact_sync": lastCompactSync,
                 "last_deep_sync": lastDeepSync,
