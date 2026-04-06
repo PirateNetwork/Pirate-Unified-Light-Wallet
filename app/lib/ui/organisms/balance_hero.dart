@@ -7,6 +7,8 @@ import '../atoms/p_icon_button.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 
 class BalanceHero extends StatelessWidget {
+  static const String _maskedBalanceText = '*******';
+
   const BalanceHero({
     required this.balanceText,
     this.label = 'Balance',
@@ -30,7 +32,10 @@ class BalanceHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final displayText = isHidden ? '********' : balanceText;
+    final displayText = isHidden ? _maskedBalanceText : balanceText;
+    final displaySecondaryText = secondaryText == null
+        ? null
+        : (isHidden ? _maskedBalanceText : secondaryText!);
     final cardPadding = compact ? PSpacing.md : PSpacing.lg;
     final titleStyle = compact
         ? PTypography.heading4(color: AppColors.textPrimary)
@@ -98,13 +103,13 @@ class BalanceHero extends StatelessWidget {
               ),
             ),
           ),
-          if (!isHidden && secondaryText != null) ...[
+          if (displaySecondaryText != null) ...[
             const SizedBox(height: PSpacing.xs),
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    secondaryText!,
+                    displaySecondaryText,
                     style: PTypography.labelSmall(
                       color: AppColors.textSecondary,
                     ),
