@@ -291,7 +291,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: "3.11"
 
@@ -314,7 +314,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: "3.11"
 
@@ -375,7 +375,7 @@ jobs:
           flutter test --coverage $(find test -name '*_test.dart')
 
       - name: Upload coverage
-        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2
         with:
           files: ./app/coverage/lcov.info
           flags: flutter
@@ -460,7 +460,7 @@ jobs:
 
       - name: Setup Android SDK
         if: matrix.platform == 'Android'
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
 
       - name: Install CocoaPods
         if: matrix.platform == 'iOS'
@@ -562,7 +562,7 @@ jobs:
           cp "crates/target/release/pirate-qortal-cli${{ matrix.bin-ext }}" dist/cli/
 
       - name: Upload CLI binaries
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: ${{ matrix.artifact-name }}
           path: dist/cli/*
@@ -604,7 +604,7 @@ jobs:
           cp -R bindings/android-sdk/. dist/native-ffi/android-sdk/
 
       - name: Upload native FFI package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: native-ffi
           path: dist/native-ffi/**/*
@@ -667,7 +667,7 @@ jobs:
             test
 
       - name: Upload iOS SDK package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: ios-sdk
           path: |
@@ -701,7 +701,7 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
 
       - name: Install Android SDK packages
         run: |
@@ -727,7 +727,7 @@ jobs:
           gradle --no-daemon :smoke-consumer:assembleDebug
 
       - name: Upload Android SDK package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-sdk
           path: |
@@ -774,7 +774,7 @@ jobs:
           ./scripts/prepare-react-native-plugin.sh
 
       - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
           node-version: '20'
 
@@ -790,7 +790,7 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
 
       - name: Install Android SDK packages
         run: |
@@ -842,7 +842,7 @@ jobs:
             > dist/react-native-plugin/react-native-pirate-wallet-package.zip.sha256
 
       - name: Upload React Native plugin package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: react-native-pirate-wallet
           path: |
@@ -895,7 +895,7 @@ jobs:
           ./scripts/prepare-react-native-plugin.sh
 
       - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
         with:
           node-version: '20'
 
@@ -956,7 +956,7 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
 
       - name: Install Android SDK packages
         run: |
@@ -1034,7 +1034,7 @@ jobs:
           ./scripts/generate-provenance.sh dist/android/pirate-unified-wallet-android-unsigned.aab dist/provenance
 
       - name: Upload APK (V8)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-apk-unsigned-v8
           path: |
@@ -1042,7 +1042,7 @@ jobs:
             dist/android/pirate-unified-wallet-android-V8-unsigned.apk.sha256
 
       - name: Upload APK (V7)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-apk-unsigned-v7
           path: |
@@ -1050,7 +1050,7 @@ jobs:
             dist/android/pirate-unified-wallet-android-V7-unsigned.apk.sha256
 
       - name: Upload APK (x86)
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-apk-unsigned-x86
           path: |
@@ -1058,7 +1058,7 @@ jobs:
             dist/android/pirate-unified-wallet-android-x86-unsigned.apk.sha256
 
       - name: Upload AAB
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-aab
           path: |
@@ -1066,13 +1066,13 @@ jobs:
             dist/android/*.aab.sha256
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-provenance
           path: dist/provenance/**/*
@@ -1170,7 +1170,7 @@ jobs:
           ./scripts/generate-provenance.sh dist/ios/pirate-unified-wallet-ios-unsigned.ipa dist/provenance
 
       - name: Upload IPA
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: ios-ipa
           path: |
@@ -1178,7 +1178,7 @@ jobs:
             dist/ios/*.ipa.sha256
 
       - name: Upload iOS Simulator app
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: ios-simulator-app
           path: |
@@ -1186,13 +1186,13 @@ jobs:
             dist/ios/pirate-unified-wallet-ios-simulator.app.zip.sha256
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: ios-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: ios-provenance
           path: dist/provenance/**/*
@@ -1292,7 +1292,7 @@ jobs:
           fi
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: windows-desktop
           path: |
@@ -1301,13 +1301,13 @@ jobs:
             dist/windows/*.sha256
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: windows-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: windows-provenance
           path: dist/provenance/**/*
@@ -1394,7 +1394,7 @@ jobs:
           ./scripts/generate-provenance.sh dist/macos/pirate-unified-wallet-macos-unsigned.dmg dist/provenance
 
       - name: Upload DMG
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: macos-dmg
           path: |
@@ -1402,13 +1402,13 @@ jobs:
             dist/macos/*.dmg.sha256
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: macos-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: macos-provenance
           path: dist/provenance/**/*
@@ -1511,7 +1511,7 @@ jobs:
           ./scripts/generate-provenance.sh dist/linux/pirate-unified-wallet-amd64.deb dist/provenance
 
       - name: Upload AppImage
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: linux-appimage
           path: |
@@ -1519,7 +1519,7 @@ jobs:
             dist/linux/*.AppImage.sha256
 
       - name: Upload Flatpak
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: linux-flatpak
           path: |
@@ -1527,7 +1527,7 @@ jobs:
             com.pirate.wallet.yml
 
       - name: Upload Debian Package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: linux-deb
           path: |
@@ -1536,13 +1536,13 @@ jobs:
             dist/linux/apt-repo/**/*
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: linux-sbom
           path: dist/sbom/**/*
 
       - name: Upload Provenance
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: linux-provenance
           path: dist/provenance/**/*
@@ -1578,7 +1578,7 @@ jobs:
 
       - name: Setup Android SDK
         if: steps.signing.outputs.enabled == 'true'
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
 
       - name: Install Android Build Tools
         if: steps.signing.outputs.enabled == 'true'
@@ -1671,7 +1671,7 @@ jobs:
 
       - name: Upload signed APK (V8)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-apk-signed-v8
           path: |
@@ -1681,7 +1681,7 @@ jobs:
 
       - name: Upload signed APK (V7)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-apk-signed-v7
           path: |
@@ -1691,7 +1691,7 @@ jobs:
 
       - name: Upload signed APK (x86)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-apk-signed-x86
           path: |
@@ -1701,7 +1701,7 @@ jobs:
 
       - name: Upload signed AAB
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: android-aab-signed
           path: |
@@ -1833,7 +1833,7 @@ jobs:
 
       - name: Upload signed Windows artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: windows-signed
           path: |
@@ -1951,7 +1951,7 @@ jobs:
 
       - name: Upload signed DMG
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: macos-dmg-signed
           path: |
@@ -2038,7 +2038,7 @@ jobs:
 
       - name: Upload signed IPA
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: ios-ipa-signed
           path: |
@@ -2103,7 +2103,7 @@ jobs:
 
       - name: Upload Linux signatures
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: linux-signatures
           path: dist/linux/*.asc
@@ -2160,7 +2160,7 @@ jobs:
 
       - name: Upload VirusTotal report
         if: steps.vt.outputs.enabled == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: virustotal-report
           path: vt-report/*
