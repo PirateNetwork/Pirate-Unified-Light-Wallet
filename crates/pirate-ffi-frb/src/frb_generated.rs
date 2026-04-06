@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 236682528;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 798295653;
 
 // Section: executor
 
@@ -166,6 +166,30 @@ fn wire__crate__api__bootstrap_tunnel_impl(
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
                         let output_ok = crate::api::bootstrap_tunnel(api_mode).await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__tunnel__bootstrap_tunnel_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    mode: impl CstDecode<crate::models::TunnelMode>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "bootstrap_tunnel",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_mode = mode.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::tunnel::bootstrap_tunnel(api_mode).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -631,6 +655,42 @@ fn wire__crate__api__delete_wallet_impl(
         },
     )
 }
+fn wire__crate__api__download_external_to_file_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    url: impl CstDecode<String>,
+    destination_path: impl CstDecode<String>,
+    accept: impl CstDecode<Option<String>>,
+    user_agent: impl CstDecode<Option<String>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "download_external_to_file",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_url = url.cst_decode();
+            let api_destination_path = destination_path.cst_decode();
+            let api_accept = accept.cst_decode();
+            let api_user_agent = user_agent.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::download_external_to_file(
+                            api_url,
+                            api_destination_path,
+                            api_accept,
+                            api_user_agent,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__estimate_fee_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     num_outputs: impl CstDecode<usize>,
@@ -662,7 +722,10 @@ fn wire__crate__api__estimate_fee_impl(
         },
     )
 }
-fn wire__crate__api__exit_decoy_mode_impl(port_: flutter_rust_bridge::for_generated::MessagePort) {
+fn wire__crate__api__exit_decoy_mode_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    passphrase: impl CstDecode<String>,
+) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "exit_decoy_mode",
@@ -670,56 +733,11 @@ fn wire__crate__api__exit_decoy_mode_impl(port_: flutter_rust_bridge::for_genera
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
+            let api_passphrase = passphrase.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::exit_decoy_mode()?;
-                        Ok(output_ok)
-                    })(),
-                )
-            }
-        },
-    )
-}
-fn wire__crate__api__export_ivk_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    wallet_id: impl CstDecode<String>,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "export_ivk",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let api_wallet_id = wallet_id.cst_decode();
-            move |context| {
-                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
-                    (move || {
-                        let output_ok = crate::api::export_ivk(api_wallet_id)?;
-                        Ok(output_ok)
-                    })(),
-                )
-            }
-        },
-    )
-}
-fn wire__crate__api__export_ivk_secure_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    wallet_id: impl CstDecode<String>,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "export_ivk_secure",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let api_wallet_id = wallet_id.cst_decode();
-            move |context| {
-                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
-                    (move || {
-                        let output_ok = crate::api::export_ivk_secure(api_wallet_id)?;
+                        let output_ok = crate::api::exit_decoy_mode(api_passphrase)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -753,29 +771,6 @@ fn wire__crate__api__export_key_group_keys_impl(
         },
     )
 }
-fn wire__crate__api__export_orchard_ivk_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    wallet_id: impl CstDecode<String>,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "export_orchard_ivk",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let api_wallet_id = wallet_id.cst_decode();
-            move |context| {
-                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
-                    (move || {
-                        let output_ok = crate::api::export_orchard_ivk(api_wallet_id)?;
-                        Ok(output_ok)
-                    })(),
-                )
-            }
-        },
-    )
-}
 fn wire__crate__api__export_orchard_viewing_key_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -799,13 +794,13 @@ fn wire__crate__api__export_orchard_viewing_key_impl(
         },
     )
 }
-fn wire__crate__api__export_seed_impl(
+fn wire__crate__api__export_sapling_viewing_key_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "export_seed",
+            debug_name: "export_sapling_viewing_key",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -814,7 +809,54 @@ fn wire__crate__api__export_seed_impl(
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::export_seed(api_wallet_id)?;
+                        let output_ok = crate::api::export_sapling_viewing_key(api_wallet_id)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__export_sapling_viewing_key_secure_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "export_sapling_viewing_key_secure",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::export_sapling_viewing_key_secure(api_wallet_id)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__export_seed_raw_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "export_seed_raw",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::export_seed_raw(api_wallet_id)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -867,6 +909,66 @@ fn wire__crate__api__export_seed_with_passphrase_impl(
                             crate::api::export_seed_with_passphrase(api_wallet_id, api_passphrase)?;
                         Ok(output_ok)
                     })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__fetch_external_bytes_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    url: impl CstDecode<String>,
+    accept: impl CstDecode<Option<String>>,
+    user_agent: impl CstDecode<Option<String>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "fetch_external_bytes",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_url = url.cst_decode();
+            let api_accept = accept.cst_decode();
+            let api_user_agent = user_agent.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::fetch_external_bytes(api_url, api_accept, api_user_agent)
+                                .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__fetch_external_text_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    url: impl CstDecode<String>,
+    accept: impl CstDecode<Option<String>>,
+    user_agent: impl CstDecode<Option<String>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "fetch_external_text",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_url = url.cst_decode();
+            let api_accept = accept.cst_decode();
+            let api_user_agent = user_agent.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::fetch_external_text(api_url, api_accept, api_user_agent)
+                                .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
                 )
             }
         },
@@ -1238,27 +1340,6 @@ fn wire__crate__api__get_checkpoint_details_impl(
         },
     )
 }
-fn wire__crate__api__get_duress_passphrase_hash_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "get_duress_passphrase_hash",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            move |context| {
-                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
-                    (move || {
-                        let output_ok = crate::api::get_duress_passphrase_hash()?;
-                        Ok(output_ok)
-                    })(),
-                )
-            }
-        },
-    )
-}
 fn wire__crate__api__get_fee_info_impl(port_: flutter_rust_bridge::for_generated::MessagePort) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -1441,7 +1522,7 @@ fn wire__crate__api__get_recently_used_addresses_impl(
 }
 fn wire__crate__api__get_recommended_background_sync_mode_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
-    _wallet_id: impl CstDecode<String>,
+    wallet_id: impl CstDecode<String>,
     minutes_since_last: impl CstDecode<u32>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
@@ -1451,15 +1532,44 @@ fn wire__crate__api__get_recommended_background_sync_mode_impl(
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
-            let api__wallet_id = _wallet_id.cst_decode();
+            let api_wallet_id = wallet_id.cst_decode();
             let api_minutes_since_last = minutes_since_last.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok = crate::api::get_recommended_background_sync_mode(
-                            api__wallet_id,
+                            api_wallet_id,
                             api_minutes_since_last,
                         )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__background_sync__get_recommended_background_sync_mode_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    minutes_since_last: impl CstDecode<u32>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_recommended_background_sync_mode",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_minutes_since_last = minutes_since_last.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::background_sync::get_recommended_background_sync_mode(
+                                api_wallet_id,
+                                api_minutes_since_last,
+                            )?;
                         Ok(output_ok)
                     })(),
                 )
@@ -1598,6 +1708,28 @@ fn wire__crate__api__get_tor_status_impl(port_: flutter_rust_bridge::for_generat
         },
     )
 }
+fn wire__crate__api__tunnel__get_tor_status_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_tor_status",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::tunnel::get_tor_status().await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__get_tunnel_impl(port_: flutter_rust_bridge::for_generated::MessagePort) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -1610,6 +1742,27 @@ fn wire__crate__api__get_tunnel_impl(port_: flutter_rust_bridge::for_generated::
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok = crate::api::get_tunnel()?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__tunnel__get_tunnel_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_tunnel",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::tunnel::get_tunnel()?;
                         Ok(output_ok)
                     })(),
                 )
@@ -1743,62 +1896,28 @@ fn wire__crate__api__has_panic_pin_impl(port_: flutter_rust_bridge::for_generate
         },
     )
 }
-fn wire__crate__api__import_ivk_impl(
+fn wire__crate__api__import_sapling_viewing_key_as_watch_only_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     name: impl CstDecode<String>,
-    sapling_ivk: impl CstDecode<Option<String>>,
-    orchard_ivk: impl CstDecode<Option<String>>,
-    birthday: impl CstDecode<u32>,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "import_ivk",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let api_name = name.cst_decode();
-            let api_sapling_ivk = sapling_ivk.cst_decode();
-            let api_orchard_ivk = orchard_ivk.cst_decode();
-            let api_birthday = birthday.cst_decode();
-            move |context| {
-                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
-                    (move || {
-                        let output_ok = crate::api::import_ivk(
-                            api_name,
-                            api_sapling_ivk,
-                            api_orchard_ivk,
-                            api_birthday,
-                        )?;
-                        Ok(output_ok)
-                    })(),
-                )
-            }
-        },
-    )
-}
-fn wire__crate__api__import_ivk_as_watch_only_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    name: impl CstDecode<String>,
-    ivk: impl CstDecode<String>,
+    sapling_viewing_key: impl CstDecode<String>,
     birthday_height: impl CstDecode<u32>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "import_ivk_as_watch_only",
+            debug_name: "import_sapling_viewing_key_as_watch_only",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let api_name = name.cst_decode();
-            let api_ivk = ivk.cst_decode();
+            let api_sapling_viewing_key = sapling_viewing_key.cst_decode();
             let api_birthday_height = birthday_height.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::import_ivk_as_watch_only(
+                        let output_ok = crate::api::import_sapling_viewing_key_as_watch_only(
                             api_name,
-                            api_ivk,
+                            api_sapling_viewing_key,
                             api_birthday_height,
                         )?;
                         Ok(output_ok)
@@ -1845,6 +1964,40 @@ fn wire__crate__api__import_spending_key_impl(
         },
     )
 }
+fn wire__crate__api__import_viewing_wallet_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    name: impl CstDecode<String>,
+    sapling_viewing_key: impl CstDecode<Option<String>>,
+    orchard_viewing_key: impl CstDecode<Option<String>>,
+    birthday: impl CstDecode<u32>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "import_viewing_wallet",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_name = name.cst_decode();
+            let api_sapling_viewing_key = sapling_viewing_key.cst_decode();
+            let api_orchard_viewing_key = orchard_viewing_key.cst_decode();
+            let api_birthday = birthday.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::import_viewing_wallet(
+                            api_name,
+                            api_sapling_viewing_key,
+                            api_orchard_viewing_key,
+                            api_birthday,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__is_background_sync_needed_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -1862,6 +2015,32 @@ fn wire__crate__api__is_background_sync_needed_impl(
                     (move || async move {
                         let output_ok =
                             crate::api::is_background_sync_needed(api_wallet_id).await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__background_sync__is_background_sync_needed_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "is_background_sync_needed",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::background_sync::is_background_sync_needed(api_wallet_id)
+                                .await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -1940,7 +2119,7 @@ fn wire__crate__api__label_address_impl(
         },
     )
 }
-fn wire__crate__api__lightd_endpoint_default_impl(
+fn wire__crate__api__endpoint__lightd_endpoint_default_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
@@ -1952,16 +2131,17 @@ fn wire__crate__api__lightd_endpoint_default_impl(
         move || {
             move |context| {
                 transform_result_dco::<_, _, ()>((move || {
-                    let output_ok = Result::<_, ()>::Ok(crate::api::LightdEndpoint::default())?;
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::endpoint::LightdEndpoint::default())?;
                     Ok(output_ok)
                 })())
             }
         },
     )
 }
-fn wire__crate__api__lightd_endpoint_display_string_impl(
+fn wire__crate__api__endpoint__lightd_endpoint_display_string_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
-    that: impl CstDecode<crate::api::LightdEndpoint>,
+    that: impl CstDecode<crate::api::endpoint::LightdEndpoint>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -1973,17 +2153,18 @@ fn wire__crate__api__lightd_endpoint_display_string_impl(
             let api_that = that.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, ()>((move || {
-                    let output_ok =
-                        Result::<_, ()>::Ok(crate::api::LightdEndpoint::display_string(&api_that))?;
+                    let output_ok = Result::<_, ()>::Ok(
+                        crate::api::endpoint::LightdEndpoint::display_string(&api_that),
+                    )?;
                     Ok(output_ok)
                 })())
             }
         },
     )
 }
-fn wire__crate__api__lightd_endpoint_url_impl(
+fn wire__crate__api__endpoint__lightd_endpoint_url_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
-    that: impl CstDecode<crate::api::LightdEndpoint>,
+    that: impl CstDecode<crate::api::endpoint::LightdEndpoint>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -1996,7 +2177,7 @@ fn wire__crate__api__lightd_endpoint_url_impl(
             move |context| {
                 transform_result_dco::<_, _, ()>((move || {
                     let output_ok =
-                        Result::<_, ()>::Ok(crate::api::LightdEndpoint::url(&api_that))?;
+                        Result::<_, ()>::Ok(crate::api::endpoint::LightdEndpoint::url(&api_that))?;
                     Ok(output_ok)
                 })())
             }
@@ -2365,6 +2546,28 @@ fn wire__crate__api__rotate_tor_exit_impl(port_: flutter_rust_bridge::for_genera
         },
     )
 }
+fn wire__crate__api__tunnel__rotate_tor_exit_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "rotate_tor_exit",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::tunnel::rotate_tor_exit().await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__search_address_book_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -2609,6 +2812,45 @@ fn wire__crate__api__set_tor_bridge_settings_impl(
         },
     )
 }
+fn wire__crate__api__tunnel__set_tor_bridge_settings_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    use_bridges: impl CstDecode<bool>,
+    fallback_to_bridges: impl CstDecode<bool>,
+    transport: impl CstDecode<String>,
+    bridge_lines: impl CstDecode<Vec<String>>,
+    transport_path: impl CstDecode<Option<String>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_tor_bridge_settings",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_use_bridges = use_bridges.cst_decode();
+            let api_fallback_to_bridges = fallback_to_bridges.cst_decode();
+            let api_transport = transport.cst_decode();
+            let api_bridge_lines = bridge_lines.cst_decode();
+            let api_transport_path = transport_path.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::tunnel::set_tor_bridge_settings(
+                            api_use_bridges,
+                            api_fallback_to_bridges,
+                            api_transport,
+                            api_bridge_lines,
+                            api_transport_path,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__set_tunnel_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     mode: impl CstDecode<crate::models::TunnelMode>,
@@ -2625,6 +2867,29 @@ fn wire__crate__api__set_tunnel_impl(
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok = crate::api::set_tunnel(api_mode)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__tunnel__set_tunnel_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    mode: impl CstDecode<crate::models::TunnelMode>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_tunnel",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_mode = mode.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::tunnel::set_tunnel(api_mode)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -2674,6 +2939,28 @@ fn wire__crate__api__shutdown_transport_impl(
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
                         let output_ok = crate::api::shutdown_transport().await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__tunnel__shutdown_transport_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "shutdown_transport",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::tunnel::shutdown_transport().await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -2826,6 +3113,42 @@ fn wire__crate__api__start_background_sync_impl(
         },
     )
 }
+fn wire__crate__api__background_sync__start_background_sync_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    mode: impl CstDecode<Option<String>>,
+    max_duration_secs: impl CstDecode<Option<u64>>,
+    max_blocks: impl CstDecode<Option<u64>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "start_background_sync",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_mode = mode.cst_decode();
+            let api_max_duration_secs = max_duration_secs.cst_decode();
+            let api_max_blocks = max_blocks.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::background_sync::start_background_sync(
+                            api_wallet_id,
+                            api_mode,
+                            api_max_duration_secs,
+                            api_max_blocks,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__start_background_sync_round_robin_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     mode: impl CstDecode<Option<String>>,
@@ -2851,6 +3174,40 @@ fn wire__crate__api__start_background_sync_round_robin_impl(
                             api_max_blocks,
                         )
                         .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__background_sync__start_background_sync_round_robin_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    mode: impl CstDecode<Option<String>>,
+    max_duration_secs: impl CstDecode<Option<u64>>,
+    max_blocks: impl CstDecode<Option<u64>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "start_background_sync_round_robin",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_mode = mode.cst_decode();
+            let api_max_duration_secs = max_duration_secs.cst_decode();
+            let api_max_blocks = max_blocks.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::background_sync::start_background_sync_round_robin(
+                                api_mode,
+                                api_max_duration_secs,
+                                api_max_blocks,
+                            )
+                            .await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -2972,6 +3329,32 @@ fn wire__crate__api__test_node_impl(
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
                         let output_ok = crate::api::test_node(api_url, api_tls_pin).await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__tunnel__test_node_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    url: impl CstDecode<String>,
+    tls_pin: impl CstDecode<Option<String>>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "test_node",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_url = url.cst_decode();
+            let api_tls_pin = tls_pin.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::tunnel::test_node(api_url, api_tls_pin).await?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -3118,7 +3501,6 @@ fn wire__crate__api__verify_app_passphrase_impl(
 fn wire__crate__api__verify_duress_passphrase_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     passphrase: impl CstDecode<String>,
-    hash: impl CstDecode<String>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -3128,12 +3510,10 @@ fn wire__crate__api__verify_duress_passphrase_impl(
         },
         move || {
             let api_passphrase = passphrase.cst_decode();
-            let api_hash = hash.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok =
-                            crate::api::verify_duress_passphrase(api_passphrase, api_hash)?;
+                        let output_ok = crate::api::verify_duress_passphrase(api_passphrase)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -3486,12 +3866,12 @@ impl SseDecode for crate::models::BuildInfo {
     }
 }
 
-impl SseDecode for crate::api::CheckpointInfo {
+impl SseDecode for crate::api::diagnostics::CheckpointInfo {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_height = <u32>::sse_decode(deserializer);
         let mut var_timestamp = <i64>::sse_decode(deserializer);
-        return crate::api::CheckpointInfo {
+        return crate::api::diagnostics::CheckpointInfo {
             height: var_height,
             timestamp: var_timestamp,
         };
@@ -3612,7 +3992,7 @@ impl SseDecode for crate::models::KeyTypeInfo {
     }
 }
 
-impl SseDecode for crate::api::LightdEndpoint {
+impl SseDecode for crate::api::endpoint::LightdEndpoint {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_host = <String>::sse_decode(deserializer);
@@ -3620,7 +4000,7 @@ impl SseDecode for crate::api::LightdEndpoint {
         let mut var_useTls = <bool>::sse_decode(deserializer);
         let mut var_tlsPin = <Option<String>>::sse_decode(deserializer);
         let mut var_label = <Option<String>>::sse_decode(deserializer);
-        return crate::api::LightdEndpoint {
+        return crate::api::endpoint::LightdEndpoint {
             host: var_host,
             port: var_port,
             use_tls: var_useTls,
@@ -3872,11 +4252,13 @@ impl SseDecode for Option<bool> {
     }
 }
 
-impl SseDecode for Option<crate::api::CheckpointInfo> {
+impl SseDecode for Option<crate::api::diagnostics::CheckpointInfo> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
-            return Some(<crate::api::CheckpointInfo>::sse_decode(deserializer));
+            return Some(<crate::api::diagnostics::CheckpointInfo>::sse_decode(
+                deserializer,
+            ));
         } else {
             return None;
         }
@@ -3978,14 +4360,14 @@ impl SseDecode for crate::models::PendingTx {
     }
 }
 
-impl SseDecode for crate::api::SeedExportWarnings {
+impl SseDecode for crate::api::seed_export::SeedExportWarnings {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_primary = <String>::sse_decode(deserializer);
         let mut var_secondary = <String>::sse_decode(deserializer);
         let mut var_backupInstructions = <String>::sse_decode(deserializer);
         let mut var_clipboardWarning = <String>::sse_decode(deserializer);
-        return crate::api::SeedExportWarnings {
+        return crate::api::seed_export::SeedExportWarnings {
             primary: var_primary,
             secondary: var_secondary,
             backup_instructions: var_backupInstructions,
@@ -4490,7 +4872,7 @@ impl flutter_rust_bridge::IntoIntoDart<crate::models::BuildInfo> for crate::mode
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::CheckpointInfo {
+impl flutter_rust_bridge::IntoDart for crate::api::diagnostics::CheckpointInfo {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.height.into_into_dart().into_dart(),
@@ -4499,9 +4881,14 @@ impl flutter_rust_bridge::IntoDart for crate::api::CheckpointInfo {
         .into_dart()
     }
 }
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::CheckpointInfo {}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::CheckpointInfo> for crate::api::CheckpointInfo {
-    fn into_into_dart(self) -> crate::api::CheckpointInfo {
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::diagnostics::CheckpointInfo
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::diagnostics::CheckpointInfo>
+    for crate::api::diagnostics::CheckpointInfo
+{
+    fn into_into_dart(self) -> crate::api::diagnostics::CheckpointInfo {
         self
     }
 }
@@ -4609,7 +4996,7 @@ impl flutter_rust_bridge::IntoIntoDart<crate::models::KeyTypeInfo> for crate::mo
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::LightdEndpoint {
+impl flutter_rust_bridge::IntoDart for crate::api::endpoint::LightdEndpoint {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.host.into_into_dart().into_dart(),
@@ -4621,9 +5008,14 @@ impl flutter_rust_bridge::IntoDart for crate::api::LightdEndpoint {
         .into_dart()
     }
 }
-impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::LightdEndpoint {}
-impl flutter_rust_bridge::IntoIntoDart<crate::api::LightdEndpoint> for crate::api::LightdEndpoint {
-    fn into_into_dart(self) -> crate::api::LightdEndpoint {
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::endpoint::LightdEndpoint
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::endpoint::LightdEndpoint>
+    for crate::api::endpoint::LightdEndpoint
+{
+    fn into_into_dart(self) -> crate::api::endpoint::LightdEndpoint {
         self
     }
 }
@@ -4713,7 +5105,7 @@ impl flutter_rust_bridge::IntoIntoDart<crate::models::PendingTx> for crate::mode
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
-impl flutter_rust_bridge::IntoDart for crate::api::SeedExportWarnings {
+impl flutter_rust_bridge::IntoDart for crate::api::seed_export::SeedExportWarnings {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.primary.into_into_dart().into_dart(),
@@ -4725,13 +5117,13 @@ impl flutter_rust_bridge::IntoDart for crate::api::SeedExportWarnings {
     }
 }
 impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
-    for crate::api::SeedExportWarnings
+    for crate::api::seed_export::SeedExportWarnings
 {
 }
-impl flutter_rust_bridge::IntoIntoDart<crate::api::SeedExportWarnings>
-    for crate::api::SeedExportWarnings
+impl flutter_rust_bridge::IntoIntoDart<crate::api::seed_export::SeedExportWarnings>
+    for crate::api::seed_export::SeedExportWarnings
 {
-    fn into_into_dart(self) -> crate::api::SeedExportWarnings {
+    fn into_into_dart(self) -> crate::api::seed_export::SeedExportWarnings {
         self
     }
 }
@@ -5148,7 +5540,7 @@ impl SseEncode for crate::models::BuildInfo {
     }
 }
 
-impl SseEncode for crate::api::CheckpointInfo {
+impl SseEncode for crate::api::diagnostics::CheckpointInfo {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <u32>::sse_encode(self.height, serializer);
@@ -5242,7 +5634,7 @@ impl SseEncode for crate::models::KeyTypeInfo {
     }
 }
 
-impl SseEncode for crate::api::LightdEndpoint {
+impl SseEncode for crate::api::endpoint::LightdEndpoint {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.host, serializer);
@@ -5440,12 +5832,12 @@ impl SseEncode for Option<bool> {
     }
 }
 
-impl SseEncode for Option<crate::api::CheckpointInfo> {
+impl SseEncode for Option<crate::api::diagnostics::CheckpointInfo> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
-            <crate::api::CheckpointInfo>::sse_encode(value, serializer);
+            <crate::api::diagnostics::CheckpointInfo>::sse_encode(value, serializer);
         }
     }
 }
@@ -5524,7 +5916,7 @@ impl SseEncode for crate::models::PendingTx {
     }
 }
 
-impl SseEncode for crate::api::SeedExportWarnings {
+impl SseEncode for crate::api::seed_export::SeedExportWarnings {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.primary, serializer);
@@ -5886,11 +6278,11 @@ mod io {
             unsafe { *flutter_rust_bridge::for_generated::box_from_leak_ptr(self) }
         }
     }
-    impl CstDecode<crate::api::CheckpointInfo> for *mut wire_cst_checkpoint_info {
+    impl CstDecode<crate::api::diagnostics::CheckpointInfo> for *mut wire_cst_checkpoint_info {
         // Codec=Cst (C-struct based), see doc to use other codecs
-        fn cst_decode(self) -> crate::api::CheckpointInfo {
+        fn cst_decode(self) -> crate::api::diagnostics::CheckpointInfo {
             let wrap = unsafe { flutter_rust_bridge::for_generated::box_from_leak_ptr(self) };
-            CstDecode::<crate::api::CheckpointInfo>::cst_decode(*wrap).into()
+            CstDecode::<crate::api::diagnostics::CheckpointInfo>::cst_decode(*wrap).into()
         }
     }
     impl CstDecode<i64> for *mut i64 {
@@ -5899,11 +6291,11 @@ mod io {
             unsafe { *flutter_rust_bridge::for_generated::box_from_leak_ptr(self) }
         }
     }
-    impl CstDecode<crate::api::LightdEndpoint> for *mut wire_cst_lightd_endpoint {
+    impl CstDecode<crate::api::endpoint::LightdEndpoint> for *mut wire_cst_lightd_endpoint {
         // Codec=Cst (C-struct based), see doc to use other codecs
-        fn cst_decode(self) -> crate::api::LightdEndpoint {
+        fn cst_decode(self) -> crate::api::endpoint::LightdEndpoint {
             let wrap = unsafe { flutter_rust_bridge::for_generated::box_from_leak_ptr(self) };
-            CstDecode::<crate::api::LightdEndpoint>::cst_decode(*wrap).into()
+            CstDecode::<crate::api::endpoint::LightdEndpoint>::cst_decode(*wrap).into()
         }
     }
     impl CstDecode<crate::models::PendingTx> for *mut wire_cst_pending_tx {
@@ -5958,10 +6350,10 @@ mod io {
             }
         }
     }
-    impl CstDecode<crate::api::CheckpointInfo> for wire_cst_checkpoint_info {
+    impl CstDecode<crate::api::diagnostics::CheckpointInfo> for wire_cst_checkpoint_info {
         // Codec=Cst (C-struct based), see doc to use other codecs
-        fn cst_decode(self) -> crate::api::CheckpointInfo {
-            crate::api::CheckpointInfo {
+        fn cst_decode(self) -> crate::api::diagnostics::CheckpointInfo {
+            crate::api::diagnostics::CheckpointInfo {
                 height: self.height.cst_decode(),
                 timestamp: self.timestamp.cst_decode(),
             }
@@ -6019,10 +6411,10 @@ mod io {
             }
         }
     }
-    impl CstDecode<crate::api::LightdEndpoint> for wire_cst_lightd_endpoint {
+    impl CstDecode<crate::api::endpoint::LightdEndpoint> for wire_cst_lightd_endpoint {
         // Codec=Cst (C-struct based), see doc to use other codecs
-        fn cst_decode(self) -> crate::api::LightdEndpoint {
-            crate::api::LightdEndpoint {
+        fn cst_decode(self) -> crate::api::endpoint::LightdEndpoint {
+            crate::api::endpoint::LightdEndpoint {
                 host: self.host.cst_decode(),
                 port: self.port.cst_decode(),
                 use_tls: self.use_tls.cst_decode(),
@@ -6206,10 +6598,10 @@ mod io {
             }
         }
     }
-    impl CstDecode<crate::api::SeedExportWarnings> for wire_cst_seed_export_warnings {
+    impl CstDecode<crate::api::seed_export::SeedExportWarnings> for wire_cst_seed_export_warnings {
         // Codec=Cst (C-struct based), see doc to use other codecs
-        fn cst_decode(self) -> crate::api::SeedExportWarnings {
-            crate::api::SeedExportWarnings {
+        fn cst_decode(self) -> crate::api::seed_export::SeedExportWarnings {
+            crate::api::seed_export::SeedExportWarnings {
                 primary: self.primary.cst_decode(),
                 secondary: self.secondary.cst_decode(),
                 backup_instructions: self.backup_instructions.cst_decode(),
@@ -6893,6 +7285,14 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__tunnel__bootstrap_tunnel(
+        port_: i64,
+        mode: *mut wire_cst_tunnel_mode,
+    ) {
+        wire__crate__api__tunnel__bootstrap_tunnel_impl(port_, mode)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__broadcast_tx(
         port_: i64,
         signed: *mut wire_cst_signed_tx,
@@ -7060,6 +7460,23 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__download_external_to_file(
+        port_: i64,
+        url: *mut wire_cst_list_prim_u_8_strict,
+        destination_path: *mut wire_cst_list_prim_u_8_strict,
+        accept: *mut wire_cst_list_prim_u_8_strict,
+        user_agent: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__download_external_to_file_impl(
+            port_,
+            url,
+            destination_path,
+            accept,
+            user_agent,
+        )
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__estimate_fee(
         port_: i64,
         num_outputs: usize,
@@ -7070,24 +7487,11 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__exit_decoy_mode(port_: i64) {
-        wire__crate__api__exit_decoy_mode_impl(port_)
-    }
-
-    #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_ivk(
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__exit_decoy_mode(
         port_: i64,
-        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        passphrase: *mut wire_cst_list_prim_u_8_strict,
     ) {
-        wire__crate__api__export_ivk_impl(port_, wallet_id)
-    }
-
-    #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_ivk_secure(
-        port_: i64,
-        wallet_id: *mut wire_cst_list_prim_u_8_strict,
-    ) {
-        wire__crate__api__export_ivk_secure_impl(port_, wallet_id)
+        wire__crate__api__exit_decoy_mode_impl(port_, passphrase)
     }
 
     #[unsafe(no_mangle)]
@@ -7100,14 +7504,6 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_orchard_ivk(
-        port_: i64,
-        wallet_id: *mut wire_cst_list_prim_u_8_strict,
-    ) {
-        wire__crate__api__export_orchard_ivk_impl(port_, wallet_id)
-    }
-
-    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_orchard_viewing_key(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
@@ -7116,11 +7512,27 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_seed(
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_sapling_viewing_key(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
     ) {
-        wire__crate__api__export_seed_impl(port_, wallet_id)
+        wire__crate__api__export_sapling_viewing_key_impl(port_, wallet_id)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_sapling_viewing_key_secure(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__export_sapling_viewing_key_secure_impl(port_, wallet_id)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_seed_raw(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__export_seed_raw_impl(port_, wallet_id)
     }
 
     #[unsafe(no_mangle)]
@@ -7138,6 +7550,26 @@ mod io {
         passphrase: *mut wire_cst_list_prim_u_8_strict,
     ) {
         wire__crate__api__export_seed_with_passphrase_impl(port_, wallet_id, passphrase)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__fetch_external_bytes(
+        port_: i64,
+        url: *mut wire_cst_list_prim_u_8_strict,
+        accept: *mut wire_cst_list_prim_u_8_strict,
+        user_agent: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__fetch_external_bytes_impl(port_, url, accept, user_agent)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__fetch_external_text(
+        port_: i64,
+        url: *mut wire_cst_list_prim_u_8_strict,
+        accept: *mut wire_cst_list_prim_u_8_strict,
+        user_agent: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__fetch_external_text_impl(port_, url, accept, user_agent)
     }
 
     #[unsafe(no_mangle)]
@@ -7261,13 +7693,6 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_duress_passphrase_hash(
-        port_: i64,
-    ) {
-        wire__crate__api__get_duress_passphrase_hash_impl(port_)
-    }
-
-    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_fee_info(port_: i64) {
         wire__crate__api__get_fee_info_impl(port_)
     }
@@ -7329,12 +7754,25 @@ mod io {
     #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_recommended_background_sync_mode(
         port_: i64,
-        _wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
         minutes_since_last: u32,
     ) {
         wire__crate__api__get_recommended_background_sync_mode_impl(
             port_,
-            _wallet_id,
+            wallet_id,
+            minutes_since_last,
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__background_sync__get_recommended_background_sync_mode(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        minutes_since_last: u32,
+    ) {
+        wire__crate__api__background_sync__get_recommended_background_sync_mode_impl(
+            port_,
+            wallet_id,
             minutes_since_last,
         )
     }
@@ -7379,8 +7817,18 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__tunnel__get_tor_status(port_: i64) {
+        wire__crate__api__tunnel__get_tor_status_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_tunnel(port_: i64) {
         wire__crate__api__get_tunnel_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__tunnel__get_tunnel(port_: i64) {
+        wire__crate__api__tunnel__get_tunnel_impl(port_)
     }
 
     #[unsafe(no_mangle)]
@@ -7420,24 +7868,18 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__import_ivk(
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__import_sapling_viewing_key_as_watch_only(
         port_: i64,
         name: *mut wire_cst_list_prim_u_8_strict,
-        sapling_ivk: *mut wire_cst_list_prim_u_8_strict,
-        orchard_ivk: *mut wire_cst_list_prim_u_8_strict,
-        birthday: u32,
-    ) {
-        wire__crate__api__import_ivk_impl(port_, name, sapling_ivk, orchard_ivk, birthday)
-    }
-
-    #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__import_ivk_as_watch_only(
-        port_: i64,
-        name: *mut wire_cst_list_prim_u_8_strict,
-        ivk: *mut wire_cst_list_prim_u_8_strict,
+        sapling_viewing_key: *mut wire_cst_list_prim_u_8_strict,
         birthday_height: u32,
     ) {
-        wire__crate__api__import_ivk_as_watch_only_impl(port_, name, ivk, birthday_height)
+        wire__crate__api__import_sapling_viewing_key_as_watch_only_impl(
+            port_,
+            name,
+            sapling_viewing_key,
+            birthday_height,
+        )
     }
 
     #[unsafe(no_mangle)]
@@ -7460,11 +7902,36 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__import_viewing_wallet(
+        port_: i64,
+        name: *mut wire_cst_list_prim_u_8_strict,
+        sapling_viewing_key: *mut wire_cst_list_prim_u_8_strict,
+        orchard_viewing_key: *mut wire_cst_list_prim_u_8_strict,
+        birthday: u32,
+    ) {
+        wire__crate__api__import_viewing_wallet_impl(
+            port_,
+            name,
+            sapling_viewing_key,
+            orchard_viewing_key,
+            birthday,
+        )
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__is_background_sync_needed(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
     ) {
         wire__crate__api__is_background_sync_needed_impl(port_, wallet_id)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__background_sync__is_background_sync_needed(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__background_sync__is_background_sync_needed_impl(port_, wallet_id)
     }
 
     #[unsafe(no_mangle)]
@@ -7491,24 +7958,26 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__lightd_endpoint_default(port_: i64) {
-        wire__crate__api__lightd_endpoint_default_impl(port_)
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__endpoint__lightd_endpoint_default(
+        port_: i64,
+    ) {
+        wire__crate__api__endpoint__lightd_endpoint_default_impl(port_)
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__lightd_endpoint_display_string(
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__endpoint__lightd_endpoint_display_string(
         port_: i64,
         that: *mut wire_cst_lightd_endpoint,
     ) {
-        wire__crate__api__lightd_endpoint_display_string_impl(port_, that)
+        wire__crate__api__endpoint__lightd_endpoint_display_string_impl(port_, that)
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__lightd_endpoint_url(
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__endpoint__lightd_endpoint_url(
         port_: i64,
         that: *mut wire_cst_lightd_endpoint,
     ) {
-        wire__crate__api__lightd_endpoint_url_impl(port_, that)
+        wire__crate__api__endpoint__lightd_endpoint_url_impl(port_, that)
     }
 
     #[unsafe(no_mangle)]
@@ -7634,6 +8103,11 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__tunnel__rotate_tor_exit(port_: i64) {
+        wire__crate__api__tunnel__rotate_tor_exit_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__search_address_book(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
@@ -7723,11 +8197,38 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__tunnel__set_tor_bridge_settings(
+        port_: i64,
+        use_bridges: bool,
+        fallback_to_bridges: bool,
+        transport: *mut wire_cst_list_prim_u_8_strict,
+        bridge_lines: *mut wire_cst_list_String,
+        transport_path: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__tunnel__set_tor_bridge_settings_impl(
+            port_,
+            use_bridges,
+            fallback_to_bridges,
+            transport,
+            bridge_lines,
+            transport_path,
+        )
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_tunnel(
         port_: i64,
         mode: *mut wire_cst_tunnel_mode,
     ) {
         wire__crate__api__set_tunnel_impl(port_, mode)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__tunnel__set_tunnel(
+        port_: i64,
+        mode: *mut wire_cst_tunnel_mode,
+    ) {
+        wire__crate__api__tunnel__set_tunnel_impl(port_, mode)
     }
 
     #[unsafe(no_mangle)]
@@ -7742,6 +8243,13 @@ mod io {
     #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__shutdown_transport(port_: i64) {
         wire__crate__api__shutdown_transport_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__tunnel__shutdown_transport(
+        port_: i64,
+    ) {
+        wire__crate__api__tunnel__shutdown_transport_impl(port_)
     }
 
     #[unsafe(no_mangle)]
@@ -7803,6 +8311,23 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__background_sync__start_background_sync(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        mode: *mut wire_cst_list_prim_u_8_strict,
+        max_duration_secs: *mut u64,
+        max_blocks: *mut u64,
+    ) {
+        wire__crate__api__background_sync__start_background_sync_impl(
+            port_,
+            wallet_id,
+            mode,
+            max_duration_secs,
+            max_blocks,
+        )
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__start_background_sync_round_robin(
         port_: i64,
         mode: *mut wire_cst_list_prim_u_8_strict,
@@ -7810,6 +8335,21 @@ mod io {
         max_blocks: *mut u64,
     ) {
         wire__crate__api__start_background_sync_round_robin_impl(
+            port_,
+            mode,
+            max_duration_secs,
+            max_blocks,
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__background_sync__start_background_sync_round_robin(
+        port_: i64,
+        mode: *mut wire_cst_list_prim_u_8_strict,
+        max_duration_secs: *mut u64,
+        max_blocks: *mut u64,
+    ) {
+        wire__crate__api__background_sync__start_background_sync_round_robin_impl(
             port_,
             mode,
             max_duration_secs,
@@ -7857,6 +8397,15 @@ mod io {
         tls_pin: *mut wire_cst_list_prim_u_8_strict,
     ) {
         wire__crate__api__test_node_impl(port_, url, tls_pin)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__tunnel__test_node(
+        port_: i64,
+        url: *mut wire_cst_list_prim_u_8_strict,
+        tls_pin: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__tunnel__test_node_impl(port_, url, tls_pin)
     }
 
     #[unsafe(no_mangle)]
@@ -7917,9 +8466,8 @@ mod io {
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__verify_duress_passphrase(
         port_: i64,
         passphrase: *mut wire_cst_list_prim_u_8_strict,
-        hash: *mut wire_cst_list_prim_u_8_strict,
     ) {
-        wire__crate__api__verify_duress_passphrase_impl(port_, passphrase, hash)
+        wire__crate__api__verify_duress_passphrase_impl(port_, passphrase)
     }
 
     #[unsafe(no_mangle)]
@@ -8739,11 +9287,11 @@ mod web {
             }
         }
     }
-    impl CstDecode<crate::api::CheckpointInfo>
+    impl CstDecode<crate::api::diagnostics::CheckpointInfo>
         for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
     {
         // Codec=Cst (C-struct based), see doc to use other codecs
-        fn cst_decode(self) -> crate::api::CheckpointInfo {
+        fn cst_decode(self) -> crate::api::diagnostics::CheckpointInfo {
             let self_ = self
                 .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
                 .unwrap();
@@ -8753,7 +9301,7 @@ mod web {
                 "Expected 2 elements, got {}",
                 self_.length()
             );
-            crate::api::CheckpointInfo {
+            crate::api::diagnostics::CheckpointInfo {
                 height: self_.get(0).cst_decode(),
                 timestamp: self_.get(1).cst_decode(),
             }
@@ -8853,11 +9401,11 @@ mod web {
             }
         }
     }
-    impl CstDecode<crate::api::LightdEndpoint>
+    impl CstDecode<crate::api::endpoint::LightdEndpoint>
         for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
     {
         // Codec=Cst (C-struct based), see doc to use other codecs
-        fn cst_decode(self) -> crate::api::LightdEndpoint {
+        fn cst_decode(self) -> crate::api::endpoint::LightdEndpoint {
             let self_ = self
                 .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
                 .unwrap();
@@ -8867,7 +9415,7 @@ mod web {
                 "Expected 5 elements, got {}",
                 self_.length()
             );
-            crate::api::LightdEndpoint {
+            crate::api::endpoint::LightdEndpoint {
                 host: self_.get(0).cst_decode(),
                 port: self_.get(1).cst_decode(),
                 use_tls: self_.get(2).cst_decode(),
@@ -9117,11 +9665,11 @@ mod web {
             }
         }
     }
-    impl CstDecode<crate::api::SeedExportWarnings>
+    impl CstDecode<crate::api::seed_export::SeedExportWarnings>
         for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
     {
         // Codec=Cst (C-struct based), see doc to use other codecs
-        fn cst_decode(self) -> crate::api::SeedExportWarnings {
+        fn cst_decode(self) -> crate::api::seed_export::SeedExportWarnings {
             let self_ = self
                 .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
                 .unwrap();
@@ -9131,7 +9679,7 @@ mod web {
                 "Expected 4 elements, got {}",
                 self_.length()
             );
-            crate::api::SeedExportWarnings {
+            crate::api::seed_export::SeedExportWarnings {
                 primary: self_.get(0).cst_decode(),
                 secondary: self_.get(1).cst_decode(),
                 backup_instructions: self_.get(2).cst_decode(),
@@ -9565,6 +10113,14 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__tunnel__bootstrap_tunnel(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        mode: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+    ) {
+        wire__crate__api__tunnel__bootstrap_tunnel_impl(port_, mode)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__broadcast_tx(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         signed: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
@@ -9738,6 +10294,23 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__download_external_to_file(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        url: String,
+        destination_path: String,
+        accept: Option<String>,
+        user_agent: Option<String>,
+    ) {
+        wire__crate__api__download_external_to_file_impl(
+            port_,
+            url,
+            destination_path,
+            accept,
+            user_agent,
+        )
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__estimate_fee(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         num_outputs: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
@@ -9750,24 +10323,9 @@ mod web {
     #[wasm_bindgen]
     pub fn wire__crate__api__exit_decoy_mode(
         port_: flutter_rust_bridge::for_generated::MessagePort,
+        passphrase: String,
     ) {
-        wire__crate__api__exit_decoy_mode_impl(port_)
-    }
-
-    #[wasm_bindgen]
-    pub fn wire__crate__api__export_ivk(
-        port_: flutter_rust_bridge::for_generated::MessagePort,
-        wallet_id: String,
-    ) {
-        wire__crate__api__export_ivk_impl(port_, wallet_id)
-    }
-
-    #[wasm_bindgen]
-    pub fn wire__crate__api__export_ivk_secure(
-        port_: flutter_rust_bridge::for_generated::MessagePort,
-        wallet_id: String,
-    ) {
-        wire__crate__api__export_ivk_secure_impl(port_, wallet_id)
+        wire__crate__api__exit_decoy_mode_impl(port_, passphrase)
     }
 
     #[wasm_bindgen]
@@ -9780,14 +10338,6 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn wire__crate__api__export_orchard_ivk(
-        port_: flutter_rust_bridge::for_generated::MessagePort,
-        wallet_id: String,
-    ) {
-        wire__crate__api__export_orchard_ivk_impl(port_, wallet_id)
-    }
-
-    #[wasm_bindgen]
     pub fn wire__crate__api__export_orchard_viewing_key(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
@@ -9796,11 +10346,27 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn wire__crate__api__export_seed(
+    pub fn wire__crate__api__export_sapling_viewing_key(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
     ) {
-        wire__crate__api__export_seed_impl(port_, wallet_id)
+        wire__crate__api__export_sapling_viewing_key_impl(port_, wallet_id)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__export_sapling_viewing_key_secure(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+    ) {
+        wire__crate__api__export_sapling_viewing_key_secure_impl(port_, wallet_id)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__export_seed_raw(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+    ) {
+        wire__crate__api__export_seed_raw_impl(port_, wallet_id)
     }
 
     #[wasm_bindgen]
@@ -9818,6 +10384,26 @@ mod web {
         passphrase: String,
     ) {
         wire__crate__api__export_seed_with_passphrase_impl(port_, wallet_id, passphrase)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__fetch_external_bytes(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        url: String,
+        accept: Option<String>,
+        user_agent: Option<String>,
+    ) {
+        wire__crate__api__fetch_external_bytes_impl(port_, url, accept, user_agent)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__fetch_external_text(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        url: String,
+        accept: Option<String>,
+        user_agent: Option<String>,
+    ) {
+        wire__crate__api__fetch_external_text_impl(port_, url, accept, user_agent)
     }
 
     #[wasm_bindgen]
@@ -9945,13 +10531,6 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn wire__crate__api__get_duress_passphrase_hash(
-        port_: flutter_rust_bridge::for_generated::MessagePort,
-    ) {
-        wire__crate__api__get_duress_passphrase_hash_impl(port_)
-    }
-
-    #[wasm_bindgen]
     pub fn wire__crate__api__get_fee_info(port_: flutter_rust_bridge::for_generated::MessagePort) {
         wire__crate__api__get_fee_info_impl(port_)
     }
@@ -10015,12 +10594,25 @@ mod web {
     #[wasm_bindgen]
     pub fn wire__crate__api__get_recommended_background_sync_mode(
         port_: flutter_rust_bridge::for_generated::MessagePort,
-        _wallet_id: String,
+        wallet_id: String,
         minutes_since_last: u32,
     ) {
         wire__crate__api__get_recommended_background_sync_mode_impl(
             port_,
-            _wallet_id,
+            wallet_id,
+            minutes_since_last,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__background_sync__get_recommended_background_sync_mode(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        minutes_since_last: u32,
+    ) {
+        wire__crate__api__background_sync__get_recommended_background_sync_mode_impl(
+            port_,
+            wallet_id,
             minutes_since_last,
         )
     }
@@ -10071,8 +10663,22 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__tunnel__get_tor_status(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__tunnel__get_tor_status_impl(port_)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__get_tunnel(port_: flutter_rust_bridge::for_generated::MessagePort) {
         wire__crate__api__get_tunnel_impl(port_)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__tunnel__get_tunnel(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__tunnel__get_tunnel_impl(port_)
     }
 
     #[wasm_bindgen]
@@ -10118,24 +10724,18 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn wire__crate__api__import_ivk(
+    pub fn wire__crate__api__import_sapling_viewing_key_as_watch_only(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         name: String,
-        sapling_ivk: Option<String>,
-        orchard_ivk: Option<String>,
-        birthday: u32,
-    ) {
-        wire__crate__api__import_ivk_impl(port_, name, sapling_ivk, orchard_ivk, birthday)
-    }
-
-    #[wasm_bindgen]
-    pub fn wire__crate__api__import_ivk_as_watch_only(
-        port_: flutter_rust_bridge::for_generated::MessagePort,
-        name: String,
-        ivk: String,
+        sapling_viewing_key: String,
         birthday_height: u32,
     ) {
-        wire__crate__api__import_ivk_as_watch_only_impl(port_, name, ivk, birthday_height)
+        wire__crate__api__import_sapling_viewing_key_as_watch_only_impl(
+            port_,
+            name,
+            sapling_viewing_key,
+            birthday_height,
+        )
     }
 
     #[wasm_bindgen]
@@ -10158,11 +10758,36 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__import_viewing_wallet(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        name: String,
+        sapling_viewing_key: Option<String>,
+        orchard_viewing_key: Option<String>,
+        birthday: u32,
+    ) {
+        wire__crate__api__import_viewing_wallet_impl(
+            port_,
+            name,
+            sapling_viewing_key,
+            orchard_viewing_key,
+            birthday,
+        )
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__is_background_sync_needed(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
     ) {
         wire__crate__api__is_background_sync_needed_impl(port_, wallet_id)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__background_sync__is_background_sync_needed(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+    ) {
+        wire__crate__api__background_sync__is_background_sync_needed_impl(port_, wallet_id)
     }
 
     #[wasm_bindgen]
@@ -10189,26 +10814,26 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn wire__crate__api__lightd_endpoint_default(
+    pub fn wire__crate__api__endpoint__lightd_endpoint_default(
         port_: flutter_rust_bridge::for_generated::MessagePort,
     ) {
-        wire__crate__api__lightd_endpoint_default_impl(port_)
+        wire__crate__api__endpoint__lightd_endpoint_default_impl(port_)
     }
 
     #[wasm_bindgen]
-    pub fn wire__crate__api__lightd_endpoint_display_string(
+    pub fn wire__crate__api__endpoint__lightd_endpoint_display_string(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         that: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__lightd_endpoint_display_string_impl(port_, that)
+        wire__crate__api__endpoint__lightd_endpoint_display_string_impl(port_, that)
     }
 
     #[wasm_bindgen]
-    pub fn wire__crate__api__lightd_endpoint_url(
+    pub fn wire__crate__api__endpoint__lightd_endpoint_url(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         that: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__lightd_endpoint_url_impl(port_, that)
+        wire__crate__api__endpoint__lightd_endpoint_url_impl(port_, that)
     }
 
     #[wasm_bindgen]
@@ -10336,6 +10961,13 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__tunnel__rotate_tor_exit(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__tunnel__rotate_tor_exit_impl(port_)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__search_address_book(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
@@ -10425,11 +11057,38 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__tunnel__set_tor_bridge_settings(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        use_bridges: bool,
+        fallback_to_bridges: bool,
+        transport: String,
+        bridge_lines: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        transport_path: Option<String>,
+    ) {
+        wire__crate__api__tunnel__set_tor_bridge_settings_impl(
+            port_,
+            use_bridges,
+            fallback_to_bridges,
+            transport,
+            bridge_lines,
+            transport_path,
+        )
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__set_tunnel(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         mode: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
         wire__crate__api__set_tunnel_impl(port_, mode)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__tunnel__set_tunnel(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        mode: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+    ) {
+        wire__crate__api__tunnel__set_tunnel_impl(port_, mode)
     }
 
     #[wasm_bindgen]
@@ -10446,6 +11105,13 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
     ) {
         wire__crate__api__shutdown_transport_impl(port_)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__tunnel__shutdown_transport(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__tunnel__shutdown_transport_impl(port_)
     }
 
     #[wasm_bindgen]
@@ -10509,6 +11175,23 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__background_sync__start_background_sync(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        mode: Option<String>,
+        max_duration_secs: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        max_blocks: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+    ) {
+        wire__crate__api__background_sync__start_background_sync_impl(
+            port_,
+            wallet_id,
+            mode,
+            max_duration_secs,
+            max_blocks,
+        )
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__start_background_sync_round_robin(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         mode: Option<String>,
@@ -10516,6 +11199,21 @@ mod web {
         max_blocks: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
         wire__crate__api__start_background_sync_round_robin_impl(
+            port_,
+            mode,
+            max_duration_secs,
+            max_blocks,
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__background_sync__start_background_sync_round_robin(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        mode: Option<String>,
+        max_duration_secs: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        max_blocks: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+    ) {
+        wire__crate__api__background_sync__start_background_sync_round_robin_impl(
             port_,
             mode,
             max_duration_secs,
@@ -10563,6 +11261,15 @@ mod web {
         tls_pin: Option<String>,
     ) {
         wire__crate__api__test_node_impl(port_, url, tls_pin)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__tunnel__test_node(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        url: String,
+        tls_pin: Option<String>,
+    ) {
+        wire__crate__api__tunnel__test_node_impl(port_, url, tls_pin)
     }
 
     #[wasm_bindgen]
@@ -10623,9 +11330,8 @@ mod web {
     pub fn wire__crate__api__verify_duress_passphrase(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         passphrase: String,
-        hash: String,
     ) {
-        wire__crate__api__verify_duress_passphrase_impl(port_, passphrase, hash)
+        wire__crate__api__verify_duress_passphrase_impl(port_, passphrase)
     }
 
     #[wasm_bindgen]
