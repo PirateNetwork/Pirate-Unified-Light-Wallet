@@ -1,3 +1,9 @@
+use super::tx_flow::{
+    add_pending_change, auto_select_spend_key_id_for_amount, choose_multi_key_change_sink_key_id,
+    clear_pending_changes, has_pending_changes, infer_contributing_key_ids_for_amount,
+    normalize_filter_ids, note_balances_by_key_id, resolve_pending_change, resolve_spend_key_id,
+    txid_hex_variants_from_bytes, SpendSelectionAnchors,
+};
 use super::*;
 use incrementalmerkletree::Retention;
 use pirate_core::selection::SelectableNote;
@@ -203,7 +209,7 @@ fn test_txid_hex_variants_cover_both_byte_orders() {
 #[test]
 fn test_pending_change_clears_when_matching_txid_is_detected() {
     let wallet_id = format!("wallet-{}", uuid::Uuid::new_v4());
-    PENDING_CHANGES.write().remove(&wallet_id);
+    clear_pending_changes(&wallet_id);
 
     let txid: Vec<u8> = (1u8..=32u8).collect();
     let txid_hex = hex::encode(&txid);
@@ -220,7 +226,7 @@ fn test_pending_change_clears_when_matching_txid_is_detected() {
         .collect();
 
     assert_eq!(resolve_pending_change(&wallet_id, &known), 0);
-    assert!(PENDING_CHANGES.read().get(&wallet_id).is_none());
+    assert!(!has_pending_changes(&wallet_id));
 }
 
 #[test]

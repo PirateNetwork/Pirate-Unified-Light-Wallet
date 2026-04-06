@@ -85,11 +85,11 @@ fn encode_hex_opt(bytes: Option<[u8; 32]>) -> String {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct SpendSelectionAnchors {
-    target_height: u64,
-    conservative_anchor_height: u64,
-    sapling_anchor_height: u64,
-    orchard_anchor_height: u64,
+pub(super) struct SpendSelectionAnchors {
+    pub(super) target_height: u64,
+    pub(super) conservative_anchor_height: u64,
+    pub(super) sapling_anchor_height: u64,
+    pub(super) orchard_anchor_height: u64,
 }
 
 fn compute_spend_selection_anchors(
@@ -164,7 +164,7 @@ fn load_selectable_notes_for_send(
     Ok(combined)
 }
 
-fn normalize_filter_ids(ids: Option<Vec<i64>>) -> Option<Vec<i64>> {
+pub(super) fn normalize_filter_ids(ids: Option<Vec<i64>>) -> Option<Vec<i64>> {
     let values = ids?;
     let mut unique = HashSet::new();
     let mut normalized = Vec::new();
@@ -193,7 +193,7 @@ fn validate_spendable_key(repo: &Repository, account_id: i64, key_id: i64) -> Re
     Ok(())
 }
 
-fn resolve_spend_key_id(
+pub(super) fn resolve_spend_key_id(
     repo: &Repository,
     account_id: i64,
     key_ids_filter: Option<&[i64]>,
@@ -262,7 +262,7 @@ fn resolve_spend_key_id(
     Ok(selected_key_id)
 }
 
-fn auto_select_spend_key_id_for_amount(
+pub(super) fn auto_select_spend_key_id_for_amount(
     repo: &Repository,
     account_id: i64,
     required_total: u64,
@@ -314,7 +314,9 @@ fn auto_select_spend_key_id_for_amount(
     Ok(Some(qualifying[0].0))
 }
 
-fn note_balances_by_key_id(notes: &[pirate_core::selection::SelectableNote]) -> HashMap<i64, u64> {
+pub(super) fn note_balances_by_key_id(
+    notes: &[pirate_core::selection::SelectableNote],
+) -> HashMap<i64, u64> {
     let mut balances = HashMap::<i64, u64>::new();
     for note in notes {
         let Some(key_id) = note.key_id else {
@@ -326,7 +328,7 @@ fn note_balances_by_key_id(notes: &[pirate_core::selection::SelectableNote]) -> 
     balances
 }
 
-fn infer_contributing_key_ids_for_amount(
+pub(super) fn infer_contributing_key_ids_for_amount(
     notes: &[pirate_core::selection::SelectableNote],
     required_total: u64,
 ) -> HashSet<i64> {
@@ -348,7 +350,7 @@ fn infer_contributing_key_ids_for_amount(
     contributing
 }
 
-fn choose_multi_key_change_sink_key_id(
+pub(super) fn choose_multi_key_change_sink_key_id(
     account_keys_by_id: &HashMap<i64, AccountKey>,
     contributing_key_ids: &HashSet<i64>,
     balances_by_key: &HashMap<i64, u64>,
@@ -534,7 +536,7 @@ pub(super) fn txid_hex_variants_from_bytes(txid_bytes: &[u8]) -> Vec<String> {
     }
 }
 
-fn add_pending_change(wallet_id: &WalletId, txid: &str, change_amount: u64) {
+pub(super) fn add_pending_change(wallet_id: &WalletId, txid: &str, change_amount: u64) {
     if change_amount == 0 {
         return;
     }
@@ -555,6 +557,16 @@ fn add_pending_change(wallet_id: &WalletId, txid: &str, change_amount: u64) {
         change_amount,
         broadcast_at_ms: now,
     });
+}
+
+#[cfg(test)]
+pub(super) fn clear_pending_changes(wallet_id: &WalletId) {
+    PENDING_CHANGES.write().remove(wallet_id);
+}
+
+#[cfg(test)]
+pub(super) fn has_pending_changes(wallet_id: &WalletId) -> bool {
+    PENDING_CHANGES.read().contains_key(wallet_id)
 }
 
 pub(super) fn resolve_pending_change(wallet_id: &WalletId, known_txids: &HashSet<String>) -> u64 {
