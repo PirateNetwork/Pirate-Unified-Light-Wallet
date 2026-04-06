@@ -304,28 +304,7 @@ impl DecryptedNote {
 /// Note: This expects **already-decrypted memo bytes** (from full transaction fetch),
 /// not ciphertext. Compact trial decryption does not provide memo bytes.
 fn decode_memo(memo_bytes: &[u8]) -> Option<String> {
-    if memo_bytes.is_empty() {
-        return None;
-    }
-
-    let memo_bytes = if memo_bytes.len() > 512 {
-        &memo_bytes[..512]
-    } else {
-        memo_bytes
-    };
-
-    // If first byte > 0xF4, this isn't a text memo.
-    if memo_bytes[0] > 0xF4 {
-        return None;
-    }
-
-    let trimmed: Vec<u8> = memo_bytes.iter().copied().take_while(|&b| b != 0).collect();
-
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    String::from_utf8(trimmed).ok()
+    pirate_core::memo::Memo::decode_display_text(memo_bytes)
 }
 
 /// Batch processing result
@@ -743,6 +722,15 @@ mod tests {
 
         let decoded = decode_memo(&memo_bytes);
         assert_eq!(decoded, Some("Test memo".to_string()));
+    }
+
+    #[test]
+    fn test_decode_memo_rejects_embedded_nul_payloads() {
+        let mut memo_bytes = b"hello\0evil".to_vec();
+        memo_bytes.extend(vec![0u8; 502]);
+
+        let decoded = decode_memo(&memo_bytes);
+        assert_eq!(decoded, None);
     }
 
     #[tokio::test]

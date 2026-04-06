@@ -25,6 +25,15 @@ pub enum Memo {
 }
 
 impl Memo {
+    fn trim_padding(bytes: &[u8]) -> &[u8] {
+        let end = bytes
+            .iter()
+            .rposition(|&b| b != 0)
+            .map(|idx| idx + 1)
+            .unwrap_or(0);
+        &bytes[..end]
+    }
+
     /// Create text memo with strict UTF-8 validation
     pub fn from_text(text: String) -> Result<Self> {
         if text.is_empty() {
@@ -159,19 +168,41 @@ impl Memo {
             )));
         }
 
-        // Find first null byte
-        let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-
-        if end == 0 {
+        let data = Self::trim_padding(bytes);
+        if data.is_empty() {
             return Ok(Memo::Empty);
         }
 
-        let data = &bytes[..end];
-
         // Try to decode as UTF-8 text
         match String::from_utf8(data.to_vec()) {
-            Ok(text) => Ok(Memo::Text(text)),
+            Ok(text) if Self::is_valid_memo_text(&text) => Ok(Memo::Text(text)),
             Err(_) => Ok(Memo::Arbitrary(data.to_vec())),
+            Ok(_) => Ok(Memo::Arbitrary(data.to_vec())),
+        }
+    }
+
+    /// Decode memo bytes for user-facing text display.
+    ///
+    /// Only memos that are valid UTF-8 and remain valid after trailing padding
+    /// removal are returned as text. Crafted payloads with embedded NUL or other
+    /// disallowed control characters are treated as non-text and return `None`.
+    pub fn decode_display_text(bytes: &[u8]) -> Option<String> {
+        let data = if bytes.len() > MAX_MEMO_LENGTH {
+            &bytes[..MAX_MEMO_LENGTH]
+        } else {
+            bytes
+        };
+
+        let trimmed = Self::trim_padding(data);
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let text = String::from_utf8(trimmed.to_vec()).ok()?;
+        if Self::is_valid_memo_text(&text) {
+            Some(text)
+        } else {
+            None
         }
     }
 
@@ -281,6 +312,29 @@ mod tests {
         let decoded = Memo::decode(&encoded).unwrap();
 
         assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn test_memo_decode_preserves_embedded_nul_as_arbitrary() {
+        let mut encoded = b"hello\0evil".to_vec();
+        encoded.resize(MAX_MEMO_LENGTH, 0);
+
+        let decoded = Memo::decode(&encoded).unwrap();
+        assert_eq!(decoded, Memo::Arbitrary(b"hello\0evil".to_vec()));
+        assert_eq!(Memo::decode_display_text(&encoded), None);
+    }
+
+    #[test]
+    fn test_memo_decode_trims_only_trailing_padding() {
+        let mut encoded = b"hello".to_vec();
+        encoded.resize(MAX_MEMO_LENGTH, 0);
+
+        let decoded = Memo::decode(&encoded).unwrap();
+        assert_eq!(decoded.as_str(), Some("hello"));
+        assert_eq!(
+            Memo::decode_display_text(&encoded),
+            Some("hello".to_string())
+        );
     }
 
     #[test]

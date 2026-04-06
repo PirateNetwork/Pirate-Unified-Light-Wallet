@@ -198,22 +198,5 @@ pub fn decrypt_memo_from_raw_tx_with_ivk_bytes(
 /// Memos are 512 bytes, with UTF-8 text followed by null padding.
 /// If the first byte is > 0xF4, it's not a text memo.
 pub fn decode_memo(memo: &[u8]) -> Option<String> {
-    if memo.is_empty() {
-        return None;
-    }
-
-    // If first byte > 0xF4, not a text memo
-    if memo[0] > 0xF4 {
-        return None;
-    }
-
-    // Trim trailing nulls
-    let trimmed: Vec<u8> = memo.iter().copied().take_while(|&b| b != 0).collect();
-
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    // Try to decode as UTF-8
-    String::from_utf8(trimmed).ok()
+    pirate_core::memo::Memo::decode_display_text(memo)
 }
