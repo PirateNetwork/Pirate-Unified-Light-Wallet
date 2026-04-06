@@ -443,40 +443,62 @@ impl SealedKey {
 
     /// Deserialize from storage
     pub fn deserialize(data: &[u8]) -> Result<Self> {
-        if data.len() < 10 {
+        const MIN_ENCODED_LEN: usize = 10;
+        if data.len() < MIN_ENCODED_LEN {
             return Err(Error::Encryption("Invalid sealed key data".to_string()));
         }
 
-        let mut pos = 0;
+        let mut pos = 0usize;
+
+        fn take_exact<'a>(data: &'a [u8], pos: &mut usize, len: usize) -> Result<&'a [u8]> {
+            let end = pos
+                .checked_add(len)
+                .ok_or_else(|| Error::Encryption("Invalid sealed key length".to_string()))?;
+            if end > data.len() {
+                return Err(Error::Encryption("Truncated sealed key data".to_string()));
+            }
+            let slice = &data[*pos..end];
+            *pos = end;
+            Ok(slice)
+        }
+
+        fn take_u8(data: &[u8], pos: &mut usize) -> Result<u8> {
+            Ok(take_exact(data, pos, 1)?[0])
+        }
+
+        fn take_u32(data: &[u8], pos: &mut usize) -> Result<u32> {
+            let bytes = take_exact(data, pos, 4)?;
+            let array: [u8; 4] = bytes
+                .try_into()
+                .map_err(|_| Error::Encryption("Invalid sealed key length".to_string()))?;
+            Ok(u32::from_le_bytes(array))
+        }
 
         // Version
-        let version = data[pos];
-        pos += 1;
+        let version = take_u8(data, &mut pos)?;
         if version != 1 {
             return Err(Error::Encryption("Unknown sealed key version".to_string()));
         }
 
         // Algorithm
-        let algorithm = match data[pos] {
+        let algorithm = match take_u8(data, &mut pos)? {
             0 => EncryptionAlgorithm::AesGcm,
             1 => EncryptionAlgorithm::ChaCha20Poly1305,
             _ => return Err(Error::Encryption("Unknown algorithm".to_string())),
         };
-        pos += 1;
 
         // Key ID
-        let key_id_len =
-            u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
-        pos += 4;
-        let key_id = String::from_utf8(data[pos..pos + key_id_len].to_vec())
+        let key_id_len = take_u32(data, &mut pos)? as usize;
+        let key_id = String::from_utf8(take_exact(data, &mut pos, key_id_len)?.to_vec())
             .map_err(|_| Error::Encryption("Invalid key ID".to_string()))?;
-        pos += key_id_len;
 
         // Encrypted key
-        let key_len =
-            u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
-        pos += 4;
-        let encrypted_key = data[pos..pos + key_len].to_vec();
+        let key_len = take_u32(data, &mut pos)? as usize;
+        let encrypted_key = take_exact(data, &mut pos, key_len)?.to_vec();
+
+        if pos != data.len() {
+            return Err(Error::Encryption("Trailing sealed key data".to_string()));
+        }
 
         Ok(Self {
             encrypted_key,
@@ -682,6 +704,57 @@ mod tests {
 
         assert_eq!(deserialized.encrypted_key, sealed.encrypted_key);
         assert_eq!(deserialized.key_id, sealed.key_id);
+    }
+
+    #[test]
+    fn test_sealed_key_deserialize_rejects_truncated_key_id() {
+        let sealed = SealedKey::new(
+            vec![1, 2, 3, 4],
+            "test_key".to_string(),
+            EncryptionAlgorithm::AesGcm,
+        );
+        let mut serialized = sealed.serialize();
+        serialized.truncate(8);
+
+        match SealedKey::deserialize(&serialized) {
+            Err(Error::Encryption(_)) => {}
+            Err(other) => panic!("unexpected error: {:?}", other),
+            Ok(_) => panic!("expected truncated key id to be rejected"),
+        }
+    }
+
+    #[test]
+    fn test_sealed_key_deserialize_rejects_truncated_encrypted_key() {
+        let sealed = SealedKey::new(
+            vec![1, 2, 3, 4],
+            "test_key".to_string(),
+            EncryptionAlgorithm::AesGcm,
+        );
+        let mut serialized = sealed.serialize();
+        serialized.pop();
+
+        match SealedKey::deserialize(&serialized) {
+            Err(Error::Encryption(_)) => {}
+            Err(other) => panic!("unexpected error: {:?}", other),
+            Ok(_) => panic!("expected truncated encrypted key to be rejected"),
+        }
+    }
+
+    #[test]
+    fn test_sealed_key_deserialize_rejects_trailing_bytes() {
+        let sealed = SealedKey::new(
+            vec![1, 2, 3, 4],
+            "test_key".to_string(),
+            EncryptionAlgorithm::AesGcm,
+        );
+        let mut serialized = sealed.serialize();
+        serialized.extend_from_slice(&[0xde, 0xad, 0xbe, 0xef]);
+
+        match SealedKey::deserialize(&serialized) {
+            Err(Error::Encryption(_)) => {}
+            Err(other) => panic!("unexpected error: {:?}", other),
+            Ok(_) => panic!("expected trailing bytes to be rejected"),
+        }
     }
 
     #[test]
