@@ -1,0 +1,64 @@
+buildscript {
+  def kotlinVersion = rootProject.ext.has('kotlinVersion')
+    ? rootProject.ext.get('kotlinVersion')
+    : '2.2.21'
+
+  repositories {
+    google()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath 'com.android.tools.build:gradle:8.13.2'
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}"
+  }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+android {
+  namespace "com.pirate.wallet.reactnative"
+  compileSdkVersion safeExtGet('compileSdkVersion', 36)
+
+  defaultConfig {
+    minSdkVersion safeExtGet('minSdkVersion', 24)
+    targetSdkVersion safeExtGet('targetSdkVersion', 36)
+    consumerProguardFiles 'consumer-rules.pro'
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_8
+    targetCompatibility JavaVersion.VERSION_1_8
+  }
+
+  kotlinOptions {
+    jvmTarget = '1.8'
+  }
+
+  sourceSets {
+    main {
+      jniLibs.srcDir 'src/main/jniLibs'
+    }
+  }
+
+  lintOptions {
+    abortOnError false
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+  maven {
+    url("${rootProject.projectDir}/../node_modules/react-native/android")
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-native:+'
+}
