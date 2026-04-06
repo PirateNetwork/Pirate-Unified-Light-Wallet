@@ -1,11 +1,11 @@
 // Seed Display Screen - Show the generated seed phrase to user
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/security/clipboard_manager.dart';
 import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../ui/atoms/p_button.dart';
@@ -70,11 +70,11 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
 
   Future<void> _copyToClipboard() async {
     if (_mnemonic == null) return;
-    await Clipboard.setData(ClipboardData(text: _mnemonic!));
+    await ClipboardManager.copySeed(_mnemonic!);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Seed phrase copied to clipboard'.tr),
+          content: Text('Seed phrase copied. Clears in 30 seconds.'.tr),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),

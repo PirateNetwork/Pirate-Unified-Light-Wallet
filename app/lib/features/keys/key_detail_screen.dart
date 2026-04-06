@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
@@ -8,6 +7,7 @@ import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart'
     show AddressBalanceInfo, KeyAddressInfo, KeyGroupInfo, KeyTypeInfo;
 import '../../core/security/biometric_auth.dart';
+import '../../core/security/clipboard_manager.dart';
 import '../../core/security/decoy_data.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../core/providers/wallet_providers.dart';
@@ -297,15 +297,25 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
       if (!mounted) return;
 
       final sections = <Widget?>[
-        _buildKeyExportSection('Sapling viewing key', export.saplingViewingKey),
-        _buildKeyExportSection('Orchard viewing key', export.orchardViewingKey),
+        _buildKeyExportSection(
+          'Sapling viewing key',
+          export.saplingViewingKey,
+          ClipboardDataType.viewingKey,
+        ),
+        _buildKeyExportSection(
+          'Orchard viewing key',
+          export.orchardViewingKey,
+          ClipboardDataType.viewingKey,
+        ),
         _buildKeyExportSection(
           'Sapling spending key',
           export.saplingSpendingKey,
+          ClipboardDataType.spendingKey,
         ),
         _buildKeyExportSection(
           'Orchard spending key',
           export.orchardSpendingKey,
+          ClipboardDataType.spendingKey,
         ),
       ].whereType<Widget>().toList();
 
@@ -340,8 +350,48 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     }
   }
 
-  Widget? _buildKeyExportSection(String label, String? value) {
+  Future<void> _copyManagedText(
+    String value, {
+    required ClipboardDataType dataType,
+    required String successMessage,
+  }) async {
+    switch (dataType) {
+      case ClipboardDataType.viewingKey:
+        await ClipboardManager.copyViewingKey(value);
+        break;
+      case ClipboardDataType.spendingKey:
+      case ClipboardDataType.seed:
+        await ClipboardManager.copySensitive(value, dataType: dataType);
+        break;
+      case ClipboardDataType.address:
+        await ClipboardManager.copyAddress(value);
+        break;
+      case ClipboardDataType.txid:
+      case ClipboardDataType.text:
+        await ClipboardManager.copyWithAutoClear(
+          value,
+          dataType: dataType,
+          clearAfter: dataType.clearDelay,
+        );
+        break;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(successMessage),
+        backgroundColor: AppColors.success,
+      ),
+    );
+  }
+
+  Widget? _buildKeyExportSection(
+    String label,
+    String? value,
+    ClipboardDataType dataType,
+  ) {
     if (value == null || value.isEmpty) return null;
+    final clearSeconds = dataType.clearDelay.inSeconds;
     return Padding(
       padding: EdgeInsets.only(bottom: PSpacing.md),
       child: Column(
@@ -359,7 +409,12 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
               ),
               IconButton(
                 icon: const Icon(Icons.copy, size: 18),
-                onPressed: () => Clipboard.setData(ClipboardData(text: value)),
+                onPressed: () => _copyManagedText(
+                  value,
+                  dataType: dataType,
+                  successMessage:
+                      '$label copied. Clears in $clearSeconds seconds.',
+                ),
                 tooltip: 'Copy'.tr,
               ),
             ],
@@ -606,7 +661,11 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
   }
 
   Future<void> _copyAddress(AddressBalanceInfo address) async {
-    await Clipboard.setData(ClipboardData(text: address.address));
+    await _copyManagedText(
+      address.address,
+      dataType: ClipboardDataType.address,
+      successMessage: 'Address copied. Clears in 60 seconds.',
+    );
   }
 }
 

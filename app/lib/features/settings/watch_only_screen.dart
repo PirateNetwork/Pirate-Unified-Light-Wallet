@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
@@ -8,6 +7,7 @@ import '../../design/compat.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/security/clipboard_manager.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 
@@ -56,15 +56,18 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.grey[500],
                 tabs: const [
-                  Tab(text: 'Export Viewing Key'),
-                  Tab(text: 'Import Viewing Key'),
+                  Tab(text: 'Export Sapling Viewing Key'),
+                  Tab(text: 'Import Sapling Viewing Key'),
                 ],
               ),
             ),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
-                children: const [ExportIvkTab(), ImportIvkTab()],
+                children: const [
+                  ExportSaplingViewingKeyTab(),
+                  ImportSaplingViewingKeyTab(),
+                ],
               ),
             ),
           ],
@@ -74,15 +77,17 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
   }
 }
 
-/// Export viewing key tab
-class ExportIvkTab extends ConsumerStatefulWidget {
-  const ExportIvkTab({super.key});
+/// Export Sapling viewing key tab
+class ExportSaplingViewingKeyTab extends ConsumerStatefulWidget {
+  const ExportSaplingViewingKeyTab({super.key});
 
   @override
-  ConsumerState<ExportIvkTab> createState() => _ExportIvkTabState();
+  ConsumerState<ExportSaplingViewingKeyTab> createState() =>
+      _ExportSaplingViewingKeyTabState();
 }
 
-class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
+class _ExportSaplingViewingKeyTabState
+    extends ConsumerState<ExportSaplingViewingKeyTab> {
   String? _ivk;
   bool _isLoading = false;
   String? _error;
@@ -121,13 +126,13 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
           Icon(Icons.visibility, size: 80, color: PirateTheme.accentColor),
           SizedBox(height: PirateSpacing.xl),
           Text(
-            'Export incoming viewing key'.tr,
+            'Export Sapling viewing key'.tr,
             style: PirateTypography.h2.copyWith(color: Colors.white),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: PirateSpacing.md),
           Text(
-            'Share this viewing key to view incoming activity without spending access.'
+            'Share this Sapling viewing key to view incoming activity without spending access.'
                 .tr,
             style: PirateTypography.body.copyWith(color: Colors.grey[400]),
             textAlign: TextAlign.center,
@@ -137,10 +142,10 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
           SizedBox(height: PirateSpacing.xl),
           if (_ivk == null) ...[
             PButton(
-              onPressed: _exportIvk,
+              onPressed: _exportSaplingViewingKey,
               loading: _isLoading,
               icon: const Icon(Icons.key),
-              child: Text('Export Viewing Key'.tr),
+              child: Text('Export Sapling Viewing Key'.tr),
             ),
           ] else ...[
             _buildIvkDisplay(),
@@ -154,7 +159,8 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
             SizedBox(height: PirateSpacing.md),
             PTextButton(
               label: 'Clear'.tr,
-              onPressed: () {
+              onPressed: () async {
+                await ClipboardManager.clearNow();
                 _enableScreenshots();
                 setState(() => _ivk = null);
               },
@@ -255,7 +261,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Incoming viewing key'.tr,
+            'Sapling viewing key'.tr,
             style: PirateTypography.bodySmall.copyWith(color: Colors.grey[400]),
           ),
           SizedBox(height: PirateSpacing.sm),
@@ -271,7 +277,7 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
     );
   }
 
-  Future<void> _exportIvk() async {
+  Future<void> _exportSaplingViewingKey() async {
     setState(() {
       _isLoading = true;
       _error = null;
@@ -283,11 +289,11 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
         throw StateError('No active wallet');
       }
 
-      final ivk = await FfiBridge.exportIvkSecure(walletId);
+      final ivk = await FfiBridge.exportSaplingViewingKeySecure(walletId);
       setState(() => _ivk = ivk);
       _disableScreenshots();
     } catch (e) {
-      setState(() => _error = 'Failed to export viewing key: $e');
+      setState(() => _error = 'Failed to export Sapling viewing key: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -296,12 +302,12 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
   Future<void> _copyIvk() async {
     if (_ivk == null) return;
 
-    await Clipboard.setData(ClipboardData(text: _ivk!));
+    await ClipboardManager.copyViewingKey(_ivk!);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Viewing key copied'.tr),
+          content: Text('Sapling viewing key copied. Clears in 30 seconds.'.tr),
           backgroundColor: Colors.green[700],
         ),
       );
@@ -309,15 +315,17 @@ class _ExportIvkTabState extends ConsumerState<ExportIvkTab> {
   }
 }
 
-/// Import viewing key tab
-class ImportIvkTab extends ConsumerStatefulWidget {
-  const ImportIvkTab({super.key});
+/// Import Sapling viewing key tab
+class ImportSaplingViewingKeyTab extends ConsumerStatefulWidget {
+  const ImportSaplingViewingKeyTab({super.key});
 
   @override
-  ConsumerState<ImportIvkTab> createState() => _ImportIvkTabState();
+  ConsumerState<ImportSaplingViewingKeyTab> createState() =>
+      _ImportSaplingViewingKeyTabState();
 }
 
-class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
+class _ImportSaplingViewingKeyTabState
+    extends ConsumerState<ImportSaplingViewingKeyTab> {
   final _nameController = TextEditingController();
   final _ivkController = TextEditingController();
   final _birthdayController = TextEditingController();
@@ -378,8 +386,8 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
           SizedBox(height: PirateSpacing.lg),
           PInput(
             controller: _ivkController,
-            label: 'Incoming viewing key'.tr,
-            hint: 'Paste your viewing key',
+            label: 'Sapling viewing key'.tr,
+            hint: 'Paste your Sapling viewing key',
             maxLines: 3,
           ),
           SizedBox(height: PirateSpacing.lg),
@@ -470,14 +478,14 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
     }
 
     if (_ivkController.text.trim().isEmpty) {
-      setState(() => _error = 'Please enter a viewing key');
+      setState(() => _error = 'Please enter a Sapling viewing key');
       return;
     }
 
     final trimmed = _ivkController.text.trim();
     if (!(trimmed.startsWith('zxviews') ||
         trimmed.startsWith('pirate-extended-viewing-key'))) {
-      setState(() => _error = 'Invalid viewing key format.');
+      setState(() => _error = 'Invalid Sapling viewing key format.');
       return;
     }
 
@@ -496,9 +504,9 @@ class _ImportIvkTabState extends ConsumerState<ImportIvkTab> {
       }
 
       // Import via FFI
-      await FfiBridge.importIvk(
+      await FfiBridge.importViewingWallet(
         name: _nameController.text.trim(),
-        saplingIvk: trimmed,
+        saplingViewingKey: trimmed,
         birthday: fallbackBirthday,
       );
 

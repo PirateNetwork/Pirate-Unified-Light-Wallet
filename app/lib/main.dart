@@ -18,6 +18,7 @@ import 'core/desktop/windows_version.dart';
 import 'core/i18n/arb_text_localizer.dart';
 import 'core/logging/debug_log_path.dart';
 import 'core/logging/debug_log_writer.dart';
+import 'core/security/clipboard_manager.dart';
 import 'design/theme.dart';
 import 'design/tokens/colors.dart';
 import 'features/settings/providers/preferences_providers.dart';
@@ -198,6 +199,8 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    unawaited(ClipboardManager.handleAppLifecycleState(state));
+
     if (_isDesktop) {
       // Desktop stays effectively "active" while the window exists.
       // We only mark inactive when fully detached/closing.

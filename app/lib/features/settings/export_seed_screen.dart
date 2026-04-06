@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
@@ -10,6 +9,7 @@ import '../../design/compat.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../core/security/biometric_auth.dart';
+import '../../core/security/clipboard_manager.dart';
 import '../../core/security/decoy_data.dart';
 import '../../core/providers/wallet_providers.dart';
 import 'dart:async';
@@ -22,19 +22,6 @@ class ClipboardCountdownNotifier extends Notifier<int?> {
 
   int? get value => state;
   set value(int? seconds) => state = seconds;
-
-  bool tick() {
-    final current = state;
-    if (current == null) {
-      return true;
-    }
-    if (current <= 1) {
-      state = null;
-      return true;
-    }
-    state = current - 1;
-    return false;
-  }
 
   void clear() {
     state = null;
@@ -670,18 +657,28 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   Future<void> _copyToClipboard() async {
     if (_mnemonic == null) return;
 
-    await Clipboard.setData(ClipboardData(text: _mnemonic!));
+    await ClipboardManager.copySeed(
+      _mnemonic!,
+      clearAfter: const Duration(seconds: 30),
+      onCleared: () {
+        if (!mounted) return;
+        ref.read(_clipboardCountdownProvider.notifier).clear();
+        _clipboardTimer?.cancel();
+      },
+    );
 
-    // Start 30-second countdown
-    ref.read(_clipboardCountdownProvider.notifier).value = 30;
+    ref.read(_clipboardCountdownProvider.notifier).value =
+        ClipboardManager.remainingTime?.inSeconds ?? 30;
 
     _clipboardTimer?.cancel();
     _clipboardTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-      final shouldStop = ref.read(_clipboardCountdownProvider.notifier).tick();
-      if (shouldStop) {
-        _clearClipboard();
+      final remaining = ClipboardManager.remainingTime?.inSeconds;
+      if (remaining == null || remaining <= 0) {
+        ref.read(_clipboardCountdownProvider.notifier).clear();
         timer.cancel();
+        return;
       }
+      ref.read(_clipboardCountdownProvider.notifier).value = remaining;
     });
 
     if (!mounted) return;
@@ -694,7 +691,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   }
 
   Future<void> _clearClipboard() async {
-    await Clipboard.setData(ClipboardData(text: ''));
+    await ClipboardManager.clearNow();
     ref.read(_clipboardCountdownProvider.notifier).clear();
     _clipboardTimer?.cancel();
   }
