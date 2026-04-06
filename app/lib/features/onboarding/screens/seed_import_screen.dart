@@ -201,9 +201,13 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
         subtitle: 'Restore a wallet with your seed phrase'.tr,
         onBack: () => context.pop(),
         actions: [
-          PIconButton(
-            icon: const Icon(Icons.content_paste),
-            tooltip: 'Paste from clipboard'.tr,
+          PTextButton(
+            label: MediaQuery.of(context).size.width < 420
+                ? 'Paste phrase'.tr
+                : 'Paste seed phrase'.tr,
+            leadingIcon: Icons.content_paste,
+            variant: PTextButtonVariant.accent,
+            compact: true,
             onPressed: _pasteFromClipboard,
           ),
         ],
