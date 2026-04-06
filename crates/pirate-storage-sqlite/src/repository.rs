@@ -14,6 +14,8 @@ use rusqlite::types::{Value, ValueRef};
 use rusqlite::{params, OptionalExtension};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
+use std::ops::Deref;
+use std::rc::Rc;
 
 type NullifierBytes = [u8; 32];
 type SpendingTxidBytes = [u8; 32];
@@ -24,7 +26,23 @@ const NOTE_SHARD_INDEX_BITS: u32 = 16;
 
 /// Repository for database operations
 pub struct Repository<'a> {
-    db: &'a Database,
+    db: RepositoryDatabase<'a>,
+}
+
+enum RepositoryDatabase<'a> {
+    Borrowed(&'a Database),
+    Shared(Rc<Database>),
+}
+
+impl Deref for RepositoryDatabase<'_> {
+    type Target = Database;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Borrowed(db) => db,
+            Self::Shared(db) => db.as_ref(),
+        }
+    }
 }
 
 /// Orchard note reference for validation (minimal decrypted fields).
@@ -97,7 +115,16 @@ fn reverse_txid_hex(txid_hex: &str) -> Option<String> {
 impl<'a> Repository<'a> {
     /// Create repository
     pub fn new(db: &'a Database) -> Self {
-        Self { db }
+        Self {
+            db: RepositoryDatabase::Borrowed(db),
+        }
+    }
+
+    /// Create repository backed by a shared database handle.
+    pub fn from_shared(db: Rc<Database>) -> Repository<'static> {
+        Repository {
+            db: RepositoryDatabase::Shared(db),
+        }
     }
 
     /// Encrypt sensitive BLOB data
@@ -2198,7 +2225,7 @@ impl<'a> Repository<'a> {
             }
         }
         notes = filtered;
-        construct_anchor_witnesses_from_db_state(self.db, anchor_height, notes)
+        construct_anchor_witnesses_from_db_state(&self.db, anchor_height, notes)
     }
 
     /// Resolve Orchard anchor from persisted DB state at-or-below `anchor_height`.
@@ -2206,7 +2233,7 @@ impl<'a> Repository<'a> {
         &self,
         anchor_height: u64,
     ) -> Result<Option<orchard::tree::Anchor>> {
-        resolve_orchard_anchor_from_db_state(self.db, anchor_height)
+        resolve_orchard_anchor_from_db_state(&self.db, anchor_height)
     }
 
     /// Resolve Sapling anchor root bytes from persisted DB state at-or-below `anchor_height`.
@@ -2214,7 +2241,7 @@ impl<'a> Repository<'a> {
         &self,
         anchor_height: u64,
     ) -> Result<Option<[u8; 32]>> {
-        crate::frontier_witness::resolve_sapling_root_from_db_state(self.db, anchor_height)
+        crate::frontier_witness::resolve_sapling_root_from_db_state(&self.db, anchor_height)
             .map(|root| root.map(|node| node.to_bytes()))
     }
 

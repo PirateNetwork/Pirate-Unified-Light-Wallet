@@ -1,4 +1,5 @@
 use super::*;
+use std::rc::Rc;
 
 pub(super) fn wallet_base_dir() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("PIRATE_WALLET_DB_DIR") {
@@ -445,9 +446,7 @@ pub(super) fn invalidate_all_wallet_db_caches() {
     invalidate_wallet_db_cache_epoch();
 }
 
-pub(super) fn open_wallet_db_for(
-    wallet_id: &str,
-) -> Result<(&'static Database, Repository<'static>)> {
+pub(super) fn open_wallet_db_for(wallet_id: &str) -> Result<(Rc<Database>, Repository<'static>)> {
     let passphrase = app_passphrase()?;
     sync_wallet_db_cache_epoch();
     ensure_wallet_registry_loaded()?;
@@ -458,17 +457,13 @@ pub(super) fn open_wallet_db_for(
     if WALLET_DB_CACHE.with(|cache| cache.borrow().entries.contains_key(wallet_id)) {
         return WALLET_DB_CACHE.with(|cache| {
             let borrowed = cache.borrow();
-            let db_ref = borrowed
+            let db = borrowed
                 .entries
                 .get(wallet_id)
-                .map(|db| db.as_ref())
+                .cloned()
                 .ok_or_else(|| anyhow!("Wallet database cache miss"))?;
-            // SAFETY: The Database is owned by thread-local storage and not removed from the
-            // map after insertion, so the pointee remains valid for the lifetime of this thread.
-            // We use a 'static reference only to satisfy existing Repository API signatures.
-            let db_static: &'static Database =
-                unsafe { std::mem::transmute::<&Database, &'static Database>(db_ref) };
-            Ok((db_static, Repository::new(db_static)))
+            let repo = Repository::from_shared(Rc::clone(&db));
+            Ok((db, repo))
         });
     }
 
@@ -477,22 +472,18 @@ pub(super) fn open_wallet_db_for(
         cache
             .borrow_mut()
             .entries
-            .insert(wallet_id.to_string(), Box::new(db));
+            .insert(wallet_id.to_string(), Rc::new(db));
     });
 
     WALLET_DB_CACHE.with(|cache| {
         let borrowed = cache.borrow();
-        let db_ref = borrowed
+        let db = borrowed
             .entries
             .get(wallet_id)
-            .map(|db| db.as_ref())
+            .cloned()
             .ok_or_else(|| anyhow!("Wallet database cache miss after insert"))?;
-        // SAFETY: The Database is owned by thread-local storage and not removed from the
-        // map after insertion, so the pointee remains valid for the lifetime of this thread.
-        // We use a 'static reference only to satisfy existing Repository API signatures.
-        let db_static: &'static Database =
-            unsafe { std::mem::transmute::<&Database, &'static Database>(db_ref) };
-        Ok((db_static, Repository::new(db_static)))
+        let repo = Repository::from_shared(Rc::clone(&db));
+        Ok((db, repo))
     })
 }
 

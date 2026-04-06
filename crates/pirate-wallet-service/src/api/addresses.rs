@@ -193,7 +193,7 @@ pub(super) fn list_address_balances(
                 .unwrap_or(false)
     });
     let orchard_enabled_for_balance = orchard_active || has_orchard_note_bytes;
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height;
     const MIN_DEPTH: u64 = 10;

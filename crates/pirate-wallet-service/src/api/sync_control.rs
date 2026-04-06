@@ -129,9 +129,9 @@ fn clear_sync_runtime_cache(wallet_id: &WalletId) {
 
 fn load_spendability_status_internal(wallet_id: &str) -> Result<SpendabilityStatus> {
     let (db, _repo) = open_wallet_db_for(wallet_id)?;
-    let storage = SpendabilityStateStorage::new(db);
+    let storage = SpendabilityStateStorage::new(&db);
     let state = storage.load_state()?;
-    let scan_queue = ScanQueueStorage::new(db);
+    let scan_queue = ScanQueueStorage::new(&db);
     let queue_has_work = scan_queue.next_found_note_range()?.is_some();
 
     let epoch_ok = state.anchor_height != 0 && state.validated_anchor_height >= state.anchor_height;
@@ -199,7 +199,7 @@ pub(super) fn require_spendability_ready_with_sync_trigger(
 
 fn mark_spendability_rescan_required(wallet_id: &str, reason_code: &str) {
     if let Ok((db, _repo)) = open_wallet_db_for(wallet_id) {
-        let storage = SpendabilityStateStorage::new(db);
+        let storage = SpendabilityStateStorage::new(&db);
         if let Err(e) = storage.mark_rescan_required(reason_code) {
             tracing::warn!(
                 "Failed to mark spendability rescan-required for {}: {}",
@@ -212,7 +212,7 @@ fn mark_spendability_rescan_required(wallet_id: &str, reason_code: &str) {
 
 fn mark_spendability_sync_finalizing(wallet_id: &str, target_height: u64, anchor_height: u64) {
     if let Ok((db, _repo)) = open_wallet_db_for(wallet_id) {
-        let storage = SpendabilityStateStorage::new(db);
+        let storage = SpendabilityStateStorage::new(&db);
         if let Err(e) = storage.mark_sync_finalizing(target_height, anchor_height) {
             tracing::warn!(
                 "Failed to mark spendability sync-finalizing for {}: {}",
@@ -594,7 +594,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
     let birthday_height = wallet.birthday_height;
     let start_height = {
         let resume_height_opt = open_wallet_db_for(&wallet_id).ok().and_then(|(db, _repo)| {
-            let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+            let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
             sync_storage
                 .load_sync_state()
                 .ok()
@@ -1152,7 +1152,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
                 return Ok(status);
             }
             if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
-                let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+                let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
                 if let Ok(state) = sync_storage.load_sync_state() {
                     let percent = if state.target_height > 0 {
                         (state.local_height as f64 / state.target_height as f64) * 100.0
@@ -1284,7 +1284,7 @@ fn sync_status_inner(wallet_id: WalletId) -> Result<SyncStatus> {
         }
 
         if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
-            let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+            let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
             if let Ok(state) = sync_storage.load_sync_state() {
                 let percent = if state.target_height > 0 {
                     (state.local_height as f64 / state.target_height as f64) * 100.0
@@ -2320,7 +2320,7 @@ pub(super) async fn cancel_sync_internal(
         let recovered_status = open_wallet_db_for(&wallet_id)
             .ok()
             .and_then(|(db, _repo)| {
-                let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+                let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
                 sync_storage.load_sync_state().ok().map(|state| {
                     let mut target_height = state.target_height;
                     if target_height == 0 && state.local_height > 0 {

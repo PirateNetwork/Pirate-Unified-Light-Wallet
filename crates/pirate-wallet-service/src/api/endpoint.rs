@@ -41,8 +41,11 @@ impl Default for LightdEndpoint {
             host: DEFAULT_LIGHTD_HOST.to_string(),
             port: DEFAULT_LIGHTD_PORT,
             use_tls: DEFAULT_LIGHTD_USE_TLS,
-            tls_pin: if DEFAULT_LIGHTD_USE_TLS && !DEFAULT_LIGHTD_SPKI_PIN.is_empty() {
-                Some(DEFAULT_LIGHTD_SPKI_PIN.to_string())
+            tls_pin: if DEFAULT_LIGHTD_USE_TLS {
+                match DEFAULT_LIGHTD_SPKI_PIN {
+                    "" => None,
+                    pin => Some(pin.to_string()),
+                }
             } else {
                 None
             },

@@ -50,6 +50,7 @@ use std::future::Future;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Once};
 use std::time::Duration;
@@ -109,7 +110,7 @@ lazy_static::lazy_static! {
 #[derive(Default)]
 struct WalletDbCacheState {
     epoch: u64,
-    entries: HashMap<String, Box<Database>>,
+    entries: HashMap<String, Rc<Database>>,
 }
 
 thread_local! {
@@ -1095,7 +1096,7 @@ fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
 
     // Get current block height from sync state
     let (_db, _repo) = open_wallet_db_for(wallet_id)?;
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(_db);
+    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&_db);
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height as u32;
     let effective_height = if current_height == 0 {
@@ -2230,7 +2231,7 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
 
     // Get current height from sync state
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
     let sync_state = sync_storage.load_sync_state()?;
     // Confirmation math should be derived from locally-scanned chain state.
     // During active sync mutation (including FoundNote replay), callers should use the stable
@@ -2372,7 +2373,7 @@ pub fn get_shielded_pool_balances(wallet_id: WalletId) -> Result<ShieldedPoolBal
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height;
     const MIN_DEPTH: u64 = 10;
@@ -2473,7 +2474,7 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     });
 
     // Get current height from sync state
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
     let sync_state = sync_storage.load_sync_state()?;
     // Use the best known synced height for confirmation display stability.
     let current_height = sync_state.local_height.max(sync_state.target_height);

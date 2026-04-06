@@ -19,6 +19,7 @@ rules:
         - "crates/**/*.rs"
       exclude:
         - "crates/pirate-ffi-frb/**/*.rs"  # Allow in FFI layer only
+        - "crates/pirate-ffi-native/**/*.rs"  # Allow native C ABI FFI boundary
 
   - id: rust-unwrap-usage
     patterns:

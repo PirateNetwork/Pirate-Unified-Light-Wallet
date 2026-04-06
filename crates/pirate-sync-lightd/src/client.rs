@@ -257,8 +257,11 @@ impl Default for LightClientConfig {
             socks5_url: None,
             tls: TlsConfig {
                 enabled: DEFAULT_LIGHTD_USE_TLS,
-                spki_pin: if DEFAULT_LIGHTD_USE_TLS && !DEFAULT_LIGHTD_SPKI_PIN.is_empty() {
-                    Some(DEFAULT_LIGHTD_SPKI_PIN.to_string())
+                spki_pin: if DEFAULT_LIGHTD_USE_TLS {
+                    match DEFAULT_LIGHTD_SPKI_PIN {
+                        "" => None,
+                        pin => Some(pin.to_string()),
+                    }
                 } else {
                     None
                 },

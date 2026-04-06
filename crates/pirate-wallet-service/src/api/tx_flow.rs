@@ -722,7 +722,7 @@ fn build_tx_internal(
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
     let spendability = sync_control::require_spendability_ready_with_sync_trigger(&wallet_id)?;
-    let anchors = compute_spend_selection_anchors(db, secret.account_id)?;
+    let anchors = compute_spend_selection_anchors(&db, secret.account_id)?;
     let computed_target_height = anchors.target_height;
     let anchor_height = anchors.conservative_anchor_height;
     let resolved_key_id = resolve_spend_key_id(
@@ -861,7 +861,7 @@ fn build_tx_internal(
         .checked_add(effective_fee)
         .ok_or_else(|| anyhow!("Amount + effective fee overflow"))?;
 
-    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(db);
+    let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height as u32;
     let expiry_height = current_height.saturating_add(40);
@@ -945,7 +945,7 @@ pub(super) fn build_consolidation_tx(
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let anchors = compute_spend_selection_anchors(_db, secret.account_id)?;
+    let anchors = compute_spend_selection_anchors(&_db, secret.account_id)?;
     let selectable_notes_raw = load_selectable_notes_for_send(
         &repo,
         secret.account_id,
@@ -998,7 +998,7 @@ pub(super) fn build_sweep_tx(
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-    let anchors = compute_spend_selection_anchors(_db, secret.account_id)?;
+    let anchors = compute_spend_selection_anchors(&_db, secret.account_id)?;
 
     let key_ids_filter = normalize_filter_ids(key_ids_filter);
     let address_ids_filter = normalize_filter_ids(address_ids_filter);
@@ -1135,7 +1135,7 @@ fn sign_tx_internal(
         .checked_add(pending.fee)
         .ok_or_else(|| anyhow!("Amount + fee overflow"))?;
     let spendability = sync_control::require_spendability_ready_with_sync_trigger(&wallet_id)?;
-    let anchors = compute_spend_selection_anchors(_db, secret.account_id)?;
+    let anchors = compute_spend_selection_anchors(&_db, secret.account_id)?;
     let anchor_height = anchors.conservative_anchor_height;
     let orchard_anchor_height = anchors.orchard_anchor_height;
     log_step(
@@ -1819,7 +1819,7 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
                 let mut local_sapling_root: Option<[u8; 32]> = None;
 
                 if let Ok((db, repo)) = open_wallet_db_for(&wallet_id) {
-                    let spendability_storage = SpendabilityStateStorage::new(db);
+                    let spendability_storage = SpendabilityStateStorage::new(&db);
                     let state = spendability_storage.load_state().unwrap_or_default();
                     repair_from = state.anchor_height.max(1);
                     repair_to_exclusive = state.target_height.max(repair_from).saturating_add(1);
@@ -1900,7 +1900,7 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
                 }
 
                 if let Ok((db, _repo)) = open_wallet_db_for(&wallet_id) {
-                    let spendability_storage = SpendabilityStateStorage::new(db);
+                    let spendability_storage = SpendabilityStateStorage::new(&db);
                     if let Err(queue_err) = spendability_storage.queue_repair_range(
                         repair_from,
                         repair_to_exclusive.max(repair_from.saturating_add(1)),
