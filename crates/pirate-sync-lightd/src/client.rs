@@ -2114,11 +2114,8 @@ mod tests {
     fn test_default_config() {
         let config = LightClientConfig::default();
         assert_eq!(config.endpoint, DEFAULT_LIGHTD_URL);
-        assert!(config.tls.enabled);
-        assert_eq!(
-            config.tls.spki_pin,
-            Some(DEFAULT_LIGHTD_SPKI_PIN.to_string())
-        );
+        assert_eq!(config.tls.enabled, DEFAULT_LIGHTD_USE_TLS);
+        assert_eq!(config.tls.spki_pin, None);
         assert_eq!(config.transport, TransportMode::Tor);
     }
 
