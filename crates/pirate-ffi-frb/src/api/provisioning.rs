@@ -81,10 +81,10 @@ pub(super) fn create_wallet(
     let mnemonic = ExtendedSpendingKey::generate_mnemonic(Some(24));
     let network = pirate_params::Network::mainnet();
     let extsk =
-        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, "", network.network_type, 0)?;
-    let _wallet = Wallet::from_mnemonic(&mnemonic, "")?;
+        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, network.network_type, 0)?;
+    let _wallet = Wallet::from_mnemonic(&mnemonic)?;
 
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic, "")?;
+    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
 
     let coin_type = network.coin_type;
@@ -131,23 +131,16 @@ pub(super) fn create_wallet(
 pub(super) fn restore_wallet(
     name: String,
     mnemonic: String,
-    passphrase_opt: Option<String>,
     birthday_opt: Option<u32>,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
 
-    let passphrase = passphrase_opt.unwrap_or_default();
-
     let network = pirate_params::Network::mainnet();
-    let extsk = ExtendedSpendingKey::from_mnemonic_with_account(
-        &mnemonic,
-        &passphrase,
-        network.network_type,
-        0,
-    )?;
-    let _wallet = Wallet::from_mnemonic(&mnemonic, &passphrase)?;
+    let extsk =
+        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, network.network_type, 0)?;
+    let _wallet = Wallet::from_mnemonic(&mnemonic)?;
 
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic, &passphrase)?;
+    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
 
     let coin_type = network.coin_type;
