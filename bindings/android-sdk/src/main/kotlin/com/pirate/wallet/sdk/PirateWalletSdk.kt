@@ -50,7 +50,6 @@ public data class CreateWalletRequest(
 public data class RestoreWalletRequest(
     val name: String,
     val mnemonic: String,
-    val passphrase: String? = null,
     val birthdayHeight: Int? = null,
 )
 
@@ -255,7 +254,6 @@ public class PirateWalletSdk(
                 "restore_wallet",
                 "name" to request.name,
                 "mnemonic" to request.mnemonic,
-                "passphrase_opt" to request.passphrase,
                 "birthday_opt" to request.birthdayHeight,
             ),
         )
@@ -263,13 +261,11 @@ public class PirateWalletSdk(
     public fun restoreWallet(
         name: String,
         mnemonic: String,
-        passphrase: String? = null,
         birthdayHeight: Int? = null,
     ): String = restoreWallet(
         RestoreWalletRequest(
             name = name,
             mnemonic = mnemonic,
-            passphrase = passphrase,
             birthdayHeight = birthdayHeight,
         ),
     )
@@ -551,7 +547,6 @@ public class PirateWalletAdvancedKeyManagement internal constructor(
                 "wallet_id" to request.walletId,
                 "sapling_key" to request.saplingSpendingKey,
                 "orchard_key" to request.orchardSpendingKey,
-                "label" to request.label,
                 "birthday_height" to request.birthdayHeight,
             ),
         )
@@ -561,13 +556,11 @@ public class PirateWalletAdvancedKeyManagement internal constructor(
         birthdayHeight: Int,
         saplingSpendingKey: String? = null,
         orchardSpendingKey: String? = null,
-        label: String? = null,
     ): Long = importSpendingKey(
         ImportSpendingKeyRequest(
             walletId = walletId,
             saplingSpendingKey = saplingSpendingKey,
             orchardSpendingKey = orchardSpendingKey,
-            label = label,
             birthdayHeight = birthdayHeight,
         ),
     )
@@ -666,9 +659,7 @@ private fun parseAddressInfo(value: Any?): AddressInfo {
     return AddressInfo(
         address = json.requireString("address"),
         diversifierIndex = json.requireInt("diversifier_index"),
-        label = json.nullableString("label"),
         createdAt = json.requireLong("created_at"),
-        colorTag = AddressBookColorTag.fromJson(json.opt("color_tag")),
     )
 }
 
@@ -686,9 +677,7 @@ private fun parseAddressBalanceInfo(value: Any?): AddressBalanceInfo {
         pending = json.requireLong("pending"),
         keyId = json.nullableLong("key_id"),
         addressId = json.requireLong("address_id"),
-        label = json.nullableString("label"),
         createdAt = json.requireLong("created_at"),
-        colorTag = AddressBookColorTag.fromJson(json.opt("color_tag")),
         diversifierIndex = json.requireInt("diversifier_index"),
     )
 }
@@ -888,7 +877,6 @@ private fun parseKeyGroupInfo(value: Any?): KeyGroupInfo {
     val json = value.requireObject("key group")
     return KeyGroupInfo(
         id = json.requireLong("id"),
-        label = json.nullableString("label"),
         keyType = parseKeyTypeInfo(json.opt("key_type")),
         spendable = json.requireBoolean("spendable"),
         hasSapling = json.requireBoolean("has_sapling"),
@@ -1134,7 +1122,6 @@ private fun RestoreWalletRequest.toJson(): JSONObject =
         .put("name", name)
         .put("mnemonic", mnemonic)
         .apply {
-            passphrase?.let { put("passphrase_opt", it) }
             birthdayHeight?.let { put("birthday_opt", it) }
         }
 
