@@ -31,7 +31,8 @@ pub use client::{
     tor_status, BroadcastResult, CompactBlock, CompactBlockData, CompactOrchardAction,
     CompactOutput, CompactSaplingOutput, CompactSaplingSpend, CompactTx, LightClient,
     LightClientConfig, LightdInfo, RetryConfig, TlsConfig, TransactionStatus, TransportMode,
-    TreeState, DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_URL,
+    TreeState, DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_SPKI_PIN,
+    DEFAULT_LIGHTD_URL,
 };
 pub use error::{Error, Result};
 pub use pipeline::{

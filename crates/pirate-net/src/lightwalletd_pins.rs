@@ -28,25 +28,9 @@ impl LightwalletdPins {
 
     /// Load primary Pirate Chain lightwalletd pins
     ///
-    /// NOTE: Currently disabled because lightwalletd servers use gRPC/HTTP2
-    /// and don't present certificates in a way that can be easily extracted.
-    ///
-    /// When proper certificates are available, add them here and enable
-    /// TLS pinning enforcement in TlsPinning::new(true).
     fn load_primary(_pinning: &mut TlsPinning) -> Result<()> {
-        // TLS pinning is currently disabled for lightwalletd servers because:
-        // 1. Servers use gRPC/HTTP2 which doesn't expose certificates to browsers
-        // 2. Certificates are not in Certificate Transparency logs
-        // 3. OpenSSL s_client cannot extract certificates from gRPC endpoints
-        //
-        // When proper certificates become available:
-        // 1. Extract SPKI SHA256 pins using gRPC-specific tools
-        // 2. Add pins here using pinning.add_pin()
-        // 3. Enable enforcement: TlsPinning::new(true)
-        //
         // Known servers:
-        // - lightd1.piratechain.com:9067 (mainnet, Sapling only)
-        // - 64.23.167.130:9067 (orchard-ready)
+        // - lightd1.pirate.black:443 (official mainnet TLS endpoint)
         // - 64.23.167.130:8067 (testnet, Sapling + Orchard)
 
         Ok(())
@@ -69,7 +53,7 @@ impl LightwalletdPins {
     ///
     /// ```bash
     /// # Get certificate
-    /// openssl s_client -connect lightd.piratechain.com:443 -showcerts < /dev/null 2>/dev/null | \
+    /// openssl s_client -connect lightd1.pirate.black:443 -showcerts < /dev/null 2>/dev/null | \
     ///   openssl x509 -outform PEM > cert.pem
     ///
     /// # Extract SPKI hash

@@ -6,10 +6,16 @@ use crate::debug_log::log_debug_event;
 use crate::lightwalletd_pins::extract_spki_from_cert_der;
 use crate::{DnsConfig, DnsResolver, Error, I2pClient, I2pConfig, Result, TorClient, TorConfig};
 use http::Uri;
+use http_body_util::{BodyExt, Empty};
+use hyper::body::Bytes;
+use hyper::client::conn::http1;
+use hyper::header::{HeaderName, HeaderValue, HOST, LOCATION};
+use hyper::Request;
 use hyper_util::rt::TokioIo;
 use native_tls::TlsConnector as NativeTlsConnector;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -344,6 +350,27 @@ impl TransportManager {
             .map_err(|e| Error::Network(format!("Failed to create HTTP client: {}", e)))
     }
 
+    /// Fetch arbitrary HTTP(S) bytes using the configured transport.
+    pub async fn fetch_url_bytes(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+    ) -> Result<Vec<u8>> {
+        let config = { self.config.lock().await.clone() };
+
+        match config.mode {
+            TransportMode::Tor => {
+                let tor = { self.tor_client.lock().await.clone() }
+                    .ok_or_else(|| Error::Network("Tor client not initialized".to_string()))?;
+                fetch_url_bytes_via_tor(tor, url, headers, Duration::from_secs(60)).await
+            }
+            _ => {
+                let client = self.create_http_client().await?;
+                fetch_url_bytes_with_client(&client, url, headers).await
+            }
+        }
+    }
+
     /// Create gRPC channel with configured transport
     pub async fn create_grpc_channel(&self, endpoint: Endpoint) -> Result<Channel> {
         let config = { self.config.lock().await.clone() };
@@ -558,6 +585,202 @@ impl TransportManager {
         }
         *self.i2p_client.lock().await = None;
     }
+}
+
+async fn fetch_url_bytes_with_client(
+    client: &reqwest::Client,
+    url: &str,
+    headers: &[(String, String)],
+) -> Result<Vec<u8>> {
+    let mut request = client.get(url);
+    for (name, value) in headers {
+        request = request.header(name, value);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| Error::Network(format!("HTTP request failed: {}", e)))?;
+    let status = response.status();
+    let body = response
+        .bytes()
+        .await
+        .map_err(|e| Error::Network(format!("HTTP response read failed: {}", e)))?;
+
+    if !status.is_success() {
+        let preview = String::from_utf8_lossy(&body);
+        return Err(Error::Network(format!(
+            "HTTP request failed with status {}: {}",
+            status,
+            preview.chars().take(256).collect::<String>()
+        )));
+    }
+
+    Ok(body.to_vec())
+}
+
+async fn fetch_url_bytes_via_tor(
+    tor: TorClient,
+    url: &str,
+    headers: &[(String, String)],
+    timeout: Duration,
+) -> Result<Vec<u8>> {
+    let mut current = reqwest::Url::parse(url)
+        .map_err(|e| Error::Network(format!("Invalid URL '{}': {}", url, e)))?;
+
+    for _ in 0..=5 {
+        let (status, location, body) =
+            fetch_url_once_via_tor(tor.clone(), &current, headers, timeout).await?;
+
+        if status.is_redirection() {
+            let location = location.ok_or_else(|| {
+                Error::Network(format!(
+                    "Redirect from '{}' missing Location header",
+                    current
+                ))
+            })?;
+            current = current.join(&location).map_err(|e| {
+                Error::Network(format!(
+                    "Invalid redirect target '{}' from '{}': {}",
+                    location, url, e
+                ))
+            })?;
+            continue;
+        }
+
+        if !status.is_success() {
+            let preview = String::from_utf8_lossy(&body);
+            return Err(Error::Network(format!(
+                "HTTP request failed with status {}: {}",
+                status,
+                preview.chars().take(256).collect::<String>()
+            )));
+        }
+
+        return Ok(body);
+    }
+
+    Err(Error::Network(format!(
+        "Too many redirects while fetching '{}'",
+        url
+    )))
+}
+
+async fn fetch_url_once_via_tor(
+    tor: TorClient,
+    url: &reqwest::Url,
+    headers: &[(String, String)],
+    timeout: Duration,
+) -> Result<(http::StatusCode, Option<String>, Vec<u8>)> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| Error::Network(format!("URL '{}' is missing a host", url)))?;
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| Error::Network(format!("URL '{}' is missing a port", url)))?;
+
+    let mut path = url.path().to_string();
+    if path.is_empty() {
+        path.push('/');
+    }
+    if let Some(query) = url.query() {
+        path.push('?');
+        path.push_str(query);
+    }
+
+    let default_port = match url.scheme() {
+        "http" => 80,
+        "https" => 443,
+        other => {
+            return Err(Error::Network(format!(
+                "Unsupported URL scheme '{}' for '{}'",
+                other, url
+            )))
+        }
+    };
+
+    let host_header = if port == default_port {
+        host.to_string()
+    } else {
+        format!("{}:{}", host, port)
+    };
+
+    let stream = tor.connect_stream(host, port).await?;
+
+    let mut request = Request::builder().method("GET").uri(path);
+    request = request.header(HOST, host_header);
+
+    for (name, value) in headers {
+        let header_name = HeaderName::try_from(name.as_str())
+            .map_err(|e| Error::Network(format!("Invalid header name '{}': {}", name, e)))?;
+        let header_value = HeaderValue::from_str(value)
+            .map_err(|e| Error::Network(format!("Invalid value for header '{}': {}", name, e)))?;
+        request = request.header(header_name, header_value);
+    }
+
+    let request = request
+        .body(Empty::<Bytes>::new())
+        .map_err(|e| Error::Network(format!("Failed to build HTTP request: {}", e)))?;
+
+    let (status, location, body) = if url.scheme() == "https" {
+        let connector = NativeTlsConnector::builder()
+            .danger_accept_invalid_certs(false)
+            .danger_accept_invalid_hostnames(false)
+            .build()
+            .map_err(|e| Error::Tls(format!("TLS connector build failed: {}", e)))?;
+        let connector = TlsConnector::from(connector);
+        let tls_stream = connector
+            .connect(host, stream)
+            .await
+            .map_err(|e| Error::Tls(format!("TLS handshake failed: {}", e)))?;
+        let io = TokioIo::new(tls_stream);
+        fetch_over_tunnel_stream(io, request, timeout).await?
+    } else {
+        let io = TokioIo::new(stream);
+        fetch_over_tunnel_stream(io, request, timeout).await?
+    };
+
+    Ok((status, location, body))
+}
+
+async fn fetch_over_tunnel_stream<T>(
+    io: TokioIo<T>,
+    request: Request<Empty<Bytes>>,
+    timeout: Duration,
+) -> Result<(http::StatusCode, Option<String>, Vec<u8>)>
+where
+    T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let (mut sender, conn) = tokio::time::timeout(timeout, http1::handshake(io))
+        .await
+        .map_err(|_| Error::Network("HTTP handshake timed out".to_string()))?
+        .map_err(|e| Error::Network(format!("HTTP handshake failed: {}", e)))?;
+
+    tokio::spawn(async move {
+        if let Err(err) = conn.await {
+            warn!("HTTP tunnel connection error: {}", err);
+        }
+    });
+
+    let response = tokio::time::timeout(timeout, sender.send_request(request))
+        .await
+        .map_err(|_| Error::Network("HTTP request timed out".to_string()))?
+        .map_err(|e| Error::Network(format!("HTTP request failed: {}", e)))?;
+
+    let status = response.status();
+    let location = response
+        .headers()
+        .get(LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string());
+    let body = tokio::time::timeout(timeout, response.into_body().collect())
+        .await
+        .map_err(|_| Error::Network("HTTP response timed out".to_string()))?
+        .map_err(|e| Error::Network(format!("HTTP body read failed: {}", e)))?
+        .to_bytes()
+        .to_vec();
+
+    Ok((status, location, body))
 }
 
 fn uri_host_port(uri: &Uri) -> Result<(String, u16)> {

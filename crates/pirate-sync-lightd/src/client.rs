@@ -35,13 +35,15 @@ use proto::{
 };
 
 /// Default lightwalletd endpoint (Pirate Chain official)
-pub const DEFAULT_LIGHTD_HOST: &str = "64.23.167.130";
-/// Default lightwalletd port (no TLS by default)
-pub const DEFAULT_LIGHTD_PORT: u16 = 9067;
+pub const DEFAULT_LIGHTD_HOST: &str = "lightd1.pirate.black";
+/// Default lightwalletd port
+pub const DEFAULT_LIGHTD_PORT: u16 = 443;
 /// Default TLS usage for the default endpoint
-pub const DEFAULT_LIGHTD_USE_TLS: bool = false;
+pub const DEFAULT_LIGHTD_USE_TLS: bool = true;
+/// Default SPKI pin for the official lightwalletd endpoint.
+pub const DEFAULT_LIGHTD_SPKI_PIN: &str = "KAdAVTuQa+N5ECezENJsgMEnZRM46E/cexfIojRp5ls=";
 /// Default endpoint URL
-pub const DEFAULT_LIGHTD_URL: &str = "http://64.23.167.130:9067";
+pub const DEFAULT_LIGHTD_URL: &str = "https://lightd1.pirate.black:443";
 
 /// Retry configuration for network operations
 #[derive(Debug, Clone)]
@@ -253,7 +255,11 @@ impl Default for LightClientConfig {
             endpoint: DEFAULT_LIGHTD_URL.to_string(),
             transport: TransportMode::Tor,
             socks5_url: None,
-            tls: TlsConfig::default(),
+            tls: TlsConfig {
+                enabled: DEFAULT_LIGHTD_USE_TLS,
+                spki_pin: Some(DEFAULT_LIGHTD_SPKI_PIN.to_string()),
+                server_name: Some(DEFAULT_LIGHTD_HOST.to_string()),
+            },
             retry: RetryConfig::default(),
             connect_timeout: Duration::from_secs(30),
             request_timeout: Duration::from_secs(120),
@@ -305,7 +311,7 @@ impl LightClientConfig {
 
     /// Set SPKI pin for certificate verification
     pub fn with_spki_pin(mut self, pin: &str) -> Self {
-        self.tls.spki_pin = Some(pin.to_string());
+        self.tls.spki_pin = Some(normalize_spki_pin(pin).to_string());
         self.tls.enabled = true;
         self
     }
@@ -709,6 +715,21 @@ pub async fn fetch_spki_pin(
         .map_err(map_net_error)
 }
 
+/// Fetch arbitrary HTTP(S) bytes using the configured transport.
+pub async fn fetch_http_bytes(
+    url: String,
+    headers: Vec<(String, String)>,
+    mode: TransportMode,
+    socks5_url: Option<String>,
+) -> Result<Vec<u8>> {
+    let config = build_transport_config_from_mode(mode, socks5_url.as_deref())?;
+    let manager = GLOBAL_TRANSPORT.get_or_init(config).await?;
+    manager
+        .fetch_url_bytes(&url, &headers)
+        .await
+        .map_err(map_net_error)
+}
+
 /// Get current I2P status if transport manager is initialized.
 pub async fn i2p_status() -> Option<pirate_net::I2pStatus> {
     let manager = GLOBAL_TRANSPORT.get().await?;
@@ -975,6 +996,8 @@ pub struct LightdInfo {
     pub vendor: String,
     /// Chain name (e.g., "ARRR")
     pub chain_name: String,
+    /// Consensus branch id reported by the server (hex)
+    pub consensus_branch_id: String,
     /// Current block height
     pub block_height: u64,
     /// Estimated network height
@@ -989,6 +1012,7 @@ impl From<proto::LightdInfo> for LightdInfo {
             version: pb.version,
             vendor: pb.vendor,
             chain_name: pb.chain_name,
+            consensus_branch_id: pb.consensus_branch_id,
             block_height: pb.block_height,
             estimated_height: pb.estimated_height,
             sapling_activation_height: pb.sapling_activation_height,
@@ -1258,6 +1282,33 @@ impl LightClient {
 
         let transport_config = build_transport_config(&self.config)?;
         let manager = GLOBAL_TRANSPORT.get_or_init(transport_config).await?;
+        if self.config.tls.enabled {
+            if let Some(expected_pin) = self.config.tls.spki_pin.as_deref() {
+                let host = extract_host(endpoint_url).ok_or_else(|| {
+                    Error::Connection(format!(
+                        "Could not extract host from endpoint URL '{}'",
+                        endpoint_url
+                    ))
+                })?;
+                let port = extract_port(endpoint_url).unwrap_or(DEFAULT_LIGHTD_PORT);
+                let server_name = self
+                    .config
+                    .tls
+                    .server_name
+                    .clone()
+                    .unwrap_or_else(|| host.clone());
+                let actual_pin = manager
+                    .fetch_spki_pin(&host, port, &server_name)
+                    .await
+                    .map_err(map_net_error)?;
+                if normalize_spki_pin(expected_pin) != normalize_spki_pin(&actual_pin) {
+                    return Err(Error::Connection(format!(
+                        "TLS SPKI pin mismatch for {}",
+                        endpoint_url
+                    )));
+                }
+            }
+        }
         let result = manager.create_grpc_channel(endpoint).await;
 
         match result {
@@ -1998,6 +2049,19 @@ fn extract_host(url: &str) -> Option<String> {
     without_proto.split(':').next().map(|s| s.to_string())
 }
 
+fn extract_port(url: &str) -> Option<u16> {
+    let without_proto = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+    let (_, port_str) = without_proto.rsplit_once(':')?;
+    port_str.parse::<u16>().ok()
+}
+
+fn normalize_spki_pin(pin: &str) -> &str {
+    pin.trim().strip_prefix("sha256/").unwrap_or(pin.trim())
+}
+
 /// Compute transaction ID from raw transaction bytes
 fn compute_txid(raw_tx: &[u8]) -> String {
     // Chain txid is double SHA256 of the tx, reversed
@@ -2042,8 +2106,11 @@ mod tests {
     fn test_default_config() {
         let config = LightClientConfig::default();
         assert_eq!(config.endpoint, DEFAULT_LIGHTD_URL);
-        assert!(!config.tls.enabled);
-        assert!(config.tls.spki_pin.is_none());
+        assert!(config.tls.enabled);
+        assert_eq!(
+            config.tls.spki_pin,
+            Some(DEFAULT_LIGHTD_SPKI_PIN.to_string())
+        );
         assert_eq!(config.transport, TransportMode::Tor);
     }
 
@@ -2077,9 +2144,8 @@ mod tests {
 
     #[test]
     fn test_parse_socks5_url_rejects_bad_scheme() {
-        let err = parse_socks5_url("http://proxy.example.com:1080")
-            .err()
-            .expect("expected invalid scheme");
+        let err =
+            parse_socks5_url("http://proxy.example.com:1080").expect_err("expected invalid scheme");
         assert!(
             format!("{}", err).contains("Unsupported SOCKS5 URL scheme"),
             "unexpected error: {}",
@@ -2130,6 +2196,25 @@ mod tests {
         assert_eq!(
             extract_host("example.com:9067"),
             Some("example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_port() {
+        assert_eq!(extract_port("https://lightd1.pirate.black:443"), Some(443));
+        assert_eq!(extract_port("http://localhost:9067"), Some(9067));
+        assert_eq!(extract_port("example.com:1234"), Some(1234));
+    }
+
+    #[test]
+    fn test_normalize_spki_pin() {
+        assert_eq!(
+            normalize_spki_pin("sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        );
+        assert_eq!(
+            normalize_spki_pin("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         );
     }
 
