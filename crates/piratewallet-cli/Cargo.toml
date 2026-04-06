@@ -1,0 +1,16 @@
+[package]
+name = "piratewallet-cli"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "piratewallet-cli"
+path = "src/main.rs"
+
+[dependencies]
+pirate-cli-core = { path = "../pirate-cli-core" }
+anyhow = { workspace = true }
+tokio = { workspace = true }
