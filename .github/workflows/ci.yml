@@ -35,7 +35,7 @@ jobs:
     name: Security - Pinned GitHub Actions
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Verify immutable GitHub Action refs
         run: python3 scripts/check_pinned_actions.py
@@ -44,7 +44,7 @@ jobs:
     name: FRB - Codegen
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
@@ -58,7 +58,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
         with:
           path: |
             ~/.cargo/bin
@@ -92,7 +92,7 @@ jobs:
     name: Rust - Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -101,13 +101,13 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo registry
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo build
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
         with:
           path: crates/target
           key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
@@ -126,7 +126,7 @@ jobs:
     name: Rust - Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -134,7 +134,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
         with:
           path: |
             ~/.cargo/registry
@@ -151,7 +151,7 @@ jobs:
     name: Rust - Qortal Adapter Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -159,7 +159,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
         with:
           path: |
             ~/.cargo/registry
@@ -179,7 +179,7 @@ jobs:
     name: Rust - Property Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -187,7 +187,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
         with:
           path: |
             ~/.cargo/registry
@@ -203,7 +203,7 @@ jobs:
     name: Rust - Migration Snapshot Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -211,7 +211,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
         with:
           path: |
             ~/.cargo/registry
@@ -227,7 +227,7 @@ jobs:
     name: Rust - Performance Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -235,7 +235,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache cargo
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7
         with:
           path: |
             ~/.cargo/registry
@@ -255,7 +255,7 @@ jobs:
     name: Security - Cargo Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -274,7 +274,7 @@ jobs:
     name: Security - Cargo Deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked --version ${{ env.CARGO_DENY_VERSION }}
@@ -288,7 +288,7 @@ jobs:
     name: Security - Semgrep (Rust)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
@@ -311,7 +311,7 @@ jobs:
     # Dart layer is primarily UI - manual code review covers UI security
     if: false
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
@@ -334,7 +334,7 @@ jobs:
     name: Flutter - Analyze
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
@@ -356,7 +356,7 @@ jobs:
     name: Flutter - Unit & Widget Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
@@ -387,7 +387,7 @@ jobs:
     # Skip integration tests in CI - they require a live lightwalletd backend
     if: false
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
@@ -450,7 +450,7 @@ jobs:
             build-command: flutter build windows --release
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
@@ -508,7 +508,7 @@ jobs:
       android_sdk_changed: ${{ steps.diff.outputs.android_sdk_changed }}
       react_native_plugin_changed: ${{ steps.diff.outputs.react_native_plugin_changed }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
 
@@ -542,7 +542,7 @@ jobs:
             bin-ext: ".exe"
             artifact-name: cli-windows
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -575,7 +575,7 @@ jobs:
       - backend-release-plan
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -617,7 +617,7 @@ jobs:
       - backend-release-plan
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -687,7 +687,7 @@ jobs:
       - backend-release-plan
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
@@ -695,7 +695,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -750,16 +750,16 @@ jobs:
       - package-android-sdk
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Download iOS SDK artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: ios-sdk
           path: /tmp/pirate-ios-sdk-artifact
 
       - name: Download Android SDK artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: android-sdk
           path: /tmp/pirate-android-sdk-artifact
@@ -784,7 +784,7 @@ jobs:
           npm install
 
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -856,16 +856,16 @@ jobs:
       - package-android-sdk
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Download iOS SDK artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: ios-sdk
           path: /tmp/pirate-ios-sdk-artifact
 
       - name: Download Android SDK artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: android-sdk
           path: /tmp/pirate-android-sdk-artifact
@@ -945,12 +945,12 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0  # Full history for SOURCE_DATE_EPOCH
 
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -972,7 +972,7 @@ jobs:
           cache: true
 
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -983,13 +983,13 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1088,7 +1088,7 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
 
@@ -1105,7 +1105,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1208,7 +1208,7 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
 
@@ -1225,13 +1225,13 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1323,7 +1323,7 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
 
@@ -1340,13 +1340,13 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1424,7 +1424,7 @@ jobs:
       - flutter-test
       - security-audit
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
 
@@ -1441,13 +1441,13 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1571,7 +1571,7 @@ jobs:
 
       - name: Setup Java
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1587,28 +1587,28 @@ jobs:
 
       - name: Download APK artifacts (V8)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: android-apk-unsigned-v8
           path: dist/android
 
       - name: Download APK artifacts (V7)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: android-apk-unsigned-v7
           path: dist/android
 
       - name: Download APK artifacts (x86)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: android-apk-unsigned-x86
           path: dist/android
 
       - name: Download AAB artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: android-aab
           path: dist/android
@@ -1728,7 +1728,7 @@ jobs:
 
       - name: Download Windows artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: windows-desktop
           path: dist/windows
@@ -1858,7 +1858,7 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Missing macOS signing/notarization secrets. Skipping signed+notarized macOS DMG." >&2
           fi
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         if: steps.signing.outputs.enabled == 'true'
         with:
           fetch-depth: 0
@@ -1879,7 +1879,7 @@ jobs:
 
       - name: Setup Go
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -1975,7 +1975,7 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         if: steps.signing.outputs.enabled == 'true'
         with:
           fetch-depth: 0
@@ -2064,21 +2064,21 @@ jobs:
 
       - name: Download AppImage artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: linux-appimage
           path: dist/linux
 
       - name: Download Debian artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: linux-deb
           path: dist/linux
 
       - name: Download Flatpak artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           name: linux-flatpak
           path: dist/linux
@@ -2135,12 +2135,12 @@ jobs:
             echo "::warning::Missing VIRUSTOTAL_API_KEY secret. Skipping VirusTotal artifact scanning." >&2
           fi
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         if: steps.vt.outputs.enabled == 'true'
 
       - name: Download artifacts
         if: steps.vt.outputs.enabled == 'true'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           path: vt-artifacts
 
@@ -2188,12 +2188,12 @@ jobs:
       - virustotal-scan
     steps:
       - name: Checkout tag for release notes
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
 
       - name: Download artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           path: release-artifacts
 
@@ -2384,10 +2384,17 @@ jobs:
             > release/PirateWalletSDK-Package.swift
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe
-        with:
-          files: release/*
-          body_path: release-notes/RELEASE_NOTES.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file release-notes/RELEASE_NOTES.md
+          else
+            gh release create "$TAG" --notes-file release-notes/RELEASE_NOTES.md
+          fi
+          gh release upload "$TAG" release/* --clobber
 
   ci-success:
     name: CI - All Checks Passed
