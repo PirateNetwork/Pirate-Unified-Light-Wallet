@@ -816,6 +816,7 @@ jobs:
           GRADLE_USER_HOME: ${{ runner.temp }}/gradle-rn-example-android
         run: |
           cd bindings/react-native-pirate-wallet/example/android
+          chmod +x ./gradlew
           ./gradlew --no-daemon assembleDebug
 
       - name: Package React Native plugin
