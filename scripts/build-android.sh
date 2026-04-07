@@ -110,6 +110,7 @@ else
     if [ "$APK_MODE" = "split" ]; then
         # Multiple ABIs
         ABIS=("arm64-v8a" "armeabi-v7a" "x86_64")
+        MISSING_ABIS=()
         for abi in "${ABIS[@]}"; do
             signed="$APP_DIR/build/app/outputs/flutter-apk/app-${abi}-release.apk"
             unsigned="$APP_DIR/build/app/outputs/flutter-apk/app-${abi}-release-unsigned.apk"
@@ -118,9 +119,14 @@ else
             elif [ -f "$unsigned" ]; then
                 APK_FILES+=("$unsigned")
             else
-                warn "APK for $abi not found."
+                MISSING_ABIS+=("$abi")
             fi
         done
+        if [ "${#MISSING_ABIS[@]}" -ne 0 ]; then
+            warn "Flutter APK output directory contents:"
+            ls -lah "$APP_DIR/build/app/outputs/flutter-apk" || true
+            error "Split APK build did not produce all expected ABIs. Missing: ${MISSING_ABIS[*]}"
+        fi
     else
         ARM64_APK="$APP_DIR/build/app/outputs/flutter-apk/app-release.apk"
         ARM64_APK_UNSIGNED="$APP_DIR/build/app/outputs/flutter-apk/app-release-unsigned.apk"
@@ -228,3 +234,4 @@ fi
 
 log "Build complete!"
 log "Output directory: $OUTPUT_DIR"
+ls -lah "$OUTPUT_DIR"
