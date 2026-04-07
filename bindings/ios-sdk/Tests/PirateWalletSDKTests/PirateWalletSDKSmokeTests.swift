@@ -5,8 +5,8 @@ import XCTest
 final class PirateWalletSDKSmokeTests: XCTestCase {
     func testTypedSurfaceBuildInfoAndWalletMetadata() throws {
         let invoker = ScriptedInvoker(expectedCalls: [
-            expected("get_build_info") {
-                ok([
+            expected("get_build_info") { _ in
+                try ok([
                     "version": "1.2.3",
                     "git_commit": "abc1234",
                     "build_date": "2026-03-20",
@@ -14,8 +14,8 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
                     "target_triple": "aarch64-apple-ios",
                 ])
             },
-            expected("list_wallets") {
-                ok([
+            expected("list_wallets") { _ in
+                try ok([
                     [
                         "id": "wallet-1",
                         "name": "Primary",
@@ -46,7 +46,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
         let invoker = ScriptedInvoker(expectedCalls: [
             expected("list_key_groups") { request in
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
-                return ok([
+                return try ok([
                     [
                         "id": 7,
                         "label": "Imported bundle",
@@ -62,7 +62,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
             expected("export_key_group_keys") { request in
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
                 XCTAssertEqual(request["key_id"] as? Int, 7)
-                return ok([
+                return try ok([
                     "key_id": 7,
                     "sapling_viewing_key": "zxviewsapling",
                     "orchard_viewing_key": "uvieworchard",
@@ -76,11 +76,11 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
                 XCTAssertEqual(request["orchard_key"] as? String, "secret-orchard")
                 XCTAssertEqual(request["label"] as? String, "Imported bundle")
                 XCTAssertEqual(request["birthday_height"] as? Int, 2_345_678)
-                return ok(11)
+                return try ok(11)
             },
             expected("export_seed_raw") { request in
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
-                return ok(["alpha", "beta", "gamma"])
+                return try ok(["alpha", "beta", "gamma"])
             },
         ])
 
@@ -109,8 +109,8 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
 
     func testAsyncTypedSurfaceBuildInfoAndWalletMetadata() async throws {
         let invoker = ScriptedInvoker(expectedCalls: [
-            expected("get_build_info") {
-                ok([
+            expected("get_build_info") { _ in
+                try ok([
                     "version": "1.2.3",
                     "git_commit": "def5678",
                     "build_date": "2026-04-04",
@@ -118,8 +118,8 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
                     "target_triple": "aarch64-apple-ios",
                 ])
             },
-            expected("list_wallets") {
-                ok([
+            expected("list_wallets") { _ in
+                try ok([
                     [
                         "id": "wallet-async",
                         "name": "Async Wallet",
@@ -146,7 +146,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
         let invoker = ScriptedInvoker(expectedCalls: [
             expected("list_key_groups") { request in
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-async")
-                return ok([
+                return try ok([
                     [
                         "id": 9,
                         "label": "Async imported bundle",
@@ -161,7 +161,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
             },
             expected("export_seed_raw") { request in
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-async")
-                return ok(["delta", "echo", "foxtrot"])
+                return try ok(["delta", "echo", "foxtrot"])
             },
         ])
 
@@ -199,7 +199,7 @@ private struct ExpectedCall {
     let responder: ([String: Any]) throws -> String
 }
 
-private final class ScriptedInvoker: PirateWalletNativeInvoker {
+private final class ScriptedInvoker: PirateWalletNativeInvoker, @unchecked Sendable {
     private var remainingCalls: [ExpectedCall]
 
     init(expectedCalls: [ExpectedCall]) {
