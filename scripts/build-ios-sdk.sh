@@ -44,7 +44,9 @@ module PirateWalletNative {
 }
 EOF
 
-SIM_LIB="$TMP_DIR/libpirate_ffi_native-sim.a"
+SIM_DIR="$TMP_DIR/sim"
+mkdir -p "$SIM_DIR"
+SIM_LIB="$SIM_DIR/libpirate_ffi_native.a"
 lipo -create \
   "$CRATES_DIR/target/aarch64-apple-ios-sim/release/libpirate_ffi_native.a" \
   "$CRATES_DIR/target/x86_64-apple-ios/release/libpirate_ffi_native.a" \
