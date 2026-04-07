@@ -291,10 +291,10 @@ async fn bench_sync_progress_calculation() -> Result<(), Box<dyn std::error::Err
 
 #[tokio::test]
 async fn bench_rollback_performance() -> Result<(), Box<dyn std::error::Error>> {
-    let temp_dir = TempDir::new()?;
-    let db_path = temp_dir.path().join("rollback_bench.db");
-
-    let conn = rusqlite::Connection::open(&db_path)?;
+    // Keep rollback benchmarking in-memory so it measures SQL/path logic rather than
+    // runner-specific filesystem latency. Other perf benches in this file already use
+    // deterministic in-process workloads for the same reason.
+    let conn = rusqlite::Connection::open_in_memory()?;
     conn.execute_batch(
         "CREATE TABLE blocks (height INTEGER PRIMARY KEY, data BLOB);
          CREATE TABLE checkpoints (height INTEGER PRIMARY KEY);",
