@@ -74,13 +74,12 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
                 XCTAssertEqual(request["sapling_key"] as? String, "secret-sapling")
                 XCTAssertEqual(request["orchard_key"] as? String, "secret-orchard")
-                XCTAssertEqual(request["label"] as? String, "Imported bundle")
                 XCTAssertEqual(request["birthday_height"] as? Int, 2_345_678)
                 return try ok(11)
             },
             expected("export_seed_raw") { request in
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
-                return try ok(["alpha", "beta", "gamma"])
+                return try ok("alpha beta gamma")
             },
         ])
 
@@ -161,7 +160,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
             },
             expected("export_seed_raw") { request in
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-async")
-                return try ok(["delta", "echo", "foxtrot"])
+                return try ok("delta echo foxtrot")
             },
         ])
 
