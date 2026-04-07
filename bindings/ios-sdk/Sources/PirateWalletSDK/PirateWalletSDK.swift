@@ -1,7 +1,7 @@
 import Foundation
 import PirateWalletNative
 
-public protocol PirateWalletNativeInvoker {
+public protocol PirateWalletNativeInvoker: Sendable {
     func invoke(requestJson: String, pretty: Bool) throws -> String
 }
 
@@ -58,6 +58,7 @@ public final class PirateWalletSDK {
         }
     }
 
+    @MainActor
     public func createSynchronizer(
         walletId: String,
         config: PirateWalletSynchronizer.Config = .init()
