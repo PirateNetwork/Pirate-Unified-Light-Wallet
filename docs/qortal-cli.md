@@ -49,6 +49,29 @@ If `--wallet-id` is omitted, the adapter uses the active wallet.
 
 The adapter binary can also fall back to the normal CLI parser when invoked with non-Qortal command names. The supported Qortal contract is the command list above.
 
+## Shared wallet-command path
+
+`pirate-qortal-cli` is only the binary entrypoint. The actual command
+implementation lives in:
+
+- `crates/pirate-cli-core`
+
+That means this binary can do two different things:
+
+- run the dedicated Qortal adapter commands above
+- fall back to the general wallet CLI for non-Qortal command names
+
+Mnemonic-language support applies only to that shared wallet-command path, not
+to the Qortal-specific adapter commands.
+
+Examples:
+
+```bash
+./crates/target/release/pirate-qortal-cli generate-mnemonic --word-count 24 --mnemonic-language spanish
+./crates/target/release/pirate-qortal-cli wallet restore "Recovered Wallet" "..." --mnemonic-language japanese
+./crates/target/release/pirate-qortal-cli seed --wallet-id <wallet-id> --mnemonic-language italian
+```
+
 ## `syncstatus`
 
 Usage:
@@ -288,6 +311,12 @@ Output summary:
   - `{"txid":"<transaction-id>"}`
 - `redeemp2sh`
   - `{"txid":"<transaction-id>"}`
+
+The underlying Qortal-specific implementation lives in:
+
+- `crates/pirate-cli-core`
+- `crates/pirate-wallet-service/src/api/qortal_p2sh.rs`
+- `crates/pirate-core/src/qortal_p2sh.rs`
 
 ## Checks
 

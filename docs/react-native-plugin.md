@@ -95,6 +95,21 @@ iOS:
 
 - CocoaPods links the vendored `PirateWalletNative.xcframework`
 
+## Mnemonic language support
+
+The React Native plugin now supports explicit BIP39 seed phrase language
+handling for:
+
+- wallet creation
+- wallet restore
+- mnemonic generation
+- mnemonic validation
+- mnemonic inspection
+- advanced seed export
+
+Those additions live on the same broad JS SDK surface as the rest of the
+wallet operations.
+
 ## Build checks in this repo
 
 The React Native plugin CI path stages the native SDK artifacts and then checks:

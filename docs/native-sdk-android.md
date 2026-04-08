@@ -39,6 +39,39 @@ There is also a separate advanced key-management surface for higher-risk operati
 
 Those live under `sdk.advancedKeyManagement`.
 
+## Mnemonic language support
+
+The Android SDK now supports explicit BIP39 seed phrase language handling for:
+
+- wallet creation
+- wallet restore
+- mnemonic generation
+- mnemonic validation
+- mnemonic inspection
+- advanced seed export
+
+Supported languages:
+
+- `English`
+- `ChineseSimplified`
+- `ChineseTraditional`
+- `French`
+- `Italian`
+- `Japanese`
+- `Korean`
+- `Spanish`
+
+Behavior:
+
+- create and generate use the requested language when provided
+- restore and validate attempt autodetection when the language is omitted
+- `inspectMnemonic(...)` reports:
+  - `isValid`
+  - `detectedLanguage`
+  - `ambiguousLanguages`
+  - `wordCount`
+- advanced seed export defaults to the wallet's original stored mnemonic language and can re-render that same seed entropy in another supported language for display/export
+
 It deliberately does not expose:
 
 - transparent address and balance APIs
@@ -171,4 +204,3 @@ The Android SDK CI path now checks three things:
 - the Rust JNI library build
 - the Android SDK unit tests and release AAR build
 - a separate Android smoke-consumer app module that compiles against the public SDK surface
-

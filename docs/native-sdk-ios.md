@@ -41,6 +41,39 @@ Those live under `sdk.advancedKeyManagement`.
 
 The boundary is the same one used for the Android SDK.
 
+## Mnemonic language support
+
+The iOS SDK now supports explicit BIP39 seed phrase language handling for:
+
+- wallet creation
+- wallet restore
+- mnemonic generation
+- mnemonic validation
+- mnemonic inspection
+- advanced seed export
+
+Supported languages:
+
+- `english`
+- `chineseSimplified`
+- `chineseTraditional`
+- `french`
+- `italian`
+- `japanese`
+- `korean`
+- `spanish`
+
+Behavior:
+
+- create and generate use the requested language when provided
+- restore and validate attempt autodetection when the language is omitted
+- `inspectMnemonic(...)` / `inspectMnemonicAsync(...)` report:
+  - `isValid`
+  - `detectedLanguage`
+  - `ambiguousLanguages`
+  - `wordCount`
+- advanced seed export defaults to the wallet's original stored mnemonic language and can re-render that same seed entropy in another supported language for display/export
+
 ## Build
 
 Generate the native header:

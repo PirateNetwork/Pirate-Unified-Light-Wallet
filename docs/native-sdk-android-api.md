@@ -29,9 +29,9 @@ Wallet lifecycle:
 - `getActiveWallet()`
 - `getWallet(walletId)`
 - `createWallet(request)`
-- `createWallet(name, birthdayHeight = null)`
+- `createWallet(name, birthdayHeight = null, mnemonicLanguage = null)`
 - `restoreWallet(request)`
-- `restoreWallet(name, mnemonic, birthdayHeight = null)`
+- `restoreWallet(name, mnemonic, birthdayHeight = null, mnemonicLanguage = null)`
 - `importViewingWallet(request)`
 - `importViewingWallet(name, saplingViewingKey = null, orchardViewingKey = null, birthdayHeight)`
 - `switchWallet(walletId)`
@@ -42,8 +42,9 @@ Wallet lifecycle:
 
 Mnemonic and formatting:
 
-- `generateMnemonic(wordCount = null)`
-- `validateMnemonic(mnemonic)`
+- `generateMnemonic(wordCount = null, mnemonicLanguage = null)`
+- `validateMnemonic(mnemonic, mnemonicLanguage = null)`
+- `inspectMnemonic(mnemonic)`
 - `getNetworkInfo()`
 - `formatAmount(arrrtoshis)`
 - `parseAmount(arrr)`
@@ -106,7 +107,7 @@ Advanced key management:
 - `advancedKeyManagement.exportKeyGroupKeys(walletId, keyId)`
 - `advancedKeyManagement.importSpendingKey(request)`
 - `advancedKeyManagement.importSpendingKey(walletId, birthdayHeight, saplingSpendingKey = null, orchardSpendingKey = null)`
-- `advancedKeyManagement.exportSeed(walletId)`
+- `advancedKeyManagement.exportSeed(walletId, mnemonicLanguage = null)`
 
 ## PirateWalletSynchronizer
 
@@ -161,6 +162,8 @@ Wallet and sync:
 - `BuildInfo`
 - `WalletMeta`
 - `NetworkType`
+- `MnemonicLanguage`
+- `MnemonicInspection`
 - `SyncMode`
 - `SyncStage`
 - `SyncStatus`
@@ -170,6 +173,7 @@ Requests and transaction types:
 
 - `CreateWalletRequest`
 - `RestoreWalletRequest`
+- both include optional `mnemonicLanguage`
 - `ImportViewingWalletRequest`
 - `ImportWatchOnlyWalletRequest`
 - `ImportSpendingKeyRequest`
@@ -210,3 +214,4 @@ Transaction detail:
 ## Notes
 
 - The Android SDK keeps high-risk seed and spending-key operations under `advancedKeyManagement`.
+- `inspectMnemonic(mnemonic)` is the language-detection helper for higher-level UX.

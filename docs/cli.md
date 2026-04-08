@@ -183,9 +183,9 @@ One legacy command uses custom output:
   - Output: `WalletMeta[]`
 - `wallet active`
   - Output: active wallet id string or `null`
-- `wallet create <NAME> [--birthday <HEIGHT>]`
+- `wallet create <NAME> [--birthday <HEIGHT>] [--mnemonic-language <LANG>]`
   - Output: wallet id string
-- `wallet restore <NAME> <MNEMONIC> [--birthday <HEIGHT>]`
+- `wallet restore <NAME> <MNEMONIC> [--birthday <HEIGHT>] [--mnemonic-language <LANG>]`
   - Output: wallet id string
 - `wallet import-viewing <NAME> [--sapling-viewing-key <KEY>] [--orchard-viewing-key <KEY>] --birthday <HEIGHT>`
   - Output: wallet id string
@@ -200,10 +200,27 @@ One legacy command uses custom output:
 
 ## Mnemonic helpers
 
-- `generate-mnemonic [--word-count <COUNT>]`
+- `generate-mnemonic [--word-count <COUNT>] [--mnemonic-language <LANG>]`
   - Output: mnemonic string
-- `validate-mnemonic <MNEMONIC>`
+- `validate-mnemonic <MNEMONIC> [--mnemonic-language <LANG>]`
   - Output: `bool`
+
+Supported `--mnemonic-language` values:
+
+- `english`
+- `chinese-simplified`
+- `chinese-traditional`
+- `french`
+- `italian`
+- `japanese`
+- `korean`
+- `spanish`
+
+Behavior:
+
+- `generate-mnemonic` uses the requested word list when the flag is present
+- `validate-mnemonic` attempts autodetection when the flag is omitted
+- `wallet restore` attempts autodetection when the flag is omitted
 
 ## `address` command group
 
@@ -269,12 +286,15 @@ These commands preserve older CLI names. Wallet-scoped commands accept `--wallet
   - Output:
     - `pool`
     - `address`
-- `seed [--wallet-id <WALLET_ID>]`
+- `seed [--wallet-id <WALLET_ID>] [--mnemonic-language <LANG>]`
   - Legacy raw advanced seed export
   - Intended for operator and integration use where local authorization UX is handled by the caller
   - Output:
     - `seed`
     - `birthday`
+  - Behavior:
+    - without `--mnemonic-language`, export uses the wallet's original stored mnemonic language
+    - with `--mnemonic-language`, export re-renders the same seed entropy in the requested language
 - `import <KEY> <BIRTHDAY> [--wallet-id <WALLET_ID>] [--name <NAME>] [--no-rescan]`
   - Accepted inputs:
     - Sapling spending key

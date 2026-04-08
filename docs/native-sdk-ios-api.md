@@ -34,9 +34,9 @@ Wallet lifecycle:
 - `getActiveWallet()`
 - `getWallet(walletId:)`
 - `createWallet(request:)`
-- `createWallet(name:birthdayHeight:)`
+- `createWallet(name:birthdayHeight:mnemonicLanguage:)`
 - `restoreWallet(request:)`
-- `restoreWallet(name:mnemonic:birthdayHeight:)`
+- `restoreWallet(name:mnemonic:birthdayHeight:mnemonicLanguage:)`
 - `importViewingWallet(request:)`
 - `importViewingWallet(name:saplingViewingKey:orchardViewingKey:birthdayHeight:)`
 - `switchWallet(walletId:)`
@@ -50,9 +50,9 @@ Wallet lifecycle:
 - `getActiveWalletAsync()`
 - `getWalletAsync(walletId:)`
 - `createWalletAsync(request:)`
-- `createWalletAsync(name:birthdayHeight:)`
+- `createWalletAsync(name:birthdayHeight:mnemonicLanguage:)`
 - `restoreWalletAsync(request:)`
-- `restoreWalletAsync(name:mnemonic:birthdayHeight:)`
+- `restoreWalletAsync(name:mnemonic:birthdayHeight:mnemonicLanguage:)`
 - `importViewingWalletAsync(request:)`
 - `importViewingWalletAsync(name:saplingViewingKey:orchardViewingKey:birthdayHeight:)`
 - `switchWalletAsync(walletId:)`
@@ -63,13 +63,15 @@ Wallet lifecycle:
 
 Mnemonic and formatting:
 
-- `generateMnemonic(wordCount:)`
-- `validateMnemonic(_:)`
+- `generateMnemonic(wordCount:mnemonicLanguage:)`
+- `validateMnemonic(_:mnemonicLanguage:)`
+- `inspectMnemonic(_:)`
 - `getNetworkInfo()`
 - `formatAmount(_:)`
 - `parseAmount(_:)`
-- `generateMnemonicAsync(wordCount:)`
-- `validateMnemonicAsync(_:)`
+- `generateMnemonicAsync(wordCount:mnemonicLanguage:)`
+- `validateMnemonicAsync(_:mnemonicLanguage:)`
+- `inspectMnemonicAsync(_:)`
 - `getNetworkInfoAsync()`
 - `formatAmountAsync(_:)`
 - `parseAmountAsync(_:)`
@@ -166,12 +168,12 @@ Advanced key management:
 - `advancedKeyManagement.exportKeyGroupKeys(walletId:keyId:)`
 - `advancedKeyManagement.importSpendingKey(request:)`
 - `advancedKeyManagement.importSpendingKey(walletId:birthdayHeight:saplingSpendingKey:orchardSpendingKey:)`
-- `advancedKeyManagement.exportSeed(walletId:)`
+- `advancedKeyManagement.exportSeed(walletId:mnemonicLanguage:)`
 - `advancedKeyManagement.listKeyGroupsAsync(walletId:)`
 - `advancedKeyManagement.exportKeyGroupKeysAsync(walletId:keyId:)`
 - `advancedKeyManagement.importSpendingKeyAsync(request:)`
 - `advancedKeyManagement.importSpendingKeyAsync(walletId:birthdayHeight:saplingSpendingKey:orchardSpendingKey:)`
-- `advancedKeyManagement.exportSeedAsync(walletId:)`
+- `advancedKeyManagement.exportSeedAsync(walletId:mnemonicLanguage:)`
 
 ## PirateWalletSynchronizer
 
@@ -230,6 +232,8 @@ Wallet and sync:
 - `BuildInfo`
 - `WalletMeta`
 - `NetworkType`
+- `MnemonicLanguage`
+- `MnemonicInspection`
 - `SyncMode`
 - `SyncStage`
 - `SyncStatus`
@@ -239,6 +243,7 @@ Requests and transaction types:
 
 - `CreateWalletRequest`
 - `RestoreWalletRequest`
+- both include optional `mnemonicLanguage`
 - `ImportViewingWalletRequest`
 - `ImportWatchOnlyWalletRequest`
 - `ImportSpendingKeyRequest`
