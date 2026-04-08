@@ -7,25 +7,39 @@ import '../frb_generated.dart';
 import '../models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These functions are ignored because they are not marked as `pub`: `light_client_config_for_endpoint`, `load_registry_tunnel_mode`, `persist_registry_tunnel_mode`, `redact_socks5_url`, `tunnel_transport_config_for`, `tunnel_transport_config`
 
-            // These functions are ignored because they are not marked as `pub`: `light_client_config_for_endpoint`, `load_registry_tunnel_mode`, `persist_registry_tunnel_mode`, `redact_socks5_url`, `tunnel_transport_config_for`, `tunnel_transport_config`
+Future<void> setTunnel({required TunnelMode mode}) =>
+    RustLib.instance.api.crateApiTunnelSetTunnel(mode: mode);
 
+Future<TunnelMode> getTunnel() =>
+    RustLib.instance.api.crateApiTunnelGetTunnel();
 
-            Future<void>  setTunnel({required TunnelMode mode }) => RustLib.instance.api.crateApiTunnelSetTunnel(mode: mode);
+Future<void> bootstrapTunnel({required TunnelMode mode}) =>
+    RustLib.instance.api.crateApiTunnelBootstrapTunnel(mode: mode);
 
-Future<TunnelMode>  getTunnel() => RustLib.instance.api.crateApiTunnelGetTunnel();
+Future<void> shutdownTransport() =>
+    RustLib.instance.api.crateApiTunnelShutdownTransport();
 
-Future<void>  bootstrapTunnel({required TunnelMode mode }) => RustLib.instance.api.crateApiTunnelBootstrapTunnel(mode: mode);
+Future<void> setTorBridgeSettings({
+  required bool useBridges,
+  required bool fallbackToBridges,
+  required String transport,
+  required List<String> bridgeLines,
+  String? transportPath,
+}) => RustLib.instance.api.crateApiTunnelSetTorBridgeSettings(
+  useBridges: useBridges,
+  fallbackToBridges: fallbackToBridges,
+  transport: transport,
+  bridgeLines: bridgeLines,
+  transportPath: transportPath,
+);
 
-Future<void>  shutdownTransport() => RustLib.instance.api.crateApiTunnelShutdownTransport();
+Future<String> getTorStatus() =>
+    RustLib.instance.api.crateApiTunnelGetTorStatus();
 
-Future<void>  setTorBridgeSettings({required bool useBridges , required bool fallbackToBridges , required String transport , required List<String> bridgeLines , String? transportPath }) => RustLib.instance.api.crateApiTunnelSetTorBridgeSettings(useBridges: useBridges, fallbackToBridges: fallbackToBridges, transport: transport, bridgeLines: bridgeLines, transportPath: transportPath);
+Future<void> rotateTorExit() =>
+    RustLib.instance.api.crateApiTunnelRotateTorExit();
 
-Future<String>  getTorStatus() => RustLib.instance.api.crateApiTunnelGetTorStatus();
-
-Future<void>  rotateTorExit() => RustLib.instance.api.crateApiTunnelRotateTorExit();
-
-Future<NodeTestResult>  testNode({required String url , String? tlsPin }) => RustLib.instance.api.crateApiTunnelTestNode(url: url, tlsPin: tlsPin);
-
-            
-            
+Future<NodeTestResult> testNode({required String url, String? tlsPin}) =>
+    RustLib.instance.api.crateApiTunnelTestNode(url: url, tlsPin: tlsPin);

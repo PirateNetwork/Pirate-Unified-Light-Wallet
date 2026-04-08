@@ -6,46 +6,50 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-
-            // These functions are ignored because they are not marked as `pub`: `address_prefix_network_type_for_endpoint`, `build_light_client_config`, `cache_lightd_endpoint`, `detect_network_from_endpoint`, `endpoint_from_url`, `get_lightd_endpoint_config`, `get_lightd_endpoint`, `load_registry_endpoints`, `orchard_activation_override_height`, `remove_cached_lightd_endpoint`, `tls_server_name`
+// These functions are ignored because they are not marked as `pub`: `address_prefix_network_type_for_endpoint`, `build_light_client_config`, `cache_lightd_endpoint`, `detect_network_from_endpoint`, `endpoint_from_url`, `get_lightd_endpoint_config`, `get_lightd_endpoint`, `load_registry_endpoints`, `orchard_activation_override_height`, `remove_cached_lightd_endpoint`, `tls_server_name`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `LIGHTD_ENDPOINTS`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `deref`, `fmt`, `initialize`
 
+class LightdEndpoint {
+  final String host;
+  final int port;
+  final bool useTls;
+  final String? tlsPin;
+  final String? label;
 
-            
+  const LightdEndpoint({
+    required this.host,
+    required this.port,
+    required this.useTls,
+    this.tlsPin,
+    this.label,
+  });
 
-            class LightdEndpoint  {
-                final String host;
-final int port;
-final bool useTls;
-final String? tlsPin;
-final String? label;
+  static Future<LightdEndpoint> default_() =>
+      RustLib.instance.api.crateApiEndpointLightdEndpointDefault();
 
-                const LightdEndpoint({required this.host ,required this.port ,required this.useTls ,this.tlsPin ,this.label ,});
+  Future<String> displayString() => RustLib.instance.api
+      .crateApiEndpointLightdEndpointDisplayString(that: this);
 
-                static Future<LightdEndpoint>  default_()=>RustLib.instance.api.crateApiEndpointLightdEndpointDefault();
+  Future<String> url() =>
+      RustLib.instance.api.crateApiEndpointLightdEndpointUrl(that: this);
 
+  @override
+  int get hashCode =>
+      host.hashCode ^
+      port.hashCode ^
+      useTls.hashCode ^
+      tlsPin.hashCode ^
+      label.hashCode;
 
- Future<String>  displayString()=>RustLib.instance.api.crateApiEndpointLightdEndpointDisplayString(that: this, );
-
-
- Future<String>  url()=>RustLib.instance.api.crateApiEndpointLightdEndpointUrl(that: this, );
-
-
-                
-
-                
-        @override
-        int get hashCode => host.hashCode^port.hashCode^useTls.hashCode^tlsPin.hashCode^label.hashCode;
-        
-
-                
-        @override
-        bool operator ==(Object other) =>
-            identical(this, other) ||
-            other is LightdEndpoint &&
-                runtimeType == other.runtimeType
-                && host == other.host&& port == other.port&& useTls == other.useTls&& tlsPin == other.tlsPin&& label == other.label;
-        
-            }
-            
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LightdEndpoint &&
+          runtimeType == other.runtimeType &&
+          host == other.host &&
+          port == other.port &&
+          useTls == other.useTls &&
+          tlsPin == other.tlsPin &&
+          label == other.label;
+}
