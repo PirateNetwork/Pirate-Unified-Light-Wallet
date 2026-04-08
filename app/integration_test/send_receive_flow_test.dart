@@ -9,8 +9,9 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   // Skip integration tests in CI - they require a live lightwalletd backend
-  final bool _skipInCI = Platform.environment['CI'] == 'true' || 
-                         Platform.environment['GITHUB_ACTIONS'] == 'true';
+  final bool _skipInCI =
+      Platform.environment['CI'] == 'true' ||
+      Platform.environment['GITHUB_ACTIONS'] == 'true';
 
   group('Send/Receive Flow E2E', () {
     testWidgets('Receive flow - display address', (WidgetTester tester) async {
@@ -46,7 +47,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Receive flow - generate new address', (WidgetTester tester) async {
+    testWidgets('Receive flow - generate new address', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -59,7 +62,8 @@ void main() {
         // Get current address
         final currentAddress = find.textContaining('zs1');
         if (currentAddress.evaluate().isNotEmpty) {
-          final currentText = (currentAddress.evaluate().first.widget as Text).data;
+          final currentText =
+              (currentAddress.evaluate().first.widget as Text).data;
 
           // Tap "New Address"
           await tester.tap(find.text('New Address'));
@@ -96,10 +100,7 @@ void main() {
         );
 
         // Enter amount
-        await tester.enterText(
-          find.widgetWithText(TextField, 'Amount'),
-          '0.5',
-        );
+        await tester.enterText(find.widgetWithText(TextField, 'Amount'), '0.5');
 
         // Enter optional memo
         await tester.enterText(
@@ -142,12 +143,17 @@ void main() {
           await tester.pump(const Duration(milliseconds: 500));
 
           // Should show second recipient fields
-          expect(find.byType(TextField), findsAtLeast(6)); // 3 fields * 2 recipients
+          expect(
+            find.byType(TextField),
+            findsAtLeast(6),
+          ); // 3 fields * 2 recipients
         }
       }
     }, skip: _skipInCI);
 
-    testWidgets('Send flow - address book integration', (WidgetTester tester) async {
+    testWidgets('Send flow - address book integration', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -169,7 +175,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Send flow - insufficient funds error', (WidgetTester tester) async {
+    testWidgets('Send flow - insufficient funds error', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -202,7 +210,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Send flow - invalid address error', (WidgetTester tester) async {
+    testWidgets('Send flow - invalid address error', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -218,10 +228,7 @@ void main() {
           'invalid_address',
         );
 
-        await tester.enterText(
-          find.widgetWithText(TextField, 'Amount'),
-          '0.1',
-        );
+        await tester.enterText(find.widgetWithText(TextField, 'Amount'), '0.1');
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 500));
 
@@ -279,4 +286,3 @@ void main() {
     }, skip: _skipInCI);
   });
 }
-

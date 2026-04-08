@@ -42,6 +42,7 @@ import '../features/settings/screens/passphrase_change_screen.dart';
 import '../features/settings/screens/theme_screen.dart';
 import '../features/settings/screens/currency_screen.dart';
 import '../features/settings/screens/language_screen.dart';
+import '../features/settings/screens/seed_phrase_language_screen.dart';
 import '../features/settings/screens/outbound_api_screen.dart';
 import '../features/settings/screens/birthday_height_screen.dart';
 import '../features/settings/screens/terms_screen.dart';
@@ -491,6 +492,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           context: context,
           state: state,
           child: const LanguageScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/seed-language',
+        name: 'settings-seed-language',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const SeedPhraseLanguageScreen(),
         ),
       ),
       GoRoute(

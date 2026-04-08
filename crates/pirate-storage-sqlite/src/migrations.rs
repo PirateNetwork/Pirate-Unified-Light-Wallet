@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 29;
+const SCHEMA_VERSION: i32 = 30;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -116,6 +116,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 29 {
         migrate_v29(conn)?;
+    }
+    if current_version < 30 {
+        migrate_v30(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -484,6 +487,22 @@ fn migrate_v12(conn: &Connection) -> Result<()> {
         r#"
         -- Add encrypted_mnemonic column (optional, only for wallets created/restored from seed)
         ALTER TABLE wallet_secrets ADD COLUMN encrypted_mnemonic BLOB;
+        "#,
+    )
+    .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v30(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        ALTER TABLE wallet_secrets ADD COLUMN mnemonic_language TEXT;
+
+        UPDATE wallet_secrets
+        SET mnemonic_language = 'english'
+        WHERE encrypted_mnemonic IS NOT NULL
+          AND mnemonic_language IS NULL;
         "#,
     )
     .map_err(|e| Error::Migration(e.to_string()))?;

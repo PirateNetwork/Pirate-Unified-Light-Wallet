@@ -169,9 +169,10 @@ class PirateWalletAdvancedKeyManagement {
     })
   }
 
-  async exportSeed(walletId) {
+  async exportSeed(walletId, mnemonicLanguage = null) {
     return this.sdk._call('export_seed_raw', {
-      wallet_id: walletId
+      wallet_id: walletId,
+      mnemonic_language: mnemonicLanguage
     })
   }
 }
@@ -440,28 +441,30 @@ class PirateWalletSdk {
     return wallets.find(wallet => wallet.id === walletId) || null
   }
 
-  createWallet(requestOrName, birthdayHeight = null) {
+  createWallet(requestOrName, birthdayHeight = null, mnemonicLanguage = null) {
     const request =
       typeof requestOrName === 'object' && requestOrName !== null
         ? requestOrName
-        : { name: requestOrName, birthdayHeight }
+        : { name: requestOrName, birthdayHeight, mnemonicLanguage }
 
     return this._call('create_wallet', {
       name: request.name,
-      birthday_opt: request.birthdayHeight
+      birthday_opt: request.birthdayHeight,
+      mnemonic_language: request.mnemonicLanguage ?? null
     })
   }
 
-  restoreWallet(requestOrName, mnemonic, birthdayHeight = null) {
+  restoreWallet(requestOrName, mnemonic, birthdayHeight = null, mnemonicLanguage = null) {
     const request =
       typeof requestOrName === 'object' && requestOrName !== null
         ? requestOrName
-        : { name: requestOrName, mnemonic, birthdayHeight }
+        : { name: requestOrName, mnemonic, birthdayHeight, mnemonicLanguage }
 
     return this._call('restore_wallet', {
       name: request.name,
       mnemonic: request.mnemonic,
-      birthday_opt: request.birthdayHeight
+      birthday_opt: request.birthdayHeight,
+      mnemonic_language: request.mnemonicLanguage ?? null
     })
   }
 
@@ -503,12 +506,22 @@ class PirateWalletSdk {
     return wallet ? wallet.birthdayHeight : null
   }
 
-  generateMnemonic(wordCount = null) {
-    return this._call('generate_mnemonic', { word_count: wordCount })
+  generateMnemonic(wordCount = null, mnemonicLanguage = null) {
+    return this._call('generate_mnemonic', {
+      word_count: wordCount,
+      mnemonic_language: mnemonicLanguage
+    })
   }
 
-  validateMnemonic(mnemonic) {
-    return this._call('validate_mnemonic', { mnemonic })
+  validateMnemonic(mnemonic, mnemonicLanguage = null) {
+    return this._call('validate_mnemonic', {
+      mnemonic,
+      mnemonic_language: mnemonicLanguage
+    })
+  }
+
+  inspectMnemonic(mnemonic) {
+    return this._call('inspect_mnemonic', { mnemonic })
   }
 
   getNetworkInfo() {

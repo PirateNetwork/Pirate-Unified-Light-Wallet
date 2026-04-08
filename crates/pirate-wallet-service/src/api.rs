@@ -30,6 +30,11 @@ use pirate_core::keys::{
 };
 use pirate_core::transaction::PirateNetwork;
 use pirate_core::wallet::Wallet;
+use pirate_core::{
+    inspect_mnemonic as inspect_mnemonic_core, mnemonic::canonicalize_mnemonic,
+    mnemonic::convert_mnemonic_language as convert_mnemonic_language_core, MnemonicInspection,
+    MnemonicLanguage,
+};
 use pirate_params::{Network, NetworkType};
 use pirate_storage_sqlite::{
     address_book::ColorTag as DbColorTag,
@@ -781,8 +786,9 @@ pub fn create_wallet(
     name: String,
     _entropy_len: Option<u32>, // Deprecated: always generates 24-word seed
     birthday_opt: Option<u32>,
+    mnemonic_language: Option<MnemonicLanguage>,
 ) -> Result<WalletId> {
-    provisioning::create_wallet(name, _entropy_len, birthday_opt)
+    provisioning::create_wallet(name, _entropy_len, birthday_opt, mnemonic_language)
 }
 
 /// Restore wallet from mnemonic
@@ -794,8 +800,9 @@ pub fn restore_wallet(
     name: String,
     mnemonic: String,
     birthday_opt: Option<u32>,
+    mnemonic_language: Option<MnemonicLanguage>,
 ) -> Result<WalletId> {
-    provisioning::restore_wallet(name, mnemonic, birthday_opt)
+    provisioning::restore_wallet(name, mnemonic, birthday_opt, mnemonic_language)
 }
 
 /// Check if wallet registry database file exists (without opening it)
@@ -1438,7 +1445,10 @@ pub fn import_spending_key(
 ///
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
-pub fn export_seed_raw(wallet_id: WalletId) -> Result<String> {
+pub fn export_seed_raw(
+    wallet_id: WalletId,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;
 
     if wallet.watch_only {
@@ -1452,7 +1462,7 @@ pub fn export_seed_raw(wallet_id: WalletId) -> Result<String> {
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
 
     // Check if mnemonic is stored (wallet was created/restored from seed)
-    let mnemonic_bytes = secret.encrypted_mnemonic.ok_or_else(|| {
+    let mnemonic_bytes = secret.encrypted_mnemonic.clone().ok_or_else(|| {
         anyhow!("Seed not available. This wallet was imported from private key or is watch-only.")
     })?;
 
@@ -1460,8 +1470,33 @@ pub fn export_seed_raw(wallet_id: WalletId) -> Result<String> {
     let mnemonic = String::from_utf8(mnemonic_bytes)
         .map_err(|e| anyhow!("Failed to decode mnemonic: {}", e))?;
 
+    let original_language = wallet_secret_mnemonic_language(&secret, &mnemonic)?;
+    let display_language = mnemonic_language.unwrap_or(original_language);
+    let mnemonic = if display_language == original_language {
+        canonicalize_mnemonic(&mnemonic, Some(original_language))?.0
+    } else {
+        convert_mnemonic_language_core(&mnemonic, Some(original_language), display_language)?
+    };
+
     tracing::info!("Raw seed export completed for wallet {}", wallet_id);
     Ok(mnemonic)
+}
+
+pub(super) fn wallet_secret_mnemonic_language(
+    secret: &WalletSecret,
+    mnemonic: &str,
+) -> Result<MnemonicLanguage> {
+    if let Some(language_key) = secret.mnemonic_language.as_deref() {
+        if let Some(language) = MnemonicLanguage::from_key(language_key) {
+            return Ok(language);
+        }
+    }
+
+    if let Some(language) = inspect_mnemonic_core(mnemonic).detected_language {
+        return Ok(language);
+    }
+
+    Ok(MnemonicLanguage::English)
 }
 
 // ============================================================================
@@ -1852,6 +1887,7 @@ pub fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEndpoint>
 
 fn infer_key_network_type_from_addresses(
     mnemonic: &str,
+    mnemonic_language: MnemonicLanguage,
     account_id: i64,
     repo: &Repository,
     endpoint: &LightdEndpoint,
@@ -1870,7 +1906,10 @@ fn infer_key_network_type_from_addresses(
         return Ok(None);
     }
 
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic)?;
+    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic_in_language(
+        mnemonic,
+        Some(mnemonic_language),
+    )?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
     let candidates = [
         NetworkType::Mainnet,
@@ -1884,10 +1923,11 @@ fn infer_key_network_type_from_addresses(
 
     for candidate in candidates {
         let candidate_network = Network::from_type(candidate);
-        let sapling_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
+        let sapling_extsk = ExtendedSpendingKey::from_mnemonic_with_account_and_language(
             mnemonic,
             candidate_network.network_type,
             0,
+            Some(mnemonic_language),
         )?;
         let sapling_fvk = sapling_extsk.to_extended_fvk();
         let orchard_extsk = orchard_master.derive_account(candidate_network.coin_type, 0)?;
@@ -1994,10 +2034,15 @@ fn rederive_wallet_keys_for_network(
 
     let mnemonic = String::from_utf8(mnemonic_bytes.clone())
         .map_err(|_| anyhow!("Stored mnemonic is not valid UTF-8"))?;
+    let mnemonic_language = wallet_secret_mnemonic_language(&secret, &mnemonic)?;
 
     let old_network = Network::from_type(old_network_type);
-    let current_extsk =
-        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, old_network.network_type, 0)?;
+    let current_extsk = ExtendedSpendingKey::from_mnemonic_with_account_and_language(
+        &mnemonic,
+        old_network.network_type,
+        0,
+        Some(mnemonic_language),
+    )?;
 
     let mut matches_any = current_extsk.to_bytes() == secret.extsk;
     if !matches_any {
@@ -2011,10 +2056,11 @@ fn rederive_wallet_keys_for_network(
                 continue;
             }
             let candidate_net = Network::from_type(candidate);
-            let candidate_extsk = ExtendedSpendingKey::from_mnemonic_with_account(
+            let candidate_extsk = ExtendedSpendingKey::from_mnemonic_with_account_and_language(
                 &mnemonic,
                 candidate_net.network_type,
                 0,
+                Some(mnemonic_language),
             )?;
             if candidate_extsk.to_bytes() == secret.extsk {
                 matches_any = true;
@@ -2040,8 +2086,13 @@ fn rederive_wallet_keys_for_network(
     }
 
     let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
-    let inferred_network =
-        infer_key_network_type_from_addresses(&mnemonic, secret.account_id, &repo, &endpoint)?;
+    let inferred_network = infer_key_network_type_from_addresses(
+        &mnemonic,
+        mnemonic_language,
+        secret.account_id,
+        &repo,
+        &endpoint,
+    )?;
     let key_network_type = if let Some((network_type, matched, total)) = inferred_network {
         pirate_core::debug_log::with_locked_file(|file| {
             let ts = chrono::Utc::now().timestamp_millis();
@@ -2069,9 +2120,16 @@ fn rederive_wallet_keys_for_network(
     };
 
     let new_network = Network::from_type(key_network_type);
-    let new_extsk =
-        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, new_network.network_type, 0)?;
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
+    let new_extsk = ExtendedSpendingKey::from_mnemonic_with_account_and_language(
+        &mnemonic,
+        new_network.network_type,
+        0,
+        Some(mnemonic_language),
+    )?;
+    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic_in_language(
+        &mnemonic,
+        Some(mnemonic_language),
+    )?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
     let orchard_extsk = orchard_master.derive_account(new_network.coin_type, 0)?;
 
@@ -3173,7 +3231,10 @@ async fn fetch_transaction_memo_inner(
 ///
 /// # Returns
 /// BIP39 mnemonic phrase with the specified number of words
-pub fn generate_mnemonic(word_count: Option<u32>) -> Result<String> {
+pub fn generate_mnemonic(
+    word_count: Option<u32>,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<String> {
     // Validate word count (must be 12, 18, or 24)
     if let Some(count) = word_count {
         if count != 12 && count != 18 && count != 24 {
@@ -3181,15 +3242,39 @@ pub fn generate_mnemonic(word_count: Option<u32>) -> Result<String> {
         }
     }
 
-    Ok(ExtendedSpendingKey::generate_mnemonic(word_count))
+    Ok(ExtendedSpendingKey::generate_mnemonic_in_language(
+        word_count,
+        mnemonic_language,
+    ))
 }
 
 /// Validate mnemonic
-pub fn validate_mnemonic(mnemonic: String) -> Result<bool> {
-    match ExtendedSpendingKey::from_mnemonic(&mnemonic) {
+pub fn validate_mnemonic(
+    mnemonic: String,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<bool> {
+    match pirate_core::mnemonic::parse_mnemonic(&mnemonic, mnemonic_language) {
         Ok(_) => Ok(true),
         Err(_) => Ok(false),
     }
+}
+
+/// Inspect mnemonic validity, language, and ambiguity.
+pub fn inspect_mnemonic(mnemonic: String) -> Result<MnemonicInspection> {
+    Ok(inspect_mnemonic_core(&mnemonic))
+}
+
+/// Convert a mnemonic phrase to a different display language while preserving seed entropy.
+pub fn convert_mnemonic_language(
+    mnemonic: String,
+    source_language: Option<MnemonicLanguage>,
+    target_language: MnemonicLanguage,
+) -> Result<String> {
+    Ok(pirate_core::mnemonic::convert_mnemonic_language(
+        &mnemonic,
+        source_language,
+        target_language,
+    )?)
 }
 
 /// Get network info
@@ -3325,13 +3410,20 @@ pub fn skip_seed_biometric() -> Result<String> {
 ///
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
-pub fn export_seed_with_passphrase(wallet_id: WalletId, passphrase: String) -> Result<Vec<String>> {
-    seed_export::export_seed_with_passphrase(wallet_id, passphrase)
+pub fn export_seed_with_passphrase(
+    wallet_id: WalletId,
+    passphrase: String,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<Vec<String>> {
+    seed_export::export_seed_with_passphrase(wallet_id, passphrase, mnemonic_language)
 }
 
 /// Export seed using cached app passphrase (after biometric approval).
-pub fn export_seed_with_cached_passphrase(wallet_id: WalletId) -> Result<Vec<String>> {
-    seed_export::export_seed_with_cached_passphrase(wallet_id)
+pub fn export_seed_with_cached_passphrase(
+    wallet_id: WalletId,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<Vec<String>> {
+    seed_export::export_seed_with_cached_passphrase(wallet_id, mnemonic_language)
 }
 
 /// Cancel seed export flow

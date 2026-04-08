@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../../core/security/biometric_auth.dart';
 import '../../../core/security/keystore_channel.dart';
 import '../../../core/security/passphrase_cache.dart';
+import '../../../core/ffi/generated/models.dart';
 import '../../../core/ffi/ffi_bridge.dart';
 
 enum AppThemeMode { system, light, dark }
@@ -345,6 +346,38 @@ class LocalePreferenceNotifier extends Notifier<AppLocalePreference> {
     state = AppLocalePreference.values.firstWhere(
       (locale) => locale.name == raw,
       orElse: () => AppLocalePreference.english,
+    );
+  }
+}
+
+class SeedPhraseLanguagePreferenceNotifier extends Notifier<MnemonicLanguage> {
+  late final FlutterSecureStorage _storage;
+  static const String _storageKey = 'seed_phrase_language_pref_v1';
+
+  @override
+  MnemonicLanguage build() {
+    _storage = const FlutterSecureStorage();
+    _load();
+    return MnemonicLanguage.english;
+  }
+
+  Future<void> setLanguage(MnemonicLanguage language) async {
+    state = language;
+    await _storage.write(key: _storageKey, value: language.name);
+  }
+
+  Future<void> _load() async {
+    final raw = await _storage.read(key: _storageKey);
+    if (!ref.mounted) {
+      return;
+    }
+    if (raw == null || raw.isEmpty) {
+      state = MnemonicLanguage.english;
+      return;
+    }
+    state = MnemonicLanguage.values.firstWhere(
+      (language) => language.name == raw,
+      orElse: () => MnemonicLanguage.english,
     );
   }
 }
@@ -710,6 +743,11 @@ final currencyPreferenceProvider =
 final localePreferenceProvider =
     NotifierProvider<LocalePreferenceNotifier, AppLocalePreference>(
       LocalePreferenceNotifier.new,
+    );
+
+final seedPhraseLanguagePreferenceProvider =
+    NotifierProvider<SeedPhraseLanguagePreferenceNotifier, MnemonicLanguage>(
+      SeedPhraseLanguagePreferenceNotifier.new,
     );
 
 final localeProvider = Provider<Locale>((ref) {

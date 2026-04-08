@@ -82,10 +82,7 @@ class ClipboardManager {
   }
 
   /// Copy an address with a longer expiry window.
-  static Future<void> copyAddress(
-    String address, {
-    VoidCallback? onCleared,
-  }) {
+  static Future<void> copyAddress(String address, {VoidCallback? onCleared}) {
     return copyWithAutoClear(
       address,
       clearAfter: ClipboardDataType.address.clearDelay,
@@ -178,14 +175,7 @@ class ClipboardManager {
   }
 }
 
-enum ClipboardDataType {
-  seed,
-  spendingKey,
-  viewingKey,
-  address,
-  txid,
-  text,
-}
+enum ClipboardDataType { seed, spendingKey, viewingKey, address, txid, text }
 
 extension ClipboardDataTypeExtension on ClipboardDataType {
   Duration get clearDelay {

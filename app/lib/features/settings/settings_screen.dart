@@ -12,6 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/crypto/mnemonic_language.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../l10n/app_localizations.dart';
 import 'providers/preferences_providers.dart';
@@ -280,6 +281,20 @@ class SettingsScreen extends ConsumerWidget {
                   title: l10n.languageSettingTitle,
                   subtitle: subtitle,
                   onTap: () => context.push('/settings/language'),
+                  trailing: const Icon(Icons.chevron_right),
+                );
+              },
+            ),
+            Consumer(
+              builder: (context, ref, _) {
+                final language = ref.watch(
+                  seedPhraseLanguagePreferenceProvider,
+                );
+                return PListTile(
+                  leading: const Icon(Icons.key_outlined),
+                  title: 'Seed phrase language'.tr,
+                  subtitle: language.nativeLabel,
+                  onTap: () => context.push('/settings/seed-language'),
                   trailing: const Icon(Icons.chevron_right),
                 );
               },

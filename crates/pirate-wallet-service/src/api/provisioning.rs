@@ -1,5 +1,6 @@
 use super::tunnel::tunnel_transport_config;
 use super::*;
+use pirate_core::mnemonic::{canonicalize_mnemonic, generate_mnemonic, MnemonicLanguage};
 
 pub(super) fn resolve_wallet_birthday_height(birthday_opt: Option<u32>) -> u32 {
     if let Some(birthday) = birthday_opt {
@@ -75,16 +76,25 @@ pub(super) fn create_wallet(
     name: String,
     _entropy_len: Option<u32>,
     birthday_opt: Option<u32>,
+    mnemonic_language: Option<MnemonicLanguage>,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
 
-    let mnemonic = ExtendedSpendingKey::generate_mnemonic(Some(24));
+    let mnemonic_language = mnemonic_language.unwrap_or_default();
+    let mnemonic = generate_mnemonic(Some(24), Some(mnemonic_language));
     let network = pirate_params::Network::mainnet();
-    let extsk =
-        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, network.network_type, 0)?;
-    let _wallet = Wallet::from_mnemonic(&mnemonic)?;
+    let extsk = ExtendedSpendingKey::from_mnemonic_with_account_and_language(
+        &mnemonic,
+        network.network_type,
+        0,
+        Some(mnemonic_language),
+    )?;
+    let _wallet = Wallet::from_mnemonic_in_language(&mnemonic, Some(mnemonic_language))?;
 
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
+    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic_in_language(
+        &mnemonic,
+        Some(mnemonic_language),
+    )?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
 
     let coin_type = network.coin_type;
@@ -116,6 +126,7 @@ pub(super) fn create_wallet(
         sapling_ivk: None,
         orchard_ivk: None,
         encrypted_mnemonic: Some(mnemonic.as_bytes().to_vec()),
+        mnemonic_language: Some(mnemonic_language.as_key().to_string()),
         created_at: chrono::Utc::now().timestamp(),
     };
     if persist_wallet_account_secret(&wallet_id, name_for_account, secret)? {
@@ -132,15 +143,24 @@ pub(super) fn restore_wallet(
     name: String,
     mnemonic: String,
     birthday_opt: Option<u32>,
+    mnemonic_language: Option<MnemonicLanguage>,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
 
+    let (mnemonic, mnemonic_language) = canonicalize_mnemonic(&mnemonic, mnemonic_language)?;
     let network = pirate_params::Network::mainnet();
-    let extsk =
-        ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, network.network_type, 0)?;
-    let _wallet = Wallet::from_mnemonic(&mnemonic)?;
+    let extsk = ExtendedSpendingKey::from_mnemonic_with_account_and_language(
+        &mnemonic,
+        network.network_type,
+        0,
+        Some(mnemonic_language),
+    )?;
+    let _wallet = Wallet::from_mnemonic_in_language(&mnemonic, Some(mnemonic_language))?;
 
-    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
+    let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic_in_language(
+        &mnemonic,
+        Some(mnemonic_language),
+    )?;
     let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
 
     let coin_type = network.coin_type;
@@ -173,6 +193,7 @@ pub(super) fn restore_wallet(
         sapling_ivk: None,
         orchard_ivk: None,
         encrypted_mnemonic: Some(mnemonic.as_bytes().to_vec()),
+        mnemonic_language: Some(mnemonic_language.as_key().to_string()),
         created_at: chrono::Utc::now().timestamp(),
     };
     if persist_wallet_account_secret(&wallet_id, name_for_account, secret)? {
@@ -244,6 +265,7 @@ pub(super) fn import_viewing_wallet(
         sapling_ivk: None,
         orchard_ivk: orchard_fvk_bytes,
         encrypted_mnemonic: None,
+        mnemonic_language: None,
         created_at: account_created_at,
     };
 

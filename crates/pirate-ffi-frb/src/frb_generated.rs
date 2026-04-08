@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 798295653;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1351094296;
 
 // Section: executor
 
@@ -552,11 +552,43 @@ fn wire__crate__api__complete_seed_biometric_impl(
         },
     )
 }
+fn wire__crate__api__convert_mnemonic_language_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    mnemonic: impl CstDecode<String>,
+    source_language: impl CstDecode<Option<crate::models::MnemonicLanguage>>,
+    target_language: impl CstDecode<crate::models::MnemonicLanguage>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "convert_mnemonic_language",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_mnemonic = mnemonic.cst_decode();
+            let api_source_language = source_language.cst_decode();
+            let api_target_language = target_language.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::convert_mnemonic_language(
+                            api_mnemonic,
+                            api_source_language,
+                            api_target_language,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__create_wallet_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     name: impl CstDecode<String>,
     _entropy_len: impl CstDecode<Option<u32>>,
     birthday_opt: impl CstDecode<Option<u32>>,
+    mnemonic_language: impl CstDecode<Option<crate::models::MnemonicLanguage>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -568,6 +600,7 @@ fn wire__crate__api__create_wallet_impl(
             let api_name = name.cst_decode();
             let api__entropy_len = _entropy_len.cst_decode();
             let api_birthday_opt = birthday_opt.cst_decode();
+            let api_mnemonic_language = mnemonic_language.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
@@ -575,6 +608,7 @@ fn wire__crate__api__create_wallet_impl(
                             api_name,
                             api__entropy_len,
                             api_birthday_opt,
+                            api_mnemonic_language,
                         )?;
                         Ok(output_ok)
                     })(),
@@ -844,6 +878,7 @@ fn wire__crate__api__export_sapling_viewing_key_secure_impl(
 fn wire__crate__api__export_seed_raw_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
+    mnemonic_language: impl CstDecode<Option<crate::models::MnemonicLanguage>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -853,10 +888,12 @@ fn wire__crate__api__export_seed_raw_impl(
         },
         move || {
             let api_wallet_id = wallet_id.cst_decode();
+            let api_mnemonic_language = mnemonic_language.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::export_seed_raw(api_wallet_id)?;
+                        let output_ok =
+                            crate::api::export_seed_raw(api_wallet_id, api_mnemonic_language)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -867,6 +904,7 @@ fn wire__crate__api__export_seed_raw_impl(
 fn wire__crate__api__export_seed_with_cached_passphrase_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
+    mnemonic_language: impl CstDecode<Option<crate::models::MnemonicLanguage>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -876,11 +914,14 @@ fn wire__crate__api__export_seed_with_cached_passphrase_impl(
         },
         move || {
             let api_wallet_id = wallet_id.cst_decode();
+            let api_mnemonic_language = mnemonic_language.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok =
-                            crate::api::export_seed_with_cached_passphrase(api_wallet_id)?;
+                        let output_ok = crate::api::export_seed_with_cached_passphrase(
+                            api_wallet_id,
+                            api_mnemonic_language,
+                        )?;
                         Ok(output_ok)
                     })(),
                 )
@@ -892,6 +933,7 @@ fn wire__crate__api__export_seed_with_passphrase_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
     passphrase: impl CstDecode<String>,
+    mnemonic_language: impl CstDecode<Option<crate::models::MnemonicLanguage>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -902,11 +944,15 @@ fn wire__crate__api__export_seed_with_passphrase_impl(
         move || {
             let api_wallet_id = wallet_id.cst_decode();
             let api_passphrase = passphrase.cst_decode();
+            let api_mnemonic_language = mnemonic_language.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok =
-                            crate::api::export_seed_with_passphrase(api_wallet_id, api_passphrase)?;
+                        let output_ok = crate::api::export_seed_with_passphrase(
+                            api_wallet_id,
+                            api_passphrase,
+                            api_mnemonic_language,
+                        )?;
                         Ok(output_ok)
                     })(),
                 )
@@ -1064,6 +1110,7 @@ fn wire__crate__api__generate_address_for_key_impl(
 fn wire__crate__api__generate_mnemonic_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     word_count: impl CstDecode<Option<u32>>,
+    mnemonic_language: impl CstDecode<Option<crate::models::MnemonicLanguage>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -1073,10 +1120,12 @@ fn wire__crate__api__generate_mnemonic_impl(
         },
         move || {
             let api_word_count = word_count.cst_decode();
+            let api_mnemonic_language = mnemonic_language.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::generate_mnemonic(api_word_count)?;
+                        let output_ok =
+                            crate::api::generate_mnemonic(api_word_count, api_mnemonic_language)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -1998,6 +2047,29 @@ fn wire__crate__api__import_viewing_wallet_impl(
         },
     )
 }
+fn wire__crate__api__inspect_mnemonic_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    mnemonic: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "inspect_mnemonic",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_mnemonic = mnemonic.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::inspect_mnemonic(api_mnemonic)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__is_background_sync_needed_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -2497,6 +2569,7 @@ fn wire__crate__api__restore_wallet_impl(
     name: impl CstDecode<String>,
     mnemonic: impl CstDecode<String>,
     birthday_opt: impl CstDecode<Option<u32>>,
+    mnemonic_language: impl CstDecode<Option<crate::models::MnemonicLanguage>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -2508,11 +2581,16 @@ fn wire__crate__api__restore_wallet_impl(
             let api_name = name.cst_decode();
             let api_mnemonic = mnemonic.cst_decode();
             let api_birthday_opt = birthday_opt.cst_decode();
+            let api_mnemonic_language = mnemonic_language.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok =
-                            crate::api::restore_wallet(api_name, api_mnemonic, api_birthday_opt)?;
+                        let output_ok = crate::api::restore_wallet(
+                            api_name,
+                            api_mnemonic,
+                            api_birthday_opt,
+                            api_mnemonic_language,
+                        )?;
                         Ok(output_ok)
                     })(),
                 )
@@ -3449,6 +3527,7 @@ fn wire__crate__api__update_address_book_entry_impl(
 fn wire__crate__api__validate_mnemonic_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     mnemonic: impl CstDecode<String>,
+    mnemonic_language: impl CstDecode<Option<crate::models::MnemonicLanguage>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -3458,10 +3537,12 @@ fn wire__crate__api__validate_mnemonic_impl(
         },
         move || {
             let api_mnemonic = mnemonic.cst_decode();
+            let api_mnemonic_language = mnemonic_language.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::validate_mnemonic(api_mnemonic)?;
+                        let output_ok =
+                            crate::api::validate_mnemonic(api_mnemonic, api_mnemonic_language)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -3631,6 +3712,22 @@ impl CstDecode<crate::models::KeyTypeInfo> for i32 {
             1 => crate::models::KeyTypeInfo::ImportedSpending,
             2 => crate::models::KeyTypeInfo::ImportedViewing,
             _ => unreachable!("Invalid variant for KeyTypeInfo: {}", self),
+        }
+    }
+}
+impl CstDecode<crate::models::MnemonicLanguage> for i32 {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    fn cst_decode(self) -> crate::models::MnemonicLanguage {
+        match self {
+            0 => crate::models::MnemonicLanguage::English,
+            1 => crate::models::MnemonicLanguage::ChineseSimplified,
+            2 => crate::models::MnemonicLanguage::ChineseTraditional,
+            3 => crate::models::MnemonicLanguage::French,
+            4 => crate::models::MnemonicLanguage::Italian,
+            5 => crate::models::MnemonicLanguage::Japanese,
+            6 => crate::models::MnemonicLanguage::Korean,
+            7 => crate::models::MnemonicLanguage::Spanish,
+            _ => unreachable!("Invalid variant for MnemonicLanguage: {}", self),
         }
     }
 }
@@ -4080,6 +4177,18 @@ impl SseDecode for Vec<crate::models::KeyGroupInfo> {
     }
 }
 
+impl SseDecode for Vec<crate::models::MnemonicLanguage> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<crate::models::MnemonicLanguage>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::models::Output> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4149,6 +4258,42 @@ impl SseDecode for Vec<crate::models::WalletMeta> {
             ans_.push(<crate::models::WalletMeta>::sse_decode(deserializer));
         }
         return ans_;
+    }
+}
+
+impl SseDecode for crate::models::MnemonicInspection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_isValid = <bool>::sse_decode(deserializer);
+        let mut var_detectedLanguage =
+            <Option<crate::models::MnemonicLanguage>>::sse_decode(deserializer);
+        let mut var_ambiguousLanguages =
+            <Vec<crate::models::MnemonicLanguage>>::sse_decode(deserializer);
+        let mut var_wordCount = <u32>::sse_decode(deserializer);
+        return crate::models::MnemonicInspection {
+            is_valid: var_isValid,
+            detected_language: var_detectedLanguage,
+            ambiguous_languages: var_ambiguousLanguages,
+            word_count: var_wordCount,
+        };
+    }
+}
+
+impl SseDecode for crate::models::MnemonicLanguage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::models::MnemonicLanguage::English,
+            1 => crate::models::MnemonicLanguage::ChineseSimplified,
+            2 => crate::models::MnemonicLanguage::ChineseTraditional,
+            3 => crate::models::MnemonicLanguage::French,
+            4 => crate::models::MnemonicLanguage::Italian,
+            5 => crate::models::MnemonicLanguage::Japanese,
+            6 => crate::models::MnemonicLanguage::Korean,
+            7 => crate::models::MnemonicLanguage::Spanish,
+            _ => unreachable!("Invalid variant for MnemonicLanguage: {}", inner),
+        };
     }
 }
 
@@ -4264,6 +4409,17 @@ impl SseDecode for Option<i64> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<i64>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::models::MnemonicLanguage> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::models::MnemonicLanguage>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -5014,6 +5170,56 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::endpoint::LightdEndpoint>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::models::MnemonicInspection {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.is_valid.into_into_dart().into_dart(),
+            self.detected_language.into_into_dart().into_dart(),
+            self.ambiguous_languages.into_into_dart().into_dart(),
+            self.word_count.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::models::MnemonicInspection
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::models::MnemonicInspection>
+    for crate::models::MnemonicInspection
+{
+    fn into_into_dart(self) -> crate::models::MnemonicInspection {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::models::MnemonicLanguage {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::English => 0.into_dart(),
+            Self::ChineseSimplified => 1.into_dart(),
+            Self::ChineseTraditional => 2.into_dart(),
+            Self::French => 3.into_dart(),
+            Self::Italian => 4.into_dart(),
+            Self::Japanese => 5.into_dart(),
+            Self::Korean => 6.into_dart(),
+            Self::Spanish => 7.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::models::MnemonicLanguage
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::models::MnemonicLanguage>
+    for crate::models::MnemonicLanguage
+{
+    fn into_into_dart(self) -> crate::models::MnemonicLanguage {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::models::NetworkInfo {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -5699,6 +5905,16 @@ impl SseEncode for Vec<crate::models::KeyGroupInfo> {
     }
 }
 
+impl SseEncode for Vec<crate::models::MnemonicLanguage> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::models::MnemonicLanguage>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::models::Output> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5756,6 +5972,38 @@ impl SseEncode for Vec<crate::models::WalletMeta> {
         for item in self {
             <crate::models::WalletMeta>::sse_encode(item, serializer);
         }
+    }
+}
+
+impl SseEncode for crate::models::MnemonicInspection {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_valid, serializer);
+        <Option<crate::models::MnemonicLanguage>>::sse_encode(self.detected_language, serializer);
+        <Vec<crate::models::MnemonicLanguage>>::sse_encode(self.ambiguous_languages, serializer);
+        <u32>::sse_encode(self.word_count, serializer);
+    }
+}
+
+impl SseEncode for crate::models::MnemonicLanguage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::models::MnemonicLanguage::English => 0,
+                crate::models::MnemonicLanguage::ChineseSimplified => 1,
+                crate::models::MnemonicLanguage::ChineseTraditional => 2,
+                crate::models::MnemonicLanguage::French => 3,
+                crate::models::MnemonicLanguage::Italian => 4,
+                crate::models::MnemonicLanguage::Japanese => 5,
+                crate::models::MnemonicLanguage::Korean => 6,
+                crate::models::MnemonicLanguage::Spanish => 7,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
     }
 }
 
@@ -5842,6 +6090,16 @@ impl SseEncode for Option<i64> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <i64>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::models::MnemonicLanguage> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::models::MnemonicLanguage>::sse_encode(value, serializer);
         }
     }
 }
@@ -6292,6 +6550,13 @@ mod io {
             CstDecode::<crate::api::endpoint::LightdEndpoint>::cst_decode(*wrap).into()
         }
     }
+    impl CstDecode<crate::models::MnemonicLanguage> for *mut i32 {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::MnemonicLanguage {
+            let wrap = unsafe { flutter_rust_bridge::for_generated::box_from_leak_ptr(self) };
+            CstDecode::<crate::models::MnemonicLanguage>::cst_decode(*wrap).into()
+        }
+    }
     impl CstDecode<crate::models::PendingTx> for *mut wire_cst_pending_tx {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> crate::models::PendingTx {
@@ -6479,6 +6744,16 @@ mod io {
             vec.into_iter().map(CstDecode::cst_decode).collect()
         }
     }
+    impl CstDecode<Vec<crate::models::MnemonicLanguage>> for *mut wire_cst_list_mnemonic_language {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> Vec<crate::models::MnemonicLanguage> {
+            let vec = unsafe {
+                let wrap = flutter_rust_bridge::for_generated::box_from_leak_ptr(self);
+                flutter_rust_bridge::for_generated::vec_from_leak_ptr(wrap.ptr, wrap.len)
+            };
+            vec.into_iter().map(CstDecode::cst_decode).collect()
+        }
+    }
     impl CstDecode<Vec<crate::models::Output>> for *mut wire_cst_list_output {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> Vec<crate::models::Output> {
@@ -6535,6 +6810,17 @@ mod io {
                 flutter_rust_bridge::for_generated::vec_from_leak_ptr(wrap.ptr, wrap.len)
             };
             vec.into_iter().map(CstDecode::cst_decode).collect()
+        }
+    }
+    impl CstDecode<crate::models::MnemonicInspection> for wire_cst_mnemonic_inspection {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::MnemonicInspection {
+            crate::models::MnemonicInspection {
+                is_valid: self.is_valid.cst_decode(),
+                detected_language: self.detected_language.cst_decode(),
+                ambiguous_languages: self.ambiguous_languages.cst_decode(),
+                word_count: self.word_count.cst_decode(),
+            }
         }
     }
     impl CstDecode<crate::models::NetworkInfo> for wire_cst_network_info {
@@ -6957,6 +7243,21 @@ mod io {
         }
     }
     impl Default for wire_cst_lightd_endpoint {
+        fn default() -> Self {
+            Self::new_with_null_ptr()
+        }
+    }
+    impl NewWithNullPtr for wire_cst_mnemonic_inspection {
+        fn new_with_null_ptr() -> Self {
+            Self {
+                is_valid: Default::default(),
+                detected_language: core::ptr::null_mut(),
+                ambiguous_languages: core::ptr::null_mut(),
+                word_count: Default::default(),
+            }
+        }
+    }
+    impl Default for wire_cst_mnemonic_inspection {
         fn default() -> Self {
             Self::new_with_null_ptr()
         }
@@ -7419,13 +7720,35 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__convert_mnemonic_language(
+        port_: i64,
+        mnemonic: *mut wire_cst_list_prim_u_8_strict,
+        source_language: *mut i32,
+        target_language: i32,
+    ) {
+        wire__crate__api__convert_mnemonic_language_impl(
+            port_,
+            mnemonic,
+            source_language,
+            target_language,
+        )
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__create_wallet(
         port_: i64,
         name: *mut wire_cst_list_prim_u_8_strict,
         _entropy_len: *mut u32,
         birthday_opt: *mut u32,
+        mnemonic_language: *mut i32,
     ) {
-        wire__crate__api__create_wallet_impl(port_, name, _entropy_len, birthday_opt)
+        wire__crate__api__create_wallet_impl(
+            port_,
+            name,
+            _entropy_len,
+            birthday_opt,
+            mnemonic_language,
+        )
     }
 
     #[unsafe(no_mangle)]
@@ -7525,16 +7848,22 @@ mod io {
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_seed_raw(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        mnemonic_language: *mut i32,
     ) {
-        wire__crate__api__export_seed_raw_impl(port_, wallet_id)
+        wire__crate__api__export_seed_raw_impl(port_, wallet_id, mnemonic_language)
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_seed_with_cached_passphrase(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        mnemonic_language: *mut i32,
     ) {
-        wire__crate__api__export_seed_with_cached_passphrase_impl(port_, wallet_id)
+        wire__crate__api__export_seed_with_cached_passphrase_impl(
+            port_,
+            wallet_id,
+            mnemonic_language,
+        )
     }
 
     #[unsafe(no_mangle)]
@@ -7542,8 +7871,14 @@ mod io {
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
         passphrase: *mut wire_cst_list_prim_u_8_strict,
+        mnemonic_language: *mut i32,
     ) {
-        wire__crate__api__export_seed_with_passphrase_impl(port_, wallet_id, passphrase)
+        wire__crate__api__export_seed_with_passphrase_impl(
+            port_,
+            wallet_id,
+            passphrase,
+            mnemonic_language,
+        )
     }
 
     #[unsafe(no_mangle)]
@@ -7598,8 +7933,9 @@ mod io {
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__generate_mnemonic(
         port_: i64,
         word_count: *mut u32,
+        mnemonic_language: *mut i32,
     ) {
-        wire__crate__api__generate_mnemonic_impl(port_, word_count)
+        wire__crate__api__generate_mnemonic_impl(port_, word_count, mnemonic_language)
     }
 
     #[unsafe(no_mangle)]
@@ -7913,6 +8249,14 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__inspect_mnemonic(
+        port_: i64,
+        mnemonic: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__inspect_mnemonic_impl(port_, mnemonic)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__is_background_sync_needed(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
@@ -8086,8 +8430,15 @@ mod io {
         name: *mut wire_cst_list_prim_u_8_strict,
         mnemonic: *mut wire_cst_list_prim_u_8_strict,
         birthday_opt: *mut u32,
+        mnemonic_language: *mut i32,
     ) {
-        wire__crate__api__restore_wallet_impl(port_, name, mnemonic, birthday_opt)
+        wire__crate__api__restore_wallet_impl(
+            port_,
+            name,
+            mnemonic,
+            birthday_opt,
+            mnemonic_language,
+        )
     }
 
     #[unsafe(no_mangle)]
@@ -8443,8 +8794,9 @@ mod io {
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__validate_mnemonic(
         port_: i64,
         mnemonic: *mut wire_cst_list_prim_u_8_strict,
+        mnemonic_language: *mut i32,
     ) {
-        wire__crate__api__validate_mnemonic_impl(port_, mnemonic)
+        wire__crate__api__validate_mnemonic_impl(port_, mnemonic, mnemonic_language)
     }
 
     #[unsafe(no_mangle)]
@@ -8522,6 +8874,13 @@ mod io {
         flutter_rust_bridge::for_generated::new_leak_box_ptr(
             wire_cst_lightd_endpoint::new_with_null_ptr(),
         )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_cst_new_box_autoadd_mnemonic_language(
+        value: i32,
+    ) -> *mut i32 {
+        flutter_rust_bridge::for_generated::new_leak_box_ptr(value)
     }
 
     #[unsafe(no_mangle)]
@@ -8643,6 +9002,17 @@ mod io {
                 <wire_cst_key_group_info>::new_with_null_ptr(),
                 len,
             ),
+            len,
+        };
+        flutter_rust_bridge::for_generated::new_leak_box_ptr(wrap)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_cst_new_list_mnemonic_language(
+        len: i32,
+    ) -> *mut wire_cst_list_mnemonic_language {
+        let wrap = wire_cst_list_mnemonic_language {
+            ptr: flutter_rust_bridge::for_generated::new_leak_vec_ptr(Default::default(), len),
             len,
         };
         flutter_rust_bridge::for_generated::new_leak_box_ptr(wrap)
@@ -8885,6 +9255,12 @@ mod io {
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
+    pub struct wire_cst_list_mnemonic_language {
+        ptr: *mut i32,
+        len: i32,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
     pub struct wire_cst_list_output {
         ptr: *mut wire_cst_output,
         len: i32,
@@ -8918,6 +9294,14 @@ mod io {
     pub struct wire_cst_list_wallet_meta {
         ptr: *mut wire_cst_wallet_meta,
         len: i32,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct wire_cst_mnemonic_inspection {
+        is_valid: bool,
+        detected_language: *mut i32,
+        ambiguous_languages: *mut wire_cst_list_mnemonic_language,
+        word_count: u32,
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -9487,6 +9871,18 @@ mod web {
                 .collect()
         }
     }
+    impl CstDecode<Vec<crate::models::MnemonicLanguage>>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> Vec<crate::models::MnemonicLanguage> {
+            self.dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap()
+                .iter()
+                .map(CstDecode::cst_decode)
+                .collect()
+        }
+    }
     impl CstDecode<Vec<crate::models::Output>>
         for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
     {
@@ -9545,6 +9941,28 @@ mod web {
                 .iter()
                 .map(CstDecode::cst_decode)
                 .collect()
+        }
+    }
+    impl CstDecode<crate::models::MnemonicInspection>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::MnemonicInspection {
+            let self_ = self
+                .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap();
+            assert_eq!(
+                self_.length(),
+                4,
+                "Expected 4 elements, got {}",
+                self_.length()
+            );
+            crate::models::MnemonicInspection {
+                is_valid: self_.get(0).cst_decode(),
+                detected_language: self_.get(1).cst_decode(),
+                ambiguous_languages: self_.get(2).cst_decode(),
+                word_count: self_.get(3).cst_decode(),
+            }
         }
     }
     impl CstDecode<crate::models::NetworkInfo>
@@ -10013,6 +10431,14 @@ mod web {
                 .into()
         }
     }
+    impl CstDecode<crate::models::MnemonicLanguage>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::MnemonicLanguage {
+            (self.unchecked_into_f64() as i32).cst_decode()
+        }
+    }
     impl CstDecode<crate::models::SyncMode>
         for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
     {
@@ -10252,13 +10678,35 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__convert_mnemonic_language(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        mnemonic: String,
+        source_language: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        target_language: i32,
+    ) {
+        wire__crate__api__convert_mnemonic_language_impl(
+            port_,
+            mnemonic,
+            source_language,
+            target_language,
+        )
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__create_wallet(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         name: String,
         _entropy_len: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
         birthday_opt: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        mnemonic_language: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__create_wallet_impl(port_, name, _entropy_len, birthday_opt)
+        wire__crate__api__create_wallet_impl(
+            port_,
+            name,
+            _entropy_len,
+            birthday_opt,
+            mnemonic_language,
+        )
     }
 
     #[wasm_bindgen]
@@ -10358,16 +10806,22 @@ mod web {
     pub fn wire__crate__api__export_seed_raw(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
+        mnemonic_language: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__export_seed_raw_impl(port_, wallet_id)
+        wire__crate__api__export_seed_raw_impl(port_, wallet_id, mnemonic_language)
     }
 
     #[wasm_bindgen]
     pub fn wire__crate__api__export_seed_with_cached_passphrase(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
+        mnemonic_language: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__export_seed_with_cached_passphrase_impl(port_, wallet_id)
+        wire__crate__api__export_seed_with_cached_passphrase_impl(
+            port_,
+            wallet_id,
+            mnemonic_language,
+        )
     }
 
     #[wasm_bindgen]
@@ -10375,8 +10829,14 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
         passphrase: String,
+        mnemonic_language: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__export_seed_with_passphrase_impl(port_, wallet_id, passphrase)
+        wire__crate__api__export_seed_with_passphrase_impl(
+            port_,
+            wallet_id,
+            passphrase,
+            mnemonic_language,
+        )
     }
 
     #[wasm_bindgen]
@@ -10431,8 +10891,9 @@ mod web {
     pub fn wire__crate__api__generate_mnemonic(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         word_count: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        mnemonic_language: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__generate_mnemonic_impl(port_, word_count)
+        wire__crate__api__generate_mnemonic_impl(port_, word_count, mnemonic_language)
     }
 
     #[wasm_bindgen]
@@ -10768,6 +11229,14 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__inspect_mnemonic(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        mnemonic: String,
+    ) {
+        wire__crate__api__inspect_mnemonic_impl(port_, mnemonic)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__is_background_sync_needed(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
@@ -10941,8 +11410,15 @@ mod web {
         name: String,
         mnemonic: String,
         birthday_opt: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        mnemonic_language: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__restore_wallet_impl(port_, name, mnemonic, birthday_opt)
+        wire__crate__api__restore_wallet_impl(
+            port_,
+            name,
+            mnemonic,
+            birthday_opt,
+            mnemonic_language,
+        )
     }
 
     #[wasm_bindgen]
@@ -11306,8 +11782,9 @@ mod web {
     pub fn wire__crate__api__validate_mnemonic(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         mnemonic: String,
+        mnemonic_language: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__validate_mnemonic_impl(port_, mnemonic)
+        wire__crate__api__validate_mnemonic_impl(port_, mnemonic, mnemonic_language)
     }
 
     #[wasm_bindgen]

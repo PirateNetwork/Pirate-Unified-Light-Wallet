@@ -213,12 +213,14 @@ class FfiBridge {
     required String name,
     int entropyLen = 256,
     int? birthday,
+    MnemonicLanguage? mnemonicLanguage,
   }) async {
     if (kUseFrbBindings) {
       final walletId = await api.createWallet(
         name: name,
         entropyLen: entropyLen,
         birthdayOpt: birthday,
+        mnemonicLanguage: mnemonicLanguage,
       );
       _activeWalletId = walletId;
       // Auto-start compact sync after wallet creation
@@ -241,12 +243,14 @@ class FfiBridge {
     required String name,
     required String mnemonic,
     int? birthday,
+    MnemonicLanguage? mnemonicLanguage,
   }) async {
     if (kUseFrbBindings) {
       final walletId = await api.restoreWallet(
         name: name,
         mnemonic: mnemonic,
         birthdayOpt: birthday,
+        mnemonicLanguage: mnemonicLanguage,
       );
       _activeWalletId = walletId;
       // Auto-start compact sync after restore
@@ -875,7 +879,9 @@ class FfiBridge {
 
   /// Get last checkpoint info for diagnostics
   /// @see Rust: pirate-ffi-frb/src/api.rs::get_last_checkpoint
-  static Future<diagnostics.CheckpointInfo?> getLastCheckpoint(WalletId id) async {
+  static Future<diagnostics.CheckpointInfo?> getLastCheckpoint(
+    WalletId id,
+  ) async {
     if (kUseFrbBindings) {
       return await api.getLastCheckpoint(walletId: id);
     }
@@ -1205,19 +1211,53 @@ class FfiBridge {
   }
 
   // Utilities
-  static Future<String> generateMnemonic({int wordCount = 24}) async {
+  static Future<String> generateMnemonic({
+    int wordCount = 24,
+    MnemonicLanguage? mnemonicLanguage,
+  }) async {
     if (kUseFrbBindings) {
-      return await api.generateMnemonic(wordCount: wordCount);
+      return await api.generateMnemonic(
+        wordCount: wordCount,
+        mnemonicLanguage: mnemonicLanguage,
+      );
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
   }
 
-  static Future<bool> validateMnemonic(String mnemonic) async {
+  static Future<bool> validateMnemonic(
+    String mnemonic, {
+    MnemonicLanguage? mnemonicLanguage,
+  }) async {
     if (kUseFrbBindings) {
-      return await api.validateMnemonic(mnemonic: mnemonic);
+      return await api.validateMnemonic(
+        mnemonic: mnemonic,
+        mnemonicLanguage: mnemonicLanguage,
+      );
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<MnemonicInspection> inspectMnemonic(String mnemonic) async {
+    if (kUseFrbBindings) {
+      return await api.inspectMnemonic(mnemonic: mnemonic);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<String> convertMnemonicLanguage(
+    String mnemonic, {
+    MnemonicLanguage? sourceLanguage,
+    required MnemonicLanguage targetLanguage,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.convertMnemonicLanguage(
+        mnemonic: mnemonic,
+        sourceLanguage: sourceLanguage,
+        targetLanguage: targetLanguage,
+      );
+    }
     throw UnimplementedError('FRB bindings not available');
   }
 
@@ -1412,7 +1452,9 @@ class FfiBridge {
   }
 
   /// Verify duress passphrase and activate decoy mode if correct.
-  static Future<bool> verifyDuressPassphrase({required String passphrase}) async {
+  static Future<bool> verifyDuressPassphrase({
+    required String passphrase,
+  }) async {
     if (kUseFrbBindings) {
       return await api.verifyDuressPassphrase(passphrase: passphrase);
     }
@@ -1555,12 +1597,14 @@ class FfiBridge {
   /// @see Rust: pirate-ffi-frb/src/api.rs::export_seed_with_passphrase
   static Future<List<String>> exportSeedWithPassphrase(
     WalletId walletId,
-    String passphrase,
-  ) async {
+    String passphrase, {
+    MnemonicLanguage? mnemonicLanguage,
+  }) async {
     if (kUseFrbBindings) {
       return await api.exportSeedWithPassphrase(
         walletId: walletId,
         passphrase: passphrase,
+        mnemonicLanguage: mnemonicLanguage,
       );
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
@@ -1569,10 +1613,14 @@ class FfiBridge {
 
   /// Export seed using cached app passphrase (after biometric approval).
   static Future<List<String>> exportSeedWithCachedPassphrase(
-    WalletId walletId,
-  ) async {
+    WalletId walletId, {
+    MnemonicLanguage? mnemonicLanguage,
+  }) async {
     if (kUseFrbBindings) {
-      return await api.exportSeedWithCachedPassphrase(walletId: walletId);
+      return await api.exportSeedWithCachedPassphrase(
+        walletId: walletId,
+        mnemonicLanguage: mnemonicLanguage,
+      );
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
     throw UnimplementedError('FRB bindings not available');
@@ -1585,6 +1633,19 @@ class FfiBridge {
       return;
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<String> exportSeedRaw(
+    WalletId walletId, {
+    MnemonicLanguage? mnemonicLanguage,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.exportSeedRaw(
+        walletId: walletId,
+        mnemonicLanguage: mnemonicLanguage,
+      );
+    }
     throw UnimplementedError('FRB bindings not available');
   }
 

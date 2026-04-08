@@ -7,11 +7,12 @@ import 'package:pirate_wallet/main.dart' as app;
 /// Integration test for sync errors and rollback scenarios
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  
+
   // Skip integration tests in CI - they require a live lightwalletd backend
-  final bool _skipInCI = Platform.environment['CI'] == 'true' || 
-                         Platform.environment['GITHUB_ACTIONS'] == 'true';
-  
+  final bool _skipInCI =
+      Platform.environment['CI'] == 'true' ||
+      Platform.environment['GITHUB_ACTIONS'] == 'true';
+
   Finder textMatches(RegExp pattern) {
     return find.byWidgetPredicate((widget) {
       if (widget is Text) {
@@ -88,7 +89,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Checkpoint rollback on corruption', (WidgetTester tester) async {
+    testWidgets('Checkpoint rollback on corruption', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -149,7 +152,10 @@ void main() {
 
           // Should show confirmation dialog
           expect(find.text('Confirm Rescan'), findsOneWidget);
-          expect(find.text('This will rebuild your wallet state'), findsOneWidget);
+          expect(
+            find.text('This will rebuild your wallet state'),
+            findsOneWidget,
+          );
 
           // Confirm rescan
           await tester.tap(find.text('Rescan'));
@@ -163,7 +169,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Background sync completion notification', (WidgetTester tester) async {
+    testWidgets('Background sync completion notification', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -188,7 +196,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Deep scan vs compact scan selection', (WidgetTester tester) async {
+    testWidgets('Deep scan vs compact scan selection', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -249,7 +259,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Lightwalletd connection switching', (WidgetTester tester) async {
+    testWidgets('Lightwalletd connection switching', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -288,7 +300,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Sync error recovery - auto retry', (WidgetTester tester) async {
+    testWidgets('Sync error recovery - auto retry', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -309,7 +323,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Checkpoint creation interval verification', (WidgetTester tester) async {
+    testWidgets('Checkpoint creation interval verification', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -327,8 +343,11 @@ void main() {
       }
 
       // Should create checkpoints periodically
-      expect(checkpointCount > 0, true, reason: 'Should create checkpoints during sync');
+      expect(
+        checkpointCount > 0,
+        true,
+        reason: 'Should create checkpoints during sync',
+      );
     }, skip: _skipInCI);
   });
 }
-

@@ -367,7 +367,10 @@ class BackgroundSyncManager {
     }
   }
 
-  Future<void> syncNativeTunnelMode(TunnelMode mode, {String? socks5Url}) async {
+  Future<void> syncNativeTunnelMode(
+    TunnelMode mode, {
+    String? socks5Url,
+  }) async {
     await _channel.invokeMethod('setTunnelMode', {
       'mode': mode.name,
       'socks5Url': socks5Url,
@@ -379,7 +382,9 @@ class BackgroundSyncManager {
       if (walletId == null || walletId.isEmpty) {
         await _channel.invokeMethod('clearActiveWalletId');
       } else {
-        await _channel.invokeMethod('setActiveWalletId', {'walletId': walletId});
+        await _channel.invokeMethod('setActiveWalletId', {
+          'walletId': walletId,
+        });
       }
     } catch (e) {
       debugPrint('[BackgroundSync] Failed to set active wallet ID: $e');

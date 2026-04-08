@@ -27,12 +27,24 @@ pub(super) fn skip_seed_biometric() -> Result<String> {
 pub(super) fn export_seed_with_passphrase(
     wallet_id: WalletId,
     passphrase: String,
+    mnemonic_language: Option<MnemonicLanguage>,
 ) -> Result<Vec<String>> {
-    service::export_seed_with_passphrase(wallet_id, passphrase)
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    service::export_seed_with_passphrase(wallet_id, passphrase, mnemonic_language)
 }
 
-pub(super) fn export_seed_with_cached_passphrase(wallet_id: WalletId) -> Result<Vec<String>> {
-    service::export_seed_with_cached_passphrase(wallet_id)
+pub(super) fn export_seed_with_cached_passphrase(
+    wallet_id: WalletId,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<Vec<String>> {
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    service::export_seed_with_cached_passphrase(wallet_id, mnemonic_language)
 }
 
 pub(super) fn cancel_seed_export() -> Result<()> {

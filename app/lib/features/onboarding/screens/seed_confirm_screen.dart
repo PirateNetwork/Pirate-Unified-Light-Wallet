@@ -12,11 +12,13 @@ import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../../design/tokens/spacing.dart';
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/ffi/generated/models.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
 import '../../../core/providers/wallet_providers.dart';
+import '../../settings/providers/preferences_providers.dart';
 import '../widgets/onboarding_progress_indicator.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
 
@@ -37,12 +39,19 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
   bool _isVerifying = false;
   String? _error;
   ScreenProtection? _screenProtection;
+  MnemonicLanguage _wordLanguage = MnemonicLanguage.english;
+  List<String> _activeWordlist = const <String>[];
 
   @override
   void initState() {
     super.initState();
+    final onboardingState = ref.read(onboardingControllerProvider);
+    _wordLanguage =
+        onboardingState.mnemonicLanguage ??
+        ref.read(seedPhraseLanguagePreferenceProvider);
     _disableScreenshots();
     _selectRandomWords();
+    unawaited(_loadWordlist());
     // Add listeners to update button state when text changes
     for (final controller in _wordControllers) {
       controller.addListener(_onTextChanged);
@@ -71,6 +80,14 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
   void _enableScreenshots() {
     _screenProtection?.dispose();
     _screenProtection = null;
+  }
+
+  Future<void> _loadWordlist() async {
+    final words = await loadBip39Wordlist(_wordLanguage);
+    if (!mounted) return;
+    setState(() {
+      _activeWordlist = words;
+    });
   }
 
   void _onTextChanged() {
@@ -245,6 +262,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
                 child: _SeedWordInput(
                   controller: _wordControllers[i],
                   focusNode: _focusNodes[i],
+                  wordlist: _activeWordlist,
                   label: 'Word ${_selectedIndices[i]}',
                   hint: 'Enter word ${_selectedIndices[i]}',
                   textInputAction: i < 2
@@ -311,6 +329,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
 class _SeedWordInput extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
+  final List<String> wordlist;
   final String label;
   final String hint;
   final TextInputAction textInputAction;
@@ -320,6 +339,7 @@ class _SeedWordInput extends StatefulWidget {
   const _SeedWordInput({
     required this.controller,
     required this.focusNode,
+    required this.wordlist,
     required this.label,
     required this.hint,
     required this.textInputAction,
@@ -356,6 +376,9 @@ class _SeedWordInputState extends State<_SeedWordInput> {
       oldWidget.controller.removeListener(_onTextChanged);
       widget.controller.addListener(_onTextChanged);
     }
+    if (oldWidget.wordlist != widget.wordlist) {
+      _updateMatches();
+    }
   }
 
   @override
@@ -389,7 +412,7 @@ class _SeedWordInputState extends State<_SeedWordInput> {
     final query = widget.controller.text.trim().toLowerCase();
     final nextMatches = query.isEmpty
         ? const <String>[]
-        : bip39Suggestions(query, limit: 6);
+        : bip39SuggestionsFromWordlist(query, widget.wordlist, limit: 6);
     if (!_listEquals(_matches, nextMatches)) {
       _matches = nextMatches;
     }
@@ -571,7 +594,7 @@ class _SeedWordInputState extends State<_SeedWordInput> {
     final current = widget.controller.text.trim().toLowerCase();
     final matches = current.isEmpty
         ? const <String>[]
-        : bip39Suggestions(current, limit: 2);
+        : bip39SuggestionsFromWordlist(current, widget.wordlist, limit: 2);
     if (matches.length == 1 && matches.first != current) {
       widget.controller.text = matches.first;
       widget.controller.selection = TextSelection.fromPosition(

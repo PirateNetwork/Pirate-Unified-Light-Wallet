@@ -105,9 +105,7 @@ class BackgroundSyncHandler {
         ? _activeWalletId
         : walletId;
     final shouldUseRoundRobin =
-        useRoundRobin ||
-        resolvedWalletId == null ||
-        resolvedWalletId.isEmpty;
+        useRoundRobin || resolvedWalletId == null || resolvedWalletId.isEmpty;
 
     try {
       // Configure tunnel mode if specified
@@ -253,8 +251,7 @@ class BackgroundSyncHandler {
     required String transportMode,
   }) async {
     try {
-      final endpointConfig =
-          (walletId == null || walletId.isEmpty)
+      final endpointConfig = (walletId == null || walletId.isEmpty)
           ? const LightdEndpointConfig(url: FfiBridge.defaultLightdUrl)
           : await FfiBridge.getLightdEndpointConfig(walletId);
       return await FfiBridge.testNode(

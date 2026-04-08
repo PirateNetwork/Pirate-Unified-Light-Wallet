@@ -48,7 +48,15 @@ bls12_381 = "0.8"
 
 # Core crypto primitives (stable versions)
 bip32 = "0.5"
-bip39 = "2.1"
+bip39 = { version = "2.1", features = [
+    "chinese-simplified",
+    "chinese-traditional",
+    "french",
+    "italian",
+    "japanese",
+    "korean",
+    "spanish",
+] }
 blake2b_simd = "1.0"
 blake2s_simd = "1.0"
 sha2 = "0.10"

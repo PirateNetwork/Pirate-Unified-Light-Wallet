@@ -103,12 +103,23 @@ public final class PirateWalletSDK {
             params: [
                 "name": request.name,
                 "birthday_opt": request.birthdayHeight,
+                "mnemonic_language": request.mnemonicLanguage?.rawValue,
             ]
         )
     }
 
-    public func createWallet(name: String, birthdayHeight: Int? = nil) throws -> String {
-        try createWallet(request: CreateWalletRequest(name: name, birthdayHeight: birthdayHeight))
+    public func createWallet(
+        name: String,
+        birthdayHeight: Int? = nil,
+        mnemonicLanguage: MnemonicLanguage? = nil
+    ) throws -> String {
+        try createWallet(
+            request: CreateWalletRequest(
+                name: name,
+                birthdayHeight: birthdayHeight,
+                mnemonicLanguage: mnemonicLanguage
+            )
+        )
     }
 
     public func restoreWallet(request: RestoreWalletRequest) throws -> String {
@@ -118,6 +129,7 @@ public final class PirateWalletSDK {
                 "name": request.name,
                 "mnemonic": request.mnemonic,
                 "birthday_opt": request.birthdayHeight,
+                "mnemonic_language": request.mnemonicLanguage?.rawValue,
             ]
         )
     }
@@ -125,13 +137,15 @@ public final class PirateWalletSDK {
     public func restoreWallet(
         name: String,
         mnemonic: String,
-        birthdayHeight: Int? = nil
+        birthdayHeight: Int? = nil,
+        mnemonicLanguage: MnemonicLanguage? = nil
     ) throws -> String {
         try restoreWallet(
             request: RestoreWalletRequest(
                 name: name,
                 mnemonic: mnemonic,
-                birthdayHeight: birthdayHeight
+                birthdayHeight: birthdayHeight,
+                mnemonicLanguage: mnemonicLanguage
             )
         )
     }
@@ -187,12 +201,38 @@ public final class PirateWalletSDK {
         try getWallet(walletId: walletId)?.birthdayHeight
     }
 
-    public func generateMnemonic(wordCount: Int? = nil) throws -> String {
-        try stringResult("generate_mnemonic", params: ["word_count": wordCount])
+    public func generateMnemonic(
+        wordCount: Int? = nil,
+        mnemonicLanguage: MnemonicLanguage? = nil
+    ) throws -> String {
+        try stringResult(
+            "generate_mnemonic",
+            params: [
+                "word_count": wordCount,
+                "mnemonic_language": mnemonicLanguage?.rawValue,
+            ]
+        )
     }
 
-    public func validateMnemonic(_ mnemonic: String) throws -> Bool {
-        try boolResult("validate_mnemonic", params: ["mnemonic": mnemonic])
+    public func validateMnemonic(
+        _ mnemonic: String,
+        mnemonicLanguage: MnemonicLanguage? = nil
+    ) throws -> Bool {
+        try boolResult(
+            "validate_mnemonic",
+            params: [
+                "mnemonic": mnemonic,
+                "mnemonic_language": mnemonicLanguage?.rawValue,
+            ]
+        )
+    }
+
+    public func inspectMnemonic(_ mnemonic: String) throws -> MnemonicInspection {
+        try decodeResult(
+            "inspect_mnemonic",
+            params: ["mnemonic": mnemonic],
+            as: MnemonicInspection.self
+        )
     }
 
     public func getNetworkInfo() throws -> NetworkInfo {
@@ -527,10 +567,16 @@ public final class PirateWalletAdvancedKeyManagement {
         )
     }
 
-    public func exportSeed(walletId: String) throws -> String {
+    public func exportSeed(
+        walletId: String,
+        mnemonicLanguage: MnemonicLanguage? = nil
+    ) throws -> String {
         try sdk.stringResult(
             "export_seed_raw",
-            params: ["wallet_id": walletId]
+            params: [
+                "wallet_id": walletId,
+                "mnemonic_language": mnemonicLanguage?.rawValue,
+            ]
         )
     }
 }
@@ -719,12 +765,23 @@ extension PirateWalletSDK {
             params: [
                 "name": request.name,
                 "birthday_opt": request.birthdayHeight,
+                "mnemonic_language": request.mnemonicLanguage?.rawValue,
             ]
         )
     }
 
-    public func createWalletAsync(name: String, birthdayHeight: Int? = nil) async throws -> String {
-        try await createWalletAsync(request: CreateWalletRequest(name: name, birthdayHeight: birthdayHeight))
+    public func createWalletAsync(
+        name: String,
+        birthdayHeight: Int? = nil,
+        mnemonicLanguage: MnemonicLanguage? = nil
+    ) async throws -> String {
+        try await createWalletAsync(
+            request: CreateWalletRequest(
+                name: name,
+                birthdayHeight: birthdayHeight,
+                mnemonicLanguage: mnemonicLanguage
+            )
+        )
     }
 
     public func restoreWalletAsync(request: RestoreWalletRequest) async throws -> String {
@@ -734,6 +791,7 @@ extension PirateWalletSDK {
                 "name": request.name,
                 "mnemonic": request.mnemonic,
                 "birthday_opt": request.birthdayHeight,
+                "mnemonic_language": request.mnemonicLanguage?.rawValue,
             ]
         )
     }
@@ -741,13 +799,15 @@ extension PirateWalletSDK {
     public func restoreWalletAsync(
         name: String,
         mnemonic: String,
-        birthdayHeight: Int? = nil
+        birthdayHeight: Int? = nil,
+        mnemonicLanguage: MnemonicLanguage? = nil
     ) async throws -> String {
         try await restoreWalletAsync(
             request: RestoreWalletRequest(
                 name: name,
                 mnemonic: mnemonic,
-                birthdayHeight: birthdayHeight
+                birthdayHeight: birthdayHeight,
+                mnemonicLanguage: mnemonicLanguage
             )
         )
     }
@@ -807,12 +867,38 @@ extension PirateWalletSDK {
         return wallet?.birthdayHeight
     }
 
-    public func generateMnemonicAsync(wordCount: Int? = nil) async throws -> String {
-        try await stringResultAsync("generate_mnemonic", params: ["word_count": wordCount])
+    public func generateMnemonicAsync(
+        wordCount: Int? = nil,
+        mnemonicLanguage: MnemonicLanguage? = nil
+    ) async throws -> String {
+        try await stringResultAsync(
+            "generate_mnemonic",
+            params: [
+                "word_count": wordCount,
+                "mnemonic_language": mnemonicLanguage?.rawValue,
+            ]
+        )
     }
 
-    public func validateMnemonicAsync(_ mnemonic: String) async throws -> Bool {
-        try await boolResultAsync("validate_mnemonic", params: ["mnemonic": mnemonic])
+    public func validateMnemonicAsync(
+        _ mnemonic: String,
+        mnemonicLanguage: MnemonicLanguage? = nil
+    ) async throws -> Bool {
+        try await boolResultAsync(
+            "validate_mnemonic",
+            params: [
+                "mnemonic": mnemonic,
+                "mnemonic_language": mnemonicLanguage?.rawValue,
+            ]
+        )
+    }
+
+    public func inspectMnemonicAsync(_ mnemonic: String) async throws -> MnemonicInspection {
+        try await decodeResultAsync(
+            "inspect_mnemonic",
+            params: ["mnemonic": mnemonic],
+            as: MnemonicInspection.self
+        )
     }
 
     public func getNetworkInfoAsync() async throws -> NetworkInfo {
@@ -1127,10 +1213,16 @@ extension PirateWalletAdvancedKeyManagement {
         )
     }
 
-    public func exportSeedAsync(walletId: String) async throws -> String {
+    public func exportSeedAsync(
+        walletId: String,
+        mnemonicLanguage: MnemonicLanguage? = nil
+    ) async throws -> String {
         try await sdk.stringResultAsync(
             "export_seed_raw",
-            params: ["wallet_id": walletId]
+            params: [
+                "wallet_id": walletId,
+                "mnemonic_language": mnemonicLanguage?.rawValue,
+            ]
         )
     }
 }

@@ -62,15 +62,18 @@ void main() {
       expect(status.currentMode, 'deep');
     });
 
-    test('fromMap falls back to conservative defaults when fields are missing', () {
-      final status = SyncStatus.fromMap(<String, dynamic>{});
+    test(
+      'fromMap falls back to conservative defaults when fields are missing',
+      () {
+        final status = SyncStatus.fromMap(<String, dynamic>{});
 
-      expect(status.lastCompactSync, isNull);
-      expect(status.lastDeepSync, isNull);
-      expect(status.tunnelMode, 'tor');
-      expect(status.isRunning, isFalse);
-      expect(status.currentMode, isNull);
-    });
+        expect(status.lastCompactSync, isNull);
+        expect(status.lastDeepSync, isNull);
+        expect(status.tunnelMode, 'tor');
+        expect(status.isRunning, isFalse);
+        expect(status.currentMode, isNull);
+      },
+    );
   });
 
   group('TunnelModeExtension', () {

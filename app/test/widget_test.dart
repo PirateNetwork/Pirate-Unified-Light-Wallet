@@ -21,10 +21,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: Center(
-            child: PButton(
-              onPressed: () {},
-              text: 'Continue',
-            ),
+            child: PButton(onPressed: () {}, text: 'Continue'),
           ),
         ),
       ),

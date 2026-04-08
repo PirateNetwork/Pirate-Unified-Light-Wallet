@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/ffi/generated/models.dart';
 import '../../core/services/birthday_update_service.dart';
 
 /// Onboarding steps
@@ -36,6 +37,7 @@ class OnboardingState {
   final OnboardingStep currentStep;
   final OnboardingMode? mode;
   final String? mnemonic;
+  final MnemonicLanguage? mnemonicLanguage;
   final String? passphrase;
   final bool biometricsEnabled;
   final int? birthdayHeight;
@@ -45,6 +47,7 @@ class OnboardingState {
     this.currentStep = OnboardingStep.welcome,
     this.mode,
     this.mnemonic,
+    this.mnemonicLanguage,
     this.passphrase,
     this.biometricsEnabled = false,
     this.birthdayHeight,
@@ -55,6 +58,7 @@ class OnboardingState {
     OnboardingStep? currentStep,
     OnboardingMode? mode,
     String? mnemonic,
+    MnemonicLanguage? mnemonicLanguage,
     String? passphrase,
     bool? biometricsEnabled,
     int? birthdayHeight,
@@ -64,6 +68,7 @@ class OnboardingState {
       currentStep: currentStep ?? this.currentStep,
       mode: mode ?? this.mode,
       mnemonic: mnemonic ?? this.mnemonic,
+      mnemonicLanguage: mnemonicLanguage ?? this.mnemonicLanguage,
       passphrase: passphrase ?? this.passphrase,
       biometricsEnabled: biometricsEnabled ?? this.biometricsEnabled,
       birthdayHeight: birthdayHeight ?? this.birthdayHeight,
@@ -141,8 +146,11 @@ class OnboardingController extends Notifier<OnboardingState> {
     state = state.copyWith(mode: mode);
   }
 
-  void setMnemonic(String mnemonic) {
-    state = state.copyWith(mnemonic: mnemonic);
+  void setMnemonic(String mnemonic, {MnemonicLanguage? mnemonicLanguage}) {
+    state = state.copyWith(
+      mnemonic: mnemonic,
+      mnemonicLanguage: mnemonicLanguage ?? state.mnemonicLanguage,
+    );
   }
 
   void setPassphrase(String passphrase) {
@@ -208,11 +216,13 @@ class OnboardingController extends Notifier<OnboardingState> {
             name: walletName,
             mnemonic: state.mnemonic!,
             birthday: birthday,
+            mnemonicLanguage: state.mnemonicLanguage,
           );
         } else {
           walletId = await ref.read(createWalletProvider)(
             name: walletName,
             birthday: birthday,
+            mnemonicLanguage: state.mnemonicLanguage,
           );
         }
         if (resolution?.timedOut ?? false) {
@@ -235,6 +245,7 @@ class OnboardingController extends Notifier<OnboardingState> {
           name: walletName,
           mnemonic: mnemonic,
           birthday: state.birthdayHeight,
+          mnemonicLanguage: state.mnemonicLanguage,
         );
         break;
       case OnboardingMode.watchOnly:

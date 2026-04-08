@@ -53,6 +53,7 @@ flutter:
   generate: true
   assets:
     - assets/i18n/
+    - assets/bip39/
   
   # Fonts (local only)
   fonts:

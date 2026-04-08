@@ -2,9 +2,8 @@
 //!
 //! Implements BIP-32/BIP-39/BIP-44 HD wallet key derivation for Pirate Chain.
 
-use crate::{Error, Result};
+use crate::{mnemonic, Error, Result};
 use bech32::{Bech32, Hrp};
-use bip39::{Language, Mnemonic};
 use blake2b_simd::Params as Blake2bParams;
 use blake2s_simd::Params as Blake2sParams;
 use orchard::keys::{FullViewingKey as OrchardFullViewingKey, SpendingKey};
@@ -106,7 +105,7 @@ impl ExtendedSpendingKey {
 
     /// Generate from mnemonic seed phrase
     pub fn from_mnemonic(mnemonic: &str) -> Result<Self> {
-        Self::from_mnemonic_with_account(mnemonic, NetworkType::Mainnet, 0)
+        Self::from_mnemonic_with_account_and_language(mnemonic, NetworkType::Mainnet, 0, None)
     }
 
     /// Generate from mnemonic seed phrase using ZIP-32 account derivation.
@@ -117,10 +116,17 @@ impl ExtendedSpendingKey {
         network: NetworkType,
         account: u32,
     ) -> Result<Self> {
-        let mnemonic = Mnemonic::parse_in_normalized(Language::English, mnemonic)
-            .map_err(|e| Error::InvalidSeed(e.to_string()))?;
+        Self::from_mnemonic_with_account_and_language(mnemonic, network, account, None)
+    }
 
-        let seed_bytes = mnemonic.to_seed("");
+    /// Generate from mnemonic seed phrase using ZIP-32 account derivation and an optional language.
+    pub fn from_mnemonic_with_account_and_language(
+        mnemonic: &str,
+        network: NetworkType,
+        account: u32,
+        language: Option<crate::mnemonic::MnemonicLanguage>,
+    ) -> Result<Self> {
+        let seed_bytes = mnemonic::seed_bytes_from_mnemonic(mnemonic, language)?;
         let network_params = Network::from_type(network);
         let extsk = sapling_keys::spending_key(
             &seed_bytes,
@@ -133,9 +139,15 @@ impl ExtendedSpendingKey {
 
     /// Get seed bytes from mnemonic (for Orchard derivation)
     pub fn seed_bytes_from_mnemonic(mnemonic: &str) -> Result<Vec<u8>> {
-        let mnemonic = Mnemonic::parse_in_normalized(Language::English, mnemonic)
-            .map_err(|e| Error::InvalidSeed(e.to_string()))?;
-        Ok(mnemonic.to_seed("").to_vec())
+        mnemonic::seed_bytes_from_mnemonic(mnemonic, None)
+    }
+
+    /// Get seed bytes from mnemonic in an explicitly selected language.
+    pub fn seed_bytes_from_mnemonic_in_language(
+        mnemonic: &str,
+        language: Option<crate::mnemonic::MnemonicLanguage>,
+    ) -> Result<Vec<u8>> {
+        mnemonic::seed_bytes_from_mnemonic(mnemonic, language)
     }
 
     /// Generate new random mnemonic
@@ -146,29 +158,15 @@ impl ExtendedSpendingKey {
     /// # Returns
     /// BIP39 mnemonic phrase with the specified number of words
     pub fn generate_mnemonic(word_count: Option<u32>) -> String {
-        let word_count = word_count.unwrap_or(24);
+        mnemonic::generate_mnemonic(word_count, None)
+    }
 
-        // BIP39 entropy requirements:
-        // 12 words = 128 bits = 16 bytes
-        // 18 words = 192 bits = 24 bytes
-        // 24 words = 256 bits = 32 bytes
-        let (entropy_size, _expected_words) = match word_count {
-            12 => (16, 12),
-            18 => (24, 18),
-            24 => (32, 24),
-            _ => {
-                // Default to 24 words for invalid input
-                (32, 24)
-            }
-        };
-
-        let mut entropy = vec![0u8; entropy_size];
-        use rand::RngCore;
-        rand::thread_rng().fill_bytes(&mut entropy);
-
-        let mnemonic =
-            Mnemonic::from_entropy(&entropy).expect("Entropy should always produce valid mnemonic");
-        mnemonic.to_string()
+    /// Generate a new random mnemonic in an explicit language.
+    pub fn generate_mnemonic_in_language(
+        word_count: Option<u32>,
+        language: Option<crate::mnemonic::MnemonicLanguage>,
+    ) -> String {
+        mnemonic::generate_mnemonic(word_count, language)
     }
 
     /// Derive extended full viewing key

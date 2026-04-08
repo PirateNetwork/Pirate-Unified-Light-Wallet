@@ -10,11 +10,14 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   // Skip integration tests in CI - they require a live lightwalletd backend
-  final bool _skipInCI = Platform.environment['CI'] == 'true' || 
-                         Platform.environment['GITHUB_ACTIONS'] == 'true';
+  final bool _skipInCI =
+      Platform.environment['CI'] == 'true' ||
+      Platform.environment['GITHUB_ACTIONS'] == 'true';
 
   group('Onboarding Flow E2E', () {
-    testWidgets('Complete new wallet creation flow', (WidgetTester tester) async {
+    testWidgets('Complete new wallet creation flow', (
+      WidgetTester tester,
+    ) async {
       // Launch app
       app.main();
       await tester.pump();
@@ -32,10 +35,7 @@ void main() {
       expect(find.text('Name Your Wallet'), findsOneWidget);
 
       // Enter wallet name
-      await tester.enterText(
-        find.byType(TextField).first,
-        'Test Wallet',
-      );
+      await tester.enterText(find.byType(TextField).first, 'Test Wallet');
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
@@ -101,7 +101,8 @@ void main() {
       );
 
       // Enter recovery phrase (24-word test phrase)
-      const testMnemonic = 'abandon abandon abandon abandon abandon abandon '
+      const testMnemonic =
+          'abandon abandon abandon abandon abandon abandon '
           'abandon abandon abandon abandon abandon abandon '
           'abandon abandon abandon abandon abandon abandon '
           'abandon abandon abandon abandon abandon art';
@@ -196,7 +197,9 @@ void main() {
       }
     }, skip: _skipInCI);
 
-    testWidgets('Error handling - invalid mnemonic', (WidgetTester tester) async {
+    testWidgets('Error handling - invalid mnemonic', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -227,7 +230,9 @@ void main() {
       expect(find.textContaining('Invalid'), findsOneWidget);
     }, skip: _skipInCI);
 
-    testWidgets('Error handling - passphrase mismatch', (WidgetTester tester) async {
+    testWidgets('Error handling - passphrase mismatch', (
+      WidgetTester tester,
+    ) async {
       app.main();
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
@@ -258,4 +263,3 @@ void main() {
     }, skip: _skipInCI);
   });
 }
-

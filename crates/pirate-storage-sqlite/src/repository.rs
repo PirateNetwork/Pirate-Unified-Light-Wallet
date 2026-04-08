@@ -257,12 +257,13 @@ impl<'a> Repository<'a> {
             sapling_ivk: Option<Vec<u8>>,
             orchard_ivk: Option<Vec<u8>>,
             encrypted_mnemonic: Option<Vec<u8>>,
+            mnemonic_language: Option<String>,
             created_at: Vec<u8>,
             created_at_plain: i64,
         }
 
         let mut stmt = self.db.conn().prepare(
-            "SELECT rowid, wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at
+            "SELECT rowid, wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, mnemonic_language, created_at
              FROM wallet_secrets
              ORDER BY rowid ASC",
         )?;
@@ -285,7 +286,8 @@ impl<'a> Repository<'a> {
             let sapling_ivk: Option<Vec<u8>> = row.get(6)?;
             let orchard_ivk: Option<Vec<u8>> = row.get(7)?;
             let encrypted_mnemonic: Option<Vec<u8>> = row.get(8)?;
-            let created_at: Vec<u8> = row.get(9)?;
+            let mnemonic_language: Option<String> = row.get(9)?;
+            let created_at: Vec<u8> = row.get(10)?;
             let created_at_plain = self.decrypt_int64(&created_at)?;
 
             canonical_rows
@@ -310,6 +312,9 @@ impl<'a> Repository<'a> {
                     if encrypted_mnemonic.as_ref().is_some_and(|v| !v.is_empty()) {
                         existing.encrypted_mnemonic = encrypted_mnemonic.clone();
                     }
+                    if mnemonic_language.is_some() {
+                        existing.mnemonic_language = mnemonic_language.clone();
+                    }
                     if created_at_plain < existing.created_at_plain {
                         existing.created_at = created_at.clone();
                         existing.created_at_plain = created_at_plain;
@@ -324,6 +329,7 @@ impl<'a> Repository<'a> {
                     sapling_ivk,
                     orchard_ivk,
                     encrypted_mnemonic,
+                    mnemonic_language,
                     created_at,
                     created_at_plain,
                 });
@@ -351,6 +357,7 @@ impl<'a> Repository<'a> {
                     sapling_ivk BLOB,
                     orchard_ivk BLOB,
                     encrypted_mnemonic BLOB,
+                    mnemonic_language TEXT,
                     created_at INTEGER NOT NULL
                 );
                 "#,
@@ -358,8 +365,8 @@ impl<'a> Repository<'a> {
 
             for row in canonical_rows.into_values() {
                 self.db.conn().execute(
-                    "INSERT INTO wallet_secrets_normalized (wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    "INSERT INTO wallet_secrets_normalized (wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, mnemonic_language, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     params![
                         row.wallet_id,
                         row.account_id,
@@ -369,6 +376,7 @@ impl<'a> Repository<'a> {
                         row.sapling_ivk,
                         row.orchard_ivk,
                         row.encrypted_mnemonic,
+                        row.mnemonic_language,
                         row.created_at,
                     ],
                 )?;
@@ -1465,10 +1473,10 @@ impl<'a> Repository<'a> {
         let encrypted_created_at = self.encrypt_int64(secret.created_at)?;
 
         self.db.conn().execute(
-            "INSERT INTO wallet_secrets (wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-             ON CONFLICT(wallet_id) DO UPDATE SET account_id=excluded.account_id, extsk=excluded.extsk, dfvk=excluded.dfvk, orchard_extsk=excluded.orchard_extsk, sapling_ivk=excluded.sapling_ivk, orchard_ivk=excluded.orchard_ivk, encrypted_mnemonic=excluded.encrypted_mnemonic, created_at=excluded.created_at",
-            params![secret.wallet_id, encrypted_account_id, secret.extsk, secret.dfvk, secret.orchard_extsk, secret.sapling_ivk, secret.orchard_ivk, secret.encrypted_mnemonic, encrypted_created_at],
+            "INSERT INTO wallet_secrets (wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, mnemonic_language, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(wallet_id) DO UPDATE SET account_id=excluded.account_id, extsk=excluded.extsk, dfvk=excluded.dfvk, orchard_extsk=excluded.orchard_extsk, sapling_ivk=excluded.sapling_ivk, orchard_ivk=excluded.orchard_ivk, encrypted_mnemonic=excluded.encrypted_mnemonic, mnemonic_language=excluded.mnemonic_language, created_at=excluded.created_at",
+            params![secret.wallet_id, encrypted_account_id, secret.extsk, secret.dfvk, secret.orchard_extsk, secret.sapling_ivk, secret.orchard_ivk, secret.encrypted_mnemonic, secret.mnemonic_language, encrypted_created_at],
         )?;
         Ok(())
     }
@@ -1485,6 +1493,7 @@ impl<'a> Repository<'a> {
             sapling_ivk: self.encrypt_optional_blob(secret.sapling_ivk.as_deref())?, // Encrypt viewing key for privacy
             orchard_ivk: self.encrypt_optional_blob(secret.orchard_ivk.as_deref())?, // Encrypt viewing key for privacy
             encrypted_mnemonic: self.encrypt_optional_blob(secret.encrypted_mnemonic.as_deref())?,
+            mnemonic_language: secret.mnemonic_language.clone(),
             created_at: secret.created_at, // Will be encrypted in upsert_wallet_secret
         })
     }
@@ -1492,7 +1501,7 @@ impl<'a> Repository<'a> {
     /// Get wallet secret and decrypt encrypted fields.
     pub fn get_wallet_secret(&self, wallet_id: &str) -> Result<Option<WalletSecret>> {
         let mut stmt = self.db.conn().prepare(
-            "SELECT wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, created_at
+            "SELECT wallet_id, account_id, extsk, dfvk, orchard_extsk, sapling_ivk, orchard_ivk, encrypted_mnemonic, mnemonic_language, created_at
              FROM wallet_secrets
              WHERE wallet_id = ?1",
         )?;
@@ -1507,7 +1516,8 @@ impl<'a> Repository<'a> {
             let encrypted_sapling_ivk: Option<Vec<u8>> = row.get(5)?;
             let encrypted_orchard_ivk: Option<Vec<u8>> = row.get(6)?;
             let encrypted_mnemonic: Option<Vec<u8>> = row.get(7)?;
-            let encrypted_created_at: Vec<u8> = row.get(8)?;
+            let mnemonic_language: Option<String> = row.get(8)?;
+            let encrypted_created_at: Vec<u8> = row.get(9)?;
 
             let account_id = self.decrypt_int64(&encrypted_account_id)?;
             let extsk = self.decrypt_blob(&encrypted_extsk)?;
@@ -1527,6 +1537,7 @@ impl<'a> Repository<'a> {
                 sapling_ivk,
                 orchard_ivk,
                 encrypted_mnemonic,
+                mnemonic_language,
                 created_at,
             }));
         }
@@ -4679,6 +4690,7 @@ mod tests {
             sapling_ivk: None,
             orchard_ivk: None,
             encrypted_mnemonic: Some(b"test mnemonic phrase".to_vec()),
+            mnemonic_language: Some("spanish".to_string()),
             created_at: chrono::Utc::now().timestamp(),
         };
 
@@ -4705,6 +4717,7 @@ mod tests {
         assert_eq!(retrieved.dfvk, secret.dfvk);
         assert_eq!(retrieved.orchard_extsk, secret.orchard_extsk);
         assert_eq!(retrieved.encrypted_mnemonic, secret.encrypted_mnemonic);
+        assert_eq!(retrieved.mnemonic_language, secret.mnemonic_language);
     }
 
     #[test]
@@ -4723,6 +4736,7 @@ mod tests {
             sapling_ivk: Some(b"test_sapling_ivk_32_bytes_data!".to_vec()),
             orchard_ivk: Some(b"test_orchard_ivk_64_bytes_data_for_privacy_blockchain!".to_vec()),
             encrypted_mnemonic: None,
+            mnemonic_language: None,
             created_at: chrono::Utc::now().timestamp(),
         };
 
@@ -4760,6 +4774,7 @@ mod tests {
             sapling_ivk: None,
             orchard_ivk: None,
             encrypted_mnemonic: Some(b"mnemonic-v1".to_vec()),
+            mnemonic_language: Some("english".to_string()),
             created_at: 100,
         };
         let secret_v2 = WalletSecret {
@@ -4771,6 +4786,7 @@ mod tests {
             sapling_ivk: None,
             orchard_ivk: None,
             encrypted_mnemonic: Some(b"mnemonic-v2".to_vec()),
+            mnemonic_language: Some("japanese".to_string()),
             created_at: 100,
         };
 
@@ -4796,6 +4812,7 @@ mod tests {
         assert_eq!(retrieved.dfvk, secret_v2.dfvk);
         assert_eq!(retrieved.orchard_extsk, secret_v2.orchard_extsk);
         assert_eq!(retrieved.encrypted_mnemonic, secret_v2.encrypted_mnemonic);
+        assert_eq!(retrieved.mnemonic_language, secret_v2.mnemonic_language);
     }
 
     #[test]
@@ -4812,6 +4829,7 @@ mod tests {
             sapling_ivk: None,
             orchard_ivk: None,
             encrypted_mnemonic: Some(b"legacy mnemonic v1".to_vec()),
+            mnemonic_language: Some("english".to_string()),
             created_at: 50,
         };
         let legacy_v2 = WalletSecret {
@@ -4823,6 +4841,7 @@ mod tests {
             sapling_ivk: None,
             orchard_ivk: None,
             encrypted_mnemonic: None,
+            mnemonic_language: None,
             created_at: 75,
         };
 

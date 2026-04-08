@@ -4,6 +4,7 @@ use crate::keys::{
     ExtendedFullViewingKey, ExtendedSpendingKey, IncomingViewingKey, OrchardExtendedFullViewingKey,
     PaymentAddress,
 };
+use crate::mnemonic::MnemonicLanguage;
 use crate::notes::Note;
 use crate::{Error, Result};
 use orchard::keys::IncomingViewingKey as OrchardIncomingViewingKey;
@@ -32,14 +33,28 @@ pub struct Wallet {
 impl Wallet {
     /// Create from mnemonic (full wallet)
     pub fn from_mnemonic(mnemonic: &str) -> Result<Self> {
+        Self::from_mnemonic_in_language(mnemonic, None)
+    }
+
+    /// Create from mnemonic (full wallet) with an explicit or autodetected language.
+    pub fn from_mnemonic_in_language(
+        mnemonic: &str,
+        language: Option<MnemonicLanguage>,
+    ) -> Result<Self> {
         let network = Network::mainnet();
-        let spending_key =
-            ExtendedSpendingKey::from_mnemonic_with_account(mnemonic, network.network_type, 0)?;
+        let spending_key = ExtendedSpendingKey::from_mnemonic_with_account_and_language(
+            mnemonic,
+            network.network_type,
+            0,
+            language,
+        )?;
         let viewing_key = spending_key.to_extended_fvk();
 
         // Derive Orchard keys from the same seed
         // Get seed bytes from mnemonic (same as used for Sapling)
-        let seed_bytes = crate::keys::ExtendedSpendingKey::seed_bytes_from_mnemonic(mnemonic)?;
+        let seed_bytes = crate::keys::ExtendedSpendingKey::seed_bytes_from_mnemonic_in_language(
+            mnemonic, language,
+        )?;
         let orchard_master = crate::keys::OrchardExtendedSpendingKey::master(&seed_bytes)?;
         let orchard_extsk = orchard_master.derive_account(network.coin_type, 0)?;
         let orchard_viewing_key = orchard_extsk.to_extended_fvk();

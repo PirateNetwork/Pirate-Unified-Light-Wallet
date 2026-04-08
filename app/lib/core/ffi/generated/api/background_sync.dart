@@ -7,38 +7,16 @@ import '../frb_generated.dart';
 import '../models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-Future<BackgroundSyncResult> startBackgroundSync({
-  required String walletId,
-  String? mode,
-  BigInt? maxDurationSecs,
-  BigInt? maxBlocks,
-}) => RustLib.instance.api.crateApiBackgroundSyncStartBackgroundSync(
-  walletId: walletId,
-  mode: mode,
-  maxDurationSecs: maxDurationSecs,
-  maxBlocks: maxBlocks,
-);
 
-Future<WalletBackgroundSyncResult> startBackgroundSyncRoundRobin({
-  String? mode,
-  BigInt? maxDurationSecs,
-  BigInt? maxBlocks,
-}) => RustLib.instance.api.crateApiBackgroundSyncStartBackgroundSyncRoundRobin(
-  mode: mode,
-  maxDurationSecs: maxDurationSecs,
-  maxBlocks: maxBlocks,
-);
+            
 
-Future<bool> isBackgroundSyncNeeded({required String walletId}) => RustLib
-    .instance
-    .api
-    .crateApiBackgroundSyncIsBackgroundSyncNeeded(walletId: walletId);
+            Future<BackgroundSyncResult>  startBackgroundSync({required String walletId , String? mode , BigInt? maxDurationSecs , BigInt? maxBlocks }) => RustLib.instance.api.crateApiBackgroundSyncStartBackgroundSync(walletId: walletId, mode: mode, maxDurationSecs: maxDurationSecs, maxBlocks: maxBlocks);
 
-Future<String> getRecommendedBackgroundSyncMode({
-  required String walletId,
-  required int minutesSinceLast,
-}) =>
-    RustLib.instance.api.crateApiBackgroundSyncGetRecommendedBackgroundSyncMode(
-      walletId: walletId,
-      minutesSinceLast: minutesSinceLast,
-    );
+Future<WalletBackgroundSyncResult>  startBackgroundSyncRoundRobin({String? mode , BigInt? maxDurationSecs , BigInt? maxBlocks }) => RustLib.instance.api.crateApiBackgroundSyncStartBackgroundSyncRoundRobin(mode: mode, maxDurationSecs: maxDurationSecs, maxBlocks: maxBlocks);
+
+Future<bool>  isBackgroundSyncNeeded({required String walletId }) => RustLib.instance.api.crateApiBackgroundSyncIsBackgroundSyncNeeded(walletId: walletId);
+
+Future<String>  getRecommendedBackgroundSyncMode({required String walletId , required int minutesSinceLast }) => RustLib.instance.api.crateApiBackgroundSyncGetRecommendedBackgroundSyncMode(walletId: walletId, minutesSinceLast: minutesSinceLast);
+
+            
+            

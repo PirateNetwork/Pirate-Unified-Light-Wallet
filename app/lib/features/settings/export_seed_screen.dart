@@ -7,12 +7,15 @@ import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../design/compat.dart';
 import '../../design/tokens/colors.dart';
+import '../../core/crypto/mnemonic_language.dart';
 import '../../core/ffi/ffi_bridge.dart';
+import '../../core/ffi/generated/models.dart';
 import '../../core/security/screenshot_protection.dart';
 import '../../core/security/biometric_auth.dart';
 import '../../core/security/clipboard_manager.dart';
 import '../../core/security/decoy_data.dart';
 import '../../core/providers/wallet_providers.dart';
+import 'providers/preferences_providers.dart';
 import 'dart:async';
 import '../../core/i18n/arb_text_localizer.dart';
 
@@ -58,6 +61,8 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
   bool _seedRevealed = false;
   bool _exportStarted = false;
   String? _mnemonic;
+  MnemonicLanguage? _displayLanguage;
+  String? _verifiedPassphrase;
   bool _isLoading = false;
   String? _error;
   Timer? _clipboardTimer;
@@ -73,6 +78,86 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     }
     _enableScreenshots();
     super.dispose();
+  }
+
+  Future<void> _applyRevealedMnemonic(
+    String mnemonic, {
+    String? verifiedPassphrase,
+  }) async {
+    if (_isDecoyMode()) {
+      final preferred = ref.read(seedPhraseLanguagePreferenceProvider);
+      _disableScreenshots();
+      setState(() {
+        _mnemonic = mnemonic;
+        _displayLanguage = preferred;
+        _verifiedPassphrase = verifiedPassphrase;
+        _step2Complete = true;
+        _step3Complete = true;
+        _seedRevealed = true;
+      });
+      return;
+    }
+
+    final inspection = await FfiBridge.inspectMnemonic(mnemonic);
+    final language =
+        inspection.detectedLanguage ??
+        ref.read(seedPhraseLanguagePreferenceProvider);
+
+    _disableScreenshots();
+    if (!mounted) return;
+    setState(() {
+      _mnemonic = mnemonic;
+      _displayLanguage = language;
+      _verifiedPassphrase = verifiedPassphrase;
+      _step2Complete = true;
+      _step3Complete = true;
+      _seedRevealed = true;
+    });
+  }
+
+  Future<void> _setDisplayLanguage(MnemonicLanguage language) async {
+    if (_mnemonic == null || _displayLanguage == language) return;
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      if (_isDecoyMode()) {
+        if (!mounted) return;
+        setState(() {
+          _displayLanguage = language;
+        });
+        return;
+      }
+
+      final words = _verifiedPassphrase != null
+          ? await FfiBridge.exportSeedWithPassphrase(
+              widget.walletId,
+              _verifiedPassphrase!,
+              mnemonicLanguage: language,
+            )
+          : await FfiBridge.exportSeedWithCachedPassphrase(
+              widget.walletId,
+              mnemonicLanguage: language,
+            );
+      if (!mounted) return;
+
+      setState(() {
+        _mnemonic = words.join(' ');
+        _displayLanguage = language;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Failed to change seed phrase language: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -507,6 +592,46 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                     color: AppColors.textSecondary,
                   ),
                 ),
+                if (_displayLanguage != null) ...[
+                  SizedBox(height: PirateSpacing.md),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: PirateSpacing.md,
+                      vertical: PirateSpacing.xs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundElevated,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.borderDefault),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<MnemonicLanguage>(
+                        value: _displayLanguage,
+                        isExpanded: true,
+                        dropdownColor: AppColors.backgroundSurface,
+                        iconEnabledColor: AppColors.textSecondary,
+                        onChanged: (value) {
+                          if (value != null) {
+                            unawaited(_setDisplayLanguage(value));
+                          }
+                        },
+                        items: supportedMnemonicLanguages
+                            .map(
+                              (language) => DropdownMenuItem(
+                                value: language,
+                                child: Text(
+                                  language.nativeLabel,
+                                  style: PirateTypography.body.copyWith(
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                    ),
+                  ),
+                ],
                 SizedBox(height: PirateSpacing.lg),
                 _buildMnemonicGrid(),
               ],
@@ -610,13 +735,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
     try {
       if (_isDecoyMode()) {
-        _disableScreenshots();
-        setState(() {
-          _mnemonic = DecoyData.mnemonic();
-          _step2Complete = true;
-          _step3Complete = true;
-          _seedRevealed = true;
-        });
+        await _applyRevealedMnemonic(DecoyData.mnemonic());
         return;
       }
       final available = await BiometricAuth.isAvailable();
@@ -635,15 +754,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
         final words = await FfiBridge.exportSeedWithCachedPassphrase(
           widget.walletId,
         );
-        final mnemonic = words.join(' ');
-
-        _disableScreenshots();
-        setState(() {
-          _mnemonic = mnemonic;
-          _step2Complete = true;
-          _step3Complete = true;
-          _seedRevealed = true;
-        });
+        await _applyRevealedMnemonic(words.join(' '));
       } else {
         setState(() => _error = 'Biometric authentication failed');
       }
@@ -693,28 +804,19 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
     try {
       if (_isDecoyMode()) {
-        final mnemonic = DecoyData.mnemonic();
-        _disableScreenshots();
-        setState(() {
-          _mnemonic = mnemonic;
-          _step3Complete = true;
-          _seedRevealed = true;
-        });
+        await _applyRevealedMnemonic(DecoyData.mnemonic());
         _passphraseController.clear();
         return;
       }
+      final verifiedPassphrase = _passphraseController.text;
       final words = await FfiBridge.exportSeedWithPassphrase(
         widget.walletId,
-        _passphraseController.text,
+        verifiedPassphrase,
       );
-      final mnemonic = words.join(' ');
-
-      _disableScreenshots();
-      setState(() {
-        _mnemonic = mnemonic;
-        _step3Complete = true;
-        _seedRevealed = true;
-      });
+      await _applyRevealedMnemonic(
+        words.join(' '),
+        verifiedPassphrase: verifiedPassphrase,
+      );
       _passphraseController.clear();
     } catch (e) {
       setState(() => _error = 'Failed to verify passphrase: $e');

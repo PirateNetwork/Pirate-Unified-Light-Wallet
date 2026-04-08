@@ -46,7 +46,11 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
       state = walletId;
       if (walletId != null) {
         BackgroundSyncHandler().updateActiveWallet(walletId);
-        unawaited(ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(walletId));
+        unawaited(
+          ref
+              .read(bg.backgroundSyncManagerProvider)
+              .setActiveWalletId(walletId),
+        );
         // Auto-start sync when loading active wallet on app startup
         unawaited(_startWalletSessions(walletId));
       }
@@ -85,7 +89,9 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
   void clearActiveWallet() {
     state = null;
     BackgroundSyncHandler().updateActiveWallet(null);
-    unawaited(ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(null));
+    unawaited(
+      ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(null),
+    );
   }
 
   Future<void> _stopWalletSessions(WalletId walletId) async {
@@ -106,7 +112,9 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
 
   void _notifyBackgroundHandler(WalletId walletId) {
     BackgroundSyncHandler().updateActiveWallet(walletId);
-    unawaited(ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(walletId));
+    unawaited(
+      ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(walletId),
+    );
   }
 }
 
@@ -152,17 +160,20 @@ final createWalletProvider =
         required String name,
         int entropyLen,
         int? birthday,
+        MnemonicLanguage? mnemonicLanguage,
       })
     >((ref) {
       return ({
         required String name,
         int entropyLen = 256,
         int? birthday,
+        MnemonicLanguage? mnemonicLanguage,
       }) async {
         final walletId = await FfiBridge.createWallet(
           name: name,
           entropyLen: entropyLen,
           birthday: birthday,
+          mnemonicLanguage: mnemonicLanguage,
         );
 
         // Set as active
@@ -184,17 +195,20 @@ final restoreWalletProvider =
         required String name,
         required String mnemonic,
         int? birthday,
+        MnemonicLanguage? mnemonicLanguage,
       })
     >((ref) {
       return ({
         required String name,
         required String mnemonic,
         int? birthday,
+        MnemonicLanguage? mnemonicLanguage,
       }) async {
         final walletId = await FfiBridge.restoreWallet(
           name: name,
           mnemonic: mnemonic,
           birthday: birthday,
+          mnemonicLanguage: mnemonicLanguage,
         );
 
         // Set as active
@@ -734,18 +748,32 @@ final autoConsolidationThresholdProvider = FutureProvider<int>((ref) async {
 
 /// Generate mnemonic
 final generateMnemonicProvider =
-    Provider<Future<String> Function({int wordCount})>((ref) {
-      return ({int wordCount = 24}) async {
-        return FfiBridge.generateMnemonic(wordCount: wordCount);
+    Provider<
+      Future<String> Function({
+        int wordCount,
+        MnemonicLanguage? mnemonicLanguage,
+      })
+    >((ref) {
+      return ({int wordCount = 24, MnemonicLanguage? mnemonicLanguage}) async {
+        return FfiBridge.generateMnemonic(
+          wordCount: wordCount,
+          mnemonicLanguage: mnemonicLanguage,
+        );
       };
     });
 
 /// Validate mnemonic
-final validateMnemonicProvider = Provider<Future<bool> Function(String)>((ref) {
-  return (String mnemonic) async {
-    return FfiBridge.validateMnemonic(mnemonic);
-  };
-});
+final validateMnemonicProvider =
+    Provider<
+      Future<bool> Function(String, {MnemonicLanguage? mnemonicLanguage})
+    >((ref) {
+      return (String mnemonic, {MnemonicLanguage? mnemonicLanguage}) async {
+        return FfiBridge.validateMnemonic(
+          mnemonic,
+          mnemonicLanguage: mnemonicLanguage,
+        );
+      };
+    });
 
 /// Format amount (arrrtoshis to ARRR string)
 final formatAmountProvider = Provider<Future<String> Function(int)>((ref) {

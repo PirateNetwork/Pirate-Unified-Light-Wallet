@@ -182,9 +182,7 @@ class _OnboardingBiometricsScreenState
             const SizedBox(height: AppSpacing.xxl),
             Text(
               'Use biometrics to unlock'.tr,
-              style: AppTypography.h2.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -209,11 +207,7 @@ class _OnboardingBiometricsScreenState
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: AppColors.error,
-                      size: 18,
-                    ),
+                    Icon(Icons.error_outline, color: AppColors.error, size: 18),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
@@ -227,7 +221,9 @@ class _OnboardingBiometricsScreenState
                 ),
               ),
             PButton(
-              text: _isAvailable ? 'Enable biometrics' : 'Biometrics unavailable',
+              text: _isAvailable
+                  ? 'Enable biometrics'
+                  : 'Biometrics unavailable',
               onPressed: !_isAvailable || _isLoading ? null : _enableBiometrics,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,

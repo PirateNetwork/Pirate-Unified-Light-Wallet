@@ -48,10 +48,7 @@ class _BackupWarningScreenState extends ConsumerState<BackupWarningScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const OnboardingProgressIndicator(
-              currentStep: 4,
-              totalSteps: 6,
-            ),
+            const OnboardingProgressIndicator(currentStep: 4, totalSteps: 6),
             const SizedBox(height: AppSpacing.xxl),
             // Warning icon
             Container(
@@ -70,9 +67,7 @@ class _BackupWarningScreenState extends ConsumerState<BackupWarningScreen> {
 
             Text(
               'Your seed phrase is your backup'.tr,
-              style: AppTypography.h2.copyWith(
-                color: AppColors.textPrimary,
-              ),
+              style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.md),
@@ -87,20 +82,29 @@ class _BackupWarningScreenState extends ConsumerState<BackupWarningScreen> {
             ),
             const SizedBox(height: AppSpacing.xl),
 
-            // Warning points
-            _WarningPoint(
-              icon: Icons.lock_outline,
-              text: 'Never share your seed phrase with anyone',
-            ),
-            const SizedBox(height: AppSpacing.md),
-            _WarningPoint(
-              icon: Icons.visibility_off_outlined,
-              text: 'Store it securely offline',
-            ),
-            const SizedBox(height: AppSpacing.md),
-            _WarningPoint(
-              icon: Icons.backup_outlined,
-              text: 'Write it down or use a hardware wallet',
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    _WarningPoint(
+                      icon: Icons.lock_outline,
+                      text: 'Never share your seed phrase with anyone',
+                    ),
+                    SizedBox(height: AppSpacing.md),
+                    _WarningPoint(
+                      icon: Icons.visibility_off_outlined,
+                      text: 'Store it securely offline',
+                    ),
+                    SizedBox(height: AppSpacing.md),
+                    _WarningPoint(
+                      icon: Icons.backup_outlined,
+                      text: 'Write it down or use a hardware wallet',
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: AppSpacing.xxl),
 

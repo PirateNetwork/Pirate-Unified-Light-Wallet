@@ -549,8 +549,13 @@ pub fn create_wallet(
     name: String,
     _entropy_len: Option<u32>, // Deprecated: always generates 24-word seed
     birthday_opt: Option<u32>,
+    mnemonic_language: Option<MnemonicLanguage>,
 ) -> Result<WalletId> {
-    service::create_wallet(name, _entropy_len, birthday_opt)
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    service::create_wallet(name, _entropy_len, birthday_opt, mnemonic_language)
 }
 
 /// Restore wallet from mnemonic
@@ -562,8 +567,13 @@ pub fn restore_wallet(
     name: String,
     mnemonic: String,
     birthday_opt: Option<u32>,
+    mnemonic_language: Option<MnemonicLanguage>,
 ) -> Result<WalletId> {
-    service::restore_wallet(name, mnemonic, birthday_opt)
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    service::restore_wallet(name, mnemonic, birthday_opt, mnemonic_language)
 }
 
 /// Check if wallet registry database file exists (without opening it)
@@ -1149,8 +1159,15 @@ pub fn import_spending_key(
 ///
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
-pub fn export_seed_raw(wallet_id: WalletId) -> Result<String> {
-    service::export_seed_raw(wallet_id)
+pub fn export_seed_raw(
+    wallet_id: WalletId,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<String> {
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    service::export_seed_raw(wallet_id, mnemonic_language)
 }
 
 // ============================================================================
@@ -2281,13 +2298,46 @@ async fn fetch_transaction_memo_inner(
 ///
 /// # Returns
 /// BIP39 mnemonic phrase with the specified number of words
-pub fn generate_mnemonic(word_count: Option<u32>) -> Result<String> {
-    service::generate_mnemonic(word_count)
+pub fn generate_mnemonic(
+    word_count: Option<u32>,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<String> {
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    service::generate_mnemonic(word_count, mnemonic_language)
 }
 
 /// Validate mnemonic
-pub fn validate_mnemonic(mnemonic: String) -> Result<bool> {
-    service::validate_mnemonic(mnemonic)
+pub fn validate_mnemonic(
+    mnemonic: String,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<bool> {
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    service::validate_mnemonic(mnemonic, mnemonic_language)
+}
+
+/// Inspect mnemonic validity, language, and ambiguity.
+pub fn inspect_mnemonic(mnemonic: String) -> Result<MnemonicInspection> {
+    convert_from_service(service::inspect_mnemonic(mnemonic)?)
+}
+
+/// Convert a mnemonic phrase to a different display language while preserving seed entropy.
+pub fn convert_mnemonic_language(
+    mnemonic: String,
+    source_language: Option<MnemonicLanguage>,
+    target_language: MnemonicLanguage,
+) -> Result<String> {
+    let source_language = match source_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    let target_language = convert_into_service(target_language)?;
+    service::convert_mnemonic_language(mnemonic, source_language, target_language)
 }
 
 /// Get network info
@@ -2414,13 +2464,28 @@ pub fn skip_seed_biometric() -> Result<String> {
 ///
 /// Note: Only works for wallets created/restored from seed.
 /// Wallets imported from private key or watch-only wallets cannot export seed.
-pub fn export_seed_with_passphrase(wallet_id: WalletId, passphrase: String) -> Result<Vec<String>> {
-    seed_export::export_seed_with_passphrase(wallet_id, passphrase)
+pub fn export_seed_with_passphrase(
+    wallet_id: WalletId,
+    passphrase: String,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<Vec<String>> {
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    seed_export::export_seed_with_passphrase(wallet_id, passphrase, mnemonic_language)
 }
 
 /// Export seed using cached app passphrase (after biometric approval).
-pub fn export_seed_with_cached_passphrase(wallet_id: WalletId) -> Result<Vec<String>> {
-    seed_export::export_seed_with_cached_passphrase(wallet_id)
+pub fn export_seed_with_cached_passphrase(
+    wallet_id: WalletId,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<Vec<String>> {
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    seed_export::export_seed_with_cached_passphrase(wallet_id, mnemonic_language)
 }
 
 /// Cancel seed export flow

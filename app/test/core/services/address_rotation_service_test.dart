@@ -16,8 +16,12 @@ ProviderContainer _buildContainer() {
   return ProviderContainer(
     overrides: [
       activeWalletProvider.overrideWith(_TestActiveWalletNotifier.new),
-      transactionStreamProvider.overrideWith((ref) => const Stream<TxInfo?>.empty()),
-      syncProgressStreamProvider.overrideWith((ref) => const Stream<SyncStatus?>.empty()),
+      transactionStreamProvider.overrideWith(
+        (ref) => const Stream<TxInfo?>.empty(),
+      ),
+      syncProgressStreamProvider.overrideWith(
+        (ref) => const Stream<SyncStatus?>.empty(),
+      ),
     ],
   );
 }
@@ -37,7 +41,7 @@ void main() {
       addTearDown(container.dispose);
 
       final service = container.read(addressRotationServiceProvider);
-      
+
       // Should not throw when checking with invalid wallet ID
       // (FFI bridge will handle the error internally)
       expect(
@@ -51,10 +55,12 @@ void main() {
       addTearDown(container.dispose);
 
       final service = container.read(addressRotationServiceProvider);
-      
+
       // Manual rotation should throw on error
-      expect(() => service.manualRotate('invalid-wallet-id'),
-          throwsA(isA<Object>()));
+      expect(
+        () => service.manualRotate('invalid-wallet-id'),
+        throwsA(isA<Object>()),
+      );
     });
   });
 
@@ -65,7 +71,7 @@ void main() {
 
       // Watch the provider to ensure it initializes
       container.read(autoRotationWatcherProvider);
-      
+
       // Provider should be listening to transaction stream
       expect(container.exists(transactionStreamProvider), isTrue);
     });
@@ -76,27 +82,30 @@ void main() {
 
       // Watch the provider to ensure it initializes
       container.read(syncCompletionRotationWatcherProvider);
-      
+
       // Provider should be listening to sync stream
       expect(container.exists(syncProgressStreamProvider), isTrue);
     });
 
-    test('walletInitRotationWatcherProvider should trigger on wallet change', () {
-      final container = _buildContainer();
-      addTearDown(container.dispose);
+    test(
+      'walletInitRotationWatcherProvider should trigger on wallet change',
+      () {
+        final container = _buildContainer();
+        addTearDown(container.dispose);
 
-      // Watch the provider to ensure it initializes
-      container.read(walletInitRotationWatcherProvider);
-      
-      // Provider should be watching active wallet
-      expect(container.exists(activeWalletProvider), isTrue);
-    });
+        // Watch the provider to ensure it initializes
+        container.read(walletInitRotationWatcherProvider);
+
+        // Provider should be watching active wallet
+        expect(container.exists(activeWalletProvider), isTrue);
+      },
+    );
   });
 
   group('Integration behavior', () {
     test('rotation logic description', () {
       // This test documents the expected behavior for manual testing
-      
+
       const expectedBehavior = '''
       Address Rotation Behavior:
       
@@ -129,7 +138,7 @@ void main() {
       - Manual rotation failures throw errors for user feedback
       - All rotation logic centralized in AddressRotationService
       ''';
-      
+
       expect(expectedBehavior, isNotEmpty);
     });
   });

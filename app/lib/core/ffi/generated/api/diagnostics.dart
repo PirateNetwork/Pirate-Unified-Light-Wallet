@@ -6,23 +6,34 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `get_build_info`, `get_checkpoint_details`, `get_sync_logs`
+
+            // These functions are ignored because they are not marked as `pub`: `get_build_info`, `get_checkpoint_details`, `get_sync_logs`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
 
-class CheckpointInfo {
-  final int height;
-  final PlatformInt64 timestamp;
 
-  const CheckpointInfo({required this.height, required this.timestamp});
+            
 
-  @override
-  int get hashCode => height.hashCode ^ timestamp.hashCode;
+            class CheckpointInfo  {
+                final int height;
+final PlatformInt64 timestamp;
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is CheckpointInfo &&
-          runtimeType == other.runtimeType &&
-          height == other.height &&
-          timestamp == other.timestamp;
-}
+                const CheckpointInfo({required this.height ,required this.timestamp ,});
+
+                
+                
+
+                
+        @override
+        int get hashCode => height.hashCode^timestamp.hashCode;
+        
+
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is CheckpointInfo &&
+                runtimeType == other.runtimeType
+                && height == other.height&& timestamp == other.timestamp;
+        
+            }
+            

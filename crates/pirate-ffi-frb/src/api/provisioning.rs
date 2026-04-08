@@ -116,6 +116,7 @@ pub(super) fn create_wallet(
         sapling_ivk: None,
         orchard_ivk: None,
         encrypted_mnemonic: Some(mnemonic.as_bytes().to_vec()),
+        mnemonic_language: Some("english".to_string()),
         created_at: chrono::Utc::now().timestamp(),
     };
     if persist_wallet_account_secret(&wallet_id, name_for_account, secret)? {
@@ -173,6 +174,7 @@ pub(super) fn restore_wallet(
         sapling_ivk: None,
         orchard_ivk: None,
         encrypted_mnemonic: Some(mnemonic.as_bytes().to_vec()),
+        mnemonic_language: Some("english".to_string()),
         created_at: chrono::Utc::now().timestamp(),
     };
     if persist_wallet_account_secret(&wallet_id, name_for_account, secret)? {
@@ -244,6 +246,7 @@ pub(super) fn import_viewing_wallet(
         sapling_ivk: None,
         orchard_ivk: orchard_fvk_bytes,
         encrypted_mnemonic: None,
+        mnemonic_language: None,
         created_at: account_created_at,
     };
 

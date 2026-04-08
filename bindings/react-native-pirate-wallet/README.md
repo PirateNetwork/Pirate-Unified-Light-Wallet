@@ -102,13 +102,15 @@ The typed JS methods below unwrap the native JSON envelope and return the `resul
   - request fields:
     - `name`
     - optional `birthdayHeight`
+    - optional `mnemonicLanguage`
   - returns wallet id string
-- `restoreWallet(requestOrName, mnemonic?, birthdayHeight?)`
+- `restoreWallet(requestOrName, mnemonic?, birthdayHeight?, mnemonicLanguage?)`
   - RPC: `restore_wallet`
   - request fields:
     - `name`
     - `mnemonic`
     - optional `birthdayHeight`
+    - optional `mnemonicLanguage`
   - returns wallet id string
 - `importViewingWallet(requestOrName, saplingViewingKey?, orchardViewingKey?, birthdayHeight)`
   - RPC: `import_viewing_wallet`
@@ -136,12 +138,19 @@ The typed JS methods below unwrap the native JSON envelope and return the `resul
 
 ### Mnemonic, formatting, and network
 
-- `generateMnemonic(wordCount?)`
+- `generateMnemonic(wordCount?, mnemonicLanguage?)`
   - RPC: `generate_mnemonic`
   - returns mnemonic string
-- `validateMnemonic(mnemonic)`
+- `validateMnemonic(mnemonic, mnemonicLanguage?)`
   - RPC: `validate_mnemonic`
   - returns `boolean`
+- `inspectMnemonic(mnemonic)`
+  - RPC: `inspect_mnemonic`
+  - returns:
+    - `isValid`
+    - `detectedLanguage`
+    - `ambiguousLanguages`
+    - `wordCount`
 - `getNetworkInfo()`
   - RPC: `get_network_info`
   - returns:
@@ -325,9 +334,28 @@ These methods live under `sdk.advancedKeyManagement`.
 - `importSpendingKey(requestOrWalletId, birthdayHeight?, saplingSpendingKey?, orchardSpendingKey?)`
   - RPC: `import_spending_key`
   - returns key id number
-- `exportSeed(walletId)`
+- `exportSeed(walletId, mnemonicLanguage?)`
   - RPC: `export_seed_raw`
   - returns mnemonic string
+
+### Mnemonic language values
+
+Where `mnemonicLanguage` is supported, the accepted values are:
+
+- `english`
+- `chinese_simplified`
+- `chinese_traditional`
+- `french`
+- `italian`
+- `japanese`
+- `korean`
+- `spanish`
+
+Behavior:
+
+- if omitted during `restoreWallet()` or `validateMnemonic()`, the backend attempts autodetection
+- if omitted during `exportSeed()`, the wallet's original stored mnemonic language is used
+- if provided during export, the same seed entropy is re-rendered in the requested language
 
 ### Synchronizer
 

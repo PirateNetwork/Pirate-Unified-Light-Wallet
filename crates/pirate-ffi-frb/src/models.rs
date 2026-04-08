@@ -10,6 +10,29 @@ pub type WalletId = String;
 /// Transaction identifier
 pub type TxId = String;
 
+/// Supported mnemonic languages exposed over FRB.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MnemonicLanguage {
+    English,
+    ChineseSimplified,
+    ChineseTraditional,
+    French,
+    Italian,
+    Japanese,
+    Korean,
+    Spanish,
+}
+
+/// Mnemonic validity and language inspection results.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MnemonicInspection {
+    pub is_valid: bool,
+    pub detected_language: Option<MnemonicLanguage>,
+    pub ambiguous_languages: Vec<MnemonicLanguage>,
+    pub word_count: u32,
+}
+
 /// Wallet metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletMeta {

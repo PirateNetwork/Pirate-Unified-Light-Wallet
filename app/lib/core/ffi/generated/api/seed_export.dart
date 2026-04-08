@@ -6,36 +6,36 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `acknowledge_seed_warning`, `are_seed_screenshots_blocked`, `cancel_seed_export`, `complete_seed_biometric`, `export_seed_with_cached_passphrase`, `export_seed_with_passphrase`, `get_seed_clipboard_remaining`, `get_seed_export_state`, `get_seed_export_warnings`, `skip_seed_biometric`, `start_seed_export`
+
+            // These functions are ignored because they are not marked as `pub`: `acknowledge_seed_warning`, `are_seed_screenshots_blocked`, `cancel_seed_export`, `complete_seed_biometric`, `export_seed_with_cached_passphrase`, `export_seed_with_passphrase`, `get_seed_clipboard_remaining`, `get_seed_export_state`, `get_seed_export_warnings`, `skip_seed_biometric`, `start_seed_export`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
 
-class SeedExportWarnings {
-  final String primary;
-  final String secondary;
-  final String backupInstructions;
-  final String clipboardWarning;
 
-  const SeedExportWarnings({
-    required this.primary,
-    required this.secondary,
-    required this.backupInstructions,
-    required this.clipboardWarning,
-  });
+            
 
-  @override
-  int get hashCode =>
-      primary.hashCode ^
-      secondary.hashCode ^
-      backupInstructions.hashCode ^
-      clipboardWarning.hashCode;
+            class SeedExportWarnings  {
+                final String primary;
+final String secondary;
+final String backupInstructions;
+final String clipboardWarning;
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SeedExportWarnings &&
-          runtimeType == other.runtimeType &&
-          primary == other.primary &&
-          secondary == other.secondary &&
-          backupInstructions == other.backupInstructions &&
-          clipboardWarning == other.clipboardWarning;
-}
+                const SeedExportWarnings({required this.primary ,required this.secondary ,required this.backupInstructions ,required this.clipboardWarning ,});
+
+                
+                
+
+                
+        @override
+        int get hashCode => primary.hashCode^secondary.hashCode^backupInstructions.hashCode^clipboardWarning.hashCode;
+        
+
+                
+        @override
+        bool operator ==(Object other) =>
+            identical(this, other) ||
+            other is SeedExportWarnings &&
+                runtimeType == other.runtimeType
+                && primary == other.primary&& secondary == other.secondary&& backupInstructions == other.backupInstructions&& clipboardWarning == other.clipboardWarning;
+        
+            }
+            

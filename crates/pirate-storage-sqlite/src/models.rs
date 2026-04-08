@@ -176,6 +176,8 @@ pub struct WalletSecret {
     pub orchard_ivk: Option<Vec<u8>>,
     /// Encrypted mnemonic seed phrase (only for wallets created/restored from seed, None for private key imports or watch-only)
     pub encrypted_mnemonic: Option<Vec<u8>>,
+    /// Stable mnemonic language key for deterministic export and re-derive.
+    pub mnemonic_language: Option<String>,
     /// Created timestamp
     pub created_at: i64,
 }

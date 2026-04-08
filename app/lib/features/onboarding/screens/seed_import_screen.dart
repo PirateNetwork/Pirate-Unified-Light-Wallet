@@ -14,8 +14,11 @@ import '../../../ui/atoms/p_text_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/crypto/bip39_wordlist.dart';
+import '../../../core/crypto/mnemonic_language.dart';
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/ffi/generated/models.dart';
 import '../../../core/security/screenshot_protection.dart';
+import '../../settings/providers/preferences_providers.dart';
 import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
@@ -41,11 +44,17 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
   String? _validationError;
   int _wordCount = 24;
   bool _isPasting = false;
+  MnemonicLanguage _selectedLanguage = MnemonicLanguage.english;
+  List<String> _activeWordlist = const <String>[];
+  List<MnemonicLanguage> _ambiguousLanguages = const <MnemonicLanguage>[];
+  MnemonicLanguage? _ambiguousLanguageSelection;
 
   @override
   void initState() {
     super.initState();
+    _selectedLanguage = ref.read(seedPhraseLanguagePreferenceProvider);
     _disableScreenshots();
+    unawaited(_loadWordlist(_selectedLanguage));
     // Add listeners to update button state when text changes
     for (final controller in _wordControllers) {
       controller.addListener(_onTextChanged);
@@ -79,7 +88,37 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
   }
 
   void _onTextChanged() {
-    setState(() {}); // Rebuild to update button state
+    setState(() {
+      _ambiguousLanguages = const <MnemonicLanguage>[];
+      _ambiguousLanguageSelection = null;
+      _validationError = null;
+    });
+  }
+
+  Future<void> _loadWordlist(MnemonicLanguage language) async {
+    final words = await loadBip39Wordlist(language);
+    if (!mounted) return;
+    setState(() {
+      _activeWordlist = words;
+    });
+  }
+
+  Future<void> _setSelectedLanguage(
+    MnemonicLanguage language, {
+    bool clearAmbiguity = true,
+  }) async {
+    setState(() {
+      _selectedLanguage = language;
+      if (clearAmbiguity) {
+        _ambiguousLanguages = const <MnemonicLanguage>[];
+        _ambiguousLanguageSelection = null;
+      }
+      _validationError = null;
+    });
+    await ref
+        .read(seedPhraseLanguagePreferenceProvider.notifier)
+        .setLanguage(language);
+    await _loadWordlist(language);
   }
 
   void _onFirstWordChanged() {
@@ -134,19 +173,58 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
     });
 
     try {
-      // Validate mnemonic via FFI
-      final isValid = await FfiBridge.validateMnemonic(_mnemonic);
+      MnemonicLanguage? resolvedLanguage;
+
+      if (_ambiguousLanguages.isNotEmpty &&
+          _ambiguousLanguageSelection != null) {
+        resolvedLanguage = _ambiguousLanguageSelection;
+      } else {
+        final inspection = await FfiBridge.inspectMnemonic(_mnemonic);
+        if (!inspection.isValid) {
+          setState(() {
+            _validationError =
+                'Invalid seed phrase. Check the words, language, and order.';
+            _isValidating = false;
+          });
+          return;
+        }
+
+        if (inspection.ambiguousLanguages.isNotEmpty) {
+          setState(() {
+            _ambiguousLanguages = inspection.ambiguousLanguages;
+            _ambiguousLanguageSelection = inspection.ambiguousLanguages.first;
+            _validationError =
+                'This seed phrase matches multiple languages. Choose the correct language to continue.';
+            _isValidating = false;
+          });
+          return;
+        }
+
+        resolvedLanguage = inspection.detectedLanguage ?? _selectedLanguage;
+      }
+
+      final isValid = await FfiBridge.validateMnemonic(
+        _mnemonic,
+        mnemonicLanguage: resolvedLanguage,
+      );
 
       if (!isValid) {
         setState(() {
-          _validationError = 'Invalid seed phrase. Check the words and order.';
+          _validationError =
+              'Invalid seed phrase. Check the words, language, and order.';
           _isValidating = false;
         });
         return;
       }
 
+      await ref
+          .read(seedPhraseLanguagePreferenceProvider.notifier)
+          .setLanguage(resolvedLanguage!);
+
       // Store mnemonic in onboarding state
-      ref.read(onboardingControllerProvider.notifier).setMnemonic(_mnemonic);
+      ref
+          .read(onboardingControllerProvider.notifier)
+          .setMnemonic(_mnemonic, mnemonicLanguage: resolvedLanguage);
 
       final hasPassphrase = await FfiBridge.hasAppPassphrase();
       if (!hasPassphrase) {
@@ -185,6 +263,8 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
     }
     setState(() {
       _validationError = null;
+      _ambiguousLanguages = const <MnemonicLanguage>[];
+      _ambiguousLanguageSelection = null;
     });
   }
 
@@ -266,6 +346,48 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
 
                             const SizedBox(height: AppSpacing.md),
 
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.md,
+                                vertical: AppSpacing.xs,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.backgroundSurface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: AppColors.borderDefault,
+                                ),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<MnemonicLanguage>(
+                                  value: _selectedLanguage,
+                                  isExpanded: true,
+                                  dropdownColor: AppColors.backgroundSurface,
+                                  iconEnabledColor: AppColors.textSecondary,
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      unawaited(_setSelectedLanguage(value));
+                                    }
+                                  },
+                                  items: supportedMnemonicLanguages
+                                      .map(
+                                        (language) => DropdownMenuItem(
+                                          value: language,
+                                          child: Text(
+                                            language.nativeLabel,
+                                            style: AppTypography.body.copyWith(
+                                              color: AppColors.textPrimary,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                      .toList(growable: false),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: AppSpacing.md),
+
                             // Word count toggle
                             Row(
                               children: [
@@ -310,6 +432,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                                   index: index,
                                   controller: _wordControllers[index],
                                   focusNode: _focusNodes[index],
+                                  wordlist: _activeWordlist,
                                   isLast: index == _wordCount - 1,
                                   onSubmitted: () {
                                     if (index < _wordCount - 1) {
@@ -357,6 +480,60 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                                   ],
                                 ),
                               ),
+
+                            if (_ambiguousLanguages.isNotEmpty) ...[
+                              const SizedBox(height: AppSpacing.md),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.md,
+                                  vertical: AppSpacing.xs,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.backgroundSurface,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: AppColors.borderDefault,
+                                  ),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<MnemonicLanguage>(
+                                    value: _ambiguousLanguageSelection,
+                                    isExpanded: true,
+                                    dropdownColor: AppColors.backgroundSurface,
+                                    iconEnabledColor: AppColors.textSecondary,
+                                    onChanged: (value) {
+                                      if (value != null) {
+                                        setState(() {
+                                          _selectedLanguage = value;
+                                          _ambiguousLanguageSelection = value;
+                                        });
+                                        unawaited(
+                                          _setSelectedLanguage(
+                                            value,
+                                            clearAmbiguity: false,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    items: _ambiguousLanguages
+                                        .map(
+                                          (language) => DropdownMenuItem(
+                                            value: language,
+                                            child: Text(
+                                              language.nativeLabel,
+                                              style: AppTypography.body
+                                                  .copyWith(
+                                                    color:
+                                                        AppColors.textPrimary,
+                                                  ),
+                                            ),
+                                          ),
+                                        )
+                                        .toList(growable: false),
+                                  ),
+                                ),
+                              ),
+                            ],
 
                             const SizedBox(height: AppSpacing.lg),
 
@@ -427,6 +604,7 @@ class _WordInput extends StatefulWidget {
   final int index;
   final TextEditingController controller;
   final FocusNode focusNode;
+  final List<String> wordlist;
   final bool isLast;
   final VoidCallback onSubmitted;
 
@@ -434,6 +612,7 @@ class _WordInput extends StatefulWidget {
     required this.index,
     required this.controller,
     required this.focusNode,
+    required this.wordlist,
     required this.isLast,
     required this.onSubmitted,
   });
@@ -466,6 +645,9 @@ class _WordInputState extends State<_WordInput> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_onTextChanged);
       widget.controller.addListener(_onTextChanged);
+    }
+    if (oldWidget.wordlist != widget.wordlist) {
+      _updateMatches();
     }
   }
 
@@ -501,7 +683,7 @@ class _WordInputState extends State<_WordInput> {
     final query = widget.controller.text.trim().toLowerCase();
     final nextMatches = query.isEmpty
         ? const <String>[]
-        : bip39Suggestions(query, limit: 6);
+        : bip39SuggestionsFromWordlist(query, widget.wordlist, limit: 6);
     if (!_listEquals(_matches, nextMatches)) {
       _matches = nextMatches;
     }
@@ -683,7 +865,7 @@ class _WordInputState extends State<_WordInput> {
     final current = widget.controller.text.trim().toLowerCase();
     final completionMatches = current.isEmpty
         ? const <String>[]
-        : bip39Suggestions(current, limit: 2);
+        : bip39SuggestionsFromWordlist(current, widget.wordlist, limit: 2);
     if (completionMatches.length == 1 && completionMatches.first != current) {
       widget.controller.text = completionMatches.first;
       widget.controller.selection = TextSelection.fromPosition(
@@ -697,7 +879,7 @@ class _WordInputState extends State<_WordInput> {
     final typed = widget.controller.text.trim().toLowerCase();
     final matches = typed.isEmpty
         ? const <String>[]
-        : bip39Suggestions(typed, limit: 1);
+        : bip39SuggestionsFromWordlist(typed, widget.wordlist, limit: 1);
     final hasPrefixMatch = typed.isEmpty || matches.isNotEmpty;
     final borderColor = hasPrefixMatch
         ? (_isFocused ? AppColors.accentPrimary : AppColors.border)

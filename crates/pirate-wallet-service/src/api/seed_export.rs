@@ -59,6 +59,7 @@ pub(super) fn skip_seed_biometric() -> Result<String> {
 pub(super) fn export_seed_with_passphrase(
     wallet_id: WalletId,
     passphrase: String,
+    mnemonic_language: Option<pirate_core::MnemonicLanguage>,
 ) -> Result<Vec<String>> {
     super::panic_duress::ensure_not_decoy("Seed export")?;
     let manager = SEED_EXPORT.read();
@@ -100,13 +101,27 @@ pub(super) fn export_seed_with_passphrase(
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
 
-    let mnemonic_bytes = secret.encrypted_mnemonic.ok_or_else(|| {
+    let mnemonic_bytes = secret.encrypted_mnemonic.clone().ok_or_else(|| {
         anyhow!("Seed not available. This wallet was imported from private key or is watch-only.")
     })?;
 
     let mnemonic = String::from_utf8(mnemonic_bytes)
         .map_err(|e| anyhow!("Failed to decode mnemonic: {}", e))?;
-    let words: Vec<String> = mnemonic.split_whitespace().map(String::from).collect();
+    let original_language = super::wallet_secret_mnemonic_language(&secret, &mnemonic)?;
+    let display_language = mnemonic_language.unwrap_or(original_language);
+    let display_mnemonic = if display_language == original_language {
+        pirate_core::mnemonic::canonicalize_mnemonic(&mnemonic, Some(original_language))?.0
+    } else {
+        pirate_core::mnemonic::convert_mnemonic_language(
+            &mnemonic,
+            Some(original_language),
+            display_language,
+        )?
+    };
+    let words: Vec<String> = display_mnemonic
+        .split_whitespace()
+        .map(String::from)
+        .collect();
 
     let result = {
         let manager = SEED_EXPORT.read();
@@ -121,14 +136,17 @@ pub(super) fn export_seed_with_passphrase(
     Ok(result.words().to_vec())
 }
 
-pub(super) fn export_seed_with_cached_passphrase(wallet_id: WalletId) -> Result<Vec<String>> {
+pub(super) fn export_seed_with_cached_passphrase(
+    wallet_id: WalletId,
+    mnemonic_language: Option<pirate_core::MnemonicLanguage>,
+) -> Result<Vec<String>> {
     super::panic_duress::ensure_not_decoy("Seed export")?;
     {
         let manager = SEED_EXPORT.read();
         manager.ensure_wallet_id(&wallet_id)?;
     }
     let passphrase = super::encrypted_db::app_passphrase()?;
-    export_seed_with_passphrase(wallet_id, passphrase)
+    export_seed_with_passphrase(wallet_id, passphrase, mnemonic_language)
 }
 
 pub(super) fn cancel_seed_export() -> Result<()> {

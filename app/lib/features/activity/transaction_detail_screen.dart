@@ -119,10 +119,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
     return DateTime.fromMillisecondsSinceEpoch(timestampValue * 1000);
   }
 
-  int _confirmationsFor({
-    required int? txHeight,
-    required int? currentHeight,
-  }) {
+  int _confirmationsFor({required int? txHeight, required int? currentHeight}) {
     if (txHeight == null || txHeight <= 0 || currentHeight == null) {
       return 0;
     }

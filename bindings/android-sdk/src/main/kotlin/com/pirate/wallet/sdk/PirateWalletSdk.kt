@@ -45,12 +45,14 @@ public data class WalletMeta(
 public data class CreateWalletRequest(
     val name: String,
     val birthdayHeight: Int? = null,
+    val mnemonicLanguage: MnemonicLanguage? = null,
 )
 
 public data class RestoreWalletRequest(
     val name: String,
     val mnemonic: String,
     val birthdayHeight: Int? = null,
+    val mnemonicLanguage: MnemonicLanguage? = null,
 )
 
 public data class ImportViewingWalletRequest(
@@ -139,6 +141,13 @@ public data class FeeInfo(
     val memoFeeMultiplier: Double,
 )
 
+public data class MnemonicInspection(
+    val isValid: Boolean,
+    val detectedLanguage: MnemonicLanguage?,
+    val ambiguousLanguages: List<MnemonicLanguage>,
+    val wordCount: Int,
+)
+
 public enum class NetworkType(val jsonValue: String) {
     Mainnet("mainnet"),
     Testnet("testnet"),
@@ -150,6 +159,31 @@ public enum class NetworkType(val jsonValue: String) {
             "testnet" -> Testnet
             "regtest" -> Regtest
             else -> null
+        }
+    }
+}
+
+public enum class MnemonicLanguage(val jsonValue: String) {
+    English("english"),
+    ChineseSimplified("chinese_simplified"),
+    ChineseTraditional("chinese_traditional"),
+    French("french"),
+    Italian("italian"),
+    Japanese("japanese"),
+    Korean("korean"),
+    Spanish("spanish");
+
+    public companion object {
+        public fun fromJsonValue(value: String): MnemonicLanguage = when (value) {
+            "english" -> English
+            "chinese_simplified" -> ChineseSimplified
+            "chinese_traditional" -> ChineseTraditional
+            "french" -> French
+            "italian" -> Italian
+            "japanese" -> Japanese
+            "korean" -> Korean
+            "spanish" -> Spanish
+            else -> throw PirateWalletSdkException("Unknown mnemonic language: $value")
         }
     }
 }
@@ -243,7 +277,14 @@ public class PirateWalletSdk(
         listWallets().firstOrNull { it.id == walletId }
 
     public fun createWallet(request: CreateWalletRequest): String =
-        parseString(invokeResult("create_wallet", "name" to request.name, "birthday_opt" to request.birthdayHeight))
+        parseString(
+            invokeResult(
+                "create_wallet",
+                "name" to request.name,
+                "birthday_opt" to request.birthdayHeight,
+                "mnemonic_language" to request.mnemonicLanguage?.jsonValue,
+            ),
+        )
 
     public fun createWallet(name: String, birthdayHeight: Int? = null): String =
         createWallet(CreateWalletRequest(name = name, birthdayHeight = birthdayHeight))
@@ -255,6 +296,7 @@ public class PirateWalletSdk(
                 "name" to request.name,
                 "mnemonic" to request.mnemonic,
                 "birthday_opt" to request.birthdayHeight,
+                "mnemonic_language" to request.mnemonicLanguage?.jsonValue,
             ),
         )
 
@@ -314,11 +356,34 @@ public class PirateWalletSdk(
     public fun getLatestBirthdayHeight(walletId: String): Int? =
         getWallet(walletId)?.birthdayHeight
 
-    public fun generateMnemonic(wordCount: Int? = null): String =
-        parseString(invokeResult("generate_mnemonic", "word_count" to wordCount))
+    public fun generateMnemonic(
+        wordCount: Int? = null,
+        mnemonicLanguage: MnemonicLanguage? = null,
+    ): String =
+        parseString(
+            invokeResult(
+                "generate_mnemonic",
+                "word_count" to wordCount,
+                "mnemonic_language" to mnemonicLanguage?.jsonValue,
+            ),
+        )
 
-    public fun validateMnemonic(mnemonic: String): Boolean =
-        parseBoolean(invokeResult("validate_mnemonic", "mnemonic" to mnemonic))
+    public fun validateMnemonic(
+        mnemonic: String,
+        mnemonicLanguage: MnemonicLanguage? = null,
+    ): Boolean =
+        parseBoolean(
+            invokeResult(
+                "validate_mnemonic",
+                "mnemonic" to mnemonic,
+                "mnemonic_language" to mnemonicLanguage?.jsonValue,
+            ),
+        )
+
+    public fun inspectMnemonic(mnemonic: String): MnemonicInspection =
+        parseMnemonicInspection(
+            invokeResult("inspect_mnemonic", "mnemonic" to mnemonic),
+        )
 
     public fun getNetworkInfo(): NetworkInfo =
         parseNetworkInfo(invokeResult("get_network_info"))
@@ -565,11 +630,15 @@ public class PirateWalletAdvancedKeyManagement internal constructor(
         ),
     )
 
-    public fun exportSeed(walletId: String): String =
+    public fun exportSeed(
+        walletId: String,
+        mnemonicLanguage: MnemonicLanguage? = null,
+    ): String =
         parseString(
             sdk.invokeResult(
                 "export_seed_raw",
                 "wallet_id" to walletId,
+                "mnemonic_language" to mnemonicLanguage?.jsonValue,
             ),
         )
 }
@@ -849,6 +918,18 @@ private fun parseNetworkInfo(value: Any?): NetworkInfo {
     )
 }
 
+private fun parseMnemonicInspection(value: Any?): MnemonicInspection {
+    val json = value.requireObject("mnemonic inspection")
+    return MnemonicInspection(
+        isValid = json.requireBoolean("is_valid"),
+        detectedLanguage = json.nullableString("detected_language")?.let(MnemonicLanguage::fromJsonValue),
+        ambiguousLanguages = json.requireArray("ambiguous_languages").toList { element ->
+            MnemonicLanguage.fromJsonValue(parseString(element))
+        },
+        wordCount = json.requireInt("word_count"),
+    )
+}
+
 private fun parseWatchOnlyCapabilities(value: Any?): WatchOnlyCapabilities {
     val json = value.requireObject("watch-only capabilities")
     return WatchOnlyCapabilities(
@@ -1115,6 +1196,7 @@ private fun CreateWalletRequest.toJson(): JSONObject =
         .put("name", name)
         .apply {
             birthdayHeight?.let { put("birthday_opt", it) }
+            mnemonicLanguage?.let { put("mnemonic_language", it.jsonValue) }
         }
 
 private fun RestoreWalletRequest.toJson(): JSONObject =
@@ -1123,6 +1205,7 @@ private fun RestoreWalletRequest.toJson(): JSONObject =
         .put("mnemonic", mnemonic)
         .apply {
             birthdayHeight?.let { put("birthday_opt", it) }
+            mnemonicLanguage?.let { put("mnemonic_language", it.jsonValue) }
         }
 
 private fun ImportViewingWalletRequest.toJson(): JSONObject =

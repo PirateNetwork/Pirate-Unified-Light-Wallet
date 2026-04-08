@@ -4,6 +4,7 @@ use pirate_core::keys::{
     ExtendedFullViewingKey as SaplingExtendedFullViewingKey, ExtendedSpendingKey,
     OrchardExtendedFullViewingKey, OrchardExtendedSpendingKey,
 };
+use pirate_wallet_service::MnemonicLanguage;
 use pirate_wallet_service::{
     AddressBalanceInfo, Balance, KeyAddressInfo, KeyExportInfo, KeyGroupInfo, Output, PendingTx,
     QortalP2shRedeemRequest, QortalP2shSendRequest, SignedTx, SyncMode, SyncStatus, TxInfo,
@@ -32,6 +33,33 @@ enum AddressPoolArg {
     Z,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum MnemonicLanguageArg {
+    English,
+    ChineseSimplified,
+    ChineseTraditional,
+    French,
+    Italian,
+    Japanese,
+    Korean,
+    Spanish,
+}
+
+impl From<MnemonicLanguageArg> for MnemonicLanguage {
+    fn from(value: MnemonicLanguageArg) -> Self {
+        match value {
+            MnemonicLanguageArg::English => MnemonicLanguage::English,
+            MnemonicLanguageArg::ChineseSimplified => MnemonicLanguage::ChineseSimplified,
+            MnemonicLanguageArg::ChineseTraditional => MnemonicLanguage::ChineseTraditional,
+            MnemonicLanguageArg::French => MnemonicLanguage::French,
+            MnemonicLanguageArg::Italian => MnemonicLanguage::Italian,
+            MnemonicLanguageArg::Japanese => MnemonicLanguage::Japanese,
+            MnemonicLanguageArg::Korean => MnemonicLanguage::Korean,
+            MnemonicLanguageArg::Spanish => MnemonicLanguage::Spanish,
+        }
+    }
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "piratewallet-cli")]
 #[command(about = "Pirate Unified Wallet command line interface")]
@@ -50,9 +78,13 @@ enum Command {
     GenerateMnemonic {
         #[arg(long)]
         word_count: Option<u32>,
+        #[arg(long, value_enum)]
+        mnemonic_language: Option<MnemonicLanguageArg>,
     },
     ValidateMnemonic {
         mnemonic: String,
+        #[arg(long, value_enum)]
+        mnemonic_language: Option<MnemonicLanguageArg>,
     },
     ExecJson {
         request_json: String,
@@ -115,6 +147,8 @@ enum Command {
     Seed {
         #[arg(long)]
         wallet_id: Option<String>,
+        #[arg(long, value_enum)]
+        mnemonic_language: Option<MnemonicLanguageArg>,
     },
     Import {
         key: String,
@@ -171,12 +205,16 @@ enum WalletCommand {
         name: String,
         #[arg(long)]
         birthday: Option<u32>,
+        #[arg(long, value_enum)]
+        mnemonic_language: Option<MnemonicLanguageArg>,
     },
     Restore {
         name: String,
         mnemonic: String,
         #[arg(long)]
         birthday: Option<u32>,
+        #[arg(long, value_enum)]
+        mnemonic_language: Option<MnemonicLanguageArg>,
     },
     ImportViewing {
         name: String,
@@ -404,11 +442,27 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
     match command {
         Command::BuildInfo => service.execute(Req::GetBuildInfo).await,
         Command::NetworkInfo => service.execute(Req::GetNetworkInfo).await,
-        Command::GenerateMnemonic { word_count } => {
-            service.execute(Req::GenerateMnemonic { word_count }).await
+        Command::GenerateMnemonic {
+            word_count,
+            mnemonic_language,
+        } => {
+            service
+                .execute(Req::GenerateMnemonic {
+                    word_count,
+                    mnemonic_language: mnemonic_language.map(Into::into),
+                })
+                .await
         }
-        Command::ValidateMnemonic { mnemonic } => {
-            service.execute(Req::ValidateMnemonic { mnemonic }).await
+        Command::ValidateMnemonic {
+            mnemonic,
+            mnemonic_language,
+        } => {
+            service
+                .execute(Req::ValidateMnemonic {
+                    mnemonic,
+                    mnemonic_language: mnemonic_language.map(Into::into),
+                })
+                .await
         }
         Command::ExecJson { request_json } => {
             let output = service.execute_json(&request_json, true);
@@ -418,11 +472,16 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             WalletCommand::RegistryExists => service.execute(Req::WalletRegistryExists).await,
             WalletCommand::List => service.execute(Req::ListWallets).await,
             WalletCommand::Active => service.execute(Req::GetActiveWallet).await,
-            WalletCommand::Create { name, birthday } => {
+            WalletCommand::Create {
+                name,
+                birthday,
+                mnemonic_language,
+            } => {
                 service
                     .execute(Req::CreateWallet {
                         name,
                         birthday_opt: birthday,
+                        mnemonic_language: mnemonic_language.map(Into::into),
                     })
                     .await
             }
@@ -430,12 +489,14 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
                 name,
                 mnemonic,
                 birthday,
+                mnemonic_language,
             } => {
                 service
                     .execute(Req::RestoreWallet {
                         name,
                         mnemonic,
                         birthday_opt: birthday,
+                        mnemonic_language: mnemonic_language.map(Into::into),
                     })
                     .await
             }
@@ -534,7 +595,10 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             key_id,
             pool,
         } => legacy_new_address(service, wallet_id, key_id, pool).await,
-        Command::Seed { wallet_id } => legacy_seed(service, wallet_id).await,
+        Command::Seed {
+            wallet_id,
+            mnemonic_language,
+        } => legacy_seed(service, wallet_id, mnemonic_language.map(Into::into)).await,
         Command::Import {
             key,
             birthday,
@@ -777,9 +841,13 @@ async fn legacy_default_fee(service: &WalletService) -> Result<Value> {
     Ok(json!({ "defaultfee": fee }))
 }
 
-async fn legacy_seed(service: &WalletService, wallet_id: Option<String>) -> Result<Value> {
+async fn legacy_seed(
+    service: &WalletService,
+    wallet_id: Option<String>,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<Value> {
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
-    let seed = pirate_wallet_service::export_seed_raw(wallet_id.clone())?;
+    let seed = pirate_wallet_service::export_seed_raw(wallet_id.clone(), mnemonic_language)?;
     let wallet = get_wallet_meta(service, &wallet_id).await?;
     Ok(json!({
         "seed": seed,

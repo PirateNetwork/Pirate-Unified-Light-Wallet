@@ -88,13 +88,37 @@ public struct WalletMeta: Codable, Equatable {
     public let networkType: NetworkType?
 }
 
+public enum MnemonicLanguage: String, Codable, Equatable {
+    case english = "english"
+    case chineseSimplified = "chinese_simplified"
+    case chineseTraditional = "chinese_traditional"
+    case french = "french"
+    case italian = "italian"
+    case japanese = "japanese"
+    case korean = "korean"
+    case spanish = "spanish"
+}
+
+public struct MnemonicInspection: Codable, Equatable {
+    public let isValid: Bool
+    public let detectedLanguage: MnemonicLanguage?
+    public let ambiguousLanguages: [MnemonicLanguage]
+    public let wordCount: Int
+}
+
 public struct CreateWalletRequest: Codable, Equatable {
     public let name: String
     public let birthdayHeight: Int?
+    public let mnemonicLanguage: MnemonicLanguage?
 
-    public init(name: String, birthdayHeight: Int? = nil) {
+    public init(
+        name: String,
+        birthdayHeight: Int? = nil,
+        mnemonicLanguage: MnemonicLanguage? = nil
+    ) {
         self.name = name
         self.birthdayHeight = birthdayHeight
+        self.mnemonicLanguage = mnemonicLanguage
     }
 }
 
@@ -102,15 +126,18 @@ public struct RestoreWalletRequest: Codable, Equatable {
     public let name: String
     public let mnemonic: String
     public let birthdayHeight: Int?
+    public let mnemonicLanguage: MnemonicLanguage?
 
     public init(
         name: String,
         mnemonic: String,
-        birthdayHeight: Int? = nil
+        birthdayHeight: Int? = nil,
+        mnemonicLanguage: MnemonicLanguage? = nil
     ) {
         self.name = name
         self.mnemonic = mnemonic
         self.birthdayHeight = birthdayHeight
+        self.mnemonicLanguage = mnemonicLanguage
     }
 }
 

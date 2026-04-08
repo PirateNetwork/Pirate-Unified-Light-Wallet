@@ -10,6 +10,7 @@ pub use crate::{
     SyncMode, SyncStatus, TransactionDetails, TransactionRecipient, TunnelMode, TxInfo, WalletId,
     WalletMeta, WatchOnlyBannerInfo, WatchOnlyCapabilitiesInfo,
 };
+pub use pirate_core::{MnemonicInspection, MnemonicLanguage};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
@@ -21,11 +22,13 @@ pub enum WalletServiceRequest {
     CreateWallet {
         name: String,
         birthday_opt: Option<u32>,
+        mnemonic_language: Option<MnemonicLanguage>,
     },
     RestoreWallet {
         name: String,
         mnemonic: String,
         birthday_opt: Option<u32>,
+        mnemonic_language: Option<MnemonicLanguage>,
     },
     ImportViewingWallet {
         name: String,
@@ -114,6 +117,10 @@ pub enum WalletServiceRequest {
         orchard_key: Option<String>,
         label: Option<String>,
         birthday_height: u32,
+    },
+    ExportSeedRaw {
+        wallet_id: WalletId,
+        mnemonic_language: Option<MnemonicLanguage>,
     },
     ListTransactions {
         wallet_id: WalletId,
@@ -286,9 +293,11 @@ pub enum WalletServiceRequest {
     ExportSeedWithPassphrase {
         wallet_id: WalletId,
         passphrase: String,
+        mnemonic_language: Option<MnemonicLanguage>,
     },
     ExportSeedWithCachedPassphrase {
         wallet_id: WalletId,
+        mnemonic_language: Option<MnemonicLanguage>,
     },
     CancelSeedExport,
     GetSeedExportState,
@@ -351,8 +360,13 @@ pub enum WalletServiceRequest {
     },
     GenerateMnemonic {
         word_count: Option<u32>,
+        mnemonic_language: Option<MnemonicLanguage>,
     },
     ValidateMnemonic {
+        mnemonic: String,
+        mnemonic_language: Option<MnemonicLanguage>,
+    },
+    InspectMnemonic {
         mnemonic: String,
     },
     GetNetworkInfo,
@@ -389,14 +403,27 @@ impl WalletService {
             WalletServiceRequest::WalletRegistryExists => serialize(ffi::wallet_registry_exists()?),
             WalletServiceRequest::ListWallets => serialize(ffi::list_wallets()?),
             WalletServiceRequest::GetActiveWallet => serialize(ffi::get_active_wallet()?),
-            WalletServiceRequest::CreateWallet { name, birthday_opt } => {
-                serialize(ffi::create_wallet(name, None, birthday_opt)?)
-            }
+            WalletServiceRequest::CreateWallet {
+                name,
+                birthday_opt,
+                mnemonic_language,
+            } => serialize(ffi::create_wallet(
+                name,
+                None,
+                birthday_opt,
+                mnemonic_language,
+            )?),
             WalletServiceRequest::RestoreWallet {
                 name,
                 mnemonic,
                 birthday_opt,
-            } => serialize(ffi::restore_wallet(name, mnemonic, birthday_opt)?),
+                mnemonic_language,
+            } => serialize(ffi::restore_wallet(
+                name,
+                mnemonic,
+                birthday_opt,
+                mnemonic_language,
+            )?),
             WalletServiceRequest::ImportViewingWallet {
                 name,
                 sapling_viewing_key,
@@ -516,6 +543,10 @@ impl WalletService {
                 label,
                 birthday_height,
             )?),
+            WalletServiceRequest::ExportSeedRaw {
+                wallet_id,
+                mnemonic_language,
+            } => serialize(ffi::export_seed_raw(wallet_id, mnemonic_language)?),
             WalletServiceRequest::ListTransactions { wallet_id, limit } => {
                 serialize(ffi::list_transactions(wallet_id, limit)?)
             }
@@ -716,10 +747,19 @@ impl WalletService {
             WalletServiceRequest::ExportSeedWithPassphrase {
                 wallet_id,
                 passphrase,
-            } => serialize(ffi::export_seed_with_passphrase(wallet_id, passphrase)?),
-            WalletServiceRequest::ExportSeedWithCachedPassphrase { wallet_id } => {
-                serialize(ffi::export_seed_with_cached_passphrase(wallet_id)?)
-            }
+                mnemonic_language,
+            } => serialize(ffi::export_seed_with_passphrase(
+                wallet_id,
+                passphrase,
+                mnemonic_language,
+            )?),
+            WalletServiceRequest::ExportSeedWithCachedPassphrase {
+                wallet_id,
+                mnemonic_language,
+            } => serialize(ffi::export_seed_with_cached_passphrase(
+                wallet_id,
+                mnemonic_language,
+            )?),
             WalletServiceRequest::CancelSeedExport => {
                 ffi::cancel_seed_export()?;
                 Ok(ack())
@@ -796,11 +836,16 @@ impl WalletService {
             WalletServiceRequest::ValidateConsensusBranch { wallet_id } => {
                 serialize(ffi::validate_consensus_branch(wallet_id).await?)
             }
-            WalletServiceRequest::GenerateMnemonic { word_count } => {
-                serialize(ffi::generate_mnemonic(word_count)?)
-            }
-            WalletServiceRequest::ValidateMnemonic { mnemonic } => {
-                serialize(ffi::validate_mnemonic(mnemonic)?)
+            WalletServiceRequest::GenerateMnemonic {
+                word_count,
+                mnemonic_language,
+            } => serialize(ffi::generate_mnemonic(word_count, mnemonic_language)?),
+            WalletServiceRequest::ValidateMnemonic {
+                mnemonic,
+                mnemonic_language,
+            } => serialize(ffi::validate_mnemonic(mnemonic, mnemonic_language)?),
+            WalletServiceRequest::InspectMnemonic { mnemonic } => {
+                serialize(ffi::inspect_mnemonic(mnemonic)?)
             }
             WalletServiceRequest::GetNetworkInfo => serialize(ffi::get_network_info()?),
             WalletServiceRequest::FormatAmount { arrrtoshis } => {

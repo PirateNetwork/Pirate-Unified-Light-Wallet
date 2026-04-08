@@ -96,7 +96,9 @@ Future<void> _rotateDebugLog({
   }
 
   for (var index = backups; index >= 1; index--) {
-    final srcPath = index == 1 ? activePath : _backupPath(activePath, index - 1);
+    final srcPath = index == 1
+        ? activePath
+        : _backupPath(activePath, index - 1);
     final dstPath = _backupPath(activePath, index);
     final src = File(srcPath);
     final dst = File(dstPath);

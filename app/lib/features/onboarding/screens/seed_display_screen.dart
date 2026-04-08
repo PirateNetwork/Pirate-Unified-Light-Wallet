@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/crypto/mnemonic_language.dart';
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/ffi/generated/models.dart';
 import '../../../core/security/clipboard_manager.dart';
 import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
+import '../../settings/providers/preferences_providers.dart';
 import '../../../ui/atoms/p_button.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
@@ -27,10 +30,12 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
   String? _mnemonic;
   bool _isLoading = false;
   ScreenProtection? _screenProtection;
+  MnemonicLanguage _selectedLanguage = MnemonicLanguage.english;
 
   @override
   void initState() {
     super.initState();
+    _selectedLanguage = ref.read(seedPhraseLanguagePreferenceProvider);
     _loadMnemonic();
   }
 
@@ -43,17 +48,37 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
   Future<void> _loadMnemonic() async {
     setState(() => _isLoading = true);
 
-    // Generate mnemonic (same as what create_wallet will use)
-    // We generate it here so we can show it before creating the wallet
     try {
-      final mnemonic = await FfiBridge.generateMnemonic(wordCount: 24);
+      final onboardingState = ref.read(onboardingControllerProvider);
+      String mnemonic;
+
+      if (onboardingState.mnemonic != null && onboardingState.mnemonic!.isNotEmpty) {
+        final existingMnemonic = onboardingState.mnemonic!;
+        final existingLanguage =
+            onboardingState.mnemonicLanguage ?? MnemonicLanguage.english;
+        mnemonic = existingLanguage == _selectedLanguage
+            ? existingMnemonic
+            : await FfiBridge.convertMnemonicLanguage(
+                existingMnemonic,
+                sourceLanguage: existingLanguage,
+                targetLanguage: _selectedLanguage,
+              );
+      } else {
+        mnemonic = await FfiBridge.generateMnemonic(
+          wordCount: 24,
+          mnemonicLanguage: _selectedLanguage,
+        );
+      }
+
       if (mounted) {
         setState(() {
           _mnemonic = mnemonic;
           _isLoading = false;
         });
         // Store in onboarding state so we can use it when creating wallet
-        ref.read(onboardingControllerProvider.notifier).setMnemonic(mnemonic);
+        ref
+            .read(onboardingControllerProvider.notifier)
+            .setMnemonic(mnemonic, mnemonicLanguage: _selectedLanguage);
       }
     } catch (e) {
       if (mounted) {
@@ -86,6 +111,16 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
   void _revealSeed() {
     _disableScreenshots();
     setState(() => _seedRevealed = true);
+  }
+
+  Future<void> _setSelectedLanguage(MnemonicLanguage language) async {
+    setState(() {
+      _selectedLanguage = language;
+    });
+    await ref
+        .read(seedPhraseLanguagePreferenceProvider.notifier)
+        .setLanguage(language);
+    await _loadMnemonic();
   }
 
   void _proceed() {
@@ -145,6 +180,46 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                     ),
                     textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: AppSpacing.xl),
+
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.xs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundSurface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.borderDefault),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<MnemonicLanguage>(
+                        value: _selectedLanguage,
+                        isExpanded: true,
+                        dropdownColor: AppColors.backgroundSurface,
+                        iconEnabledColor: AppColors.textSecondary,
+                        onChanged: (value) {
+                          if (value != null) {
+                            _setSelectedLanguage(value);
+                          }
+                        },
+                        items: supportedMnemonicLanguages
+                            .map(
+                              (language) => DropdownMenuItem(
+                                value: language,
+                                child: Text(
+                                  language.nativeLabel,
+                                  style: AppTypography.body.copyWith(
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(height: AppSpacing.xl),
 
                   if (!_seedRevealed) ...[

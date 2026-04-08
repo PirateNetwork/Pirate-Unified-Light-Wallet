@@ -1,5 +1,21 @@
 export type SyncMode = 'Compact' | 'Deep'
 export type SynchronizerStatus = 'STOPPED' | 'SYNCING' | 'SYNCED'
+export type MnemonicLanguage =
+  | 'english'
+  | 'chinese_simplified'
+  | 'chinese_traditional'
+  | 'french'
+  | 'italian'
+  | 'japanese'
+  | 'korean'
+  | 'spanish'
+
+export interface MnemonicInspection {
+  isValid: boolean
+  detectedLanguage: MnemonicLanguage | null
+  ambiguousLanguages: MnemonicLanguage[]
+  wordCount: number
+}
 
 export interface WalletMeta {
   id: string
@@ -46,7 +62,7 @@ export class PirateWalletAdvancedKeyManagement {
     saplingSpendingKey?: string | null,
     orchardSpendingKey?: string | null
   ): Promise<number>
-  exportSeed(walletId: string): Promise<string>
+  exportSeed(walletId: string, mnemonicLanguage?: MnemonicLanguage | null): Promise<string>
 }
 
 export class PirateWalletSynchronizer {
@@ -82,16 +98,17 @@ export class PirateWalletSdk {
   getActiveWalletId(): Promise<string | null>
   getActiveWallet(): Promise<WalletMeta | null>
   getWallet(walletId: string): Promise<WalletMeta | null>
-  createWallet(requestOrName: any, birthdayHeight?: number | null): Promise<string>
-  restoreWallet(requestOrName: any, mnemonic?: string, birthdayHeight?: number | null): Promise<string>
+  createWallet(requestOrName: any, birthdayHeight?: number | null, mnemonicLanguage?: MnemonicLanguage | null): Promise<string>
+  restoreWallet(requestOrName: any, mnemonic?: string, birthdayHeight?: number | null, mnemonicLanguage?: MnemonicLanguage | null): Promise<string>
   importViewingWallet(requestOrName: any, saplingViewingKey?: string | null, orchardViewingKey?: string | null, birthdayHeight?: number): Promise<string>
   switchWallet(walletId: string): Promise<any>
   renameWallet(walletId: string, newName: string): Promise<any>
   deleteWallet(walletId: string): Promise<any>
   setWalletBirthdayHeight(walletId: string, birthdayHeight: number): Promise<any>
   getLatestBirthdayHeight(walletId: string): Promise<number | null>
-  generateMnemonic(wordCount?: number | null): Promise<string>
-  validateMnemonic(mnemonic: string): Promise<boolean>
+  generateMnemonic(wordCount?: number | null, mnemonicLanguage?: MnemonicLanguage | null): Promise<string>
+  validateMnemonic(mnemonic: string, mnemonicLanguage?: MnemonicLanguage | null): Promise<boolean>
+  inspectMnemonic(mnemonic: string): Promise<MnemonicInspection>
   getNetworkInfo(): Promise<any>
   isValidShieldedAddr(address: string): Promise<boolean>
   validateAddress(address: string): Promise<any>

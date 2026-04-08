@@ -445,10 +445,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
   }
 
   Future<Uint8List> _downloadBytes(String url) async {
-    return FfiBridge.fetchExternalBytes(
-      url: url,
-      userAgent: 'PirateWallet',
-    );
+    return FfiBridge.fetchExternalBytes(url: url, userAgent: 'PirateWallet');
   }
 
   Map<String, String> _parseChecksumsFromZip(Uint8List bytes) {
