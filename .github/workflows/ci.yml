@@ -754,13 +754,13 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Download iOS SDK artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ios-sdk
           path: /tmp/pirate-ios-sdk-artifact
 
       - name: Download Android SDK artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: android-sdk
           path: /tmp/pirate-android-sdk-artifact
@@ -856,13 +856,13 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: Download iOS SDK artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: ios-sdk
           path: /tmp/pirate-ios-sdk-artifact
 
       - name: Download Android SDK artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: android-sdk
           path: /tmp/pirate-android-sdk-artifact
@@ -1585,28 +1585,28 @@ jobs:
 
       - name: Download APK artifacts (V8)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: android-apk-unsigned-v8
           path: dist/android
 
       - name: Download APK artifacts (V7)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: android-apk-unsigned-v7
           path: dist/android
 
       - name: Download APK artifacts (x86)
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: android-apk-unsigned-x86
           path: dist/android
 
       - name: Download AAB artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: android-aab
           path: dist/android
@@ -1726,7 +1726,7 @@ jobs:
 
       - name: Download Windows artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: windows-desktop
           path: dist/windows
@@ -2062,21 +2062,21 @@ jobs:
 
       - name: Download AppImage artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: linux-appimage
           path: dist/linux
 
       - name: Download Debian artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: linux-deb
           path: dist/linux
 
       - name: Download Flatpak artifacts
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: linux-flatpak
           path: dist/linux
@@ -2138,7 +2138,7 @@ jobs:
 
       - name: Download artifacts
         if: steps.vt.outputs.enabled == 'true'
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: vt-artifacts
 
@@ -2191,7 +2191,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: release-artifacts
 
