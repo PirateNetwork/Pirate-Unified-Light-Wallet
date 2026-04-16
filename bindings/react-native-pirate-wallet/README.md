@@ -301,6 +301,10 @@ The typed JS methods below unwrap the native JSON envelope and return the `resul
   - helper over `buildTransaction()`, `signTransaction()`, and `broadcastTransaction()`
   - returns transaction id string
 
+Change-address selection is automatic. Sapling-only change uses legacy
+same-address change before Orchard activation and Sapling internal change after
+activation; Orchard spends or outputs use Orchard internal change.
+
 ### Viewing keys and watch-only
 
 - `exportSaplingViewingKey(walletId)`

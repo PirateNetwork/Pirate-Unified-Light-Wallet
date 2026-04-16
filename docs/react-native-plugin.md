@@ -110,6 +110,13 @@ handling for:
 Those additions live on the same broad JS SDK surface as the rest of the
 wallet operations.
 
+## Change-address policy
+
+The React Native bridge does not expose a change-address override. Send helpers
+inherit the shared backend policy automatically: Sapling-only change uses legacy
+same-address change before Orchard activation and Sapling internal change after
+activation; Orchard spends or outputs use Orchard internal change.
+
 ## Build checks in this repo
 
 The React Native plugin CI path stages the native SDK artifacts and then checks:

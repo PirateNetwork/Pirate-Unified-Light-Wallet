@@ -93,6 +93,10 @@ Send flow:
 - `send(walletId, outputs, fee = null)`
 - `send(walletId, output, fee = null)`
 
+Change-address selection is automatic. Sapling-only change uses legacy
+same-address change before Orchard activation and Sapling internal change after
+activation; Orchard spends or outputs use Orchard internal change.
+
 Viewing key and watch-only:
 
 - `exportSaplingViewingKey(walletId)`
