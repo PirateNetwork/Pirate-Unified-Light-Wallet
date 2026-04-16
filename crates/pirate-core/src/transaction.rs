@@ -36,6 +36,10 @@ impl PirateNetwork {
     pub fn mainnet() -> Self {
         Self::new(NetworkType::Mainnet)
     }
+
+    fn network_type(&self) -> NetworkType {
+        self.network.network_type
+    }
 }
 
 impl Default for PirateNetwork {
@@ -321,6 +325,13 @@ impl TransactionBuilder {
             None, // No anchor specified - will be determined during build
         );
 
+        let use_sapling_internal_change = crate::sapling_internal_change_active(
+            self.network.network_type(),
+            u64::from(target_height),
+        );
+        let mut first_legacy_sapling_change: Option<zcash_primitives::sapling::PaymentAddress> =
+            None;
+
         // Add Sapling spends with witness data
         for note in &selection.notes {
             let diversifier = note.diversifier.ok_or_else(|| {
@@ -330,6 +341,9 @@ impl TransactionBuilder {
                 .note
                 .clone()
                 .ok_or_else(|| Error::TransactionBuild("Missing Sapling note data".to_string()))?;
+            if first_legacy_sapling_change.is_none() {
+                first_legacy_sapling_change = Some(sapling_note.recipient());
+            }
             let merkle_path: MerklePath<SaplingNode, { NOTE_COMMITMENT_TREE_DEPTH }> =
                 note.merkle_path.clone().ok_or_else(|| {
                     Error::TransactionBuild("Missing Sapling witness path".to_string())
@@ -370,10 +384,18 @@ impl TransactionBuilder {
 
         // Add change output if needed
         if change >= CHANGE_DUST_THRESHOLD {
-            let change_addr = spending_key
-                .to_internal_fvk()
-                .derive_address(change_diversifier_index)
-                .inner;
+            let change_addr = if use_sapling_internal_change {
+                spending_key
+                    .to_internal_fvk()
+                    .derive_address(change_diversifier_index)
+                    .inner
+            } else {
+                first_legacy_sapling_change.ok_or_else(|| {
+                    Error::TransactionBuild(
+                        "Sapling legacy change requires a selected Sapling spend".to_string(),
+                    )
+                })?
+            };
 
             tx_builder
                 .add_sapling_output(

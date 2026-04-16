@@ -43,6 +43,10 @@ impl PirateNetwork {
     pub fn mainnet() -> Self {
         Self::new(NetworkType::Mainnet)
     }
+
+    fn network_type(&self) -> NetworkType {
+        self.network.network_type
+    }
 }
 
 impl Default for PirateNetwork {
@@ -215,6 +219,12 @@ pub struct BuildAndSignMultiInputs<'a> {
     pub orchard_anchor: Option<OrchardAnchor>,
     /// Diversifier index for Sapling change address.
     pub change_diversifier_index: u32,
+}
+
+#[derive(Clone)]
+struct LegacySaplingChange {
+    ovk: zcash_primitives::sapling::keys::OutgoingViewingKey,
+    address: zcash_primitives::sapling::PaymentAddress,
 }
 
 impl ShieldedBuilder {
@@ -414,6 +424,10 @@ impl ShieldedBuilder {
             .outputs
             .iter()
             .any(|o| matches!(o, ShieldedOutput::Orchard { .. }));
+        let use_sapling_internal_change = crate::sapling_internal_change_active(
+            self.network.network_type(),
+            u64::from(target_height),
+        );
 
         // Recalculate fee with actual input count
         let actual_fee = match self.fee_override {
@@ -494,6 +508,8 @@ impl ShieldedBuilder {
             effective_orchard_anchor,
         );
 
+        let mut first_legacy_sapling_change: Option<LegacySaplingChange> = None;
+
         // Add Sapling and Orchard spends with witness data
         // Note: We iterate by value because Orchard MerklePath doesn't implement Clone
         for note in selection.notes {
@@ -520,6 +536,12 @@ impl ShieldedBuilder {
                             .key_id
                             .and_then(|key_id| sapling_spending_keys_by_id.get(&key_id))
                             .unwrap_or(default_sapling_spending_key);
+                        if first_legacy_sapling_change.is_none() {
+                            first_legacy_sapling_change = Some(LegacySaplingChange {
+                                ovk: base_sapling_key.to_extended_fvk().outgoing_viewing_key(),
+                                address: sapling_note.recipient(),
+                            });
+                        }
                         let mut sapling_key = base_sapling_key.clone();
 
                         // Match selected key scope (external/internal) to the actual note
@@ -687,7 +709,7 @@ impl ShieldedBuilder {
                             e
                         ))
                     })?;
-            } else {
+            } else if use_sapling_internal_change {
                 // Use Sapling change address
                 let change_addr = default_sapling_spending_key
                     .to_internal_fvk()
@@ -706,6 +728,28 @@ impl ShieldedBuilder {
                     .map_err(|e| {
                         Error::TransactionBuild(format!(
                             "Failed to add Sapling change output: {:?}",
+                            e
+                        ))
+                    })?;
+            } else {
+                let legacy_change = first_legacy_sapling_change.ok_or_else(|| {
+                    Error::TransactionBuild(
+                        "Sapling legacy change requires a selected Sapling spend".to_string(),
+                    )
+                })?;
+
+                tx_builder
+                    .add_sapling_output(
+                        Some(legacy_change.ovk),
+                        legacy_change.address,
+                        Amount::from_i64(change as i64).map_err(|_| {
+                            Error::InvalidAmount("Change amount out of range".to_string())
+                        })?,
+                        MemoBytes::empty(),
+                    )
+                    .map_err(|e| {
+                        Error::TransactionBuild(format!(
+                            "Failed to add legacy Sapling change output: {:?}",
                             e
                         ))
                     })?;

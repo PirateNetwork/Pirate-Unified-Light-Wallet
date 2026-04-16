@@ -281,6 +281,8 @@ pub fn build_qortal_p2sh_funding_transaction(
         .iter()
         .any(|recipient| matches!(recipient, QortalRecipient::Orchard { .. }));
     let use_orchard_change = has_orchard_spends || has_orchard_outputs;
+    let use_sapling_internal_change =
+        crate::sapling_internal_change_active(plan.network_type, u64::from(plan.target_height));
 
     let mut sapling_builder = SaplingBuilder::new(network.clone(), target_height);
     let mut orchard_builder = if has_orchard_spends || has_orchard_outputs || use_orchard_change {
@@ -298,6 +300,10 @@ pub fn build_qortal_p2sh_funding_transaction(
     let mut transparent_vout = Vec::new();
     let mut orchard_spend_auth_keys = Vec::new();
     let mut spent_notes = Vec::new();
+    let mut first_legacy_sapling_change: Option<(
+        zcash_primitives::sapling::keys::OutgoingViewingKey,
+        zcash_primitives::sapling::PaymentAddress,
+    )> = None;
     let mut rng = rand::rngs::OsRng;
 
     for note in selection.notes {
@@ -324,8 +330,12 @@ pub fn build_qortal_p2sh_funding_transaction(
                     .key_id
                     .and_then(|key_id| plan.sapling_spending_keys_by_id.get(&key_id))
                     .unwrap_or(plan.default_sapling_spending_key);
-                let mut spend_key = base_key.clone();
                 let recipient = sapling_note.recipient();
+                if first_legacy_sapling_change.is_none() {
+                    first_legacy_sapling_change =
+                        Some((base_key.to_extended_fvk().outgoing_viewing_key(), recipient));
+                }
+                let mut spend_key = base_key.clone();
                 let external_matches = base_key
                     .to_extended_fvk()
                     .address_from_diversifier(diversifier.0)
@@ -414,7 +424,7 @@ pub fn build_qortal_p2sh_funding_transaction(
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to add Orchard change: {:?}", e))
                 })?;
-        } else {
+        } else if use_sapling_internal_change {
             let address = plan
                 .default_sapling_spending_key
                 .to_internal_fvk()
@@ -429,6 +439,23 @@ pub fn build_qortal_p2sh_funding_transaction(
                 )
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to add Sapling change: {:?}", e))
+                })?;
+        } else {
+            let (legacy_ovk, legacy_address) = first_legacy_sapling_change.ok_or_else(|| {
+                Error::TransactionBuild(
+                    "Sapling legacy change requires a selected Sapling spend".to_string(),
+                )
+            })?;
+            sapling_builder
+                .add_output(
+                    &mut rng,
+                    Some(legacy_ovk),
+                    legacy_address,
+                    zcash_primitives::sapling::value::NoteValue::from_raw(change),
+                    MemoBytes::empty(),
+                )
+                .map_err(|e| {
+                    Error::TransactionBuild(format!("Failed to add legacy Sapling change: {:?}", e))
                 })?;
         }
     }

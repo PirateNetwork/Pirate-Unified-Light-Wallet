@@ -7,6 +7,7 @@
 #![warn(missing_docs)]
 
 pub mod address;
+pub mod change_policy;
 pub mod debug_log;
 pub mod diversifier;
 pub mod error;
@@ -23,6 +24,7 @@ pub mod transaction;
 pub mod wallet;
 
 pub use address::{parse_sapling_address, AddressManager, SaplingAddress};
+pub use change_policy::sapling_internal_change_active;
 pub use diversifier::{
     AddressUsage, DiversifierIndex, DiversifierRotationService, DiversifierState, RotationPolicy,
     DEFAULT_GAP_LIMIT, MAX_DIVERSIFIER_INDEX,

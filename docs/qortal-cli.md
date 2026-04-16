@@ -221,7 +221,10 @@ Behavior:
 
 - the command spends wallet-owned shielded notes selected from the provided source address
 - one P2SH script output is added per recipient
-- shielded change follows the wallet's fixed internal change-address policy for that key group
+- shielded change follows the wallet's automatic change policy: legacy Sapling
+  change before Orchard activation, Sapling internal change after Orchard
+  activation, and Orchard internal change whenever Orchard spends or outputs are
+  involved
 
 Output:
 

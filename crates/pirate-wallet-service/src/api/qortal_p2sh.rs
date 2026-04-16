@@ -349,39 +349,45 @@ pub async fn qortal_send_p2sh(
             || output.addr.starts_with("pirate-regtest1")
     });
     let use_orchard_change = has_orchard_spends || has_orchard_outputs;
+    let target_height = u32::try_from(spendability.target_height)
+        .map_err(|_| anyhow!("Target height exceeds u32"))?;
+    let use_sapling_internal_change = !use_orchard_change
+        && pirate_core::sapling_internal_change_active(network_type, u64::from(target_height));
 
     let change_index =
         resolve_fixed_internal_change_index(&repo, secret.account_id, source_key_id)?;
-    let (change_addr, address_type) = if use_orchard_change {
-        let orchard_key = default_orchard_key
-            .as_ref()
-            .ok_or_else(|| anyhow!("Orchard spending key required for Orchard change"))?;
-        let address = orchard_key
-            .to_extended_fvk()
-            .address_at_internal(change_index)
-            .encode_for_network(network_type)?;
-        (address, pirate_storage_sqlite::AddressType::Orchard)
-    } else {
-        let address = default_sapling_key
-            .to_internal_fvk()
-            .derive_address(change_index)
-            .encode_for_network(network_type);
-        (address, pirate_storage_sqlite::AddressType::Sapling)
-    };
+    if use_orchard_change || use_sapling_internal_change {
+        let (change_addr, address_type) = if use_orchard_change {
+            let orchard_key = default_orchard_key
+                .as_ref()
+                .ok_or_else(|| anyhow!("Orchard spending key required for Orchard change"))?;
+            let address = orchard_key
+                .to_extended_fvk()
+                .address_at_internal(change_index)
+                .encode_for_network(network_type)?;
+            (address, pirate_storage_sqlite::AddressType::Orchard)
+        } else {
+            let address = default_sapling_key
+                .to_internal_fvk()
+                .derive_address(change_index)
+                .encode_for_network(network_type);
+            (address, pirate_storage_sqlite::AddressType::Sapling)
+        };
 
-    let change_address = pirate_storage_sqlite::Address {
-        id: None,
-        key_id: Some(source_key_id),
-        account_id: secret.account_id,
-        diversifier_index: change_index,
-        address: change_addr,
-        address_type,
-        label: None,
-        created_at: chrono::Utc::now().timestamp(),
-        color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
-        address_scope: pirate_storage_sqlite::AddressScope::Internal,
-    };
-    repo.upsert_address(&change_address)?;
+        let change_address = pirate_storage_sqlite::Address {
+            id: None,
+            key_id: Some(source_key_id),
+            account_id: secret.account_id,
+            diversifier_index: change_index,
+            address: change_addr,
+            address_type,
+            label: None,
+            created_at: chrono::Utc::now().timestamp(),
+            color_tag: pirate_storage_sqlite::address_book::ColorTag::None,
+            address_scope: pirate_storage_sqlite::AddressScope::Internal,
+        };
+        repo.upsert_address(&change_address)?;
+    }
 
     let signed = build_qortal_p2sh_funding_transaction(QortalP2shFundingPlan {
         network_type,
@@ -390,8 +396,7 @@ pub async fn qortal_send_p2sh(
         sapling_spending_keys_by_id: sapling_keys_by_id,
         orchard_spending_keys_by_id: orchard_keys_by_id,
         available_notes: notes,
-        target_height: u32::try_from(spendability.target_height)
-            .map_err(|_| anyhow!("Target height exceeds u32"))?,
+        target_height,
         orchard_anchor,
         change_diversifier_index: change_index,
         recipients,

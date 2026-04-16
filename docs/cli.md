@@ -353,6 +353,10 @@ If you run `sync` without a subcommand, it behaves like `sync start`.
 ## `send` command group
 
 The CLI supports both staged send and legacy one-shot send.
+Change-address selection is automatic. Before Orchard activation, Sapling-only
+change returns to the legacy first selected Sapling spend address; after Orchard
+activation, Sapling-only change uses the wallet's internal Sapling change
+address. Orchard spends or outputs continue to use Orchard internal change.
 
 - `send build <WALLET_ID> <OUTPUTS_JSON> [--fee <ARRRTOSHIS>]`
   - `OUTPUTS_JSON` is a JSON array of:

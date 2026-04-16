@@ -1438,11 +1438,16 @@ fn sign_tx_internal(
     let target_height_u64 = spendability.target_height.max(1);
     let target_height = u32::try_from(target_height_u64)
         .map_err(|_| anyhow!("Target height {} exceeds u32 range", target_height_u64))?;
+    let use_sapling_internal_change = !use_orchard_change
+        && pirate_core::sapling_internal_change_active(network_type, target_height_u64);
     log_step(
         "load_sync_state_ok",
         &format!(
-            "target_height={},anchor_height={},validated_anchor_height={}",
-            target_height, spendability.anchor_height, spendability.validated_anchor_height
+            "target_height={},anchor_height={},validated_anchor_height={},sapling_internal_change={}",
+            target_height,
+            spendability.anchor_height,
+            spendability.validated_anchor_height,
+            use_sapling_internal_change
         ),
     );
 
@@ -1499,7 +1504,9 @@ fn sign_tx_internal(
         &format!("{}", change_diversifier_index),
     );
 
-    if pending.change >= CHANGE_DUST_THRESHOLD {
+    if pending.change >= CHANGE_DUST_THRESHOLD
+        && (use_orchard_change || use_sapling_internal_change)
+    {
         let (change_addr, address_type) = if use_orchard_change {
             let orchard_extsk = orchard_extsk_opt
                 .as_ref()
