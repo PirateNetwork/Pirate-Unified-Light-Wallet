@@ -261,7 +261,6 @@ const RETRY_BACKOFF_MS: u64 = 100;
 const MIN_PARALLEL_OUTPUTS: usize = 256;
 const SPENDABILITY_REASON_ERR_WITNESS_REPAIR_QUEUED: &str = "ERR_WITNESS_REPAIR_QUEUED";
 const SPENDABILITY_MIN_CONFIRMATIONS: u32 = 10;
-const PREFETCH_JOIN_TIMEOUT: Duration = Duration::from_secs(25);
 const LOW_HEIGHT_BATCH_CAP_HEIGHT: u64 = 10_000;
 const LOW_HEIGHT_BATCH_MAX_BLOCKS: u64 = 1_024;
 const HISTORIC_AUX_FLUSH_BLOCK_INTERVAL: u64 = 25_000;
@@ -383,6 +382,13 @@ struct PrefetchTask {
 struct ServerBatchHintTask {
     start: u64,
     handle: tokio::task::JoinHandle<Option<u64>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BatchTuning {
+    target_bytes: u64,
+    avg_block_size_estimate: u64,
+    max_batch_blocks: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2099,6 +2105,9 @@ impl SyncEngine {
 
         // Adaptive batch sizing for spam blocks (byte-based targets)
         let mut current_target_bytes = self.config.target_batch_bytes;
+        let mut current_max_batch_blocks =
+            self.config.max_batch_size.max(self.config.min_batch_size);
+        let mut consecutive_fetch_failures = 0u32;
         let mut consecutive_heavy_batches = 0u32;
         let mut avg_block_size_estimate =
             (self.config.target_batch_bytes / self.config.batch_size.max(1)).max(1);
@@ -2338,7 +2347,11 @@ impl SyncEngine {
                     &mut prefetch_queue,
                     &mut queued_prefetch_bytes,
                     (current_height, end),
-                    (current_target_bytes, avg_block_size_estimate),
+                    BatchTuning {
+                        target_bytes: current_target_bytes,
+                        avg_block_size_estimate,
+                        max_batch_blocks: current_max_batch_blocks,
+                    },
                     (&mut server_group_end_hint, &mut pending_server_group_hint),
                 )
                 .await?;
@@ -2388,21 +2401,10 @@ impl SyncEngine {
                                 let fetch_wait_start = Instant::now();
                                 let mut handle = handle;
                                 let res = tokio::select! {
-                                    joined = tokio::time::timeout(PREFETCH_JOIN_TIMEOUT, &mut handle) => {
+                                    joined = &mut handle => {
                                         match joined {
-                                            Ok(join_result) => match join_result {
-                                                Ok(inner) => inner,
-                                                Err(e) => Err(Error::Sync(e.to_string())),
-                                            },
-                                            Err(_) => {
-                                                handle.abort();
-                                                Err(Error::Network(format!(
-                                                    "Prefetch batch {}-{} timed out after {:?}",
-                                                    batch_start,
-                                                    batch_end,
-                                                    PREFETCH_JOIN_TIMEOUT
-                                                )))
-                                            }
+                                            Ok(inner) => inner,
+                                            Err(e) => Err(Error::Sync(e.to_string())),
                                         }
                                     }
                                     _ = self.cancel.cancelled() => {
@@ -2509,6 +2511,55 @@ impl SyncEngine {
                                     )));
                                 }
 
+                                let batch_blocks =
+                                    batch_end.saturating_sub(batch_start).saturating_add(1);
+                                if batch_blocks > self.config.min_batch_size {
+                                    consecutive_fetch_failures =
+                                        consecutive_fetch_failures.saturating_add(1);
+                                    let reduced_blocks = std::cmp::max(
+                                        self.config.min_batch_size,
+                                        batch_blocks.saturating_add(1) / 2,
+                                    );
+                                    current_max_batch_blocks =
+                                        current_max_batch_blocks.min(reduced_blocks);
+                                    current_target_bytes = current_target_bytes.min(
+                                        avg_block_size_estimate
+                                            .saturating_mul(reduced_blocks)
+                                            .max(1),
+                                    );
+                                    tracing::warn!(
+                                        "Reducing sync batch size after retryable fetch failure for {}-{}: max_blocks={}, target_bytes={}, consecutive_failures={}",
+                                        batch_start,
+                                        batch_end,
+                                        current_max_batch_blocks,
+                                        current_target_bytes,
+                                        consecutive_fetch_failures
+                                    );
+                                    append_debug_log_line(&format!(
+                                        r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:fetch_blocks","message":"adaptive batch reduction","data":{{"start":{},"end":{},"old_blocks":{},"new_max_blocks":{},"target_bytes":{},"consecutive_failures":{},"error":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}}"#,
+                                        id,
+                                        ts,
+                                        batch_start,
+                                        batch_end,
+                                        batch_blocks,
+                                        current_max_batch_blocks,
+                                        current_target_bytes,
+                                        consecutive_fetch_failures,
+                                        format!("{}", e).replace('"', "'")
+                                    ));
+                                    self.client.disconnect().await;
+                                    let _ = self.client.connect().await;
+                                    Self::abort_prefetch_queue(
+                                        &mut prefetch_queue,
+                                        &mut queued_prefetch_bytes,
+                                    );
+                                    Self::abort_pending_server_batch_hint(
+                                        &mut pending_server_group_hint,
+                                    );
+                                    server_group_end_hint = None;
+                                    continue 'sync_main;
+                                }
+
                                 tracing::warn!(
                                     "Block fetch failed for {}-{}: {}. Reconnecting and retrying in {:?}...",
                                     batch_start,
@@ -2565,6 +2616,7 @@ impl SyncEngine {
                     current_height = batch_end + 1;
                     continue;
                 }
+                consecutive_fetch_failures = 0;
 
                 // Detect heavy/spam blocks and adapt batch size
                 // Count actual bytes in outputs and actions
@@ -2637,6 +2689,14 @@ impl SyncEngine {
                 } else {
                     // Reset counter and gradually increase batch size back to normal
                     consecutive_heavy_batches = 0;
+                    if current_max_batch_blocks < self.config.max_batch_size {
+                        let bump =
+                            std::cmp::max(self.config.min_batch_size, current_max_batch_blocks / 4);
+                        current_max_batch_blocks = std::cmp::min(
+                            self.config.max_batch_size,
+                            current_max_batch_blocks.saturating_add(bump),
+                        );
+                    }
                     if current_target_bytes < self.config.target_batch_bytes {
                         let bump = std::cmp::max(1, self.config.target_batch_bytes / 4);
                         current_target_bytes = std::cmp::min(
@@ -2657,7 +2717,11 @@ impl SyncEngine {
                     &mut prefetch_queue,
                     &mut queued_prefetch_bytes,
                     (batch_end.saturating_add(1), end),
-                    (current_target_bytes, avg_block_size_estimate),
+                    BatchTuning {
+                        target_bytes: current_target_bytes,
+                        avg_block_size_estimate,
+                        max_batch_blocks: current_max_batch_blocks,
+                    },
                     (&mut server_group_end_hint, &mut pending_server_group_hint),
                 )
                 .await?;
@@ -3834,11 +3898,10 @@ impl SyncEngine {
         prefetch_queue: &mut VecDeque<PrefetchTask>,
         queued_prefetch_bytes: &mut u64,
         sync_bounds: (u64, u64),
-        batch_tuning: (u64, u64),
+        batch_tuning: BatchTuning,
         hints: (&mut Option<u64>, &mut Option<ServerBatchHintTask>),
     ) -> Result<()> {
         let (start_height, end_height) = sync_bounds;
-        let (current_target_bytes, avg_block_size_estimate) = batch_tuning;
         let (server_group_end_hint, pending_server_group_hint) = hints;
 
         if start_height > end_height {
@@ -3857,8 +3920,7 @@ impl SyncEngine {
                 .compute_batch_end(
                     next_start,
                     end_height,
-                    current_target_bytes,
-                    avg_block_size_estimate,
+                    batch_tuning,
                     server_group_end_hint,
                     pending_server_group_hint,
                 )
@@ -3868,8 +3930,11 @@ impl SyncEngine {
                 break;
             }
 
-            let estimated_bytes =
-                Self::estimate_prefetch_bytes(next_start, batch_end, avg_block_size_estimate);
+            let estimated_bytes = Self::estimate_prefetch_bytes(
+                next_start,
+                batch_end,
+                batch_tuning.avg_block_size_estimate,
+            );
             let would_exceed_bytes =
                 queued_prefetch_bytes.saturating_add(estimated_bytes) > max_bytes;
             if would_exceed_bytes && !prefetch_queue.is_empty() {
@@ -3900,24 +3965,27 @@ impl SyncEngine {
         &self,
         current_height: u64,
         end: u64,
-        current_target_bytes: u64,
-        avg_block_size_estimate: u64,
+        batch_tuning: BatchTuning,
         server_group_end_hint: &mut Option<u64>,
         pending_server_group_hint: &mut Option<ServerBatchHintTask>,
     ) -> Result<(u64, u64)> {
-        let mut target_bytes =
-            current_target_bytes.clamp(self.config.min_batch_bytes, self.config.max_batch_bytes);
+        let mut target_bytes = batch_tuning
+            .target_bytes
+            .clamp(self.config.min_batch_bytes, self.config.max_batch_bytes);
         if let Some(max_memory) = self.config.max_batch_memory_bytes {
             target_bytes = target_bytes.min(max_memory);
         }
 
-        let estimated_block_bytes = avg_block_size_estimate.max(1);
+        let estimated_block_bytes = batch_tuning.avg_block_size_estimate.max(1);
         let mut desired_blocks = target_bytes / estimated_block_bytes;
         if desired_blocks == 0 {
             desired_blocks = 1;
         }
-        desired_blocks =
-            desired_blocks.clamp(self.config.min_batch_size, self.config.max_batch_size);
+        let max_batch_blocks = batch_tuning
+            .max_batch_blocks
+            .max(self.config.min_batch_size)
+            .min(self.config.max_batch_size);
+        desired_blocks = desired_blocks.clamp(self.config.min_batch_size, max_batch_blocks);
 
         let low_height_cap_end = if current_height <= LOW_HEIGHT_BATCH_CAP_HEIGHT {
             Some(std::cmp::min(
@@ -3981,9 +4049,11 @@ impl SyncEngine {
                 let optimal_end = std::cmp::min(server_end, end);
                 let server_batch_size =
                     optimal_end.saturating_sub(current_height).saturating_add(1);
-                let max_capped_end =
-                    std::cmp::min(optimal_end, current_height + self.config.max_batch_size - 1);
-                let mut batch_end = std::cmp::max(desired_end, max_capped_end);
+                let max_capped_end = std::cmp::min(
+                    optimal_end,
+                    current_height.saturating_add(max_batch_blocks.saturating_sub(1)),
+                );
+                let mut batch_end = std::cmp::min(desired_end, max_capped_end);
                 if let Some(cap_end) = low_height_cap_end {
                     batch_end = std::cmp::min(batch_end, cap_end);
                 }
@@ -7669,6 +7739,58 @@ mod tests {
     async fn test_sync_engine_creation() {
         let engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 3_800_000);
         assert_eq!(engine.birthday_height(), 3_800_000);
+    }
+
+    #[tokio::test]
+    async fn test_compute_batch_end_treats_server_hint_as_cap() {
+        let engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 3_800_000);
+        let mut server_group_end_hint = Some(100_198);
+        let mut pending_server_group_hint = None;
+        let tuning = BatchTuning {
+            target_bytes: 128_000_000,
+            avg_block_size_estimate: 16_000,
+            max_batch_blocks: 4_000,
+        };
+
+        let (batch_end, desired_blocks) = engine
+            .compute_batch_end(
+                100_000,
+                110_000,
+                tuning,
+                &mut server_group_end_hint,
+                &mut pending_server_group_hint,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(desired_blocks, 4_000);
+        assert_eq!(batch_end, 100_198);
+    }
+
+    #[tokio::test]
+    async fn test_compute_batch_end_respects_adaptive_network_cap() {
+        let engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 3_800_000);
+        let mut server_group_end_hint = Some(110_000);
+        let mut pending_server_group_hint = None;
+        let tuning = BatchTuning {
+            target_bytes: 128_000_000,
+            avg_block_size_estimate: 16_000,
+            max_batch_blocks: 500,
+        };
+
+        let (batch_end, desired_blocks) = engine
+            .compute_batch_end(
+                100_000,
+                110_000,
+                tuning,
+                &mut server_group_end_hint,
+                &mut pending_server_group_hint,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(desired_blocks, 500);
+        assert_eq!(batch_end, 100_499);
     }
 
     #[tokio::test]

@@ -279,6 +279,29 @@ impl Default for LightClientConfig {
     }
 }
 
+fn compact_block_range_timeouts(
+    transport: TransportMode,
+    range_blocks: u64,
+    default_request_timeout: Duration,
+) -> (Duration, Duration, Duration) {
+    let large_range = range_blocks > 256;
+    let (first_msg_timeout, next_msg_timeout, per_block_ms) = match (transport, large_range) {
+        (TransportMode::Direct, false) => (Duration::from_secs(30), Duration::from_secs(20), 150),
+        (TransportMode::Direct, true) => (Duration::from_secs(60), Duration::from_secs(30), 250),
+        (_, false) => (Duration::from_secs(60), Duration::from_secs(30), 300),
+        (_, true) => (Duration::from_secs(120), Duration::from_secs(60), 750),
+    };
+    let open_timeout = first_msg_timeout.saturating_add(Duration::from_secs(10));
+    let streaming_budget = Duration::from_secs(60).saturating_add(Duration::from_millis(
+        range_blocks.saturating_mul(per_block_ms),
+    ));
+    let request_timeout = default_request_timeout
+        .max(open_timeout)
+        .max(streaming_budget);
+
+    (first_msg_timeout, next_msg_timeout, request_timeout)
+}
+
 impl LightClientConfig {
     fn infer_tls_enabled(endpoint: &str) -> bool {
         let normalized = endpoint.trim_start();
@@ -1488,22 +1511,12 @@ impl LightClient {
             let mut client = self.get_client().await?;
             let start_instant = Instant::now();
             let range_blocks = range.end.saturating_sub(range.start).max(1);
-            let (first_msg_timeout, next_msg_timeout) = match self.config.transport {
-                TransportMode::Direct => {
-                    if range_blocks <= 256 {
-                        (Duration::from_secs(20), Duration::from_secs(10))
-                    } else {
-                        (Duration::from_secs(35), Duration::from_secs(15))
-                    }
-                }
-                _ => {
-                    if range_blocks <= 256 {
-                        (Duration::from_secs(45), Duration::from_secs(20))
-                    } else {
-                        (Duration::from_secs(75), Duration::from_secs(30))
-                    }
-                }
-            };
+            let (first_msg_timeout, next_msg_timeout, request_timeout) =
+                compact_block_range_timeouts(
+                    self.config.transport,
+                    range_blocks as u64,
+                    self.config.request_timeout,
+                );
 
             let mut request = tonic::Request::new(BlockRange {
                 start: Some(BlockId {
@@ -1515,11 +1528,8 @@ impl LightClient {
                     hash: Vec::new(),
                 }),
             });
-            let open_timeout = first_msg_timeout.saturating_add(Duration::from_secs(5));
-            request.set_timeout(std::cmp::max(
-                self.config.request_timeout,
-                open_timeout,
-            ));
+            let open_timeout = first_msg_timeout.saturating_add(Duration::from_secs(10));
+            request.set_timeout(request_timeout);
 
             debug!("Requesting blocks {}..{}", range.start, range.end);
             pirate_core::debug_log::with_locked_file(|file| {
@@ -1530,7 +1540,7 @@ impl LightClient {
                 let id = format!("{:08x}", ts);
                 let _ = writeln!(
                     file,
-                    r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:block_range_request","message":"block range request","data":{{"wallet_id":"{}","start":{},"end":{},"range_blocks":{},"first_timeout_secs":{},"next_timeout_secs":{},"open_timeout_secs":{},"endpoint":"{}","transport":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                    r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:block_range_request","message":"block range request","data":{{"wallet_id":"{}","start":{},"end":{},"range_blocks":{},"first_timeout_secs":{},"next_timeout_secs":{},"open_timeout_secs":{},"request_timeout_secs":{},"endpoint":"{}","transport":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
                     id,
                     ts,
                     wallet_id_owned.as_deref().unwrap_or("unknown"),
@@ -1540,6 +1550,7 @@ impl LightClient {
                     first_msg_timeout.as_secs(),
                     next_msg_timeout.as_secs(),
                     open_timeout.as_secs(),
+                    request_timeout.as_secs(),
                     self.config.endpoint,
                     self.config.transport
                 );
@@ -2127,6 +2138,22 @@ mod tests {
         let config = LightClientConfig::direct("https://custom:9067");
         assert_eq!(config.endpoint, "https://custom:9067");
         assert_eq!(config.transport, TransportMode::Direct);
+    }
+
+    #[test]
+    fn test_compact_block_range_timeouts_scale_for_slow_networks() {
+        let default_timeout = Duration::from_secs(120);
+        let (direct_first, direct_next, direct_request) =
+            compact_block_range_timeouts(TransportMode::Direct, 2_000, default_timeout);
+        assert_eq!(direct_first, Duration::from_secs(60));
+        assert_eq!(direct_next, Duration::from_secs(30));
+        assert!(direct_request > default_timeout);
+
+        let (tor_first, tor_next, tor_request) =
+            compact_block_range_timeouts(TransportMode::Tor, 2_000, default_timeout);
+        assert_eq!(tor_first, Duration::from_secs(120));
+        assert_eq!(tor_next, Duration::from_secs(60));
+        assert!(tor_request > direct_request);
     }
 
     #[test]
