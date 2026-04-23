@@ -147,6 +147,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
     final padding = PSpacing.screenPadding(MediaQuery.of(context).size.width);
     final tx = widget.tx;
     final isReceived = tx.amount >= 0;
+    final showNetworkFee = !isReceived;
     final amountArrr = _formatArrr(tx.amount.abs());
     final displayFeeArrrtoshis = _displayFeeArrrtoshis(tx);
     final feeArrr = _formatArrr(displayFeeArrrtoshis);
@@ -227,8 +228,10 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
                 ),
                 const SizedBox(height: PSpacing.md),
                 _DetailRow(label: 'Amount'.tr, value: amountArrr),
-                const SizedBox(height: PSpacing.sm),
-                _DetailRow(label: 'Network fee'.tr, value: feeArrr),
+                if (showNetworkFee) ...[
+                  const SizedBox(height: PSpacing.sm),
+                  _DetailRow(label: 'Network fee'.tr, value: feeArrr),
+                ],
                 const SizedBox(height: PSpacing.sm),
                 _DetailRow(label: 'Date and time'.tr, value: timestampValue),
                 if (tx.height != null) ...[
