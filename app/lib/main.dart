@@ -199,7 +199,13 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    unawaited(ClipboardManager.handleAppLifecycleState(state));
+    final inactiveIsBackground = !Platform.isAndroid;
+    unawaited(
+      ClipboardManager.handleAppLifecycleState(
+        state,
+        inactiveIsBackground: inactiveIsBackground,
+      ),
+    );
 
     if (_isDesktop) {
       // Desktop stays effectively "active" while the window exists.
@@ -208,14 +214,17 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
       return;
     }
 
-    // Mobile: pause UI polling while backgrounded. The Rust sync engine has
-    // its own timeout/reconnect logic and should self-heal on resume.
+    // Mobile: pause UI polling while backgrounded. Android may emit inactive
+    // while an IME owns focus, so only paused/hidden/detached count as a real
+    // background transition there.
     switch (state) {
       case AppLifecycleState.resumed:
         FfiBridge.setAppActive(true);
         unawaited(_ensureMobileSyncRunning());
         break;
       case AppLifecycleState.inactive:
+        FfiBridge.setAppActive(!inactiveIsBackground);
+        break;
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:

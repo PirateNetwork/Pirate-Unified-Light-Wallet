@@ -137,6 +137,8 @@ class _PInputState extends State<PInput> {
   @override
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final autocorrect = !widget.obscureText && widget.autocorrect;
+    final enableSuggestions = !widget.obscureText && widget.enableSuggestions;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -174,8 +176,8 @@ class _PInputState extends State<PInput> {
             readOnly: widget.readOnly,
             maxLines: widget.maxLines,
             maxLength: widget.maxLength,
-            autocorrect: widget.autocorrect,
-            enableSuggestions: widget.enableSuggestions,
+            autocorrect: autocorrect,
+            enableSuggestions: enableSuggestions,
             keyboardType: widget.keyboardType,
             textInputAction: widget.textInputAction,
             onChanged: widget.onChanged,

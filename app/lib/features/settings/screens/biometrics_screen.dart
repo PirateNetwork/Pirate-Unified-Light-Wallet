@@ -170,6 +170,8 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                     controller: controller,
                     obscureText: true,
                     autofocus: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
                     style: AppTypography.body.copyWith(
                       color: AppColors.textPrimary,
                     ),

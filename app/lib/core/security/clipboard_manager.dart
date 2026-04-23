@@ -108,21 +108,44 @@ class ClipboardManager {
   }
 
   /// Clear managed secret material when the app moves out of the foreground.
-  static Future<void> handleAppLifecycleState(AppLifecycleState state) async {
+  ///
+  /// Android can briefly report [AppLifecycleState.inactive] while the app is
+  /// still visible but the input method owns focus. Callers that need to keep
+  /// text entry stable can leave [inactiveIsBackground] false and still clear on
+  /// real background transitions such as paused, hidden, or detached.
+  static Future<void> handleAppLifecycleState(
+    AppLifecycleState state, {
+    bool inactiveIsBackground = true,
+  }) async {
     final managedType = _managedType;
     if (managedType == null || !managedType.clearOnBackground) {
       return;
     }
 
+    if (!shouldClearOnLifecycleState(
+      state,
+      inactiveIsBackground: inactiveIsBackground,
+    )) {
+      return;
+    }
+
+    await clearNow();
+  }
+
+  @visibleForTesting
+  static bool shouldClearOnLifecycleState(
+    AppLifecycleState state, {
+    bool inactiveIsBackground = true,
+  }) {
     switch (state) {
       case AppLifecycleState.resumed:
-        return;
+        return false;
       case AppLifecycleState.inactive:
+        return inactiveIsBackground;
       case AppLifecycleState.paused:
       case AppLifecycleState.hidden:
       case AppLifecycleState.detached:
-        await clearNow();
-        return;
+        return true;
     }
   }
 

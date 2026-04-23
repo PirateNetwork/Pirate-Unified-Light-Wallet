@@ -1752,6 +1752,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                     controller: controller,
                     obscureText: true,
                     autofocus: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
                     style: AppTypography.body.copyWith(
                       color: AppColors.textPrimary,
                     ),
