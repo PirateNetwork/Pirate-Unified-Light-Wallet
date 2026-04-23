@@ -136,6 +136,18 @@ The typed JS methods below unwrap the native JSON envelope and return the `resul
   - helper over `getWallet(walletId)`
   - returns `number | null`
 
+#### Active wallet and wallet IDs
+
+Wallet metadata is stored in the backend registry. The registry also persists
+an active wallet ID, which acts as the SDK's current-wallet pointer for flows
+that need one. Integrations that already keep their own wallet selection can
+call wallet-scoped methods directly with `walletId`.
+
+`switchWallet(walletId)` updates the active-wallet pointer, records last-used
+metadata, and stops sync for the previously active wallet. Multi-wallet sync
+should be driven by wallet-scoped synchronizers rather than by switching the
+active wallet between running wallets.
+
 ### Mnemonic, formatting, and network
 
 - `generateMnemonic(wordCount?, mnemonicLanguage?)`
@@ -190,22 +202,31 @@ The typed JS methods below unwrap the native JSON envelope and return the `resul
 
 ### Addresses and balances
 
+Receive-address APIs are shielded and wallet-scoped:
+
 - `getCurrentReceiveAddress(walletId)`
   - helper over `getCurrentAddress(walletId)`
 - `getCurrentAddress(walletId)`
   - RPC: `current_receive_address`
-  - returns address string
+  - returns the current external receive address without rotating it
 - `getNextReceiveAddress(walletId)`
   - helper over `getNextAddress(walletId)`
 - `getNextAddress(walletId)`
   - RPC: `next_receive_address`
-  - returns address string
+  - rotates to and returns the next external receive address
 - `listAddresses(walletId)`
   - RPC: `list_addresses`
-  - returns address array
+  - returns generated external receive addresses
 - `listAddressBalances(walletId, keyId?)`
   - RPC: `list_address_balances`
-  - returns address-balance array
+  - returns per-address balance entries
+
+These APIs return shielded receive addresses. Newly generated addresses use
+Sapling before Orchard activation and Orchard after activation. The current
+address can still be an older Sapling address until the wallet rotates, and
+`listAddresses(walletId)` can contain both Sapling and Orchard receive
+addresses over time.
+
 - `getBalance(walletId)`
   - RPC: `get_balance`
   - returns:
@@ -278,6 +299,12 @@ The typed JS methods below unwrap the native JSON envelope and return the `resul
     - `fromHeight`
   - returns acknowledgement object
 
+Each wallet has its own sync state. Apps can run more than one wallet sync by
+creating synchronizers for different wallet IDs, subject to normal device,
+network, and lightwalletd resource limits. Compact block ranges are cached per
+endpoint, so later scans for another wallet on the same endpoint can reuse
+previously fetched ranges.
+
 ### Send flow
 
 - `buildTransaction(walletIdOrRequest, outputs?, fee?)`
@@ -300,6 +327,11 @@ The typed JS methods below unwrap the native JSON envelope and return the `resul
 - `send(walletId, outputsOrOutput, fee?)`
   - helper over `buildTransaction()`, `signTransaction()`, and `broadcastTransaction()`
   - returns transaction id string
+
+`buildTransaction()`, `signTransaction()`, and `send()` are wallet-scoped.
+`broadcastTransaction(signed)` only receives the signed transaction payload; if
+endpoint configuration is needed during broadcast, the service uses the active
+wallet.
 
 Change-address selection is automatic. Sapling-only change uses legacy
 same-address change before Orchard activation and Sapling internal change after
@@ -391,6 +423,9 @@ Methods:
 
 `stop()` and `close()` both cancel backend sync for the wallet. In React Native code,
 `await synchronizer.close()` instead of treating `close()` as a local timer-only cleanup step.
+
+A synchronizer is scoped to one wallet ID. Create one synchronizer per wallet
+when running multi-wallet sync.
 
 Callback hooks:
 

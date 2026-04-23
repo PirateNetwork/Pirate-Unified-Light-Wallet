@@ -40,6 +40,12 @@ Wallet lifecycle:
 - `setWalletBirthdayHeight(walletId, birthdayHeight)`
 - `getLatestBirthdayHeight(walletId)`
 
+The active wallet is a backend wallet-registry selection for the currently
+selected/default wallet. Most SDK methods accept an explicit `walletId`, so
+third-party apps can manage wallet selection directly. `switchWallet(walletId)`
+persists the active-wallet selection and cancels sync for the previously active
+wallet.
+
 Mnemonic and formatting:
 
 - `generateMnemonic(wordCount = null, mnemonicLanguage = null)`
@@ -64,6 +70,15 @@ Addresses:
 - `listAddresses(walletId)`
 - `listAddressBalances(walletId, keyId = null)`
 
+Address access is split into explicit shielded receive-address APIs.
+`getCurrentAddress` returns the current external receive address without rotating it,
+`getNextAddress` rotates to and returns the next external receive address,
+`listAddresses` returns generated external receive addresses, and
+`listAddressBalances` returns per-address balance entries. Newly generated
+addresses use Sapling before Orchard activation and Orchard after activation;
+the current address can remain an older Sapling address until the wallet
+rotates.
+
 Balances and transaction inspection:
 
 - `getBalance(walletId)`
@@ -83,6 +98,12 @@ Sync:
 - `rescan(request)`
 - `rescan(walletId, fromHeight)`
 
+Sync state is tracked per wallet in the backend. Apps can sync multiple wallets
+concurrently by starting sync with explicit wallet IDs and separate
+synchronizers. Sync tasks share device, network, and lightwalletd resources, and
+the sync engine uses a shared compact-block cache per endpoint so later syncs
+for another wallet on the same endpoint can reuse fetched block ranges.
+
 Send flow:
 
 - `buildTransaction(request)`
@@ -92,6 +113,10 @@ Send flow:
 - `broadcastTransaction(signed)`
 - `send(walletId, outputs, fee = null)`
 - `send(walletId, output, fee = null)`
+
+`buildTransaction`, `signTransaction`, and `send` are wallet-scoped by explicit
+`walletId`. The low-level `broadcastTransaction(signed)` call does not take a
+wallet ID; endpoint selection currently follows the active wallet.
 
 Change-address selection is automatic. Sapling-only change uses legacy
 same-address change before Orchard activation and Sapling internal change after

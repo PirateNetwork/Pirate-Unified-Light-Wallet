@@ -28,6 +28,32 @@ Platform layers:
 
 The JavaScript surface mirrors the shielded-first SDK boundary used by the native Android and iOS SDKs.
 
+## Wallet and sync model
+
+Wallet metadata lives in the shared backend registry. The registry stores an
+active wallet ID for flows that need a current-wallet pointer, while most React
+Native SDK methods remain explicitly wallet-scoped through `walletId`.
+
+`switchWallet(walletId)` updates the active-wallet pointer and stops sync for
+the previously active wallet. Apps that sync more than one wallet should create
+separate synchronizers by wallet ID.
+
+Each wallet has independent sync state. Compact block ranges are cached per
+endpoint, so later scans for another wallet on the same endpoint can reuse
+previously fetched ranges, while concurrent sync still shares device, network,
+and lightwalletd resources.
+
+Receive-address access is split into `getCurrentAddress(walletId)`,
+`getNextAddress(walletId)`, `listAddresses(walletId)`, and
+`listAddressBalances(walletId, keyId?)`. These APIs return shielded receive
+addresses. Newly generated addresses use Sapling before Orchard activation and
+Orchard after activation; the current address can remain an older Sapling
+address until the wallet rotates.
+
+Most transaction helpers are wallet-scoped. `broadcastTransaction(signed)` only
+receives the signed transaction payload; if endpoint configuration is needed
+during broadcast, the service uses the active wallet.
+
 ## What it does not do
 
 The package does not contain the wallet logic itself.
