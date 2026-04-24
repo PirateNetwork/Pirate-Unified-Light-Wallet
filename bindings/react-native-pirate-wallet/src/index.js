@@ -608,6 +608,36 @@ class PirateWalletSdk {
     })
   }
 
+  exportPaymentDisclosures(walletId, txId) {
+    return this._call('export_payment_disclosures', {
+      wallet_id: walletId,
+      txid: txId
+    })
+  }
+
+  exportSaplingPaymentDisclosure(walletId, txId, outputIndex) {
+    return this._call('export_sapling_payment_disclosure', {
+      wallet_id: walletId,
+      txid: txId,
+      output_index: outputIndex
+    })
+  }
+
+  exportOrchardPaymentDisclosure(walletId, txId, actionIndex) {
+    return this._call('export_orchard_payment_disclosure', {
+      wallet_id: walletId,
+      txid: txId,
+      action_index: actionIndex
+    })
+  }
+
+  verifyPaymentDisclosure(walletId, disclosure) {
+    return this._call('verify_payment_disclosure', {
+      wallet_id: walletId,
+      disclosure
+    })
+  }
+
   getFeeInfo() {
     return this._call('get_fee_info')
   }

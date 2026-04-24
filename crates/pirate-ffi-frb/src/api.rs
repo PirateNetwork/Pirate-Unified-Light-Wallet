@@ -1814,6 +1814,40 @@ pub async fn fetch_transaction_memo(
     service::fetch_transaction_memo(wallet_id, txid, output_index).await
 }
 
+/// Export all payment disclosures recoverable by this wallet for an outgoing transaction.
+pub async fn export_payment_disclosures(
+    wallet_id: WalletId,
+    txid: String,
+) -> Result<Vec<PaymentDisclosure>> {
+    convert_from_service(service::export_payment_disclosures(wallet_id, txid).await?)
+}
+
+/// Export a Sapling payment disclosure for a specific output index.
+pub async fn export_sapling_payment_disclosure(
+    wallet_id: WalletId,
+    txid: String,
+    output_index: u32,
+) -> Result<String> {
+    service::export_sapling_payment_disclosure(wallet_id, txid, output_index).await
+}
+
+/// Export an Orchard payment disclosure for a specific action index.
+pub async fn export_orchard_payment_disclosure(
+    wallet_id: WalletId,
+    txid: String,
+    action_index: u32,
+) -> Result<String> {
+    service::export_orchard_payment_disclosure(wallet_id, txid, action_index).await
+}
+
+/// Verify and decrypt a Sapling or Orchard payment disclosure.
+pub async fn verify_payment_disclosure(
+    wallet_id: WalletId,
+    disclosure: String,
+) -> Result<PaymentDisclosureVerification> {
+    convert_from_service(service::verify_payment_disclosure(wallet_id, disclosure).await?)
+}
+
 async fn fetch_transaction_memo_inner(
     wallet_id: WalletId,
     txid: String,

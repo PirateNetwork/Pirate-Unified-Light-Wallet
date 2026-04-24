@@ -27,6 +27,7 @@ That includes:
 - shielded address validation
 - consensus branch validation
 - transaction details, recipients, and memo lookup
+- payment disclosure export and verification for sent shielded outputs/actions
 - viewing key export and watch-only import
 
 There is also a separate advanced key-management surface for higher-risk operations:

@@ -95,8 +95,12 @@ if ($Windows -or $All) {
     Push-Location $CRATES_DIR
     try {
         & $CARGO build --release --target x86_64-pc-windows-msvc --package pirate-ffi-frb --features frb --no-default-features --locked
-        
-        if ($LASTEXITCODE -eq 0) {
+        $buildSucceeded = $?
+        if ($null -ne $LASTEXITCODE) {
+            $buildSucceeded = $buildSucceeded -and ($LASTEXITCODE -eq 0)
+        }
+
+        if ($buildSucceeded) {
             # DLL is in target/x86_64-pc-windows-msvc/release/deps/ for cdylib
             $DLL_SOURCE = Join-Path $CRATES_DIR "target\x86_64-pc-windows-msvc\release\deps\pirate_ffi_frb.dll"
             # Also check the direct release folder

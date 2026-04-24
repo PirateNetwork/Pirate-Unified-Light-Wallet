@@ -407,6 +407,8 @@ pub struct TransactionRecipient {
     pub output_index: u32,
     /// Optional memo associated with the output.
     pub memo: Option<String>,
+    /// Bech32 payment disclosure for this outgoing output/action, when recoverable.
+    pub payment_disclosure: Option<String>,
 }
 
 /// Detailed transaction view for SDK consumers.
@@ -428,6 +430,44 @@ pub struct TransactionDetails {
     pub memo: Option<String>,
     /// Recovered shielded recipients for outgoing transactions.
     pub recipients: Vec<TransactionRecipient>,
+}
+
+/// Payment disclosure generated for one outgoing shielded output/action.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaymentDisclosure {
+    /// Disclosure pool (`sapling` or `orchard`).
+    pub disclosure_type: String,
+    /// Transaction id in display byte order.
+    pub txid: TxId,
+    /// Sapling output index or Orchard action index.
+    pub output_index: u32,
+    /// Recipient address revealed by the disclosure.
+    pub address: String,
+    /// Output/action value in arrrtoshis.
+    pub amount: u64,
+    /// Optional decoded memo revealed by the disclosure.
+    pub memo: Option<String>,
+    /// Bech32-encoded disclosure string compatible with Treasure Chest verification.
+    pub disclosure: String,
+}
+
+/// Result of verifying and decrypting a payment disclosure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaymentDisclosureVerification {
+    /// Disclosure pool (`sapling` or `orchard`).
+    pub disclosure_type: String,
+    /// Transaction id in display byte order.
+    pub txid: TxId,
+    /// Sapling output index or Orchard action index.
+    pub output_index: u32,
+    /// Recipient address revealed by the disclosure.
+    pub address: String,
+    /// Output/action value in arrrtoshis.
+    pub amount: u64,
+    /// Optional decoded memo revealed by the disclosure.
+    pub memo: Option<String>,
+    /// Raw 512-byte memo as hex, matching the full-node verifier output style.
+    pub memo_hex: String,
 }
 
 /// Address with label

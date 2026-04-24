@@ -5,10 +5,11 @@ use serde_json::{json, to_value, Value};
 pub use crate::{
     AddressBalanceInfo, AddressBookColorTag, AddressBookEntryFfi, AddressInfo, AddressValidation,
     Balance, BuildInfo, CheckpointInfo, ConsensusBranchValidation, FeeInfo, KeyExportInfo,
-    KeyGroupInfo, KeyTypeInfo, LightdEndpoint, NodeTestResult, NoteInfo, Output, PendingTx,
-    SeedExportWarnings, ShieldedPoolBalances, SignedTx, SpendabilityStatus, SyncLogEntryFfi,
-    SyncMode, SyncStatus, TransactionDetails, TransactionRecipient, TunnelMode, TxInfo, WalletId,
-    WalletMeta, WatchOnlyBannerInfo, WatchOnlyCapabilitiesInfo,
+    KeyGroupInfo, KeyTypeInfo, LightdEndpoint, NodeTestResult, NoteInfo, Output, PaymentDisclosure,
+    PaymentDisclosureVerification, PendingTx, SeedExportWarnings, ShieldedPoolBalances, SignedTx,
+    SpendabilityStatus, SyncLogEntryFfi, SyncMode, SyncStatus, TransactionDetails,
+    TransactionRecipient, TunnelMode, TxInfo, WalletId, WalletMeta, WatchOnlyBannerInfo,
+    WatchOnlyCapabilitiesInfo,
 };
 pub use pirate_core::{MnemonicInspection, MnemonicLanguage};
 
@@ -141,6 +142,24 @@ pub enum WalletServiceRequest {
     GetTransactionDetails {
         wallet_id: WalletId,
         txid: String,
+    },
+    ExportPaymentDisclosures {
+        wallet_id: WalletId,
+        txid: String,
+    },
+    ExportSaplingPaymentDisclosure {
+        wallet_id: WalletId,
+        txid: String,
+        output_index: u32,
+    },
+    ExportOrchardPaymentDisclosure {
+        wallet_id: WalletId,
+        txid: String,
+        action_index: u32,
+    },
+    VerifyPaymentDisclosure {
+        wallet_id: WalletId,
+        disclosure: String,
     },
     ListAddressBook {
         wallet_id: WalletId,
@@ -566,6 +585,27 @@ impl WalletService {
             WalletServiceRequest::GetTransactionDetails { wallet_id, txid } => {
                 serialize(ffi::get_transaction_details(wallet_id, txid).await?)
             }
+            WalletServiceRequest::ExportPaymentDisclosures { wallet_id, txid } => {
+                serialize(ffi::export_payment_disclosures(wallet_id, txid).await?)
+            }
+            WalletServiceRequest::ExportSaplingPaymentDisclosure {
+                wallet_id,
+                txid,
+                output_index,
+            } => serialize(
+                ffi::export_sapling_payment_disclosure(wallet_id, txid, output_index).await?,
+            ),
+            WalletServiceRequest::ExportOrchardPaymentDisclosure {
+                wallet_id,
+                txid,
+                action_index,
+            } => serialize(
+                ffi::export_orchard_payment_disclosure(wallet_id, txid, action_index).await?,
+            ),
+            WalletServiceRequest::VerifyPaymentDisclosure {
+                wallet_id,
+                disclosure,
+            } => serialize(ffi::verify_payment_disclosure(wallet_id, disclosure).await?),
             WalletServiceRequest::ListAddressBook { wallet_id } => {
                 serialize(ffi::list_address_book(wallet_id)?)
             }

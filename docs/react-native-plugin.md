@@ -54,6 +54,13 @@ Most transaction helpers are wallet-scoped. `broadcastTransaction(signed)` only
 receives the signed transaction payload; if endpoint configuration is needed
 during broadcast, the service uses the active wallet.
 
+Payment disclosure helpers are also wallet-scoped. `exportPaymentDisclosures`
+returns the Bech32 disclosure keys the wallet can derive for a sent transaction.
+Each disclosure is scoped to one Sapling output or Orchard action, so sharing it
+lets a third party verify that specific payment without exposing the wallet's
+other transactions. `verifyPaymentDisclosure` uses the selected wallet's
+lightwalletd endpoint to fetch the transaction and decrypt the disclosed output.
+
 ## What it does not do
 
 The package does not contain the wallet logic itself.

@@ -102,13 +102,17 @@ cd "$PROJECT_ROOT"
 
 # Generate bindings using the root config file
 echo -e "${BLUE}Generating FFI bindings...${NC}"
+# cbindgen emits noisy parser diagnostics for private Rust constants and cfgs
+# that are irrelevant to FRB Dart generation. Keep codegen output focused on
+# actionable errors/warnings.
+export RUST_LOG="${RUST_LOG:-error}"
 if [ -f "flutter_rust_bridge.yaml" ]; then
     CONFIG_FILE="flutter_rust_bridge.yaml"
     echo -e "${BLUE}Using config: $CONFIG_FILE${NC}"
     # Skip ffigen (LLVM not required for basic bindings)
     export FRB_SIMPLE_BUILD_SKIP=1
     # Run codegen and capture output, but don't fail on ffigen errors
-    if ! "$FRB_CODEGEN" generate --config-file "$CONFIG_FILE" 2>&1 | tee /tmp/frb_output.log | grep -vE "(ffigen|LLVM|libclang|SEVERE|Couldn't find)" || true; then
+    if ! "$FRB_CODEGEN" generate --config-file "$CONFIG_FILE" 2>&1 | tee /tmp/frb_output.log | grep -vE "(ffigen|LLVM|libclang|SEVERE|Couldn't find|cbindgen-[0-9]|cbindgen::|/cbindgen-|/cbindgen/)" || true; then
         # Check if it's just an ffigen error
         if grep -q "ffigen\|LLVM" /tmp/frb_output.log && [ -f "app/lib/core/ffi/generated/api.dart" ]; then
             echo -e "${YELLOW}⚠️  ffigen failed (LLVM not found), but bindings were generated${NC}"
@@ -118,7 +122,7 @@ elif [ -f "crates/pirate-ffi-frb/frb.toml" ]; then
     CONFIG_FILE="crates/pirate-ffi-frb/frb.toml"
     echo -e "${BLUE}Using config: $CONFIG_FILE${NC}"
     export FRB_SIMPLE_BUILD_SKIP=1
-    if ! "$FRB_CODEGEN" generate --config-file "$CONFIG_FILE" 2>&1 | tee /tmp/frb_output.log | grep -vE "(ffigen|LLVM|libclang|SEVERE|Couldn't find)" || true; then
+    if ! "$FRB_CODEGEN" generate --config-file "$CONFIG_FILE" 2>&1 | tee /tmp/frb_output.log | grep -vE "(ffigen|LLVM|libclang|SEVERE|Couldn't find|cbindgen-[0-9]|cbindgen::|/cbindgen-|/cbindgen/)" || true; then
         if grep -q "ffigen\|LLVM" /tmp/frb_output.log && [ -f "app/lib/core/ffi/generated/api.dart" ]; then
             echo -e "${YELLOW}⚠️  ffigen failed (LLVM not found), but bindings were generated${NC}"
         fi
@@ -154,6 +158,4 @@ else
 fi
 
 echo -e "${GREEN}✅ Done!${NC}"
-
-
 

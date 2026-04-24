@@ -462,6 +462,44 @@ public class PirateWalletSdk(
             ),
         )
 
+    public fun exportPaymentDisclosures(walletId: String, txId: String): List<PaymentDisclosure> =
+        parsePaymentDisclosureList(
+            invokeResult(
+                "export_payment_disclosures",
+                "wallet_id" to walletId,
+                "txid" to txId,
+            ),
+        )
+
+    public fun exportSaplingPaymentDisclosure(walletId: String, txId: String, outputIndex: Int): String =
+        parseString(
+            invokeResult(
+                "export_sapling_payment_disclosure",
+                "wallet_id" to walletId,
+                "txid" to txId,
+                "output_index" to outputIndex,
+            ),
+        )
+
+    public fun exportOrchardPaymentDisclosure(walletId: String, txId: String, actionIndex: Int): String =
+        parseString(
+            invokeResult(
+                "export_orchard_payment_disclosure",
+                "wallet_id" to walletId,
+                "txid" to txId,
+                "action_index" to actionIndex,
+            ),
+        )
+
+    public fun verifyPaymentDisclosure(walletId: String, disclosure: String): PaymentDisclosureVerification =
+        parsePaymentDisclosureVerification(
+            invokeResult(
+                "verify_payment_disclosure",
+                "wallet_id" to walletId,
+                "disclosure" to disclosure,
+            ),
+        )
+
     public fun getFeeInfo(): FeeInfo =
         parseFeeInfo(invokeResult("get_fee_info"))
 
@@ -887,6 +925,7 @@ private fun parseTransactionRecipient(value: Any?): TransactionRecipient {
         amount = json.requireLong("amount"),
         outputIndex = json.requireInt("output_index"),
         memo = json.nullableString("memo"),
+        paymentDisclosure = json.nullableString("payment_disclosure"),
     )
 }
 
@@ -905,6 +944,35 @@ private fun parseTransactionDetails(value: Any?): TransactionDetails? {
         confirmed = json.requireBoolean("confirmed"),
         memo = json.nullableString("memo"),
         recipients = json.requireArray("recipients").toList(::parseTransactionRecipient),
+    )
+}
+
+private fun parsePaymentDisclosure(value: Any?): PaymentDisclosure {
+    val json = value.requireObject("payment disclosure")
+    return PaymentDisclosure(
+        disclosureType = json.requireString("disclosure_type"),
+        txId = json.requireString("txid"),
+        outputIndex = json.requireInt("output_index"),
+        address = json.requireString("address"),
+        amount = json.requireLong("amount"),
+        memo = json.nullableString("memo"),
+        disclosure = json.requireString("disclosure"),
+    )
+}
+
+private fun parsePaymentDisclosureList(value: Any?): List<PaymentDisclosure> =
+    value.requireArray("payment disclosures").toList(::parsePaymentDisclosure)
+
+private fun parsePaymentDisclosureVerification(value: Any?): PaymentDisclosureVerification {
+    val json = value.requireObject("payment disclosure verification")
+    return PaymentDisclosureVerification(
+        disclosureType = json.requireString("disclosure_type"),
+        txId = json.requireString("txid"),
+        outputIndex = json.requireInt("output_index"),
+        address = json.requireString("address"),
+        amount = json.requireLong("amount"),
+        memo = json.nullableString("memo"),
+        memoHex = json.requireString("memo_hex"),
     )
 }
 

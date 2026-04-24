@@ -67,8 +67,8 @@ class PayScreen extends StatelessWidget {
     final content = _PayContent(
       onSend: () => context.push('/send'),
       onReceive: () => context.push('/receive'),
+      onVerify: () => context.push('/payment-disclosure'),
       onBuy: () => _showComingSoon(context),
-      onSpend: () => _showComingSoon(context),
     );
     final isDesktopPlatform = _isDesktopPlatform();
 
@@ -81,7 +81,7 @@ class PayScreen extends StatelessWidget {
         useSafeArea: false,
         appBar: PAppBar(
           title: 'Pay'.tr,
-          subtitle: 'Send, receive, buy, or spend in a few taps.'.tr,
+          subtitle: 'Send, receive, buy, or verify in a few taps.'.tr,
           actions: appBarActions,
         ),
         body: content,
@@ -94,7 +94,7 @@ class PayScreen extends StatelessWidget {
           ? null
           : PAppBar(
               title: 'Pay'.tr,
-              subtitle: 'Send, receive, buy, or spend in a few taps.'.tr,
+              subtitle: 'Send, receive, buy, or verify in a few taps.'.tr,
               actions: appBarActions,
             ),
       body: content,
@@ -107,15 +107,15 @@ class PaySheet extends StatelessWidget {
   const PaySheet({
     required this.onSend,
     required this.onReceive,
+    required this.onVerify,
     required this.onBuy,
-    required this.onSpend,
     super.key,
   });
 
   final VoidCallback onSend;
   final VoidCallback onReceive;
+  final VoidCallback onVerify;
   final VoidCallback onBuy;
-  final VoidCallback onSpend;
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +169,18 @@ class PaySheet extends StatelessWidget {
                 compact: true,
               ),
               _PayActionTile(
+                title: 'Verify'.tr,
+                subtitle: 'Verify a single payment'.tr,
+                icon: Icons.verified_user_outlined,
+                gradient: LinearGradient(
+                  colors: [AppColors.info, AppColors.gradientBEnd],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                onTap: onVerify,
+                compact: true,
+              ),
+              _PayActionTile(
                 title: 'Buy'.tr,
                 subtitle: 'Buy ARRR'.tr,
                 icon: Icons.shopping_bag,
@@ -178,18 +190,6 @@ class PaySheet extends StatelessWidget {
                   end: Alignment.bottomRight,
                 ),
                 onTap: onBuy,
-                compact: true,
-              ),
-              _PayActionTile(
-                title: 'Spend'.tr,
-                subtitle: 'Spend ARRR'.tr,
-                icon: Icons.credit_card,
-                gradient: LinearGradient(
-                  colors: [AppColors.info, AppColors.gradientAEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                onTap: onSpend,
                 compact: true,
               ),
             ];
@@ -219,7 +219,7 @@ class PaySheet extends StatelessWidget {
                   ),
                   const SizedBox(height: PSpacing.xs),
                   Text(
-                    'Send, receive, buy, or spend ARRR.'.tr,
+                    'Send, receive, buy, or verify a payment.'.tr,
                     style: PTypography.bodySmall(
                       color: AppColors.textSecondary,
                     ),
@@ -256,14 +256,14 @@ class _PayContent extends StatelessWidget {
   const _PayContent({
     required this.onSend,
     required this.onReceive,
+    required this.onVerify,
     required this.onBuy,
-    required this.onSpend,
   });
 
   final VoidCallback onSend;
   final VoidCallback onReceive;
+  final VoidCallback onVerify;
   final VoidCallback onBuy;
-  final VoidCallback onSpend;
 
   @override
   Widget build(BuildContext context) {
@@ -292,6 +292,17 @@ class _PayContent extends StatelessWidget {
         onTap: onReceive,
       ),
       _PayActionTile(
+        title: 'Verify'.tr,
+        subtitle: 'Verify a single payment'.tr,
+        icon: Icons.verified_user_outlined,
+        gradient: LinearGradient(
+          colors: [AppColors.info, AppColors.gradientBEnd],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        onTap: onVerify,
+      ),
+      _PayActionTile(
         title: 'Buy'.tr,
         subtitle: 'Buy ARRR'.tr,
         icon: Icons.shopping_bag,
@@ -301,17 +312,6 @@ class _PayContent extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         onTap: onBuy,
-      ),
-      _PayActionTile(
-        title: 'Spend'.tr,
-        subtitle: 'Spend ARRR'.tr,
-        icon: Icons.credit_card,
-        gradient: LinearGradient(
-          colors: [AppColors.info, AppColors.gradientAEnd],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: onSpend,
       ),
     ];
 
@@ -328,37 +328,35 @@ class _PayContent extends StatelessWidget {
             final tileWidth =
                 (constraints.maxWidth - spacing * (crossAxisCount - 1)) /
                 crossAxisCount;
-            final viewportHeight = constraints.hasBoundedHeight
-                ? constraints.maxHeight
-                : (tileWidth * 1.6) + spacing;
-            final tileHeight = ((viewportHeight - spacing) / 2).clamp(
-              150.0,
-              520.0,
-            );
+            final tileHeight = (tileWidth * 0.54).clamp(150.0, 260.0);
             final aspectRatio = tileWidth / tileHeight;
             final compactDesktop = tileWidth < 280 || tileHeight < 190;
 
-            return GridView.builder(
-              padding: EdgeInsets.zero,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: tiles.length,
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
-                crossAxisSpacing: spacing,
-                mainAxisSpacing: spacing,
-                childAspectRatio: aspectRatio,
+            return SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: PSpacing.xl),
+              child: GridView.builder(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: tiles.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: spacing,
+                  mainAxisSpacing: spacing,
+                  childAspectRatio: aspectRatio,
+                ),
+                itemBuilder: (context, index) {
+                  return _PayActionTile(
+                    title: tiles[index].title,
+                    subtitle: tiles[index].subtitle,
+                    icon: tiles[index].icon,
+                    gradient: tiles[index].gradient,
+                    onTap: tiles[index].onTap,
+                    compact: compactDesktop,
+                    isDesktop: !compactDesktop,
+                  );
+                },
               ),
-              itemBuilder: (context, index) {
-                return _PayActionTile(
-                  title: tiles[index].title,
-                  subtitle: tiles[index].subtitle,
-                  icon: tiles[index].icon,
-                  gradient: tiles[index].gradient,
-                  onTap: tiles[index].onTap,
-                  compact: compactDesktop,
-                  isDesktop: !compactDesktop,
-                );
-              },
             );
           }
 

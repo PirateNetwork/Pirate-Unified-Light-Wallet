@@ -260,6 +260,23 @@ addresses over time.
 - `getTransactionDetails(walletId, txId)`
   - RPC: `get_transaction_details`
   - returns transaction detail object or `null`
+- `exportPaymentDisclosures(walletId, txId)`
+  - RPC: `export_payment_disclosures`
+  - returns all recoverable payment disclosures for a sent transaction
+- `exportSaplingPaymentDisclosure(walletId, txId, outputIndex)`
+  - RPC: `export_sapling_payment_disclosure`
+  - returns one Sapling output disclosure string
+- `exportOrchardPaymentDisclosure(walletId, txId, actionIndex)`
+  - RPC: `export_orchard_payment_disclosure`
+  - returns one Orchard action disclosure string
+- `verifyPaymentDisclosure(walletId, disclosure)`
+  - RPC: `verify_payment_disclosure`
+  - decrypts one Sapling or Orchard disclosure using the wallet's configured lightwalletd endpoint
+
+`PaymentDisclosure` includes `disclosureType`, `txid`, `outputIndex`, `address`,
+`amount`, optional `memo`, and the shareable `disclosure` string.
+`verifyPaymentDisclosure` returns the same decrypted payment fields plus
+`memoHex`.
 - `getFeeInfo()`
   - RPC: `get_fee_info`
   - returns:

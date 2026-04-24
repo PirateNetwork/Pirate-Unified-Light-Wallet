@@ -342,6 +342,47 @@ public final class PirateWalletSDK {
         )
     }
 
+    public func exportPaymentDisclosures(walletId: String, txId: String) throws -> [PaymentDisclosure] {
+        try decodeResult(
+            "export_payment_disclosures",
+            params: ["wallet_id": walletId, "txid": txId],
+            as: [PaymentDisclosure].self
+        )
+    }
+
+    public func exportSaplingPaymentDisclosure(
+        walletId: String,
+        txId: String,
+        outputIndex: Int
+    ) throws -> String {
+        try stringResult(
+            "export_sapling_payment_disclosure",
+            params: ["wallet_id": walletId, "txid": txId, "output_index": outputIndex]
+        )
+    }
+
+    public func exportOrchardPaymentDisclosure(
+        walletId: String,
+        txId: String,
+        actionIndex: Int
+    ) throws -> String {
+        try stringResult(
+            "export_orchard_payment_disclosure",
+            params: ["wallet_id": walletId, "txid": txId, "action_index": actionIndex]
+        )
+    }
+
+    public func verifyPaymentDisclosure(
+        walletId: String,
+        disclosure: String
+    ) throws -> PaymentDisclosureVerification {
+        try decodeResult(
+            "verify_payment_disclosure",
+            params: ["wallet_id": walletId, "disclosure": disclosure],
+            as: PaymentDisclosureVerification.self
+        )
+    }
+
     public func getFeeInfo() throws -> FeeInfo {
         try decodeResult("get_fee_info", as: FeeInfo.self)
     }
@@ -1017,6 +1058,47 @@ extension PirateWalletSDK {
             "get_transaction_details",
             params: ["wallet_id": walletId, "txid": txId],
             as: TransactionDetails.self
+        )
+    }
+
+    public func exportPaymentDisclosuresAsync(walletId: String, txId: String) async throws -> [PaymentDisclosure] {
+        try await decodeResultAsync(
+            "export_payment_disclosures",
+            params: ["wallet_id": walletId, "txid": txId],
+            as: [PaymentDisclosure].self
+        )
+    }
+
+    public func exportSaplingPaymentDisclosureAsync(
+        walletId: String,
+        txId: String,
+        outputIndex: Int
+    ) async throws -> String {
+        try await stringResultAsync(
+            "export_sapling_payment_disclosure",
+            params: ["wallet_id": walletId, "txid": txId, "output_index": outputIndex]
+        )
+    }
+
+    public func exportOrchardPaymentDisclosureAsync(
+        walletId: String,
+        txId: String,
+        actionIndex: Int
+    ) async throws -> String {
+        try await stringResultAsync(
+            "export_orchard_payment_disclosure",
+            params: ["wallet_id": walletId, "txid": txId, "action_index": actionIndex]
+        )
+    }
+
+    public func verifyPaymentDisclosureAsync(
+        walletId: String,
+        disclosure: String
+    ) async throws -> PaymentDisclosureVerification {
+        try await decodeResultAsync(
+            "verify_payment_disclosure",
+            params: ["wallet_id": walletId, "disclosure": disclosure],
+            as: PaymentDisclosureVerification.self
         )
     }
 

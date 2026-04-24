@@ -102,11 +102,11 @@ class AppShell extends ConsumerWidget {
             Navigator.of(sheetContext).pop();
             context.push('/receive');
           },
-          onBuy: () {
+          onVerify: () {
             Navigator.of(sheetContext).pop();
-            _showComingSoon(context);
+            context.push('/payment-disclosure');
           },
-          onSpend: () {
+          onBuy: () {
             Navigator.of(sheetContext).pop();
             _showComingSoon(context);
           },
@@ -122,7 +122,7 @@ class AppShell extends ConsumerWidget {
     if (path.startsWith('/pay')) {
       return PAppBar(
         title: 'Pay'.tr,
-        subtitle: 'Send, receive, buy, or spend in a few taps.'.tr,
+        subtitle: 'Send, receive, buy, or verify in a few taps.'.tr,
         actions: [
           ConnectionStatusIndicator(full: true),
           WalletSwitcherButton(compact: true),

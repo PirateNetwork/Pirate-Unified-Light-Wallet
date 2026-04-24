@@ -123,6 +123,10 @@ Balances and transaction inspection:
 - `listTransactions(walletId:limit:)`
 - `fetchTransactionMemo(walletId:txId:outputIndex:)`
 - `getTransactionDetails(walletId:txId:)`
+- `exportPaymentDisclosures(walletId:txId:)`
+- `exportSaplingPaymentDisclosure(walletId:txId:outputIndex:)`
+- `exportOrchardPaymentDisclosure(walletId:txId:actionIndex:)`
+- `verifyPaymentDisclosure(walletId:disclosure:)`
 - `getFeeInfo()`
 - `getBalanceAsync(walletId:)`
 - `getShieldedPoolBalancesAsync(walletId:)`
@@ -130,6 +134,10 @@ Balances and transaction inspection:
 - `listTransactionsAsync(walletId:limit:)`
 - `fetchTransactionMemoAsync(walletId:txId:outputIndex:)`
 - `getTransactionDetailsAsync(walletId:txId:)`
+- `exportPaymentDisclosuresAsync(walletId:txId:)`
+- `exportSaplingPaymentDisclosureAsync(walletId:txId:outputIndex:)`
+- `exportOrchardPaymentDisclosureAsync(walletId:txId:actionIndex:)`
+- `verifyPaymentDisclosureAsync(walletId:disclosure:)`
 - `getFeeInfoAsync()`
 
 Sync:
@@ -309,6 +317,8 @@ Transaction detail:
 - `TransactionInfo`
 - `TransactionRecipient`
 - `TransactionDetails`
+- `PaymentDisclosure`
+- `PaymentDisclosureVerification`
 
 ## Notes
 

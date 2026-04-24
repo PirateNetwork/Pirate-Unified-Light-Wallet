@@ -70,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 1351094296;
+  int get rustContentHash => 978769670;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -201,7 +201,24 @@ abstract class RustLibApi extends BaseApi {
     required PlatformInt64 keyId,
   });
 
+  Future<String> crateApiExportOrchardPaymentDisclosure({
+    required String walletId,
+    required String txid,
+    required int actionIndex,
+  });
+
   Future<String> crateApiExportOrchardViewingKey({required String walletId});
+
+  Future<List<PaymentDisclosure>> crateApiExportPaymentDisclosures({
+    required String walletId,
+    required String txid,
+  });
+
+  Future<String> crateApiExportSaplingPaymentDisclosure({
+    required String walletId,
+    required String txid,
+    required int outputIndex,
+  });
 
   Future<String> crateApiExportSaplingViewingKey({required String walletId});
 
@@ -625,6 +642,11 @@ abstract class RustLibApi extends BaseApi {
   Future<bool> crateApiVerifyDuressPassphrase({required String passphrase});
 
   Future<bool> crateApiVerifyPanicPin({required String pin});
+
+  Future<PaymentDisclosureVerification> crateApiVerifyPaymentDisclosure({
+    required String walletId,
+    required String disclosure,
+  });
 
   Future<bool> crateApiWalletRegistryExists();
 
@@ -1489,6 +1511,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<String> crateApiExportOrchardPaymentDisclosure({
+    required String walletId,
+    required String txid,
+    required int actionIndex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(txid);
+          var arg2 = cst_encode_u_32(actionIndex);
+          return wire.wire__crate__api__export_orchard_payment_disclosure(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportOrchardPaymentDisclosureConstMeta,
+        argValues: [walletId, txid, actionIndex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiExportOrchardPaymentDisclosureConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_orchard_payment_disclosure",
+        argNames: ["walletId", "txid", "actionIndex"],
+      );
+
+  @override
   Future<String> crateApiExportOrchardViewingKey({required String walletId}) {
     return handler.executeNormal(
       NormalTask(
@@ -1511,6 +1569,75 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "export_orchard_viewing_key",
         argNames: ["walletId"],
+      );
+
+  @override
+  Future<List<PaymentDisclosure>> crateApiExportPaymentDisclosures({
+    required String walletId,
+    required String txid,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(txid);
+          return wire.wire__crate__api__export_payment_disclosures(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_list_payment_disclosure,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportPaymentDisclosuresConstMeta,
+        argValues: [walletId, txid],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiExportPaymentDisclosuresConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_payment_disclosures",
+        argNames: ["walletId", "txid"],
+      );
+
+  @override
+  Future<String> crateApiExportSaplingPaymentDisclosure({
+    required String walletId,
+    required String txid,
+    required int outputIndex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(txid);
+          var arg2 = cst_encode_u_32(outputIndex);
+          return wire.wire__crate__api__export_sapling_payment_disclosure(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportSaplingPaymentDisclosureConstMeta,
+        argValues: [walletId, txid, outputIndex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiExportSaplingPaymentDisclosureConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_sapling_payment_disclosure",
+        argNames: ["walletId", "txid", "outputIndex"],
       );
 
   @override
@@ -4658,6 +4785,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "verify_panic_pin", argNames: ["pin"]);
 
   @override
+  Future<PaymentDisclosureVerification> crateApiVerifyPaymentDisclosure({
+    required String walletId,
+    required String disclosure,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(disclosure);
+          return wire.wire__crate__api__verify_payment_disclosure(
+            port_,
+            arg0,
+            arg1,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_payment_disclosure_verification,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiVerifyPaymentDisclosureConstMeta,
+        argValues: [walletId, disclosure],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiVerifyPaymentDisclosureConstMeta =>
+      const TaskConstMeta(
+        debugName: "verify_payment_disclosure",
+        argNames: ["walletId", "disclosure"],
+      );
+
+  @override
   Future<bool> crateApiWalletRegistryExists() {
     return handler.executeNormal(
       NormalTask(
@@ -5080,6 +5240,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<PaymentDisclosure> dco_decode_list_payment_disclosure(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_payment_disclosure).toList();
+  }
+
+  @protected
   Int64List dco_decode_list_prim_i_64_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeInt64List(raw);
@@ -5252,6 +5418,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       addr: dco_decode_String(arr[0]),
       amount: dco_decode_u_64(arr[1]),
       memo: dco_decode_opt_String(arr[2]),
+    );
+  }
+
+  @protected
+  PaymentDisclosure dco_decode_payment_disclosure(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return PaymentDisclosure(
+      disclosureType: dco_decode_String(arr[0]),
+      txid: dco_decode_String(arr[1]),
+      outputIndex: dco_decode_u_32(arr[2]),
+      address: dco_decode_String(arr[3]),
+      amount: dco_decode_u_64(arr[4]),
+      memo: dco_decode_opt_String(arr[5]),
+      disclosure: dco_decode_String(arr[6]),
+    );
+  }
+
+  @protected
+  PaymentDisclosureVerification dco_decode_payment_disclosure_verification(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return PaymentDisclosureVerification(
+      disclosureType: dco_decode_String(arr[0]),
+      txid: dco_decode_String(arr[1]),
+      outputIndex: dco_decode_u_32(arr[2]),
+      address: dco_decode_String(arr[3]),
+      amount: dco_decode_u_64(arr[4]),
+      memo: dco_decode_opt_String(arr[5]),
+      memoHex: dco_decode_String(arr[6]),
     );
   }
 
@@ -6005,6 +6207,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<PaymentDisclosure> sse_decode_list_payment_disclosure(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PaymentDisclosure>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_payment_disclosure(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -6268,6 +6484,52 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_amount = sse_decode_u_64(deserializer);
     var var_memo = sse_decode_opt_String(deserializer);
     return Output(addr: var_addr, amount: var_amount, memo: var_memo);
+  }
+
+  @protected
+  PaymentDisclosure sse_decode_payment_disclosure(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_disclosureType = sse_decode_String(deserializer);
+    var var_txid = sse_decode_String(deserializer);
+    var var_outputIndex = sse_decode_u_32(deserializer);
+    var var_address = sse_decode_String(deserializer);
+    var var_amount = sse_decode_u_64(deserializer);
+    var var_memo = sse_decode_opt_String(deserializer);
+    var var_disclosure = sse_decode_String(deserializer);
+    return PaymentDisclosure(
+      disclosureType: var_disclosureType,
+      txid: var_txid,
+      outputIndex: var_outputIndex,
+      address: var_address,
+      amount: var_amount,
+      memo: var_memo,
+      disclosure: var_disclosure,
+    );
+  }
+
+  @protected
+  PaymentDisclosureVerification sse_decode_payment_disclosure_verification(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_disclosureType = sse_decode_String(deserializer);
+    var var_txid = sse_decode_String(deserializer);
+    var var_outputIndex = sse_decode_u_32(deserializer);
+    var var_address = sse_decode_String(deserializer);
+    var var_amount = sse_decode_u_64(deserializer);
+    var var_memo = sse_decode_opt_String(deserializer);
+    var var_memoHex = sse_decode_String(deserializer);
+    return PaymentDisclosureVerification(
+      disclosureType: var_disclosureType,
+      txid: var_txid,
+      outputIndex: var_outputIndex,
+      address: var_address,
+      amount: var_amount,
+      memo: var_memo,
+      memoHex: var_memoHex,
+    );
   }
 
   @protected
@@ -7064,6 +7326,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_payment_disclosure(
+    List<PaymentDisclosure> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_payment_disclosure(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_prim_i_64_strict(
     Int64List self,
     SseSerializer serializer,
@@ -7305,6 +7579,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.addr, serializer);
     sse_encode_u_64(self.amount, serializer);
     sse_encode_opt_String(self.memo, serializer);
+  }
+
+  @protected
+  void sse_encode_payment_disclosure(
+    PaymentDisclosure self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.disclosureType, serializer);
+    sse_encode_String(self.txid, serializer);
+    sse_encode_u_32(self.outputIndex, serializer);
+    sse_encode_String(self.address, serializer);
+    sse_encode_u_64(self.amount, serializer);
+    sse_encode_opt_String(self.memo, serializer);
+    sse_encode_String(self.disclosure, serializer);
+  }
+
+  @protected
+  void sse_encode_payment_disclosure_verification(
+    PaymentDisclosureVerification self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.disclosureType, serializer);
+    sse_encode_String(self.txid, serializer);
+    sse_encode_u_32(self.outputIndex, serializer);
+    sse_encode_String(self.address, serializer);
+    sse_encode_u_64(self.amount, serializer);
+    sse_encode_opt_String(self.memo, serializer);
+    sse_encode_String(self.memoHex, serializer);
   }
 
   @protected

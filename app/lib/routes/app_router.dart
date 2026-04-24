@@ -37,6 +37,7 @@ import '../features/onboarding/screens/birthday_picker_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/send/send_screen.dart';
 import '../features/pay/pay_screen.dart';
+import '../features/payment_disclosure/payment_disclosure_verifier_screen.dart';
 import '../features/settings/screens/biometrics_screen.dart';
 import '../features/settings/screens/passphrase_change_screen.dart';
 import '../features/settings/screens/theme_screen.dart';
@@ -345,6 +346,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           context: context,
           state: state,
           child: const ReceiveScreen(),
+        ),
+      ),
+
+      // Payment disclosure verifier
+      GoRoute(
+        path: '/payment-disclosure',
+        name: 'payment-disclosure',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const PaymentDisclosureVerifierScreen(),
         ),
       ),
 

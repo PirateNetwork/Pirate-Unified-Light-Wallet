@@ -706,6 +706,120 @@ class Output {
           memo == other.memo;
 }
 
+/// Payment disclosure generated for one outgoing shielded output/action.
+class PaymentDisclosure {
+  /// Disclosure pool (`sapling` or `orchard`).
+  final String disclosureType;
+
+  /// Transaction id in display byte order.
+  final String txid;
+
+  /// Sapling output index or Orchard action index.
+  final int outputIndex;
+
+  /// Recipient address revealed by the disclosure.
+  final String address;
+
+  /// Output/action value in arrrtoshis.
+  final BigInt amount;
+
+  /// Optional decoded memo revealed by the disclosure.
+  final String? memo;
+
+  /// Bech32-encoded disclosure string compatible with Treasure Chest verification.
+  final String disclosure;
+
+  const PaymentDisclosure({
+    required this.disclosureType,
+    required this.txid,
+    required this.outputIndex,
+    required this.address,
+    required this.amount,
+    this.memo,
+    required this.disclosure,
+  });
+
+  @override
+  int get hashCode =>
+      disclosureType.hashCode ^
+      txid.hashCode ^
+      outputIndex.hashCode ^
+      address.hashCode ^
+      amount.hashCode ^
+      memo.hashCode ^
+      disclosure.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PaymentDisclosure &&
+          runtimeType == other.runtimeType &&
+          disclosureType == other.disclosureType &&
+          txid == other.txid &&
+          outputIndex == other.outputIndex &&
+          address == other.address &&
+          amount == other.amount &&
+          memo == other.memo &&
+          disclosure == other.disclosure;
+}
+
+/// Result of verifying and decrypting a payment disclosure.
+class PaymentDisclosureVerification {
+  /// Disclosure pool (`sapling` or `orchard`).
+  final String disclosureType;
+
+  /// Transaction id in display byte order.
+  final String txid;
+
+  /// Sapling output index or Orchard action index.
+  final int outputIndex;
+
+  /// Recipient address revealed by the disclosure.
+  final String address;
+
+  /// Output/action value in arrrtoshis.
+  final BigInt amount;
+
+  /// Optional decoded memo revealed by the disclosure.
+  final String? memo;
+
+  /// Raw 512-byte memo as hex, matching the full-node verifier output style.
+  final String memoHex;
+
+  const PaymentDisclosureVerification({
+    required this.disclosureType,
+    required this.txid,
+    required this.outputIndex,
+    required this.address,
+    required this.amount,
+    this.memo,
+    required this.memoHex,
+  });
+
+  @override
+  int get hashCode =>
+      disclosureType.hashCode ^
+      txid.hashCode ^
+      outputIndex.hashCode ^
+      address.hashCode ^
+      amount.hashCode ^
+      memo.hashCode ^
+      memoHex.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PaymentDisclosureVerification &&
+          runtimeType == other.runtimeType &&
+          disclosureType == other.disclosureType &&
+          txid == other.txid &&
+          outputIndex == other.outputIndex &&
+          address == other.address &&
+          amount == other.amount &&
+          memo == other.memo &&
+          memoHex == other.memoHex;
+}
+
 /// Pending transaction (built but not signed)
 class PendingTx {
   /// Temporary ID

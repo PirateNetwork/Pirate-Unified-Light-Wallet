@@ -21,8 +21,8 @@ Widget paySheetPreview() {
         child: PaySheet(
           onSend: () {},
           onReceive: () {},
+          onVerify: () {},
           onBuy: () {},
-          onSpend: () {},
         ),
       ),
     ),

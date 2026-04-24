@@ -112,6 +112,7 @@ public data class TransactionRecipient(
     val amount: Long,
     val outputIndex: Int,
     val memo: String?,
+    val paymentDisclosure: String?,
 )
 
 public data class TransactionDetails(
@@ -123,4 +124,24 @@ public data class TransactionDetails(
     val confirmed: Boolean,
     val memo: String?,
     val recipients: List<TransactionRecipient>,
+)
+
+public data class PaymentDisclosure(
+    val disclosureType: String,
+    val txId: String,
+    val outputIndex: Int,
+    val address: String,
+    val amount: Long,
+    val memo: String?,
+    val disclosure: String,
+)
+
+public data class PaymentDisclosureVerification(
+    val disclosureType: String,
+    val txId: String,
+    val outputIndex: Int,
+    val address: String,
+    val amount: Long,
+    val memo: String?,
+    val memoHex: String,
 )

@@ -1084,6 +1084,15 @@ pub struct LightClient {
     channel: Arc<Mutex<Option<Channel>>>,
 }
 
+/// Full transaction payload returned by lightwalletd.
+#[derive(Debug, Clone)]
+pub struct RawTransactionData {
+    /// Raw serialized transaction bytes.
+    pub data: Vec<u8>,
+    /// Block height reported by lightwalletd, when available.
+    pub height: Option<u64>,
+}
+
 impl LightClient {
     fn is_non_retryable_status(code: tonic::Code) -> bool {
         matches!(
@@ -1738,12 +1747,20 @@ impl LightClient {
     /// # Returns
     /// Raw transaction bytes containing full shielded outputs
     pub async fn get_transaction(&self, tx_hash: &[u8; 32]) -> Result<Vec<u8>> {
+        Ok(self.get_raw_transaction(tx_hash).await?.data)
+    }
+
+    /// Fetch the complete transaction data plus lightwalletd metadata.
+    ///
+    /// The height is needed by callers that decrypt Sapling outputs outside
+    /// normal sync, where height-sensitive plaintext rules still apply.
+    pub async fn get_raw_transaction(&self, tx_hash: &[u8; 32]) -> Result<RawTransactionData> {
         debug!(
             "Fetching full transaction for memo decryption: {}",
             hex::encode(tx_hash)
         );
 
-        self.get_transaction_by_filter(TxFilter {
+        self.get_raw_transaction_by_filter(TxFilter {
             block: None, // Not used when hash is specified
             index: 0,    // Not used when hash is specified
             hash: tx_hash.to_vec(),
@@ -1758,8 +1775,8 @@ impl LightClient {
         block_height: Option<u64>,
         tx_index: Option<u64>,
     ) -> Result<Vec<u8>> {
-        match self.get_transaction(tx_hash).await {
-            Ok(raw) => Ok(raw),
+        match self.get_raw_transaction(tx_hash).await {
+            Ok(raw) => Ok(raw.data),
             Err(err) => {
                 if let (Some(height), Some(index)) = (block_height, tx_index) {
                     warn!(
@@ -1770,7 +1787,7 @@ impl LightClient {
                         err
                     );
                     return self
-                        .get_transaction_by_filter(TxFilter {
+                        .get_raw_transaction_by_filter(TxFilter {
                             block: Some(BlockId {
                                 height,
                                 hash: Vec::new(),
@@ -1778,14 +1795,15 @@ impl LightClient {
                             index,
                             hash: Vec::new(),
                         })
-                        .await;
+                        .await
+                        .map(|raw| raw.data);
                 }
                 Err(err)
             }
         }
     }
 
-    async fn get_transaction_by_filter(&self, filter: TxFilter) -> Result<Vec<u8>> {
+    async fn get_raw_transaction_by_filter(&self, filter: TxFilter) -> Result<RawTransactionData> {
         self.with_retry(|| async {
             let mut client = self.get_client().await?;
             let request = tonic::Request::new(filter.clone());
@@ -1794,7 +1812,10 @@ impl LightClient {
             let raw_tx = response.into_inner();
 
             debug!("Received full transaction ({} bytes)", raw_tx.data.len());
-            Ok(raw_tx.data)
+            Ok(RawTransactionData {
+                data: raw_tx.data,
+                height: (raw_tx.height > 0).then_some(raw_tx.height),
+            })
         })
         .await
     }

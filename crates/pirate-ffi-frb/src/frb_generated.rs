@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1351094296;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 978769670;
 
 // Section: executor
 
@@ -805,6 +805,39 @@ fn wire__crate__api__export_key_group_keys_impl(
         },
     )
 }
+fn wire__crate__api__export_orchard_payment_disclosure_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    txid: impl CstDecode<String>,
+    action_index: impl CstDecode<u32>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "export_orchard_payment_disclosure",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_txid = txid.cst_decode();
+            let api_action_index = action_index.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::export_orchard_payment_disclosure(
+                            api_wallet_id,
+                            api_txid,
+                            api_action_index,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__export_orchard_viewing_key_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -823,6 +856,66 @@ fn wire__crate__api__export_orchard_viewing_key_impl(
                         let output_ok = crate::api::export_orchard_viewing_key(api_wallet_id)?;
                         Ok(output_ok)
                     })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__export_payment_disclosures_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    txid: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "export_payment_disclosures",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_txid = txid.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::export_payment_disclosures(api_wallet_id, api_txid).await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__export_sapling_payment_disclosure_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    txid: impl CstDecode<String>,
+    output_index: impl CstDecode<u32>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "export_sapling_payment_disclosure",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_txid = txid.cst_decode();
+            let api_output_index = output_index.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::export_sapling_payment_disclosure(
+                            api_wallet_id,
+                            api_txid,
+                            api_output_index,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
                 )
             }
         },
@@ -3619,6 +3712,34 @@ fn wire__crate__api__verify_panic_pin_impl(
         },
     )
 }
+fn wire__crate__api__verify_payment_disclosure_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    disclosure: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "verify_payment_disclosure",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_disclosure = disclosure.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::verify_payment_disclosure(api_wallet_id, api_disclosure)
+                                .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__wallet_registry_exists_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
 ) {
@@ -4201,6 +4322,18 @@ impl SseDecode for Vec<crate::models::Output> {
     }
 }
 
+impl SseDecode for Vec<crate::models::PaymentDisclosure> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<crate::models::PaymentDisclosure>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<i64> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4480,6 +4613,50 @@ impl SseDecode for crate::models::Output {
             addr: var_addr,
             amount: var_amount,
             memo: var_memo,
+        };
+    }
+}
+
+impl SseDecode for crate::models::PaymentDisclosure {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_disclosureType = <String>::sse_decode(deserializer);
+        let mut var_txid = <String>::sse_decode(deserializer);
+        let mut var_outputIndex = <u32>::sse_decode(deserializer);
+        let mut var_address = <String>::sse_decode(deserializer);
+        let mut var_amount = <u64>::sse_decode(deserializer);
+        let mut var_memo = <Option<String>>::sse_decode(deserializer);
+        let mut var_disclosure = <String>::sse_decode(deserializer);
+        return crate::models::PaymentDisclosure {
+            disclosure_type: var_disclosureType,
+            txid: var_txid,
+            output_index: var_outputIndex,
+            address: var_address,
+            amount: var_amount,
+            memo: var_memo,
+            disclosure: var_disclosure,
+        };
+    }
+}
+
+impl SseDecode for crate::models::PaymentDisclosureVerification {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_disclosureType = <String>::sse_decode(deserializer);
+        let mut var_txid = <String>::sse_decode(deserializer);
+        let mut var_outputIndex = <u32>::sse_decode(deserializer);
+        let mut var_address = <String>::sse_decode(deserializer);
+        let mut var_amount = <u64>::sse_decode(deserializer);
+        let mut var_memo = <Option<String>>::sse_decode(deserializer);
+        let mut var_memoHex = <String>::sse_decode(deserializer);
+        return crate::models::PaymentDisclosureVerification {
+            disclosure_type: var_disclosureType,
+            txid: var_txid,
+            output_index: var_outputIndex,
+            address: var_address,
+            amount: var_amount,
+            memo: var_memo,
+            memo_hex: var_memoHex,
         };
     }
 }
@@ -5282,6 +5459,58 @@ impl flutter_rust_bridge::IntoIntoDart<crate::models::Output> for crate::models:
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::models::PaymentDisclosure {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.disclosure_type.into_into_dart().into_dart(),
+            self.txid.into_into_dart().into_dart(),
+            self.output_index.into_into_dart().into_dart(),
+            self.address.into_into_dart().into_dart(),
+            self.amount.into_into_dart().into_dart(),
+            self.memo.into_into_dart().into_dart(),
+            self.disclosure.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::models::PaymentDisclosure
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::models::PaymentDisclosure>
+    for crate::models::PaymentDisclosure
+{
+    fn into_into_dart(self) -> crate::models::PaymentDisclosure {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::models::PaymentDisclosureVerification {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.disclosure_type.into_into_dart().into_dart(),
+            self.txid.into_into_dart().into_dart(),
+            self.output_index.into_into_dart().into_dart(),
+            self.address.into_into_dart().into_dart(),
+            self.amount.into_into_dart().into_dart(),
+            self.memo.into_into_dart().into_dart(),
+            self.memo_hex.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::models::PaymentDisclosureVerification
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::models::PaymentDisclosureVerification>
+    for crate::models::PaymentDisclosureVerification
+{
+    fn into_into_dart(self) -> crate::models::PaymentDisclosureVerification {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::models::PendingTx {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -5925,6 +6154,16 @@ impl SseEncode for Vec<crate::models::Output> {
     }
 }
 
+impl SseEncode for Vec<crate::models::PaymentDisclosure> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::models::PaymentDisclosure>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<i64> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6150,6 +6389,32 @@ impl SseEncode for crate::models::Output {
         <String>::sse_encode(self.addr, serializer);
         <u64>::sse_encode(self.amount, serializer);
         <Option<String>>::sse_encode(self.memo, serializer);
+    }
+}
+
+impl SseEncode for crate::models::PaymentDisclosure {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.disclosure_type, serializer);
+        <String>::sse_encode(self.txid, serializer);
+        <u32>::sse_encode(self.output_index, serializer);
+        <String>::sse_encode(self.address, serializer);
+        <u64>::sse_encode(self.amount, serializer);
+        <Option<String>>::sse_encode(self.memo, serializer);
+        <String>::sse_encode(self.disclosure, serializer);
+    }
+}
+
+impl SseEncode for crate::models::PaymentDisclosureVerification {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.disclosure_type, serializer);
+        <String>::sse_encode(self.txid, serializer);
+        <u32>::sse_encode(self.output_index, serializer);
+        <String>::sse_encode(self.address, serializer);
+        <u64>::sse_encode(self.amount, serializer);
+        <Option<String>>::sse_encode(self.memo, serializer);
+        <String>::sse_encode(self.memo_hex, serializer);
     }
 }
 
@@ -6764,6 +7029,16 @@ mod io {
             vec.into_iter().map(CstDecode::cst_decode).collect()
         }
     }
+    impl CstDecode<Vec<crate::models::PaymentDisclosure>> for *mut wire_cst_list_payment_disclosure {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> Vec<crate::models::PaymentDisclosure> {
+            let vec = unsafe {
+                let wrap = flutter_rust_bridge::for_generated::box_from_leak_ptr(self);
+                flutter_rust_bridge::for_generated::vec_from_leak_ptr(wrap.ptr, wrap.len)
+            };
+            vec.into_iter().map(CstDecode::cst_decode).collect()
+        }
+    }
     impl CstDecode<Vec<i64>> for *mut wire_cst_list_prim_i_64_strict {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> Vec<i64> {
@@ -6859,6 +7134,36 @@ mod io {
                 addr: self.addr.cst_decode(),
                 amount: self.amount.cst_decode(),
                 memo: self.memo.cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::models::PaymentDisclosure> for wire_cst_payment_disclosure {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::PaymentDisclosure {
+            crate::models::PaymentDisclosure {
+                disclosure_type: self.disclosure_type.cst_decode(),
+                txid: self.txid.cst_decode(),
+                output_index: self.output_index.cst_decode(),
+                address: self.address.cst_decode(),
+                amount: self.amount.cst_decode(),
+                memo: self.memo.cst_decode(),
+                disclosure: self.disclosure.cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::models::PaymentDisclosureVerification>
+        for wire_cst_payment_disclosure_verification
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::PaymentDisclosureVerification {
+            crate::models::PaymentDisclosureVerification {
+                disclosure_type: self.disclosure_type.cst_decode(),
+                txid: self.txid.cst_decode(),
+                output_index: self.output_index.cst_decode(),
+                address: self.address.cst_decode(),
+                amount: self.amount.cst_decode(),
+                memo: self.memo.cst_decode(),
+                memo_hex: self.memo_hex.cst_decode(),
             }
         }
     }
@@ -7309,6 +7614,42 @@ mod io {
         }
     }
     impl Default for wire_cst_output {
+        fn default() -> Self {
+            Self::new_with_null_ptr()
+        }
+    }
+    impl NewWithNullPtr for wire_cst_payment_disclosure {
+        fn new_with_null_ptr() -> Self {
+            Self {
+                disclosure_type: core::ptr::null_mut(),
+                txid: core::ptr::null_mut(),
+                output_index: Default::default(),
+                address: core::ptr::null_mut(),
+                amount: Default::default(),
+                memo: core::ptr::null_mut(),
+                disclosure: core::ptr::null_mut(),
+            }
+        }
+    }
+    impl Default for wire_cst_payment_disclosure {
+        fn default() -> Self {
+            Self::new_with_null_ptr()
+        }
+    }
+    impl NewWithNullPtr for wire_cst_payment_disclosure_verification {
+        fn new_with_null_ptr() -> Self {
+            Self {
+                disclosure_type: core::ptr::null_mut(),
+                txid: core::ptr::null_mut(),
+                output_index: Default::default(),
+                address: core::ptr::null_mut(),
+                amount: Default::default(),
+                memo: core::ptr::null_mut(),
+                memo_hex: core::ptr::null_mut(),
+            }
+        }
+    }
+    impl Default for wire_cst_payment_disclosure_verification {
         fn default() -> Self {
             Self::new_with_null_ptr()
         }
@@ -7821,11 +8162,50 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_orchard_payment_disclosure(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        txid: *mut wire_cst_list_prim_u_8_strict,
+        action_index: u32,
+    ) {
+        wire__crate__api__export_orchard_payment_disclosure_impl(
+            port_,
+            wallet_id,
+            txid,
+            action_index,
+        )
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_orchard_viewing_key(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
     ) {
         wire__crate__api__export_orchard_viewing_key_impl(port_, wallet_id)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_payment_disclosures(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        txid: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__export_payment_disclosures_impl(port_, wallet_id, txid)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_sapling_payment_disclosure(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        txid: *mut wire_cst_list_prim_u_8_strict,
+        output_index: u32,
+    ) {
+        wire__crate__api__export_sapling_payment_disclosure_impl(
+            port_,
+            wallet_id,
+            txid,
+            output_index,
+        )
     }
 
     #[unsafe(no_mangle)]
@@ -8824,6 +9204,15 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__verify_payment_disclosure(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        disclosure: *mut wire_cst_list_prim_u_8_strict,
+    ) {
+        wire__crate__api__verify_payment_disclosure_impl(port_, wallet_id, disclosure)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__wallet_registry_exists(port_: i64) {
         wire__crate__api__wallet_registry_exists_impl(port_)
     }
@@ -9025,6 +9414,20 @@ mod io {
         let wrap = wire_cst_list_output {
             ptr: flutter_rust_bridge::for_generated::new_leak_vec_ptr(
                 <wire_cst_output>::new_with_null_ptr(),
+                len,
+            ),
+            len,
+        };
+        flutter_rust_bridge::for_generated::new_leak_box_ptr(wrap)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_cst_new_list_payment_disclosure(
+        len: i32,
+    ) -> *mut wire_cst_list_payment_disclosure {
+        let wrap = wire_cst_list_payment_disclosure {
+            ptr: flutter_rust_bridge::for_generated::new_leak_vec_ptr(
+                <wire_cst_payment_disclosure>::new_with_null_ptr(),
                 len,
             ),
             len,
@@ -9267,6 +9670,12 @@ mod io {
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
+    pub struct wire_cst_list_payment_disclosure {
+        ptr: *mut wire_cst_payment_disclosure,
+        len: i32,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
     pub struct wire_cst_list_prim_i_64_strict {
         ptr: *mut i64,
         len: i32,
@@ -9332,6 +9741,28 @@ mod io {
         addr: *mut wire_cst_list_prim_u_8_strict,
         amount: u64,
         memo: *mut wire_cst_list_prim_u_8_strict,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct wire_cst_payment_disclosure {
+        disclosure_type: *mut wire_cst_list_prim_u_8_strict,
+        txid: *mut wire_cst_list_prim_u_8_strict,
+        output_index: u32,
+        address: *mut wire_cst_list_prim_u_8_strict,
+        amount: u64,
+        memo: *mut wire_cst_list_prim_u_8_strict,
+        disclosure: *mut wire_cst_list_prim_u_8_strict,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct wire_cst_payment_disclosure_verification {
+        disclosure_type: *mut wire_cst_list_prim_u_8_strict,
+        txid: *mut wire_cst_list_prim_u_8_strict,
+        output_index: u32,
+        address: *mut wire_cst_list_prim_u_8_strict,
+        amount: u64,
+        memo: *mut wire_cst_list_prim_u_8_strict,
+        memo_hex: *mut wire_cst_list_prim_u_8_strict,
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -9895,6 +10326,18 @@ mod web {
                 .collect()
         }
     }
+    impl CstDecode<Vec<crate::models::PaymentDisclosure>>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> Vec<crate::models::PaymentDisclosure> {
+            self.dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap()
+                .iter()
+                .map(CstDecode::cst_decode)
+                .collect()
+        }
+    }
     impl CstDecode<Vec<i64>> for Box<[i64]> {
         // Codec=Cst (C-struct based), see doc to use other codecs
         fn cst_decode(self) -> Vec<i64> {
@@ -10046,6 +10489,56 @@ mod web {
                 addr: self_.get(0).cst_decode(),
                 amount: self_.get(1).cst_decode(),
                 memo: self_.get(2).cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::models::PaymentDisclosure>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::PaymentDisclosure {
+            let self_ = self
+                .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap();
+            assert_eq!(
+                self_.length(),
+                7,
+                "Expected 7 elements, got {}",
+                self_.length()
+            );
+            crate::models::PaymentDisclosure {
+                disclosure_type: self_.get(0).cst_decode(),
+                txid: self_.get(1).cst_decode(),
+                output_index: self_.get(2).cst_decode(),
+                address: self_.get(3).cst_decode(),
+                amount: self_.get(4).cst_decode(),
+                memo: self_.get(5).cst_decode(),
+                disclosure: self_.get(6).cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::models::PaymentDisclosureVerification>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::PaymentDisclosureVerification {
+            let self_ = self
+                .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap();
+            assert_eq!(
+                self_.length(),
+                7,
+                "Expected 7 elements, got {}",
+                self_.length()
+            );
+            crate::models::PaymentDisclosureVerification {
+                disclosure_type: self_.get(0).cst_decode(),
+                txid: self_.get(1).cst_decode(),
+                output_index: self_.get(2).cst_decode(),
+                address: self_.get(3).cst_decode(),
+                amount: self_.get(4).cst_decode(),
+                memo: self_.get(5).cst_decode(),
+                memo_hex: self_.get(6).cst_decode(),
             }
         }
     }
@@ -10779,11 +11272,50 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__export_orchard_payment_disclosure(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        txid: String,
+        action_index: u32,
+    ) {
+        wire__crate__api__export_orchard_payment_disclosure_impl(
+            port_,
+            wallet_id,
+            txid,
+            action_index,
+        )
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__export_orchard_viewing_key(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
     ) {
         wire__crate__api__export_orchard_viewing_key_impl(port_, wallet_id)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__export_payment_disclosures(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        txid: String,
+    ) {
+        wire__crate__api__export_payment_disclosures_impl(port_, wallet_id, txid)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__export_sapling_payment_disclosure(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        txid: String,
+        output_index: u32,
+    ) {
+        wire__crate__api__export_sapling_payment_disclosure_impl(
+            port_,
+            wallet_id,
+            txid,
+            output_index,
+        )
     }
 
     #[wasm_bindgen]
@@ -11809,6 +12341,15 @@ mod web {
         pin: String,
     ) {
         wire__crate__api__verify_panic_pin_impl(port_, pin)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__verify_payment_disclosure(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        disclosure: String,
+    ) {
+        wire__crate__api__verify_payment_disclosure_impl(port_, wallet_id, disclosure)
     }
 
     #[wasm_bindgen]

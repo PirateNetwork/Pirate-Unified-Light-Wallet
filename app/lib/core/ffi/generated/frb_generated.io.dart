@@ -154,6 +154,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Output> dco_decode_list_output(dynamic raw);
 
   @protected
+  List<PaymentDisclosure> dco_decode_list_payment_disclosure(dynamic raw);
+
+  @protected
   Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
 
   @protected
@@ -221,6 +224,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Output dco_decode_output(dynamic raw);
+
+  @protected
+  PaymentDisclosure dco_decode_payment_disclosure(dynamic raw);
+
+  @protected
+  PaymentDisclosureVerification dco_decode_payment_disclosure_verification(
+    dynamic raw,
+  );
 
   @protected
   PendingTx dco_decode_pending_tx(dynamic raw);
@@ -443,6 +454,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Output> sse_decode_list_output(SseDeserializer deserializer);
 
   @protected
+  List<PaymentDisclosure> sse_decode_list_payment_disclosure(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
 
   @protected
@@ -518,6 +534,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Output sse_decode_output(SseDeserializer deserializer);
+
+  @protected
+  PaymentDisclosure sse_decode_payment_disclosure(SseDeserializer deserializer);
+
+  @protected
+  PaymentDisclosureVerification sse_decode_payment_disclosure_verification(
+    SseDeserializer deserializer,
+  );
 
   @protected
   PendingTx sse_decode_pending_tx(SseDeserializer deserializer);
@@ -811,6 +835,17 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     final ans = wire.cst_new_list_output(raw.length);
     for (var i = 0; i < raw.length; ++i) {
       cst_api_fill_to_wire_output(raw[i], ans.ref.ptr[i]);
+    }
+    return ans;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_list_payment_disclosure>
+  cst_encode_list_payment_disclosure(List<PaymentDisclosure> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ans = wire.cst_new_list_payment_disclosure(raw.length);
+    for (var i = 0; i < raw.length; ++i) {
+      cst_api_fill_to_wire_payment_disclosure(raw[i], ans.ref.ptr[i]);
     }
     return ans;
   }
@@ -1240,6 +1275,34 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  void cst_api_fill_to_wire_payment_disclosure(
+    PaymentDisclosure apiObj,
+    wire_cst_payment_disclosure wireObj,
+  ) {
+    wireObj.disclosure_type = cst_encode_String(apiObj.disclosureType);
+    wireObj.txid = cst_encode_String(apiObj.txid);
+    wireObj.output_index = cst_encode_u_32(apiObj.outputIndex);
+    wireObj.address = cst_encode_String(apiObj.address);
+    wireObj.amount = cst_encode_u_64(apiObj.amount);
+    wireObj.memo = cst_encode_opt_String(apiObj.memo);
+    wireObj.disclosure = cst_encode_String(apiObj.disclosure);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_payment_disclosure_verification(
+    PaymentDisclosureVerification apiObj,
+    wire_cst_payment_disclosure_verification wireObj,
+  ) {
+    wireObj.disclosure_type = cst_encode_String(apiObj.disclosureType);
+    wireObj.txid = cst_encode_String(apiObj.txid);
+    wireObj.output_index = cst_encode_u_32(apiObj.outputIndex);
+    wireObj.address = cst_encode_String(apiObj.address);
+    wireObj.amount = cst_encode_u_64(apiObj.amount);
+    wireObj.memo = cst_encode_opt_String(apiObj.memo);
+    wireObj.memo_hex = cst_encode_String(apiObj.memoHex);
+  }
+
+  @protected
   void cst_api_fill_to_wire_pending_tx(
     PendingTx apiObj,
     wire_cst_pending_tx wireObj,
@@ -1660,6 +1723,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_output(List<Output> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_payment_disclosure(
+    List<PaymentDisclosure> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_i_64_strict(
     Int64List self,
     SseSerializer serializer,
@@ -1763,6 +1832,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_output(Output self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_payment_disclosure(
+    PaymentDisclosure self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_payment_disclosure_verification(
+    PaymentDisclosureVerification self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_pending_tx(PendingTx self, SseSerializer serializer);
@@ -2623,6 +2704,44 @@ class RustLibWire implements BaseWire {
             void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, int)
           >();
 
+  void wire__crate__api__export_orchard_payment_disclosure(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> txid,
+    int action_index,
+  ) {
+    return _wire__crate__api__export_orchard_payment_disclosure(
+      port_,
+      wallet_id,
+      txid,
+      action_index,
+    );
+  }
+
+  late final _wire__crate__api__export_orchard_payment_disclosurePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Uint32,
+          )
+        >
+      >(
+        'frbgen_pirate_wallet_wire__crate__api__export_orchard_payment_disclosure',
+      );
+  late final _wire__crate__api__export_orchard_payment_disclosure =
+      _wire__crate__api__export_orchard_payment_disclosurePtr
+          .asFunction<
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              int,
+            )
+          >();
+
   void wire__crate__api__export_orchard_viewing_key(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -2643,6 +2762,76 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__export_orchard_viewing_keyPtr
           .asFunction<
             void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
+          >();
+
+  void wire__crate__api__export_payment_disclosures(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> txid,
+  ) {
+    return _wire__crate__api__export_payment_disclosures(
+      port_,
+      wallet_id,
+      txid,
+    );
+  }
+
+  late final _wire__crate__api__export_payment_disclosuresPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )
+        >
+      >('frbgen_pirate_wallet_wire__crate__api__export_payment_disclosures');
+  late final _wire__crate__api__export_payment_disclosures =
+      _wire__crate__api__export_payment_disclosuresPtr
+          .asFunction<
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            )
+          >();
+
+  void wire__crate__api__export_sapling_payment_disclosure(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> txid,
+    int output_index,
+  ) {
+    return _wire__crate__api__export_sapling_payment_disclosure(
+      port_,
+      wallet_id,
+      txid,
+      output_index,
+    );
+  }
+
+  late final _wire__crate__api__export_sapling_payment_disclosurePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Uint32,
+          )
+        >
+      >(
+        'frbgen_pirate_wallet_wire__crate__api__export_sapling_payment_disclosure',
+      );
+  late final _wire__crate__api__export_sapling_payment_disclosure =
+      _wire__crate__api__export_sapling_payment_disclosurePtr
+          .asFunction<
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              int,
+            )
           >();
 
   void wire__crate__api__export_sapling_viewing_key(
@@ -5317,6 +5506,38 @@ class RustLibWire implements BaseWire {
             void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
           >();
 
+  void wire__crate__api__verify_payment_disclosure(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> disclosure,
+  ) {
+    return _wire__crate__api__verify_payment_disclosure(
+      port_,
+      wallet_id,
+      disclosure,
+    );
+  }
+
+  late final _wire__crate__api__verify_payment_disclosurePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )
+        >
+      >('frbgen_pirate_wallet_wire__crate__api__verify_payment_disclosure');
+  late final _wire__crate__api__verify_payment_disclosure =
+      _wire__crate__api__verify_payment_disclosurePtr
+          .asFunction<
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            )
+          >();
+
   void wire__crate__api__wallet_registry_exists(int port_) {
     return _wire__crate__api__wallet_registry_exists(port_);
   }
@@ -5622,6 +5843,24 @@ class RustLibWire implements BaseWire {
       >('frbgen_pirate_wallet_cst_new_list_output');
   late final _cst_new_list_output = _cst_new_list_outputPtr
       .asFunction<ffi.Pointer<wire_cst_list_output> Function(int)>();
+
+  ffi.Pointer<wire_cst_list_payment_disclosure> cst_new_list_payment_disclosure(
+    int len,
+  ) {
+    return _cst_new_list_payment_disclosure(len);
+  }
+
+  late final _cst_new_list_payment_disclosurePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Pointer<wire_cst_list_payment_disclosure> Function(ffi.Int32)
+        >
+      >('frbgen_pirate_wallet_cst_new_list_payment_disclosure');
+  late final _cst_new_list_payment_disclosure =
+      _cst_new_list_payment_disclosurePtr
+          .asFunction<
+            ffi.Pointer<wire_cst_list_payment_disclosure> Function(int)
+          >();
 
   ffi.Pointer<wire_cst_list_prim_i_64_strict> cst_new_list_prim_i_64_strict(
     int len,
@@ -5997,6 +6236,31 @@ final class wire_cst_list_mnemonic_language extends ffi.Struct {
   external int len;
 }
 
+final class wire_cst_payment_disclosure extends ffi.Struct {
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> disclosure_type;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> txid;
+
+  @ffi.Uint32()
+  external int output_index;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> address;
+
+  @ffi.Uint64()
+  external int amount;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> memo;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> disclosure;
+}
+
+final class wire_cst_list_payment_disclosure extends ffi.Struct {
+  external ffi.Pointer<wire_cst_payment_disclosure> ptr;
+
+  @ffi.Int32()
+  external int len;
+}
+
 final class wire_cst_sync_log_entry_ffi extends ffi.Struct {
   @ffi.Int64()
   external int timestamp;
@@ -6192,6 +6456,24 @@ final class wire_cst_node_test_result extends ffi.Struct {
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> server_version;
 
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> chain_name;
+}
+
+final class wire_cst_payment_disclosure_verification extends ffi.Struct {
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> disclosure_type;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> txid;
+
+  @ffi.Uint32()
+  external int output_index;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> address;
+
+  @ffi.Uint64()
+  external int amount;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> memo;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> memo_hex;
 }
 
 final class wire_cst_seed_export_warnings extends ffi.Struct {

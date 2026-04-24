@@ -156,6 +156,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Output> dco_decode_list_output(dynamic raw);
 
   @protected
+  List<PaymentDisclosure> dco_decode_list_payment_disclosure(dynamic raw);
+
+  @protected
   Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
 
   @protected
@@ -223,6 +226,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Output dco_decode_output(dynamic raw);
+
+  @protected
+  PaymentDisclosure dco_decode_payment_disclosure(dynamic raw);
+
+  @protected
+  PaymentDisclosureVerification dco_decode_payment_disclosure_verification(
+    dynamic raw,
+  );
 
   @protected
   PendingTx dco_decode_pending_tx(dynamic raw);
@@ -445,6 +456,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<Output> sse_decode_list_output(SseDeserializer deserializer);
 
   @protected
+  List<PaymentDisclosure> sse_decode_list_payment_disclosure(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
 
   @protected
@@ -520,6 +536,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Output sse_decode_output(SseDeserializer deserializer);
+
+  @protected
+  PaymentDisclosure sse_decode_payment_disclosure(SseDeserializer deserializer);
+
+  @protected
+  PaymentDisclosureVerification sse_decode_payment_disclosure_verification(
+    SseDeserializer deserializer,
+  );
 
   @protected
   PendingTx sse_decode_pending_tx(SseDeserializer deserializer);
@@ -898,6 +922,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  JSAny cst_encode_list_payment_disclosure(List<PaymentDisclosure> raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw.map(cst_encode_payment_disclosure).toList().jsify()!;
+  }
+
+  @protected
   JSAny cst_encode_list_prim_i_64_strict(Int64List raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw.inner.jsify()!;
@@ -1052,6 +1082,36 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_String(raw.addr),
       cst_encode_u_64(raw.amount),
       cst_encode_opt_String(raw.memo),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_payment_disclosure(PaymentDisclosure raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.disclosureType),
+      cst_encode_String(raw.txid),
+      cst_encode_u_32(raw.outputIndex),
+      cst_encode_String(raw.address),
+      cst_encode_u_64(raw.amount),
+      cst_encode_opt_String(raw.memo),
+      cst_encode_String(raw.disclosure),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_payment_disclosure_verification(
+    PaymentDisclosureVerification raw,
+  ) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_String(raw.disclosureType),
+      cst_encode_String(raw.txid),
+      cst_encode_u_32(raw.outputIndex),
+      cst_encode_String(raw.address),
+      cst_encode_u_64(raw.amount),
+      cst_encode_opt_String(raw.memo),
+      cst_encode_String(raw.memoHex),
     ].jsify()!;
   }
 
@@ -1481,6 +1541,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_output(List<Output> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_payment_disclosure(
+    List<PaymentDisclosure> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_i_64_strict(
     Int64List self,
     SseSerializer serializer,
@@ -1584,6 +1650,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_output(Output self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_payment_disclosure(
+    PaymentDisclosure self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_payment_disclosure_verification(
+    PaymentDisclosureVerification self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_pending_tx(PendingTx self, SseSerializer serializer);
@@ -1908,11 +1986,45 @@ class RustLibWire implements BaseWire {
     key_id,
   );
 
+  void wire__crate__api__export_orchard_payment_disclosure(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+    int action_index,
+  ) => wasmModule.wire__crate__api__export_orchard_payment_disclosure(
+    port_,
+    wallet_id,
+    txid,
+    action_index,
+  );
+
   void wire__crate__api__export_orchard_viewing_key(
     NativePortType port_,
     String wallet_id,
   ) =>
       wasmModule.wire__crate__api__export_orchard_viewing_key(port_, wallet_id);
+
+  void wire__crate__api__export_payment_disclosures(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+  ) => wasmModule.wire__crate__api__export_payment_disclosures(
+    port_,
+    wallet_id,
+    txid,
+  );
+
+  void wire__crate__api__export_sapling_payment_disclosure(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+    int output_index,
+  ) => wasmModule.wire__crate__api__export_sapling_payment_disclosure(
+    port_,
+    wallet_id,
+    txid,
+    output_index,
+  );
 
   void wire__crate__api__export_sapling_viewing_key(
     NativePortType port_,
@@ -2689,6 +2801,16 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__verify_panic_pin(NativePortType port_, String pin) =>
       wasmModule.wire__crate__api__verify_panic_pin(port_, pin);
 
+  void wire__crate__api__verify_payment_disclosure(
+    NativePortType port_,
+    String wallet_id,
+    String disclosure,
+  ) => wasmModule.wire__crate__api__verify_payment_disclosure(
+    port_,
+    wallet_id,
+    disclosure,
+  );
+
   void wire__crate__api__wallet_registry_exists(NativePortType port_) =>
       wasmModule.wire__crate__api__wallet_registry_exists(port_);
 
@@ -2866,9 +2988,29 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     JSAny key_id,
   );
 
+  external void wire__crate__api__export_orchard_payment_disclosure(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+    int action_index,
+  );
+
   external void wire__crate__api__export_orchard_viewing_key(
     NativePortType port_,
     String wallet_id,
+  );
+
+  external void wire__crate__api__export_payment_disclosures(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+  );
+
+  external void wire__crate__api__export_sapling_payment_disclosure(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+    int output_index,
   );
 
   external void wire__crate__api__export_sapling_viewing_key(
@@ -3441,6 +3583,12 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__verify_panic_pin(
     NativePortType port_,
     String pin,
+  );
+
+  external void wire__crate__api__verify_payment_disclosure(
+    NativePortType port_,
+    String wallet_id,
+    String disclosure,
   );
 
   external void wire__crate__api__wallet_registry_exists(NativePortType port_);

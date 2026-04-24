@@ -1210,6 +1210,29 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  static Future<List<PaymentDisclosure>> exportPaymentDisclosures({
+    required WalletId walletId,
+    required String txid,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.exportPaymentDisclosures(walletId: walletId, txid: txid);
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<PaymentDisclosureVerification> verifyPaymentDisclosure({
+    required WalletId walletId,
+    required String disclosure,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.verifyPaymentDisclosure(
+        walletId: walletId,
+        disclosure: disclosure,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   // Utilities
   static Future<String> generateMnemonic({
     int wordCount = 24,

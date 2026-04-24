@@ -190,6 +190,10 @@ enum Command {
         command: Option<SendCommand>,
         request_json: Option<String>,
     },
+    PaymentDisclosure {
+        #[command(subcommand)]
+        command: PaymentDisclosureCommand,
+    },
     Diag {
         #[command(subcommand)]
         command: DiagCommand,
@@ -300,6 +304,32 @@ enum SendCommand {
     },
     Broadcast {
         signed_json: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum PaymentDisclosureCommand {
+    List {
+        #[arg(long)]
+        wallet_id: Option<String>,
+        txid: String,
+    },
+    Sapling {
+        #[arg(long)]
+        wallet_id: Option<String>,
+        txid: String,
+        output_index: u32,
+    },
+    Orchard {
+        #[arg(long)]
+        wallet_id: Option<String>,
+        txid: String,
+        action_index: u32,
+    },
+    Verify {
+        #[arg(long)]
+        wallet_id: Option<String>,
+        disclosure: String,
     },
 }
 
@@ -706,6 +736,54 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             })?;
             legacy_send(service, &request_json).await
         }
+        Command::PaymentDisclosure { command } => match command {
+            PaymentDisclosureCommand::List { wallet_id, txid } => {
+                let wallet_id = resolve_wallet_id(service, wallet_id).await?;
+                service
+                    .execute(Req::ExportPaymentDisclosures { wallet_id, txid })
+                    .await
+            }
+            PaymentDisclosureCommand::Sapling {
+                wallet_id,
+                txid,
+                output_index,
+            } => {
+                let wallet_id = resolve_wallet_id(service, wallet_id).await?;
+                service
+                    .execute(Req::ExportSaplingPaymentDisclosure {
+                        wallet_id,
+                        txid,
+                        output_index,
+                    })
+                    .await
+            }
+            PaymentDisclosureCommand::Orchard {
+                wallet_id,
+                txid,
+                action_index,
+            } => {
+                let wallet_id = resolve_wallet_id(service, wallet_id).await?;
+                service
+                    .execute(Req::ExportOrchardPaymentDisclosure {
+                        wallet_id,
+                        txid,
+                        action_index,
+                    })
+                    .await
+            }
+            PaymentDisclosureCommand::Verify {
+                wallet_id,
+                disclosure,
+            } => {
+                let wallet_id = resolve_wallet_id(service, wallet_id).await?;
+                service
+                    .execute(Req::VerifyPaymentDisclosure {
+                        wallet_id,
+                        disclosure,
+                    })
+                    .await
+            }
+        },
         Command::Diag { command } => match command {
             DiagCommand::Logs { wallet_id, limit } => {
                 service.execute(Req::GetSyncLogs { wallet_id, limit }).await

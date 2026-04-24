@@ -74,6 +74,7 @@ pub(crate) mod encrypted_db;
 pub(crate) mod endpoint;
 pub(crate) mod key_management;
 pub(crate) mod panic_duress;
+pub(crate) mod payment_disclosure;
 pub(crate) mod provisioning;
 pub(crate) mod qortal_p2sh;
 pub(crate) mod seed_export;
@@ -87,6 +88,10 @@ pub use self::endpoint::{
     LightdEndpoint, DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_USE_TLS,
 };
 use self::panic_duress::{ensure_not_decoy, is_decoy_mode_active};
+pub use self::payment_disclosure::{
+    export_orchard_payment_disclosure, export_payment_disclosures,
+    export_sapling_payment_disclosure, verify_payment_disclosure,
+};
 pub use self::qortal_p2sh::{QortalP2shRedeemRequest, QortalP2shSendRequest};
 pub use self::seed_export::SeedExportWarnings;
 use self::wallet_registry::{
@@ -192,103 +197,6 @@ fn recover_outgoing_memo_from_raw_tx(
     }
 
     None
-}
-
-fn recover_outgoing_recipients_from_raw_tx(
-    raw_tx_bytes: &[u8],
-    tx_height: Option<u32>,
-    sapling_ovks: &[SaplingOutgoingViewingKey],
-    orchard_ovks: &[orchard::keys::OutgoingViewingKey],
-    network_type: NetworkType,
-) -> Vec<TransactionRecipient> {
-    let mut recipients = Vec::new();
-    let mut seen: HashSet<(String, u32, String)> = HashSet::new();
-
-    if sapling_ovks.is_empty() && orchard_ovks.is_empty() {
-        return recipients;
-    }
-
-    let tx = match Transaction::read(raw_tx_bytes, BranchId::Nu5)
-        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
-    {
-        Ok(tx) => tx,
-        Err(_) => return recipients,
-    };
-    let block_height = BlockHeight::from_u32(tx_height.unwrap_or(0));
-
-    if let Some(bundle) = tx.sapling_bundle() {
-        for (idx, output) in bundle.shielded_outputs().iter().enumerate() {
-            for ovk in sapling_ovks {
-                if let Some((note, address, memo)) = try_sapling_output_recovery(
-                    &PirateNetwork::default(),
-                    block_height,
-                    ovk,
-                    output,
-                ) {
-                    let address_string =
-                        PaymentAddress { inner: address }.encode_for_network(network_type);
-                    let key = (address_string.clone(), idx as u32, "sapling".to_string());
-                    if seen.insert(key) {
-                        let memo_vec = memo.as_array().to_vec();
-                        let memo_str = if memo_vec.iter().all(|b| *b == 0) {
-                            None
-                        } else {
-                            pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_vec)
-                        };
-                        recipients.push(TransactionRecipient {
-                            address: address_string,
-                            pool: "sapling".to_string(),
-                            amount: note.value().inner(),
-                            output_index: idx as u32,
-                            memo: memo_str,
-                        });
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    if let Some(bundle) = tx.orchard_bundle() {
-        for (idx, action) in bundle.actions().iter().enumerate() {
-            for ovk in orchard_ovks {
-                let domain = OrchardDomain::for_action(action);
-                if let Some((note, address, memo)) = try_output_recovery_with_ovk(
-                    &domain,
-                    ovk,
-                    action,
-                    action.cv_net(),
-                    &action.encrypted_note().out_ciphertext,
-                ) {
-                    let address_string = match (OrchardPaymentAddress { inner: address })
-                        .encode_for_network(network_type)
-                    {
-                        Ok(address) => address,
-                        Err(_) => continue,
-                    };
-                    let key = (address_string.clone(), idx as u32, "orchard".to_string());
-                    if seen.insert(key) {
-                        let memo_vec = memo.to_vec();
-                        let memo_str = if memo_vec.iter().all(|b| *b == 0) {
-                            None
-                        } else {
-                            pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_vec)
-                        };
-                        recipients.push(TransactionRecipient {
-                            address: address_string,
-                            pool: "orchard".to_string(),
-                            amount: note.value().inner(),
-                            output_index: idx as u32,
-                            memo: memo_str,
-                        });
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    recipients
 }
 
 fn collect_tx_recovery_context(wallet_id: &WalletId, txid: &str) -> Result<TxRecoveryContext> {
@@ -2693,7 +2601,7 @@ pub async fn get_transaction_details(
         }
 
         if let Some(raw_tx_bytes) = raw_tx_bytes {
-            recover_outgoing_recipients_from_raw_tx(
+            payment_disclosure::recover_outgoing_recipients_with_disclosures_from_raw_tx(
                 &raw_tx_bytes,
                 tx_height_hint,
                 &sapling_ovks,

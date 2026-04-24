@@ -451,6 +451,7 @@ public struct TransactionRecipient: Codable, Equatable {
     public let amount: Int64
     public let outputIndex: Int
     public let memo: String?
+    public let paymentDisclosure: String?
 }
 
 public struct TransactionDetails: Codable, Equatable {
@@ -462,4 +463,24 @@ public struct TransactionDetails: Codable, Equatable {
     public let confirmed: Bool
     public let memo: String?
     public let recipients: [TransactionRecipient]
+}
+
+public struct PaymentDisclosure: Codable, Equatable {
+    public let disclosureType: String
+    public let txId: String
+    public let outputIndex: Int
+    public let address: String
+    public let amount: Int64
+    public let memo: String?
+    public let disclosure: String
+}
+
+public struct PaymentDisclosureVerification: Codable, Equatable {
+    public let disclosureType: String
+    public let txId: String
+    public let outputIndex: Int
+    public let address: String
+    public let amount: Int64
+    public let memo: String?
+    public let memoHex: String
 }

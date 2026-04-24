@@ -87,6 +87,10 @@ Balances and transaction inspection:
 - `listTransactions(walletId, limit = null)`
 - `fetchTransactionMemo(walletId, txId, outputIndex = null)`
 - `getTransactionDetails(walletId, txId)`
+- `exportPaymentDisclosures(walletId, txId)`
+- `exportSaplingPaymentDisclosure(walletId, txId, outputIndex)`
+- `exportOrchardPaymentDisclosure(walletId, txId, actionIndex)`
+- `verifyPaymentDisclosure(walletId, disclosure)`
 - `getFeeInfo()`
 
 Sync:
@@ -239,6 +243,8 @@ Transaction detail:
 - `TransactionInfo`
 - `TransactionRecipient`
 - `TransactionDetails`
+- `PaymentDisclosure`
+- `PaymentDisclosureVerification`
 
 ## Notes
 

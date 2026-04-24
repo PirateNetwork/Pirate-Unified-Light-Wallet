@@ -12,7 +12,6 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
-import '../../ui/atoms/p_button.dart';
 import '../../ui/molecules/p_card.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
@@ -75,19 +74,23 @@ class _TransactionDetails extends ConsumerStatefulWidget {
 
 class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
   Future<String?>? _memoFuture;
+  Future<List<PaymentDisclosure>>? _paymentDisclosuresFuture;
 
   @override
   void initState() {
     super.initState();
     _refreshMemoFuture();
+    _refreshPaymentDisclosuresFuture();
   }
 
   @override
   void didUpdateWidget(covariant _TransactionDetails oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.tx.txid != widget.tx.txid ||
+        oldWidget.tx.amount != widget.tx.amount ||
         (oldWidget.tx.memo ?? '') != (widget.tx.memo ?? '')) {
       _refreshMemoFuture();
+      _refreshPaymentDisclosuresFuture();
     }
   }
 
@@ -111,6 +114,18 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
           }
           return memo;
         });
+  }
+
+  void _refreshPaymentDisclosuresFuture() {
+    final walletId = ref.read(activeWalletProvider);
+    if (walletId == null || widget.tx.amount >= 0) {
+      _paymentDisclosuresFuture = null;
+      return;
+    }
+    _paymentDisclosuresFuture = FfiBridge.exportPaymentDisclosures(
+      walletId: walletId,
+      txid: widget.tx.txid,
+    );
   }
 
   /// Convert PlatformInt64 timestamp to DateTime
@@ -328,9 +343,28 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Transaction ID'.tr,
-                  style: PTypography.titleMedium(color: AppColors.textPrimary),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Transaction ID'.tr,
+                        style: PTypography.titleMedium(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: tx.txid));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Transaction ID copied'.tr)),
+                        );
+                      },
+                      icon: const Icon(Icons.copy, size: 18),
+                      tooltip: 'Copy transaction ID'.tr,
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: PSpacing.sm),
                 SelectableText(
@@ -341,24 +375,213 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
             ),
           ),
         ),
-        const SizedBox(height: PSpacing.lg),
-        PButton(
-          text: 'Copy transaction ID',
-          onPressed: () {
-            Clipboard.setData(ClipboardData(text: tx.txid));
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('Transaction ID copied'.tr)));
-          },
-          variant: PButtonVariant.secondary,
-          fullWidth: true,
-        ),
+        if (!isReceived && _paymentDisclosuresFuture != null) ...[
+          const SizedBox(height: PSpacing.lg),
+          FutureBuilder<List<PaymentDisclosure>>(
+            future: _paymentDisclosuresFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const _PaymentDisclosureLoadingCard();
+              }
+              if (snapshot.hasError) {
+                return const _PaymentDisclosureUnavailableCard();
+              }
+              final disclosures = snapshot.data ?? const <PaymentDisclosure>[];
+              if (disclosures.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return _PaymentDisclosureCard(disclosures: disclosures);
+            },
+          ),
+        ],
       ],
     );
   }
 
   String _formatArrr(int arrrtoshis) {
     return '${(arrrtoshis / 100000000).toStringAsFixed(8)} ARRR';
+  }
+}
+
+class _PaymentDisclosureCard extends StatelessWidget {
+  const _PaymentDisclosureCard({required this.disclosures});
+
+  final List<PaymentDisclosure> disclosures;
+
+  @override
+  Widget build(BuildContext context) {
+    return PCard(
+      child: Padding(
+        padding: const EdgeInsets.all(PSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Payment disclosure'.tr,
+              style: PTypography.titleMedium(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: PSpacing.sm),
+            Text(
+              'Share a disclosure only when you want someone to verify this specific sent output. It does not reveal your full wallet history.'
+                  .tr,
+              style: PTypography.bodySmall(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: PSpacing.md),
+            for (var i = 0; i < disclosures.length; i++) ...[
+              if (i > 0) const SizedBox(height: PSpacing.md),
+              _PaymentDisclosureTile(
+                disclosure: disclosures[i],
+                showRecipient: disclosures.length > 1,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentDisclosureTile extends StatelessWidget {
+  const _PaymentDisclosureTile({
+    required this.disclosure,
+    required this.showRecipient,
+  });
+
+  final PaymentDisclosure disclosure;
+  final bool showRecipient;
+
+  @override
+  Widget build(BuildContext context) {
+    final pool = _titleCase(disclosure.disclosureType);
+    final amount = _formatArrr(disclosure.amount.toInt());
+    final label = '$pool #${disclosure.outputIndex}';
+
+    return Container(
+      padding: const EdgeInsets.all(PSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceElevated.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(PSpacing.radiusMD),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$label · $amount',
+                  style: PTypography.labelMedium(color: AppColors.textPrimary),
+                ),
+              ),
+              IconButton(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: disclosure.disclosure));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Payment disclosure copied'.tr)),
+                  );
+                },
+                icon: const Icon(Icons.copy, size: 18),
+                tooltip: 'Copy payment disclosure'.tr,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+          if (showRecipient) ...[
+            const SizedBox(height: PSpacing.xxs),
+            Text(
+              _middleEllipsis(disclosure.address),
+              style: PTypography.bodySmall(color: AppColors.textTertiary),
+            ),
+          ],
+          const SizedBox(height: PSpacing.xs),
+          SelectableText(
+            disclosure.disclosure,
+            style: PTypography.codeMedium(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatArrr(int arrrtoshis) {
+    return '${(arrrtoshis / 100000000).toStringAsFixed(8)} ARRR';
+  }
+
+  String _middleEllipsis(String value) {
+    if (value.length <= 26) {
+      return value;
+    }
+    return '${value.substring(0, 12)}...${value.substring(value.length - 10)}';
+  }
+
+  String _titleCase(String value) {
+    if (value.isEmpty) {
+      return value;
+    }
+    return '${value[0].toUpperCase()}${value.substring(1)}';
+  }
+}
+
+class _PaymentDisclosureLoadingCard extends StatelessWidget {
+  const _PaymentDisclosureLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return PCard(
+      child: Padding(
+        padding: const EdgeInsets.all(PSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            PSkeleton(width: 150, height: 18),
+            SizedBox(height: PSpacing.sm),
+            PSkeleton(width: double.infinity, height: 14),
+            SizedBox(height: PSpacing.md),
+            PSkeleton(width: double.infinity, height: 72),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentDisclosureUnavailableCard extends StatelessWidget {
+  const _PaymentDisclosureUnavailableCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return PCard(
+      child: Padding(
+        padding: const EdgeInsets.all(PSpacing.md),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline, color: AppColors.textTertiary, size: 20),
+            const SizedBox(width: PSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Payment disclosure unavailable'.tr,
+                    style: PTypography.titleSmall(color: AppColors.textPrimary),
+                  ),
+                  const SizedBox(height: PSpacing.xxs),
+                  Text(
+                    'Try again after the transaction is confirmed and the wallet is synced.'
+                        .tr,
+                    style: PTypography.bodySmall(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

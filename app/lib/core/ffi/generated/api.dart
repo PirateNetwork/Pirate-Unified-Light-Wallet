@@ -757,6 +757,46 @@ Future<String?> fetchTransactionMemo({
   outputIndex: outputIndex,
 );
 
+/// Export all payment disclosures recoverable by this wallet for an outgoing transaction.
+Future<List<PaymentDisclosure>> exportPaymentDisclosures({
+  required String walletId,
+  required String txid,
+}) => RustLib.instance.api.crateApiExportPaymentDisclosures(
+  walletId: walletId,
+  txid: txid,
+);
+
+/// Export a Sapling payment disclosure for a specific output index.
+Future<String> exportSaplingPaymentDisclosure({
+  required String walletId,
+  required String txid,
+  required int outputIndex,
+}) => RustLib.instance.api.crateApiExportSaplingPaymentDisclosure(
+  walletId: walletId,
+  txid: txid,
+  outputIndex: outputIndex,
+);
+
+/// Export an Orchard payment disclosure for a specific action index.
+Future<String> exportOrchardPaymentDisclosure({
+  required String walletId,
+  required String txid,
+  required int actionIndex,
+}) => RustLib.instance.api.crateApiExportOrchardPaymentDisclosure(
+  walletId: walletId,
+  txid: txid,
+  actionIndex: actionIndex,
+);
+
+/// Verify and decrypt a Sapling or Orchard payment disclosure.
+Future<PaymentDisclosureVerification> verifyPaymentDisclosure({
+  required String walletId,
+  required String disclosure,
+}) => RustLib.instance.api.crateApiVerifyPaymentDisclosure(
+  walletId: walletId,
+  disclosure: disclosure,
+);
+
 /// Generate new mnemonic (utility function for testing/development)
 ///
 /// **Note**: New wallets always use 24-word seeds. This function is provided

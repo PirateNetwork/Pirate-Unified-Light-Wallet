@@ -53,6 +53,26 @@ export interface SynchronizerCallbacks {
   onError?(error: Error): void
 }
 
+export interface PaymentDisclosure {
+  disclosureType: 'sapling' | 'orchard' | string
+  txid: string
+  outputIndex: number
+  address: string
+  amount: number
+  memo: string | null
+  disclosure: string
+}
+
+export interface PaymentDisclosureVerification {
+  disclosureType: 'sapling' | 'orchard' | string
+  txid: string
+  outputIndex: number
+  address: string
+  amount: number
+  memo: string | null
+  memoHex: string
+}
+
 export class PirateWalletAdvancedKeyManagement {
   listKeyGroups(walletId: string): Promise<any[]>
   exportKeyGroupKeys(walletId: string, keyId: number): Promise<any>
@@ -127,6 +147,10 @@ export class PirateWalletSdk {
   listTransactions(walletId: string, limit?: number | null): Promise<any[]>
   fetchTransactionMemo(walletId: string, txId: string, outputIndex?: number | null): Promise<string | null>
   getTransactionDetails(walletId: string, txId: string): Promise<any | null>
+  exportPaymentDisclosures(walletId: string, txId: string): Promise<PaymentDisclosure[]>
+  exportSaplingPaymentDisclosure(walletId: string, txId: string, outputIndex: number): Promise<string>
+  exportOrchardPaymentDisclosure(walletId: string, txId: string, actionIndex: number): Promise<string>
+  verifyPaymentDisclosure(walletId: string, disclosure: string): Promise<PaymentDisclosureVerification>
   getFeeInfo(): Promise<any>
   startSync(walletIdOrRequest: any, mode?: SyncMode): Promise<any>
   getSyncStatus(walletId: string): Promise<any>
