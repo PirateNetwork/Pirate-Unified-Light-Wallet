@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 30;
+const SCHEMA_VERSION: i32 = 31;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -119,6 +119,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 30 {
         migrate_v30(conn)?;
+    }
+    if current_version < 31 {
+        migrate_v31(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -506,6 +509,92 @@ fn migrate_v30(conn: &Connection) -> Result<()> {
         "#,
     )
     .map_err(|e| Error::Migration(e.to_string()))?;
+
+    Ok(())
+}
+
+fn migrate_v31(conn: &Connection) -> Result<()> {
+    let migration_result = conn.execute_batch(
+        r#"
+        BEGIN IMMEDIATE;
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v31_chain_block_metadata', 'started', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        -- Canonical per-height block identity used to detect reorgs across
+        -- app restarts. This is intentionally wallet-local rather than relying
+        -- on the shared compact-block cache.
+        CREATE TABLE IF NOT EXISTS chain_blocks (
+            height INTEGER PRIMARY KEY,
+            hash BLOB NOT NULL,
+            prev_hash BLOB NOT NULL,
+            time INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_chain_blocks_hash
+            ON chain_blocks(hash);
+
+        -- Existing wallets synced before this migration only persisted heights,
+        -- so their chain-derived state cannot be proven to belong to the current
+        -- canonical branch. Preserve keys/metadata, but rebuild notes, txs,
+        -- witness trees, and chain metadata from compact blocks.
+        DELETE FROM notes;
+        DELETE FROM transactions;
+        DELETE FROM memos;
+        DELETE FROM unlinked_spend_nullifiers;
+        DELETE FROM checkpoints;
+        DELETE FROM frontier_snapshots;
+        DELETE FROM sync_logs;
+        DELETE FROM scan_queue;
+        DELETE FROM sapling_note_shards;
+        DELETE FROM orchard_note_shards;
+        DELETE FROM chain_blocks;
+
+        DELETE FROM sapling_tree_cap;
+        DELETE FROM sapling_tree_checkpoint_marks_removed;
+        DELETE FROM sapling_tree_checkpoints;
+        DELETE FROM sapling_tree_shards;
+        DELETE FROM orchard_tree_cap;
+        DELETE FROM orchard_tree_checkpoint_marks_removed;
+        DELETE FROM orchard_tree_checkpoints;
+        DELETE FROM orchard_tree_shards;
+
+        UPDATE sync_state SET
+            local_height = 0,
+            target_height = 0,
+            last_checkpoint_height = 0,
+            updated_at = datetime('now')
+        WHERE id = 1;
+
+        UPDATE spendability_state SET
+            spendable = 0,
+            rescan_required = 1,
+            target_height = 0,
+            anchor_height = 0,
+            validated_anchor_height = 0,
+            repair_queued = 0,
+            repair_from_height = 0,
+            reason_code = 'ERR_RESCAN_REQUIRED',
+            updated_at = datetime('now')
+        WHERE id = 1;
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v31_chain_block_metadata', 'completed', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        COMMIT;
+        "#,
+    );
+
+    if let Err(e) = migration_result {
+        let _ = conn.execute_batch("ROLLBACK;");
+        return Err(Error::Migration(e.to_string()));
+    }
 
     Ok(())
 }

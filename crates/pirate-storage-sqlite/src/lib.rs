@@ -87,8 +87,8 @@ pub use spendability_state::{
     PerPoolAnchorHeights, SpendabilityStateRow, SpendabilityStateStorage,
 };
 pub use sync_state::{
-    atomic_sync_update, truncate_above_height, SyncStateRow, SyncStateStorage, BASE_BACKOFF_MS,
-    MAX_BACKOFF_MS, MAX_BUSY_RETRIES,
+    atomic_sync_update, truncate_above_height, ChainBlockRow, SyncStateRow, SyncStateStorage,
+    BASE_BACKOFF_MS, MAX_BACKOFF_MS, MAX_BUSY_RETRIES,
 };
 pub use watch_only::{
     messages as watch_only_messages, SaplingViewingKeyExportResult, SaplingViewingKeyImportRequest,

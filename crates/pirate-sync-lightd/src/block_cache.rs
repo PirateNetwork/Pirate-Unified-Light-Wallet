@@ -146,6 +146,28 @@ impl BlockCache {
         Ok(())
     }
 
+    pub fn delete_range(&self, start: u64, end: u64) -> Result<usize> {
+        if start > end {
+            return Ok(0);
+        }
+
+        let conn = self.open_conn()?;
+        conn.execute(
+            "DELETE FROM blocks WHERE height BETWEEN ?1 AND ?2",
+            params![start as i64, end as i64],
+        )
+        .map_err(|e| Error::Storage(e.to_string()))
+    }
+
+    pub fn delete_above(&self, height: u64) -> Result<usize> {
+        let conn = self.open_conn()?;
+        conn.execute(
+            "DELETE FROM blocks WHERE height > ?1",
+            params![height as i64],
+        )
+        .map_err(|e| Error::Storage(e.to_string()))
+    }
+
     fn new(path: PathBuf) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Error::Storage(e.to_string()))?;

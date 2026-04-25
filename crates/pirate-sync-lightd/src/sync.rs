@@ -50,8 +50,8 @@ use pirate_storage_sqlite::shardtree_store::{
     put_shard_roots, PersistedSubtreeRoot, SqliteShardStore,
 };
 use pirate_storage_sqlite::{
-    truncate_above_height, Database, EncryptionKey, NoteRecord, Repository, ScanQueueStorage,
-    SpendabilityStateStorage, SyncStateStorage,
+    truncate_above_height, ChainBlockRow, Database, EncryptionKey, NoteRecord, Repository,
+    ScanQueueStorage, SpendabilityStateStorage, SyncStateStorage,
 };
 use rayon::prelude::*;
 use shardtree::store::caching::CachingShardStore;
@@ -134,6 +134,11 @@ fn verbose_sync_batch_logging_enabled() -> bool {
         // PIRATE_VERBOSE_SYNC_LOGS=0 to disable.
         Err(_) => true,
     })
+}
+
+fn height_to_u32(height: u64) -> Result<u32> {
+    u32::try_from(height)
+        .map_err(|_| Error::Sync(format!("Block height {} exceeds u32::MAX", height)))
 }
 
 fn append_debug_log_line(line: &str) {
@@ -266,6 +271,7 @@ const LOW_HEIGHT_BATCH_MAX_BLOCKS: u64 = 1_024;
 const HISTORIC_AUX_FLUSH_BLOCK_INTERVAL: u64 = 25_000;
 const HISTORIC_AUX_FLUSH_INTERVAL_MS: u64 = 30_000;
 const HISTORIC_SPARSE_CHECKPOINT_INTERVAL: u64 = 50_000;
+const MAX_REORG_SEARCH_DEPTH: u64 = 2_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TipWitnessValidationOutcome {
@@ -793,6 +799,156 @@ impl SyncEngine {
         self.sync_range(start_height, None).await
     }
 
+    async fn validate_resume_chain(
+        &mut self,
+        requested_start_height: u64,
+        remote_tip_height: u64,
+    ) -> Result<u64> {
+        let Some(sink) = self.storage.clone() else {
+            return Ok(requested_start_height);
+        };
+
+        let expected_tip_height = requested_start_height.saturating_sub(1);
+        if expected_tip_height == 0 {
+            return Ok(requested_start_height);
+        }
+        if expected_tip_height > remote_tip_height {
+            tracing::warn!(
+                "Local resume tip {} is ahead of server tip {}; postponing reorg validation",
+                expected_tip_height,
+                remote_tip_height
+            );
+            return Ok(requested_start_height);
+        }
+
+        let (local_tip, metadata_gap) = match sink.load_chain_block(expected_tip_height)? {
+            Some(block) => (block, false),
+            None => match sink.load_latest_chain_block()? {
+                Some(block) if block.height < expected_tip_height => {
+                    tracing::warn!(
+                        "Canonical block metadata stops at {}, but sync_state resumes after {}; replaying from metadata tip",
+                        block.height,
+                        expected_tip_height
+                    );
+                    (block, true)
+                }
+                _ => {
+                    tracing::debug!(
+                        "No canonical block metadata at resume tip {}; continuing without resume reorg check",
+                        expected_tip_height
+                    );
+                    return Ok(requested_start_height);
+                }
+            },
+        };
+
+        if local_tip.height == 0 || local_tip.height > remote_tip_height {
+            return Ok(requested_start_height);
+        }
+
+        let remote_tip_block = self
+            .client
+            .get_block(height_to_u32(local_tip.height)?)
+            .await?;
+        if remote_tip_block.hash == local_tip.hash {
+            if metadata_gap {
+                self.rollback_to_checkpoint(local_tip.height).await?;
+                self.invalidate_block_cache_above(local_tip.height);
+                return Ok(local_tip.height.saturating_add(1).max(1));
+            }
+            return Ok(requested_start_height);
+        }
+
+        tracing::warn!(
+            "Reorg detected on resume at height {} (local={}, remote={})",
+            local_tip.height,
+            hex::encode(&local_tip.hash),
+            hex::encode(&remote_tip_block.hash)
+        );
+        self.rollback_to_common_ancestor(local_tip.height).await
+    }
+
+    async fn rollback_to_common_ancestor(&mut self, divergent_height: u64) -> Result<u64> {
+        let rollback_height = self
+            .find_common_ancestor(divergent_height)
+            .await?
+            .unwrap_or_else(|| (self.birthday_height as u64).saturating_sub(1));
+
+        self.rollback_to_checkpoint(rollback_height).await?;
+        self.invalidate_block_cache_above(rollback_height);
+
+        Ok(rollback_height.saturating_add(1).max(1))
+    }
+
+    async fn find_common_ancestor(&self, divergent_height: u64) -> Result<Option<u64>> {
+        let Some(sink) = self.storage.clone() else {
+            return Ok(None);
+        };
+        let birthday_floor = (self.birthday_height as u64).saturating_sub(1);
+        let stop_height = divergent_height
+            .saturating_sub(MAX_REORG_SEARCH_DEPTH)
+            .max(birthday_floor);
+
+        let mut height = divergent_height;
+        loop {
+            if let Some(local) = sink.load_chain_block(height)? {
+                let remote = self.client.get_block(height_to_u32(height)?).await?;
+                if local.hash == remote.hash {
+                    tracing::info!("Found common chain ancestor at height {}", height);
+                    return Ok(Some(height));
+                }
+            }
+
+            if height == 0 || height <= stop_height {
+                break;
+            }
+            height = height.saturating_sub(1);
+        }
+
+        tracing::warn!(
+            "No common chain ancestor found between heights {} and {}; rolling back to wallet birthday floor",
+            divergent_height,
+            stop_height
+        );
+        Ok(None)
+    }
+
+    fn invalidate_block_cache_above(&self, height: u64) {
+        match BlockCache::for_endpoint(self.client.endpoint()) {
+            Ok(cache) => {
+                if let Err(e) = cache.delete_above(height) {
+                    tracing::debug!("Failed to invalidate block cache above {}: {}", height, e);
+                }
+            }
+            Err(e) => tracing::debug!("Failed to open block cache for invalidation: {}", e),
+        }
+    }
+
+    fn validate_batch_boundary(
+        &self,
+        batch_start: u64,
+        blocks: &[CompactBlockData],
+    ) -> Result<bool> {
+        if batch_start <= 1 || blocks.is_empty() {
+            return Ok(true);
+        }
+        let Some(sink) = self.storage.as_ref() else {
+            return Ok(true);
+        };
+        let Some(previous) = sink.load_chain_block(batch_start.saturating_sub(1))? else {
+            return Ok(true);
+        };
+        let first = &blocks[0];
+        if first.prev_hash.len() != 32 {
+            return Err(Error::Sync(format!(
+                "Block {} has invalid prev_hash length {}",
+                first.height,
+                first.prev_hash.len()
+            )));
+        }
+        Ok(first.prev_hash == previous.hash)
+    }
+
     /// Total wallet balance at a given chain height (spendable + pending).
     ///
     /// Returns `Ok(None)` if the engine has no attached wallet storage.
@@ -964,7 +1120,7 @@ impl SyncEngine {
         // In follow-tip mode we cannot early-return when local resume height is ahead of
         // current server tip, because that can leave queued FoundNote repairs unprocessed.
         // Clamp to tip so the normal monitor/repair loop remains active.
-        let effective_start_height = start_height;
+        let mut effective_start_height = start_height;
         if end < start_height {
             if follow_tip {
                 // The server tip hasn't advanced past our resume height yet.
@@ -988,6 +1144,10 @@ impl SyncEngine {
                 );
             }
         }
+
+        effective_start_height = self
+            .validate_resume_chain(effective_start_height, end)
+            .await?;
 
         self.ensure_nullifier_cache()?;
 
@@ -2612,9 +2772,29 @@ impl SyncEngine {
                 // #endregion
 
                 if blocks.is_empty() {
-                    tracing::warn!("Empty block batch at {}-{}", batch_start, batch_end);
-                    current_height = batch_end + 1;
-                    continue;
+                    return Err(Error::Sync(format!(
+                        "lightwalletd returned empty compact block batch for {}-{}",
+                        batch_start, batch_end
+                    )));
+                }
+
+                if !self.validate_batch_boundary(batch_start, &blocks)? {
+                    tracing::warn!(
+                        "Reorg detected at batch boundary before height {}; rolling back to common ancestor",
+                        batch_start
+                    );
+                    let resume_height = self
+                        .rollback_to_common_ancestor(batch_start.saturating_sub(1))
+                        .await?;
+                    current_height = resume_height;
+                    last_checkpoint_height = resume_height.saturating_sub(1);
+                    last_major_checkpoint_height = resume_height.saturating_sub(1);
+                    batches_since_mini_checkpoint = 0;
+                    batches_since_sync_state_flush = 0;
+                    Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
+                    Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                    server_group_end_hint = None;
+                    continue 'sync_main;
                 }
                 consecutive_fetch_failures = 0;
 
@@ -3012,6 +3192,10 @@ impl SyncEngine {
                         ));
                     }
                     // #endregion
+                }
+
+                if let (Some(sink), Some(db)) = (self.storage.as_ref(), run_db.as_ref()) {
+                    sink.save_chain_blocks_with_db(db, &blocks)?;
                 }
 
                 if self.config.defer_full_tx_fetch && !notes.is_empty() {
@@ -3455,6 +3639,27 @@ impl SyncEngine {
 
             match self.client.get_latest_block().await {
                 Ok(latest_height) => {
+                    let validated_start = self
+                        .validate_resume_chain(current.saturating_add(1), latest_height)
+                        .await?;
+                    if validated_start <= current {
+                        tracing::warn!(
+                            "Reorg detected while monitoring tip {}; resuming from {}",
+                            current,
+                            validated_start
+                        );
+                        current_height = validated_start;
+                        end = latest_height.max(validated_start);
+                        last_checkpoint_height = validated_start.saturating_sub(1);
+                        last_major_checkpoint_height = validated_start.saturating_sub(1);
+                        batches_since_mini_checkpoint = 0;
+                        batches_since_sync_state_flush = 0;
+                        Self::abort_prefetch_queue(&mut prefetch_queue, &mut queued_prefetch_bytes);
+                        Self::abort_pending_server_batch_hint(&mut pending_server_group_hint);
+                        server_group_end_hint = None;
+                        continue 'sync_outer;
+                    }
+
                     if latest_height > current {
                         tracing::info!(
                         "Found {} new blocks after sync completion, continuing sync from {} to {}",
@@ -3533,6 +3738,109 @@ impl SyncEngine {
         }
     }
 
+    fn validate_compact_block_range(
+        start: u64,
+        end: u64,
+        blocks: &[CompactBlockData],
+    ) -> Result<()> {
+        let expected_blocks = end.saturating_sub(start).saturating_add(1) as usize;
+        if blocks.len() != expected_blocks {
+            return Err(Error::Sync(format!(
+                "compact block range {}-{} returned {} blocks, expected {}",
+                start,
+                end,
+                blocks.len(),
+                expected_blocks
+            )));
+        }
+
+        let mut previous_hash: Option<&[u8]> = None;
+        for (index, block) in blocks.iter().enumerate() {
+            let expected_height = start.saturating_add(index as u64);
+            if block.height != expected_height {
+                return Err(Error::Sync(format!(
+                    "compact block range {}-{} returned height {} at index {}, expected {}",
+                    start, end, block.height, index, expected_height
+                )));
+            }
+            if block.hash.len() != 32 {
+                return Err(Error::Sync(format!(
+                    "compact block {} has invalid hash length {}",
+                    block.height,
+                    block.hash.len()
+                )));
+            }
+            if block.prev_hash.len() != 32 {
+                return Err(Error::Sync(format!(
+                    "compact block {} has invalid prev_hash length {}",
+                    block.height,
+                    block.prev_hash.len()
+                )));
+            }
+            if let Some(previous_hash) = previous_hash {
+                if block.prev_hash.as_slice() != previous_hash {
+                    return Err(Error::Sync(format!(
+                        "compact block {} prev_hash does not match previous block hash",
+                        block.height
+                    )));
+                }
+            }
+            previous_hash = Some(&block.hash);
+        }
+
+        Ok(())
+    }
+
+    async fn cached_blocks_are_canonical(
+        client: &LightClient,
+        cache: &BlockCache,
+        start: u64,
+        end: u64,
+        blocks: &[CompactBlockData],
+    ) -> Result<bool> {
+        if let Err(e) = Self::validate_compact_block_range(start, end, blocks) {
+            tracing::warn!(
+                "Invalid cached compact block range {}-{}; invalidating cache: {}",
+                start,
+                end,
+                e
+            );
+            let _ = cache.delete_range(start, end);
+            return Ok(false);
+        }
+
+        let Some(last) = blocks.last() else {
+            let _ = cache.delete_range(start, end);
+            return Ok(false);
+        };
+
+        match client.get_block(height_to_u32(end)?).await {
+            Ok(remote) if remote.hash == last.hash => Ok(true),
+            Ok(remote) => {
+                tracing::warn!(
+                    "Cached compact block {} is stale (cache={}, remote={}); invalidating {}-{}",
+                    end,
+                    hex::encode(&last.hash),
+                    hex::encode(&remote.hash),
+                    start,
+                    end
+                );
+                let _ = cache.delete_range(start, end);
+                Ok(false)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Could not validate cached compact blocks {}-{} against remote: {}; refetching",
+                    start,
+                    end,
+                    e
+                );
+                let _ = cache.delete_range(start, end);
+                Ok(false)
+            }
+        }
+    }
+
     async fn fetch_blocks_with_retry_inner(
         client: LightClient,
         start: u64,
@@ -3574,7 +3882,11 @@ impl SyncEngine {
                             blocks.len()
                         ));
                     }
-                    return Ok(blocks);
+                    if Self::cached_blocks_are_canonical(&client, &cache, start, end, &blocks)
+                        .await?
+                    {
+                        return Ok(blocks);
+                    }
                 }
                 Ok(blocks) if !blocks.is_empty() => {
                     tracing::debug!(
@@ -3630,7 +3942,12 @@ impl SyncEngine {
                     }
                     if let Ok(cache) = BlockCache::for_endpoint(client.endpoint()) {
                         if let Ok(blocks) = cache.load_range(start, end) {
-                            if blocks.len() == expected_blocks {
+                            if blocks.len() == expected_blocks
+                                && Self::cached_blocks_are_canonical(
+                                    &client, &cache, start, end, &blocks,
+                                )
+                                .await?
+                            {
                                 return Ok(blocks);
                             }
                         }
@@ -3647,6 +3964,16 @@ impl SyncEngine {
                                 wallet_id.as_deref()
                             ) => res,
                             _ = cancel.cancelled() => Err(Error::Cancelled),
+                        };
+
+                        let fetch = match fetch {
+                            Ok(blocks) => {
+                                match Self::validate_compact_block_range(start, end, &blocks) {
+                                    Ok(()) => Ok(blocks),
+                                    Err(e) => Err(e),
+                                }
+                            }
+                            Err(e) => Err(e),
                         };
 
                         match fetch {
@@ -6307,6 +6634,9 @@ impl SyncEngine {
         let mut db = Database::open_existing(&sink.db_path, &sink.key, sink.master_key.clone())?;
         truncate_above_height(&mut db, checkpoint_height)?;
 
+        self.nullifier_cache.clear();
+        self.nullifier_cache_loaded = false;
+        self.tracked_wallet_txids.clear();
         self.recover_position_counters_from_shardtree().await?;
 
         tracing::info!(
@@ -6345,16 +6675,12 @@ impl SyncEngine {
 
     /// Detect and handle reorg
     pub async fn detect_and_handle_reorg(&mut self, height: u64) -> Result<bool> {
-        let local_block = if let Ok(cache) = BlockCache::for_endpoint(self.client.endpoint()) {
-            cache
-                .load_range(height, height)
-                .ok()
-                .and_then(|mut blocks| blocks.pop())
-        } else {
-            None
-        };
+        let local_block = self
+            .storage
+            .as_ref()
+            .and_then(|sink| sink.load_chain_block(height).ok().flatten());
 
-        let remote_block = match self.client.get_block(height as u32).await {
+        let remote_block = match self.client.get_block(height_to_u32(height)?).await {
             Ok(block) => block,
             Err(e) => {
                 tracing::warn!("Reorg check failed at height {}: {}", height, e);
@@ -6365,8 +6691,7 @@ impl SyncEngine {
         if let Some(local) = local_block {
             if local.hash != remote_block.hash {
                 tracing::warn!("Reorg detected at height {}", height);
-                let rollback_height = height.saturating_sub(1);
-                self.rollback_to_checkpoint(rollback_height).await?;
+                self.rollback_to_common_ancestor(height).await?;
                 return Ok(true);
             }
         }
@@ -7254,6 +7579,35 @@ impl StorageSink {
     ) -> Result<()> {
         let sync_state = SyncStateStorage::new(db);
         Ok(sync_state.save_sync_state(local_height, target_height, last_checkpoint_height)?)
+    }
+
+    fn save_chain_blocks_with_db(&self, db: &Database, blocks: &[CompactBlockData]) -> Result<()> {
+        if blocks.is_empty() {
+            return Ok(());
+        }
+        let rows: Vec<ChainBlockRow> = blocks
+            .iter()
+            .map(|block| ChainBlockRow {
+                height: block.height,
+                hash: block.hash.clone(),
+                prev_hash: block.prev_hash.clone(),
+                time: block.time,
+            })
+            .collect();
+        let sync_state = SyncStateStorage::new(db);
+        Ok(sync_state.save_chain_blocks(&rows)?)
+    }
+
+    fn load_chain_block(&self, height: u64) -> Result<Option<ChainBlockRow>> {
+        let db = Database::open_existing(&self.db_path, &self.key, self.master_key.clone())?;
+        let sync_state = SyncStateStorage::new(&db);
+        Ok(sync_state.load_chain_block(height)?)
+    }
+
+    fn load_latest_chain_block(&self) -> Result<Option<ChainBlockRow>> {
+        let db = Database::open_existing(&self.db_path, &self.key, self.master_key.clone())?;
+        let sync_state = SyncStateStorage::new(&db);
+        Ok(sync_state.load_latest_chain_block()?)
     }
 }
 

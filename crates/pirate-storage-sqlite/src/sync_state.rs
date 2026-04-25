@@ -5,6 +5,7 @@
 
 use crate::{Database, Error, Result};
 use rusqlite::{params, types::ValueRef, ErrorCode, OptionalExtension, Transaction};
+use std::collections::HashSet;
 use std::thread;
 use std::time::Duration;
 
@@ -28,6 +29,19 @@ pub struct SyncStateRow {
     pub last_checkpoint_height: u64,
     /// Last update timestamp (ISO 8601)
     pub updated_at: String,
+}
+
+/// Canonical compact-block identity persisted with wallet sync state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainBlockRow {
+    /// Block height.
+    pub height: u64,
+    /// Block hash bytes as returned by lightwalletd.
+    pub hash: Vec<u8>,
+    /// Previous block hash bytes as returned by lightwalletd.
+    pub prev_hash: Vec<u8>,
+    /// Block timestamp.
+    pub time: u32,
 }
 
 impl Default for SyncStateRow {
@@ -221,6 +235,88 @@ impl<'a> SyncStateStorage<'a> {
         })
     }
 
+    /// Save canonical block metadata for a processed compact-block batch.
+    pub fn save_chain_blocks(&self, blocks: &[ChainBlockRow]) -> Result<()> {
+        self.execute_with_retry(|| {
+            let tx = self.db.conn().unchecked_transaction()?;
+            Self::save_chain_blocks_tx(&tx, blocks)?;
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    /// Save canonical block metadata inside an existing transaction.
+    pub fn save_chain_blocks_tx(tx: &Transaction<'_>, blocks: &[ChainBlockRow]) -> Result<()> {
+        if blocks.is_empty() {
+            return Ok(());
+        }
+
+        let updated_at = chrono::Utc::now().to_rfc3339();
+        let mut stmt = tx.prepare(
+            r#"
+            INSERT INTO chain_blocks (height, hash, prev_hash, time, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ON CONFLICT(height) DO UPDATE SET
+                hash = excluded.hash,
+                prev_hash = excluded.prev_hash,
+                time = excluded.time,
+                updated_at = excluded.updated_at
+            "#,
+        )?;
+
+        for block in blocks {
+            stmt.execute(params![
+                to_sql_i64(block.height)?,
+                &block.hash,
+                &block.prev_hash,
+                i64::from(block.time),
+                &updated_at
+            ])?;
+        }
+
+        Ok(())
+    }
+
+    /// Load canonical block metadata at a height.
+    pub fn load_chain_block(&self, height: u64) -> Result<Option<ChainBlockRow>> {
+        let height = to_sql_i64(height)?;
+        self.query_with_retry(|| {
+            self.db
+                .conn()
+                .query_row(
+                    r#"
+                    SELECT height, hash, prev_hash, time
+                    FROM chain_blocks
+                    WHERE height = ?1
+                    "#,
+                    [height],
+                    chain_block_from_row,
+                )
+                .optional()
+                .map_err(Into::into)
+        })
+    }
+
+    /// Load the highest canonical block metadata row.
+    pub fn load_latest_chain_block(&self) -> Result<Option<ChainBlockRow>> {
+        self.query_with_retry(|| {
+            self.db
+                .conn()
+                .query_row(
+                    r#"
+                    SELECT height, hash, prev_hash, time
+                    FROM chain_blocks
+                    ORDER BY height DESC
+                    LIMIT 1
+                    "#,
+                    [],
+                    chain_block_from_row,
+                )
+                .optional()
+                .map_err(Into::into)
+        })
+    }
+
     /// Execute with retry logic for SQLITE_BUSY
     fn execute_with_retry<F>(&self, mut f: F) -> Result<()>
     where
@@ -295,6 +391,19 @@ fn calculate_backoff(attempt: u32) -> u64 {
     (base + jitter).min(MAX_BACKOFF_MS)
 }
 
+fn chain_block_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChainBlockRow> {
+    let height_i64: i64 = row.get(0)?;
+    let time_i64: i64 = row.get(3)?;
+    Ok(ChainBlockRow {
+        height: u64::try_from(height_i64)
+            .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(0, height_i64))?,
+        hash: row.get(1)?,
+        prev_hash: row.get(2)?,
+        time: u32::try_from(time_i64)
+            .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(3, time_i64))?,
+    })
+}
+
 /// Atomic sync state update (combines multiple fields in one transaction)
 pub fn atomic_sync_update(
     db: &mut Database,
@@ -327,8 +436,13 @@ pub fn atomic_sync_update(
 pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
     let height_u64 = height;
     let height = to_sql_i64(height_u64)?;
+    let queue_end_exclusive = to_sql_i64(height_u64.saturating_add(1))?;
     let master_key = db.master_key().clone();
     let tx = db.transaction()?;
+    let orphaned_spend_txids = collect_transaction_txids_above_height(&tx, height)?;
+    let reset_spent_notes = reset_notes_spent_by_txids(&tx, &master_key, &orphaned_spend_txids)?;
+    let deleted_unlinked_spends =
+        delete_unlinked_spends_by_txids(&tx, &master_key, &orphaned_spend_txids)?;
 
     // Delete notes above height.
     //
@@ -434,14 +548,31 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
         }
     }
 
-    // Delete transactions above height
+    // Delete memos and transactions above height.
+    //
+    // Foreign keys are intentionally disabled for SQLCipher hot paths, so memos
+    // need explicit cleanup before their transaction rows are removed.
+    tx.execute(
+        "DELETE FROM memos WHERE tx_id IN (SELECT id FROM transactions WHERE height > ?1)",
+        [height],
+    )?;
     tx.execute("DELETE FROM transactions WHERE height > ?1", [height])?;
+
+    // Delete canonical block metadata above height
+    tx.execute("DELETE FROM chain_blocks WHERE height > ?1", [height])?;
 
     // Delete checkpoints above height
     tx.execute("DELETE FROM checkpoints WHERE height > ?1", [height])?;
 
     // Delete frontier snapshots above height
     tx.execute("DELETE FROM frontier_snapshots WHERE height > ?1", [height])?;
+
+    // Drop stale repair ranges that point into rolled-back chain history. The
+    // replay after rollback will rebuild any still-needed witness repair ranges.
+    tx.execute(
+        "DELETE FROM scan_queue WHERE range_end > ?1",
+        [queue_end_exclusive],
+    )?;
 
     // Rewind commitment trees (Sapling + Orchard) using shardtree truncation.
     // This prevents stale/invalid anchors after rollback.
@@ -611,14 +742,149 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
         params![height, updated_at],
     )?;
 
+    tx.execute(
+        r#"
+        UPDATE spendability_state SET
+            spendable = 0,
+            target_height = CASE WHEN target_height > ?1 THEN ?1 ELSE target_height END,
+            anchor_height = CASE WHEN anchor_height > ?1 THEN ?1 ELSE anchor_height END,
+            validated_anchor_height = CASE
+                WHEN validated_anchor_height > ?1 THEN ?1
+                ELSE validated_anchor_height
+            END,
+            repair_queued = 0,
+            repair_from_height = 0,
+            reason_code = CASE
+                WHEN rescan_required != 0 THEN reason_code
+                ELSE 'ERR_SYNC_FINALIZING'
+            END,
+            updated_at = ?2
+        WHERE id = 1
+        "#,
+        params![height, updated_at],
+    )?;
+
     tx.commit()?;
 
     tracing::info!(
-        "Truncated data above height {} (notes_deleted={})",
+        "Truncated data above height {} (notes_deleted={}, spent_reset={}, unlinked_spends_deleted={})",
         height,
-        note_ids_to_delete.len()
+        note_ids_to_delete.len(),
+        reset_spent_notes,
+        deleted_unlinked_spends
     );
     Ok(())
+}
+
+fn collect_transaction_txids_above_height(
+    tx: &Transaction<'_>,
+    height: i64,
+) -> Result<HashSet<[u8; 32]>> {
+    let mut stmt = tx.prepare("SELECT txid FROM transactions WHERE height > ?1")?;
+    let rows = stmt
+        .query_map([height], |row| row.get::<_, String>(0))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    let mut txids = HashSet::new();
+    for txid_hex in rows {
+        for candidate in txid_hex_candidates(&txid_hex) {
+            txids.insert(candidate);
+        }
+    }
+    Ok(txids)
+}
+
+fn txid_hex_candidates(txid_hex: &str) -> Vec<[u8; 32]> {
+    let Ok(mut bytes) = hex::decode(txid_hex) else {
+        return Vec::new();
+    };
+    if bytes.len() != 32 {
+        return Vec::new();
+    }
+
+    let mut direct = [0u8; 32];
+    direct.copy_from_slice(&bytes);
+    bytes.reverse();
+    let mut reversed = [0u8; 32];
+    reversed.copy_from_slice(&bytes);
+
+    if direct == reversed {
+        vec![direct]
+    } else {
+        vec![direct, reversed]
+    }
+}
+
+fn reset_notes_spent_by_txids(
+    tx: &Transaction<'_>,
+    master_key: &crate::security::MasterKey,
+    txids: &HashSet<[u8; 32]>,
+) -> Result<usize> {
+    if txids.is_empty() {
+        return Ok(0);
+    }
+
+    let mut stmt = tx.prepare("SELECT id, spent_txid FROM notes WHERE spent_txid IS NOT NULL")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, Option<Vec<u8>>>(1)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    let encrypted_unspent = master_key.encrypt(&[0])?;
+    let mut update = tx.prepare("UPDATE notes SET spent = ?1, spent_txid = NULL WHERE id = ?2")?;
+    let mut reset = 0usize;
+    for (id, encrypted_spent_txid) in rows {
+        let Some(encrypted_spent_txid) = encrypted_spent_txid else {
+            continue;
+        };
+        let spent_txid = master_key.decrypt(&encrypted_spent_txid)?;
+        if spent_txid.len() != 32 {
+            continue;
+        }
+        let mut txid = [0u8; 32];
+        txid.copy_from_slice(&spent_txid);
+        if txids.contains(&txid) {
+            reset += update.execute(params![&encrypted_unspent, id])?;
+        }
+    }
+
+    Ok(reset)
+}
+
+fn delete_unlinked_spends_by_txids(
+    tx: &Transaction<'_>,
+    master_key: &crate::security::MasterKey,
+    txids: &HashSet<[u8; 32]>,
+) -> Result<usize> {
+    if txids.is_empty() {
+        return Ok(0);
+    }
+
+    let mut stmt = tx.prepare("SELECT id, spending_txid FROM unlinked_spend_nullifiers")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    let mut delete = tx.prepare("DELETE FROM unlinked_spend_nullifiers WHERE id = ?1")?;
+    let mut deleted = 0usize;
+    for (id, encrypted_spending_txid) in rows {
+        let spending_txid = master_key.decrypt(&encrypted_spending_txid)?;
+        if spending_txid.len() != 32 {
+            continue;
+        }
+        let mut txid = [0u8; 32];
+        txid.copy_from_slice(&spending_txid);
+        if txids.contains(&txid) {
+            deleted += delete.execute([id])?;
+        }
+    }
+
+    Ok(deleted)
 }
 
 fn to_sql_i64(value: u64) -> Result<i64> {
@@ -629,6 +895,8 @@ fn to_sql_i64(value: u64) -> Result<i64> {
 mod tests {
     use super::*;
     use crate::encryption::EncryptionKey;
+    use crate::models::{NoteRecord, NoteType};
+    use crate::Repository;
     use tempfile::NamedTempFile;
 
     fn test_db() -> Database {
@@ -760,5 +1028,79 @@ mod tests {
             .collect::<std::result::Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(orchard_ids, vec![100]);
+    }
+
+    #[test]
+    fn test_chain_block_metadata_roundtrip() {
+        let db = test_db();
+        let storage = SyncStateStorage::new(&db);
+        let block = ChainBlockRow {
+            height: 123,
+            hash: vec![1u8; 32],
+            prev_hash: vec![2u8; 32],
+            time: 456,
+        };
+
+        storage
+            .save_chain_blocks(std::slice::from_ref(&block))
+            .unwrap();
+
+        assert_eq!(storage.load_chain_block(123).unwrap(), Some(block.clone()));
+        assert_eq!(storage.load_latest_chain_block().unwrap(), Some(block));
+    }
+
+    #[test]
+    fn test_truncate_above_height_unspends_rolled_back_spend() {
+        let mut db = test_db();
+        let spend_txid = [7u8; 32];
+        let note_txid = [3u8; 32];
+
+        {
+            let repo = Repository::new(&db);
+            repo.upsert_transaction(&hex::encode(spend_txid), 105, 1_700_000_000, 10)
+                .unwrap();
+            repo.insert_note_without_shard_metadata(&NoteRecord {
+                id: None,
+                account_id: 1,
+                key_id: None,
+                note_type: NoteType::Sapling,
+                value: 42,
+                nullifier: vec![1u8; 32],
+                commitment: vec![2u8; 32],
+                spent: true,
+                height: 90,
+                txid: note_txid.to_vec(),
+                output_index: 0,
+                address_id: None,
+                spent_txid: Some(spend_txid.to_vec()),
+                diversifier: None,
+                note: None,
+                position: Some(0),
+                memo: None,
+            })
+            .unwrap();
+            repo.upsert_unlinked_spend_nullifiers_with_txid(
+                1,
+                &[(NoteType::Sapling, [9u8; 32], spend_txid)],
+            )
+            .unwrap();
+        }
+
+        truncate_above_height(&mut db, 100).unwrap();
+
+        let repo = Repository::new(&db);
+        let unspent = repo.get_unspent_notes(1).unwrap();
+        assert_eq!(unspent.len(), 1);
+        assert!(!unspent[0].spent);
+        assert!(unspent[0].spent_txid.is_none());
+        let unlinked_count: i64 = db
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM unlinked_spend_nullifiers",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(unlinked_count, 0);
     }
 }
