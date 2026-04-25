@@ -181,7 +181,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
       txHeight: tx.height,
       currentHeight: currentHeight,
     );
-    final isConfirmed = tx.confirmed || confirmations >= 10;
+    final isConfirmed = tx.confirmed || confirmations >= 1;
     final statusText = isConfirmed ? 'Confirmed' : 'Pending';
     final statusColor = isConfirmed ? AppColors.success : AppColors.warning;
     final timestamp = _convertTimestamp(tx.timestamp);

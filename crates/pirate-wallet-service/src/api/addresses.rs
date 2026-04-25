@@ -196,7 +196,7 @@ pub(super) fn list_address_balances(
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height;
-    const MIN_DEPTH: u64 = 10;
+    const MIN_DEPTH: u64 = 1;
     let confirmation_threshold = current_height.saturating_sub(MIN_DEPTH.saturating_sub(1));
 
     let mut balances_by_address: HashMap<String, (u64, u64, u64)> = HashMap::new();

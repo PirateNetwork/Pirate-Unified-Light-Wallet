@@ -75,7 +75,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     if (tx.confirmed) {
       return true;
     }
-    return _confirmationsForTx(tx, currentHeight) >= 10;
+    return _confirmationsForTx(tx, currentHeight) >= 1;
   }
 
   List<TxInfo> _applyFilters(List<TxInfo> transactions, int? currentHeight) {

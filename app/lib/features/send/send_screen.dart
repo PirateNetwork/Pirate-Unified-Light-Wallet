@@ -1649,7 +1649,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
             _errorMessage =
                 'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '
                 'have ${available.toStringAsFixed(8)} ARRR. '
-                '${pending.toStringAsFixed(8)} ARRR is pending and becomes spendable after 10 confirmations.';
+                '${pending.toStringAsFixed(8)} ARRR is pending and becomes spendable after 1 confirmation.';
           } else {
             _errorMessage =
                 'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '

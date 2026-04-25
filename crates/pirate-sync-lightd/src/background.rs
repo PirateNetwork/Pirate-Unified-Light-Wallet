@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
-const MIN_DEPTH: u64 = 10;
+const MIN_DEPTH: u64 = 1;
 
 /// Background sync mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

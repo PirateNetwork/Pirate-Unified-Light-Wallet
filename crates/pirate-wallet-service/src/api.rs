@@ -1420,7 +1420,7 @@ use pirate_core::{
 pub const MAX_OUTPUTS_PER_TX: usize = 50;
 const AUTO_CONSOLIDATION_THRESHOLD: usize = 30;
 const AUTO_CONSOLIDATION_MAX_EXTRA_NOTES: usize = 20;
-const SPENDABILITY_MIN_CONFIRMATIONS: u32 = 10;
+const SPENDABILITY_MIN_CONFIRMATIONS: u32 = 1;
 
 /// Build transaction with note selection, fee calculation, and change.
 pub fn build_tx(
@@ -2157,7 +2157,7 @@ pub async fn download_external_to_file(
 /// Get wallet balance
 ///
 /// Calculates balance from unspent notes in the database.
-/// - spendable: Confirmed unspent notes (with 10+ confirmations)
+/// - spendable: Confirmed unspent notes (with 1+ confirmation)
 /// - pending: Unconfirmed unspent notes
 /// - total: spendable + pending
 pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
@@ -2220,8 +2220,8 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
     }
     // #endregion
 
-    // Standard confirmation depth for Pirate Chain (10 blocks)
-    const MIN_DEPTH: u64 = 10;
+    // Standard confirmation depth for wallet spendability.
+    const MIN_DEPTH: u64 = 1;
 
     let unspent = repo.get_unspent_notes(secret.account_id)?;
 
@@ -2342,7 +2342,7 @@ pub fn get_shielded_pool_balances(wallet_id: WalletId) -> Result<ShieldedPoolBal
     let sync_storage = pirate_storage_sqlite::SyncStateStorage::new(&db);
     let sync_state = sync_storage.load_sync_state()?;
     let current_height = sync_state.local_height;
-    const MIN_DEPTH: u64 = 10;
+    const MIN_DEPTH: u64 = 1;
 
     let mut sapling = Balance {
         total: 0,
@@ -2445,8 +2445,8 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     // Use the best known synced height for confirmation display stability.
     let current_height = sync_state.local_height.max(sync_state.target_height);
 
-    // Confirmation thresholds: receive requires 10, send requires 1.
-    const RECEIVE_MIN_DEPTH: u64 = 10;
+    // Confirmation thresholds for transaction display.
+    const RECEIVE_MIN_DEPTH: u64 = 1;
     const SEND_MIN_DEPTH: u64 = 1;
 
     // Get transactions from database

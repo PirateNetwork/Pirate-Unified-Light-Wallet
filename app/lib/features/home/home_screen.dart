@@ -412,7 +412,7 @@ class _HomeTransactionsSection extends ConsumerWidget {
     if (tx.confirmed) {
       return true;
     }
-    return _confirmationsForTx(tx, currentHeight) >= 10;
+    return _confirmationsForTx(tx, currentHeight) >= 1;
   }
 
   @override

@@ -716,7 +716,7 @@ Future<void> downloadExternalToFile({
 /// Get wallet balance
 ///
 /// Calculates balance from unspent notes in the database.
-/// - spendable: Confirmed unspent notes (with 10+ confirmations)
+/// - spendable: Confirmed unspent notes (with 1+ confirmation)
 /// - pending: Unconfirmed unspent notes
 /// - total: spendable + pending
 Future<Balance> getBalance({required String walletId}) =>

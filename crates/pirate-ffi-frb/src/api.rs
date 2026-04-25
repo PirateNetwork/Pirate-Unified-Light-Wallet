@@ -1183,7 +1183,7 @@ use pirate_core::{
 pub const MAX_OUTPUTS_PER_TX: usize = 50;
 const AUTO_CONSOLIDATION_THRESHOLD: usize = 30;
 const AUTO_CONSOLIDATION_MAX_EXTRA_NOTES: usize = 20;
-const SPENDABILITY_MIN_CONFIRMATIONS: u32 = 10;
+const SPENDABILITY_MIN_CONFIRMATIONS: u32 = 1;
 
 /// Build transaction with note selection, fee calculation, and change.
 pub fn build_tx(
@@ -1776,7 +1776,7 @@ pub async fn download_external_to_file(
 /// Get wallet balance
 ///
 /// Calculates balance from unspent notes in the database.
-/// - spendable: Confirmed unspent notes (with 10+ confirmations)
+/// - spendable: Confirmed unspent notes (with 1+ confirmation)
 /// - pending: Unconfirmed unspent notes
 /// - total: spendable + pending
 pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
