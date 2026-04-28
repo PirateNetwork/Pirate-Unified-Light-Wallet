@@ -20,6 +20,7 @@ pub mod progress;
 pub mod proto_types;
 pub mod sapling;
 pub mod sync;
+pub mod sync_profile;
 
 pub use background::{
     BackgroundSyncConfig, BackgroundSyncMode, BackgroundSyncOrchestrator, BackgroundSyncResult,
@@ -43,3 +44,9 @@ pub use pirate_net::{I2pStatus, TorStatus};
 pub use privacy::{BackgroundSyncTunnelGuard, TunnelConfig, TunnelManager};
 pub use progress::{PerfCountersSnapshot, SyncProgress, SyncStage};
 pub use sync::{SyncConfig, SyncEngine};
+pub use sync_profile::{
+    begin_sync_profile_session, detect_device_snapshot, detect_sync_profile,
+    record_sync_profile_failure, record_sync_profile_success, sync_config_for_detected_device,
+    sync_config_for_profile, SyncDeviceClass, SyncDeviceSnapshot, SyncProfileSelection,
+    SyncWorkload,
+};

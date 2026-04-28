@@ -1,6 +1,9 @@
 use super::*;
 use parking_lot::RwLock;
-use pirate_sync_lightd::{CancelToken, PerfCounters, SyncConfig, SyncEngine, SyncProgress};
+use pirate_sync_lightd::{
+    begin_sync_profile_session, record_sync_profile_failure, record_sync_profile_success,
+    CancelToken, PerfCounters, SyncEngine, SyncProgress, SyncWorkload,
+};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::Arc;
@@ -667,60 +670,9 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
 
     let network_type = wallet_network_type(&wallet_id)?;
     let address_network_type = address_prefix_network_type(&wallet_id)?;
-    let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
-    let (
-        max_parallel_decrypt,
-        max_batch_memory_bytes,
-        target_batch_bytes,
-        min_batch_bytes,
-        max_batch_bytes,
-        prefetch_queue_depth,
-        prefetch_queue_max_bytes,
-    ) = if is_mobile {
-        (
-            8,
-            Some(100_000_000),
-            8_000_000,
-            2_000_000,
-            16_000_000,
-            2,
-            16_000_000,
-        )
-    } else {
-        (
-            32,
-            Some(500_000_000),
-            32_000_000,
-            4_000_000,
-            64_000_000,
-            5,
-            160_000_000,
-        )
-    };
-
-    let config = SyncConfig {
-        checkpoint_interval: 10_000,
-        batch_size: match mode {
-            SyncMode::Compact => 2_000,
-            SyncMode::Deep => 1_000,
-        },
-        min_batch_size: 100,
-        max_batch_size: 2_000,
-        use_server_batch_recommendations: true,
-        mini_checkpoint_every: 5,
-        mini_checkpoint_max_block_gap: 20_000,
-        max_parallel_decrypt,
-        lazy_memo_decode: true,
-        defer_full_tx_fetch: true,
-        target_batch_bytes,
-        min_batch_bytes,
-        max_batch_bytes,
-        heavy_block_threshold_bytes: 500_000,
-        max_batch_memory_bytes,
-        sync_state_flush_every_batches: if is_mobile { 3 } else { 2 },
-        sync_state_flush_interval_ms: 1_500,
-        prefetch_queue_depth,
-        prefetch_queue_max_bytes,
+    let workload = match mode {
+        SyncMode::Compact => SyncWorkload::Compact,
+        SyncMode::Deep => SyncWorkload::Deep,
     };
 
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
@@ -790,6 +742,23 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         cache_sync_status(&wallet_id, &session.last_status);
     }
 
+    let selection = begin_sync_profile_session(workload);
+    let sync_profile = selection.profile;
+    let config = selection.config;
+    tracing::info!(
+        "start_sync: selected local sync profile {} for {:?} (batch_size={}, max_batch_size={}, target_bytes={}, max_bytes={}, prefetch_depth={}, workers={}, crash_downgraded={}, downgrade_steps={})",
+        sync_profile.as_str(),
+        workload,
+        config.batch_size,
+        config.max_batch_size,
+        config.target_batch_bytes,
+        config.max_batch_bytes,
+        config.prefetch_queue_depth,
+        config.max_parallel_decrypt,
+        selection.crash_downgraded,
+        selection.downgrade_steps
+    );
+
     let client = LightClient::with_config(client_config);
     let sync = match SyncEngine::with_client_and_config(client, birthday_height, config)
         .with_wallet(
@@ -805,6 +774,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
             session.is_running = false;
             session.startup_in_progress = false;
             clear_sync_runtime_cache(&wallet_id);
+            record_sync_profile_failure();
             return Err(anyhow!("Failed to initialize sync engine: {}", e));
         }
     };
@@ -876,6 +846,11 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
             let engine = sync_for_task.clone().lock_owned().await;
             (engine.progress(), engine.perf_counters().snapshot())
         };
+        if result.is_ok() {
+            record_sync_profile_success();
+        } else {
+            record_sync_profile_failure();
+        }
         let status_opt = {
             let progress = progress_arc.read().await;
             let status = SyncStatus {
@@ -1990,70 +1965,38 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
 
     let network_type = wallet_network_type(&wallet_id)?;
     let address_network_type = address_prefix_network_type(&wallet_id)?;
-    let is_mobile = cfg!(target_os = "android") || cfg!(target_os = "ios");
-    let (
-        max_parallel_decrypt,
-        max_batch_memory_bytes,
-        target_batch_bytes,
-        min_batch_bytes,
-        max_batch_bytes,
-        prefetch_queue_depth,
-        prefetch_queue_max_bytes,
-    ) = if is_mobile {
-        (
-            8,
-            Some(100_000_000),
-            8_000_000,
-            2_000_000,
-            16_000_000,
-            2,
-            16_000_000,
-        )
-    } else {
-        (
-            32,
-            Some(500_000_000),
-            32_000_000,
-            4_000_000,
-            64_000_000,
-            5,
-            160_000_000,
-        )
-    };
-
-    let config = SyncConfig {
-        checkpoint_interval: 10_000,
-        batch_size: 2_000,
-        min_batch_size: 100,
-        max_batch_size: 2_000,
-        use_server_batch_recommendations: true,
-        mini_checkpoint_every: 5,
-        mini_checkpoint_max_block_gap: 20_000,
-        max_parallel_decrypt,
-        lazy_memo_decode: true,
-        defer_full_tx_fetch: true,
-        target_batch_bytes,
-        min_batch_bytes,
-        max_batch_bytes,
-        heavy_block_threshold_bytes: 500_000,
-        max_batch_memory_bytes,
-        sync_state_flush_every_batches: if is_mobile { 3 } else { 2 },
-        sync_state_flush_interval_ms: 1_500,
-        prefetch_queue_depth,
-        prefetch_queue_max_bytes,
-    };
+    let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
+    let selection = begin_sync_profile_session(SyncWorkload::Rescan);
+    let sync_profile = selection.profile;
+    let config = selection.config;
+    tracing::info!(
+        "rescan: selected local sync profile {} (batch_size={}, max_batch_size={}, target_bytes={}, max_bytes={}, prefetch_depth={}, workers={}, crash_downgraded={}, downgrade_steps={})",
+        sync_profile.as_str(),
+        config.batch_size,
+        config.max_batch_size,
+        config.target_batch_bytes,
+        config.max_batch_bytes,
+        config.prefetch_queue_depth,
+        config.max_parallel_decrypt,
+        selection.crash_downgraded,
+        selection.downgrade_steps
+    );
 
     let client = LightClient::with_config(client_config);
-    let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
-    let sync = SyncEngine::with_client_and_config(client, effective_from_height, config)
+    let sync = match SyncEngine::with_client_and_config(client, effective_from_height, config)
         .with_wallet(
             wallet_id.clone(),
             db_key,
             master_key,
             network_type,
             address_network_type,
-        )
-        .map_err(|e| anyhow!("Failed to initialize sync engine: {}", e))?;
+        ) {
+        Ok(sync) => sync,
+        Err(e) => {
+            record_sync_profile_failure();
+            return Err(anyhow!("Failed to initialize sync engine: {}", e));
+        }
+    };
     let sync = Arc::new(Mutex::new(sync));
     let (progress, perf, cancel_flag) = {
         let engine = sync.clone().lock_owned().await;
@@ -2161,6 +2104,11 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                     last_batch_ms: perf_snapshot.avg_batch_ms,
                 })
             };
+            if result.is_ok() {
+                record_sync_profile_success();
+            } else {
+                record_sync_profile_failure();
+            }
 
             let mut session = session_arc_for_task.lock().await;
             if let Some(status) = status_opt {
@@ -2202,6 +2150,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
                 maybe_trigger_compact_sync(wallet_id_for_task.clone());
             }
         } else {
+            record_sync_profile_failure();
             let mut session = session_arc_for_task.lock().await;
             session.is_running = false;
             session.startup_in_progress = false;
@@ -2237,6 +2186,7 @@ pub(super) async fn cancel_sync_internal(
                 session.last_status.clone(),
             )
         };
+        let had_profile_session = task_opt.is_some() || cancel_opt.is_some() || sync_opt.is_some();
         let sync_for_cancel = sync_opt.clone();
 
         if let Some(task) = task_opt {
@@ -2273,6 +2223,9 @@ pub(super) async fn cancel_sync_internal(
                     );
                 });
             }
+        }
+        if had_profile_session {
+            record_sync_profile_failure();
         }
 
         if let Some(sync) = sync_for_cancel {

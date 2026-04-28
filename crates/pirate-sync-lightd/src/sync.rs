@@ -272,6 +272,9 @@ const HISTORIC_AUX_FLUSH_BLOCK_INTERVAL: u64 = 25_000;
 const HISTORIC_AUX_FLUSH_INTERVAL_MS: u64 = 30_000;
 const HISTORIC_SPARSE_CHECKPOINT_INTERVAL: u64 = 50_000;
 const MAX_REORG_SEARCH_DEPTH: u64 = 2_000;
+const SERVER_BATCH_HINT_WAIT_MS: u64 = 1_500;
+const SERVER_BATCH_GROUP_TARGET_BYTES: u64 = 4_000_000;
+const MAX_SERVER_BATCH_GROUP_MULTIPLIER: u64 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TipWitnessValidationOutcome {
@@ -295,19 +298,21 @@ impl Default for SyncConfig {
             max_batch_size,
             sync_state_flush_every_batches,
             sync_state_flush_interval_ms,
+            min_batch_size,
         ) = if is_mobile {
             (
-                8,
-                Some(100_000_000),
+                4,
+                Some(64_000_000),
+                4_000_000,
+                1_000_000,
                 8_000_000,
-                2_000_000,
-                16_000_000,
-                2,
-                16_000_000,
+                1,
+                8_000_000,
                 2_000,
                 2_000,
                 3,
                 1_500,
+                25,
             )
         } else {
             (
@@ -322,14 +327,15 @@ impl Default for SyncConfig {
                 4_000,
                 6,
                 5_000,
+                100,
             )
         };
 
         Self {
             checkpoint_interval: 10_000,
-            batch_size,          // Used when server recommendations disabled/unavailable.
-            min_batch_size: 100, // Minimum batch size for spam blocks
-            max_batch_size,      // Maximum batch size (caps server batches to prevent OOM)
+            batch_size,     // Used when server recommendations disabled/unavailable.
+            min_batch_size, // Minimum batch size for spam blocks
+            max_batch_size, // Maximum batch size (caps server batches to prevent OOM)
             use_server_batch_recommendations: true, // Use server's ~4MB chunk recommendations (typically ~199 blocks)
             mini_checkpoint_every: 5,               // Mini-checkpoint every 5 batches
             mini_checkpoint_max_block_gap: 20_000,  // Always checkpoint at least every 20k blocks
@@ -2269,8 +2275,17 @@ impl SyncEngine {
             self.config.max_batch_size.max(self.config.min_batch_size);
         let mut consecutive_fetch_failures = 0u32;
         let mut consecutive_heavy_batches = 0u32;
-        let mut avg_block_size_estimate =
+        let initial_block_size_estimate =
             (self.config.target_batch_bytes / self.config.batch_size.max(1)).max(1);
+        let mut avg_block_size_estimate = if self.config.use_server_batch_recommendations {
+            // Until the first real batch is measured, assume we might be entering
+            // a spam-heavy range. This prevents a speculative multi-thousand block
+            // fetch from landing on memory-constrained mobile devices before
+            // adaptive byte sizing has any telemetry.
+            initial_block_size_estimate.max(self.config.heavy_block_threshold_bytes.max(1))
+        } else {
+            initial_block_size_estimate
+        };
         let mut prefetch_queue: VecDeque<PrefetchTask> = VecDeque::new();
         let mut queued_prefetch_bytes: u64 = 0;
         let mut server_group_end_hint: Option<u64> = None;
@@ -4197,6 +4212,27 @@ impl SyncEngine {
         ServerBatchHintTask { start, handle }
     }
 
+    async fn resolve_server_batch_hint_task(
+        &self,
+        mut task: ServerBatchHintTask,
+        wait: Duration,
+    ) -> Result<(Option<u64>, Option<ServerBatchHintTask>)> {
+        tokio::select! {
+            joined = &mut task.handle => {
+                let value = joined
+                    .map_err(|e| Error::Sync(format!("server batch hint task failed: {}", e)))?;
+                Ok((value.filter(|end| *end >= task.start), None))
+            }
+            _ = tokio::time::sleep(wait) => {
+                Ok((None, Some(task)))
+            }
+            _ = self.cancel.cancelled() => {
+                task.handle.abort();
+                Err(Error::Cancelled)
+            }
+        }
+    }
+
     fn abort_prefetch_queue(
         prefetch_queue: &mut VecDeque<PrefetchTask>,
         queued_prefetch_bytes: &mut u64,
@@ -4308,11 +4344,17 @@ impl SyncEngine {
         if desired_blocks == 0 {
             desired_blocks = 1;
         }
-        let max_batch_blocks = batch_tuning
+        let mut max_batch_blocks = batch_tuning
             .max_batch_blocks
             .max(self.config.min_batch_size)
             .min(self.config.max_batch_size);
-        desired_blocks = desired_blocks.clamp(self.config.min_batch_size, max_batch_blocks);
+        let mut min_batch_blocks = self.config.min_batch_size.max(1).min(max_batch_blocks);
+        if let Some(max_memory) = self.config.max_batch_memory_bytes {
+            let memory_safe_blocks = (max_memory / estimated_block_bytes).max(1);
+            max_batch_blocks = max_batch_blocks.min(memory_safe_blocks);
+            min_batch_blocks = min_batch_blocks.min(max_batch_blocks);
+        }
+        desired_blocks = desired_blocks.clamp(min_batch_blocks, max_batch_blocks);
 
         let low_height_cap_end = if current_height <= LOW_HEIGHT_BATCH_CAP_HEIGHT {
             Some(std::cmp::min(
@@ -4337,22 +4379,32 @@ impl SyncEngine {
             _ => {
                 if let Some(task) = pending_server_group_hint.take() {
                     if task.start == current_height {
-                        if task.handle.is_finished() {
-                            match task.handle.await {
-                                Ok(Some(value)) => {
-                                    *server_group_end_hint = Some(value);
-                                    value
-                                }
-                                _ => {
-                                    *server_group_end_hint = None;
-                                    *pending_server_group_hint =
-                                        Some(self.spawn_server_batch_hint_prefetch(current_height));
-                                    return Ok((desired_end, desired_blocks));
-                                }
+                        match self
+                            .resolve_server_batch_hint_task(
+                                task,
+                                Duration::from_millis(SERVER_BATCH_HINT_WAIT_MS),
+                            )
+                            .await?
+                        {
+                            (Some(value), None) => {
+                                *server_group_end_hint = Some(value);
+                                value
                             }
-                        } else {
-                            *pending_server_group_hint = Some(task);
-                            return Ok((desired_end, desired_blocks));
+                            (None, Some(task)) => {
+                                *pending_server_group_hint = Some(task);
+                                return Ok((desired_end, desired_blocks));
+                            }
+                            (None, None) => {
+                                *server_group_end_hint = None;
+                                *pending_server_group_hint =
+                                    Some(self.spawn_server_batch_hint_prefetch(current_height));
+                                return Ok((desired_end, desired_blocks));
+                            }
+                            (Some(_), Some(_)) => {
+                                unreachable!(
+                                    "server batch hint resolver cannot return both a value and a pending task"
+                                )
+                            }
                         }
                     } else if task.start > current_height {
                         *pending_server_group_hint = Some(task);
@@ -4364,9 +4416,31 @@ impl SyncEngine {
                         return Ok((desired_end, desired_blocks));
                     }
                 } else {
-                    *pending_server_group_hint =
-                        Some(self.spawn_server_batch_hint_prefetch(current_height));
-                    return Ok((desired_end, desired_blocks));
+                    let task = self.spawn_server_batch_hint_prefetch(current_height);
+                    match self
+                        .resolve_server_batch_hint_task(
+                            task,
+                            Duration::from_millis(SERVER_BATCH_HINT_WAIT_MS),
+                        )
+                        .await?
+                    {
+                        (Some(value), None) => {
+                            *server_group_end_hint = Some(value);
+                            value
+                        }
+                        (None, Some(task)) => {
+                            *pending_server_group_hint = Some(task);
+                            return Ok((desired_end, desired_blocks));
+                        }
+                        (None, None) => {
+                            return Ok((desired_end, desired_blocks));
+                        }
+                        (Some(_), Some(_)) => {
+                            unreachable!(
+                                "server batch hint resolver cannot return both a value and a pending task"
+                            )
+                        }
+                    }
                 }
             }
         };
@@ -4376,9 +4450,15 @@ impl SyncEngine {
                 let optimal_end = std::cmp::min(server_end, end);
                 let server_batch_size =
                     optimal_end.saturating_sub(current_height).saturating_add(1);
+                let server_group_multiplier = (target_bytes / SERVER_BATCH_GROUP_TARGET_BYTES)
+                    .clamp(1, MAX_SERVER_BATCH_GROUP_MULTIPLIER);
+                let server_profile_cap_blocks = server_batch_size
+                    .saturating_mul(server_group_multiplier)
+                    .max(server_batch_size)
+                    .min(max_batch_blocks);
                 let max_capped_end = std::cmp::min(
-                    optimal_end,
-                    current_height.saturating_add(max_batch_blocks.saturating_sub(1)),
+                    end,
+                    current_height.saturating_add(server_profile_cap_blocks.saturating_sub(1)),
                 );
                 let mut batch_end = std::cmp::min(desired_end, max_capped_end);
                 if let Some(cap_end) = low_height_cap_end {
@@ -4395,10 +4475,11 @@ impl SyncEngine {
                         let id = format!("{:08x}", ts);
                         let _ = writeln!(
                             file,
-                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:compute_batch_end","message":"server batch recommendation","data":{{"server_batch_size":{},"desired_blocks":{},"max_batch_size":{},"chosen_blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"G"}}"#,
+                            r#"{{"id":"log_{}","timestamp":{},"location":"sync.rs:compute_batch_end","message":"server batch recommendation","data":{{"server_batch_size":{},"server_group_multiplier":{},"desired_blocks":{},"max_batch_size":{},"chosen_blocks":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"G"}}"#,
                             id,
                             ts,
                             server_batch_size,
+                            server_group_multiplier,
                             desired_blocks,
                             self.config.max_batch_size,
                             batch_end - current_height + 1
@@ -4406,8 +4487,9 @@ impl SyncEngine {
                     });
                     // #endregion
                     tracing::debug!(
-                        "Batch sizing: server {} blocks, desired {} blocks, chosen {} blocks",
+                        "Batch sizing: server {} blocks x{} groups, desired {} blocks, chosen {} blocks",
                         server_batch_size,
+                        server_group_multiplier,
                         desired_blocks,
                         batch_end - current_height + 1
                     );
@@ -8096,7 +8178,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_compute_batch_end_treats_server_hint_as_cap() {
+    async fn test_compute_batch_end_treats_server_hint_as_density_hint() {
         let engine = SyncEngine::new("https://lightd.piratechain.com:443".to_string(), 3_800_000);
         let mut server_group_end_hint = Some(100_198);
         let mut pending_server_group_hint = None;
@@ -8118,7 +8200,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(desired_blocks, 4_000);
-        assert_eq!(batch_end, 100_198);
+        assert_eq!(batch_end, 101_591);
     }
 
     #[tokio::test]
@@ -8145,6 +8227,43 @@ mod tests {
 
         assert_eq!(desired_blocks, 500);
         assert_eq!(batch_end, 100_499);
+    }
+
+    #[tokio::test]
+    async fn test_compute_batch_end_lets_memory_cap_override_minimum() {
+        let config = SyncConfig {
+            use_server_batch_recommendations: false,
+            min_batch_size: 100,
+            max_batch_size: 2_000,
+            max_batch_memory_bytes: Some(64_000_000),
+            ..SyncConfig::default()
+        };
+        let engine = SyncEngine::with_config(
+            "https://lightd.piratechain.com:443".to_string(),
+            3_800_000,
+            config,
+        );
+        let mut server_group_end_hint = None;
+        let mut pending_server_group_hint = None;
+        let tuning = BatchTuning {
+            target_bytes: 128_000_000,
+            avg_block_size_estimate: 2_000_000,
+            max_batch_blocks: 2_000,
+        };
+
+        let (batch_end, desired_blocks) = engine
+            .compute_batch_end(
+                100_000,
+                110_000,
+                tuning,
+                &mut server_group_end_hint,
+                &mut pending_server_group_hint,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(desired_blocks, 32);
+        assert_eq!(batch_end, 100_031);
     }
 
     #[tokio::test]

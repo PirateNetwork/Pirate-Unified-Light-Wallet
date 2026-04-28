@@ -1,7 +1,9 @@
 use super::tunnel::tunnel_transport_config;
 use super::*;
-use pirate_sync_lightd::{BackgroundSyncConfig, BackgroundSyncMode, BackgroundSyncOrchestrator};
-use pirate_sync_lightd::{SyncConfig, SyncEngine};
+use pirate_sync_lightd::{
+    begin_sync_profile_session, record_sync_profile_failure, record_sync_profile_success,
+    BackgroundSyncConfig, BackgroundSyncMode, BackgroundSyncOrchestrator, SyncEngine, SyncWorkload,
+};
 use tokio::sync::Mutex as TokioMutex;
 
 const WARM_WALLET_WINDOW_SECS: i64 = 7 * 24 * 60 * 60;
@@ -49,20 +51,54 @@ async fn start_background_sync_inner(
         std::time::Duration::from_secs(60),
     );
 
+    let sync_mode = match mode.as_deref() {
+        Some("deep") => BackgroundSyncMode::Deep,
+        Some("compact") | None => BackgroundSyncMode::Compact,
+        _ => BackgroundSyncMode::Compact,
+    };
+    let workload = match sync_mode {
+        BackgroundSyncMode::Compact => SyncWorkload::Compact,
+        BackgroundSyncMode::Deep => SyncWorkload::Deep,
+    };
+
     let network_type = wallet_network_type(&wallet_id)?;
     let address_network_type = address_prefix_network_type(&wallet_id)?;
-    let config = SyncConfig::default();
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
+    let selection = begin_sync_profile_session(workload);
+    let sync_profile = selection.profile;
+    let config = selection.config;
+    tracing::info!(
+        "background sync: selected local sync profile {} for {:?} (batch_size={}, max_batch_size={}, target_bytes={}, max_bytes={}, prefetch_depth={}, workers={}, crash_downgraded={}, downgrade_steps={})",
+        sync_profile.as_str(),
+        workload,
+        config.batch_size,
+        config.max_batch_size,
+        config.target_batch_bytes,
+        config.max_batch_bytes,
+        config.prefetch_queue_depth,
+        config.max_parallel_decrypt,
+        selection.crash_downgraded,
+        selection.downgrade_steps
+    );
+
     let client = LightClient::with_config(client_config);
-    let sync_engine = SyncEngine::with_client_and_config(client, birthday_height, config)
+    let sync_engine = match SyncEngine::with_client_and_config(client, birthday_height, config)
         .with_wallet(
             wallet_id.clone(),
             db_key,
             master_key,
             network_type,
             address_network_type,
-        )
-        .map_err(|e| anyhow!("Failed to initialize background sync engine: {}", e))?;
+        ) {
+        Ok(sync_engine) => sync_engine,
+        Err(e) => {
+            record_sync_profile_failure();
+            return Err(anyhow!(
+                "Failed to initialize background sync engine: {}",
+                e
+            ));
+        }
+    };
 
     let mut bg_config = BackgroundSyncConfig::default();
     if let Some(value) = max_duration_secs {
@@ -74,16 +110,20 @@ async fn start_background_sync_inner(
     let orchestrator =
         BackgroundSyncOrchestrator::new(Arc::new(TokioMutex::new(sync_engine)), bg_config);
 
-    let sync_mode = match mode.as_deref() {
-        Some("deep") => BackgroundSyncMode::Deep,
-        Some("compact") | None => BackgroundSyncMode::Compact,
-        _ => BackgroundSyncMode::Compact,
+    let result = match orchestrator.execute_sync(sync_mode).await {
+        Ok(result) => {
+            if result.errors.is_empty() {
+                record_sync_profile_success();
+            } else {
+                record_sync_profile_failure();
+            }
+            result
+        }
+        Err(e) => {
+            record_sync_profile_failure();
+            return Err(anyhow!("Background sync failed: {}", e));
+        }
     };
-
-    let result = orchestrator
-        .execute_sync(sync_mode)
-        .await
-        .map_err(|e| anyhow!("Background sync failed: {}", e))?;
 
     if let Ok(registry_db) = open_wallet_registry() {
         if let Err(e) = touch_wallet_last_synced(&registry_db, &wallet_id) {
