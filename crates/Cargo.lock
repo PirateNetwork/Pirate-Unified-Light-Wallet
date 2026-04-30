@@ -590,7 +590,7 @@ checksum = "568b6890865156d9043af490d4c4081c385dd68ea10acd6ca15733d511e6b51c"
 dependencies = [
  "hmac",
  "pbkdf2",
- "rand 0.8.5",
+ "rand 0.8.6",
  "sha2",
  "unicode-normalization",
  "zeroize",
@@ -2198,7 +2198,7 @@ dependencies = [
  "halo2_proofs",
  "lazy_static",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.8.6",
  "sinsemilla",
  "subtle",
  "uint",
@@ -3194,7 +3194,7 @@ dependencies = [
  "num-integer",
  "num-iter",
  "num-traits",
- "rand 0.8.5",
+ "rand 0.8.6",
  "smallvec",
  "zeroize",
 ]
@@ -3414,7 +3414,7 @@ dependencies = [
  "memuse",
  "nonempty",
  "pasta_curves",
- "rand 0.8.5",
+ "rand 0.8.6",
  "reddsa",
  "serde",
  "subtle",
@@ -3558,7 +3558,7 @@ dependencies = [
  "ff",
  "group",
  "lazy_static",
- "rand 0.8.5",
+ "rand 0.8.6",
  "static_assertions",
  "subtle",
 ]
@@ -3720,7 +3720,7 @@ dependencies = [
  "pirate-core",
  "pirate-params",
  "proptest",
- "rand 0.8.5",
+ "rand 0.8.6",
  "secp256k1",
  "serde",
  "serde_json",
@@ -3758,7 +3758,7 @@ dependencies = [
  "pirate-storage-sqlite",
  "pirate-sync-lightd",
  "pirate-wallet-service",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3799,7 +3799,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "pirate-core",
- "rand 0.8.5",
+ "rand 0.8.6",
  "reqwest",
  "rustls-pki-types",
  "rustls-webpki",
@@ -3855,7 +3855,7 @@ dependencies = [
  "pirate-core",
  "pirate-params",
  "proptest",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3897,7 +3897,7 @@ dependencies = [
  "pirate-params",
  "pirate-storage-sqlite",
  "prost 0.13.5",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rayon",
  "reqwest",
  "rusqlite",
@@ -3949,7 +3949,7 @@ dependencies = [
  "pirate-params",
  "pirate-storage-sqlite",
  "pirate-sync-lightd",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rusqlite",
  "secp256k1",
  "serde",
@@ -4358,9 +4358,9 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -4895,7 +4895,7 @@ dependencies = [
  "jubjub",
  "lazy_static",
  "memuse",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rand_core 0.6.4",
  "redjubjub",
  "subtle",
@@ -6896,7 +6896,7 @@ dependencies = [
  "indexmap 1.9.3",
  "pin-project",
  "pin-project-lite",
- "rand 0.8.5",
+ "rand 0.8.6",
  "slab",
  "tokio",
  "tokio-util",
@@ -8092,7 +8092,7 @@ dependencies = [
  "memuse",
  "nonempty",
  "orchard",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rand_core 0.6.4",
  "sha2",
  "subtle",
