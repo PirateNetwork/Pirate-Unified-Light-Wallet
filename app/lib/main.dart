@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'core/background/background_sync_handler.dart';
 import 'core/background/background_sync_manager.dart';
+import 'core/desktop/adaptive_window.dart';
 import 'core/ffi/ffi_bridge.dart';
 import 'core/ffi/generated/models.dart' show SyncMode;
 import 'core/desktop/single_instance.dart';
@@ -31,8 +32,6 @@ import 'ui/molecules/p_overlay_toast.dart';
 SingleInstanceLock? _singleInstanceLock;
 
 bool _appInitialized = false;
-const Size _desktopInitialSize = Size(1100, 640);
-const Size _desktopMinimumSize = Size(960, 600);
 
 void main() async {
   if (_appInitialized) {
@@ -59,10 +58,11 @@ void main() async {
   if (!isTest && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
     await windowManager.ensureInitialized();
     final useCustomTitleBar = shouldUseCustomTitleBar();
+    final windowSpec = await resolveDesktopWindowSpecForCurrentDisplay();
 
     final windowOptions = WindowOptions(
-      size: _desktopInitialSize,
-      minimumSize: _desktopMinimumSize,
+      size: windowSpec.initialSize,
+      minimumSize: windowSpec.minimumSize,
       center: true,
       title: 'Pirate Wallet'.tr,
       backgroundColor: Color(0xFF0B0F14),
@@ -116,6 +116,40 @@ void _installFlutterErrorLogging(String logPath) {
 /// and consistent across screens.
 class PirateScrollBehavior extends MaterialScrollBehavior {
   const PirateScrollBehavior();
+
+  bool _usesDesktopScrollbar(TargetPlatform platform) {
+    return platform == TargetPlatform.windows ||
+        platform == TargetPlatform.linux ||
+        platform == TargetPlatform.macOS;
+  }
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    if (axisDirectionToAxis(details.direction) == Axis.horizontal) {
+      return child;
+    }
+    final platform = getPlatform(context);
+    if (!_usesDesktopScrollbar(platform)) {
+      return super.buildScrollbar(context, child, details);
+    }
+
+    final controller = details.controller;
+    if (controller == null) {
+      return child;
+    }
+
+    return Scrollbar(
+      controller: controller,
+      thumbVisibility: true,
+      trackVisibility: platform != TargetPlatform.macOS,
+      interactive: true,
+      child: child,
+    );
+  }
 
   @override
   Widget buildOverscrollIndicator(

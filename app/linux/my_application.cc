@@ -25,6 +25,77 @@ const char kSecurityChannelName[] = "com.pirate.wallet/security";
 const char kMasterKeyId[] = "pirate_wallet_master_key";
 const uint8_t kSealedMarker[] = {'l', 'i', 'n', 'u', 'x', '-', 'k', 'e', 'y',
                                  'c', 'h', 'a', 'i', 'n', '-', 'v', '1'};
+const double kPreferredWindowWidth = 1180.0;
+const double kPreferredWindowHeight = 760.0;
+const double kVisibleMargin = 48.0;
+const double kMaxVisibleFraction = 0.92;
+
+struct DesktopWindowSize {
+  int width;
+  int height;
+};
+
+double available_extent(double visible_extent) {
+  if (visible_extent <= 0) {
+    return 0;
+  }
+  const double inset_extent = visible_extent - kVisibleMargin;
+  const double proportional_extent = visible_extent * kMaxVisibleFraction;
+  const double limited_extent =
+      inset_extent < proportional_extent ? inset_extent : proportional_extent;
+  return limited_extent > 320.0 ? limited_extent : 320.0;
+}
+
+DesktopWindowSize resolve_desktop_window_size(double visible_width,
+                                              double visible_height) {
+  if (visible_width <= 0 || visible_height <= 0) {
+    return {static_cast<int>(kPreferredWindowWidth),
+            static_cast<int>(kPreferredWindowHeight)};
+  }
+
+  const double available_width = available_extent(visible_width);
+  const double available_height = available_extent(visible_height);
+  double width = kPreferredWindowWidth < available_width
+                     ? kPreferredWindowWidth
+                     : available_width;
+  double height =
+      kPreferredWindowHeight < available_height ? kPreferredWindowHeight
+                                                : available_height;
+  constexpr double preferred_aspect =
+      kPreferredWindowWidth / kPreferredWindowHeight;
+
+  if (width / height > preferred_aspect) {
+    width = height * preferred_aspect;
+  } else {
+    height = width / preferred_aspect;
+  }
+
+  return {static_cast<int>(width), static_cast<int>(height)};
+}
+
+DesktopWindowSize resolve_initial_window_size(GtkWindow* window) {
+  GdkRectangle work_area = {0, 0, 1920, 1080};
+
+#if GTK_CHECK_VERSION(3, 22, 0)
+  GdkDisplay* display = gtk_widget_get_display(GTK_WIDGET(window));
+  GdkMonitor* monitor = display ? gdk_display_get_primary_monitor(display)
+                                : nullptr;
+  if (display != nullptr && monitor == nullptr) {
+    monitor = gdk_display_get_monitor(display, 0);
+  }
+  if (monitor != nullptr) {
+    gdk_monitor_get_workarea(monitor, &work_area);
+  }
+#else
+  GdkScreen* screen = gtk_window_get_screen(window);
+  if (screen != nullptr) {
+    work_area.width = gdk_screen_get_width(screen);
+    work_area.height = gdk_screen_get_height(screen);
+  }
+#endif
+
+  return resolve_desktop_window_size(work_area.width, work_area.height);
+}
 
 const SecretSchema kPirateKeystoreSchema = {
     "com.pirate.wallet.keystore",
@@ -283,7 +354,8 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "app");
   }
 
-  gtk_window_set_default_size(window, 1100, 640);
+  const DesktopWindowSize initial_size = resolve_initial_window_size(window);
+  gtk_window_set_default_size(window, initial_size.width, initial_size.height);
   gtk_widget_show(GTK_WIDGET(window));
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
