@@ -22,6 +22,10 @@ secrets.json
 .env.*.local
 secrets.local.env
 /apple-macos-signing/
+/apple-ios-signing/
+/android-signing/
+/windows-signing/
+/linux-signing/
 
 # Wallet data (development)
 *.wallet

@@ -114,13 +114,34 @@ fi
 
 if [ "$SIGN" = "true" ]; then
     log "Code signing iOS app..."
+
+    archive_signing_args=()
+    if [ -n "${IOS_TEAM_ID:-}" ]; then
+        archive_signing_args+=(DEVELOPMENT_TEAM="$IOS_TEAM_ID")
+    fi
+    if [ -n "${IOS_PROVISIONING_PROFILE_SPECIFIER:-}" ]; then
+        archive_signing_args+=(
+            CODE_SIGN_STYLE=Manual
+            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROVISIONING_PROFILE_SPECIFIER"
+        )
+    fi
+    if [ -n "${IOS_CODE_SIGN_IDENTITY:-}" ]; then
+        archive_signing_args+=(
+            CODE_SIGN_IDENTITY="$IOS_CODE_SIGN_IDENTITY"
+            "CODE_SIGN_IDENTITY[sdk=iphoneos*]=$IOS_CODE_SIGN_IDENTITY"
+        )
+    fi
+    if [ -n "${IOS_SIGN_KEYCHAIN:-}" ]; then
+        archive_signing_args+=(OTHER_CODE_SIGN_FLAGS="--keychain $IOS_SIGN_KEYCHAIN")
+    fi
     
     # Export IPA with signing
     xcodebuild -workspace ios/Runner.xcworkspace \
         -scheme Runner \
         -sdk iphoneos \
         -configuration Release \
-        archive -archivePath build/ios/Runner.xcarchive
+        archive -archivePath build/ios/Runner.xcarchive \
+        "${archive_signing_args[@]}"
     
     xcodebuild -exportArchive \
         -archivePath build/ios/Runner.xcarchive \
