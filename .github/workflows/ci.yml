@@ -2210,144 +2210,16 @@ jobs:
           path: release-artifacts
 
       - name: Collect release files
+        env:
+          CLI_CHANGED: ${{ needs.backend-release-plan.outputs.cli_changed }}
+          QORTAL_CLI_CHANGED: ${{ needs.backend-release-plan.outputs.qortal_cli_changed }}
+          NATIVE_FFI_CHANGED: ${{ needs.backend-release-plan.outputs.native_ffi_changed }}
+          IOS_SDK_CHANGED: ${{ needs.backend-release-plan.outputs.ios_sdk_changed }}
+          ANDROID_SDK_CHANGED: ${{ needs.backend-release-plan.outputs.android_sdk_changed }}
+          REACT_NATIVE_PLUGIN_CHANGED: ${{ needs.backend-release-plan.outputs.react_native_plugin_changed }}
         run: |
           set -euo pipefail
-          mkdir -p release release-meta
-
-          # Signed artifacts.
-          find release-artifacts -type f \( \
-            -name 'pirate-unified-wallet-android-*.apk' \
-            -o -name 'pirate-unified-wallet-android.aab' \
-            -o -name 'pirate-unified-wallet-windows-installer.exe' \
-            -o -name 'pirate-unified-wallet-windows-portable.zip' \
-            -o -name 'pirate-unified-wallet-macos.dmg' \
-            -o -name 'pirate-unified-wallet-ios.ipa' \
-          \) ! -name '*-unsigned*' -exec cp -f {} release/ \;
-
-          # If Windows signing is unavailable, publish unsigned Windows artifacts
-          # so testers still receive desktop builds.
-          if [ ! -f release/pirate-unified-wallet-windows-installer.exe ]; then
-            unsigned_installer="$(find release-artifacts -type f -name 'pirate-unified-wallet-windows-installer-unsigned.exe' | head -n 1 || true)"
-            if [ -n "$unsigned_installer" ]; then
-              cp -f "$unsigned_installer" release/
-            fi
-          fi
-          if [ ! -f release/pirate-unified-wallet-windows-portable.zip ]; then
-            unsigned_portable="$(find release-artifacts -type f -name 'pirate-unified-wallet-windows-portable-unsigned.zip' | head -n 1 || true)"
-            if [ -n "$unsigned_portable" ]; then
-              cp -f "$unsigned_portable" release/
-            fi
-          fi
-
-          # Since we don't have Apple Developer credentials yet, CI will skip signing/notarization.
-          # Still publish the unsigned DMG so testers can run it (they may need to clear quarantine).
-          if [ ! -f release/pirate-unified-wallet-macos.dmg ]; then
-            unsigned_dmg="$(find release-artifacts -type f -name 'pirate-unified-wallet-macos-unsigned.dmg' | head -n 1 || true)"
-            if [ -n "$unsigned_dmg" ]; then
-              cp -f "$unsigned_dmg" release/
-            fi
-          fi
-
-          # Linux packages (distributed with detached signatures) + iOS simulator.
-          find release-artifacts -type f \( \
-            -name '*.AppImage' \
-            -o -name '*.deb' \
-            -o -name '*.flatpak' \
-            -o -name 'pirate-unified-wallet-ios-simulator.app.zip' \
-          \) -exec cp -f {} release/ \;
-
-          if [ "${{ needs.backend-release-plan.outputs.cli_changed }}" = "true" ] || [ "${{ needs.backend-release-plan.outputs.qortal_cli_changed }}" = "true" ]; then
-            find release-artifacts -type f \( \
-              -name 'piratewallet-cli' \
-              -o -name 'piratewallet-cli.exe' \
-              -o -name 'pirate-qortal-cli' \
-              -o -name 'pirate-qortal-cli.exe' \
-            \) -exec cp -f {} release/ \;
-          fi
-
-          if [ "${{ needs.backend-release-plan.outputs.native_ffi_changed }}" = "true" ] || [ "${{ needs.backend-release-plan.outputs.ios_sdk_changed }}" = "true" ] || [ "${{ needs.backend-release-plan.outputs.android_sdk_changed }}" = "true" ]; then
-            find release-artifacts -type f \( \
-              -name 'libpirate_ffi_native.a' \
-              -o -name 'libpirate_ffi_native.so' \
-              -o -name 'pirate_ffi_native.dll' \
-              -o -name 'pirate_ffi_native.lib' \
-              -o -name 'pirate_wallet_service.h' \
-            \) -exec cp -f {} release/ \;
-          fi
-
-          if [ "${{ needs.backend-release-plan.outputs.ios_sdk_changed }}" = "true" ]; then
-            find release-artifacts -type f \( \
-              -name 'PirateWalletNative.xcframework.zip' \
-              -o -name 'PirateWalletNative.xcframework.zip.sha256' \
-              -o -name 'PirateWalletSDK-package.zip' \
-              -o -name 'PirateWalletSDK-package.zip.sha256' \
-            \) -exec cp -f {} release/ \;
-          fi
-
-          if [ "${{ needs.backend-release-plan.outputs.android_sdk_changed }}" = "true" ]; then
-            find release-artifacts -type f \( \
-              -name '*.aar' \
-              -o -name 'pirate-android-sdk-package.zip' \
-              -o -name 'pirate-android-sdk-package.zip.sha256' \
-            \) -exec cp -f {} release/ \;
-          fi
-
-          if [ "${{ needs.backend-release-plan.outputs.react_native_plugin_changed }}" = "true" ]; then
-            find release-artifacts -type f \( \
-              -name 'react-native-pirate-wallet-package.zip' \
-              -o -name 'react-native-pirate-wallet-package.zip.sha256' \
-            \) -exec cp -f {} release/ \;
-          fi
-
-          # Hashes and signatures: keep both direct assets (for in-app verification)
-          # and a bundled metadata zip (for manual download convenience).
-          find release-artifacts -type f \( \
-            -name '*.sha256' \
-            -o -name '*.asc' \
-          \) -exec cp -f {} release-meta/ \;
-
-          # Publish checksums/signatures directly as release assets too.
-          find release-meta -type f \( \
-            -name '*.sha256' \
-            -o -name '*.asc' \
-          \) -exec cp -f {} release/ \;
-
-          # VirusTotal scan report (optional; only present when VIRUSTOTAL_API_KEY is configured).
-          if [ -d release-artifacts/virustotal-report ]; then
-            find release-artifacts/virustotal-report -type f -maxdepth 1 -exec cp -f {} release-meta/ \;
-          fi
-
-          # Flatpak hashes are not generated during packaging.
-          for flatpak in release/*.flatpak; do
-            hash_name="release-meta/$(basename "$flatpak").sha256"
-            if [ -f "$flatpak" ] && [ ! -f "$hash_name" ]; then
-              sha256sum "$flatpak" > "$hash_name"
-            fi
-          done
-
-          for backend_asset in \
-            release/piratewallet-cli \
-            release/piratewallet-cli.exe \
-            release/pirate-qortal-cli \
-            release/pirate-qortal-cli.exe \
-            release/libpirate_ffi_native.a \
-            release/libpirate_ffi_native.so \
-            release/pirate_ffi_native.dll \
-            release/pirate_ffi_native.lib \
-            release/pirate_wallet_service.h; do
-            if [ -f "$backend_asset" ]; then
-              sha256sum "$backend_asset" > "release-meta/$(basename "$backend_asset").sha256"
-            fi
-          done
-
-          if ls release-meta/* >/dev/null 2>&1; then
-            (cd release-meta && zip -q ../release/pirate-unified-wallet-release-metadata.zip ./*)
-          else
-            echo "No release metadata files found to package."
-          fi
-
-          echo "Release files:"
-          ls -la release
+          bash scripts/collect-github-release-assets.sh release-artifacts release
 
       - name: Build release notes from annotated tag
         run: |
@@ -2374,26 +2246,6 @@ jobs:
           fi
           mkdir -p release-notes
           printf "%s\n" "$TAG_BODY" > release-notes/RELEASE_NOTES.md
-
-      - name: Generate iOS SPM release manifest
-        if: needs.backend-release-plan.outputs.ios_sdk_changed == 'true'
-        run: |
-          set -euo pipefail
-          XC_ZIP="release/PirateWalletNative.xcframework.zip"
-          XC_SHA="release/PirateWalletNative.xcframework.zip.sha256"
-          if [ ! -f "$XC_ZIP" ] || [ ! -f "$XC_SHA" ]; then
-            echo "iOS SDK release assets not found; skipping SPM manifest."
-            exit 0
-          fi
-          CHECKSUM="$(awk '{print $1}' "$XC_SHA")"
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/PirateWalletNative.xcframework.zip"
-          chmod +x scripts/generate-ios-spm-release-manifest.sh
-          scripts/generate-ios-spm-release-manifest.sh \
-            "${GITHUB_REPOSITORY}" \
-            "${GITHUB_REF_NAME}" \
-            "$URL" \
-            "$CHECKSUM" \
-            > release/PirateWalletSDK-Package.swift
 
       - name: Publish GitHub Release
         env:

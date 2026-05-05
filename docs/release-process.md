@@ -207,6 +207,29 @@ Current script outputs are:
   - Android SDK Maven repo zip
   - Android SDK package zip
 
+Published GitHub Release layout
+-------------------------------
+
+GitHub Releases present assets as one flat list, so the publish workflow keeps only normal-user downloads at the top level and groups the rest into bundles.
+
+Top-level release assets are:
+
+- signed Windows installer and portable zip, with unsigned desktop fallbacks only when signing is unavailable
+- Linux AppImage, deb, and Flatpak packages
+- signed macOS DMG, with an unsigned fallback only when signing is unavailable
+- signed Android split APKs for direct installation
+- signed iOS IPA when available
+- `PirateWalletNative.xcframework.zip` and `PirateWalletSDK-Package.swift` only when the iOS SDK changes, because Swift Package Manager binary targets need a direct release URL
+- `pirate-unified-wallet-release-metadata.zip`
+- `pirate-unified-wallet-developer-artifacts.zip` when developer artifacts were produced
+
+`pirate-unified-wallet-release-metadata.zip` contains:
+
+- `checksums/` with `.sha256` files for every top-level release asset
+- `raw/` with the original checksums, detached signatures, SBOMs, provenance files, verification notes, and optional VirusTotal reports from the package jobs
+
+`pirate-unified-wallet-developer-artifacts.zip` contains grouped folders for CLI tools, native FFI libraries, SDK packages, store/test mobile builds, and unsigned desktop test builds. These are intentionally not top-level user downloads.
+
 Checksums, SBOMs, and provenance
 --------------------------------
 
@@ -217,13 +240,13 @@ scripts/generate-sbom.sh dist/sbom
 scripts/generate-provenance.sh <artifact> dist/provenance
 ```
 
-Each published release should include readable checksum data for the distributed artifacts. The Verify Build screen and desktop updater depend on that.
+Each published release should include readable checksum data for the distributed artifacts. The Verify Build screen and desktop updater depend on that, and both support checksums inside `pirate-unified-wallet-release-metadata.zip`.
 
 Release publication checklist
 -----------------------------
 
 - artifacts built from committed sources
-- checksums published
+- checksums published in `pirate-unified-wallet-release-metadata.zip`
 - release notes prepared
 - signed artifacts used where intended
 - unsigned artifacts retained where deterministic verification is needed

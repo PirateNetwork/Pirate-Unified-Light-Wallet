@@ -41,15 +41,19 @@ The project build scripts currently generate these artifact names:
   - `pirate_ffi_native.dll`
   - `pirate_wallet_service.h`
 
-Each release artifact should have a matching `.sha256` file or be covered by a published checksum bundle.
+Official GitHub Releases keep user installables at the top level. Developer artifacts, store/test builds, SBOMs, provenance, signatures, and checksums are grouped into release bundles so the download list stays readable.
+
+Each top-level release artifact should be covered by `pirate-unified-wallet-release-metadata.zip`, which includes generated checksums for every published top-level asset.
 
 Verify an official release
 --------------------------
 
-1. Download the release assets.
+1. Download the release asset you want and the metadata bundle.
 
 ```bash
-gh release download <tag> -R PirateNetwork/Pirate-Unified-Light-Wallet
+gh release download <tag> -R PirateNetwork/Pirate-Unified-Light-Wallet \
+  -p pirate-unified-wallet-windows-installer.exe \
+  -p pirate-unified-wallet-release-metadata.zip
 ```
 
 2. Locate the checksum source.
@@ -57,14 +61,15 @@ gh release download <tag> -R PirateNetwork/Pirate-Unified-Light-Wallet
 The repository currently supports either:
 
 - per-artifact checksum files such as `pirate-unified-wallet-windows-installer.exe.sha256`
-- checksum bundles whose filenames include `checksum` or `checksums`
+- checksum bundles whose filenames include `metadata`, `checksum`, or `checksums`
 
 3. Compare the local file hash to the published hash.
 
 Linux:
 
 ```bash
-expected="$(awk '{print $1}' pirate-unified-wallet-windows-installer.exe.sha256)"
+expected="$(unzip -p pirate-unified-wallet-release-metadata.zip \
+  checksums/pirate-unified-wallet-windows-installer.exe.sha256 | awk '{print $1}')"
 actual="$(sha256sum pirate-unified-wallet-windows-installer.exe | awk '{print $1}')"
 test "$expected" = "$actual" && echo MATCH || echo MISMATCH
 ```
@@ -72,15 +77,19 @@ test "$expected" = "$actual" && echo MATCH || echo MISMATCH
 macOS:
 
 ```bash
-expected="$(awk '{print $1}' pirate-unified-wallet-macos-unsigned.dmg.sha256)"
-actual="$(shasum -a 256 pirate-unified-wallet-macos-unsigned.dmg | awk '{print $1}')"
+expected="$(unzip -p pirate-unified-wallet-release-metadata.zip \
+  checksums/pirate-unified-wallet-macos.dmg.sha256 | awk '{print $1}')"
+actual="$(shasum -a 256 pirate-unified-wallet-macos.dmg | awk '{print $1}')"
 test "$expected" = "$actual" && echo MATCH || echo MISMATCH
 ```
 
 Windows PowerShell:
 
 ```powershell
-$expected = (Get-Content .\pirate-unified-wallet-windows-installer.exe.sha256 | Select-Object -First 1).Split()[0].ToLower()
+$tmp = Join-Path $env:TEMP 'pirate-release-metadata'
+Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+Expand-Archive .\pirate-unified-wallet-release-metadata.zip -DestinationPath $tmp
+$expected = (Get-Content "$tmp\checksums\pirate-unified-wallet-windows-installer.exe.sha256" | Select-Object -First 1).Split()[0].ToLower()
 $actual = (Get-FileHash .\pirate-unified-wallet-windows-installer.exe -Algorithm SHA256).Hash.ToLower()
 if ($expected -eq $actual) { 'MATCH' } else { 'MISMATCH' }
 ```
