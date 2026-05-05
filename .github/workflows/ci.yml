@@ -1985,6 +1985,16 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check TestFlight upload secrets
+        id: testflight
+        run: |
+          if [ -n "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" ] && [ -n "${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}" ] && [ -n "${{ secrets.APP_STORE_CONNECT_API_KEY_P8_B64 }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Missing App Store Connect API secrets. Signed IPA will be produced but not uploaded to TestFlight." >&2
+          fi
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         if: steps.signing.outputs.enabled == 'true'
         with:
@@ -2065,6 +2075,32 @@ jobs:
             dist/ios/pirate-unified-wallet-ios.ipa
             dist/ios/pirate-unified-wallet-ios.ipa.sha256
           if-no-files-found: error
+
+      - name: Upload IPA to TestFlight
+        if: steps.signing.outputs.enabled == 'true' && steps.testflight.outputs.enabled == 'true'
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_P8_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_B64 }}
+        run: |
+          set -euo pipefail
+          IPA_PATH="dist/ios/pirate-unified-wallet-ios.ipa"
+          if [ ! -f "$IPA_PATH" ]; then
+            echo "Signed IPA not found at $IPA_PATH" >&2
+            exit 1
+          fi
+
+          KEY_DIR="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$KEY_DIR"
+          KEY_PATH="$KEY_DIR/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          echo "$APP_STORE_CONNECT_API_KEY_P8_B64" | base64 -d > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+          xcrun altool --upload-app \
+            --file "$IPA_PATH" \
+            --type ios \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_API_ISSUER_ID"
 
   sign-linux:
     name: Sign - Linux (GPG)
