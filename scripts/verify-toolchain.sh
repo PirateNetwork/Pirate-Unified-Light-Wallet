@@ -21,6 +21,22 @@ expect_prefix() {
   fi
 }
 
+is_windows_shell() {
+  local uname_value
+  uname_value="$(uname -s 2>/dev/null || true)"
+  case "$uname_value" in
+    MINGW*|MSYS*|CYGWIN*)
+      return 0
+      ;;
+  esac
+  case "${OSTYPE:-}" in
+    msys*|win32*|cygwin*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 RUST_EXPECTED="${RUST_VERSION:-}"
 if [[ -z "$RUST_EXPECTED" && -f "$PROJECT_ROOT/rust-toolchain.toml" ]]; then
   RUST_EXPECTED="$(awk -F '\"' '/^channel/ {print $2}' "$PROJECT_ROOT/rust-toolchain.toml" || true)"
@@ -36,13 +52,17 @@ if [[ -n "$FLUTTER_EXPECTED" ]]; then
   fi
   # Skip Flutter version check on Windows in CI (already validated by setup-flutter action)
   # This avoids broken pipe issues during Flutter's first-time tool initialization
-  if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]] && [[ "${CI:-false}" == "true" || "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+  if is_windows_shell && [[ "${CI:-false}" == "true" || "${GITHUB_ACTIONS:-false}" == "true" ]]; then
     echo "[INFO] Skipping Flutter version check on Windows CI (validated by setup action)"
   else
-    # Capture full output to avoid broken pipe on Windows
+    # Flutter can print "Building flutter tool..." before the version line on
+    # first run, so look for the actual version line instead of assuming line 1.
     FLUTTER_OUTPUT="$(flutter --version 2>&1 || true)"
-    FLUTTER_FIRST_LINE="$(echo "$FLUTTER_OUTPUT" | head -n1)"
-    expect_prefix "Flutter" "$FLUTTER_FIRST_LINE" "$FLUTTER_EXPECTED"
+    FLUTTER_VERSION_LINE="$(printf '%s\n' "$FLUTTER_OUTPUT" | awk '/^Flutter[[:space:]]+[0-9]+/ {print; exit}')"
+    if [[ -z "$FLUTTER_VERSION_LINE" ]]; then
+      FLUTTER_VERSION_LINE="$(printf '%s\n' "$FLUTTER_OUTPUT" | head -n1)"
+    fi
+    expect_prefix "Flutter" "$FLUTTER_VERSION_LINE" "$FLUTTER_EXPECTED"
   fi
 fi
 
