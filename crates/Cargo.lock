@@ -3682,7 +3682,7 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
 name = "pirate-cli-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3697,7 +3697,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "argon2",
@@ -3739,7 +3739,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-ffi-frb"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bech32 0.11.1",
@@ -3774,7 +3774,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-ffi-native"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "jni",
  "pirate-wallet-service",
@@ -3783,7 +3783,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-net"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "argon2",
  "arti-client",
@@ -3819,7 +3819,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-params"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "serde",
@@ -3830,7 +3830,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-qortal-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "pirate-cli-core",
@@ -3839,7 +3839,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-storage-sqlite"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -3873,7 +3873,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-sync-lightd"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3920,7 +3920,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-sync-oblivious"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "pirate-core",
@@ -3930,7 +3930,7 @@ dependencies = [
 
 [[package]]
 name = "pirate-wallet-service"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bech32 0.11.1",
@@ -3967,7 +3967,7 @@ dependencies = [
 
 [[package]]
 name = "piratewallet-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "pirate-cli-core",
@@ -5456,7 +5456,7 @@ dependencies = [
 
 [[package]]
 name = "sync-harness"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",

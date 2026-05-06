@@ -1,6 +1,6 @@
 {
   "name": "react-native-pirate-wallet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React Native wrapper for the Pirate Unified Wallet native SDK surfaces",
   "license": "MIT",
   "main": "src/index.js",
