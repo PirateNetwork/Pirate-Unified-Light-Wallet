@@ -596,6 +596,13 @@ jobs:
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
+      - name: Install Perl (OpenSSL build)
+        if: matrix.platform == 'Windows'
+        shell: pwsh
+        run: |
+          choco install strawberryperl --version 5.42.0.1 --no-progress -y
+          "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding ascii -Append
+
       - name: Build CLI binaries
         shell: bash
         env:

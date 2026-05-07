@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRATE_DIR="$PROJECT_ROOT/crates"
 
+if [ -d "/c/Strawberry/perl/bin" ]; then
+  export PATH="/c/Strawberry/perl/bin:/c/Strawberry/c/bin:$PATH"
+  export PERL="/c/Strawberry/perl/bin/perl"
+fi
+
 build_package() {
   local package="$1"
   cargo build --release --locked -p "$package"
