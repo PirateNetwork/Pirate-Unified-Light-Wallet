@@ -243,6 +243,8 @@ notarize_dmg() {
   local apple_id="$2"
   local team_id="$3"
   local app_password="$4"
+  local timeout_seconds="${MACOS_NOTARY_TIMEOUT_SECONDS:-2700}"
+  local poll_seconds="${MACOS_NOTARY_POLL_SECONDS:-30}"
 
   local submit_json
   submit_json="$(mktemp)"
@@ -251,7 +253,6 @@ notarize_dmg() {
     --apple-id "$apple_id" \
     --team-id "$team_id" \
     --password "$app_password" \
-    --wait \
     --output-format json > "$submit_json"; then
     cat "$submit_json" >&2 || true
     rm -f "$submit_json"
@@ -260,7 +261,7 @@ notarize_dmg() {
 
   cat "$submit_json"
 
-  local submission_id status
+  local submission_id status deadline now status_json
   submission_id="$(python3 - "$submit_json" <<'PY'
 import json
 import sys
@@ -280,22 +281,68 @@ print(data.get("status", ""))
 PY
 )"
 
-  if [ "$status" != "Accepted" ]; then
-    if [ -n "$submission_id" ]; then
-      log "Fetching notarization failure log for submission $submission_id..."
+  if [ -z "$submission_id" ]; then
+    rm -f "$submit_json"
+    autofail "No notarization submission id found in notarytool output."
+  fi
+
+  deadline=$(( $(date +%s) + timeout_seconds ))
+  status_json="$(mktemp)"
+
+  while true; do
+    case "$status" in
+      Accepted)
+        rm -f "$submit_json" "$status_json"
+        return 0
+        ;;
+      Invalid|Rejected)
+        log "Fetching notarization failure log for submission $submission_id..."
+        xcrun notarytool log "$submission_id" \
+          --apple-id "$apple_id" \
+          --team-id "$team_id" \
+          --password "$app_password" \
+          --output-format json >&2 || true
+        rm -f "$submit_json" "$status_json"
+        autofail "Notarization failed with status: $status"
+        ;;
+    esac
+
+    now="$(date +%s)"
+    if [ "$now" -ge "$deadline" ]; then
+      warn "Notarization did not finish before timeout for submission $submission_id."
       xcrun notarytool log "$submission_id" \
         --apple-id "$apple_id" \
         --team-id "$team_id" \
         --password "$app_password" \
         --output-format json >&2 || true
-    else
-      warn "No notarization submission id found in notarytool output."
+      rm -f "$submit_json" "$status_json"
+      autofail "Notarization timed out after ${timeout_seconds}s with status: ${status:-unknown}"
     fi
-    rm -f "$submit_json"
-    autofail "Notarization failed with status: ${status:-unknown}"
-  fi
 
-  rm -f "$submit_json"
+    log "Notarization status for $submission_id: ${status:-In Progress}; checking again in ${poll_seconds}s..."
+    sleep "$poll_seconds"
+
+    if ! xcrun notarytool info "$submission_id" \
+      --apple-id "$apple_id" \
+      --team-id "$team_id" \
+      --password "$app_password" \
+      --output-format json > "$status_json"; then
+      cat "$status_json" >&2 || true
+      rm -f "$submit_json" "$status_json"
+      autofail "Notary status command failed for submission $submission_id"
+    fi
+
+    cat "$status_json"
+    status="$(python3 - "$status_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(data.get("status", ""))
+PY
+)"
+  done
 }
 
 sign_nested_code_no_timestamp() {
