@@ -253,8 +253,14 @@ if [ "$SIGN" = "true" ]; then
         -archivePath "$ARCHIVE_PATH" \
         -exportOptionsPlist "$EXPORT_OPTIONS_PLIST" \
         -exportPath "$EXPORT_PATH"
-    
-    IPA_FILE="$EXPORT_PATH/Runner.ipa"
+
+    mapfile -t exported_ipas < <(find "$EXPORT_PATH" -maxdepth 1 -type f -name "*.ipa" | sort)
+    if [ "${#exported_ipas[@]}" -ne 1 ]; then
+        find "$EXPORT_PATH" -maxdepth 2 -print >&2 || true
+        error "Expected exactly one exported IPA under $EXPORT_PATH, found ${#exported_ipas[@]}"
+    fi
+
+    IPA_FILE="${exported_ipas[0]}"
     SIGNED=true
 else
     # Create unsigned IPA
