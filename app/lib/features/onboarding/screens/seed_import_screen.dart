@@ -626,7 +626,6 @@ class _WordInputState extends State<_WordInput> {
   final GlobalKey _fieldKey = GlobalKey();
   OverlayEntry? _overlay;
   List<String> _matches = const [];
-  bool _isFocused = false;
 
   @override
   void initState() {
@@ -661,8 +660,7 @@ class _WordInputState extends State<_WordInput> {
 
   void _onFocusChange() {
     if (!mounted) return;
-    _isFocused = widget.focusNode.hasFocus;
-    if (_isFocused) {
+    if (widget.focusNode.hasFocus) {
       _refreshOverlay();
     } else {
       Future.delayed(const Duration(milliseconds: 120), () {
@@ -672,7 +670,6 @@ class _WordInputState extends State<_WordInput> {
         }
       });
     }
-    setState(() {});
   }
 
   void _onTextChanged() {
@@ -704,7 +701,8 @@ class _WordInputState extends State<_WordInput> {
   void _refreshOverlay() {
     final query = widget.controller.text.trim().toLowerCase();
     final exactMatch = _matches.length == 1 && _matches.first == query;
-    final shouldShow = _isFocused && _matches.isNotEmpty && !exactMatch;
+    final shouldShow =
+        widget.focusNode.hasFocus && _matches.isNotEmpty && !exactMatch;
     if (shouldShow) {
       _showOverlay();
     } else {
@@ -881,84 +879,97 @@ class _WordInputState extends State<_WordInput> {
         ? const <String>[]
         : bip39SuggestionsFromWordlist(typed, widget.wordlist, limit: 1);
     final hasPrefixMatch = typed.isEmpty || matches.isNotEmpty;
-    final borderColor = hasPrefixMatch
-        ? (_isFocused ? AppColors.accentPrimary : AppColors.border)
-        : AppColors.error;
     final inputStyle = AppTypography.body.copyWith(
       color: AppColors.textPrimary,
       fontSize: 14,
     );
     final reduceMotion = MediaQuery.of(context).disableAnimations;
 
-    return AnimatedContainer(
-      duration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 160),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-        border: Border.all(color: borderColor),
-        boxShadow: _isFocused
-            ? [
-                BoxShadow(
-                  color: AppColors.focusRingSubtle,
-                  blurRadius: 8,
-                  offset: Offset.zero,
-                ),
-              ]
-            : null,
-      ),
-      child: Row(
-        children: [
-          // Word number
-          Container(
-            width: 28,
-            alignment: Alignment.center,
-            child: Text(
-              '${widget.index + 1}',
-              style: AppTypography.caption.copyWith(
-                color: AppColors.textTertiary,
-                fontWeight: FontWeight.w600,
-              ),
+    final field = Row(
+      children: [
+        // Word number
+        Container(
+          width: 28,
+          alignment: Alignment.center,
+          child: Text(
+            '${widget.index + 1}',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textTertiary,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          // Word input
-          Expanded(
-            child: CompositedTransformTarget(
-              link: _layerLink,
-              child: SizedBox(
-                key: _fieldKey,
-                child: TextField(
-                  controller: widget.controller,
-                  focusNode: widget.focusNode,
-                  style: inputStyle,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 8,
-                    ),
-                    isDense: true,
+        ),
+        // Word input
+        Expanded(
+          child: CompositedTransformTarget(
+            link: _layerLink,
+            child: SizedBox(
+              key: _fieldKey,
+              child: TextField(
+                controller: widget.controller,
+                focusNode: widget.focusNode,
+                style: inputStyle,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 8,
                   ),
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  textInputAction: widget.isLast
-                      ? TextInputAction.done
-                      : TextInputAction.next,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp('[a-zA-Z]')),
-                    const _LowerCaseTextFormatter(),
-                  ],
-                  onSubmitted: (_) {
-                    _applyUniqueCompletion();
-                    widget.onSubmitted();
-                  },
+                  isDense: true,
                 ),
+                autocorrect: false,
+                enableSuggestions: false,
+                enableIMEPersonalizedLearning: false,
+                keyboardType: TextInputType.visiblePassword,
+                smartDashesType: SmartDashesType.disabled,
+                smartQuotesType: SmartQuotesType.disabled,
+                textInputAction: widget.isLast
+                    ? TextInputAction.done
+                    : TextInputAction.next,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp('[a-zA-Z]')),
+                  const _LowerCaseTextFormatter(),
+                ],
+                onSubmitted: (_) {
+                  _applyUniqueCompletion();
+                  widget.onSubmitted();
+                },
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+
+    return AnimatedBuilder(
+      animation: widget.focusNode,
+      child: field,
+      builder: (context, child) {
+        final isFocused = widget.focusNode.hasFocus;
+        final borderColor = hasPrefixMatch
+            ? (isFocused ? AppColors.accentPrimary : AppColors.border)
+            : AppColors.error;
+        return AnimatedContainer(
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 160),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceElevated,
+            borderRadius: BorderRadius.circular(PSpacing.radiusInput),
+            border: Border.all(color: borderColor),
+            boxShadow: isFocused
+                ? [
+                    BoxShadow(
+                      color: AppColors.focusRingSubtle,
+                      blurRadius: 8,
+                      offset: Offset.zero,
+                    ),
+                  ]
+                : null,
+          ),
+          child: child,
+        );
+      },
     );
   }
 }

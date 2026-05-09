@@ -299,7 +299,23 @@ class MainActivity: FlutterFragmentActivity() {
             // Best-effort; Rust will fall back if env cannot be set.
         }
         super.onCreate(savedInstanceState)
-        
+        configureWindowForStableIme()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        configureWindowForStableIme()
+    }
+
+    private fun configureWindowForStableIme() {
+        // Some hardened/OEM Android IME stacks briefly tear down Flutter's text
+        // input connection when the activity resizes during keyboard animation.
+        // Panning keeps the Flutter surface stable while still allowing text
+        // input and avoids keyboard open-then-close loops seen on GrapheneOS.
+        window?.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+        )
     }
 
     private fun storeKey(keyId: String, data: ByteArray) {

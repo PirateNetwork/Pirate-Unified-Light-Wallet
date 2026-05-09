@@ -71,7 +71,6 @@ class PInput extends StatefulWidget {
 class _PInputState extends State<PInput> {
   late FocusNode _focusNode;
   bool _ownsFocusNode = false;
-  bool _isFocused = false;
   late TextEditingController _internalController;
   bool _isInternalController = false;
 
@@ -84,7 +83,6 @@ class _PInputState extends State<PInput> {
       _focusNode = FocusNode();
       _ownsFocusNode = true;
     }
-    _focusNode.addListener(_onFocusChange);
     if (widget.controller == null && widget.value != null) {
       _internalController = TextEditingController(text: widget.value);
       _isInternalController = true;
@@ -101,7 +99,6 @@ class _PInputState extends State<PInput> {
       _internalController.text = widget.value ?? '';
     }
     if (oldWidget.focusNode != widget.focusNode) {
-      _focusNode.removeListener(_onFocusChange);
       if (_ownsFocusNode) {
         _focusNode.dispose();
       }
@@ -112,7 +109,6 @@ class _PInputState extends State<PInput> {
         _focusNode = FocusNode();
         _ownsFocusNode = true;
       }
-      _focusNode.addListener(_onFocusChange);
     }
   }
 
@@ -121,17 +117,10 @@ class _PInputState extends State<PInput> {
     if (_isInternalController) {
       _internalController.dispose();
     }
-    _focusNode.removeListener(_onFocusChange);
     if (_ownsFocusNode) {
       _focusNode.dispose();
     }
     super.dispose();
-  }
-
-  void _onFocusChange() {
-    setState(() {
-      _isFocused = _focusNode.hasFocus;
-    });
   }
 
   @override
@@ -139,6 +128,53 @@ class _PInputState extends State<PInput> {
     final reduceMotion = MediaQuery.of(context).disableAnimations;
     final autocorrect = !widget.obscureText && widget.autocorrect;
     final enableSuggestions = !widget.obscureText && widget.enableSuggestions;
+    final effectiveKeyboardType =
+        widget.keyboardType ??
+        (widget.obscureText ? TextInputType.visiblePassword : null);
+    final textField = TextField(
+      controller:
+          widget.controller ??
+          (_isInternalController ? _internalController : null),
+      focusNode: _focusNode,
+      obscureText: widget.obscureText,
+      enabled: widget.enabled,
+      readOnly: widget.readOnly,
+      maxLines: widget.maxLines,
+      maxLength: widget.maxLength,
+      autocorrect: autocorrect,
+      enableSuggestions: enableSuggestions,
+      enableIMEPersonalizedLearning: !widget.obscureText,
+      smartDashesType: widget.obscureText
+          ? SmartDashesType.disabled
+          : SmartDashesType.enabled,
+      smartQuotesType: widget.obscureText
+          ? SmartQuotesType.disabled
+          : SmartQuotesType.enabled,
+      keyboardType: effectiveKeyboardType,
+      textInputAction: widget.textInputAction,
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
+      inputFormatters: widget.inputFormatters,
+      autofocus: widget.autofocus,
+      textAlignVertical:
+          widget.textAlignVertical ??
+          (widget.maxLines == 1 ? TextAlignVertical.center : null),
+      style: widget.monospace
+          ? PTypography.codeMedium(color: AppColors.textPrimary)
+          : PTypography.bodyMedium(color: AppColors.textPrimary),
+      cursorColor: AppColors.focusRing,
+      decoration: InputDecoration(
+        hintText: widget.hint,
+        errorText: widget.errorText,
+        prefixIcon: widget.prefixIcon,
+        suffixIcon: widget.suffixIcon,
+        filled: true,
+        fillColor: widget.enabled
+            ? AppColors.backgroundSurface
+            : AppColors.backgroundBase,
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -150,58 +186,30 @@ class _PInputState extends State<PInput> {
           ),
           SizedBox(height: PSpacing.xs),
         ],
-        AnimatedContainer(
-          duration: reduceMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 200),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-            boxShadow: _isFocused
-                ? [
-                    BoxShadow(
-                      color: AppColors.focusRingSubtle,
-                      blurRadius: 8.0,
-                      offset: Offset.zero,
-                    ),
-                  ]
-                : null,
-          ),
-          child: TextField(
-            controller:
-                widget.controller ??
-                (_isInternalController ? _internalController : null),
-            focusNode: _focusNode,
-            obscureText: widget.obscureText,
-            enabled: widget.enabled,
-            readOnly: widget.readOnly,
-            maxLines: widget.maxLines,
-            maxLength: widget.maxLength,
-            autocorrect: autocorrect,
-            enableSuggestions: enableSuggestions,
-            keyboardType: widget.keyboardType,
-            textInputAction: widget.textInputAction,
-            onChanged: widget.onChanged,
-            onSubmitted: widget.onSubmitted,
-            inputFormatters: widget.inputFormatters,
-            autofocus: widget.autofocus,
-            textAlignVertical:
-                widget.textAlignVertical ??
-                (widget.maxLines == 1 ? TextAlignVertical.center : null),
-            style: widget.monospace
-                ? PTypography.codeMedium(color: AppColors.textPrimary)
-                : PTypography.bodyMedium(color: AppColors.textPrimary),
-            cursorColor: AppColors.focusRing,
-            decoration: InputDecoration(
-              hintText: widget.hint,
-              errorText: widget.errorText,
-              prefixIcon: widget.prefixIcon,
-              suffixIcon: widget.suffixIcon,
-              filled: true,
-              fillColor: widget.enabled
-                  ? AppColors.backgroundSurface
-                  : AppColors.backgroundBase,
-            ),
-          ),
+        AnimatedBuilder(
+          animation: _focusNode,
+          child: textField,
+          builder: (context, child) {
+            final isFocused = _focusNode.hasFocus;
+            return AnimatedContainer(
+              duration: reduceMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 200),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(PSpacing.radiusInput),
+                boxShadow: isFocused
+                    ? [
+                        BoxShadow(
+                          color: AppColors.focusRingSubtle,
+                          blurRadius: 8.0,
+                          offset: Offset.zero,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: child,
+            );
+          },
         ),
         if (widget.helperText != null) ...[
           SizedBox(height: PSpacing.xxs),

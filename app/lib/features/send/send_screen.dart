@@ -1754,6 +1754,10 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                     autofocus: true,
                     autocorrect: false,
                     enableSuggestions: false,
+                    enableIMEPersonalizedLearning: false,
+                    keyboardType: TextInputType.visiblePassword,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     style: AppTypography.body.copyWith(
                       color: AppColors.textPrimary,
                     ),

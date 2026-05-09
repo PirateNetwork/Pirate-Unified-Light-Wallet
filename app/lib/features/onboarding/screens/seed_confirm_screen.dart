@@ -356,7 +356,6 @@ class _SeedWordInputState extends State<_SeedWordInput> {
   final GlobalKey _fieldKey = GlobalKey();
   OverlayEntry? _overlay;
   List<String> _matches = const [];
-  bool _isFocused = false;
 
   @override
   void initState() {
@@ -390,8 +389,7 @@ class _SeedWordInputState extends State<_SeedWordInput> {
   }
 
   void _onFocusChange() {
-    _isFocused = widget.focusNode.hasFocus;
-    if (_isFocused) {
+    if (widget.focusNode.hasFocus) {
       _refreshOverlay();
     } else {
       Future.delayed(const Duration(milliseconds: 120), () {
@@ -401,7 +399,6 @@ class _SeedWordInputState extends State<_SeedWordInput> {
         }
       });
     }
-    setState(() {});
   }
 
   void _onTextChanged() {
@@ -433,7 +430,8 @@ class _SeedWordInputState extends State<_SeedWordInput> {
   void _refreshOverlay() {
     final query = widget.controller.text.trim().toLowerCase();
     final exactMatch = _matches.length == 1 && _matches.first == query;
-    final shouldShow = _isFocused && _matches.isNotEmpty && !exactMatch;
+    final shouldShow =
+        widget.focusNode.hasFocus && _matches.isNotEmpty && !exactMatch;
     if (shouldShow) {
       _showOverlay();
     } else {
@@ -612,6 +610,44 @@ class _SeedWordInputState extends State<_SeedWordInput> {
         Theme.of(context).inputDecorationTheme.contentPadding ??
         const EdgeInsets.symmetric(horizontal: 16, vertical: 14);
     final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final field = Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        CompositedTransformTarget(
+          link: _layerLink,
+          child: SizedBox(
+            key: _fieldKey,
+            child: TextField(
+              controller: widget.controller,
+              focusNode: widget.focusNode,
+              textInputAction: widget.textInputAction,
+              onSubmitted: (_) {
+                _applyUniqueCompletion();
+                widget.onSubmitted();
+              },
+              autofocus: widget.autofocus,
+              autocorrect: false,
+              enableSuggestions: false,
+              enableIMEPersonalizedLearning: false,
+              keyboardType: TextInputType.visiblePassword,
+              smartDashesType: SmartDashesType.disabled,
+              smartQuotesType: SmartQuotesType.disabled,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp('[a-zA-Z]')),
+                const _LowerCaseTextFormatter(),
+              ],
+              style: inputStyle,
+              decoration: InputDecoration(
+                hintText: widget.hint,
+                filled: true,
+                fillColor: AppColors.backgroundSurface,
+                contentPadding: contentPadding,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -624,56 +660,30 @@ class _SeedWordInputState extends State<_SeedWordInput> {
           ),
         ),
         const SizedBox(height: AppSpacing.xs),
-        AnimatedContainer(
-          duration: reduceMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 200),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(PSpacing.radiusInput),
-            boxShadow: _isFocused
-                ? [
-                    BoxShadow(
-                      color: AppColors.focusRingSubtle,
-                      blurRadius: 8.0,
-                      offset: Offset.zero,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Stack(
-            alignment: Alignment.centerLeft,
-            children: [
-              CompositedTransformTarget(
-                link: _layerLink,
-                child: SizedBox(
-                  key: _fieldKey,
-                  child: TextField(
-                    controller: widget.controller,
-                    focusNode: widget.focusNode,
-                    textInputAction: widget.textInputAction,
-                    onSubmitted: (_) {
-                      _applyUniqueCompletion();
-                      widget.onSubmitted();
-                    },
-                    autofocus: widget.autofocus,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp('[a-zA-Z]')),
-                      const _LowerCaseTextFormatter(),
-                    ],
-                    style: inputStyle,
-                    decoration: InputDecoration(
-                      hintText: widget.hint,
-                      filled: true,
-                      fillColor: AppColors.backgroundSurface,
-                      contentPadding: contentPadding,
-                    ),
-                  ),
-                ),
+        AnimatedBuilder(
+          animation: widget.focusNode,
+          child: field,
+          builder: (context, child) {
+            final isFocused = widget.focusNode.hasFocus;
+            return AnimatedContainer(
+              duration: reduceMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 200),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(PSpacing.radiusInput),
+                boxShadow: isFocused
+                    ? [
+                        BoxShadow(
+                          color: AppColors.focusRingSubtle,
+                          blurRadius: 8.0,
+                          offset: Offset.zero,
+                        ),
+                      ]
+                    : null,
               ),
-            ],
-          ),
+              child: child,
+            );
+          },
         ),
       ],
     );
