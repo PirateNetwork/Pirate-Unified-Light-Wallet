@@ -279,10 +279,11 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
             size.width,
             vertical: verticalPadding,
           );
-          final contentPadding = basePadding.copyWith(
-            bottom:
-                basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
-          );
+          final contentPadding = basePadding;
+          final minContentHeight =
+              constraints.maxHeight > contentPadding.vertical
+              ? constraints.maxHeight - contentPadding.vertical
+              : 0.0;
           final iconSize = isCompactHeight ? 52.0 : 64.0;
           final iconSpacing = isCompactHeight ? AppSpacing.lg : AppSpacing.xl;
           final titleSpacing = isCompactHeight ? AppSpacing.xs : AppSpacing.sm;
@@ -292,141 +293,135 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
           final showBiometricOverlay = _isBiometricUnlocking && !_isUnlocking;
           return Stack(
             children: [
-              CustomScrollView(
+              SingleChildScrollView(
                 keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                slivers: [
-                  SliverPadding(
-                    padding: contentPadding,
-                    sliver: SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (isCompactHeight)
-                              SizedBox(height: AppSpacing.lg)
-                            else
-                              const Spacer(),
+                    ScrollViewKeyboardDismissBehavior.manual,
+                padding: contentPadding,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: minContentHeight),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          height: isCompactHeight
+                              ? AppSpacing.lg
+                              : AppSpacing.xl,
+                        ),
 
-                            // Icon
-                            Icon(
-                              Icons.lock_outline,
-                              size: iconSize,
-                              color: AppColors.accentPrimary,
+                        // Icon
+                        Icon(
+                          Icons.lock_outline,
+                          size: iconSize,
+                          color: AppColors.accentPrimary,
+                        ),
+
+                        SizedBox(height: iconSpacing),
+
+                        // Title
+                        Text(
+                          'Enter Passphrase'.tr,
+                          style: AppTypography.h2.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        SizedBox(height: titleSpacing),
+
+                        // Subtitle
+                        Text(
+                          'Enter your passphrase to unlock and access your wallets'
+                              .tr,
+                          style: AppTypography.body.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        SizedBox(height: sectionSpacing),
+
+                        // Passphrase input
+                        PInput(
+                          controller: _passphraseController,
+                          label: 'Passphrase'.tr,
+                          hint: 'Enter your passphrase',
+                          obscureText: _obscurePassphrase,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _unlock(),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassphrase
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              color: AppColors.textSecondary,
                             ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassphrase = !_obscurePassphrase;
+                              });
+                            },
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your passphrase';
+                            }
+                            return null;
+                          },
+                        ),
 
-                            SizedBox(height: iconSpacing),
+                        const SizedBox(height: AppSpacing.md),
 
-                            // Title
-                            Text(
-                              'Enter Passphrase'.tr,
-                              style: AppTypography.h2.copyWith(
-                                color: AppColors.textPrimary,
+                        // Error message
+                        if (_error != null)
+                          Container(
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.error.withValues(alpha: 0.3),
                               ),
-                              textAlign: TextAlign.center,
                             ),
-
-                            SizedBox(height: titleSpacing),
-
-                            // Subtitle
-                            Text(
-                              'Enter your passphrase to unlock and access your wallets'
-                                  .tr,
-                              style: AppTypography.body.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-
-                            SizedBox(height: sectionSpacing),
-
-                            // Passphrase input
-                            PInput(
-                              controller: _passphraseController,
-                              label: 'Passphrase'.tr,
-                              hint: 'Enter your passphrase',
-                              obscureText: _obscurePassphrase,
-                              textInputAction: TextInputAction.done,
-                              onSubmitted: (_) => _unlock(),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscurePassphrase
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                  color: AppColors.textSecondary,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  color: AppColors.error,
+                                  size: 20,
                                 ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscurePassphrase = !_obscurePassphrase;
-                                  });
-                                },
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter your passphrase';
-                                }
-                                return null;
-                              },
-                            ),
-
-                            const SizedBox(height: AppSpacing.md),
-
-                            // Error message
-                            if (_error != null)
-                              Container(
-                                padding: const EdgeInsets.all(AppSpacing.md),
-                                decoration: BoxDecoration(
-                                  color: AppColors.error.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: AppColors.error.withValues(
-                                      alpha: 0.3,
+                                const SizedBox(width: AppSpacing.sm),
+                                Expanded(
+                                  child: Text(
+                                    _error!,
+                                    style: AppTypography.body.copyWith(
+                                      color: AppColors.error,
                                     ),
                                   ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.error_outline,
-                                      color: AppColors.error,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: AppSpacing.sm),
-                                    Expanded(
-                                      child: Text(
-                                        _error!,
-                                        style: AppTypography.body.copyWith(
-                                          color: AppColors.error,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                            if (isCompactHeight)
-                              SizedBox(height: AppSpacing.lg)
-                            else
-                              const Spacer(),
-
-                            // Unlock button
-                            PButton(
-                              text: 'Unlock',
-                              onPressed: (_isUnlocking || _isBiometricUnlocking)
-                                  ? null
-                                  : _unlock,
-                              variant: PButtonVariant.primary,
-                              size: PButtonSize.large,
-                              isLoading: _isUnlocking,
+                              ],
                             ),
-                          ],
+                          ),
+
+                        SizedBox(height: sectionSpacing),
+
+                        // Unlock button
+                        PButton(
+                          text: 'Unlock',
+                          onPressed: (_isUnlocking || _isBiometricUnlocking)
+                              ? null
+                              : _unlock,
+                          variant: PButtonVariant.primary,
+                          size: PButtonSize.large,
+                          isLoading: _isUnlocking,
                         ),
-                      ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
               if (showBiometricOverlay)
                 Positioned.fill(
