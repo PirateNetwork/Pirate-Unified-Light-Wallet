@@ -12,6 +12,7 @@ import '../../../core/security/screenshot_protection.dart';
 import '../../../design/deep_space_theme.dart';
 import '../../settings/providers/preferences_providers.dart';
 import '../../../ui/atoms/p_button.dart';
+import '../../../ui/molecules/seed_phrase_grid.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
@@ -52,7 +53,8 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
       final onboardingState = ref.read(onboardingControllerProvider);
       String mnemonic;
 
-      if (onboardingState.mnemonic != null && onboardingState.mnemonic!.isNotEmpty) {
+      if (onboardingState.mnemonic != null &&
+          onboardingState.mnemonic!.isNotEmpty) {
         final existingMnemonic = onboardingState.mnemonic!;
         final existingLanguage =
             onboardingState.mnemonicLanguage ?? MnemonicLanguage.english;
@@ -163,7 +165,9 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                     currentStep: 5,
                     totalSteps: 6,
                   ),
-                  const SizedBox(height: AppSpacing.xxl),
+                  SizedBox(
+                    height: _seedRevealed ? AppSpacing.lg : AppSpacing.xxl,
+                  ),
                   Text(
                     'Write down these 24 words'.tr,
                     style: AppTypography.h2.copyWith(
@@ -258,7 +262,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                   ] else ...[
                     // Revealed seed - show words
                     Container(
-                      padding: const EdgeInsets.all(AppSpacing.lg),
+                      padding: const EdgeInsets.all(AppSpacing.md),
                       decoration: BoxDecoration(
                         color: AppColors.backgroundSurface,
                         borderRadius: BorderRadius.circular(16),
@@ -266,7 +270,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                       ),
                       child: _mnemonic == null
                           ? const Center(child: CircularProgressIndicator())
-                          : _SeedGrid(words: _mnemonic!.split(' ')),
+                          : SeedPhraseGrid(words: _mnemonic!.split(' ')),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     PButton(
@@ -319,69 +323,6 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                 ],
               ),
             ),
-    );
-  }
-}
-
-class _SeedGrid extends StatelessWidget {
-  final List<String> words;
-
-  const _SeedGrid({required this.words});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 360;
-        final crossAxisCount = isNarrow ? 2 : 3;
-        final aspectRatio = isNarrow ? 2.1 : 2.5;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: AppSpacing.sm,
-            mainAxisSpacing: AppSpacing.sm,
-            childAspectRatio: aspectRatio,
-          ),
-          itemCount: words.length,
-          itemBuilder: (context, index) {
-            return Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: AppSpacing.xs,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundSurface,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.borderDefault),
-              ),
-              child: Row(
-                children: [
-                  Text(
-                    '${index + 1}.',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.xs),
-                  Expanded(
-                    child: Text(
-                      words[index],
-                      style: AppTypography.bodyBold.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                      maxLines: 2,
-                      softWrap: true,
-                      overflow: TextOverflow.fade,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
     );
   }
 }

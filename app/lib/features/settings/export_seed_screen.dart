@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ui/atoms/p_button.dart';
 import '../../ui/atoms/p_input.dart';
 import '../../ui/atoms/p_text_button.dart';
+import '../../ui/molecules/seed_phrase_grid.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../design/compat.dart';
@@ -211,8 +212,11 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     }
   }
 
-  Widget _centeredStep(Widget child, {bool allowScroll = true}) {
-    const maxWidth = 560.0;
+  Widget _centeredStep(
+    Widget child, {
+    bool allowScroll = true,
+    double maxWidth = 560.0,
+  }) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final gutter = PirateSpacing.responsiveGutter(constraints.maxWidth);
@@ -575,9 +579,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
               ),
             ],
           ),
-          SizedBox(height: PirateSpacing.lg),
+          SizedBox(height: PirateSpacing.md),
           Container(
-            padding: EdgeInsets.all(PirateSpacing.lg),
+            padding: EdgeInsets.all(PirateSpacing.md),
             decoration: BoxDecoration(
               color: AppColors.backgroundSurface.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(16),
@@ -632,7 +636,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                     ),
                   ),
                 ],
-                SizedBox(height: PirateSpacing.lg),
+                SizedBox(height: PirateSpacing.md),
                 _buildMnemonicGrid(),
               ],
             ),
@@ -677,54 +681,14 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
           ),
         ],
       ),
+      maxWidth: 900,
     );
   }
 
   Widget _buildMnemonicGrid() {
     if (_mnemonic == null) return SizedBox.shrink();
 
-    final words = _mnemonic!.split(' ');
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isNarrow = constraints.maxWidth < 360;
-        final crossAxisCount = isNarrow ? 2 : 3;
-        final aspectRatio = isNarrow ? 2.0 : 2.4;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: PirateSpacing.sm,
-            mainAxisSpacing: PirateSpacing.sm,
-            childAspectRatio: aspectRatio,
-          ),
-          itemCount: words.length,
-          itemBuilder: (context, index) {
-            return Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: PirateSpacing.sm,
-                vertical: PirateSpacing.xs,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundElevated,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.borderDefault),
-              ),
-              child: Text(
-                '${index + 1}. ${words[index]}',
-                style: PirateTypography.bodySmall.copyWith(
-                  color: AppColors.textPrimary,
-                  fontFamily: 'monospace',
-                ),
-                maxLines: 2,
-                softWrap: true,
-                overflow: TextOverflow.fade,
-              ),
-            );
-          },
-        );
-      },
-    );
+    return SeedPhraseGrid(words: _mnemonic!.split(' '));
   }
 
   Future<void> _authenticateBiometric() async {
