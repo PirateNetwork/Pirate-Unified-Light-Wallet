@@ -72,10 +72,6 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
         return;
       }
 
-      if (previous != null) {
-        await _stopWalletSessions(previous);
-      }
-
       await FfiBridge.switchWallet(id);
       state = id;
       _notifyBackgroundHandler(id);
@@ -92,14 +88,6 @@ class ActiveWalletNotifier extends Notifier<WalletId?> {
     unawaited(
       ref.read(bg.backgroundSyncManagerProvider).setActiveWalletId(null),
     );
-  }
-
-  Future<void> _stopWalletSessions(WalletId walletId) async {
-    try {
-      await FfiBridge.cancelSync(walletId).timeout(const Duration(seconds: 3));
-    } catch (_) {
-      // Ignore cancellation errors in stubbed environment
-    }
   }
 
   Future<void> _startWalletSessions(WalletId walletId) async {
@@ -147,6 +135,27 @@ final activeWalletMetaProvider = Provider<WalletMeta?>((ref) {
 final refreshWalletsProvider = Provider<void Function()>((ref) {
   return () {
     ref.invalidate(walletsProvider);
+  };
+});
+
+/// Refresh wallet-derived UI state after operations that mutate wallet storage.
+final refreshWalletRuntimeProvider = Provider<void Function()>((ref) {
+  return () {
+    ref
+      ..invalidate(walletsProvider)
+      ..invalidate(balanceProvider)
+      ..invalidate(balanceStreamProvider)
+      ..invalidate(transactionsProvider)
+      ..invalidate(transactionStreamProvider)
+      ..invalidate(syncStatusProvider)
+      ..invalidate(syncProgressStreamProvider)
+      ..invalidate(isSyncRunningProvider)
+      ..invalidate(lastCheckpointProvider)
+      ..invalidate(syncLogsProvider)
+      ..invalidate(addressesProvider)
+      ..invalidate(currentAddressProvider)
+      ..invalidate(isWatchOnlyProvider)
+      ..invalidate(watchOnlyBannerProvider);
   };
 });
 
@@ -396,19 +405,12 @@ final rescanProvider = Provider<Future<void> Function(int fromHeight)>((ref) {
     if (walletId == null) throw Exception('No active wallet');
 
     // Kick sync status/progress listeners immediately so UI reflects rescan start.
-    ref
-      ..invalidate(syncStatusProvider)
-      ..invalidate(syncProgressStreamProvider);
+    ref.read(refreshWalletRuntimeProvider)();
 
     await FfiBridge.rescan(walletId, fromHeight);
 
     // Refresh sync status/progress and clear cached transaction state after rescan.
-    ref
-      ..invalidate(syncStatusProvider)
-      ..invalidate(syncProgressStreamProvider)
-      ..invalidate(transactionsProvider)
-      ..invalidate(balanceProvider)
-      ..invalidate(transactionStreamProvider);
+    ref.read(refreshWalletRuntimeProvider)();
   };
 });
 

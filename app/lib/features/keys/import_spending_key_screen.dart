@@ -80,15 +80,9 @@ class _ImportSpendingKeyScreenState
       );
 
       if (!mounted) return;
-      unawaited(
-        FfiBridge.rescan(walletId, birthday).catchError((Object error) {
-          if (mounted) {
-            setState(() {
-              _error = 'Rescan failed to start: $error';
-            });
-          }
-        }),
-      );
+      ref.read(refreshWalletRuntimeProvider)();
+      await ref.read(rescanProvider)(birthday);
+      if (!mounted) return;
       unawaited(context.push('/settings/keys/detail?keyId=$keyId'));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

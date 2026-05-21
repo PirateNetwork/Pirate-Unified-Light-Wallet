@@ -301,8 +301,11 @@ pub(super) fn import_spending_key(
     };
 
     let encrypted = repo.encrypt_account_key_fields(&key)?;
-    repo.upsert_account_key(&encrypted)
-        .map_err(|e| anyhow!(e.to_string()))
+    let key_id = repo
+        .upsert_account_key(&encrypted)
+        .map_err(|e| anyhow!(e.to_string()))?;
+    sync_control::clear_wallet_data_caches(&wallet_id);
+    Ok(key_id)
 }
 
 fn key_type_to_info(key_type: KeyType) -> KeyTypeInfo {
