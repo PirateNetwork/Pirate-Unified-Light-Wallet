@@ -221,7 +221,8 @@ pub(super) fn switch_wallet(wallet_id: WalletId) -> Result<()> {
             let cancel_result = run_on_runtime_blocking({
                 let wallet_id_for_cancel = previous_wallet_id.clone();
                 move || async move {
-                    sync_control::cancel_sync_internal(wallet_id_for_cancel.clone(), true).await?;
+                    sync_control::cancel_sync_for_wallet_switch(wallet_id_for_cancel.clone())
+                        .await?;
                     Ok(())
                 }
             });

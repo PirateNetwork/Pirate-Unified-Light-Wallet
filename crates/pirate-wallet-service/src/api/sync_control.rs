@@ -130,6 +130,12 @@ fn clear_sync_runtime_cache(wallet_id: &WalletId) {
     BALANCE_CACHE.write().remove(wallet_id);
 }
 
+pub(super) fn clear_wallet_data_caches(wallet_id: &WalletId) {
+    SYNC_STATUS_SNAPSHOT_CACHE.write().remove(wallet_id);
+    TX_LIST_CACHE.write().remove(wallet_id);
+    BALANCE_CACHE.write().remove(wallet_id);
+}
+
 fn load_spendability_status_internal(wallet_id: &str) -> Result<SpendabilityStatus> {
     let (db, _repo) = open_wallet_db_for(wallet_id)?;
     let storage = SpendabilityStateStorage::new(&db);
@@ -2323,6 +2329,18 @@ pub(super) async fn cancel_sync_internal(
     }
 
     Ok(())
+}
+
+pub(super) async fn cancel_sync_for_wallet_switch(wallet_id: WalletId) -> Result<()> {
+    if RESCAN_IN_FLIGHT.read().contains(&wallet_id) || is_rescan_active(&wallet_id) {
+        tracing::info!(
+            "Preserving active rescan for wallet {} during wallet switch",
+            wallet_id
+        );
+        return Ok(());
+    }
+
+    cancel_sync_internal(wallet_id, true).await
 }
 
 pub(super) async fn cancel_sync(wallet_id: WalletId) -> Result<()> {
