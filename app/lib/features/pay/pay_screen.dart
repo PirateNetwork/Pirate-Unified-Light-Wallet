@@ -68,7 +68,7 @@ class PayScreen extends StatelessWidget {
       onSend: () => context.push('/send'),
       onReceive: () => context.push('/receive'),
       onVerify: () => context.push('/payment-disclosure'),
-      onBuy: () => _showComingSoon(context),
+      onSwap: () => _showComingSoon(context),
     );
     final isDesktopPlatform = _isDesktopPlatform();
 
@@ -81,7 +81,7 @@ class PayScreen extends StatelessWidget {
         useSafeArea: false,
         appBar: PAppBar(
           title: 'Pay'.tr,
-          subtitle: 'Send, receive, buy, or verify in a few taps.'.tr,
+          subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
           actions: appBarActions,
         ),
         body: content,
@@ -94,7 +94,7 @@ class PayScreen extends StatelessWidget {
           ? null
           : PAppBar(
               title: 'Pay'.tr,
-              subtitle: 'Send, receive, buy, or verify in a few taps.'.tr,
+              subtitle: 'Send, receive, swap, or verify in a few steps.'.tr,
               actions: appBarActions,
             ),
       body: content,
@@ -108,14 +108,14 @@ class PaySheet extends StatelessWidget {
     required this.onSend,
     required this.onReceive,
     required this.onVerify,
-    required this.onBuy,
+    required this.onSwap,
     super.key,
   });
 
   final VoidCallback onSend;
   final VoidCallback onReceive;
   final VoidCallback onVerify;
-  final VoidCallback onBuy;
+  final VoidCallback onSwap;
 
   @override
   Widget build(BuildContext context) {
@@ -181,15 +181,15 @@ class PaySheet extends StatelessWidget {
                 compact: true,
               ),
               _PayActionTile(
-                title: 'Buy'.tr,
-                subtitle: 'Buy ARRR'.tr,
-                icon: Icons.shopping_bag,
+                title: 'Swap'.tr,
+                subtitle: 'Swap ARRR'.tr,
+                icon: Icons.swap_horiz,
                 gradient: LinearGradient(
                   colors: [AppColors.highlight, AppColors.warning],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                onTap: onBuy,
+                onTap: onSwap,
                 compact: true,
               ),
             ];
@@ -219,7 +219,7 @@ class PaySheet extends StatelessWidget {
                   ),
                   const SizedBox(height: PSpacing.xs),
                   Text(
-                    'Send, receive, buy, or verify a payment.'.tr,
+                    'Send, receive, swap, or verify in a few steps.'.tr,
                     style: PTypography.bodySmall(
                       color: AppColors.textSecondary,
                     ),
@@ -257,13 +257,13 @@ class _PayContent extends StatelessWidget {
     required this.onSend,
     required this.onReceive,
     required this.onVerify,
-    required this.onBuy,
+    required this.onSwap,
   });
 
   final VoidCallback onSend;
   final VoidCallback onReceive;
   final VoidCallback onVerify;
-  final VoidCallback onBuy;
+  final VoidCallback onSwap;
 
   @override
   Widget build(BuildContext context) {
@@ -303,15 +303,15 @@ class _PayContent extends StatelessWidget {
         onTap: onVerify,
       ),
       _PayActionTile(
-        title: 'Buy'.tr,
-        subtitle: 'Buy ARRR'.tr,
-        icon: Icons.shopping_bag,
+        title: 'Swap'.tr,
+        subtitle: 'Swap ARRR'.tr,
+        icon: Icons.swap_horiz,
         gradient: LinearGradient(
           colors: [AppColors.highlight, AppColors.warning],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        onTap: onBuy,
+        onTap: onSwap,
       ),
     ];
 

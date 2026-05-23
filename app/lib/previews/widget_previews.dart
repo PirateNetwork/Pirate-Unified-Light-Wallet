@@ -22,7 +22,7 @@ Widget paySheetPreview() {
           onSend: () {},
           onReceive: () {},
           onVerify: () {},
-          onBuy: () {},
+          onSwap: () {},
         ),
       ),
     ),
