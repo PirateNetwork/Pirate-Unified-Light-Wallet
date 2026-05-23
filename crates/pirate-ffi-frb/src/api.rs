@@ -1170,6 +1170,21 @@ pub fn export_seed_raw(
     service::export_seed_raw(wallet_id, mnemonic_language)
 }
 
+/// Export the active wallet seed for immediate KDF swap-engine startup.
+///
+/// This uses the Rust service's KDF-specific guardrails and rejects decoy,
+/// locked, watch-only, and seedless/private-key-import wallet states.
+pub fn export_seed_for_kdf(
+    wallet_id: WalletId,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<String> {
+    let mnemonic_language = match mnemonic_language {
+        Some(value) => Some(convert_into_service(value)?),
+        None => None,
+    };
+    service::export_seed_for_kdf(wallet_id, mnemonic_language)
+}
+
 // ============================================================================
 // Send (Send-to-Many with per-output memos)
 // ============================================================================

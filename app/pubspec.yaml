@@ -11,6 +11,7 @@ dependencies:
   bitsdojo_window: ^0.1.6
   crypto: ^3.0.7
   cupertino_icons: ^1.0.8
+  decimal: ^3.2.4
   ffi: ^2.2.0
   file_selector: ^1.0.3
   flutter:
@@ -24,15 +25,42 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   freezed_annotation: ^3.1.0
   go_router: ^17.1.0
+  komodo_defi_framework:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_framework
+  komodo_defi_local_auth:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_local_auth
+  komodo_defi_rpc_methods:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_rpc_methods
+  komodo_defi_sdk:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_sdk
+  komodo_defi_types:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_types
   local_auth: ^3.0.0
   mobile_scanner: ^7.1.4
   package_info_plus: ^9.0.0
+  path: ^1.9.1
   path_provider: ^2.1.4
   qr_flutter: ^4.1.0
   screen_retriever: ^0.2.0
   share_plus: ^12.0.1
   timeago: ^3.7.0
   url_launcher: ^6.3.0
+  uuid: ^4.5.2
   window_manager: ^0.5.1
   zxing2: ^0.2.1
 
@@ -48,6 +76,60 @@ dev_dependencies:
   json_serializable: ^6.12.0
   lints: ^6.1.0
   mocktail: ^1.0.4
+  test: ^1.29.0
+
+dependency_overrides:
+  local_auth: ^3.0.0
+  komodo_cex_market_data:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_cex_market_data
+  komodo_coin_updates:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_coin_updates
+  komodo_coins:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_coins
+  komodo_defi_framework:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_framework
+  komodo_defi_local_auth:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_local_auth
+  komodo_defi_rpc_methods:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_rpc_methods
+  komodo_defi_sdk:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_sdk
+  komodo_defi_types:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_defi_types
+  komodo_ui:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_ui
+  komodo_wallet_build_transformer:
+    git:
+      url: https://github.com/OswaldKardingson/komodo-defi-sdk-flutter.git
+      ref: main
+      path: packages/komodo_wallet_build_transformer
 
 flutter:
   uses-material-design: true

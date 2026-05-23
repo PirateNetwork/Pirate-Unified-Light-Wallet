@@ -1672,6 +1672,25 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
+  /// Export the seed only for initializing the local KDF swap engine.
+  ///
+  /// The Rust side enforces the same high-risk-wallet protections as the secure
+  /// seed export path: the app must be unlocked, decoy mode is rejected,
+  /// watch-only wallets are rejected, and seedless imported-key wallets cannot
+  /// produce a mnemonic.
+  static Future<String> exportSeedForKdf(
+    WalletId walletId, {
+    MnemonicLanguage? mnemonicLanguage,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.exportSeedForKdf(
+        walletId: walletId,
+        mnemonicLanguage: mnemonicLanguage,
+      );
+    }
+    throw UnimplementedError('FRB bindings not available');
+  }
+
   /// Get current seed export state
   static Future<String> getSeedExportState() async {
     if (kUseFrbBindings) {

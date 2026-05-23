@@ -147,6 +147,9 @@ if [ ! -f "$OUTPUT_FILE" ]; then
     error "Build failed: $OUTPUT_FILE not found"
 fi
 
+log "Verifying bundled KDF artifacts..."
+bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" android "$APP_DIR"
+
 SIGNED=false
 
 # Sign if requested and keystore is available
@@ -220,6 +223,7 @@ if [ "$BUILD_TYPE" = "apk" ]; then
             OUTPUT_NAME="pirate-unified-wallet-android-${abi_tag}-unsigned.apk"
         fi
         cp "$apk" "$OUTPUT_DIR/$OUTPUT_NAME"
+        bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" android "$OUTPUT_DIR/$OUTPUT_NAME"
         sha256sum "$OUTPUT_DIR/$OUTPUT_NAME" > "$OUTPUT_DIR/$OUTPUT_NAME.sha256"
     done
 else
@@ -229,6 +233,7 @@ else
         OUTPUT_NAME="pirate-unified-wallet-android-unsigned.aab"
     fi
     cp "$OUTPUT_FILE" "$OUTPUT_DIR/$OUTPUT_NAME"
+    bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" android "$OUTPUT_DIR/$OUTPUT_NAME"
     sha256sum "$OUTPUT_DIR/$OUTPUT_NAME" > "$OUTPUT_DIR/$OUTPUT_NAME.sha256"
 fi
 

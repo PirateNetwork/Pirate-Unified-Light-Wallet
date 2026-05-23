@@ -172,6 +172,9 @@ fi
 
 stage_rust_linux "$BUNDLE_DIR"
 
+log "Verifying bundled KDF artifacts..."
+bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" linux "$BUNDLE_DIR"
+
 OUTPUT_DIR="$PROJECT_ROOT/dist/linux"
 mkdir -p "$OUTPUT_DIR"
 

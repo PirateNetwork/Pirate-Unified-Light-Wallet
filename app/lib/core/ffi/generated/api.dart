@@ -431,6 +431,18 @@ Future<String> exportSeedRaw({
   mnemonicLanguage: mnemonicLanguage,
 );
 
+/// Export the active wallet seed for immediate KDF swap-engine startup.
+///
+/// This uses the Rust service's KDF-specific guardrails and rejects decoy,
+/// locked, watch-only, and seedless/private-key-import wallet states.
+Future<String> exportSeedForKdf({
+  required String walletId,
+  MnemonicLanguage? mnemonicLanguage,
+}) => RustLib.instance.api.crateApiExportSeedForKdf(
+  walletId: walletId,
+  mnemonicLanguage: mnemonicLanguage,
+);
+
 /// Build transaction with note selection, fee calculation, and change.
 Future<PendingTx> buildTx({
   required String walletId,

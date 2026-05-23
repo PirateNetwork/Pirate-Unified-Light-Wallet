@@ -1390,6 +1390,93 @@ pub fn export_seed_raw(
     Ok(mnemonic)
 }
 
+/// Export the active seed only for KDF swap initialization.
+///
+/// This is intentionally narrower than the raw seed export path:
+/// - decoy mode is rejected;
+/// - the app must already be unlocked;
+/// - watch-only and private-key-import wallets are rejected;
+/// - the seed is returned for immediate handoff to KDF, not broad UI display.
+pub fn export_seed_for_kdf(
+    wallet_id: WalletId,
+    mnemonic_language: Option<MnemonicLanguage>,
+) -> Result<String> {
+    ensure_not_decoy("KDF swap seed handoff")?;
+    let _passphrase = app_passphrase()?;
+
+    let wallet = get_wallet_meta(&wallet_id)?;
+    ensure_kdf_seed_wallet_supported(&wallet)?;
+
+    let seed = export_seed_raw(wallet_id.clone(), mnemonic_language)?;
+    tracing::info!("Seed handed to KDF swap engine for wallet {}", wallet_id);
+    Ok(seed)
+}
+
+fn ensure_kdf_seed_wallet_supported(wallet: &WalletMeta) -> Result<()> {
+    if wallet.watch_only {
+        return Err(anyhow!(
+            "Cannot initialize KDF swaps from watch-only wallet"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod kdf_seed_handoff_tests {
+    use super::*;
+
+    fn wallet_meta(watch_only: bool) -> WalletMeta {
+        WalletMeta {
+            id: "test-wallet".to_string(),
+            name: "Test Wallet".to_string(),
+            created_at: 0,
+            watch_only,
+            birthday_height: 1,
+            network_type: Some("mainnet".to_string()),
+        }
+    }
+
+    #[test]
+    fn kdf_seed_handoff_rejects_watch_only_wallets() {
+        let error = ensure_kdf_seed_wallet_supported(&wallet_meta(true))
+            .expect_err("watch-only wallets must not initialize KDF swaps")
+            .to_string();
+        assert!(error.contains("watch-only"));
+    }
+
+    #[test]
+    fn kdf_seed_handoff_allows_seed_capable_wallet_metadata() {
+        ensure_kdf_seed_wallet_supported(&wallet_meta(false)).unwrap();
+    }
+
+    #[test]
+    fn kdf_seed_handoff_rejects_locked_app_before_wallet_lookup() {
+        passphrase_store::clear_passphrase();
+        let error = export_seed_for_kdf("missing-wallet".to_string(), None)
+            .expect_err("locked app must not export a KDF seed")
+            .to_string();
+        assert!(
+            error.contains("App is locked") || error.contains("Keystore"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn kdf_seed_handoff_rejects_decoy_mode() {
+        panic_duress::deactivate_decoy();
+        panic_duress::set_panic_pin("1234".to_string()).unwrap();
+        assert!(panic_duress::verify_panic_pin("1234".to_string()).unwrap());
+
+        let error = export_seed_for_kdf("missing-wallet".to_string(), None)
+            .expect_err("decoy mode must not export a KDF seed")
+            .to_string();
+        assert!(error.contains("decoy mode"), "unexpected error: {error}");
+
+        panic_duress::deactivate_decoy();
+        let _ = panic_duress::clear_panic_pin();
+    }
+}
+
 pub(super) fn wallet_secret_mnemonic_language(
     secret: &WalletSecret,
     mnemonic: &str,

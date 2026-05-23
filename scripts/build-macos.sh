@@ -528,6 +528,9 @@ stage_rust_macos_universal "$APP_PATH"
 log "Verifying universal app bundle..."
 verify_universal_app_bundle "$APP_PATH"
 
+log "Verifying bundled KDF artifacts..."
+bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" macos "$APP_DIR"
+
 # Decide signing behavior
 SIGN_ARG="${1:-auto}"
 if [ "$REPRODUCIBLE" = "1" ]; then

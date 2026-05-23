@@ -70,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 978769670;
+  int get rustContentHash => -1269225147;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -224,6 +224,11 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String> crateApiExportSaplingViewingKeySecure({
     required String walletId,
+  });
+
+  Future<String> crateApiExportSeedForKdf({
+    required String walletId,
+    MnemonicLanguage? mnemonicLanguage,
   });
 
   Future<String> crateApiExportSeedRaw({
@@ -1694,6 +1699,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         debugName: "export_sapling_viewing_key_secure",
         argNames: ["walletId"],
       );
+
+  @override
+  Future<String> crateApiExportSeedForKdf({
+    required String walletId,
+    MnemonicLanguage? mnemonicLanguage,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_box_autoadd_mnemonic_language(
+            mnemonicLanguage,
+          );
+          return wire.wire__crate__api__export_seed_for_kdf(port_, arg0, arg1);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportSeedForKdfConstMeta,
+        argValues: [walletId, mnemonicLanguage],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiExportSeedForKdfConstMeta => const TaskConstMeta(
+    debugName: "export_seed_for_kdf",
+    argNames: ["walletId", "mnemonicLanguage"],
+  );
 
   @override
   Future<String> crateApiExportSeedRaw({

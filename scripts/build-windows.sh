@@ -224,6 +224,9 @@ fi
 
 stage_rust_windows "$RELEASE_DIR"
 
+log "Verifying bundled KDF artifacts..."
+bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" windows "$RELEASE_DIR"
+
 # Sign binaries for portable distribution (optional)
 SIGN_CERT="${WINDOWS_SIGN_CERT:-}"
 SIGN_PASSWORD="${WINDOWS_SIGN_PASSWORD:-}"
@@ -349,6 +352,7 @@ INSTALLER_OUTPUT_NAME="${INSTALLER_OUTPUT_NAME}.exe"
 log "Creating portable version..."
 cd "$RELEASE_DIR"
 zip_dir_deterministic "." "$OUTPUT_DIR/$PORTABLE_OUTPUT_NAME"
+bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" windows "$OUTPUT_DIR/$PORTABLE_OUTPUT_NAME"
 
 log "Creating installer..."
 if ! create_windows_installer "$RELEASE_DIR" "$OUTPUT_DIR" "${INSTALLER_OUTPUT_NAME%.exe}"; then

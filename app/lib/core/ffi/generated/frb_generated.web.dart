@@ -2040,6 +2040,16 @@ class RustLibWire implements BaseWire {
     wallet_id,
   );
 
+  void wire__crate__api__export_seed_for_kdf(
+    NativePortType port_,
+    String wallet_id,
+    int? mnemonic_language,
+  ) => wasmModule.wire__crate__api__export_seed_for_kdf(
+    port_,
+    wallet_id,
+    mnemonic_language,
+  );
+
   void wire__crate__api__export_seed_raw(
     NativePortType port_,
     String wallet_id,
@@ -3021,6 +3031,12 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__export_sapling_viewing_key_secure(
     NativePortType port_,
     String wallet_id,
+  );
+
+  external void wire__crate__api__export_seed_for_kdf(
+    NativePortType port_,
+    String wallet_id,
+    int? mnemonic_language,
   );
 
   external void wire__crate__api__export_seed_raw(

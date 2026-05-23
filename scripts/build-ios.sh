@@ -422,6 +422,7 @@ if [ ! -f "$IPA_FILE" ]; then
     error "Build failed: $IPA_FILE not found"
 fi
 verify_ipa_contains_ffi_framework "$IPA_FILE"
+bash "$SCRIPT_DIR/verify-kdf-artifacts.sh" ios "$IPA_FILE"
 
 # Create output directory
 OUTPUT_DIR="$PROJECT_ROOT/dist/ios"
