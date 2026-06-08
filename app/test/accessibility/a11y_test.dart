@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pirate_wallet/features/home/home_screen.dart';
 import 'package:pirate_wallet/features/send/send_screen.dart';
+import 'package:pirate_wallet/features/swap/swap_screen.dart';
 import 'package:pirate_wallet/features/settings/settings_screen.dart';
 import '../test_flags.dart';
 
@@ -54,6 +55,15 @@ void main() {
           reason: 'TextField at index $i should have label or hint',
         );
       }
+    }, skip: _skipFfiTests);
+
+    testWidgets('swap screen - renders primary heading', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: SwapScreen())),
+      );
+      await tester.pump();
+
+      expect(find.textContaining('Swap'), findsWidgets);
     }, skip: _skipFfiTests);
   });
 

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/widget_previews.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../design/theme.dart';
 import '../design/tokens/colors.dart';
 import '../design/tokens/spacing.dart';
+import '../features/swap/swap_screen.dart';
 import '../features/pay/pay_screen.dart';
 import '../ui/atoms/p_button.dart';
 import '../ui/atoms/p_input.dart';
@@ -25,6 +27,16 @@ Widget paySheetPreview() {
           onSwap: () {},
         ),
       ),
+    ),
+  );
+}
+
+@Preview(name: 'Swap Screen', group: 'Swap', size: Size(390, 844))
+Widget swapScreenPreview() {
+  return ProviderScope(
+    child: MaterialApp(
+      theme: PTheme.dark(),
+      home: const SwapScreen(),
     ),
   );
 }
