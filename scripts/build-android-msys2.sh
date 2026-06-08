@@ -106,7 +106,7 @@ build_target() {
   fi
   local strip_tool="$NDK_BIN/llvm-strip${EXE_SUFFIX}"
   if [[ -x "$strip_tool" ]]; then
-    "$strip_tool" --strip-unneeded "$so_path" || echo "Failed to strip $so_path" >&2
+    "$strip_tool" --strip-unneeded "$(cygpath -m "$so_path")" || echo "Failed to strip $so_path" >&2
   else
     echo "llvm-strip not found at $strip_tool; skipping strip" >&2
   fi
