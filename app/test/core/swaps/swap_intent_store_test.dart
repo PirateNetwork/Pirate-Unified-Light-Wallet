@@ -14,10 +14,11 @@ void main() {
     slippageCap: Decimal.parse('0.03'),
     realizedSlippage: Decimal.zero,
     fills: const [],
+    appFeeArrrAmount: Decimal.zero,
   );
 
-  SwapIntent intent(String id, SwapIntentStatus status) {
-    final now = DateTime.utc(2026);
+  SwapIntent intent(String id, SwapIntentStatus status, {DateTime? createdAt}) {
+    final now = createdAt ?? DateTime.utc(2026);
     return SwapIntent(
       id: id,
       walletId: 'wallet-a',
@@ -66,5 +67,21 @@ void main() {
     expect(restored.status, original.status);
     expect(restored.marketSwapUuid, 'swap-uuid');
     expect(restored.plan.marketArrrAmount, original.plan.marketArrrAmount);
+  });
+
+  test('waiting-for-deposit intents expose their expiration window', () {
+    final createdAt = DateTime.utc(2026, 5, 24, 12);
+    final pending = intent(
+      'pending',
+      SwapIntentStatus.waitingForDeposit,
+      createdAt: createdAt,
+    );
+
+    expect(pending.depositExpiresAt, createdAt.add(swapDepositWindow));
+    expect(
+      pending.isDepositExpired(createdAt.add(const Duration(minutes: 44))),
+      isFalse,
+    );
+    expect(pending.isDepositExpired(createdAt.add(swapDepositWindow)), isTrue);
   });
 }

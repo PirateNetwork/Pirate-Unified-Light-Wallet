@@ -18,7 +18,8 @@ void main() {
 
     expect(payload['method'], 'orderbook');
     expect(payload['mmrpc'], '2.0');
-    expect(payload['rpc_pass'], 'secret');
+    expect(payload['userpass'], 'secret');
+    expect(payload, isNot(contains('rpc_pass')));
     expect(payload['params'], {'base': 'ARRR', 'rel': 'LTC'});
     expectNoGleec(payload);
   });
@@ -38,6 +39,27 @@ void main() {
     expect(params['base_coin_amount'], '10');
     expect(params['rel_coin_amount'], '0.1');
     expect(params['method'], 'buy');
+    expectNoGleec(payload);
+  });
+
+  test('trade preimage payload includes KDF-required price', () {
+    final payload = KdfSwapPayloads.tradePreimage(
+      rpcPass: 'secret',
+      base: 'ARRR',
+      rel: 'LTC',
+      swapMethod: 'buy',
+      volume: '10',
+      price: '0.00575',
+    );
+
+    expect(payload['method'], 'trade_preimage');
+    expect(payload['userpass'], 'secret');
+    final params = Map<String, dynamic>.from(payload['params'] as Map);
+    expect(params['base'], 'ARRR');
+    expect(params['rel'], 'LTC');
+    expect(params['swap_method'], 'buy');
+    expect(params['volume'], '10');
+    expect(params['price'], '0.00575');
     expectNoGleec(payload);
   });
 
@@ -81,5 +103,21 @@ void main() {
     expect(withdrawParams['amount'], '2.5');
     expectNoGleec(cancel);
     expectNoGleec(withdraw);
+  });
+
+  test('withdraw payload supports max funding refunds', () {
+    final payload = KdfSwapPayloads.withdraw(
+      rpcPass: 'secret',
+      coin: 'LTC',
+      to: 'ltc-address',
+      max: true,
+    );
+
+    final params = Map<String, dynamic>.from(payload['params'] as Map);
+    expect(params['coin'], 'LTC');
+    expect(params['to'], 'ltc-address');
+    expect(params['max'], isTrue);
+    expect(params, isNot(contains('amount')));
+    expectNoGleec(payload);
   });
 }

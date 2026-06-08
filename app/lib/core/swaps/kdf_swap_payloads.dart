@@ -10,7 +10,7 @@ class KdfSwapPayloads {
   }) => {
     'method': 'orderbook',
     'mmrpc': '2.0',
-    'rpc_pass': rpcPass,
+    'userpass': rpcPass,
     'params': {'base': base, 'rel': rel},
   };
 
@@ -25,7 +25,7 @@ class KdfSwapPayloads {
   }) => {
     'method': 'trade_preimage',
     'mmrpc': '2.0',
-    'rpc_pass': rpcPass,
+    'userpass': rpcPass,
     'params': {
       'base': base,
       'rel': rel,
@@ -46,7 +46,7 @@ class KdfSwapPayloads {
   }) => {
     'method': 'start_swap',
     'mmrpc': '2.0',
-    'rpc_pass': rpcPass,
+    'userpass': rpcPass,
     'params': {
       'base': base,
       'rel': rel,
@@ -66,7 +66,7 @@ class KdfSwapPayloads {
   }) => {
     'method': 'setprice',
     'mmrpc': '2.0',
-    'rpc_pass': rpcPass,
+    'userpass': rpcPass,
     'params': {
       'base': base,
       'rel': rel,
@@ -82,14 +82,14 @@ class KdfSwapPayloads {
   }) => {
     'method': 'cancel_order',
     'mmrpc': '2.0',
-    'rpc_pass': rpcPass,
+    'userpass': rpcPass,
     'params': {'uuid': uuid},
   };
 
   static Map<String, dynamic> myOrders({required String rpcPass}) => {
     'method': 'my_orders',
     'mmrpc': '2.0',
-    'rpc_pass': rpcPass,
+    'userpass': rpcPass,
   };
 
   static Map<String, dynamic> swapStatus({
@@ -98,34 +98,27 @@ class KdfSwapPayloads {
   }) => {
     'method': 'my_swap_status',
     'mmrpc': '2.0',
-    'rpc_pass': rpcPass,
+    'userpass': rpcPass,
     'params': {'uuid': uuid},
-  };
-
-  static Map<String, dynamic> balance({
-    required String rpcPass,
-    required String coin,
-  }) => {
-    'method': 'my_balance',
-    'mmrpc': '2.0',
-    'rpc_pass': rpcPass,
-    'params': {'coin': coin},
   };
 
   static Map<String, dynamic> withdraw({
     required String rpcPass,
     required String coin,
     required String to,
-    required Decimal amount,
+    Decimal? amount,
     bool max = false,
-  }) => {
-    'method': 'withdraw',
-    'mmrpc': '2.0',
-    'rpc_pass': rpcPass,
-    'params': {
-      'coin': coin,
-      'to': to,
-      if (max) 'max': true else 'amount': amount.toString(),
-    },
-  };
+  }) {
+    assert(max || amount != null, 'Provide an amount or set max=true.');
+    return {
+      'method': 'withdraw',
+      'mmrpc': '2.0',
+      'userpass': rpcPass,
+      'params': {
+        'coin': coin,
+        'to': to,
+        if (max) 'max': true else 'amount': amount!.toString(),
+      },
+    };
+  }
 }
