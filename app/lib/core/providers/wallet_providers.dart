@@ -874,6 +874,7 @@ final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
       // Refresh wallet list after unlock
       ref
         ..invalidate(activeWalletProvider)
+        ..invalidate(walletsProvider)
         ..invalidate(walletsExistProvider);
       unawaited(
         BirthdayUpdateService.resumePendingUpdates(
@@ -899,6 +900,7 @@ final unlockAppProvider = Provider<Future<void> Function(String)>((ref) {
           ref.read(appUnlockedProvider.notifier).unlocked = true;
           ref
             ..invalidate(activeWalletProvider)
+            ..invalidate(walletsProvider)
             ..invalidate(walletsExistProvider);
           return;
         }
