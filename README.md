@@ -208,6 +208,14 @@ bash scripts/build-android.sh apk
 bash scripts/build-android.sh bundle
 ```
 
+Manual APK Signing:
+
+If you downloaded an unsigned APK from CI and need to sign it for local testing, use the provided helper script. Note that `jarsigner` is not sufficient for modern Android; `apksigner` is required for V2/V3 signatures.
+
+```bash
+make sign:android APK=path/to/unsigned.apk KEYSTORE=path/to/your.keystore [ALIAS=yourAlias]
+```
+
 Android SDK packaging for release distribution:
 
 ```bash

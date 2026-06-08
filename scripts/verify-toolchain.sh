@@ -45,6 +45,10 @@ if command -v rustc &> /dev/null; then
   expect_prefix "Rust" "$(rustc --version)" "$RUST_EXPECTED"
 fi
 
+if command -v rustup &> /dev/null; then
+  echo "[INFO] Rustup version: $(rustup --version | head -n1)"
+fi
+
 FLUTTER_EXPECTED="${FLUTTER_VERSION:-}"
 if [[ -n "$FLUTTER_EXPECTED" ]]; then
   if ! command -v flutter &> /dev/null; then

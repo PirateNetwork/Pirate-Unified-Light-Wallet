@@ -104,6 +104,13 @@ build\:android: ## Build Android app
 	@echo "APK: $(APP_DIR)/build/app/outputs/flutter-apk/app-release.apk"
 	@echo "AAB: $(APP_DIR)/build/app/outputs/bundle/release/app-release.aab"
 
+sign\:android: ## Sign an unsigned APK (e.g., from CI)
+	@if [ -z "$(APK)" ] || [ -z "$(KEYSTORE)" ]; then \
+		echo "$(RED)Usage: make sign:android APK=<path-to-unsigned-apk> KEYSTORE=<path-to-keystore> [ALIAS=<alias>]$(NC)"; \
+		exit 1; \
+	fi
+	@./scripts/sign-apk.sh $(APK) $(KEYSTORE) $(ALIAS)
+
 build\:ios: ## Build iOS app (macOS only)
 ifeq ($(DETECTED_OS),Darwin)
 	@echo "$(BLUE)🍎 Building iOS app...$(NC)"
