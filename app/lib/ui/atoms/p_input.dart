@@ -96,7 +96,16 @@ class _PInputState extends State<PInput> {
   void didUpdateWidget(PInput oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_isInternalController && widget.value != oldWidget.value) {
-      _internalController.text = widget.value ?? '';
+      final newValue = widget.value ?? '';
+      if (_internalController.text != newValue) {
+        final selection = _internalController.selection;
+        _internalController.text = newValue;
+        if (selection.isValid && selection.baseOffset <= newValue.length) {
+          _internalController.selection = selection;
+        } else {
+          _internalController.selection = TextSelection.collapsed(offset: newValue.length);
+        }
+      }
     }
     if (oldWidget.focusNode != widget.focusNode) {
       if (_ownsFocusNode) {

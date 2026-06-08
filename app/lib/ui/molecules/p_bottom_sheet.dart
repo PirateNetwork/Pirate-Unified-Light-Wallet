@@ -25,7 +25,7 @@ class PBottomSheet {
         context: context,
         enableDrag: enableDrag,
         showDragHandle: enableDrag,
-        builder: (sheetContext) {
+        scrollableBuilder: (sheetContext, _) {
           var child = builder(sheetContext);
           if (useSafeArea) {
             child = SafeArea(top: false, child: child);
