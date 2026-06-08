@@ -9,6 +9,7 @@ import 'package:komodo_defi_sdk/komodo_defi_sdk.dart';
 import 'package:komodo_defi_types/komodo_defi_types.dart' as kdf_types;
 
 import '../ffi/ffi_bridge.dart';
+import 'kdf_orderbook_parser.dart';
 import 'kdf_swap_payloads.dart';
 import 'swap_models.dart';
 
@@ -22,101 +23,239 @@ class KdfSwapEngineException implements Exception {
   String toString() => cause == null ? message : '$message: $cause';
 }
 
+typedef KdfSwapNetworkPolicyReader = KdfSwapNetworkPolicy Function();
+typedef KdfSwapStartupForTesting =
+    Future<void> Function(
+      String walletId,
+      KdfSwapNetworkPolicy policy,
+      int generation,
+    );
+
+class KdfSwapNetworkPolicy {
+  const KdfSwapNetworkPolicy._({
+    required this.name,
+    required this.isSupported,
+    this.blockedMessage,
+  });
+
+  const KdfSwapNetworkPolicy.direct()
+    : this._(name: 'direct', isSupported: true);
+
+  const KdfSwapNetworkPolicy.tor() : this._(name: 'tor', isSupported: true);
+
+  const KdfSwapNetworkPolicy.socks5()
+    : this._(name: 'socks5', isSupported: true);
+
+  const KdfSwapNetworkPolicy.blocked(this.name, this.blockedMessage)
+    : isSupported = false;
+
+  final String name;
+  final bool isSupported;
+  final String? blockedMessage;
+
+  void assertSupported() {
+    if (isSupported) return;
+    throw KdfSwapEngineException(
+      blockedMessage ??
+          'Swaps are disabled because KDF cannot honor $name networking.',
+    );
+  }
+}
+
+bool isKdfInsufficientBalanceError(Object error, {String? coin}) {
+  final normalizedCoin = coin?.toUpperCase();
+  final candidate = error is KdfSwapEngineException ? error.cause : error;
+  final text = error.toString();
+
+  if (_hasInsufficientBalance(candidate, normalizedCoin)) return true;
+  if (!text.contains('NotSufficientBalance')) return false;
+  return normalizedCoin == null || text.toUpperCase().contains(normalizedCoin);
+}
+
+bool _hasInsufficientBalance(Object? value, String? normalizedCoin) {
+  if (value is Map) {
+    final json = Map<String, dynamic>.from(value);
+    if (json['error_type'] == 'NotSufficientBalance') {
+      if (normalizedCoin == null) return true;
+      final errorData = json['error_data'];
+      if (errorData is Map) {
+        return errorData['coin']?.toString().toUpperCase() == normalizedCoin;
+      }
+      return json.toString().toUpperCase().contains(normalizedCoin);
+    }
+    return json.values.any(
+      (entry) => _hasInsufficientBalance(entry, normalizedCoin),
+    );
+  }
+  if (value is Iterable) {
+    return value.any((entry) => _hasInsufficientBalance(entry, normalizedCoin));
+  }
+  return false;
+}
+
 class KdfSwapEngine {
-  KdfSwapEngine({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage();
+  KdfSwapEngine({
+    FlutterSecureStorage? storage,
+    KdfSwapNetworkPolicyReader? networkPolicyReader,
+    KdfSwapStartupForTesting? startupForTesting,
+  }) : _storage = storage ?? const FlutterSecureStorage(),
+       _networkPolicyReader = networkPolicyReader,
+       _startupForTesting = startupForTesting;
 
   static const supportedBase = 'ARRR';
   static const supportedRel = 'LTC';
+  static const supportedVarrr = 'vARRR';
   static const _walletPasswordKeyPrefix = 'pirate_kdf_wallet_password_v1';
 
   final FlutterSecureStorage _storage;
+  final KdfSwapNetworkPolicyReader? _networkPolicyReader;
+  final KdfSwapStartupForTesting? _startupForTesting;
   KomodoDefiSdk? _sdk;
   String? _walletId;
   String? _rpcPassword;
+  KdfSwapNetworkPolicy? _networkPolicy;
   Future<void>? _startup;
+  String? _startupWalletId;
+  KdfSwapNetworkPolicy? _startupNetworkPolicy;
+  int _lifecycleGeneration = 0;
 
   bool get isRunning => _sdk != null && _walletId != null;
 
   Future<void> ensureStarted(String walletId) async {
-    if (_sdk != null && _walletId == walletId) return;
-    if (_startup != null) return _startup;
-    _startup = _start(walletId);
+    final policy = _currentNetworkPolicy()..assertSupported();
+    if (_sdk != null &&
+        _walletId == walletId &&
+        _sameNetworkPolicy(_networkPolicy, policy)) {
+      return;
+    }
+    final existingStartup = _startup;
+    if (existingStartup != null &&
+        _startupWalletId == walletId &&
+        _sameNetworkPolicy(_startupNetworkPolicy, policy)) {
+      return existingStartup;
+    }
+    final generation = ++_lifecycleGeneration;
+    final startup =
+        _startupForTesting?.call(walletId, policy, generation) ??
+        _start(walletId, policy, generation);
+    _startup = startup;
+    _startupWalletId = walletId;
+    _startupNetworkPolicy = policy;
     try {
-      await _startup;
+      await startup;
     } finally {
-      _startup = null;
+      if (identical(_startup, startup)) {
+        _startup = null;
+        _startupWalletId = null;
+        _startupNetworkPolicy = null;
+      }
     }
   }
 
   Future<void> activateArrrLtc() async {
+    await activatePair(SwapPair.arrrLtc);
+  }
+
+  Future<void> activatePair(SwapPair pair) async {
     final sdk = _requireSdk();
     await _configureArrrParamsIfAvailable(sdk);
-    for (final ticker in const [supportedRel, supportedBase]) {
+    for (final ticker in [pair.relTicker, pair.baseTicker]) {
       final asset = _findAsset(sdk, ticker);
       await sdk.assets.activateAsset(asset).drain<void>();
     }
   }
 
-  Future<String> getLtcDepositAddress() async {
+  Future<String> getLtcDepositAddress() => _getDepositAddress(supportedRel);
+
+  Future<String> getArrrDepositAddress() => _getDepositAddress(supportedBase);
+
+  Future<String> getDepositAddress(SwapAsset asset) {
+    return _getDepositAddress(asset.ticker);
+  }
+
+  Future<String> _getDepositAddress(String ticker) async {
     final sdk = _requireSdk();
-    final ltc = _findAsset(sdk, supportedRel);
-    final pubkeys = await sdk.pubkeys.getPubkeys(ltc);
+    final asset = _findAsset(sdk, ticker);
+    final pubkeys = await sdk.pubkeys.getPubkeys(asset);
     final activeKeys = pubkeys.keys.where((key) => key.isActiveForSwap);
     final activeKey = activeKeys.isNotEmpty
         ? activeKeys.first
         : (pubkeys.keys.isNotEmpty ? pubkeys.keys.first : null);
     if (activeKey == null) {
-      throw const KdfSwapEngineException(
-        'KDF did not return an LTC deposit address.',
+      throw KdfSwapEngineException(
+        'KDF did not return a $ticker deposit address.',
       );
     }
     return activeKey.address;
   }
 
   Future<List<SwapOrderbookLevel>> loadArrrLtcAsks() async {
-    final response = await _rpc(
-      KdfSwapPayloads.orderbook(
-        rpcPass: _requireRpcPass(),
-        base: supportedBase,
-        rel: supportedRel,
-      ),
-    );
-    final result = Map<String, dynamic>.from(
-      response['result'] as Map? ?? const {},
-    );
-    final asks = result['asks'] as List? ?? const [];
-    return asks.map(_orderbookLevel).whereType<SwapOrderbookLevel>().toList();
+    return (await loadArrrLtcOrderbook()).asks;
+  }
+
+  Future<List<SwapOrderbookLevel>> loadAsks(SwapPair pair) async {
+    return (await loadOrderbook(pair)).asks;
   }
 
   Future<List<SwapOrderbookLevel>> loadArrrLtcBids() async {
-    final response = await _rpc(
-      KdfSwapPayloads.orderbook(
-        rpcPass: _requireRpcPass(),
-        base: supportedBase,
-        rel: supportedRel,
-      ),
-    );
-    final result = Map<String, dynamic>.from(
-      response['result'] as Map? ?? const {},
-    );
-    final bids = result['bids'] as List? ?? const [];
-    return bids.map(_orderbookLevel).whereType<SwapOrderbookLevel>().toList();
+    return (await loadArrrLtcOrderbook()).bids;
+  }
+
+  Future<List<SwapOrderbookLevel>> loadBids(SwapPair pair) async {
+    return (await loadOrderbook(pair)).bids;
+  }
+
+  Future<KdfOrderbook> loadArrrLtcOrderbook() async {
+    return loadOrderbook(SwapPair.arrrLtc);
+  }
+
+  Future<KdfOrderbook> loadOrderbook(SwapPair pair) async {
+    const attempts = 4;
+    KdfOrderbook? lastBook;
+    for (var attempt = 0; attempt < attempts; attempt += 1) {
+      final response = await _rpc(
+        KdfSwapPayloads.orderbook(
+          rpcPass: _requireRpcPass(),
+          base: pair.baseTicker,
+          rel: pair.relTicker,
+        ),
+      );
+      final book = parseKdfOrderbook(response);
+      if (!book.isEmpty || attempt == attempts - 1) return book;
+      lastBook = book;
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+    }
+    return lastBook ?? const KdfOrderbook(asks: [], bids: []);
   }
 
   Future<Map<String, dynamic>> tradePreimageForBuy(SwapPlan plan) {
+    return tradePreimageForBuyPair(plan, pair: SwapPair.arrrLtc);
+  }
+
+  Future<Map<String, dynamic>> tradePreimageForBuyPair(
+    SwapPlan plan, {
+    required SwapPair pair,
+  }) {
     return _rpc(
       KdfSwapPayloads.tradePreimage(
         rpcPass: _requireRpcPass(),
-        base: supportedBase,
-        rel: supportedRel,
+        base: pair.baseTicker,
+        rel: pair.relTicker,
         swapMethod: 'buy',
         volume: plan.marketArrrAmount.toString(),
+        price: plan.referencePriceLtcPerArrr.toString(),
       ),
     );
   }
 
   Future<String> startMarketBuy(SwapPlan plan) async {
+    return startMarketBuyPair(plan, pair: SwapPair.arrrLtc);
+  }
+
+  Future<String> startMarketBuyPair(
+    SwapPlan plan, {
+    required SwapPair pair,
+  }) async {
     if (!plan.hasMarketFill) {
       throw const KdfSwapEngineException(
         'Market buy requested with no market-fill plan.',
@@ -125,8 +264,8 @@ class KdfSwapEngine {
     final response = await _rpc(
       KdfSwapPayloads.startSwap(
         rpcPass: _requireRpcPass(),
-        base: supportedBase,
-        rel: supportedRel,
+        base: pair.baseTicker,
+        rel: pair.relTicker,
         baseAmount: plan.marketArrrAmount.toString(),
         relAmount: plan.marketLtcAmount.toString(),
         method: 'buy',
@@ -136,6 +275,13 @@ class KdfSwapEngine {
   }
 
   Future<String> placeRemainderBuyLimit(SwapPlan plan) async {
+    return placeRemainderBuyLimitPair(plan, pair: SwapPair.arrrLtc);
+  }
+
+  Future<String> placeRemainderBuyLimitPair(
+    SwapPlan plan, {
+    required SwapPair pair,
+  }) async {
     final limitPrice = plan.limitPriceLtcPerArrr;
     if (limitPrice == null ||
         plan.remainderLtcAmount.compareTo(Decimal.zero) <= 0) {
@@ -148,8 +294,8 @@ class KdfSwapEngine {
     final response = await _rpc(
       KdfSwapPayloads.setOrder(
         rpcPass: _requireRpcPass(),
-        base: supportedRel,
-        rel: supportedBase,
+        base: pair.relTicker,
+        rel: pair.baseTicker,
         price: priceArrrPerLtc.toString(),
         volume: plan.remainderLtcAmount.toString(),
       ),
@@ -160,12 +306,13 @@ class KdfSwapEngine {
   Future<String> startMarketSell({
     required Decimal arrrAmount,
     required Decimal expectedLtcAmount,
+    SwapPair pair = SwapPair.arrrLtc,
   }) async {
     final response = await _rpc(
       KdfSwapPayloads.startSwap(
         rpcPass: _requireRpcPass(),
-        base: supportedBase,
-        rel: supportedRel,
+        base: pair.baseTicker,
+        rel: pair.relTicker,
         baseAmount: arrrAmount.toString(),
         relAmount: expectedLtcAmount.toString(),
         method: 'sell',
@@ -177,12 +324,13 @@ class KdfSwapEngine {
   Future<String> placeSellLimit({
     required Decimal arrrAmount,
     required Decimal priceLtcPerArrr,
+    SwapPair pair = SwapPair.arrrLtc,
   }) async {
     final response = await _rpc(
       KdfSwapPayloads.setOrder(
         rpcPass: _requireRpcPass(),
-        base: supportedBase,
-        rel: supportedRel,
+        base: pair.baseTicker,
+        rel: pair.relTicker,
         price: priceLtcPerArrr.toString(),
         volume: arrrAmount.toString(),
       ),
@@ -200,14 +348,15 @@ class KdfSwapEngine {
     required String existingUuid,
     required Decimal newPriceLtcPerArrr,
     required Decimal ltcVolume,
+    SwapPair pair = SwapPair.arrrLtc,
   }) async {
     await cancelOrder(existingUuid);
     final priceArrrPerLtc = _divide(Decimal.one, newPriceLtcPerArrr, scale: 8);
     final response = await _rpc(
       KdfSwapPayloads.setOrder(
         rpcPass: _requireRpcPass(),
-        base: supportedRel,
-        rel: supportedBase,
+        base: pair.relTicker,
+        rel: pair.baseTicker,
         price: priceArrrPerLtc.toString(),
         volume: ltcVolume.toString(),
       ),
@@ -219,13 +368,14 @@ class KdfSwapEngine {
     required String existingUuid,
     required Decimal newPriceLtcPerArrr,
     required Decimal arrrVolume,
+    SwapPair pair = SwapPair.arrrLtc,
   }) async {
     await cancelOrder(existingUuid);
     final response = await _rpc(
       KdfSwapPayloads.setOrder(
         rpcPass: _requireRpcPass(),
-        base: supportedBase,
-        rel: supportedRel,
+        base: pair.baseTicker,
+        rel: pair.relTicker,
         price: newPriceLtcPerArrr.toString(),
         volume: arrrVolume.toString(),
       ),
@@ -243,16 +393,23 @@ class KdfSwapEngine {
     return _rpc(KdfSwapPayloads.myOrders(rpcPass: _requireRpcPass()));
   }
 
-  Future<Decimal> ltcBalance() async {
-    final response = await _rpc(
-      KdfSwapPayloads.balance(rpcPass: _requireRpcPass(), coin: supportedRel),
-    );
-    final result = Map<String, dynamic>.from(
-      response['result'] as Map? ?? const {},
-    );
-    return _decimal(
-      result['balance'] ?? result['spendable'] ?? result['available'],
-    );
+  Future<Decimal> ltcBalance() => _coinBalance(supportedRel);
+
+  Future<Decimal> arrrBalance() => _coinBalance(supportedBase);
+
+  Future<Decimal> coinBalance(SwapAsset asset) => _coinBalance(asset.ticker);
+
+  Future<Decimal> relBalance(SwapPair pair) => coinBalance(pair.relAsset);
+
+  Future<Decimal> _coinBalance(String coin) async {
+    final sdk = _requireSdk();
+    final asset = _findAsset(sdk, coin);
+    try {
+      final balance = await sdk.balances.getBalance(asset.id);
+      return balance.spendable;
+    } catch (error) {
+      throw KdfSwapEngineException('Failed to read $coin KDF balance', error);
+    }
   }
 
   Future<Map<String, dynamic>> withdrawArrrToWallet({
@@ -269,25 +426,77 @@ class KdfSwapEngine {
     );
   }
 
+  Future<Map<String, dynamic>> withdrawAllArrrToWallet({
+    required String address,
+  }) {
+    return _rpc(
+      KdfSwapPayloads.withdraw(
+        rpcPass: _requireRpcPass(),
+        coin: supportedBase,
+        to: address,
+        max: true,
+      ),
+    );
+  }
+
   Future<Map<String, dynamic>> withdrawLtc({
+    required String address,
+    required Decimal amount,
+  }) {
+    return withdrawAsset(
+      asset: SwapAsset.ltc,
+      address: address,
+      amount: amount,
+    );
+  }
+
+  Future<Map<String, dynamic>> withdrawAsset({
+    required SwapAsset asset,
     required String address,
     required Decimal amount,
   }) {
     return _rpc(
       KdfSwapPayloads.withdraw(
         rpcPass: _requireRpcPass(),
-        coin: supportedRel,
+        coin: asset.ticker,
         to: address,
         amount: amount,
       ),
     );
   }
 
+  Future<Map<String, dynamic>> withdrawAllLtc({required String address}) {
+    return withdrawAllAsset(asset: SwapAsset.ltc, address: address);
+  }
+
+  Future<Map<String, dynamic>> withdrawAllAsset({
+    required SwapAsset asset,
+    required String address,
+  }) {
+    return _rpc(
+      KdfSwapPayloads.withdraw(
+        rpcPass: _requireRpcPass(),
+        coin: asset.ticker,
+        to: address,
+        max: true,
+      ),
+    );
+  }
+
   Future<void> dispose() async {
+    _lifecycleGeneration += 1;
+    _startup = null;
+    _startupWalletId = null;
+    _startupNetworkPolicy = null;
+    await _disposeSdk();
+  }
+
+  Future<void> _disposeSdk() async {
     final sdk = _sdk;
     _sdk = null;
     _walletId = null;
     _rpcPassword = null;
+    _networkPolicy = null;
     if (sdk == null) return;
     try {
       await sdk.auth.signOut();
@@ -297,9 +506,17 @@ class KdfSwapEngine {
     await sdk.dispose();
   }
 
-  Future<void> _start(String walletId) async {
-    await dispose();
+  Future<void> _start(
+    String walletId,
+    KdfSwapNetworkPolicy policy,
+    int generation,
+  ) async {
+    await _disposeSdk();
 
+    policy.assertSupported();
+    // KDF is registered with the same seed as the active Unified Wallet. If a
+    // swap gets interrupted, the KDF balances remain recoverable in Komodo
+    // Wallet by restoring that same seed.
     var seed = await FfiBridge.exportSeedForKdf(walletId);
     final walletPassword = await _getOrCreateKdfWalletPassword(walletId);
     final rpcPassword = _randomSecret(32);
@@ -307,7 +524,7 @@ class KdfSwapEngine {
     final sdk = KomodoDefiSdk(
       host: LocalConfig(https: false, rpcPassword: rpcPassword),
       config: const KomodoDefiSdkConfig(
-        defaultAssets: {supportedBase, supportedRel},
+        defaultAssets: {supportedBase, supportedRel, supportedVarrr},
         preActivateDefaultAssets: false,
         preActivateHistoricalAssets: false,
         preActivateCustomTokenAssets: false,
@@ -335,9 +552,14 @@ class KdfSwapEngine {
           options: options,
         );
       }
+      if (generation != _lifecycleGeneration) {
+        await sdk.dispose();
+        return;
+      }
       _sdk = sdk;
       _walletId = walletId;
       _rpcPassword = rpcPassword;
+      _networkPolicy = policy;
     } catch (error) {
       await sdk.dispose();
       throw KdfSwapEngineException('Failed to start KDF swap engine', error);
@@ -368,9 +590,16 @@ class KdfSwapEngine {
   }
 
   Future<Map<String, dynamic>> _rpc(Map<String, dynamic> payload) async {
+    _currentNetworkPolicy().assertSupported();
     _assertNoGleecEndpoint(payload);
     final response = await _requireSdk().client.executeRpc(payload);
-    return Map<String, dynamic>.from(response);
+    final responseMap = Map<String, dynamic>.from(response);
+    final error = responseMap['error'] ?? responseMap['error_data'];
+    if (error != null) {
+      final method = payload['method']?.toString() ?? 'KDF RPC';
+      throw KdfSwapEngineException('$method failed', responseMap);
+    }
+    return responseMap;
   }
 
   kdf_types.Asset _findAsset(KomodoDefiSdk sdk, String ticker) {
@@ -401,37 +630,12 @@ class KdfSwapEngine {
     return pass;
   }
 
-  SwapOrderbookLevel? _orderbookLevel(Object? value) {
-    if (value is! Map) return null;
-    final json = Map<String, dynamic>.from(value);
-    final price = _decimal(json['price']);
-    final volume = _decimal(
-      json['base_max_volume'] ??
-          json['base_max_volume_aggr'] ??
-          json['max_volume'] ??
-          json['volume'],
-    );
-    if (price.compareTo(Decimal.zero) <= 0 ||
-        volume.compareTo(Decimal.zero) <= 0) {
-      return null;
-    }
-    return SwapOrderbookLevel(
-      priceLtcPerArrr: price,
-      arrrAmount: volume,
-      orderId: json['uuid'] as String?,
-      raw: json,
-    );
+  KdfSwapNetworkPolicy _currentNetworkPolicy() {
+    return _networkPolicyReader?.call() ?? const KdfSwapNetworkPolicy.direct();
   }
 
-  Decimal _decimal(Object? value) {
-    if (value == null) return Decimal.zero;
-    if (value is Decimal) return value;
-    if (value is num || value is String) return Decimal.parse(value.toString());
-    if (value is Map) {
-      final decimal = value['decimal'];
-      if (decimal != null) return Decimal.parse(decimal.toString());
-    }
-    return Decimal.zero;
+  bool _sameNetworkPolicy(KdfSwapNetworkPolicy? a, KdfSwapNetworkPolicy b) {
+    return a != null && a.name == b.name && a.isSupported == b.isSupported;
   }
 
   Decimal _divide(Decimal a, Decimal b, {required int scale}) {
