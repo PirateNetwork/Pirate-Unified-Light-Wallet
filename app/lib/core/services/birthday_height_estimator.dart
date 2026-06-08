@@ -24,16 +24,15 @@ class BirthdayHeightEstimator {
     }
 
     final checkpoint = _checkpointFor(year, month);
-    final estimate = checkpoint?.height ?? _estimateFromLatestCheckpoint(selected);
-    final safeEstimate = (estimate - safetyMarginBlocks)
-        .clamp(1, estimate)
-        .toInt();
+    final estimate =
+        checkpoint?.height ?? _estimateFromLatestCheckpoint(selected);
+    final safeEstimate = (estimate - safetyMarginBlocks).clamp(1, estimate);
 
     if (latestHeight != null) {
       final safeTip = latestHeight > safetyMarginBlocks
           ? latestHeight - safetyMarginBlocks
           : latestHeight;
-      return safeEstimate.clamp(1, safeTip < 1 ? 1 : safeTip).toInt();
+      return safeEstimate.clamp(1, safeTip < 1 ? 1 : safeTip);
     }
     return safeEstimate;
   }
