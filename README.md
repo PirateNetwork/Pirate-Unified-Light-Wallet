@@ -64,7 +64,7 @@ Toolchain
 The project is built and tested in CI with these pinned versions:
 
 - Rust `1.90.0`
-- Flutter `3.41.1`
+- Flutter `3.44.1`
 - `flutter_rust_bridge_codegen` `2.11.1`
 - CocoaPods `1.16.2` for macOS and iOS builds
 
@@ -73,7 +73,7 @@ The Rust pin is defined in `rust-toolchain.toml`. CI pins are defined in `.githu
 To check local tools against the current pins:
 
 ```bash
-FLUTTER_VERSION=3.41.1 \
+FLUTTER_VERSION=3.44.1 \
 COCOAPODS_VERSION=1.16.2 \
 scripts/verify-toolchain.sh
 ```
