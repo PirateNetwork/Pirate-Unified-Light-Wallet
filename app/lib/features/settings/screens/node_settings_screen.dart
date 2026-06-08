@@ -258,6 +258,14 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     }
   }
 
+  String _normalizeChainName(String name) {
+    name = name.toLowerCase().trim();
+    if (name == 'main' || name == 'mainnet') return 'mainnet';
+    if (name == 'test' || name == 'testnet') return 'testnet';
+    if (name == 'regtest') return 'regtest';
+    return name;
+  }
+
   Future<void> _saveEndpoint() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -278,6 +286,54 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       final fullUrl = _useTls
           ? 'https://${parsed.host}:${parsed.port}'
           : 'http://${parsed.host}:${parsed.port}';
+
+      // Verify network match if in developer mode
+      if (ref.read(developerModeProvider)) {
+        try {
+          final testResult =
+              await ffi.FfiBridge.testNode(url: fullUrl, tlsPin: tlsPin);
+          if (testResult.success && testResult.chainName != null) {
+            final walletNetwork = ref.read(networkInfoProvider).value;
+            final nodeNetwork = _normalizeChainName(testResult.chainName!);
+            final walletNetworkName = walletNetwork?.name.toLowerCase();
+
+            if (walletNetworkName != null && walletNetworkName != nodeNetwork) {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('Network Mismatch'.tr),
+                  content: Text(
+                    'The selected node is on $nodeNetwork, but your active wallet is on $walletNetworkName.\n\n'
+                            'This will cause synchronization to fail and addresses will not match. '
+                            'Do you want to save anyway?'
+                        .tr,
+                  ),
+                  actions: [
+                    PTextButton(
+                      text: 'Cancel'.tr,
+                      onPressed: () => Navigator.of(context).pop(false),
+                    ),
+                    PButton(
+                      text: 'Save Anyway'.tr,
+                      onPressed: () => Navigator.of(context).pop(true),
+                      variant: PButtonVariant.danger,
+                      size: PButtonSize.small,
+                    ),
+                  ],
+                ),
+              );
+
+              if (confirmed != true) {
+                setState(() => _isLoading = false);
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Pre-save network check failed: $e');
+          // Continue if check fails
+        }
+      }
 
       final setEndpoint = ref.read(setLightdEndpointProvider);
       await setEndpoint(url: fullUrl, tlsPin: tlsPin.isEmpty ? null : tlsPin);

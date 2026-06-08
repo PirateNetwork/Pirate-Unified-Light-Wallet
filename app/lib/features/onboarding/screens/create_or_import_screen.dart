@@ -15,6 +15,7 @@ import '../../../core/providers/wallet_providers.dart';
 import '../onboarding_flow.dart';
 import '../widgets/onboarding_progress_indicator.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
+import '../../settings/providers/developer_mode_provider.dart';
 
 /// Create or Import screen
 class CreateOrImportScreen extends ConsumerStatefulWidget {
@@ -76,6 +77,45 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
                   color: AppColors.textSecondary,
                 ),
               ),
+              if (ref.watch(developerModeProvider)) ...[
+                const SizedBox(height: AppSpacing.xxl),
+                Row(
+                  children: [
+                    Text(
+                      'Network:'.tr,
+                      style: AppTypography.bodyBold.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    ...PirateNetwork.values.map((n) {
+                      final isSelected = onboardingState.network == n;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: AppSpacing.sm),
+                        child: ChoiceChip(
+                          label: Text(n.name.toUpperCase()),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            if (selected) {
+                              ref
+                                  .read(onboardingControllerProvider.notifier)
+                                  .setNetwork(n);
+                            }
+                          },
+                          selectedColor: AppColors.accentPrimary.withValues(alpha: 0.2),
+                          labelStyle: TextStyle(
+                            color: isSelected
+                                ? AppColors.accentPrimary
+                                : AppColors.textSecondary,
+                            fontWeight:
+                                isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ],
               const SizedBox(height: AppSpacing.xxl),
               PCard(
                 child: InkWell(

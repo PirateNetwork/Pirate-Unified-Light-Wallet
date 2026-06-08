@@ -13,6 +13,13 @@ import '../../core/ffi/generated/models.dart';
 import '../../core/services/birthday_update_service.dart';
 import '../settings/providers/developer_mode_provider.dart';
 
+/// Pirate network types
+enum PirateNetwork {
+  mainnet,
+  testnet,
+  regtest,
+}
+
 /// Onboarding steps
 enum OnboardingStep {
   welcome,
@@ -43,6 +50,7 @@ class OnboardingState {
   final bool biometricsEnabled;
   final int? birthdayHeight;
   final bool seedBackedUp;
+  final PirateNetwork network;
 
   const OnboardingState({
     this.currentStep = OnboardingStep.welcome,
@@ -53,6 +61,7 @@ class OnboardingState {
     this.biometricsEnabled = false,
     this.birthdayHeight,
     this.seedBackedUp = false,
+    this.network = PirateNetwork.mainnet,
   });
 
   OnboardingState copyWith({
@@ -64,6 +73,7 @@ class OnboardingState {
     bool? biometricsEnabled,
     int? birthdayHeight,
     bool? seedBackedUp,
+    PirateNetwork? network,
   }) {
     return OnboardingState(
       currentStep: currentStep ?? this.currentStep,
@@ -74,6 +84,7 @@ class OnboardingState {
       biometricsEnabled: biometricsEnabled ?? this.biometricsEnabled,
       birthdayHeight: birthdayHeight ?? this.birthdayHeight,
       seedBackedUp: seedBackedUp ?? this.seedBackedUp,
+      network: network ?? this.network,
     );
   }
 
@@ -166,6 +177,10 @@ class OnboardingController extends Notifier<OnboardingState> {
     state = state.copyWith(birthdayHeight: height);
   }
 
+  void setNetwork(PirateNetwork network) {
+    state = state.copyWith(network: network);
+  }
+
   void markSeedBackedUp() {
     state = state.copyWith(seedBackedUp: true);
   }
@@ -203,8 +218,10 @@ class OnboardingController extends Notifier<OnboardingState> {
     } catch (_) {}
 
     String finalWalletName = walletName;
-    if (isDevMode) {
+    if (state.network == PirateNetwork.regtest) {
       finalWalletName = '$walletName [REGTEST]';
+    } else if (state.network == PirateNetwork.testnet) {
+      finalWalletName = '$walletName [TESTNET]';
     }
 
     switch (mode) {
@@ -287,7 +304,7 @@ class OnboardingController extends Notifier<OnboardingState> {
     var attempt = 0;
     final start = DateTime.now();
 
-    final networkType = ref.read(developerModeProvider) ? 'regtest' : 'mainnet';
+    final networkType = state.network.name;
 
     while (DateTime.now().difference(start) < maxWait) {
       int? height;
@@ -314,8 +331,7 @@ class OnboardingController extends Notifier<OnboardingState> {
   }
 
   Future<int> _resolveBirthdayFallbackHeight() async {
-    final isDevMode = ref.read(developerModeProvider);
-    if (isDevMode) {
+    if (state.network == PirateNetwork.regtest) {
       return 1; // Default for Regtest
     }
     try {

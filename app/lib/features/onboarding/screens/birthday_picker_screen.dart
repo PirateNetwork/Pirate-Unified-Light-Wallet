@@ -161,27 +161,14 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     });
 
     try {
-      if (state.mode == OnboardingMode.create) {
-        await FfiBridge.createWallet(
-          name: 'My Pirate Wallet',
-          entropyLen: 256,
-          birthday: selectedHeight,
-        );
-      } else {
-        if (state.mnemonic == null || state.mnemonic!.isEmpty) {
-          throw StateError('Mnemonic not provided for restore');
-        }
+      final onboardingNotifier = ref.read(onboardingControllerProvider.notifier);
+      final walletName = state.mode == OnboardingMode.create
+          ? 'My Pirate Wallet'
+          : 'Restored Wallet';
 
-        await FfiBridge.restoreWallet(
-          name: 'Restored Wallet',
-          mnemonic: state.mnemonic!,
-          birthday: selectedHeight,
-        );
-      }
+      await onboardingNotifier.complete(walletName);
 
-      ref.read(onboardingControllerProvider.notifier)
-        ..setBirthdayHeight(selectedHeight)
-        ..nextStep();
+      ref.read(onboardingControllerProvider.notifier).setBirthdayHeight(selectedHeight);
 
       ref.invalidate(walletsExistProvider);
       final walletsExist = await ref.read(walletsExistProvider.future);
