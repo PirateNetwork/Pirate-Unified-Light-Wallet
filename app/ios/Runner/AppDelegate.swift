@@ -5,8 +5,8 @@ import UserNotifications
 import Security
 import LocalAuthentication
 
-@UIApplicationMain
-@objc class AppDelegate: FlutterAppDelegate {
+@main
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
     private var backgroundSyncChannel: FlutterMethodChannel?
     private var keystoreChannel: FlutterMethodChannel?
     private var securityChannel: FlutterMethodChannel?
@@ -24,46 +24,49 @@ import LocalAuthentication
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        GeneratedPluginRegistrant.register(with: self)
-
-        if let controller = window?.rootViewController as? FlutterViewController {
-            let background = FlutterMethodChannel(
-                name: "com.pirate.wallet/background_sync",
-                binaryMessenger: controller.binaryMessenger
-            )
-            backgroundSyncChannel = background
-            background.setMethodCallHandler { [weak self] call, result in
-                guard let self = self else { return }
-                self.handleBackgroundSyncCall(call: call, result: result)
-            }
-
-            let channel = FlutterMethodChannel(
-                name: "com.pirate.wallet/keystore",
-                binaryMessenger: controller.binaryMessenger
-            )
-            keystoreChannel = channel
-            channel.setMethodCallHandler { [weak self] call, result in
-                guard let self = self else { return }
-                self.handleKeystoreCall(call: call, result: result)
-            }
-
-            let security = FlutterMethodChannel(
-                name: "com.pirate.wallet/security",
-                binaryMessenger: controller.binaryMessenger
-            )
-            securityChannel = security
-            security.setMethodCallHandler { [weak self] call, result in
-                guard let self = self else { return }
-                self.handleSecurityCall(call: call, result: result)
-            }
-        }
-        
         // Initialize background sync (iOS 13+)
         if #available(iOS 13.0, *) {
             setupBackgroundSync()
         }
         
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+
+    func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+        GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+        configureMethodChannels(binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    }
+
+    private func configureMethodChannels(binaryMessenger: FlutterBinaryMessenger) {
+        let background = FlutterMethodChannel(
+            name: "com.pirate.wallet/background_sync",
+            binaryMessenger: binaryMessenger
+        )
+        backgroundSyncChannel = background
+        background.setMethodCallHandler { [weak self] call, result in
+            guard let self = self else { return }
+            self.handleBackgroundSyncCall(call: call, result: result)
+        }
+
+        let channel = FlutterMethodChannel(
+            name: "com.pirate.wallet/keystore",
+            binaryMessenger: binaryMessenger
+        )
+        keystoreChannel = channel
+        channel.setMethodCallHandler { [weak self] call, result in
+            guard let self = self else { return }
+            self.handleKeystoreCall(call: call, result: result)
+        }
+
+        let security = FlutterMethodChannel(
+            name: "com.pirate.wallet/security",
+            binaryMessenger: binaryMessenger
+        )
+        securityChannel = security
+        security.setMethodCallHandler { [weak self] call, result in
+            guard let self = self else { return }
+            self.handleSecurityCall(call: call, result: result)
+        }
     }
     
     // Handle background fetch (iOS 13+)
@@ -340,7 +343,7 @@ import LocalAuthentication
     }
 
     private func installScreenShieldIfNeeded() {
-        guard let window = self.window else { return }
+        guard let window = activeWindow else { return }
         if window.viewWithTag(screenShieldTag) != nil {
             return
         }
@@ -355,10 +358,23 @@ import LocalAuthentication
     }
 
     private func setScreenShieldVisible(_ visible: Bool) {
-        guard let window = self.window else { return }
+        guard let window = activeWindow else { return }
         if let shield = window.viewWithTag(screenShieldTag) {
             shield.isHidden = !visible
         }
+    }
+
+    private var activeWindow: UIWindow? {
+        if let window = self.window {
+            return window
+        }
+        if #available(iOS 13.0, *) {
+            let windows = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+            return windows.first { $0.isKeyWindow } ?? windows.first
+        }
+        return nil
     }
 
     private func updateScreenShieldVisibility() {
