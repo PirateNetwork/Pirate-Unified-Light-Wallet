@@ -405,6 +405,9 @@ fn resolve_change_diversifier_index(
 
 const PENDING_SIGN_CONTEXT_TTL_MS: u64 = 10 * 60 * 1000;
 const PENDING_SIGN_CONTEXT_MAX_ENTRIES: usize = 128;
+const BUILD_AND_SIGN_TIMEOUT_BASE_SECS: u64 = 5 * 60;
+const BUILD_AND_SIGN_TIMEOUT_PER_INPUT_SECS: u64 = 15;
+const BUILD_AND_SIGN_TIMEOUT_MAX_SECS: u64 = 30 * 60;
 
 #[derive(Debug)]
 struct PendingSignContext {
@@ -484,6 +487,14 @@ fn take_pending_sign_context(
 
 fn clear_pending_sign_context(pending_id: &str) {
     PENDING_SIGN_CONTEXTS.write().remove(pending_id);
+}
+
+fn build_and_sign_timeout(num_inputs: u32) -> std::time::Duration {
+    let input_count = u64::from(num_inputs.max(1));
+    let timeout_secs = BUILD_AND_SIGN_TIMEOUT_BASE_SECS
+        .saturating_add(input_count.saturating_mul(BUILD_AND_SIGN_TIMEOUT_PER_INPUT_SECS))
+        .min(BUILD_AND_SIGN_TIMEOUT_MAX_SECS);
+    std::time::Duration::from_secs(timeout_secs)
 }
 
 #[derive(Debug)]
@@ -1579,7 +1590,9 @@ fn sign_tx_internal(
     log_step("build_and_sign_start", "");
     let (build_tx, build_rx) = std::sync::mpsc::channel();
     let wallet_id_for_log = wallet_id.clone();
-    let build_timeout = std::time::Duration::from_secs(120);
+    let timeout_input_count = pending.num_inputs;
+    let build_timeout = build_and_sign_timeout(timeout_input_count);
+    let build_timeout_secs = build_timeout.as_secs();
     std::thread::spawn(move || {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             futures::executor::block_on(builder.build_and_sign_multi(
@@ -1637,11 +1650,15 @@ fn sign_tx_internal(
                     .as_millis();
                 let _ = writeln!(
                     file,
-                    r#"{{"id":"log_sign_tx_error","timestamp":{},"location":"api.rs:2166","message":"build_and_sign timeout","data":{{"wallet_id":"{}","timeout_secs":120}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
-                    ts, wallet_id_for_log
+                    r#"{{"id":"log_sign_tx_error","timestamp":{},"location":"api.rs:2166","message":"build_and_sign timeout","data":{{"wallet_id":"{}","timeout_secs":{},"inputs":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"T"}}"#,
+                    ts, wallet_id_for_log, build_timeout_secs, timeout_input_count
                 );
             });
-            return Err(anyhow!("Build/sign timed out after 120s"));
+            return Err(anyhow!(
+                "Build/sign timed out after {}s for {} inputs",
+                build_timeout_secs,
+                timeout_input_count
+            ));
         }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
             pirate_core::debug_log::with_locked_file(|file| {

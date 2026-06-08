@@ -85,3 +85,24 @@ fn forbids_send_path_repair_queue_helper() {
         "send path should not enqueue repair directly; queue worker handles repair scheduling"
     );
 }
+
+#[test]
+fn build_sign_timeout_scales_with_input_count() {
+    let src = tx_flow_rs();
+    assert!(
+        src.contains("BUILD_AND_SIGN_TIMEOUT_BASE_SECS"),
+        "build/sign timeout should have an explicit base duration"
+    );
+    assert!(
+        src.contains("BUILD_AND_SIGN_TIMEOUT_PER_INPUT_SECS"),
+        "build/sign timeout should scale with selected input count"
+    );
+    assert!(
+        src.contains("BUILD_AND_SIGN_TIMEOUT_MAX_SECS"),
+        "build/sign timeout should keep a hard upper bound"
+    );
+    assert!(
+        !src.contains("Build/sign timed out after 120s"),
+        "large shielded sends must not use the old fixed 120s timeout"
+    );
+}
