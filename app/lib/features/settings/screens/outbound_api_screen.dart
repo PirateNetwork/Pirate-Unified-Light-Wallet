@@ -22,6 +22,7 @@ class OutboundApiScreen extends ConsumerWidget {
     final priceEnabled = ref.watch(externalPriceApiProvider);
     final githubEnabled = ref.watch(externalGithubApiProvider);
     final desktopUpdateEnabled = ref.watch(externalDesktopUpdateApiProvider);
+    final komodoSwapEnabled = ref.watch(externalKomodoSwapApiProvider);
     final isDesktop =
         Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
@@ -92,6 +93,18 @@ class OutboundApiScreen extends ConsumerWidget {
             onChanged: (value) {
               ref
                   .read(externalGithubApiProvider.notifier)
+                  .setEnabled(enabled: value);
+            },
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _ApiToggleCard(
+            title: l10n.komodoSwapsTitle,
+            subtitle: l10n.komodoSwapsSubtitle,
+            enabled: komodoSwapEnabled,
+            available: masterEnabled,
+            onChanged: (value) {
+              ref
+                  .read(externalKomodoSwapApiProvider.notifier)
                   .setEnabled(enabled: value);
             },
           ),

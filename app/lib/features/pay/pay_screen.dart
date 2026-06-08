@@ -18,35 +18,6 @@ bool _isDesktopPlatform() {
       defaultTargetPlatform == TargetPlatform.linux;
 }
 
-void _showComingSoon(BuildContext context) {
-  showDialog<void>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      backgroundColor: AppColors.backgroundSurface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(PSpacing.radiusLG),
-      ),
-      title: Text(
-        'Coming Soon'.tr,
-        style: PTypography.heading5(color: AppColors.textPrimary),
-      ),
-      content: Text(
-        'This feature is under development.'.tr,
-        style: PTypography.bodyMedium(color: AppColors.textSecondary),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: Text(
-            'OK'.tr,
-            style: PTypography.labelMedium(color: AppColors.accentPrimary),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
 /// Pay entry screen for desktop and deep links.
 class PayScreen extends StatelessWidget {
   const PayScreen({super.key, this.useScaffold = true});
@@ -68,7 +39,7 @@ class PayScreen extends StatelessWidget {
       onSend: () => context.push('/send'),
       onReceive: () => context.push('/receive'),
       onVerify: () => context.push('/payment-disclosure'),
-      onSwap: () => _showComingSoon(context),
+      onSwap: () => context.push('/swap'),
     );
     final isDesktopPlatform = _isDesktopPlatform();
 

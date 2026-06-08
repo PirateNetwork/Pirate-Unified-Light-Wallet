@@ -276,6 +276,17 @@ class _ArrrPriceService {
 
 final arrrPriceQuoteProvider = StreamProvider<ArrrPriceQuote?>((ref) {
   final currency = ref.watch(currencyPreferenceProvider);
+  return _priceQuoteStream(ref, currency);
+});
+
+final arrrUsdPriceQuoteProvider = StreamProvider<ArrrPriceQuote?>((ref) {
+  return _priceQuoteStream(ref, CurrencyPreference.usd);
+});
+
+Stream<ArrrPriceQuote?> _priceQuoteStream(
+  Ref ref,
+  CurrencyPreference currency,
+) {
   final allowPrices = ref.watch(allowPriceApisProvider);
   final controller = StreamController<ArrrPriceQuote?>();
 
@@ -324,4 +335,4 @@ final arrrPriceQuoteProvider = StreamProvider<ArrrPriceQuote?>((ref) {
   });
 
   return controller.stream;
-});
+}

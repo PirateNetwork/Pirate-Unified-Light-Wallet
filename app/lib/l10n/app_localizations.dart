@@ -160,6 +160,18 @@ abstract class AppLocalizations {
   /// **'When enabled, Verify Build fetches releases and checksum files from GitHub over your selected transport.'**
   String get verifyBuildGithubChecksSubtitle;
 
+  /// No description provided for @komodoSwapsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Komodo Swaps'**
+  String get komodoSwapsTitle;
+
+  /// No description provided for @komodoSwapsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enables the local KDF swap engine, order books, swap quotes, and funding-balance checks when the selected wallet networking mode supports swaps.'**
+  String get komodoSwapsSubtitle;
+
   /// No description provided for @desktopUpdateChecksTitle.
   ///
   /// In en, this message translates to:
@@ -181,7 +193,7 @@ abstract class AppLocalizations {
   /// No description provided for @outboundApiFeaturesSummary.
   ///
   /// In en, this message translates to:
-  /// **'Current non-lightserver network features: live price feeds, Verify Build GitHub checks, and desktop release checks. These outbound calls use your selected transport and can be disabled in Settings.'**
+  /// **'Current non-lightserver network features: live price feeds, Verify Build GitHub checks, Komodo swap order books and quotes, and desktop release checks. These outbound calls use your selected transport where supported and can be disabled in Settings.'**
   String get outboundApiFeaturesSummary;
 
   /// No description provided for @updateAvailableTitle.

@@ -13,6 +13,7 @@ import '../features/activity/activity_screen.dart';
 import '../features/activity/transaction_detail_screen.dart';
 import '../features/wallet_shell/wallet_shell_screen.dart';
 import '../features/receive/receive_screen.dart';
+import '../features/swap/swap_screen.dart';
 import '../features/keys/keys_screen.dart';
 import '../features/keys/key_detail_screen.dart';
 import '../features/keys/import_spending_key_screen.dart';
@@ -42,6 +43,7 @@ import '../features/settings/screens/biometrics_screen.dart';
 import '../features/settings/screens/passphrase_change_screen.dart';
 import '../features/settings/screens/theme_screen.dart';
 import '../features/settings/screens/currency_screen.dart';
+import '../features/settings/screens/swap_interface_screen.dart';
 import '../features/settings/screens/language_screen.dart';
 import '../features/settings/screens/seed_phrase_language_screen.dart';
 import '../features/settings/screens/outbound_api_screen.dart';
@@ -349,6 +351,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
+      // Swap Screen
+      GoRoute(
+        path: '/swap',
+        name: 'swap',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const SwapScreen(),
+        ),
+      ),
+
       // Payment disclosure verifier
       GoRoute(
         path: '/payment-disclosure',
@@ -493,6 +506,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           context: context,
           state: state,
           child: const CurrencyScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/swap-interface',
+        name: 'settings-swap-interface',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const SwapInterfaceScreen(),
         ),
       ),
 

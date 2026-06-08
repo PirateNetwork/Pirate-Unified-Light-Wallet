@@ -1,4 +1,5 @@
-/// Buy ARRR flow state management
+/// Legacy buy ARRR flow stub — superseded by the Swap screen and KDF swap stack.
+/// Kept temporarily for reference; do not wire new UI to this module.
 library;
 
 import 'dart:async';

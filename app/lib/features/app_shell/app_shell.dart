@@ -7,11 +7,11 @@ import 'package:go_router/go_router.dart';
 import '../../design/tokens/colors.dart';
 import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/p_bottom_sheet.dart';
-import '../../ui/molecules/p_snack.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_nav.dart';
 import '../../ui/organisms/p_scaffold.dart';
+import '../../core/swaps/swap_providers.dart';
 import '../pay/pay_screen.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/services/address_rotation_service.dart';
@@ -77,15 +77,6 @@ class AppShell extends ConsumerWidget {
     }
   }
 
-  void _showComingSoon(BuildContext context) {
-    PSnack.show(
-      context: context,
-      message: 'Coming Soon',
-      duration: const Duration(seconds: 1),
-      variant: PSnackVariant.info,
-    );
-  }
-
   void _openPaySheet(BuildContext context) {
     PBottomSheet.showAdaptive<void>(
       context: context,
@@ -108,7 +99,7 @@ class AppShell extends ConsumerWidget {
           },
           onSwap: () {
             Navigator.of(sheetContext).pop();
-            _showComingSoon(context);
+            context.push('/swap');
           },
         );
       },
@@ -158,7 +149,8 @@ class AppShell extends ConsumerWidget {
       ..watch(syncCompletionWatcherProvider)
       ..watch(autoRotationWatcherProvider)
       ..watch(syncCompletionRotationWatcherProvider)
-      ..watch(walletInitRotationWatcherProvider);
+      ..watch(walletInitRotationWatcherProvider)
+      ..watch(kdfSwapWarmupProvider);
     final currentIndex = _locationToIndex(location);
     final nav = PNav(
       currentIndex: currentIndex,

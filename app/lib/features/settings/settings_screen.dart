@@ -244,6 +244,24 @@ class SettingsScreen extends ConsumerWidget {
         ),
 
         _SettingsSection(
+          title: 'Trading'.tr,
+          children: [
+            Consumer(
+              builder: (context, ref, _) {
+                final mode = ref.watch(swapInterfacePreferenceProvider);
+                return PListTile(
+                  leading: const Icon(Icons.swap_horiz),
+                  title: 'Swap interface'.tr,
+                  subtitle: mode.label.tr,
+                  onTap: () => context.push('/settings/swap-interface'),
+                  trailing: const Icon(Icons.chevron_right),
+                );
+              },
+            ),
+          ],
+        ),
+
+        _SettingsSection(
           title: 'Appearance'.tr,
           children: [
             Consumer(

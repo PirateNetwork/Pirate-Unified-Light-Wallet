@@ -50,6 +50,29 @@ enum AppLocalePreference {
   }
 }
 
+enum SwapInterfacePreference {
+  simple,
+  advanced;
+
+  String get label {
+    switch (this) {
+      case SwapInterfacePreference.simple:
+        return 'Simple swap';
+      case SwapInterfacePreference.advanced:
+        return 'Advanced trading';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case SwapInterfacePreference.simple:
+        return 'Guided swap with simple steps';
+      case SwapInterfacePreference.advanced:
+        return 'Order book, limits, and slippage controls';
+    }
+  }
+}
+
 enum CurrencyPreference {
   usd,
   eur,
@@ -305,8 +328,6 @@ class CurrencyPreferenceNotifier extends Notifier<CurrencyPreference> {
       state = CurrencyPreference.usd;
       return;
     }
-    // Legacy migration: older builds stored `arrr` as the preference option.
-    // ARRR remains the base unit in UI, so default fiat display to USD.
     if (raw == 'arrr') {
       state = CurrencyPreference.usd;
       return;
@@ -314,6 +335,37 @@ class CurrencyPreferenceNotifier extends Notifier<CurrencyPreference> {
     state = CurrencyPreference.values.firstWhere(
       (pref) => pref.name == raw,
       orElse: () => CurrencyPreference.usd,
+    );
+  }
+}
+
+class SwapInterfacePreferenceNotifier
+    extends Notifier<SwapInterfacePreference> {
+  late final FlutterSecureStorage _storage;
+  static const String _storageKey = 'ui_swap_interface_pref_v1';
+
+  @override
+  SwapInterfacePreference build() {
+    _storage = const FlutterSecureStorage();
+    _load();
+    return SwapInterfacePreference.simple;
+  }
+
+  Future<void> setPreference(SwapInterfacePreference preference) async {
+    state = preference;
+    await _storage.write(key: _storageKey, value: preference.name);
+  }
+
+  Future<void> _load() async {
+    final raw = await _storage.read(key: _storageKey);
+    if (!ref.mounted) return;
+    if (raw == null || raw.isEmpty) {
+      state = SwapInterfacePreference.simple;
+      return;
+    }
+    state = SwapInterfacePreference.values.firstWhere(
+      (pref) => pref.name == raw,
+      orElse: () => SwapInterfacePreference.simple,
     );
   }
 }
@@ -731,6 +783,16 @@ class ExternalDesktopUpdateApiNotifier extends _SecureBoolPreferenceNotifier {
   Future<void> setEnabled({required bool enabled}) => setValue(value: enabled);
 }
 
+class ExternalKomodoSwapApiNotifier extends _SecureBoolPreferenceNotifier {
+  @override
+  String get storageKey => 'ui_external_api_komodo_swaps_v1';
+
+  @override
+  bool get defaultValue => true;
+
+  Future<void> setEnabled({required bool enabled}) => setValue(value: enabled);
+}
+
 final appThemeModeProvider = NotifierProvider<ThemeModeNotifier, AppThemeMode>(
   ThemeModeNotifier.new,
 );
@@ -743,6 +805,11 @@ final currencyPreferenceProvider =
 final localePreferenceProvider =
     NotifierProvider<LocalePreferenceNotifier, AppLocalePreference>(
       LocalePreferenceNotifier.new,
+    );
+
+final swapInterfacePreferenceProvider =
+    NotifierProvider<SwapInterfacePreferenceNotifier, SwapInterfacePreference>(
+      SwapInterfacePreferenceNotifier.new,
     );
 
 final seedPhraseLanguagePreferenceProvider =
@@ -789,6 +856,11 @@ final externalDesktopUpdateApiProvider =
       ExternalDesktopUpdateApiNotifier.new,
     );
 
+final externalKomodoSwapApiProvider =
+    NotifierProvider<ExternalKomodoSwapApiNotifier, bool>(
+      ExternalKomodoSwapApiNotifier.new,
+    );
+
 final allowPriceApisProvider = Provider<bool>((ref) {
   final master = ref.watch(externalApiMasterProvider);
   final prices = ref.watch(externalPriceApiProvider);
@@ -805,6 +877,12 @@ final allowDesktopUpdateApisProvider = Provider<bool>((ref) {
   final githubAllowed = ref.watch(allowGithubApisProvider);
   final desktopUpdates = ref.watch(externalDesktopUpdateApiProvider);
   return githubAllowed && desktopUpdates;
+});
+
+final allowKomodoSwapApisProvider = Provider<bool>((ref) {
+  final master = ref.watch(externalApiMasterProvider);
+  final komodoSwaps = ref.watch(externalKomodoSwapApiProvider);
+  return master && komodoSwaps;
 });
 
 final biometricAvailabilityProvider = FutureProvider<bool>((ref) async {
