@@ -25,23 +25,16 @@ typedef OrderbookDepthSelectionCallback =
 
 String? _usdPriceLabel({
   required Decimal relPrice,
-  required Decimal? referenceRelPrice,
-  required double? arrrUsdPrice,
+  required double? relUsdPrice,
   String? suffix,
 }) {
-  if (arrrUsdPrice == null || arrrUsdPrice <= 0) return null;
-  if (referenceRelPrice == null || referenceRelPrice <= Decimal.zero) {
-    return null;
-  }
+  if (relUsdPrice == null || relUsdPrice <= 0) return null;
   if (relPrice <= Decimal.zero) return null;
 
-  final ratioDecimal = (relPrice / referenceRelPrice).toDecimal(
-    scaleOnInfinitePrecision: 12,
-  );
-  final ratio = double.tryParse(ratioDecimal.toString());
-  if (ratio == null || ratio <= 0) return null;
+  final relAmount = double.tryParse(relPrice.toString());
+  if (relAmount == null || relAmount <= 0) return null;
 
-  final value = arrrUsdPrice * ratio;
+  final value = relAmount * relUsdPrice;
   final label = '≈ \$${_formatUsd(value)}';
   return suffix == null ? label : '$label $suffix';
 }
@@ -55,32 +48,6 @@ String _formatUsd(double value) {
   return value.toStringAsFixed(fractionDigits);
 }
 
-Decimal? _referenceRelPrice(SwapViewModelState state) {
-  final quoteReference = state.quote?.plan.referencePriceRelPerArrr;
-  if (quoteReference != null && quoteReference > Decimal.zero) {
-    return quoteReference;
-  }
-
-  final asks = state.orderbookAsks
-      .where((level) => level.priceRelPerArrr > Decimal.zero)
-      .toList();
-  final bids = state.orderbookBids
-      .where((level) => level.priceRelPerArrr > Decimal.zero)
-      .toList();
-
-  asks.sort((a, b) => a.priceRelPerArrr.compareTo(b.priceRelPerArrr));
-  bids.sort((a, b) => b.priceRelPerArrr.compareTo(a.priceRelPerArrr));
-
-  if (asks.isNotEmpty && bids.isNotEmpty) {
-    return ((asks.first.priceRelPerArrr + bids.first.priceRelPerArrr) /
-            Decimal.fromInt(2))
-        .toDecimal(scaleOnInfinitePrecision: 16);
-  }
-  if (asks.isNotEmpty) return asks.first.priceRelPerArrr;
-  if (bids.isNotEmpty) return bids.first.priceRelPerArrr;
-  return null;
-}
-
 class SwapAdvancedPanel extends StatelessWidget {
   const SwapAdvancedPanel({
     required this.state,
@@ -92,7 +59,7 @@ class SwapAdvancedPanel extends StatelessWidget {
     required this.onOrderTypeChanged,
     required this.onSideChanged,
     required this.onOrderbookDepthSelected,
-    this.arrrUsdPrice,
+    this.relUsdPrice,
     this.averageArrrUsdPriceLabel,
     this.onMax,
     super.key,
@@ -107,7 +74,7 @@ class SwapAdvancedPanel extends StatelessWidget {
   final ValueChanged<SwapAdvancedOrderType> onOrderTypeChanged;
   final ValueChanged<SwapSide> onSideChanged;
   final OrderbookDepthSelectionCallback onOrderbookDepthSelected;
-  final double? arrrUsdPrice;
+  final double? relUsdPrice;
   final String? averageArrrUsdPriceLabel;
   final VoidCallback? onMax;
 
@@ -119,13 +86,13 @@ class SwapAdvancedPanel extends StatelessWidget {
       asks: state.orderbookAsks,
       bids: state.orderbookBids,
       isLoading: state.isLoadingOrderbook,
-      arrrUsdPrice: arrrUsdPrice,
+      relUsdPrice: relUsdPrice,
       onDepthSelected: onOrderbookDepthSelected,
     );
     final form = _TradeForm(
       state: state,
       walletBalance: walletBalance,
-      arrrUsdPrice: arrrUsdPrice,
+      relUsdPrice: relUsdPrice,
       averageArrrUsdPriceLabel: averageArrrUsdPriceLabel,
       onPayAmountChanged: onPayAmountChanged,
       onLtcAddressChanged: onLtcAddressChanged,
@@ -169,7 +136,7 @@ class SwapOrderBookPanel extends StatefulWidget {
     required this.bids,
     required this.isLoading,
     required this.onDepthSelected,
-    this.arrrUsdPrice,
+    this.relUsdPrice,
     super.key,
   });
 
@@ -178,7 +145,7 @@ class SwapOrderBookPanel extends StatefulWidget {
   final List<SwapOrderbookLevel> bids;
   final bool isLoading;
   final OrderbookDepthSelectionCallback onDepthSelected;
-  final double? arrrUsdPrice;
+  final double? relUsdPrice;
 
   @override
   State<SwapOrderBookPanel> createState() => _SwapOrderBookPanelState();
@@ -401,7 +368,7 @@ class _SwapOrderBookPanelState extends State<SwapOrderBookPanel> {
                 maxCumulative: maxCumulative,
                 priceDecimals: priceDecimals,
                 referencePrice: midPrice,
-                arrrUsdPrice: widget.arrrUsdPrice,
+                relUsdPrice: widget.relUsdPrice,
                 relTicker: widget.pair.relTicker,
                 onDepthSelected: widget.onDepthSelected,
                 isBid: false,
@@ -412,7 +379,7 @@ class _SwapOrderBookPanelState extends State<SwapOrderBookPanel> {
               price: midPrice,
               asks: widget.asks,
               bids: widget.bids,
-              arrrUsdPrice: widget.arrrUsdPrice,
+              relUsdPrice: widget.relUsdPrice,
             ),
             SizedBox(
               height: 200,
@@ -422,7 +389,7 @@ class _SwapOrderBookPanelState extends State<SwapOrderBookPanel> {
                 maxCumulative: maxCumulative,
                 priceDecimals: priceDecimals,
                 referencePrice: midPrice,
-                arrrUsdPrice: widget.arrrUsdPrice,
+                relUsdPrice: widget.relUsdPrice,
                 relTicker: widget.pair.relTicker,
                 onDepthSelected: widget.onDepthSelected,
                 isBid: true,
@@ -441,7 +408,7 @@ class _SwapOrderBookPanelState extends State<SwapOrderBookPanel> {
                 maxCumulative: maxCumulative,
                 priceDecimals: priceDecimals,
                 referencePrice: midPrice,
-                arrrUsdPrice: widget.arrrUsdPrice,
+                relUsdPrice: widget.relUsdPrice,
                 relTicker: widget.pair.relTicker,
                 onDepthSelected: widget.onDepthSelected,
                 isBid: false,
@@ -452,7 +419,7 @@ class _SwapOrderBookPanelState extends State<SwapOrderBookPanel> {
               price: midPrice,
               asks: widget.asks,
               bids: widget.bids,
-              arrrUsdPrice: widget.arrrUsdPrice,
+              relUsdPrice: widget.relUsdPrice,
             ),
           ],
         );
@@ -463,7 +430,7 @@ class _SwapOrderBookPanelState extends State<SwapOrderBookPanel> {
               price: midPrice,
               asks: widget.asks,
               bids: widget.bids,
-              arrrUsdPrice: widget.arrrUsdPrice,
+              relUsdPrice: widget.relUsdPrice,
             ),
             SizedBox(
               height: 400,
@@ -473,7 +440,7 @@ class _SwapOrderBookPanelState extends State<SwapOrderBookPanel> {
                 maxCumulative: maxCumulative,
                 priceDecimals: priceDecimals,
                 referencePrice: midPrice,
-                arrrUsdPrice: widget.arrrUsdPrice,
+                relUsdPrice: widget.relUsdPrice,
                 relTicker: widget.pair.relTicker,
                 onDepthSelected: widget.onDepthSelected,
                 isBid: true,
@@ -531,7 +498,7 @@ class _OrderBookList extends StatefulWidget {
     required this.relTicker,
     required this.onDepthSelected,
     this.referencePrice,
-    this.arrrUsdPrice,
+    this.relUsdPrice,
     this.anchorBottom = false,
   });
 
@@ -543,7 +510,7 @@ class _OrderBookList extends StatefulWidget {
   final String relTicker;
   final OrderbookDepthSelectionCallback onDepthSelected;
   final Decimal? referencePrice;
-  final double? arrrUsdPrice;
+  final double? relUsdPrice;
 
   /// When true, scrolls to bottom on first build (used for asks so lowest
   /// price stays visible right above the mid-price separator).
@@ -652,8 +619,7 @@ class _OrderBookListState extends State<_OrderBookList> {
                 },
                 usdPriceLabel: _usdPriceLabel(
                   relPrice: level.price,
-                  referenceRelPrice: widget.referencePrice,
-                  arrrUsdPrice: widget.arrrUsdPrice,
+                  relUsdPrice: widget.relUsdPrice,
                 ),
               );
             },
@@ -669,7 +635,7 @@ class _OrderBookListState extends State<_OrderBookList> {
                   color: widget.color,
                   relTicker: widget.relTicker,
                   referencePrice: widget.referencePrice,
-                  arrrUsdPrice: widget.arrrUsdPrice,
+                  relUsdPrice: widget.relUsdPrice,
                 ),
               ),
             ),
@@ -827,14 +793,14 @@ class _DepthStatsCard extends StatelessWidget {
     required this.color,
     required this.relTicker,
     this.referencePrice,
-    this.arrrUsdPrice,
+    this.relUsdPrice,
   });
 
   final _AggregatedLevel level;
   final Color color;
   final String relTicker;
   final Decimal? referencePrice;
-  final double? arrrUsdPrice;
+  final double? relUsdPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -845,8 +811,7 @@ class _DepthStatsCard extends StatelessWidget {
         : level.price;
     final avgUsdLabel = _usdPriceLabel(
       relPrice: avgPrice,
-      referenceRelPrice: referencePrice,
-      arrrUsdPrice: arrrUsdPrice,
+      relUsdPrice: relUsdPrice,
     );
 
     return DecoratedBox(
@@ -936,13 +901,13 @@ class _MidPriceRow extends StatelessWidget {
     required this.price,
     required this.asks,
     required this.bids,
-    this.arrrUsdPrice,
+    this.relUsdPrice,
   });
 
   final Decimal? price;
   final List<SwapOrderbookLevel> asks;
   final List<SwapOrderbookLevel> bids;
-  final double? arrrUsdPrice;
+  final double? relUsdPrice;
 
   @override
   Widget build(BuildContext context) {
@@ -964,11 +929,7 @@ class _MidPriceRow extends StatelessWidget {
         asks.isNotEmpty &&
         bids.first.priceLtcPerArrr.compareTo(asks.first.priceLtcPerArrr) >= 0;
     final color = goingUp ? AppColors.success : AppColors.error;
-    final usdLabel = _usdPriceLabel(
-      relPrice: price!,
-      referenceRelPrice: price,
-      arrrUsdPrice: arrrUsdPrice,
-    );
+    final usdLabel = _usdPriceLabel(relPrice: price!, relUsdPrice: relUsdPrice);
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: PSpacing.sm),
@@ -1217,7 +1178,7 @@ class _TradeForm extends StatelessWidget {
   const _TradeForm({
     required this.state,
     required this.walletBalance,
-    required this.arrrUsdPrice,
+    required this.relUsdPrice,
     required this.averageArrrUsdPriceLabel,
     required this.onPayAmountChanged,
     required this.onLtcAddressChanged,
@@ -1230,7 +1191,7 @@ class _TradeForm extends StatelessWidget {
 
   final SwapViewModelState state;
   final String? walletBalance;
-  final double? arrrUsdPrice;
+  final double? relUsdPrice;
   final String? averageArrrUsdPriceLabel;
   final ValueChanged<String> onPayAmountChanged;
   final ValueChanged<String> onLtcAddressChanged;
@@ -1523,14 +1484,11 @@ class _TradeForm extends StatelessWidget {
 
   String? _limitUsdLabel() {
     if (state.advancedOrderType != SwapAdvancedOrderType.limit) return null;
-    final reference = _referenceRelPrice(state);
-    if (reference == null) return null;
     final price = Decimal.tryParse(state.limitPriceText.trim());
     if (price == null || price <= Decimal.zero) return null;
     return _usdPriceLabel(
       relPrice: price,
-      referenceRelPrice: reference,
-      arrrUsdPrice: arrrUsdPrice,
+      relUsdPrice: relUsdPrice,
       suffix: 'per ARRR',
     );
   }

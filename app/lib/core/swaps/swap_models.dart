@@ -300,6 +300,19 @@ class SwapPlan {
 
   Decimal get marketArrrAmountAfterAppFee => marketArrrAmountAfterTakerFees;
 
+  Decimal get marketArrrAmountForEffectivePrice => switch (side) {
+    SwapSide.buyArrr => marketArrrAmountAfterTakerFees,
+    SwapSide.sellArrr => _sellMarketGrossArrrAmount,
+  };
+
+  Decimal? get effectiveMarketPriceRelPerArrr {
+    final arrrAmount = marketArrrAmountForEffectivePrice;
+    if (marketRelAmount <= Decimal.zero || arrrAmount <= Decimal.zero) {
+      return null;
+    }
+    return _divideSwapDecimal(marketRelAmount, arrrAmount, scale: 12);
+  }
+
   Decimal get requestedPayAmount => switch (side) {
     SwapSide.buyArrr => marketLtcAmount + remainderLtcAmount,
     SwapSide.sellArrr => _scaleSwapDecimal(

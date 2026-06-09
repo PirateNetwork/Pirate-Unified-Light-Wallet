@@ -23,6 +23,20 @@ class ArrrPriceQuote {
   final ArrrPriceSource source;
 }
 
+class AssetUsdPriceQuote {
+  const AssetUsdPriceQuote({
+    required this.assetId,
+    required this.ticker,
+    required this.pricePerUnit,
+    required this.fetchedAt,
+  });
+
+  final String assetId;
+  final String ticker;
+  final double pricePerUnit;
+  final DateTime fetchedAt;
+}
+
 class ArrrPriceFormatter {
   static String formatArrr(double amount) {
     return '${_groupedFixed(amount, 8)} ARRR';
@@ -133,6 +147,8 @@ class _ArrrPriceService {
 
   static final Map<CurrencyPreference, ArrrPriceQuote> _lastByCurrency =
       <CurrencyPreference, ArrrPriceQuote>{};
+  static final Map<String, AssetUsdPriceQuote> _lastAssetUsdById =
+      <String, AssetUsdPriceQuote>{};
 
   static ArrrPriceQuote? cached(CurrencyPreference currency) {
     final existing = _lastByCurrency[currency];
@@ -184,6 +200,46 @@ class _ArrrPriceService {
     );
     _lastByCurrency[currency] = quote;
     return quote;
+  }
+
+  static AssetUsdPriceQuote? cachedAssetUsd(String assetId) {
+    final existing = _lastAssetUsdById[assetId];
+    if (existing == null) return null;
+    if (DateTime.now().difference(existing.fetchedAt) > _cacheTtl) {
+      return null;
+    }
+    return existing;
+  }
+
+  static Future<AssetUsdPriceQuote?> fetchAssetUsd({
+    required String assetId,
+    required String ticker,
+  }) async {
+    final cachedQuote = cachedAssetUsd(assetId);
+    if (cachedQuote != null) return cachedQuote;
+
+    try {
+      final uri = Uri.parse(
+        'https://api.coingecko.com/api/v3/simple/price?ids=$assetId&vs_currencies=usd',
+      );
+      final json = await _downloadJson(uri, userAgent: 'PirateWallet');
+      if (json is! Map) return null;
+      final asset = json[assetId];
+      if (asset is! Map) return null;
+      final price = _parsePrice(asset['usd']);
+      if (price == null || price <= 0) return null;
+
+      final quote = AssetUsdPriceQuote(
+        assetId: assetId,
+        ticker: ticker,
+        pricePerUnit: price,
+        fetchedAt: DateTime.now(),
+      );
+      _lastAssetUsdById[assetId] = quote;
+      return quote;
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<Map<CurrencyPreference, double>?>
@@ -283,6 +339,10 @@ final arrrUsdPriceQuoteProvider = StreamProvider<ArrrPriceQuote?>((ref) {
   return _priceQuoteStream(ref, CurrencyPreference.usd);
 });
 
+final ltcUsdPriceQuoteProvider = StreamProvider<AssetUsdPriceQuote?>((ref) {
+  return _assetUsdPriceQuoteStream(ref, assetId: 'litecoin', ticker: 'LTC');
+});
+
 Stream<ArrrPriceQuote?> _priceQuoteStream(
   Ref ref,
   CurrencyPreference currency,
@@ -318,6 +378,60 @@ Stream<ArrrPriceQuote?> _priceQuoteStream(
   }
 
   last = _ArrrPriceService.cached(currency);
+  if (last != null) {
+    controller.add(last);
+  }
+
+  unawaited(refreshQuote());
+  pollTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+    unawaited(refreshQuote());
+  });
+
+  ref.onDispose(() {
+    pollTimer?.cancel();
+    if (!controller.isClosed) {
+      unawaited(controller.close());
+    }
+  });
+
+  return controller.stream;
+}
+
+Stream<AssetUsdPriceQuote?> _assetUsdPriceQuoteStream(
+  Ref ref, {
+  required String assetId,
+  required String ticker,
+}) {
+  final allowPrices = ref.watch(allowPriceApisProvider);
+  final controller = StreamController<AssetUsdPriceQuote?>();
+
+  Timer? pollTimer;
+  AssetUsdPriceQuote? last;
+
+  Future<void> refreshQuote() async {
+    if (controller.isClosed) return;
+    final quote = await _ArrrPriceService.fetchAssetUsd(
+      assetId: assetId,
+      ticker: ticker,
+    );
+    if (controller.isClosed) return;
+    if (quote != null) {
+      last = quote;
+      controller.add(quote);
+      return;
+    }
+    if (last == null) {
+      controller.add(null);
+    }
+  }
+
+  if (!allowPrices || kIsWeb) {
+    controller.add(null);
+    unawaited(controller.close());
+    return controller.stream;
+  }
+
+  last = _ArrrPriceService.cachedAssetUsd(assetId);
   if (last != null) {
     controller.add(last);
   }

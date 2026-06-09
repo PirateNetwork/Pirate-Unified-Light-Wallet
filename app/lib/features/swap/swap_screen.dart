@@ -86,9 +86,15 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
     final walletBalance = ref.watch(swapWalletBalanceProvider);
     final walletMeta = ref.watch(activeWalletMetaProvider);
     final arrrUsdQuote = ref.watch(arrrUsdPriceQuoteProvider).asData?.value;
+    final ltcUsdQuote = ref.watch(ltcUsdPriceQuoteProvider).asData?.value;
     final isWatchOnly = walletMeta?.watchOnly ?? false;
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = PSpacing.isMobile(screenWidth);
+    final relUsdPrice = _relUsdPrice(
+      pair: state.pair,
+      arrrUsdPrice: arrrUsdQuote?.pricePerArrr,
+      ltcUsdPrice: ltcUsdQuote?.pricePerUnit,
+    );
 
     final quote = state.quote;
     final rateLabel = quote == null
@@ -97,7 +103,7 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
     final feeLabel = quote == null ? null : _feeLabel(quote, state);
     final averageArrrUsdPriceLabel = quote == null
         ? null
-        : _averageArrrUsdPriceLabel(quote, arrrUsdQuote);
+        : _averageArrrUsdPriceLabel(quote, relUsdPrice);
 
     return PScaffold(
       title: 'Swap'.tr,
@@ -190,7 +196,7 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
                       walletBalance: walletBalance,
                       rateLabel: rateLabel,
                       feeLabel: feeLabel,
-                      arrrUsdPrice: arrrUsdQuote?.pricePerArrr,
+                      relUsdPrice: relUsdPrice,
                       averageArrrUsdPriceLabel: averageArrrUsdPriceLabel,
                     ),
                   ),
@@ -231,27 +237,30 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
     return parts.isEmpty ? '0 fees'.tr : parts.join(' + ');
   }
 
-  String? _averageArrrUsdPriceLabel(
-    SwapQuote quote,
-    ArrrPriceQuote? arrrUsdQuote,
-  ) {
-    if (arrrUsdQuote == null || arrrUsdQuote.pricePerArrr <= 0) return null;
+  String? _averageArrrUsdPriceLabel(SwapQuote quote, double? relUsdPrice) {
+    if (relUsdPrice == null || relUsdPrice <= 0) return null;
     final plan = quote.plan;
-    if (plan.marketArrrAmount <= Decimal.zero ||
-        plan.marketRelAmount <= Decimal.zero ||
-        plan.referencePriceRelPerArrr <= Decimal.zero) {
+    final averageRelPerArrr = plan.effectiveMarketPriceRelPerArrr;
+    if (averageRelPerArrr == null || averageRelPerArrr <= Decimal.zero) {
       return null;
     }
+    final relPrice = double.tryParse(averageRelPerArrr.toString());
+    if (relPrice == null || relPrice <= 0) return null;
 
-    final averageRelPerArrr = (plan.marketRelAmount / plan.marketArrrAmount)
-        .toDecimal(scaleOnInfinitePrecision: 12);
-    final priceRatio = (averageRelPerArrr / plan.referencePriceRelPerArrr)
-        .toDecimal(scaleOnInfinitePrecision: 12);
-    final ratio = double.tryParse(priceRatio.toString());
-    if (ratio == null || ratio <= 0) return null;
-
-    final averageUsd = arrrUsdQuote.pricePerArrr * ratio;
+    final averageUsd = relPrice * relUsdPrice;
     return '${ArrrPriceFormatter.formatCurrency(CurrencyPreference.usd, averageUsd, includeCode: false)} per ARRR';
+  }
+
+  double? _relUsdPrice({
+    required SwapPair pair,
+    required double? arrrUsdPrice,
+    required double? ltcUsdPrice,
+  }) {
+    return switch (pair.relAsset) {
+      SwapAsset.ltc => ltcUsdPrice,
+      SwapAsset.varrr => arrrUsdPrice,
+      SwapAsset.arrr => arrrUsdPrice,
+    };
   }
 
   Widget _buildBody({
@@ -261,7 +270,7 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
     required String? walletBalance,
     required String? rateLabel,
     required String? feeLabel,
-    required double? arrrUsdPrice,
+    required double? relUsdPrice,
     required String? averageArrrUsdPriceLabel,
   }) {
     switch (state.step) {
@@ -328,7 +337,7 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
               SwapAdvancedPanel(
                 state: state,
                 walletBalance: walletBalance,
-                arrrUsdPrice: arrrUsdPrice,
+                relUsdPrice: relUsdPrice,
                 averageArrrUsdPriceLabel: averageArrrUsdPriceLabel,
                 onPayAmountChanged: vm.updatePayAmount,
                 onLtcAddressChanged: vm.updateLtcPayoutAddress,
