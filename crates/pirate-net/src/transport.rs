@@ -356,6 +356,18 @@ impl TransportManager {
         url: &str,
         headers: &[(String, String)],
     ) -> Result<Vec<u8>> {
+        let parsed_url = reqwest::Url::parse(url)
+            .map_err(|e| Error::Network(format!("Invalid URL '{}': {}", url, e)))?;
+        let host = parsed_url.host_str().unwrap_or("");
+
+        if is_local_host(host) {
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(60))
+                .build()
+                .map_err(|e| Error::Network(format!("Failed to create direct client: {}", e)))?;
+            return fetch_url_bytes_with_client(&client, url, headers).await;
+        }
+
         let config = { self.config.lock().await.clone() };
 
         match config.mode {
@@ -400,6 +412,11 @@ impl TransportManager {
             let dns_config = dns_config.clone();
             let socks5_config = socks5_config.clone();
             async move {
+                let (host, _) = uri_host_port(&uri)?;
+                if is_local_host(&host) {
+                    return connect_direct(dns_config, mode, uri).await;
+                }
+
                 match mode {
                     TransportMode::Tor => {
                         let tor = tor_client.ok_or_else(|| {
@@ -433,13 +450,19 @@ impl TransportManager {
     /// Open a raw stream using the configured transport mode.
     async fn open_stream(&self, host: &str, port: u16) -> Result<BoxedStream> {
         let config = { self.config.lock().await.clone() };
+
+        if is_local_host(host) {
+            return connect_direct_stream(config.dns_config, host, port).await;
+        }
+
         let tor_client = { self.tor_client.lock().await.clone() };
         let i2p_client = { self.i2p_client.lock().await.clone() };
 
         match config.mode {
             TransportMode::Tor => {
-                let tor = tor_client
-                    .ok_or_else(|| Error::Network("Tor client not initialized".to_string()))?;
+                let tor = tor_client.ok_or_else(|| {
+                    Error::Network("Tor client not initialized".to_string())
+                })?;
                 connect_tor_stream(tor, host, port).await
             }
             TransportMode::I2p => {
@@ -664,6 +687,28 @@ async fn fetch_url_bytes_via_tor(
         "Too many redirects while fetching '{}'",
         url
     )))
+}
+
+/// Check if a host is a local/private address that should bypass Tor/proxies.
+fn is_local_host(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") || host.ends_with(".local") {
+        return true;
+    }
+
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        match ip {
+            std::net::IpAddr::V4(ipv4) => {
+                ipv4.is_loopback() || ipv4.is_private() || ipv4.is_link_local()
+            }
+            std::net::IpAddr::V6(ipv6) => {
+                ipv6.is_loopback() ||
+                (ipv6.segments()[0] & 0xfe00) == 0xfc00 || // Unique Local
+                (ipv6.segments()[0] & 0xffc0) == 0xfe80    // Link Local
+            }
+        }
+    } else {
+        false
+    }
 }
 
 async fn fetch_url_once_via_tor(

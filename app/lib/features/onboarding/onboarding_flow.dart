@@ -51,6 +51,7 @@ class OnboardingState {
   final int? birthdayHeight;
   final bool seedBackedUp;
   final PirateNetwork network;
+  final String? customEndpoint;
 
   const OnboardingState({
     this.currentStep = OnboardingStep.welcome,
@@ -62,6 +63,7 @@ class OnboardingState {
     this.birthdayHeight,
     this.seedBackedUp = false,
     this.network = PirateNetwork.mainnet,
+    this.customEndpoint,
   });
 
   OnboardingState copyWith({
@@ -74,6 +76,7 @@ class OnboardingState {
     int? birthdayHeight,
     bool? seedBackedUp,
     PirateNetwork? network,
+    String? customEndpoint,
   }) {
     return OnboardingState(
       currentStep: currentStep ?? this.currentStep,
@@ -85,6 +88,7 @@ class OnboardingState {
       birthdayHeight: birthdayHeight ?? this.birthdayHeight,
       seedBackedUp: seedBackedUp ?? this.seedBackedUp,
       network: network ?? this.network,
+      customEndpoint: customEndpoint ?? this.customEndpoint,
     );
   }
 
@@ -181,6 +185,10 @@ class OnboardingController extends Notifier<OnboardingState> {
     state = state.copyWith(network: network);
   }
 
+  void setCustomEndpoint(String? endpoint) {
+    state = state.copyWith(customEndpoint: endpoint);
+  }
+
   void markSeedBackedUp() {
     state = state.copyWith(seedBackedUp: true);
   }
@@ -240,12 +248,16 @@ class OnboardingController extends Notifier<OnboardingState> {
             mnemonic: state.mnemonic!,
             birthday: birthday,
             mnemonicLanguage: state.mnemonicLanguage,
+            networkType: state.network.name,
+            endpoint: state.customEndpoint,
           );
         } else {
           walletId = await ref.read(createWalletProvider)(
             name: finalWalletName,
             birthday: birthday,
             mnemonicLanguage: state.mnemonicLanguage,
+            networkType: state.network.name,
+            endpoint: state.customEndpoint,
           );
         }
         if (resolution?.timedOut ?? false) {
@@ -269,6 +281,8 @@ class OnboardingController extends Notifier<OnboardingState> {
           mnemonic: mnemonic,
           birthday: state.birthdayHeight,
           mnemonicLanguage: state.mnemonicLanguage,
+          networkType: state.network.name,
+          endpoint: state.customEndpoint,
         );
         break;
       case OnboardingMode.watchOnly:

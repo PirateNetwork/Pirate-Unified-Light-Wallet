@@ -454,7 +454,8 @@ fn derive_receive_address(
         let extsk = extsk.ok_or_else(|| anyhow!("Invalid spending key bytes"))?;
         let fvk = extsk.to_extended_fvk();
         let payment_addr = fvk.derive_address(diversifier_index);
-        let addr_string = payment_addr.encode();
+        let network_type = address_prefix_network_type(wallet_id)?;
+        let addr_string = payment_addr.encode_for_network(network_type);
         Ok((addr_string, AddressType::Sapling))
     }
 }

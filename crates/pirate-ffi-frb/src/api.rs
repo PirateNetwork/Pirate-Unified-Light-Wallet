@@ -550,13 +550,22 @@ pub fn create_wallet(
     _entropy_len: Option<u32>, // Deprecated: always generates 24-word seed
     birthday_opt: Option<u32>,
     mnemonic_language: Option<MnemonicLanguage>,
+    network_type: Option<String>,
+    endpoint: Option<String>,
 ) -> Result<WalletId> {
     let mnemonic_language = match mnemonic_language {
         Some(value) => Some(convert_into_service(value)?),
         None => None,
     };
 
-    service::create_wallet(name, _entropy_len, birthday_opt, mnemonic_language)
+    service::create_wallet(
+        name,
+        _entropy_len,
+        birthday_opt,
+        mnemonic_language,
+        network_type,
+        endpoint,
+    )
 }
 
 /// Restore wallet from mnemonic
@@ -569,13 +578,22 @@ pub fn restore_wallet(
     mnemonic: String,
     birthday_opt: Option<u32>,
     mnemonic_language: Option<MnemonicLanguage>,
+    network_type: Option<String>,
+    endpoint: Option<String>,
 ) -> Result<WalletId> {
     let mnemonic_language = match mnemonic_language {
         Some(value) => Some(convert_into_service(value)?),
         None => None,
     };
 
-    service::restore_wallet(name, mnemonic, birthday_opt, mnemonic_language)
+    service::restore_wallet(
+        name,
+        mnemonic,
+        birthday_opt,
+        mnemonic_language,
+        network_type,
+        endpoint,
+    )
 }
 
 /// Check if wallet registry database file exists (without opening it)

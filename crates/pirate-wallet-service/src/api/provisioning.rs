@@ -81,6 +81,7 @@ pub(super) fn create_wallet(
     birthday_opt: Option<u32>,
     mnemonic_language: Option<MnemonicLanguage>,
     network_type_opt: Option<String>,
+    endpoint_opt: Option<String>,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
 
@@ -126,6 +127,21 @@ pub(super) fn create_wallet(
 
     register_wallet(&meta)?;
 
+    if let Some(endpoint_url) = endpoint_opt {
+        let registry_db = open_wallet_registry()?;
+        let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
+        set_registry_setting(&registry_db, &endpoint_key, Some(endpoint_url.clone()))?;
+
+        if let Ok(endpoint) = endpoint::endpoint_from_url(
+            &endpoint_url,
+            endpoint::DEFAULT_LIGHTD_USE_TLS,
+            None,
+            Some("Custom".to_string()),
+        ) {
+            endpoint::cache_lightd_endpoint(wallet_id.clone(), endpoint);
+        }
+    }
+
     let dfvk_bytes = extsk.to_extended_fvk().to_bytes();
     let secret = WalletSecret {
         wallet_id: wallet_id.clone(),
@@ -155,6 +171,7 @@ pub(super) fn restore_wallet(
     birthday_opt: Option<u32>,
     mnemonic_language: Option<MnemonicLanguage>,
     network_type_opt: Option<String>,
+    endpoint_opt: Option<String>,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
 
@@ -198,6 +215,21 @@ pub(super) fn restore_wallet(
     };
 
     register_wallet(&meta)?;
+
+    if let Some(endpoint_url) = endpoint_opt {
+        let registry_db = open_wallet_registry()?;
+        let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
+        set_registry_setting(&registry_db, &endpoint_key, Some(endpoint_url.clone()))?;
+
+        if let Ok(endpoint) = endpoint::endpoint_from_url(
+            &endpoint_url,
+            endpoint::DEFAULT_LIGHTD_USE_TLS,
+            None,
+            Some("Custom".to_string()),
+        ) {
+            endpoint::cache_lightd_endpoint(wallet_id.clone(), endpoint);
+        }
+    }
 
     let dfvk_bytes = extsk.to_extended_fvk().to_bytes();
     let secret = WalletSecret {

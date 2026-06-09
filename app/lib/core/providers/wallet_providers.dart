@@ -162,6 +162,8 @@ final createWalletProvider =
         int entropyLen,
         int? birthday,
         MnemonicLanguage? mnemonicLanguage,
+        String? networkType,
+        String? endpoint,
       })
     >((ref) {
       return ({
@@ -169,12 +171,16 @@ final createWalletProvider =
         int entropyLen = 256,
         int? birthday,
         MnemonicLanguage? mnemonicLanguage,
+        String? networkType,
+        String? endpoint,
       }) async {
         final walletId = await FfiBridge.createWallet(
           name: name,
           entropyLen: entropyLen,
           birthday: birthday,
           mnemonicLanguage: mnemonicLanguage,
+          networkType: networkType,
+          endpoint: endpoint,
         );
 
         // Set as active
@@ -197,6 +203,8 @@ final restoreWalletProvider =
         required String mnemonic,
         int? birthday,
         MnemonicLanguage? mnemonicLanguage,
+        String? networkType,
+        String? endpoint,
       })
     >((ref) {
       return ({
@@ -204,12 +212,16 @@ final restoreWalletProvider =
         required String mnemonic,
         int? birthday,
         MnemonicLanguage? mnemonicLanguage,
+        String? networkType,
+        String? endpoint,
       }) async {
         final walletId = await FfiBridge.restoreWallet(
           name: name,
           mnemonic: mnemonic,
           birthday: birthday,
           mnemonicLanguage: mnemonicLanguage,
+          networkType: networkType,
+          endpoint: endpoint,
         );
 
         // Set as active

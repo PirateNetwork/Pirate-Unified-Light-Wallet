@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../design/deep_space_theme.dart';
 import '../../../ui/molecules/p_card.dart';
+import '../../../ui/atoms/p_input.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../../../core/ffi/ffi_bridge.dart';
@@ -27,14 +28,22 @@ class CreateOrImportScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
+  final _endpointController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(onboardingControllerProvider.notifier)
-          .reset(startAt: OnboardingStep.createOrImport);
+      final notifier = ref.read(onboardingControllerProvider.notifier);
+      notifier.reset(startAt: OnboardingStep.createOrImport);
+      _endpointController.text = ref.read(onboardingControllerProvider).customEndpoint ?? '';
     });
+  }
+
+  @override
+  void dispose() {
+    _endpointController.dispose();
+    super.dispose();
   }
 
   @override
@@ -115,6 +124,22 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
                     }),
                   ],
                 ),
+                if (onboardingState.network != PirateNetwork.mainnet) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  PInput(
+                    controller: _endpointController,
+                    label: 'Lightwalletd Endpoint'.tr,
+                    hint: onboardingState.network == PirateNetwork.regtest
+                        ? '127.0.0.1:9067'
+                        : '64.23.167.130:8067',
+                    onChanged: (value) {
+                      ref
+                          .read(onboardingControllerProvider.notifier)
+                          .setCustomEndpoint(value.trim());
+                    },
+                    prefixIcon: const Icon(Icons.dns_outlined),
+                  ),
+                ],
               ],
               const SizedBox(height: AppSpacing.xxl),
               PCard(

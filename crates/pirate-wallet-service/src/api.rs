@@ -695,19 +695,23 @@ pub fn create_wallet(
     entropy_len: Option<u32>,
     birthday_opt: Option<u32>,
     mnemonic_language: Option<MnemonicLanguage>,
+    network_type: Option<String>,
+    endpoint: Option<String>,
 ) -> Result<WalletId> {
-    let mut network_type_opt = None;
+    let mut network_type_opt = network_type;
     let mut clean_name = name.clone();
-    if clean_name.contains("[REGTEST]") {
-        network_type_opt = Some("regtest".to_string());
-        clean_name = clean_name
-            .replace(" [REGTEST]", "")
-            .replace("[REGTEST]", "");
-    } else if clean_name.contains("[TESTNET]") {
-        network_type_opt = Some("testnet".to_string());
-        clean_name = clean_name
-            .replace(" [TESTNET]", "")
-            .replace("[TESTNET]", "");
+    if network_type_opt.is_none() {
+        if clean_name.contains("[REGTEST]") {
+            network_type_opt = Some("regtest".to_string());
+            clean_name = clean_name
+                .replace(" [REGTEST]", "")
+                .replace("[REGTEST]", "");
+        } else if clean_name.contains("[TESTNET]") {
+            network_type_opt = Some("testnet".to_string());
+            clean_name = clean_name
+                .replace(" [TESTNET]", "")
+                .replace("[TESTNET]", "");
+        }
     }
 
     provisioning::create_wallet(
@@ -716,6 +720,7 @@ pub fn create_wallet(
         birthday_opt,
         mnemonic_language,
         network_type_opt,
+        endpoint,
     )
 }
 
@@ -729,19 +734,23 @@ pub fn restore_wallet(
     mnemonic: String,
     birthday_opt: Option<u32>,
     mnemonic_language: Option<MnemonicLanguage>,
+    network_type: Option<String>,
+    endpoint: Option<String>,
 ) -> Result<WalletId> {
-    let mut network_type_opt = None;
+    let mut network_type_opt = network_type;
     let mut clean_name = name.clone();
-    if clean_name.contains("[REGTEST]") {
-        network_type_opt = Some("regtest".to_string());
-        clean_name = clean_name
-            .replace(" [REGTEST]", "")
-            .replace("[REGTEST]", "");
-    } else if clean_name.contains("[TESTNET]") {
-        network_type_opt = Some("testnet".to_string());
-        clean_name = clean_name
-            .replace(" [TESTNET]", "")
-            .replace("[TESTNET]", "");
+    if network_type_opt.is_none() {
+        if clean_name.contains("[REGTEST]") {
+            network_type_opt = Some("regtest".to_string());
+            clean_name = clean_name
+                .replace(" [REGTEST]", "")
+                .replace("[REGTEST]", "");
+        } else if clean_name.contains("[TESTNET]") {
+            network_type_opt = Some("testnet".to_string());
+            clean_name = clean_name
+                .replace(" [TESTNET]", "")
+                .replace("[TESTNET]", "");
+        }
     }
 
     provisioning::restore_wallet(
@@ -750,6 +759,7 @@ pub fn restore_wallet(
         birthday_opt,
         mnemonic_language,
         network_type_opt,
+        endpoint,
     )
 }
 

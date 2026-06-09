@@ -214,6 +214,8 @@ class FfiBridge {
     int entropyLen = 256,
     int? birthday,
     MnemonicLanguage? mnemonicLanguage,
+    String? networkType,
+    String? endpoint,
   }) async {
     if (kUseFrbBindings) {
       final walletId = await api.createWallet(
@@ -221,6 +223,8 @@ class FfiBridge {
         entropyLen: entropyLen,
         birthdayOpt: birthday,
         mnemonicLanguage: mnemonicLanguage,
+        networkType: networkType,
+        endpoint: endpoint,
       );
       _activeWalletId = walletId;
       // Auto-start compact sync after wallet creation
@@ -244,6 +248,8 @@ class FfiBridge {
     required String mnemonic,
     int? birthday,
     MnemonicLanguage? mnemonicLanguage,
+    String? networkType,
+    String? endpoint,
   }) async {
     if (kUseFrbBindings) {
       final walletId = await api.restoreWallet(
@@ -251,6 +257,8 @@ class FfiBridge {
         mnemonic: mnemonic,
         birthdayOpt: birthday,
         mnemonicLanguage: mnemonicLanguage,
+        networkType: networkType,
+        endpoint: endpoint,
       );
       _activeWalletId = walletId;
       // Auto-start compact sync after restore
