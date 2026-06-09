@@ -565,6 +565,7 @@ pub(super) fn unlock_app(passphrase: String) -> Result<()> {
     REGISTRY_LOADED.store(false, Ordering::SeqCst);
     invalidate_all_wallet_db_caches();
     load_wallet_registry_state(&db)?;
+    panic_duress::sync_duress_sidecar_from_registry(&db);
 
     tracing::info!("App unlocked successfully");
     Ok(())

@@ -4,6 +4,7 @@ use pirate_storage_sqlite::{DecoyVaultManager, PanicPin, VaultMode};
 pub(super) const REGISTRY_DURESS_PASSPHRASE_HASH_KEY: &str = "duress_passphrase_hash";
 pub(super) const REGISTRY_DURESS_USE_REVERSE_KEY: &str = "duress_passphrase_use_reverse";
 pub(super) const DECOY_WALLET_ID: &str = "decoy_wallet";
+const DURESS_PASSPHRASE_SIDECAR_FILENAME: &str = "duress_passphrase.hash";
 
 lazy_static::lazy_static! {
     /// Global decoy vault manager
@@ -37,6 +38,70 @@ pub(super) fn ensure_decoy_wallet_state() {
 
 fn reverse_passphrase(passphrase: &str) -> String {
     passphrase.chars().rev().collect()
+}
+
+fn duress_sidecar_path() -> Result<PathBuf> {
+    Ok(super::encrypted_db::wallet_base_dir()?.join(DURESS_PASSPHRASE_SIDECAR_FILENAME))
+}
+
+fn write_duress_sidecar(hash: &str) -> Result<()> {
+    let path = duress_sidecar_path()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("hash.tmp");
+    fs::write(&tmp, hash)?;
+    fs::rename(tmp, path)?;
+    Ok(())
+}
+
+fn read_duress_sidecar() -> Result<Option<String>> {
+    let path = duress_sidecar_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let value = fs::read_to_string(path)?.trim().to_string();
+    Ok((!value.is_empty()).then_some(value))
+}
+
+fn clear_duress_sidecar() -> Result<()> {
+    let path = duress_sidecar_path()?;
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn load_duress_hash_locked_safe() -> Result<Option<String>> {
+    if wallet_registry_path()?.exists() {
+        if let Ok(registry_db) = open_wallet_registry() {
+            if let Some(hash) =
+                get_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY)?
+            {
+                let _ = write_duress_sidecar(&hash);
+                return Ok(Some(hash));
+            }
+        }
+    }
+
+    read_duress_sidecar()
+}
+
+pub(super) fn sync_duress_sidecar_from_registry(registry_db: &Database) {
+    match get_registry_setting(registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY) {
+        Ok(Some(hash)) => {
+            if let Err(e) = write_duress_sidecar(&hash) {
+                tracing::warn!("Failed to write locked-state duress verifier: {}", e);
+            }
+        }
+        Ok(None) => {
+            if let Err(e) = clear_duress_sidecar() {
+                tracing::warn!("Failed to clear locked-state duress verifier: {}", e);
+            }
+        }
+        Err(e) => tracing::warn!("Failed to read duress verifier from registry: {}", e),
+    }
 }
 
 pub(super) fn ensure_not_decoy(operation: &str) -> Result<()> {
@@ -86,6 +151,7 @@ pub(super) fn refresh_duress_reverse_hash(
     if new_passphrase.chars().eq(new_passphrase.chars().rev()) {
         set_registry_setting(registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY, None)?;
         set_registry_setting(registry_db, REGISTRY_DURESS_USE_REVERSE_KEY, None)?;
+        clear_duress_sidecar()?;
         return Ok(());
     }
 
@@ -97,6 +163,7 @@ pub(super) fn refresh_duress_reverse_hash(
         REGISTRY_DURESS_PASSPHRASE_HASH_KEY,
         Some(duress_hash.hash_string()),
     )?;
+    write_duress_sidecar(&duress_hash.hash_string())?;
     Ok(())
 }
 
@@ -209,6 +276,7 @@ pub(super) fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result
         REGISTRY_DURESS_USE_REVERSE_KEY,
         Some(if use_reverse { "true" } else { "false" }),
     )?;
+    write_duress_sidecar(&duress_hash.hash_string())?;
 
     let vault = DECOY_VAULT.read();
     let salt = generate_salt().to_vec();
@@ -221,36 +289,36 @@ pub(super) fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result
 }
 
 pub(super) fn has_duress_passphrase() -> Result<bool> {
-    if !wallet_registry_path()?.exists() {
-        return Ok(false);
-    }
-    let registry_db = open_wallet_registry()?;
-    Ok(get_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY)?.is_some())
+    Ok(load_duress_hash_locked_safe()?.is_some())
 }
 
 pub(super) fn clear_duress_passphrase() -> Result<()> {
     if wallet_registry_path()?.exists() {
-        let registry_db = open_wallet_registry()?;
-        set_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY, None)?;
-        set_registry_setting(&registry_db, REGISTRY_DURESS_USE_REVERSE_KEY, None)?;
+        match open_wallet_registry() {
+            Ok(registry_db) => {
+                set_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY, None)?;
+                set_registry_setting(&registry_db, REGISTRY_DURESS_USE_REVERSE_KEY, None)?;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to clear encrypted duress settings; clearing locked-state verifier only: {}",
+                    e
+                );
+            }
+        }
     }
 
     let vault = DECOY_VAULT.read();
     vault
         .disable()
         .map_err(|e| anyhow!("Failed to disable decoy vault: {}", e))?;
+    clear_duress_sidecar()?;
     tracing::info!("Duress passphrase cleared");
     Ok(())
 }
 
 pub(super) fn verify_duress_passphrase(passphrase: String) -> Result<bool> {
-    if !wallet_registry_path()?.exists() {
-        return Ok(false);
-    }
-
-    let registry_db = open_wallet_registry()?;
-    let Some(hash) = get_registry_setting(&registry_db, REGISTRY_DURESS_PASSPHRASE_HASH_KEY)?
-    else {
+    let Some(hash) = load_duress_hash_locked_safe()? else {
         return Ok(false);
     };
 
@@ -311,6 +379,15 @@ mod tests {
         let _ = clear_panic_pin();
     }
 
+    fn simulate_locked_restart() {
+        passphrase_store::clear_passphrase();
+        REGISTRY_LOADED.store(false, Ordering::SeqCst);
+        *WALLETS.write() = Vec::new();
+        *ACTIVE_WALLET.write() = None;
+        encrypted_db::invalidate_all_wallet_db_caches();
+        deactivate_decoy();
+    }
+
     #[test]
     fn verify_duress_and_exit_use_backend_authority() {
         let _guard = TEST_MUTEX.lock().unwrap();
@@ -323,6 +400,7 @@ mod tests {
 
         encrypted_db::set_app_passphrase(real_passphrase.to_string()).unwrap();
         set_duress_passphrase(Some(duress_passphrase.to_string())).unwrap();
+        simulate_locked_restart();
 
         assert!(has_duress_passphrase().unwrap());
         assert!(verify_duress_passphrase(duress_passphrase.to_string()).unwrap());
@@ -333,6 +411,28 @@ mod tests {
 
         assert!(exit_decoy_mode(real_passphrase.to_string()).is_ok());
         assert!(!is_decoy_mode_active());
+
+        reset_test_state();
+        std::env::remove_var("PIRATE_WALLET_DB_DIR");
+    }
+
+    #[test]
+    fn default_reverse_duress_works_after_locked_restart() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        let temp_dir = tempdir().unwrap();
+        std::env::set_var("PIRATE_WALLET_DB_DIR", temp_dir.path());
+        reset_test_state();
+
+        let real_passphrase = "RealPass123!";
+        let duress_passphrase: String = real_passphrase.chars().rev().collect();
+
+        encrypted_db::set_app_passphrase(real_passphrase.to_string()).unwrap();
+        set_duress_passphrase(None).unwrap();
+        simulate_locked_restart();
+
+        assert!(has_duress_passphrase().unwrap());
+        assert!(verify_duress_passphrase(duress_passphrase).unwrap());
+        assert!(is_decoy_mode_active());
 
         reset_test_state();
         std::env::remove_var("PIRATE_WALLET_DB_DIR");
