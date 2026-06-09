@@ -25,6 +25,8 @@ pub struct WalletMeta {
     pub birthday_height: u32,
     /// Network type (mainnet, testnet, regtest)
     pub network_type: Option<String>, // Serialized as "mainnet", "testnet", "regtest"
+    /// Optional custom lightwalletd endpoint (host:port)
+    pub endpoint: Option<String>,
 }
 
 /// Transaction output for send-to-many

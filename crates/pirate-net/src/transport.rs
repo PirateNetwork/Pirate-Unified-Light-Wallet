@@ -460,9 +460,8 @@ impl TransportManager {
 
         match config.mode {
             TransportMode::Tor => {
-                let tor = tor_client.ok_or_else(|| {
-                    Error::Network("Tor client not initialized".to_string())
-                })?;
+                let tor = tor_client
+                    .ok_or_else(|| Error::Network("Tor client not initialized".to_string()))?;
                 connect_tor_stream(tor, host, port).await
             }
             TransportMode::I2p => {
@@ -703,7 +702,7 @@ fn is_local_host(host: &str) -> bool {
             std::net::IpAddr::V6(ipv6) => {
                 ipv6.is_loopback() ||
                 (ipv6.segments()[0] & 0xfe00) == 0xfc00 || // Unique Local
-                (ipv6.segments()[0] & 0xffc0) == 0xfe80    // Link Local
+                (ipv6.segments()[0] & 0xffc0) == 0xfe80 // Link Local
             }
         }
     } else {

@@ -23,11 +23,15 @@ Future<String> createWallet({
   int? entropyLen,
   int? birthdayOpt,
   MnemonicLanguage? mnemonicLanguage,
+  String? networkType,
+  String? endpoint,
 }) => RustLib.instance.api.crateApiCreateWallet(
   name: name,
   entropyLen: entropyLen,
   birthdayOpt: birthdayOpt,
   mnemonicLanguage: mnemonicLanguage,
+  networkType: networkType,
+  endpoint: endpoint,
 );
 
 /// Restore wallet from mnemonic
@@ -40,11 +44,15 @@ Future<String> restoreWallet({
   required String mnemonic,
   int? birthdayOpt,
   MnemonicLanguage? mnemonicLanguage,
+  String? networkType,
+  String? endpoint,
 }) => RustLib.instance.api.crateApiRestoreWallet(
   name: name,
   mnemonic: mnemonic,
   birthdayOpt: birthdayOpt,
   mnemonicLanguage: mnemonicLanguage,
+  networkType: networkType,
+  endpoint: endpoint,
 );
 
 /// Check if wallet registry database file exists (without opening it)
@@ -361,11 +369,15 @@ Future<String> importViewingWallet({
   String? saplingViewingKey,
   String? orchardViewingKey,
   required int birthday,
+  String? networkType,
+  String? endpoint,
 }) => RustLib.instance.api.crateApiImportViewingWallet(
   name: name,
   saplingViewingKey: saplingViewingKey,
   orchardViewingKey: orchardViewingKey,
   birthday: birthday,
+  networkType: networkType,
+  endpoint: endpoint,
 );
 
 /// List key groups for the active wallet account.

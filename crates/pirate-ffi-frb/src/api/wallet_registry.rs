@@ -4,7 +4,7 @@ use rusqlite::params;
 fn load_wallet_registry(db: &Database) -> Result<(Vec<WalletMeta>, Option<WalletId>)> {
     let mut wallets = Vec::new();
     let mut stmt = db.conn().prepare(
-        "SELECT id, name, created_at, watch_only, birthday_height, network_type
+        "SELECT id, name, created_at, watch_only, birthday_height, network_type, endpoint
          FROM wallet_registry
          ORDER BY created_at ASC",
     )?;
@@ -16,6 +16,7 @@ fn load_wallet_registry(db: &Database) -> Result<(Vec<WalletMeta>, Option<Wallet
             watch_only: row.get::<_, i64>(3)? != 0,
             birthday_height: row.get::<_, i64>(4)? as u32,
             network_type: row.get(5)?,
+            endpoint: row.get(6)?,
         })
     })?;
     for row in rows {
@@ -58,13 +59,14 @@ pub(super) fn persist_wallet_meta(db: &Database, meta: &WalletMeta) -> Result<()
     db.conn().execute(
         r#"
         INSERT INTO wallet_registry
-            (id, name, created_at, watch_only, birthday_height, network_type, last_used_at, last_synced_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL)
+            (id, name, created_at, watch_only, birthday_height, network_type, endpoint, last_used_at, last_synced_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, NULL)
         ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             watch_only = excluded.watch_only,
             birthday_height = excluded.birthday_height,
-            network_type = excluded.network_type
+            network_type = excluded.network_type,
+            endpoint = excluded.endpoint
         "#,
         params![
             meta.id,
@@ -73,6 +75,7 @@ pub(super) fn persist_wallet_meta(db: &Database, meta: &WalletMeta) -> Result<()
             if meta.watch_only { 1 } else { 0 },
             meta.birthday_height as i64,
             meta.network_type,
+            meta.endpoint,
         ],
     )?;
     Ok(())

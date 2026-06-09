@@ -170,6 +170,8 @@ abstract class RustLibApi extends BaseApi {
     int? entropyLen,
     int? birthdayOpt,
     MnemonicLanguage? mnemonicLanguage,
+    String? networkType,
+    String? endpoint,
   });
 
   Future<String> crateApiCurrentReceiveAddress({required String walletId});
@@ -400,6 +402,8 @@ abstract class RustLibApi extends BaseApi {
     String? saplingViewingKey,
     String? orchardViewingKey,
     required int birthday,
+    String? networkType,
+    String? endpoint,
   });
 
   Future<MnemonicInspection> crateApiInspectMnemonic({
@@ -483,6 +487,8 @@ abstract class RustLibApi extends BaseApi {
     required String mnemonic,
     int? birthdayOpt,
     MnemonicLanguage? mnemonicLanguage,
+    String? networkType,
+    String? endpoint,
   });
 
   Future<void> crateApiRotateTorExit();
@@ -1271,6 +1277,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     int? entropyLen,
     int? birthdayOpt,
     MnemonicLanguage? mnemonicLanguage,
+    String? networkType,
+    String? endpoint,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -1281,12 +1289,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           var arg3 = cst_encode_opt_box_autoadd_mnemonic_language(
             mnemonicLanguage,
           );
+          var arg4 = cst_encode_opt_String(networkType);
+          var arg5 = cst_encode_opt_String(endpoint);
           return wire.wire__crate__api__create_wallet(
             port_,
             arg0,
             arg1,
             arg2,
             arg3,
+            arg4,
+            arg5,
           );
         },
         codec: DcoCodec(
@@ -1294,7 +1306,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiCreateWalletConstMeta,
-        argValues: [name, entropyLen, birthdayOpt, mnemonicLanguage],
+        argValues: [
+          name,
+          entropyLen,
+          birthdayOpt,
+          mnemonicLanguage,
+          networkType,
+          endpoint
+        ],
         apiImpl: this,
       ),
     );
@@ -1302,7 +1321,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiCreateWalletConstMeta => const TaskConstMeta(
     debugName: "create_wallet",
-    argNames: ["name", "entropyLen", "birthdayOpt", "mnemonicLanguage"],
+    argNames: [
+      "name",
+      "entropyLen",
+      "birthdayOpt",
+      "mnemonicLanguage",
+      "networkType",
+      "endpoint"
+    ],
   );
 
   @override
@@ -3001,6 +3027,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     String? saplingViewingKey,
     String? orchardViewingKey,
     required int birthday,
+    String? networkType,
+    String? endpoint,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -3009,12 +3037,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           var arg1 = cst_encode_opt_String(saplingViewingKey);
           var arg2 = cst_encode_opt_String(orchardViewingKey);
           var arg3 = cst_encode_u_32(birthday);
+          var arg4 = cst_encode_opt_String(networkType);
+          var arg5 = cst_encode_opt_String(endpoint);
           return wire.wire__crate__api__import_viewing_wallet(
             port_,
             arg0,
             arg1,
             arg2,
             arg3,
+            arg4,
+            arg5,
           );
         },
         codec: DcoCodec(
@@ -3022,22 +3054,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiImportViewingWalletConstMeta,
-        argValues: [name, saplingViewingKey, orchardViewingKey, birthday],
+        argValues: [
+          name,
+          saplingViewingKey,
+          orchardViewingKey,
+          birthday,
+          networkType,
+          endpoint
+        ],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiImportViewingWalletConstMeta =>
-      const TaskConstMeta(
-        debugName: "import_viewing_wallet",
-        argNames: [
-          "name",
-          "saplingViewingKey",
-          "orchardViewingKey",
-          "birthday",
-        ],
-      );
+  TaskConstMeta get kCrateApiImportViewingWalletConstMeta => const TaskConstMeta(
+    debugName: "import_viewing_wallet",
+    argNames: [
+      "name",
+      "saplingViewingKey",
+      "orchardViewingKey",
+      "birthday",
+      "networkType",
+      "endpoint"
+    ],
+  );
 
   @override
   Future<MnemonicInspection> crateApiInspectMnemonic({
@@ -3620,6 +3660,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String mnemonic,
     int? birthdayOpt,
     MnemonicLanguage? mnemonicLanguage,
+    String? networkType,
+    String? endpoint,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -3630,12 +3672,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           var arg3 = cst_encode_opt_box_autoadd_mnemonic_language(
             mnemonicLanguage,
           );
+          var arg4 = cst_encode_opt_String(networkType);
+          var arg5 = cst_encode_opt_String(endpoint);
           return wire.wire__crate__api__restore_wallet(
             port_,
             arg0,
             arg1,
             arg2,
             arg3,
+            arg4,
+            arg5,
           );
         },
         codec: DcoCodec(
@@ -3643,7 +3689,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiRestoreWalletConstMeta,
-        argValues: [name, mnemonic, birthdayOpt, mnemonicLanguage],
+        argValues: [
+          name,
+          mnemonic,
+          birthdayOpt,
+          mnemonicLanguage,
+          networkType,
+          endpoint
+        ],
         apiImpl: this,
       ),
     );
@@ -3651,7 +3704,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiRestoreWalletConstMeta => const TaskConstMeta(
     debugName: "restore_wallet",
-    argNames: ["name", "mnemonic", "birthdayOpt", "mnemonicLanguage"],
+    argNames: [
+      "name",
+      "mnemonic",
+      "birthdayOpt",
+      "mnemonicLanguage",
+      "networkType",
+      "endpoint"
+    ],
   );
 
   @override

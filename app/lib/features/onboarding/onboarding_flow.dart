@@ -11,7 +11,6 @@ import '../../core/providers/wallet_providers.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/ffi/generated/models.dart';
 import '../../core/services/birthday_update_service.dart';
-import '../settings/providers/developer_mode_provider.dart';
 
 /// Pirate network types
 enum PirateNetwork {

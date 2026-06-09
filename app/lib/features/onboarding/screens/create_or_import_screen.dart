@@ -34,8 +34,7 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final notifier = ref.read(onboardingControllerProvider.notifier);
-      notifier.reset(startAt: OnboardingStep.createOrImport);
+      ref.read(onboardingControllerProvider.notifier).reset(startAt: OnboardingStep.createOrImport);
       _endpointController.text = ref.read(onboardingControllerProvider).customEndpoint ?? '';
     });
   }

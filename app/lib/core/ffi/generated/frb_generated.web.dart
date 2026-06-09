@@ -1917,12 +1917,16 @@ class RustLibWire implements BaseWire {
     int? _entropy_len,
     int? birthday_opt,
     int? mnemonic_language,
+    String? network_type,
+    String? endpoint,
   ) => wasmModule.wire__crate__api__create_wallet(
     port_,
     name,
     _entropy_len,
     birthday_opt,
     mnemonic_language,
+    network_type,
+    endpoint,
   );
 
   void wire__crate__api__current_receive_address(
@@ -2359,12 +2363,16 @@ class RustLibWire implements BaseWire {
     String? sapling_viewing_key,
     String? orchard_viewing_key,
     int birthday,
+    String? network_type,
+    String? endpoint,
   ) => wasmModule.wire__crate__api__import_viewing_wallet(
     port_,
     name,
     sapling_viewing_key,
     orchard_viewing_key,
     birthday,
+    network_type,
+    endpoint,
   );
 
   void wire__crate__api__inspect_mnemonic(
@@ -2498,12 +2506,16 @@ class RustLibWire implements BaseWire {
     String mnemonic,
     int? birthday_opt,
     int? mnemonic_language,
+    String? network_type,
+    String? endpoint,
   ) => wasmModule.wire__crate__api__restore_wallet(
     port_,
     name,
     mnemonic,
     birthday_opt,
     mnemonic_language,
+    network_type,
+    endpoint,
   );
 
   void wire__crate__api__rotate_tor_exit(NativePortType port_) =>
@@ -2944,6 +2956,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     int? _entropy_len,
     int? birthday_opt,
     int? mnemonic_language,
+    String? network_type,
+    String? endpoint,
   );
 
   external void wire__crate__api__current_receive_address(
@@ -3249,6 +3263,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String? sapling_viewing_key,
     String? orchard_viewing_key,
     int birthday,
+    String? network_type,
+    String? endpoint,
   );
 
   external void wire__crate__api__inspect_mnemonic(
@@ -3367,6 +3383,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String mnemonic,
     int? birthday_opt,
     int? mnemonic_language,
+    String? network_type,
+    String? endpoint,
   );
 
   external void wire__crate__api__rotate_tor_exit(NativePortType port_);

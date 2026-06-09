@@ -256,6 +256,8 @@ pub(super) fn import_viewing_wallet(
     sapling_viewing_key: Option<String>,
     orchard_viewing_key: Option<String>,
     birthday: u32,
+    network_type_opt: Option<String>,
+    endpoint_opt: Option<String>,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
     let _wallet = Wallet::from_viewing_keys(
@@ -263,6 +265,7 @@ pub(super) fn import_viewing_wallet(
         orchard_viewing_key.as_deref(),
     )?;
 
+    let network_type_str = network_type_opt.as_deref().unwrap_or("mainnet").to_string();
     let wallet_id = uuid::Uuid::new_v4().to_string();
     let meta = WalletMeta {
         id: wallet_id.clone(),
@@ -270,13 +273,29 @@ pub(super) fn import_viewing_wallet(
         created_at: chrono::Utc::now().timestamp(),
         watch_only: true,
         birthday_height: birthday,
-        network_type: Some("mainnet".to_string()),
+        network_type: Some(network_type_str),
+        endpoint: endpoint_opt.clone(),
     };
 
     let account_name = meta.name.clone();
     let account_created_at = meta.created_at;
 
     register_wallet(&meta)?;
+
+    if let Some(endpoint_url) = endpoint_opt {
+        let registry_db = open_wallet_registry()?;
+        let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
+        set_registry_setting(&registry_db, &endpoint_key, Some(endpoint_url.clone()))?;
+
+        if let Ok(endpoint) = endpoint::endpoint_from_url(
+            &endpoint_url,
+            endpoint::DEFAULT_LIGHTD_USE_TLS,
+            None,
+            Some("Custom".to_string()),
+        ) {
+            endpoint::cache_lightd_endpoint(wallet_id.clone(), endpoint);
+        }
+    }
 
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
 

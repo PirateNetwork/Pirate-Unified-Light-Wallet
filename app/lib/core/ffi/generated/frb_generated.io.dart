@@ -2480,6 +2480,8 @@ class RustLibWire implements BaseWire {
     ffi.Pointer<ffi.Uint32> _entropy_len,
     ffi.Pointer<ffi.Uint32> birthday_opt,
     ffi.Pointer<ffi.Int32> mnemonic_language,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> network_type,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> endpoint,
   ) {
     return _wire__crate__api__create_wallet(
       port_,
@@ -2487,6 +2489,8 @@ class RustLibWire implements BaseWire {
       _entropy_len,
       birthday_opt,
       mnemonic_language,
+      network_type,
+      endpoint,
     );
   }
 
@@ -2499,6 +2503,8 @@ class RustLibWire implements BaseWire {
             ffi.Pointer<ffi.Uint32>,
             ffi.Pointer<ffi.Uint32>,
             ffi.Pointer<ffi.Int32>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
           )
         >
       >('frbgen_pirate_wallet_wire__crate__api__create_wallet');
@@ -2511,6 +2517,8 @@ class RustLibWire implements BaseWire {
               ffi.Pointer<ffi.Uint32>,
               ffi.Pointer<ffi.Uint32>,
               ffi.Pointer<ffi.Int32>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             )
           >();
 
@@ -3924,6 +3932,8 @@ class RustLibWire implements BaseWire {
     ffi.Pointer<wire_cst_list_prim_u_8_strict> sapling_viewing_key,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> orchard_viewing_key,
     int birthday,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> network_type,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> endpoint,
   ) {
     return _wire__crate__api__import_viewing_wallet(
       port_,
@@ -3931,6 +3941,8 @@ class RustLibWire implements BaseWire {
       sapling_viewing_key,
       orchard_viewing_key,
       birthday,
+      network_type,
+      endpoint,
     );
   }
 
@@ -3943,6 +3955,8 @@ class RustLibWire implements BaseWire {
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             ffi.Uint32,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
           )
         >
       >('frbgen_pirate_wallet_wire__crate__api__import_viewing_wallet');
@@ -3955,6 +3969,8 @@ class RustLibWire implements BaseWire {
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             )
           >();
 
@@ -4446,6 +4462,8 @@ class RustLibWire implements BaseWire {
     ffi.Pointer<wire_cst_list_prim_u_8_strict> mnemonic,
     ffi.Pointer<ffi.Uint32> birthday_opt,
     ffi.Pointer<ffi.Int32> mnemonic_language,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> network_type,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> endpoint,
   ) {
     return _wire__crate__api__restore_wallet(
       port_,
@@ -4453,6 +4471,8 @@ class RustLibWire implements BaseWire {
       mnemonic,
       birthday_opt,
       mnemonic_language,
+      network_type,
+      endpoint,
     );
   }
 
@@ -4465,6 +4485,8 @@ class RustLibWire implements BaseWire {
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             ffi.Pointer<ffi.Uint32>,
             ffi.Pointer<ffi.Int32>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
           )
         >
       >('frbgen_pirate_wallet_wire__crate__api__restore_wallet');
@@ -4477,6 +4499,8 @@ class RustLibWire implements BaseWire {
               ffi.Pointer<wire_cst_list_prim_u_8_strict>,
               ffi.Pointer<ffi.Uint32>,
               ffi.Pointer<ffi.Int32>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
             )
           >();
 

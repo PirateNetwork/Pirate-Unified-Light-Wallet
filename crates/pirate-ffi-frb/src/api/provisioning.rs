@@ -1,12 +1,23 @@
 use super::tunnel::tunnel_transport_config;
 use super::*;
 
-pub(super) fn resolve_wallet_birthday_height(birthday_opt: Option<u32>) -> u32 {
+pub(super) fn resolve_wallet_birthday_height(
+    birthday_opt: Option<u32>,
+    network: &Network,
+    endpoint_opt: Option<String>,
+) -> u32 {
     if let Some(birthday) = birthday_opt {
         return birthday;
     }
 
-    let endpoint = LightdEndpoint::default();
+    let mut endpoint = LightdEndpoint::default();
+    if let Some(host_port) = endpoint_opt {
+        if let Ok(ep) = LightdEndpoint::parse(&host_port) {
+            endpoint = ep;
+        }
+    } else if network.network_type != NetworkType::Mainnet {
+        // Fallback or specific defaults for testnet/regtest could be added here
+    }
     let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
     let client_config = endpoint::build_light_client_config(
         &endpoint,
@@ -32,7 +43,15 @@ pub(super) fn resolve_wallet_birthday_height(birthday_opt: Option<u32>) -> u32 {
         }
     };
 
-    latest_height.unwrap_or_else(|| Network::mainnet().default_birthday_height)
+    latest_height.unwrap_or(network.default_birthday_height)
+}
+
+fn resolve_network(network_type: Option<String>) -> Network {
+    match network_type.as_deref() {
+        Some("testnet") => Network::testnet(),
+        Some("regtest") => Network::regtest(),
+        _ => Network::mainnet(),
+    }
 }
 
 fn persist_wallet_account_secret(
@@ -75,11 +94,13 @@ pub(super) fn create_wallet(
     name: String,
     _entropy_len: Option<u32>,
     birthday_opt: Option<u32>,
+    network_type: Option<String>,
+    endpoint: Option<String>,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
 
+    let network = resolve_network(network_type.clone());
     let mnemonic = ExtendedSpendingKey::generate_mnemonic(Some(24));
-    let network = pirate_params::Network::mainnet();
     let extsk =
         ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, network.network_type, 0)?;
     let _wallet = Wallet::from_mnemonic(&mnemonic)?;
@@ -91,7 +112,7 @@ pub(super) fn create_wallet(
     let account = 0;
     let orchard_extsk = orchard_master.derive_account(coin_type, account)?;
 
-    let birthday_height = resolve_wallet_birthday_height(birthday_opt);
+    let birthday_height = resolve_wallet_birthday_height(birthday_opt, &network, endpoint.clone());
 
     let name_for_account = name.clone();
     let wallet_id = uuid::Uuid::new_v4().to_string();
@@ -101,7 +122,8 @@ pub(super) fn create_wallet(
         created_at: chrono::Utc::now().timestamp(),
         watch_only: false,
         birthday_height,
-        network_type: Some("mainnet".to_string()),
+        network_type,
+        endpoint,
     };
 
     register_wallet(&meta)?;
@@ -133,10 +155,12 @@ pub(super) fn restore_wallet(
     name: String,
     mnemonic: String,
     birthday_opt: Option<u32>,
+    network_type: Option<String>,
+    endpoint: Option<String>,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
 
-    let network = pirate_params::Network::mainnet();
+    let network = resolve_network(network_type.clone());
     let extsk =
         ExtendedSpendingKey::from_mnemonic_with_account(&mnemonic, network.network_type, 0)?;
     let _wallet = Wallet::from_mnemonic(&mnemonic)?;
@@ -148,8 +172,7 @@ pub(super) fn restore_wallet(
     let account = 0;
     let orchard_extsk = orchard_master.derive_account(coin_type, account)?;
 
-    let birthday_height =
-        birthday_opt.unwrap_or_else(|| pirate_params::Network::mainnet().default_birthday_height);
+    let birthday_height = birthday_opt.unwrap_or(network.default_birthday_height);
 
     let name_for_account = name.clone();
     let wallet_id = uuid::Uuid::new_v4().to_string();
@@ -159,7 +182,8 @@ pub(super) fn restore_wallet(
         created_at: chrono::Utc::now().timestamp(),
         watch_only: false,
         birthday_height,
-        network_type: Some("mainnet".to_string()),
+        network_type,
+        endpoint,
     };
 
     register_wallet(&meta)?;
@@ -189,6 +213,8 @@ pub(super) fn import_viewing_wallet(
     sapling_viewing_key: Option<String>,
     orchard_viewing_key: Option<String>,
     birthday: u32,
+    network_type: Option<String>,
+    endpoint: Option<String>,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
     let _wallet = Wallet::from_viewing_keys(
@@ -203,7 +229,8 @@ pub(super) fn import_viewing_wallet(
         created_at: chrono::Utc::now().timestamp(),
         watch_only: true,
         birthday_height: birthday,
-        network_type: Some("mainnet".to_string()),
+        network_type,
+        endpoint,
     };
 
     let account_name = meta.name.clone();

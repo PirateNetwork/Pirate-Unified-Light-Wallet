@@ -311,6 +311,7 @@ pub(super) fn ensure_wallet_registry_schema(db: &Database) -> Result<()> {
             watch_only INTEGER NOT NULL,
             birthday_height INTEGER NOT NULL,
             network_type TEXT,
+            endpoint TEXT,
             last_used_at INTEGER,
             last_synced_at INTEGER
         );
@@ -321,6 +322,16 @@ pub(super) fn ensure_wallet_registry_schema(db: &Database) -> Result<()> {
         );
         "#,
     )?;
+
+    // Handle migration for existing databases missing the new columns
+    let _ = db.conn().execute(
+        "ALTER TABLE wallet_registry ADD COLUMN network_type TEXT",
+        [],
+    );
+    let _ = db
+        .conn()
+        .execute("ALTER TABLE wallet_registry ADD COLUMN endpoint TEXT", []);
+
     Ok(())
 }
 

@@ -599,6 +599,8 @@ class FfiBridge {
     String? saplingViewingKey,
     String? orchardViewingKey,
     required int birthday,
+    String? networkType,
+    String? endpoint,
   }) async {
     if (saplingViewingKey == null && orchardViewingKey == null) {
       throw ArgumentError('Provide a Sapling or Orchard viewing key.');
@@ -609,6 +611,8 @@ class FfiBridge {
         saplingViewingKey: saplingViewingKey,
         orchardViewingKey: orchardViewingKey,
         birthday: birthday,
+        networkType: networkType,
+        endpoint: endpoint,
       );
       _activeWalletId = walletId;
       // Auto-start compact sync from birthday

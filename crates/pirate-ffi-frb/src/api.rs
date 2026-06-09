@@ -1129,8 +1129,17 @@ pub fn import_viewing_wallet(
     sapling_viewing_key: Option<String>,
     orchard_viewing_key: Option<String>,
     birthday: u32,
+    network_type: Option<String>,
+    endpoint: Option<String>,
 ) -> Result<WalletId> {
-    service::import_viewing_wallet(name, sapling_viewing_key, orchard_viewing_key, birthday)
+    service::import_viewing_wallet(
+        name,
+        sapling_viewing_key,
+        orchard_viewing_key,
+        birthday,
+        network_type,
+        endpoint,
+    )
 }
 
 // ============================================================================
