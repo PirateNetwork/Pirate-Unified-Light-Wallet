@@ -45,6 +45,22 @@ impl LightdEndpoint {
     pub fn display_string(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
+
+    pub fn for_network(network: &Network) -> Self {
+        let host = match network.network_type {
+            NetworkType::Testnet => "lightd-testnet.piratechain.com",
+            NetworkType::Regtest => "127.0.0.1",
+            NetworkType::Mainnet => DEFAULT_LIGHTD_HOST,
+        };
+
+        Self {
+            host: host.to_string(),
+            port: network.rpc_port,
+            use_tls: network.network_type != NetworkType::Regtest,
+            tls_pin: None,
+            label: Some(format!("Default ({})", network.name)),
+        }
+    }
 }
 
 pub(super) fn cache_lightd_endpoint(wallet_id: WalletId, endpoint: LightdEndpoint) {

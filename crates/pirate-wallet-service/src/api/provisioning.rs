@@ -47,7 +47,13 @@ pub(super) fn resolve_wallet_birthday_height(
         }
     };
 
-    latest_height.unwrap_or_else(|| Network::mainnet().default_birthday_height)
+    let network = match network_type {
+        Some("testnet") => pirate_params::Network::testnet(),
+        Some("regtest") => pirate_params::Network::regtest(),
+        _ => pirate_params::Network::mainnet(),
+    };
+
+    latest_height.unwrap_or(network.default_birthday_height)
 }
 
 fn persist_wallet_account_secret(
@@ -146,7 +152,7 @@ pub(super) fn create_wallet(
     if let Some(endpoint_url) = endpoint_opt {
         let registry_db = open_wallet_registry()?;
         let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
-        set_registry_setting(&registry_db, &endpoint_key, Some(endpoint_url.clone()))?;
+        set_registry_setting(&registry_db, &endpoint_key, Some(&endpoint_url))?;
 
         if let Ok(endpoint) = endpoint::endpoint_from_url(
             &endpoint_url,
@@ -236,7 +242,7 @@ pub(super) fn restore_wallet(
     if let Some(endpoint_url) = endpoint_opt {
         let registry_db = open_wallet_registry()?;
         let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
-        set_registry_setting(&registry_db, &endpoint_key, Some(endpoint_url.clone()))?;
+        set_registry_setting(&registry_db, &endpoint_key, Some(&endpoint_url))?;
 
         if let Ok(endpoint) = endpoint::endpoint_from_url(
             &endpoint_url,
@@ -302,7 +308,7 @@ pub(super) fn import_viewing_wallet(
     if let Some(endpoint_url) = endpoint_opt {
         let registry_db = open_wallet_registry()?;
         let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
-        set_registry_setting(&registry_db, &endpoint_key, Some(endpoint_url.clone()))?;
+        set_registry_setting(&registry_db, &endpoint_key, Some(&endpoint_url))?;
 
         if let Ok(endpoint) = endpoint::endpoint_from_url(
             &endpoint_url,

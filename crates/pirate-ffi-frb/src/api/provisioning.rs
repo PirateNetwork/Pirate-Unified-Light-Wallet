@@ -10,13 +10,11 @@ pub(super) fn resolve_wallet_birthday_height(
         return birthday;
     }
 
-    let mut endpoint = LightdEndpoint::default();
+    let mut endpoint = LightdEndpoint::for_network(network);
     if let Some(host_port) = endpoint_opt {
-        if let Ok(ep) = LightdEndpoint::parse(&host_port) {
+        if let Ok(ep) = endpoint::endpoint_from_url(&host_port, DEFAULT_LIGHTD_USE_TLS, None, None) {
             endpoint = ep;
         }
-    } else if network.network_type != NetworkType::Mainnet {
-        // Fallback or specific defaults for testnet/regtest could be added here
     }
     let (transport, socks5_url, allow_direct_fallback) = tunnel_transport_config();
     let client_config = endpoint::build_light_client_config(
