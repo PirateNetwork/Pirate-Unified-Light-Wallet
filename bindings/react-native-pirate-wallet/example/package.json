@@ -33,7 +33,8 @@
   },
   "overrides": {
     "fast-xml-parser": "^5.7.0",
-    "lodash": "^4.18.1"
+    "lodash": "^4.18.1",
+    "shell-quote": "^1.8.4"
   },
   "engines": {
     "node": ">=18"
