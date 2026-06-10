@@ -896,9 +896,22 @@ impl WalletService {
     }
 
     pub fn execute_blocking(&self, request: WalletServiceRequest) -> Result<Value> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
+        // Use a process-wide persistent runtime so background tasks spawned by a
+        // request keep running after the call returns. `start_sync` spawns the
+        // sync engine onto this runtime; with the previous per-call
+        // current-thread runtime, that runtime was dropped the moment
+        // `block_on` returned, which immediately aborted the sync task. A host
+        // that drives the service entirely through `execute_blocking` (e.g. the
+        // React Native binding) could therefore never make sync progress.
+        static RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> =
+            std::sync::OnceLock::new();
+        let runtime = RUNTIME.get_or_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .enable_all()
+                .build()
+                .expect("failed to build wallet service runtime")
+        });
         runtime.block_on(self.execute(request))
     }
 
