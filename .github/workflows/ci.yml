@@ -370,6 +370,8 @@ jobs:
           flutter pub get --enforce-lockfile
 
       - name: Run tests
+        env:
+          OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
           flutter test --coverage $(find test -name '*_test.dart')
