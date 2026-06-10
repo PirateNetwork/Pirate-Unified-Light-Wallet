@@ -34,7 +34,8 @@ function buildRequest(method, params = {}) {
   return JSON.stringify(request)
 }
 
-function unwrapEnvelope(responseJson, method) {
+function unwrapEnvelope(responseJson, method, options = {}) {
+  const { camelizeResult = true } = options
   let envelope
   try {
     envelope = JSON.parse(responseJson)
@@ -50,9 +51,16 @@ function unwrapEnvelope(responseJson, method) {
     throw new Error(message)
   }
 
-  return Object.prototype.hasOwnProperty.call(envelope, 'result')
-    ? camelize(envelope.result)
-    : null
+  if (!Object.prototype.hasOwnProperty.call(envelope, 'result')) {
+    return null
+  }
+  // Some results are opaque payloads that must round-trip back into a later
+  // RPC unchanged (e.g. the pending tx from build_tx is fed straight into
+  // sign_tx, and the signed tx into broadcast_tx). Camelizing those rewrites
+  // their snake_case keys and the native deserializer then rejects them
+  // ("missing field total_amount"). Callers pass camelizeResult: false to keep
+  // such payloads verbatim.
+  return camelizeResult ? camelize(envelope.result) : envelope.result
 }
 
 function camelize(value) {
@@ -404,6 +412,14 @@ class PirateWalletSdk {
     return unwrapEnvelope(response, method)
   }
 
+  // Like _call, but returns the result without camelizing it. Use for RPCs
+  // whose result is an opaque payload that must be passed back into a later
+  // RPC unchanged (build_tx -> sign_tx -> broadcast_tx).
+  async _callRaw(method, params = {}, pretty = false) {
+    const response = await this.invoke(buildRequest(method, params), pretty)
+    return unwrapEnvelope(response, method, { camelizeResult: false })
+  }
+
   createSynchronizer(walletId, config = {}) {
     return new PirateWalletSynchronizer(this, walletId, config)
   }
@@ -684,7 +700,7 @@ class PirateWalletSdk {
       request = { walletId: walletIdOrRequest, outputs: [outputs], fee }
     }
 
-    return this._call('build_tx', {
+    return this._callRaw('build_tx', {
       wallet_id: request.walletId,
       outputs: request.outputs,
       fee_opt: request.fee
@@ -692,14 +708,14 @@ class PirateWalletSdk {
   }
 
   signTransaction(walletId, pending) {
-    return this._call('sign_tx', {
+    return this._callRaw('sign_tx', {
       wallet_id: walletId,
       pending
     })
   }
 
   broadcastTransaction(signed) {
-    return this._call('broadcast_tx', { signed })
+    return this._callRaw('broadcast_tx', { signed })
   }
 
   async send(walletId, outputsOrOutput, fee = null) {
