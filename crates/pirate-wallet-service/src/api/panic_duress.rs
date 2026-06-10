@@ -163,7 +163,7 @@ pub(super) fn refresh_duress_reverse_hash(
         REGISTRY_DURESS_PASSPHRASE_HASH_KEY,
         Some(duress_hash.hash_string()),
     )?;
-    write_duress_sidecar(&duress_hash.hash_string())?;
+    write_duress_sidecar(duress_hash.hash_string())?;
     Ok(())
 }
 
@@ -276,7 +276,7 @@ pub(super) fn set_duress_passphrase(custom_passphrase: Option<String>) -> Result
         REGISTRY_DURESS_USE_REVERSE_KEY,
         Some(if use_reverse { "true" } else { "false" }),
     )?;
-    write_duress_sidecar(&duress_hash.hash_string())?;
+    write_duress_sidecar(duress_hash.hash_string())?;
 
     let vault = DECOY_VAULT.read();
     let salt = generate_salt().to_vec();
