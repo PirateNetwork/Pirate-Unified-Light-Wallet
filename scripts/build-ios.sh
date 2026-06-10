@@ -304,6 +304,10 @@ flutter clean
 # Get dependencies
 log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
+
+log "Fetching KDF iOS artifact..."
+bash "$SCRIPT_DIR/prefetch-kdf-ios.sh"
+
 pushd "$IOS_DIR" >/dev/null
 if [ -f Podfile.lock ]; then
     pod install --deployment

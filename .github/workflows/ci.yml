@@ -504,6 +504,14 @@ jobs:
         if: matrix.platform == 'Windows'
         run: flutter config --enable-windows-desktop
 
+      - name: Prefetch KDF iOS artifact
+        if: matrix.platform == 'iOS'
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x scripts/prefetch-kdf-ios.sh
+          scripts/prefetch-kdf-ios.sh
+
       - name: Prime Android Gradle plugin cache
         if: matrix.platform == 'Android'
         run: |
@@ -1215,6 +1223,8 @@ jobs:
           scripts/verify-toolchain.sh
 
       - name: Build iOS IPA
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/build-ios.sh
           REPRODUCIBLE=1 ./scripts/build-ios.sh false || {
@@ -2228,6 +2238,7 @@ jobs:
       - name: Build signed iOS IPA
         if: steps.signing.outputs.enabled == 'true'
         env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
           VERSION_BUILD_NUMBER: ${{ github.run_number }}
         run: |
           chmod +x scripts/build-ios.sh
