@@ -160,9 +160,12 @@ flutter clean
 log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
+log "Fetching KDF Linux artifact..."
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" linux
+
 # Build Linux app
 log "Building Linux app..."
-flutter build linux --release
+OVERRIDE_DEFI_API_DOWNLOAD=false flutter build linux --release
 
 BUNDLE_DIR="$APP_DIR/build/linux/x64/release/bundle"
 

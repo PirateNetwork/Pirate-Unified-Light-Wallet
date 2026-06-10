@@ -212,9 +212,12 @@ flutter clean
 log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
+log "Fetching KDF Windows artifact..."
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" windows
+
 # Build Windows app
 log "Building Windows app..."
-flutter build windows --release
+OVERRIDE_DEFI_API_DOWNLOAD=false flutter build windows --release
 
 # Check if build succeeded
 RELEASE_DIR="$(resolve_release_dir || true)"

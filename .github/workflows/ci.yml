@@ -512,6 +512,31 @@ jobs:
           chmod +x scripts/prefetch-kdf-ios.sh
           scripts/prefetch-kdf-ios.sh
 
+      - name: Prefetch KDF Linux artifact
+        if: matrix.platform == 'Linux'
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x scripts/prefetch-kdf-artifact.sh
+          scripts/prefetch-kdf-artifact.sh linux
+
+      - name: Prefetch KDF macOS artifact
+        if: matrix.platform == 'macOS'
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x scripts/prefetch-kdf-artifact.sh
+          scripts/prefetch-kdf-artifact.sh macos
+
+      - name: Prefetch KDF Windows artifact
+        if: matrix.platform == 'Windows'
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          chmod +x scripts/prefetch-kdf-artifact.sh
+          scripts/prefetch-kdf-artifact.sh windows
+
       - name: Prime Android Gradle plugin cache
         if: matrix.platform == 'Android'
         run: |
@@ -545,8 +570,18 @@ jobs:
           done
           exit "$status"
 
+      - name: Build Linux
+        if: matrix.platform == 'Linux'
+        env:
+          OVERRIDE_DEFI_API_DOWNLOAD: "false"
+        run: |
+          cd app
+          flutter build linux --release
+
       - name: Build ${{ matrix.platform }}
-        if: matrix.platform != 'Android'
+        if: matrix.platform != 'Android' && matrix.platform != 'Linux'
+        env:
+          OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
           ${{ matrix.build-command }}
@@ -1365,6 +1400,8 @@ jobs:
 
       - name: Build Windows desktop artifacts
         shell: bash
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/build-windows.sh
           REPRODUCIBLE=1 ./scripts/build-windows.sh
@@ -1467,6 +1504,8 @@ jobs:
           scripts/verify-toolchain.sh
 
       - name: Build macOS DMG
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/build-macos.sh
           REPRODUCIBLE=1 ./scripts/build-macos.sh false
@@ -1590,15 +1629,21 @@ jobs:
           scripts/verify-toolchain.sh
 
       - name: Build AppImage
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/build-linux.sh
           REPRODUCIBLE=1 ./scripts/build-linux.sh appimage
 
       - name: Build Flatpak manifest
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           REPRODUCIBLE=1 ./scripts/build-linux.sh flatpak
 
       - name: Build Debian package
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           REPRODUCIBLE=1 ./scripts/build-linux.sh deb
 
@@ -2057,6 +2102,7 @@ jobs:
       - name: Build signed macOS DMG
         if: steps.signing.outputs.enabled == 'true'
         env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
           MACOS_NOTARIZE: "true"
           MACOS_NOTARY_TIMEOUT_SECONDS: "60"
           MACOS_NOTARY_POLL_SECONDS: "20"

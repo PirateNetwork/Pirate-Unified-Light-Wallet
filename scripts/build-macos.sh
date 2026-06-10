@@ -507,10 +507,13 @@ flutter clean
 log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
+log "Fetching KDF macOS artifact..."
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" macos
+
 log "Building macOS app (universal2)..."
 # On modern Flutter versions, `flutter build macos` produces a universal build by
 # default. We validate the result below via lipo checks.
-flutter build macos --release
+OVERRIDE_DEFI_API_DOWNLOAD=false flutter build macos --release
 
 APP_OUTPUT_DIR="build/macos/Build/Products/Release"
 APP_PATH="$APP_OUTPUT_DIR/Pirate Unified Wallet.app"
