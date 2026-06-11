@@ -3,8 +3,8 @@ import 'package:decimal/decimal.dart';
 const swapDepositWindow = Duration(minutes: 45);
 const appTakerFeeRecipientArrrAddress =
     'zs14sk0j58tl0pp3geamszpyc376em6uuvrezhsr2zuxmnefryx6nptjwl7rydtr9rdn73e6da36gv';
-final appTakerFeeRate = Decimal.parse('0.0087');
-final totalTakerFeeRate = Decimal.parse('0.01');
+final appTakerFeeRate = Decimal.parse('0.0037');
+final totalTakerFeeRate = Decimal.parse('0.005');
 
 Decimal _scaleSwapDecimal(Decimal value, {int scale = 8}) {
   return Decimal.parse(value.toStringAsFixed(scale));

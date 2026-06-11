@@ -104,7 +104,7 @@ void main() {
       expect(state.progress, SwapProgressStage.complete);
       expect(state.completionKind, SwapCompletionKind.swap);
       expect(state.payAmountText, '1.25');
-      expect(state.receiveAmountText, '99');
+      expect(state.receiveAmountText, '99.5');
     });
   });
 
@@ -194,7 +194,7 @@ SwapIntent _completedIntent() {
       slippageCap: Decimal.parse('0.05'),
       realizedSlippage: Decimal.zero,
       fills: const [],
-      appFeeArrrAmount: Decimal.parse('0.87'),
+      appFeeArrrAmount: Decimal.parse('0.37'),
     ),
   );
 }
@@ -220,7 +220,7 @@ SwapIntent _waitingForDepositIntent() {
       slippageCap: Decimal.parse('0.05'),
       realizedSlippage: Decimal.zero,
       fills: const [],
-      appFeeArrrAmount: Decimal.parse('0.87'),
+      appFeeArrrAmount: Decimal.parse('0.37'),
     ),
   );
 }

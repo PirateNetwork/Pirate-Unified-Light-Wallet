@@ -27,13 +27,13 @@ void main() {
     expect(plan.hasLimitRemainder, isFalse);
     expect(plan.marketArrrAmount, Decimal.parse('75'));
     expect(plan.marketLtcAmount, Decimal.parse('1.0'));
-    expect(plan.expectedReceiveAmount, Decimal.parse('74.25'));
-    expect(plan.appFeeArrrAmount, Decimal.parse('0.6525'));
-    expect(plan.totalTakerFeeArrrAmount, Decimal.parse('0.75'));
+    expect(plan.expectedReceiveAmount, Decimal.parse('74.625'));
+    expect(plan.appFeeArrrAmount, Decimal.parse('0.2775'));
+    expect(plan.totalTakerFeeArrrAmount, Decimal.parse('0.375'));
     expect(plan.estimatedKdfTakerFeeArrrAmount, Decimal.parse('0.0975'));
     expect(
       plan.effectiveMarketPriceRelPerArrr,
-      Decimal.parse('0.013468013468'),
+      Decimal.parse('0.013400335008'),
     );
     expect(
       plan.appFeeArrrAmount + plan.estimatedKdfTakerFeeArrrAmount,
@@ -52,9 +52,9 @@ void main() {
     expect(plan.marketArrrAmount, Decimal.parse('50'));
     expect(plan.marketLtcAmount, Decimal.parse('0.50'));
     expect(plan.remainderLtcAmount, Decimal.parse('1.50'));
-    expect(plan.expectedReceiveAmount, Decimal.parse('49.5'));
-    expect(plan.appFeeArrrAmount, Decimal.parse('0.435'));
-    expect(plan.totalTakerFeeArrrAmount, Decimal.parse('0.5'));
+    expect(plan.expectedReceiveAmount, Decimal.parse('49.75'));
+    expect(plan.appFeeArrrAmount, Decimal.parse('0.185'));
+    expect(plan.totalTakerFeeArrrAmount, Decimal.parse('0.25'));
     expect(plan.estimatedKdfTakerFeeArrrAmount, Decimal.parse('0.065'));
     expect(plan.hasLimitRemainder, isTrue);
     expect(plan.limitPriceLtcPerArrr, Decimal.parse('0.0103'));
@@ -89,16 +89,16 @@ void main() {
 
     expect(plan.hasMarketFill, isTrue);
     expect(plan.hasLimitRemainder, isFalse);
-    expect(plan.marketArrrAmount, Decimal.parse('59.4'));
-    expect(plan.marketLtcAmount, Decimal.parse('1.1786'));
-    expect(plan.appFeeArrrAmount, Decimal.parse('0.522'));
-    expect(plan.totalTakerFeeArrrAmount, Decimal.parse('0.6'));
+    expect(plan.marketArrrAmount, Decimal.parse('59.7'));
+    expect(plan.marketLtcAmount, Decimal.parse('1.1843'));
+    expect(plan.appFeeArrrAmount, Decimal.parse('0.222'));
+    expect(plan.totalTakerFeeArrrAmount, Decimal.parse('0.3'));
     expect(plan.estimatedKdfTakerFeeArrrAmount, Decimal.parse('0.078'));
     expect(plan.requestedPayAmount, Decimal.parse('60'));
-    expect(plan.expectedReceiveAmount, Decimal.parse('1.1786'));
+    expect(plan.expectedReceiveAmount, Decimal.parse('1.1843'));
     expect(
       plan.effectiveMarketPriceRelPerArrr,
-      Decimal.parse('0.019643333333'),
+      Decimal.parse('0.019738333333'),
     );
     expect(
       plan.marketArrrAmount +
@@ -119,10 +119,10 @@ void main() {
 
       expect(plan.marketArrrAmount, Decimal.parse('50'));
       expect(plan.marketLtcAmount, Decimal.parse('1'));
-      expect(plan.remainderArrrAmount, Decimal.parse('24.49494949'));
-      expect(plan.appFeeArrrAmount, Decimal.parse('0.43939394'));
-      expect(plan.totalTakerFeeArrrAmount, Decimal.parse('0.50505051'));
-      expect(plan.estimatedKdfTakerFeeArrrAmount, Decimal.parse('0.06565657'));
+      expect(plan.remainderArrrAmount, Decimal.parse('24.74874372'));
+      expect(plan.appFeeArrrAmount, Decimal.parse('0.18592965'));
+      expect(plan.totalTakerFeeArrrAmount, Decimal.parse('0.25125628'));
+      expect(plan.estimatedKdfTakerFeeArrrAmount, Decimal.parse('0.06532663'));
       expect(plan.requestedPayAmount, Decimal.parse('75'));
       expect(plan.hasLimitRemainder, isTrue);
       expect(plan.limitPriceLtcPerArrr, Decimal.parse('0.0194'));

@@ -53,7 +53,7 @@ SwapIntent _intent({
       slippageCap: Decimal.parse('0.05'),
       realizedSlippage: Decimal.parse('0.01'),
       fills: const [],
-      appFeeArrrAmount: Decimal.parse('1'),
+      appFeeArrrAmount: Decimal.parse('0.37'),
     ),
   );
 }

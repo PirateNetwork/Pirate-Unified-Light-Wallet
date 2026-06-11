@@ -213,7 +213,7 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
     if (totalTakerFee > Decimal.zero) {
       parts.add(
         '${formatSwapAmount(totalTakerFee, fractionDigits: 8)} '
-        'ARRR ${'taker fee (1%)'.tr}',
+        'ARRR ${'taker fee (0.5%)'.tr}',
       );
     }
     if (quote.fees.baseNetworkFee > Decimal.zero) {
