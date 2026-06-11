@@ -374,7 +374,7 @@ jobs:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
-          flutter test --coverage $(find test -name '*_test.dart')
+          flutter test --no-test-assets --coverage $(find test -name '*_test.dart')
 
       - name: Upload coverage
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
