@@ -34,8 +34,11 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(onboardingControllerProvider.notifier).reset(startAt: OnboardingStep.createOrImport);
-      _endpointController.text = ref.read(onboardingControllerProvider).customEndpoint ?? '';
+      ref
+          .read(onboardingControllerProvider.notifier)
+          .reset(startAt: OnboardingStep.createOrImport);
+      _endpointController.text =
+          ref.read(onboardingControllerProvider).customEndpoint ?? '';
     });
   }
 
@@ -110,13 +113,16 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
                                   .setNetwork(n);
                             }
                           },
-                          selectedColor: AppColors.accentPrimary.withValues(alpha: 0.2),
+                          selectedColor: AppColors.accentPrimary.withValues(
+                            alpha: 0.2,
+                          ),
                           labelStyle: TextStyle(
                             color: isSelected
                                 ? AppColors.accentPrimary
                                 : AppColors.textSecondary,
-                            fontWeight:
-                                isSelected ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                       );

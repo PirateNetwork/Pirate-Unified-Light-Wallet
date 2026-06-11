@@ -161,14 +161,18 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     });
 
     try {
-      final onboardingNotifier = ref.read(onboardingControllerProvider.notifier);
+      final onboardingNotifier = ref.read(
+        onboardingControllerProvider.notifier,
+      );
       final walletName = state.mode == OnboardingMode.create
           ? 'My Pirate Wallet'
           : 'Restored Wallet';
 
       await onboardingNotifier.complete(walletName);
 
-      ref.read(onboardingControllerProvider.notifier).setBirthdayHeight(selectedHeight);
+      ref
+          .read(onboardingControllerProvider.notifier)
+          .setBirthdayHeight(selectedHeight);
 
       ref.invalidate(walletsExistProvider);
       final walletsExist = await ref.read(walletsExistProvider.future);

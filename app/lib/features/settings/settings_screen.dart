@@ -375,7 +375,9 @@ class SettingsScreen extends ConsumerWidget {
                           final newDevMode = !isDevMode;
                           PSnack.show(
                             context: context,
-                            message: newDevMode ? 'Developer Mode Enabled' : 'Developer Mode Disabled',
+                            message: newDevMode
+                                ? 'Developer Mode Enabled'
+                                : 'Developer Mode Disabled',
                             variant: PSnackVariant.info,
                           );
                         }
@@ -384,7 +386,7 @@ class SettingsScreen extends ConsumerWidget {
                     );
                   },
                 );
-              }
+              },
             ),
             PListTile(
               leading: const Icon(Icons.verified_user),

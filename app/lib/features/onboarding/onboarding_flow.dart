@@ -13,11 +13,7 @@ import '../../core/ffi/generated/models.dart';
 import '../../core/services/birthday_update_service.dart';
 
 /// Pirate network types
-enum PirateNetwork {
-  mainnet,
-  testnet,
-  regtest,
-}
+enum PirateNetwork { mainnet, testnet, regtest }
 
 /// Onboarding steps
 enum OnboardingStep {

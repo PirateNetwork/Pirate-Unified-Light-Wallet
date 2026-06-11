@@ -26,19 +26,16 @@ Future<DesktopWindowSpec> resolveDesktopWindowSpecForCurrentDisplay() async {
     final allDisplays = await screenRetriever.getAllDisplays();
     final cursorPoint = await screenRetriever.getCursorScreenPoint();
 
-    final currentDisplay = allDisplays.firstWhere(
-      (display) {
-        final visibleSize = display.visibleSize ?? display.size;
-        final visiblePosition = display.visiblePosition ?? Offset.zero;
-        return Rect.fromLTWH(
-          visiblePosition.dx,
-          visiblePosition.dy,
-          visibleSize.width,
-          visibleSize.height,
-        ).contains(cursorPoint);
-      },
-      orElse: () => primaryDisplay,
-    );
+    final currentDisplay = allDisplays.firstWhere((display) {
+      final visibleSize = display.visibleSize ?? display.size;
+      final visiblePosition = display.visiblePosition ?? Offset.zero;
+      return Rect.fromLTWH(
+        visiblePosition.dx,
+        visiblePosition.dy,
+        visibleSize.width,
+        visibleSize.height,
+      ).contains(cursorPoint);
+    }, orElse: () => primaryDisplay);
 
     return resolveDesktopWindowSpec(
       currentDisplay.visibleSize ?? currentDisplay.size,

@@ -204,13 +204,13 @@ class _ViewingKeysImportScreenState
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    AppColors.accentPrimary.withValues(alpha: 0.1),
-                    AppColors.accentSecondary.withValues(alpha: 0.1),
+                    AppColors.withOpacity(AppColors.accentPrimary, 0.1),
+                    AppColors.withOpacity(AppColors.accentSecondary, 0.1),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: AppColors.accentPrimary.withValues(alpha: 0.3),
+                  color: AppColors.withOpacity(AppColors.accentPrimary, 0.3),
                 ),
               ),
               child: Column(
@@ -220,7 +220,7 @@ class _ViewingKeysImportScreenState
                       Container(
                         padding: const EdgeInsets.all(AppSpacing.sm),
                         decoration: BoxDecoration(
-                          color: AppColors.accentPrimary.withValues(alpha: 0.2),
+                          color: AppColors.withOpacity(AppColors.accentPrimary, 0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
@@ -330,10 +330,10 @@ class _ViewingKeysImportScreenState
                 padding: const EdgeInsets.all(AppSpacing.md),
                 margin: const EdgeInsets.only(bottom: AppSpacing.lg),
                 decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.1),
+                  color: AppColors.withOpacity(AppColors.error, 0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: AppColors.error.withValues(alpha: 0.3),
+                    color: AppColors.withOpacity(AppColors.error, 0.3),
                   ),
                 ),
                 child: Row(
@@ -356,10 +356,10 @@ class _ViewingKeysImportScreenState
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.1),
+                color: AppColors.withOpacity(AppColors.warning, 0.1),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppColors.warning.withValues(alpha: 0.3),
+                  color: AppColors.withOpacity(AppColors.warning, 0.3),
                 ),
               ),
               child: Row(

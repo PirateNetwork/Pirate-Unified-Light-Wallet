@@ -260,8 +260,10 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
   String _normalizeChainName(String name) {
     final normalizedName = name.toLowerCase().trim();
-    if (normalizedName == 'main' || normalizedName == 'mainnet') return 'mainnet';
-    if (normalizedName == 'test' || normalizedName == 'testnet') return 'testnet';
+    if (normalizedName == 'main' || normalizedName == 'mainnet')
+      return 'mainnet';
+    if (normalizedName == 'test' || normalizedName == 'testnet')
+      return 'testnet';
     if (normalizedName == 'regtest') return 'regtest';
     return normalizedName;
   }
@@ -290,8 +292,10 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       // Verify network match if in developer mode
       if (ref.read(developerModeProvider)) {
         try {
-          final testResult =
-              await ffi.FfiBridge.testNode(url: fullUrl, tlsPin: tlsPin);
+          final testResult = await ffi.FfiBridge.testNode(
+            url: fullUrl,
+            tlsPin: tlsPin,
+          );
           if (testResult.success && testResult.chainName != null) {
             final walletNetwork = ref.read(networkInfoProvider).value;
             final nodeNetwork = _normalizeChainName(testResult.chainName!);
@@ -370,7 +374,9 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   void _resetToDefault() {
     setState(() {
       _endpointController.text = endpoints.kDefaultLightd;
-      final parsed = endpoints.LightdEndpoint.tryParse(endpoints.kDefaultLightd);
+      final parsed = endpoints.LightdEndpoint.tryParse(
+        endpoints.kDefaultLightd,
+      );
       if (parsed != null) {
         _hostController.text = parsed.host;
         _portController.text = parsed.port.toString();
@@ -474,12 +480,17 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                       ),
                     if (ref.watch(developerModeProvider))
                       PButton(
-                        text: endpoints.LightdEndpoint.orchardRegtest.label ??
-                            endpoints.LightdEndpoint.orchardRegtest.displayString,
+                        text:
+                            endpoints.LightdEndpoint.orchardRegtest.label ??
+                            endpoints
+                                .LightdEndpoint
+                                .orchardRegtest
+                                .displayString,
                         variant: PButtonVariant.ghost,
                         size: PButtonSize.small,
-                        onPressed: () =>
-                            _applySuggested(endpoints.LightdEndpoint.orchardRegtest),
+                        onPressed: () => _applySuggested(
+                          endpoints.LightdEndpoint.orchardRegtest,
+                        ),
                       ),
                   ],
                 ),
