@@ -137,6 +137,16 @@ def http_get(url):
         return response.read()
 
 
+def download_file(url, path):
+    headers = {"User-Agent": "pirate-wallet-ci"}
+    token = os.environ.get("GITHUB_API_PUBLIC_READONLY_TOKEN")
+    if token and urllib.parse.urlparse(url).netloc == "api.github.com":
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=60) as response, path.open("wb") as output:
+        shutil.copyfileobj(response, output)
+
+
 def choose_preferred(names, preferences):
     if not preferences:
         return sorted(names)[0]
@@ -248,10 +258,10 @@ for source_url in dict.fromkeys(source_urls):
 if not download_url:
     raise SystemExit(f"No KDF {platform} zip found for {full_hash}")
 
-print(f"Downloading KDF {platform} artifact from {download_url}")
+print(f"Downloading KDF {platform} artifact from {download_url}", flush=True)
 with tempfile.TemporaryDirectory() as tmp:
     zip_path = pathlib.Path(tmp) / pathlib.PurePosixPath(urllib.parse.urlparse(download_url).path).name
-    zip_path.write_bytes(http_get(download_url))
+    download_file(download_url, zip_path)
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     if digest not in valid_checksums:
         raise SystemExit(f"KDF {platform} checksum mismatch: got {digest}, expected one of {sorted(valid_checksums)}")

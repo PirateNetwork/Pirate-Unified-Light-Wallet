@@ -3,4 +3,4 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/prefetch-kdf-artifact.sh" ios
+exec bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" ios
