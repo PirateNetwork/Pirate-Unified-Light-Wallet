@@ -81,6 +81,15 @@ log "Building Rust Android libraries..."
 chmod +x "$SCRIPT_DIR/build-rust-android.sh"
 bash "$SCRIPT_DIR/build-rust-android.sh"
 
+# Fetch KDF artifacts before Flutter's asset transformer runs. This keeps
+# release builds pinned to the checksummed SDK config instead of doing a late
+# network fetch from the Flutter build step.
+log "Fetching KDF Android artifacts..."
+chmod +x "$SCRIPT_DIR/prefetch-kdf-artifact.sh"
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" android-aarch64
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" android-armv7
+export OVERRIDE_DEFI_API_DOWNLOAD=false
+
 # Build based on type
 if [ "$BUILD_TYPE" = "bundle" ]; then
     log "Building Android App Bundle..."

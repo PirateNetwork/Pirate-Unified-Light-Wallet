@@ -58,7 +58,10 @@ def package_root(package_name):
         if uri.startswith("file://"):
             raw_path = urllib.parse.unquote(urllib.parse.urlparse(uri).path)
             if len(raw_path) > 3 and raw_path[0] == "/" and raw_path[2] == ":":
-                raw_path = f"/mnt/{raw_path[1].lower()}/{raw_path[4:]}"
+                if os.name == "nt":
+                    raw_path = raw_path[1:]
+                else:
+                    raw_path = f"/mnt/{raw_path[1].lower()}/{raw_path[4:]}"
             return pathlib.Path(raw_path)
         return pathlib.Path(uri)
     raise SystemExit(f"Package {package_name} was not found in package_config.json")
@@ -218,8 +221,19 @@ valid_checksums = set(platform_config["valid_zip_sha256_checksums"])
 full_hash = api["api_commit_hash"]
 short_hash = full_hash[:7]
 download_url = None
+source_urls = []
 
-for source_url in api["source_urls"]:
+# The KMDCL SDK config points at the KMDCL repo first. If that repo has no
+# release artifacts yet, use our fork-owned GitHub release before trying any
+# optional sources supplied by CI.
+for configured_source in api["source_urls"]:
+    source_urls.append(configured_source)
+    if "api.github.com/repos/kmdclassic/komodo-defi-framework" in configured_source.lower():
+        source_urls.append("https://api.github.com/repos/OswaldKardingson/komodo-defi-framework")
+extra_sources = os.environ.get("KDF_EXTRA_SOURCE_URLS", "")
+source_urls.extend(source.strip() for source in extra_sources.split(",") if source.strip())
+
+for source_url in dict.fromkeys(source_urls):
     try:
         if urllib.parse.urlparse(source_url).netloc == "api.github.com":
             download_url = find_in_github(source_url, pattern, preferences, full_hash, short_hash)

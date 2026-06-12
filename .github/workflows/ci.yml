@@ -537,6 +537,15 @@ jobs:
           chmod +x scripts/prefetch-kdf-artifact.sh
           scripts/prefetch-kdf-artifact.sh windows
 
+      - name: Prefetch KDF Android artifacts
+        if: matrix.platform == 'Android'
+        env:
+          GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
+        run: |
+          chmod +x scripts/prefetch-kdf-artifact.sh
+          scripts/prefetch-kdf-artifact.sh android-aarch64
+          scripts/prefetch-kdf-artifact.sh android-armv7
+
       - name: Prime Android Gradle plugin cache
         if: matrix.platform == 'Android'
         run: |
@@ -556,6 +565,8 @@ jobs:
 
       - name: Build Android
         if: matrix.platform == 'Android'
+        env:
+          OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
           status=1
