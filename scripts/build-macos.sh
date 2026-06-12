@@ -508,7 +508,7 @@ log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
 log "Fetching KDF macOS artifact..."
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" macos
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
 
 log "Building macOS app (universal2)..."
 # On modern Flutter versions, `flutter build macos` produces a universal build by

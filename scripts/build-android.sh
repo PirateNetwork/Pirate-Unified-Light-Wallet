@@ -86,8 +86,7 @@ bash "$SCRIPT_DIR/build-rust-android.sh"
 # network fetch from the Flutter build step.
 log "Fetching KDF Android artifacts..."
 chmod +x "$SCRIPT_DIR/prefetch-kdf-artifact.sh"
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" android-aarch64
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" android-armv7
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
 export OVERRIDE_DEFI_API_DOWNLOAD=false
 
 # Build based on type

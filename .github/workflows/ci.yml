@@ -29,6 +29,7 @@ env:
   CARGO_DENY_VERSION: "0.19.0"
   CARGO_AUDITABLE_VERSION: "0.7.2"
   CARGO_TERM_COLOR: always
+  GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
 
 jobs:
   workflow-action-pinning:
@@ -518,7 +519,7 @@ jobs:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh linux
+          scripts/prefetch-kdf-artifact.sh native
 
       - name: Prefetch KDF macOS artifact
         if: matrix.platform == 'macOS'
@@ -526,7 +527,7 @@ jobs:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh macos
+          scripts/prefetch-kdf-artifact.sh native
 
       - name: Prefetch KDF Windows artifact
         if: matrix.platform == 'Windows'
@@ -535,7 +536,7 @@ jobs:
         shell: bash
         run: |
           chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh windows
+          scripts/prefetch-kdf-artifact.sh native
 
       - name: Prefetch KDF Android artifacts
         if: matrix.platform == 'Android'
@@ -543,8 +544,7 @@ jobs:
           GITHUB_API_PUBLIC_READONLY_TOKEN: ${{ github.token }}
         run: |
           chmod +x scripts/prefetch-kdf-artifact.sh
-          scripts/prefetch-kdf-artifact.sh android-aarch64
-          scripts/prefetch-kdf-artifact.sh android-armv7
+          scripts/prefetch-kdf-artifact.sh native
 
       - name: Prime Android Gradle plugin cache
         if: matrix.platform == 'Android'

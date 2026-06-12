@@ -5,6 +5,7 @@ set -euo pipefail
 if [ "$#" -ne 1 ]; then
     echo "Usage: $0 <platform>" >&2
     echo "Example: $0 linux" >&2
+    echo "Use '$0 native' to prefetch all native KDF artifacts." >&2
     exit 64
 fi
 
@@ -12,6 +13,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="$PROJECT_ROOT/app"
 PLATFORM="$1"
+
+if [ "$PLATFORM" = "native" ] || [ "$PLATFORM" = "all" ]; then
+    for native_platform in ios macos windows linux android-aarch64 android-armv7; do
+        bash "$0" "$native_platform"
+    done
+    exit 0
+fi
 
 cd "$APP_DIR"
 
@@ -67,51 +75,72 @@ def package_root(package_name):
     raise SystemExit(f"Package {package_name} was not found in package_config.json")
 
 
-def expected_artifact(root, platform_name):
+def expected_artifacts(root, platform_name):
     return {
-        "linux": root / "linux" / "bin" / "kdf",
-        "windows": root / "windows" / "bin" / "kdf.exe",
-        "macos": root / "macos" / "bin" / "kdf",
-        "ios": root / "ios" / "libkdf.a",
-        "android-armv7": root / "android" / "app" / "src" / "main" / "cpp" / "libs" / "armeabi-v7a" / "libkdf.so",
-        "android-aarch64": root / "android" / "app" / "src" / "main" / "cpp" / "libs" / "arm64-v8a" / "libkdf.so",
-    }.get(platform_name)
-
-
-def normalize_extracted_artifact(destination, artifact, platform_name):
-    direct_renames = {
-        "linux": [("mm2", "kdf")],
-        "windows": [("mm2.exe", "kdf.exe")],
-        "macos": [("mm2", "kdf")],
-        "ios": [("libmm2.a", "libkdf.a")],
-        "android-armv7": [("libmm2.so", "libkdf.so")],
-        "android-aarch64": [("libmm2.so", "libkdf.so")],
+        "linux": [
+            root / "linux" / "bin" / "kdf",
+            root / "linux" / "bin" / "mm2",
+        ],
+        "windows": [
+            root / "windows" / "bin" / "kdf.exe",
+            root / "windows" / "bin" / "mm2.exe",
+        ],
+        "macos": [
+            root / "macos" / "bin" / "kdf",
+            root / "macos" / "bin" / "mm2",
+        ],
+        "ios": [
+            root / "ios" / "libkdf.a",
+            root / "ios" / "libmm2.a",
+        ],
+        "android-armv7": [
+            root / "android" / "app" / "src" / "main" / "cpp" / "libs" / "armeabi-v7a" / "libkdf.a",
+            root / "android" / "app" / "src" / "main" / "cpp" / "libs" / "armeabi-v7a" / "libmm2.a",
+        ],
+        "android-aarch64": [
+            root / "android" / "app" / "src" / "main" / "cpp" / "libs" / "arm64-v8a" / "libkdf.a",
+            root / "android" / "app" / "src" / "main" / "cpp" / "libs" / "arm64-v8a" / "libmm2.a",
+        ],
     }.get(platform_name, [])
 
-    for old_name, new_name in direct_renames:
-        old_path = destination / old_name
-        new_path = destination / new_name
-        if old_path.exists() and not new_path.exists():
-            old_path.rename(new_path)
 
-    if artifact is None or artifact.exists():
-        return
-
-    fallback_names = {
+def fallback_artifact_names(platform_name):
+    return {
         "linux": ["kdf", "mm2"],
         "windows": ["kdf.exe", "mm2.exe"],
         "macos": ["kdf", "mm2"],
         "ios": ["libkdf.a", "libmm2.a"],
-        "android-armv7": ["libkdf.so", "libmm2.so"],
-        "android-aarch64": ["libkdf.so", "libmm2.so"],
+        "android-armv7": ["libkdf.a", "libmm2.a"],
+        "android-aarch64": ["libkdf.a", "libmm2.a"],
     }.get(platform_name, [])
 
-    for name in fallback_names:
-        matches = sorted(path for path in destination.rglob(name) if path.is_file())
-        if matches:
-            artifact.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(matches[0]), artifact)
-            return
+
+def chmod_if_executable(path):
+    if path.name in {"kdf", "mm2", "kdf.exe", "mm2.exe"}:
+        path.chmod(path.stat().st_mode | 0o111)
+
+
+def normalize_extracted_artifacts(destination, artifacts, platform_name):
+    if not artifacts:
+        return
+
+    candidates = [artifact for artifact in artifacts if artifact.exists()]
+    for name in fallback_artifact_names(platform_name):
+        candidates.extend(path for path in sorted(destination.rglob(name)) if path.is_file())
+
+    if not candidates:
+        return
+
+    source = candidates[0]
+    for artifact in artifacts:
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        if not artifact.exists():
+            shutil.copy2(source, artifact)
+        chmod_if_executable(artifact)
+
+
+def missing_artifacts(artifacts):
+    return [artifact for artifact in artifacts if not artifact.exists()]
 
 
 class LinkParser(html.parser.HTMLParser):
@@ -216,10 +245,11 @@ platforms = api["platforms"]
 if platform not in platforms:
     raise SystemExit(f"KDF platform {platform!r} is not configured in {config_path}")
 
-artifact = expected_artifact(root, platform)
-if artifact is not None and artifact.exists():
-    artifact.chmod(artifact.stat().st_mode | 0o111)
-    print(f"KDF {platform} artifact already present at {artifact}")
+artifacts = expected_artifacts(root, platform)
+if artifacts:
+    normalize_extracted_artifacts(artifacts[0].parent, artifacts, platform)
+if artifacts and not missing_artifacts(artifacts):
+    print(f"KDF {platform} artifacts already present: {', '.join(str(artifact) for artifact in artifacts)}")
     sys.exit(0)
 
 platform_config = platforms[platform]
@@ -268,7 +298,7 @@ with tempfile.TemporaryDirectory() as tmp:
     with zipfile.ZipFile(zip_path) as archive:
         archive.extractall(destination)
 
-normalize_extracted_artifact(destination, artifact, platform)
+normalize_extracted_artifacts(destination, artifacts, platform)
 
 last_updated = destination / f".api_last_updated_{platform}"
 last_updated.write_text(
@@ -283,13 +313,13 @@ last_updated.write_text(
     encoding="utf-8",
 )
 
-if artifact is not None and not artifact.exists():
+missing = missing_artifacts(artifacts)
+if missing:
     found = sorted(path for path in destination.rglob("*") if path.is_file())
-    raise SystemExit(f"KDF {platform} artifact did not appear at {artifact}; extracted files: {found}")
+    raise SystemExit(f"KDF {platform} artifacts did not appear at {missing}; extracted files: {found}")
 
-if artifact is not None:
-    artifact.chmod(artifact.stat().st_mode | 0o111)
-    print(f"KDF {platform} artifact ready at {artifact}")
+if artifacts:
+    print(f"KDF {platform} artifacts ready: {', '.join(str(artifact) for artifact in artifacts)}")
 else:
     print(f"KDF {platform} artifact extracted to {destination}")
 PY

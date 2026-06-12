@@ -213,7 +213,7 @@ log "Fetching dependencies..."
 flutter pub get --enforce-lockfile
 
 log "Fetching KDF Windows artifact..."
-bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" windows
+bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
 
 # Build Windows app
 log "Building Windows app..."
