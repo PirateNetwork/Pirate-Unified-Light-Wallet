@@ -231,6 +231,33 @@ EOF
     xcrun lipo -info "$IOS_FFI_FRAMEWORK/pirate_ffi_frb"
 }
 
+build_unsigned_flutter_ios_app() {
+    log "Preparing Flutter iOS project configuration..."
+    flutter build ios --release --no-codesign --config-only
+
+    local workspace_path="$IOS_DIR/Runner.xcworkspace"
+    if [ ! -d "$workspace_path" ]; then
+        error "iOS workspace not found: $workspace_path"
+    fi
+
+    log "Building unsigned iOS app with code signing disabled..."
+    xcodebuild \
+        -workspace "$workspace_path" \
+        -scheme Runner \
+        -configuration Release \
+        -sdk iphoneos \
+        -destination "generic/platform=iOS" \
+        BUILD_DIR="$APP_DIR/build/ios" \
+        CONFIGURATION_BUILD_DIR="$APP_DIR/build/ios/iphoneos" \
+        CODE_SIGN_STYLE=Manual \
+        CODE_SIGNING_ALLOWED=NO \
+        CODE_SIGNING_REQUIRED=NO \
+        CODE_SIGN_IDENTITY= \
+        DEVELOPMENT_TEAM= \
+        PROVISIONING_PROFILE_SPECIFIER= \
+        build
+}
+
 embed_ios_ffi_framework() {
     local runner_app="$1"
     local frameworks_dir="$runner_app/Frameworks"
@@ -318,7 +345,7 @@ popd >/dev/null
 
 # Build unsigned IPA first
 log "Building iOS app..."
-flutter build ios --release --no-codesign
+build_unsigned_flutter_ios_app
 build_ios_ffi_framework
 
 # Resolve build output paths
