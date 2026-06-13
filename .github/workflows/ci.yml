@@ -443,7 +443,7 @@ jobs:
             build-command: flutter build apk --release --split-per-abi --target-platform=android-arm64,android-arm
           - platform: iOS
             os: macos-latest
-            build-command: flutter build ios --release --no-codesign
+            build-command: ios unsigned xcodebuild
           - platform: Linux
             os: ubuntu-latest
             build-command: flutter build linux --release
@@ -581,6 +581,27 @@ jobs:
           done
           exit "$status"
 
+      - name: Build iOS
+        if: matrix.platform == 'iOS'
+        env:
+          OVERRIDE_DEFI_API_DOWNLOAD: "false"
+        run: |
+          cd app
+          flutter build ios --release --no-codesign --config-only
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build
+
       - name: Build Linux
         if: matrix.platform == 'Linux'
         env:
@@ -639,7 +660,7 @@ jobs:
           exit "$status"
 
       - name: Build ${{ matrix.platform }}
-        if: matrix.platform != 'Android' && matrix.platform != 'Linux' && matrix.platform != 'macOS' && matrix.platform != 'Windows'
+        if: matrix.platform != 'Android' && matrix.platform != 'iOS' && matrix.platform != 'Linux' && matrix.platform != 'macOS' && matrix.platform != 'Windows'
         env:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
