@@ -619,8 +619,27 @@ jobs:
           done
           exit "$status"
 
+      - name: Build Windows
+        if: matrix.platform == 'Windows'
+        env:
+          OVERRIDE_DEFI_API_DOWNLOAD: "false"
+        run: |
+          cd app
+          status=1
+          for attempt in 1 2 3; do
+            if flutter build windows --release; then
+              exit 0
+            fi
+            status=$?
+            if [ "$attempt" -lt 3 ]; then
+              echo "Windows build attempt $attempt failed; retrying..."
+              sleep $((attempt * 20))
+            fi
+          done
+          exit "$status"
+
       - name: Build ${{ matrix.platform }}
-        if: matrix.platform != 'Android' && matrix.platform != 'Linux' && matrix.platform != 'macOS'
+        if: matrix.platform != 'Android' && matrix.platform != 'Linux' && matrix.platform != 'macOS' && matrix.platform != 'Windows'
         env:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
