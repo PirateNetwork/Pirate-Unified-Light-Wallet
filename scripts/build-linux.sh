@@ -24,6 +24,21 @@ warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+flutter_build_linux_release() {
+    local status=1
+    for attempt in 1 2 3; do
+        if OVERRIDE_DEFI_API_DOWNLOAD=false flutter build linux --release; then
+            return 0
+        fi
+        status=$?
+        if [ "$attempt" -lt 3 ]; then
+            warn "Linux build attempt $attempt failed; retrying..."
+            sleep $((attempt * 20))
+        fi
+    done
+    return "$status"
+}
+
 read_pubspec_version() {
     local pubspec="$APP_DIR/pubspec.yaml"
     local raw
@@ -165,7 +180,7 @@ bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
 
 # Build Linux app
 log "Building Linux app..."
-OVERRIDE_DEFI_API_DOWNLOAD=false flutter build linux --release
+flutter_build_linux_release
 
 BUNDLE_DIR="$APP_DIR/build/linux/x64/release/bundle"
 

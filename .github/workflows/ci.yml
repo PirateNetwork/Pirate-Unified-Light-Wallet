@@ -587,7 +587,18 @@ jobs:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
-          flutter build linux --release
+          status=1
+          for attempt in 1 2 3; do
+            if flutter build linux --release; then
+              exit 0
+            fi
+            status=$?
+            if [ "$attempt" -lt 3 ]; then
+              echo "Linux build attempt $attempt failed; retrying..."
+              sleep $((attempt * 20))
+            fi
+          done
+          exit "$status"
 
       - name: Build ${{ matrix.platform }}
         if: matrix.platform != 'Android' && matrix.platform != 'Linux'
