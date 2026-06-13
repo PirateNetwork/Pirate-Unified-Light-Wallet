@@ -36,6 +36,21 @@ autofail() {
   exit 1
 }
 
+flutter_build_macos_release() {
+  local status=1
+  for attempt in 1 2 3; do
+    if OVERRIDE_DEFI_API_DOWNLOAD=false flutter build macos --release; then
+      return 0
+    fi
+    status=$?
+    if [ "$attempt" -lt 3 ]; then
+      warn "macOS build attempt $attempt failed; retrying..."
+      sleep $((attempt * 20))
+    fi
+  done
+  return "$status"
+}
+
 read_pubspec_version() {
   local pubspec="$APP_DIR/pubspec.yaml"
   local raw
@@ -513,7 +528,7 @@ bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
 log "Building macOS app (universal2)..."
 # On modern Flutter versions, `flutter build macos` produces a universal build by
 # default. We validate the result below via lipo checks.
-OVERRIDE_DEFI_API_DOWNLOAD=false flutter build macos --release
+flutter_build_macos_release
 
 APP_OUTPUT_DIR="build/macos/Build/Products/Release"
 APP_PATH="$APP_OUTPUT_DIR/Pirate Unified Wallet.app"
