@@ -644,6 +644,7 @@ jobs:
         if: matrix.platform == 'Windows'
         env:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
+        shell: bash
         run: |
           cd app
           status=1
