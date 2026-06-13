@@ -440,7 +440,7 @@ jobs:
         include:
           - platform: Android
             os: ubuntu-latest
-            build-command: flutter build apk --release --split-per-abi
+            build-command: flutter build apk --release --split-per-abi --target-platform=android-arm64,android-arm
           - platform: iOS
             os: macos-latest
             build-command: flutter build ios --release --no-codesign
@@ -571,7 +571,7 @@ jobs:
           cd app
           status=1
           for attempt in 1 2 3; do
-            if flutter build apk --release --split-per-abi; then
+            if flutter build apk --release --split-per-abi --target-platform=android-arm64,android-arm; then
               exit 0
             fi
             status=$?
@@ -1223,14 +1223,6 @@ jobs:
             dist/android/pirate-unified-wallet-android-V7-unsigned.apk
             dist/android/pirate-unified-wallet-android-V7-unsigned.apk.sha256
 
-      - name: Upload APK (x86)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: android-apk-unsigned-x86
-          path: |
-            dist/android/pirate-unified-wallet-android-x86-unsigned.apk
-            dist/android/pirate-unified-wallet-android-x86-unsigned.apk.sha256
-
       - name: Upload AAB
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -1812,13 +1804,6 @@ jobs:
           name: android-apk-unsigned-v7
           path: dist/android
 
-      - name: Download APK artifacts (x86)
-        if: steps.signing.outputs.enabled == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: android-apk-unsigned-x86
-          path: dist/android
-
       - name: Download AAB artifacts
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -1900,16 +1885,6 @@ jobs:
           path: |
             dist/android/pirate-unified-wallet-android-V7.apk
             dist/android/pirate-unified-wallet-android-V7.apk.sha256
-          if-no-files-found: error
-
-      - name: Upload signed APK (x86)
-        if: steps.signing.outputs.enabled == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: android-apk-signed-x86
-          path: |
-            dist/android/pirate-unified-wallet-android-x86.apk
-            dist/android/pirate-unified-wallet-android-x86.apk.sha256
           if-no-files-found: error
 
       - name: Upload signed AAB

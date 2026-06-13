@@ -25,6 +25,37 @@ warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
+configure_android_abis() {
+    local platforms="$1"
+    local platform
+
+    ANDROID_ABIS=()
+    IFS=',' read -ra platform_list <<< "$platforms"
+    for platform in "${platform_list[@]}"; do
+        platform="${platform//[[:space:]]/}"
+        case "$platform" in
+            android-arm64)
+                ANDROID_ABIS+=("arm64-v8a")
+                ;;
+            android-arm)
+                ANDROID_ABIS+=("armeabi-v7a")
+                ;;
+            android-x64)
+                error "android-x64 is not supported for packaged builds because KDF Android artifacts are only available for android-arm64 and android-arm."
+                ;;
+            "")
+                ;;
+            *)
+                error "Unsupported Android target platform: $platform"
+                ;;
+        esac
+    done
+
+    if [ "${#ANDROID_ABIS[@]}" -eq 0 ]; then
+        error "No Android target platforms selected"
+    fi
+}
+
 abi_label() {
     case "$1" in
         arm64-v8a)
@@ -48,6 +79,8 @@ SIGN="${2:-false}"      # Sign the build
 REPRODUCIBLE="${REPRODUCIBLE:-0}"
 ANDROID_SPLIT_PER_ABI="${ANDROID_SPLIT_PER_ABI:-1}"
 ANDROID_GRADLE_STACKTRACE="${ANDROID_GRADLE_STACKTRACE:-1}"
+ANDROID_TARGET_PLATFORMS="${ANDROID_TARGET_PLATFORMS:-android-arm64,android-arm}"
+configure_android_abis "$ANDROID_TARGET_PLATFORMS"
 
 # Reproducible build settings
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || date +%s)}"
@@ -58,6 +91,7 @@ export CARGO_INCREMENTAL=0
 
 log "Building Android $BUILD_TYPE (reproducible)"
 log "SOURCE_DATE_EPOCH: $SOURCE_DATE_EPOCH"
+log "Android target platforms: $ANDROID_TARGET_PLATFORMS"
 
 if [ "$REPRODUCIBLE" = "1" ]; then
     SIGN=false
@@ -92,7 +126,7 @@ export OVERRIDE_DEFI_API_DOWNLOAD=false
 # Build based on type
 if [ "$BUILD_TYPE" = "bundle" ]; then
     log "Building Android App Bundle..."
-    flutter build appbundle --release
+    flutter build appbundle --release --target-platform="$ANDROID_TARGET_PLATFORMS"
     
     OUTPUT_FILE="$APP_DIR/build/app/outputs/bundle/release/app-release.aab"
     OUTPUT_NAME_BASE="pirate-unified-wallet-android"
@@ -101,11 +135,11 @@ else
     APK_MODE="split"
     APK_FILES=()
     if [ "$ANDROID_SPLIT_PER_ABI" = "1" ]; then
-        if ! flutter build apk --release --split-per-abi; then
+        if ! flutter build apk --release --split-per-abi --target-platform="$ANDROID_TARGET_PLATFORMS"; then
             warn "Split APK build failed."
             if [ "$ANDROID_GRADLE_STACKTRACE" = "1" ]; then
                 warn "Retrying split build with Gradle --stacktrace --info..."
-                (cd "$APP_DIR/android" && ./gradlew assembleRelease -Psplit-per-abi=true --stacktrace --info)
+                (cd "$APP_DIR/android" && ./gradlew assembleRelease -Psplit-per-abi=true -Ptarget-platform="$ANDROID_TARGET_PLATFORMS" --stacktrace --info)
             else
                 error "Split APK build failed. Set ANDROID_GRADLE_STACKTRACE=1 for diagnostics."
             fi
@@ -116,8 +150,8 @@ else
     fi
     
     if [ "$APK_MODE" = "split" ]; then
-        # Multiple ABIs
-        ABIS=("arm64-v8a" "armeabi-v7a" "x86_64")
+        # KDF Android artifacts are currently shipped for ARM targets only.
+        ABIS=("${ANDROID_ABIS[@]}")
         MISSING_ABIS=()
         for abi in "${ABIS[@]}"; do
             signed="$APP_DIR/build/app/outputs/flutter-apk/app-${abi}-release.apk"
