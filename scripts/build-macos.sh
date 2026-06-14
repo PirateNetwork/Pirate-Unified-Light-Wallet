@@ -225,15 +225,23 @@ sign_nested_code() {
       codesign --force --sign "$identity" --timestamp --options runtime "$f"
     done < <(find "$frameworks_dir" -type f -name "*.dylib" -print0 | LC_ALL=C sort -z)
 
-    # Sign frameworks
+    # Sign standalone helper executables inside frameworks before their parent
+    # framework bundle. komodo_defi_framework ships KDF at
+    # Versions/A/Helpers/kdf, and codesign rejects the parent framework if that
+    # helper is still unsigned.
     while IFS= read -r -d '' f; do
       codesign --force --sign "$identity" --timestamp --options runtime "$f"
-    done < <(find "$frameworks_dir" -type d -name "*.framework" -print0 | LC_ALL=C sort -z)
+    done < <(find "$frameworks_dir" -type f -path "*/Helpers/*" \( -perm -111 -o -name kdf \) -print0 | LC_ALL=C sort -z)
 
-    # Sign any helper apps in Frameworks
+    # Sign any helper apps in Frameworks before parent frameworks.
     while IFS= read -r -d '' f; do
       codesign --force --sign "$identity" --timestamp --options runtime "$f"
     done < <(find "$frameworks_dir" -type d -name "*.app" -print0 | LC_ALL=C sort -z)
+
+    # Sign frameworks after nested code.
+    while IFS= read -r -d '' f; do
+      codesign --force --sign "$identity" --timestamp --options runtime "$f"
+    done < <(find "$frameworks_dir" -type d -name "*.framework" -print0 | LC_ALL=C sort -z)
   fi
 
   if [ -d "$plugins_dir" ]; then
@@ -449,11 +457,15 @@ sign_nested_code_no_timestamp() {
 
     while IFS= read -r -d '' f; do
       codesign --force --sign "$identity" "$f"
-    done < <(find "$frameworks_dir" -type d -name "*.framework" -print0 | LC_ALL=C sort -z)
+    done < <(find "$frameworks_dir" -type f -path "*/Helpers/*" \( -perm -111 -o -name kdf \) -print0 | LC_ALL=C sort -z)
 
     while IFS= read -r -d '' f; do
       codesign --force --sign "$identity" "$f"
     done < <(find "$frameworks_dir" -type d -name "*.app" -print0 | LC_ALL=C sort -z)
+
+    while IFS= read -r -d '' f; do
+      codesign --force --sign "$identity" "$f"
+    done < <(find "$frameworks_dir" -type d -name "*.framework" -print0 | LC_ALL=C sort -z)
   fi
 
   if [ -d "$plugins_dir" ]; then
