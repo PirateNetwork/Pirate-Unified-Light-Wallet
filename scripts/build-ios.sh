@@ -231,6 +231,24 @@ EOF
     xcrun lipo -info "$IOS_FFI_FRAMEWORK/pirate_ffi_frb"
 }
 
+run_xcodebuild_with_retry() {
+    local status=1
+    local attempt
+
+    for attempt in 1 2 3; do
+        if xcodebuild "$@"; then
+            return 0
+        fi
+        status=$?
+        if [ "$attempt" -lt 3 ]; then
+            warn "iOS xcodebuild attempt $attempt failed; retrying..."
+            sleep $((attempt * 20))
+        fi
+    done
+
+    return "$status"
+}
+
 build_unsigned_flutter_ios_app() {
     log "Preparing Flutter iOS project configuration..."
     flutter build ios --release --no-codesign --config-only
@@ -241,7 +259,7 @@ build_unsigned_flutter_ios_app() {
     fi
 
     log "Building unsigned iOS app with code signing disabled..."
-    xcodebuild \
+    run_xcodebuild_with_retry \
         -workspace "$workspace_path" \
         -scheme Runner \
         -configuration Release \
@@ -398,7 +416,7 @@ if [ "$SIGN" = "true" ]; then
     fi
     
     # Export IPA with signing
-    xcodebuild -workspace "$WORKSPACE_PATH" \
+    run_xcodebuild_with_retry -workspace "$WORKSPACE_PATH" \
         -scheme Runner \
         -sdk iphoneos \
         -configuration Release \
