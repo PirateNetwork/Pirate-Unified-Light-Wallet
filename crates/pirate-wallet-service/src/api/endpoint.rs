@@ -231,11 +231,16 @@ pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<Netw
         return Some(NetworkType::Mainnet);
     }
 
-    if port == 8067 {
+    if port == 8067 || port == 48067 {
         return Some(NetworkType::Testnet);
     }
 
-    if host_lower.contains("regtest") {
+    if port == 49067 || port == 45467 {
+        return Some(NetworkType::Regtest);
+    }
+
+    if host_lower.contains("regtest") || host_lower.contains("localhost") || host_lower == "127.0.0.1"
+    {
         return Some(NetworkType::Regtest);
     }
     if host_lower.contains("testnet") {
@@ -274,7 +279,12 @@ pub(super) fn tls_server_name(endpoint: &LightdEndpoint) -> Option<String> {
     if !endpoint.use_tls {
         return None;
     }
-    if endpoint.host.parse::<IpAddr>().is_ok() {
+    if let Ok(ip) = endpoint.host.parse::<IpAddr>() {
+        if ip.is_loopback() || ip.is_unspecified() {
+            return None;
+        }
+        // For public IPs, we might still want to use the default server name
+        // if the certificate is issued for it.
         return Some(IP_TLS_SERVER_NAME.to_string());
     }
     Some(endpoint.host.clone())

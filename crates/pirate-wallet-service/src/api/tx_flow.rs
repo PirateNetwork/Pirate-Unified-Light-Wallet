@@ -1931,7 +1931,7 @@ pub(super) async fn broadcast_tx(signed: SignedTx) -> Result<TxId> {
                 ));
             }
 
-            return Err(anyhow!("Broadcast failed: {}", e));
+            return Err(anyhow!("Broadcast failed on {}: {}", endpoint_url, e));
         }
     };
 
