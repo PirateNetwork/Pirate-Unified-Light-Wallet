@@ -64,13 +64,7 @@ pub unsafe extern "C" fn pirate_wallet_service_invoke_json(
 }
 
 #[cfg(target_os = "android")]
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_pirate_wallet_sdk_NativeBridge_invokeJson(
-    mut env: JNIEnv,
-    _class: JClass,
-    request_json: JString,
-    pretty: jboolean,
-) -> jstring {
+fn invoke_json_from_jni(mut env: JNIEnv, request_json: JString, pretty: jboolean) -> jstring {
     let request_json = match env.get_string(&request_json) {
         Ok(value) => value.to_string_lossy().into_owned(),
         Err(err) => {
@@ -90,4 +84,26 @@ pub extern "system" fn Java_com_pirate_wallet_sdk_NativeBridge_invokeJson(
     env.new_string(response)
         .expect("response JSON must be valid UTF-8")
         .into_raw()
+}
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_pirate_wallet_sdk_NativeBridge_invokeJson(
+    env: JNIEnv,
+    _class: JClass,
+    request_json: JString,
+    pretty: jboolean,
+) -> jstring {
+    invoke_json_from_jni(env, request_json, pretty)
+}
+
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_pirate_wallet_reactnative_NativeBridge_invokeJson(
+    env: JNIEnv,
+    _class: JClass,
+    request_json: JString,
+    pretty: jboolean,
+) -> jstring {
+    invoke_json_from_jni(env, request_json, pretty)
 }

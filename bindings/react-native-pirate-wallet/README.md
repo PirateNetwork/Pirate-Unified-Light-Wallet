@@ -18,6 +18,13 @@ Repo-level build and integration notes:
 
 The JS surface mirrors the SDK boundary used by the native Android and iOS SDKs.
 
+## Android wallet database path
+
+On Android, the native module sets `PIRATE_WALLET_DB_DIR` during initialization
+to an app-private directory under `Context.filesDir/pirate_wallet`. The Rust
+service uses that directory for the wallet registry, wallet database files, and
+related encrypted key material before the native library is invoked.
+
 ## Repo layout
 
 - `android/`

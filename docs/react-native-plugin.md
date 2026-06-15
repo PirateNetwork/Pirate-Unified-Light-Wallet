@@ -123,6 +123,8 @@ cd ios && pod install
 Android:
 
 - the module autolinks like a normal React Native native module
+- the native module sets `PIRATE_WALLET_DB_DIR` on initialization to an
+  app-private directory under `Context.filesDir/pirate_wallet`
 
 iOS:
 
