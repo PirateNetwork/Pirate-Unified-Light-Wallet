@@ -42,7 +42,26 @@ function createMockNativeModule() {
         case 'get_active_wallet':
           return ok('wallet-1')
         case 'get_balance':
-          return ok({ total: 1000, spendable: 900, pending: 100 })
+          return ok({ total: '1000', spendable: '900', pending: '100' })
+        case 'format_amount':
+          assert.strictEqual(request.arrrtoshis, '9007199254740993')
+          return ok('90071992.54740993')
+        case 'parse_amount':
+          return ok('9007199254740993')
+        case 'build_tx':
+          assert.strictEqual(request.outputs[0].amount, '9007199254740993')
+          assert.strictEqual(request.fee_opt, '1000')
+          return ok({
+            id: 'pending-1',
+            outputs: request.outputs,
+            total_amount: '9007199254740993',
+            fee: '1000',
+            change: '0',
+            input_total: '9007199254741993',
+            num_inputs: 1,
+            expiry_height: 123456,
+            created_at: 1710000001
+          })
         case 'sync_status':
           return ok({
             local_height: 120,
@@ -126,12 +145,26 @@ async function main() {
   const seedWords = await sdk.advancedKeyManagement.exportSeed('wallet-1')
   assert.strictEqual(seedWords, 'alpha beta gamma')
 
+  const formatted = await sdk.formatAmount(9007199254740993n)
+  assert.strictEqual(formatted, '90071992.54740993')
+
+  const parsed = await sdk.parseAmount('90071992.54740993')
+  assert.strictEqual(parsed, '9007199254740993')
+
+  const pending = await sdk.buildTransaction(
+    'wallet-1',
+    { addr: 'zs1receiver', amount: '9007199254740993' },
+    1000
+  )
+  assert.strictEqual(pending.totalAmount, '9007199254740993')
+
   const synchronizer = sdk.createSynchronizer('wallet-1')
   const snapshot = await synchronizer.refresh()
   assert.strictEqual(snapshot.walletId, 'wallet-1')
   assert.strictEqual(snapshot.status, 'SYNCING')
   assert.strictEqual(snapshot.progressPercent, 50)
   assert.strictEqual(snapshot.latestBirthdayHeight, 345678)
+  assert.strictEqual(snapshot.balance.total, '1000')
 
   await synchronizer.start()
   await synchronizer.close()

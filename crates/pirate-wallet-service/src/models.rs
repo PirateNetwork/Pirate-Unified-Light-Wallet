@@ -4,6 +4,108 @@
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod amount_json {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use serde_json::Value;
+
+    fn parse_u64<E>(value: Value) -> Result<u64, E>
+    where
+        E: serde::de::Error,
+    {
+        match value {
+            Value::Number(number) => number.as_u64().ok_or_else(|| {
+                E::custom(format!("amount must be a non-negative integer: {number}"))
+            }),
+            Value::String(value) => value
+                .trim()
+                .parse::<u64>()
+                .map_err(|_| E::custom(format!("amount must be a decimal u64 string: {value}"))),
+            other => Err(E::custom(format!(
+                "amount must be a string or number: {other}"
+            ))),
+        }
+    }
+
+    fn parse_i64<E>(value: Value) -> Result<i64, E>
+    where
+        E: serde::de::Error,
+    {
+        match value {
+            Value::Number(number) => number
+                .as_i64()
+                .or_else(|| number.as_u64().and_then(|value| i64::try_from(value).ok()))
+                .ok_or_else(|| E::custom(format!("amount must fit in i64: {number}"))),
+            Value::String(value) => value
+                .trim()
+                .parse::<i64>()
+                .map_err(|_| E::custom(format!("amount must be a decimal i64 string: {value}"))),
+            other => Err(E::custom(format!(
+                "amount must be a string or number: {other}"
+            ))),
+        }
+    }
+
+    pub(crate) mod u64 {
+        use super::*;
+
+        pub(crate) fn serialize<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            serializer.serialize_str(&value.to_string())
+        }
+
+        pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<u64, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            parse_u64(Value::deserialize(deserializer)?)
+        }
+    }
+
+    pub(crate) mod i64 {
+        use super::*;
+
+        pub(crate) fn serialize<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            serializer.serialize_str(&value.to_string())
+        }
+
+        pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            parse_i64(Value::deserialize(deserializer)?)
+        }
+    }
+
+    pub(crate) mod opt_u64 {
+        use super::*;
+
+        pub(crate) fn serialize<S>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            match value {
+                Some(value) => serializer.serialize_some(&value.to_string()),
+                None => serializer.serialize_none(),
+            }
+        }
+
+        pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            match Option::<Value>::deserialize(deserializer)? {
+                Some(Value::Null) | None => Ok(None),
+                Some(value) => parse_u64(value).map(Some),
+            }
+        }
+    }
+}
+
 /// Wallet identifier
 pub type WalletId = String;
 
@@ -33,6 +135,7 @@ pub struct Output {
     /// Recipient address (Sapling zs1... or Orchard pirate1...)
     pub addr: String,
     /// Amount in arrrtoshis
+    #[serde(with = "amount_json::u64")]
     pub amount: u64,
     /// Optional memo (max 512 bytes UTF-8)
     pub memo: Option<String>,
@@ -80,12 +183,16 @@ pub struct PendingTx {
     /// Outputs
     pub outputs: Vec<Output>,
     /// Total output amount (excluding fee)
+    #[serde(with = "amount_json::u64")]
     pub total_amount: u64,
     /// Transaction fee
+    #[serde(with = "amount_json::u64")]
     pub fee: u64,
     /// Change amount returned to sender
+    #[serde(with = "amount_json::u64")]
     pub change: u64,
     /// Total input amount (total_amount + fee + change)
+    #[serde(with = "amount_json::u64")]
     pub input_total: u64,
     /// Number of inputs (notes) used
     pub num_inputs: u32,
@@ -133,7 +240,12 @@ pub struct BroadcastResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TxError {
     /// Insufficient funds
-    InsufficientFunds { required: u64, available: u64 },
+    InsufficientFunds {
+        #[serde(with = "amount_json::u64")]
+        required: u64,
+        #[serde(with = "amount_json::u64")]
+        available: u64,
+    },
     /// Invalid address
     InvalidAddress { address: String, reason: String },
     /// Memo too long
@@ -293,10 +405,13 @@ pub enum TunnelMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Balance {
     /// Total balance
+    #[serde(with = "amount_json::u64")]
     pub total: u64,
     /// Spendable balance
+    #[serde(with = "amount_json::u64")]
     pub spendable: u64,
     /// Pending balance (unconfirmed)
+    #[serde(with = "amount_json::u64")]
     pub pending: u64,
 }
 
@@ -319,8 +434,10 @@ pub struct TxInfo {
     /// Timestamp
     pub timestamp: i64,
     /// Amount (positive for receive, negative for send)
+    #[serde(with = "amount_json::i64")]
     pub amount: i64,
     /// Fee
+    #[serde(with = "amount_json::u64")]
     pub fee: u64,
     /// Memo
     pub memo: Option<String>,
@@ -336,6 +453,7 @@ pub struct NoteInfo {
     /// Sapling or Orchard.
     pub note_type: String,
     /// Value in arrrtoshis.
+    #[serde(with = "amount_json::i64")]
     pub value: i64,
     /// Whether this note is spent.
     pub spent: bool,
@@ -402,6 +520,7 @@ pub struct TransactionRecipient {
     /// Output pool name (`sapling` or `orchard`).
     pub pool: String,
     /// Output value in arrrtoshis.
+    #[serde(with = "amount_json::u64")]
     pub amount: u64,
     /// Output index within the transaction bundle.
     pub output_index: u32,
@@ -421,8 +540,10 @@ pub struct TransactionDetails {
     /// Timestamp.
     pub timestamp: i64,
     /// Net amount.
+    #[serde(with = "amount_json::i64")]
     pub amount: i64,
     /// Fee.
+    #[serde(with = "amount_json::u64")]
     pub fee: u64,
     /// Whether the transaction is confirmed.
     pub confirmed: bool,
@@ -444,6 +565,7 @@ pub struct PaymentDisclosure {
     /// Recipient address revealed by the disclosure.
     pub address: String,
     /// Output/action value in arrrtoshis.
+    #[serde(with = "amount_json::u64")]
     pub amount: u64,
     /// Optional decoded memo revealed by the disclosure.
     pub memo: Option<String>,
@@ -463,6 +585,7 @@ pub struct PaymentDisclosureVerification {
     /// Recipient address revealed by the disclosure.
     pub address: String,
     /// Output/action value in arrrtoshis.
+    #[serde(with = "amount_json::u64")]
     pub amount: u64,
     /// Optional decoded memo revealed by the disclosure.
     pub memo: Option<String>,
@@ -491,10 +614,13 @@ pub struct AddressBalanceInfo {
     /// Address string
     pub address: String,
     /// Total balance for this address
+    #[serde(with = "amount_json::u64")]
     pub balance: u64,
     /// Spendable balance for this address
+    #[serde(with = "amount_json::u64")]
     pub spendable: u64,
     /// Pending balance for this address
+    #[serde(with = "amount_json::u64")]
     pub pending: u64,
     /// Key group id that derived this address
     pub key_id: Option<i64>,
@@ -704,6 +830,7 @@ pub struct BackgroundSyncResult {
     /// Any errors encountered (non-fatal)
     pub errors: Vec<String>,
     /// New balance after sync (if changed)
+    #[serde(default, with = "amount_json::opt_u64")]
     pub new_balance: Option<u64>,
     /// Number of new transactions
     pub new_transactions: u32,
@@ -727,6 +854,7 @@ pub struct WalletBackgroundSyncResult {
     /// Any errors encountered (non-fatal)
     pub errors: Vec<String>,
     /// New balance after sync (if changed)
+    #[serde(default, with = "amount_json::opt_u64")]
     pub new_balance: Option<u64>,
     /// Number of new transactions
     pub new_transactions: u32,

@@ -1649,12 +1649,16 @@ pub fn get_fee_info() -> Result<FeeInfo> {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FeeInfo {
     /// Default fee (fixed)
+    #[serde(with = "crate::models::amount_json::u64")]
     pub default_fee: u64,
     /// Minimum allowed fee
+    #[serde(with = "crate::models::amount_json::u64")]
     pub min_fee: u64,
     /// Maximum allowed fee
+    #[serde(with = "crate::models::amount_json::u64")]
     pub max_fee: u64,
     /// Additional fee per output (fixed fee uses 0)
+    #[serde(with = "crate::models::amount_json::u64")]
     pub fee_per_output: u64,
     /// Fee multiplier when memo is included (fixed fee uses 1.0)
     pub memo_fee_multiplier: f64,

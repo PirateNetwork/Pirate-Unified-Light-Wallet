@@ -1,5 +1,7 @@
 export type SyncMode = 'Compact' | 'Deep'
 export type SynchronizerStatus = 'STOPPED' | 'SYNCING' | 'SYNCED'
+export type AmountString = string
+export type AmountInput = AmountString | number | bigint
 export type MnemonicLanguage =
   | 'english'
   | 'chinese_simplified'
@@ -41,8 +43,8 @@ export interface SynchronizerSnapshot {
   progressPercent: number
   syncStatus: any
   latestBirthdayHeight: number | null
-  balance: any
-  transactions: any[]
+  balance: Balance | null
+  transactions: TransactionInfo[]
   updatedAtMillis: number | null
   lastError: Error | null
 }
@@ -58,7 +60,7 @@ export interface PaymentDisclosure {
   txid: string
   outputIndex: number
   address: string
-  amount: number
+  amount: AmountString
   memo: string | null
   disclosure: string
 }
@@ -68,9 +70,76 @@ export interface PaymentDisclosureVerification {
   txid: string
   outputIndex: number
   address: string
-  amount: number
+  amount: AmountString
   memo: string | null
   memoHex: string
+}
+
+export interface TransactionOutput {
+  addr: string
+  amount: AmountInput
+  memo?: string | null
+}
+
+export interface Balance {
+  total: AmountString
+  spendable: AmountString
+  pending: AmountString
+}
+
+export interface ShieldedPoolBalances {
+  sapling: Balance
+  orchard: Balance
+}
+
+export interface TransactionInfo {
+  txid: string
+  height: number | null
+  timestamp: number
+  amount: AmountString
+  fee: AmountString
+  memo: string | null
+  confirmed: boolean
+}
+
+export interface TransactionRecipient {
+  address: string
+  pool: string
+  amount: AmountString
+  outputIndex: number
+  memo: string | null
+  paymentDisclosure?: string | null
+}
+
+export interface TransactionDetails {
+  txid: string
+  height: number | null
+  timestamp: number
+  amount: AmountString
+  fee: AmountString
+  confirmed: boolean
+  memo: string | null
+  recipients: TransactionRecipient[]
+}
+
+export interface PendingTransaction {
+  id: string
+  outputs: TransactionOutput[]
+  totalAmount: AmountString
+  fee: AmountString
+  change: AmountString
+  inputTotal: AmountString
+  numInputs: number
+  expiryHeight: number
+  createdAt: number
+}
+
+export interface FeeInfo {
+  defaultFee: AmountString
+  minFee: AmountString
+  maxFee: AmountString
+  feePerOutput: AmountString
+  memoFeeMultiplier: number
 }
 
 export class PirateWalletAdvancedKeyManagement {
@@ -133,33 +202,33 @@ export class PirateWalletSdk {
   isValidShieldedAddr(address: string): Promise<boolean>
   validateAddress(address: string): Promise<any>
   validateConsensusBranch(walletId: string): Promise<any>
-  formatAmount(arrrtoshis: number): Promise<string>
-  parseAmount(arrr: string): Promise<number>
+  formatAmount(arrrtoshis: AmountInput): Promise<string>
+  parseAmount(arrr: string): Promise<AmountString>
   getCurrentReceiveAddress(walletId: string): Promise<string>
   getCurrentAddress(walletId: string): Promise<string>
   getNextReceiveAddress(walletId: string): Promise<string>
   getNextAddress(walletId: string): Promise<string>
   listAddresses(walletId: string): Promise<any[]>
   listAddressBalances(walletId: string, keyId?: number | null): Promise<any[]>
-  getBalance(walletId: string): Promise<any>
-  getShieldedPoolBalances(walletId: string): Promise<any>
+  getBalance(walletId: string): Promise<Balance>
+  getShieldedPoolBalances(walletId: string): Promise<ShieldedPoolBalances>
   getSpendabilityStatus(walletId: string): Promise<any>
-  listTransactions(walletId: string, limit?: number | null): Promise<any[]>
+  listTransactions(walletId: string, limit?: number | null): Promise<TransactionInfo[]>
   fetchTransactionMemo(walletId: string, txId: string, outputIndex?: number | null): Promise<string | null>
-  getTransactionDetails(walletId: string, txId: string): Promise<any | null>
+  getTransactionDetails(walletId: string, txId: string): Promise<TransactionDetails | null>
   exportPaymentDisclosures(walletId: string, txId: string): Promise<PaymentDisclosure[]>
   exportSaplingPaymentDisclosure(walletId: string, txId: string, outputIndex: number): Promise<string>
   exportOrchardPaymentDisclosure(walletId: string, txId: string, actionIndex: number): Promise<string>
   verifyPaymentDisclosure(walletId: string, disclosure: string): Promise<PaymentDisclosureVerification>
-  getFeeInfo(): Promise<any>
+  getFeeInfo(): Promise<FeeInfo>
   startSync(walletIdOrRequest: any, mode?: SyncMode): Promise<any>
   getSyncStatus(walletId: string): Promise<any>
   cancelSync(walletId: string): Promise<any>
   rescan(walletIdOrRequest: any, fromHeight?: number | null): Promise<any>
-  buildTransaction(walletIdOrRequest: any, outputs?: any, fee?: number | null): Promise<any>
-  signTransaction(walletId: string, pending: any): Promise<any>
+  buildTransaction(walletIdOrRequest: any, outputs?: TransactionOutput | TransactionOutput[] | null, fee?: AmountInput | null): Promise<PendingTransaction>
+  signTransaction(walletId: string, pending: PendingTransaction): Promise<any>
   broadcastTransaction(signed: any): Promise<string>
-  send(walletId: string, outputsOrOutput: any, fee?: number | null): Promise<string>
+  send(walletId: string, outputsOrOutput: TransactionOutput | TransactionOutput[], fee?: AmountInput | null): Promise<string>
   exportSaplingViewingKey(walletId: string): Promise<string>
   exportOrchardViewingKey(walletId: string): Promise<string>
   importSaplingViewingKeyAsWatchOnly(requestOrName: any, saplingViewingKey?: string | null, birthdayHeight?: number | null): Promise<string>

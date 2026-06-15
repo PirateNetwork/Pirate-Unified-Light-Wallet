@@ -28,6 +28,12 @@ Platform layers:
 
 The JavaScript surface mirrors the shielded-first SDK boundary used by the native Android and iOS SDKs.
 
+Amount values that cross the React Native JSON boundary are decimal strings,
+not JSON numbers. This applies to balances, fees, transaction amounts, pending
+transaction totals, payment disclosure amounts, and `parseAmount()` results.
+The JS wrapper accepts decimal strings, safe integer numbers, or `bigint` for
+amount request fields and serializes them as strings before native invocation.
+
 ## Wallet and sync model
 
 Wallet metadata lives in the shared backend registry. The registry stores an

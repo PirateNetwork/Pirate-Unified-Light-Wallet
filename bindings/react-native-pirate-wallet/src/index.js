@@ -24,11 +24,60 @@ function getNativeModule() {
   return nativeModule
 }
 
+const AMOUNT_WIRE_KEYS = new Set([
+  'amount',
+  'arrrtoshis',
+  'available',
+  'balance',
+  'change',
+  'default_fee',
+  'fee',
+  'fee_opt',
+  'fee_per_output',
+  'input_total',
+  'max_fee',
+  'min_fee',
+  'new_balance',
+  'pending',
+  'required',
+  'spendable',
+  'total',
+  'total_amount',
+  'value'
+])
+
+function normalizeRequestValue(key, value) {
+  if (typeof value === 'bigint') {
+    return value.toString()
+  }
+
+  if (key && AMOUNT_WIRE_KEYS.has(key) && typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(`Unsafe integer amount for ${key}; pass decimal string or bigint instead.`)
+    }
+    return value.toString()
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(entry => normalizeRequestValue(null, entry))
+  }
+
+  if (value && typeof value === 'object') {
+    const result = {}
+    for (const [entryKey, entryValue] of Object.entries(value)) {
+      result[entryKey] = normalizeRequestValue(entryKey, entryValue)
+    }
+    return result
+  }
+
+  return value
+}
+
 function buildRequest(method, params = {}) {
   const request = { method }
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null) {
-      request[key] = value
+      request[key] = normalizeRequestValue(key, value)
     }
   }
   return JSON.stringify(request)

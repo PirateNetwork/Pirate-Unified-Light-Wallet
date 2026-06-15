@@ -32,6 +32,29 @@ fn execute_json_supports_fee_info_request() {
     let parsed: Value = serde_json::from_str(&response).expect("response is valid JSON");
 
     assert_eq!(parsed["ok"], Value::Bool(true));
-    assert!(parsed["result"]["default_fee"].as_u64().is_some());
-    assert!(parsed["result"]["min_fee"].as_u64().is_some());
+    assert!(parsed["result"]["default_fee"].as_str().is_some());
+    assert!(parsed["result"]["min_fee"].as_str().is_some());
+}
+
+#[test]
+fn execute_json_serializes_parse_amount_result_as_string() {
+    let service = WalletService::new();
+    let response = service.execute_json(r#"{"method":"parse_amount","arrr":"1.25"}"#, false);
+    let parsed: Value = serde_json::from_str(&response).expect("response is valid JSON");
+
+    assert_eq!(parsed["ok"], Value::Bool(true));
+    assert_eq!(parsed["result"], Value::String("125000000".to_string()));
+}
+
+#[test]
+fn execute_json_accepts_string_amount_request_fields() {
+    let service = WalletService::new();
+    let response = service.execute_json(
+        r#"{"method":"format_amount","arrrtoshis":"125000000"}"#,
+        false,
+    );
+    let parsed: Value = serde_json::from_str(&response).expect("response is valid JSON");
+
+    assert_eq!(parsed["ok"], Value::Bool(true));
+    assert_eq!(parsed["result"], Value::String("1.25000000".to_string()));
 }

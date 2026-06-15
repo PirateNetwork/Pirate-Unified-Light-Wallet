@@ -292,6 +292,7 @@ pub enum WalletServiceRequest {
     BuildTx {
         wallet_id: WalletId,
         outputs: Vec<Output>,
+        #[serde(default, with = "crate::models::amount_json::opt_u64")]
         fee_opt: Option<u64>,
     },
     SignTx {
@@ -390,6 +391,7 @@ pub enum WalletServiceRequest {
     },
     GetNetworkInfo,
     FormatAmount {
+        #[serde(with = "crate::models::amount_json::u64")]
         arrrtoshis: u64,
     },
     ParseAmount {
@@ -891,7 +893,9 @@ impl WalletService {
             WalletServiceRequest::FormatAmount { arrrtoshis } => {
                 serialize(ffi::format_amount(arrrtoshis)?)
             }
-            WalletServiceRequest::ParseAmount { arrr } => serialize(ffi::parse_amount(arrr)?),
+            WalletServiceRequest::ParseAmount { arrr } => {
+                serialize_amount(ffi::parse_amount(arrr)?)
+            }
         }
     }
 
@@ -941,4 +945,8 @@ fn ack() -> Value {
 
 fn serialize<T: Serialize>(value: T) -> Result<Value> {
     Ok(to_value(value)?)
+}
+
+fn serialize_amount(value: u64) -> Result<Value> {
+    Ok(Value::String(value.to_string()))
 }

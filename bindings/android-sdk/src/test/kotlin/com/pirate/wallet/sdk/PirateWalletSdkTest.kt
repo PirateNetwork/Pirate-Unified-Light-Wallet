@@ -231,8 +231,8 @@ class PirateWalletSdkTest {
                         .put("txid", "deadbeef")
                         .put("height", 321)
                         .put("timestamp", 1_710_000_123L)
-                        .put("amount", -55_000L)
-                        .put("fee", 1_000L)
+                        .put("amount", "-55000")
+                        .put("fee", "1000")
                         .put("confirmed", true)
                         .put("memo", "hello")
                         .put(
@@ -241,7 +241,7 @@ class PirateWalletSdkTest {
                                 JSONObject()
                                     .put("address", "zs1recipient")
                                     .put("pool", "sapling")
-                                    .put("amount", 54_000L)
+                                    .put("amount", "54000")
                                     .put("output_index", 0)
                                     .put("memo", "hello"),
                             ),
@@ -264,6 +264,47 @@ class PirateWalletSdkTest {
         assertEquals(1, details.recipients.size)
         assertEquals("zs1recipient", details.recipients.first().address)
         assertEquals("sapling", details.recipients.first().pool)
+        invoker.assertFinished()
+    }
+
+    @Test
+    fun `amount-bearing transaction requests use string wire values`() {
+        val invoker = ScriptedInvoker(
+            expect("build_tx") { request ->
+                assertEquals("wallet-1", request.getString("wallet_id"))
+                assertEquals("1000", request.getString("fee_opt"))
+                assertEquals("9007199254740993", request.getJSONArray("outputs").getJSONObject(0).getString("amount"))
+                ok(
+                    JSONObject()
+                        .put("id", "pending-1")
+                        .put(
+                            "outputs",
+                            JSONArray().put(
+                                JSONObject()
+                                    .put("addr", "zs1recipient")
+                                    .put("amount", "9007199254740993"),
+                            ),
+                        )
+                        .put("total_amount", "9007199254740993")
+                        .put("fee", "1000")
+                        .put("change", "0")
+                        .put("input_total", "9007199254741993")
+                        .put("num_inputs", 1)
+                        .put("expiry_height", 123_456)
+                        .put("created_at", 1_710_000_456L),
+                )
+            },
+        )
+
+        val sdk = PirateWalletSdk(invoker)
+        val pending = sdk.buildTransaction(
+            "wallet-1",
+            TransactionOutput(address = "zs1recipient", amount = 9_007_199_254_740_993L),
+            fee = 1_000L,
+        )
+
+        assertEquals(9_007_199_254_740_993L, pending.totalAmount)
+        assertEquals(1_000L, pending.fee)
         invoker.assertFinished()
     }
 

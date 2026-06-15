@@ -400,7 +400,7 @@ public class PirateWalletSdk(
         )
 
     public fun formatAmount(arrrtoshis: Long): String =
-        parseString(invokeResult("format_amount", "arrrtoshis" to arrrtoshis))
+        parseString(invokeResult("format_amount", "arrrtoshis" to arrrtoshis.toString()))
 
     public fun parseAmount(arrr: String): Long =
         parseLongValue(invokeResult("parse_amount", "arrr" to arrr))
@@ -532,7 +532,7 @@ public class PirateWalletSdk(
                 "build_tx",
                 "wallet_id" to request.walletId,
                 "outputs" to request.outputs,
-                "fee_opt" to request.fee,
+                "fee_opt" to request.fee?.toString(),
             ),
         )
 
@@ -1159,7 +1159,7 @@ private fun JSONObject.requireString(name: String): String = when {
 }
 
 private fun JSONObject.requireLong(name: String): Long = when {
-    has(name) && !isNull(name) -> getLong(name)
+    has(name) && !isNull(name) -> parseLongValue(opt(name))
     else -> throw PirateWalletSdkException("Missing required long field '$name'")
 }
 
@@ -1228,7 +1228,7 @@ private fun toJsonCompatible(value: Any?): Any = when (value) {
 private fun TransactionOutput.toJson(): JSONObject =
     JSONObject()
         .put("addr", address)
-        .put("amount", amount)
+        .put("amount", amount.toString())
         .apply {
             memo?.let { put("memo", it) }
         }
@@ -1237,10 +1237,10 @@ private fun PendingTransaction.toJson(): JSONObject =
     JSONObject()
         .put("id", id)
         .put("outputs", JSONArray().apply { outputs.forEach { put(it.toJson()) } })
-        .put("total_amount", totalAmount)
-        .put("fee", fee)
-        .put("change", change)
-        .put("input_total", inputTotal)
+        .put("total_amount", totalAmount.toString())
+        .put("fee", fee.toString())
+        .put("change", change.toString())
+        .put("input_total", inputTotal.toString())
         .put("num_inputs", numInputs)
         .put("expiry_height", expiryHeight)
         .put("created_at", createdAt)
@@ -1256,7 +1256,7 @@ private fun BuildTransactionRequest.toJson(): JSONObject =
         .put("wallet_id", walletId)
         .put("outputs", JSONArray().apply { outputs.forEach { put(it.toJson()) } })
         .apply {
-            fee?.let { put("fee_opt", it) }
+            fee?.let { put("fee_opt", it.toString()) }
         }
 
 private fun CreateWalletRequest.toJson(): JSONObject =

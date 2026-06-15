@@ -106,6 +106,54 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
         invoker.assertFinished()
     }
 
+    func testAmountWireValuesUseStringsWithoutChangingTypedApi() throws {
+        let invoker = ScriptedInvoker(expectedCalls: [
+            expected("format_amount") { request in
+                XCTAssertEqual(request["arrrtoshis"] as? String, "9007199254740993")
+                return try ok("90071992.54740993")
+            },
+            expected("parse_amount") { _ in
+                try ok("9007199254740993")
+            },
+            expected("build_tx") { request in
+                XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
+                XCTAssertEqual(request["fee_opt"] as? String, "1000")
+                let outputs = try XCTUnwrap(request["outputs"] as? [[String: Any]])
+                XCTAssertEqual(outputs.first?["amount"] as? String, "9007199254740993")
+                return try ok([
+                    "id": "pending-1",
+                    "outputs": [
+                        [
+                            "addr": "zs1recipient",
+                            "amount": "9007199254740993",
+                        ],
+                    ],
+                    "total_amount": "9007199254740993",
+                    "fee": "1000",
+                    "change": "0",
+                    "input_total": "9007199254741993",
+                    "num_inputs": 1,
+                    "expiry_height": 123_456,
+                    "created_at": 1_710_000_456,
+                ])
+            },
+        ])
+
+        let sdk = PirateWalletSDK(invoker: invoker)
+        XCTAssertEqual(try sdk.formatAmount(9_007_199_254_740_993), "90071992.54740993")
+        XCTAssertEqual(try sdk.parseAmount("90071992.54740993"), 9_007_199_254_740_993)
+
+        let pending = try sdk.buildTransaction(
+            walletId: "wallet-1",
+            outputs: [TransactionOutput(address: "zs1recipient", amount: 9_007_199_254_740_993)],
+            fee: 1_000
+        )
+
+        XCTAssertEqual(pending.totalAmount, 9_007_199_254_740_993)
+        XCTAssertEqual(pending.fee, 1_000)
+        invoker.assertFinished()
+    }
+
     func testAsyncTypedSurfaceBuildInfoAndWalletMetadata() async throws {
         let invoker = ScriptedInvoker(expectedCalls: [
             expected("get_build_info") { _ in

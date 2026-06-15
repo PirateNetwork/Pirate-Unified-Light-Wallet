@@ -87,6 +87,14 @@ Low-level entry points:
 
 The typed JS methods below unwrap the native JSON envelope and return the `result` value directly.
 
+### Amount wire format
+
+All arrrtoshi amount values on the JSON wire are decimal strings, not JSON
+numbers. This includes balances, transaction amounts, fees, pending
+transaction totals, payment disclosure amounts, and `parseAmount()` results.
+Amount request fields accept decimal strings, safe integer numbers, or
+`bigint`; the JS wrapper serializes them as strings before calling native code.
+
 ### Wallet lifecycle
 
 - `walletRegistryExists()`
@@ -182,7 +190,7 @@ active wallet between running wallets.
   - returns formatted string
 - `parseAmount(arrr)`
   - RPC: `parse_amount`
-  - returns integer arrrtoshis
+  - returns integer arrrtoshis as a decimal string
 
 ### Validation
 
@@ -236,7 +244,7 @@ addresses over time.
 
 - `getBalance(walletId)`
   - RPC: `get_balance`
-  - returns:
+  - returns decimal-string amount fields:
     - `total`
     - `spendable`
     - `pending`
@@ -286,7 +294,7 @@ addresses over time.
 `memoHex`.
 - `getFeeInfo()`
   - RPC: `get_fee_info`
-  - returns:
+  - returns decimal-string fee fields plus `memoFeeMultiplier`:
     - `defaultFee`
     - `minFee`
     - `maxFee`

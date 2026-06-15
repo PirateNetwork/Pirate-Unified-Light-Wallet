@@ -666,6 +666,9 @@ fileprivate extension PirateWalletSDK {
         if let value = result as? Int {
             return Int64(value)
         }
+        if let value = result as? String, let parsed = Int64(value) {
+            return parsed
+        }
         throw PirateWalletSdkError.typeMismatch("Expected integer result for \(method).")
     }
 
@@ -734,6 +737,9 @@ fileprivate extension PirateWalletSDK {
         if let value = result as? Int {
             return Int64(value)
         }
+        if let value = result as? String, let parsed = Int64(value) {
+            return parsed
+        }
         throw PirateWalletSdkError.typeMismatch("Expected integer result for \(method).")
     }
 
@@ -760,7 +766,8 @@ fileprivate extension PirateWalletSDK {
     }
 
     func decode<T: Decodable>(_ value: Any, as type: T.Type) throws -> T {
-        let data = try JSONSerialization.data(withJSONObject: value, options: [])
+        let normalized = normalizeAmountStringsForDecoding(value)
+        let data = try JSONSerialization.data(withJSONObject: normalized, options: [])
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode(T.self, from: data)
@@ -1315,7 +1322,7 @@ private func buildRequestJson(method: String, params: [String: Any?]) throws -> 
         guard let value else {
             continue
         }
-        request[key] = value
+        request[key] = normalizeAmountValuesForEncoding(value, key: key)
     }
 
     guard JSONSerialization.isValidJSONObject(request) else {
@@ -1334,6 +1341,80 @@ private func encodableJSONObject<T: Encodable>(_ value: T) throws -> Any {
     encoder.keyEncodingStrategy = .convertToSnakeCase
     let data = try encoder.encode(value)
     return try JSONSerialization.jsonObject(with: data, options: [])
+}
+
+private let amountWireKeys: Set<String> = [
+    "amount",
+    "arrrtoshis",
+    "available",
+    "balance",
+    "change",
+    "default_fee",
+    "fee",
+    "fee_opt",
+    "fee_per_output",
+    "input_total",
+    "max_fee",
+    "min_fee",
+    "new_balance",
+    "pending",
+    "required",
+    "spendable",
+    "total",
+    "total_amount",
+    "value",
+]
+
+private func normalizeAmountValuesForEncoding(_ value: Any, key: String? = nil) -> Any {
+    if let array = value as? [Any] {
+        return array.map { normalizeAmountValuesForEncoding($0) }
+    }
+
+    if let dictionary = value as? [String: Any] {
+        var normalized: [String: Any] = [:]
+        for (entryKey, entryValue) in dictionary {
+            normalized[entryKey] = normalizeAmountValuesForEncoding(entryValue, key: entryKey)
+        }
+        return normalized
+    }
+
+    guard let key, amountWireKeys.contains(key) else {
+        return value
+    }
+
+    if let value = value as? Int64 {
+        return String(value)
+    }
+    if let value = value as? Int {
+        return String(value)
+    }
+    if let value = value as? UInt64 {
+        return String(value)
+    }
+    if let value = value as? NSNumber {
+        return value.stringValue
+    }
+    return value
+}
+
+private func normalizeAmountStringsForDecoding(_ value: Any, key: String? = nil) -> Any {
+    if let array = value as? [Any] {
+        return array.map { normalizeAmountStringsForDecoding($0) }
+    }
+
+    if let dictionary = value as? [String: Any] {
+        var normalized: [String: Any] = [:]
+        for (entryKey, entryValue) in dictionary {
+            normalized[entryKey] = normalizeAmountStringsForDecoding(entryValue, key: entryKey)
+        }
+        return normalized
+    }
+
+    if let key, amountWireKeys.contains(key), let string = value as? String, let parsed = Int64(string) {
+        return NSNumber(value: parsed)
+    }
+
+    return value
 }
 
 private func parseEnvelope(_ responseJson: String) throws -> [String: Any] {
