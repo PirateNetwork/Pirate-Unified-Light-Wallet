@@ -712,7 +712,8 @@ fn is_transport_not_ready_error(err: &Error) -> bool {
 pub async fn bootstrap_transport(mode: TransportMode, socks5_url: Option<String>) -> Result<()> {
     let config = build_transport_config_from_mode(mode, socks5_url.as_deref())?;
     set_desired_transport_config(config.clone());
-    GLOBAL_TRANSPORT.get_or_init(config).await?;
+    let manager = GLOBAL_TRANSPORT.get_or_init(config).await?;
+    manager.ensure_ready().await.map_err(map_net_error)?;
     Ok(())
 }
 

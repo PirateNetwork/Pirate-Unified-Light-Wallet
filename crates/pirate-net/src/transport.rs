@@ -4,7 +4,9 @@
 
 use crate::debug_log::log_debug_event;
 use crate::lightwalletd_pins::extract_spki_from_cert_der;
-use crate::{DnsConfig, DnsResolver, Error, I2pClient, I2pConfig, Result, TorClient, TorConfig};
+use crate::{
+    DnsConfig, DnsResolver, Error, I2pClient, I2pConfig, Result, TorClient, TorConfig, TorStatus,
+};
 use http::Uri;
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
@@ -207,6 +209,52 @@ impl TransportManager {
         self.config.lock().await.mode.is_private()
     }
 
+    async fn ensure_tor_bootstrapped(&self, config: &TransportConfig) -> Result<()> {
+        let tor_current = { self.tor_client.lock().await.clone() };
+        if let Some(tor) = tor_current {
+            let status = tor.status().await;
+            if matches!(status, TorStatus::Ready) {
+                log_debug_event(
+                    "transport.rs:TransportManager::ensure_tor_bootstrapped",
+                    "transport_update_config_skip",
+                    &format!(
+                        "mode={:?} reason=config_unchanged status=ready",
+                        config.mode
+                    ),
+                );
+                return Ok(());
+            }
+
+            log_debug_event(
+                "transport.rs:TransportManager::ensure_tor_bootstrapped",
+                "transport_update_config_tor_ensure",
+                &format!("mode={:?} status={:?}", config.mode, status),
+            );
+            tor.clone().bootstrap().await?;
+            return Ok(());
+        }
+
+        log_debug_event(
+            "transport.rs:TransportManager::ensure_tor_bootstrapped",
+            "transport_update_config_tor_recreate",
+            "mode=Tor reason=missing_client",
+        );
+        let client = TorClient::new(config.tor.clone())?;
+        client.clone().bootstrap().await?;
+        *self.tor_client.lock().await = Some(client);
+        Ok(())
+    }
+
+    /// Ensure the active transport has completed any required startup.
+    pub async fn ensure_ready(&self) -> Result<()> {
+        let _update_guard = self.update_lock.lock().await;
+        let config = { self.config.lock().await.clone() };
+        if config.mode == TransportMode::Tor && config.tor.enabled {
+            self.ensure_tor_bootstrapped(&config).await?;
+        }
+        Ok(())
+    }
+
     /// Update transport configuration
     pub async fn update_config(&self, config: TransportConfig) -> Result<()> {
         // Serialize config mutations to avoid concurrent Tor/I2P re-initialization
@@ -214,6 +262,11 @@ impl TransportManager {
         let _update_guard = self.update_lock.lock().await;
         let current_config = { self.config.lock().await.clone() };
         if current_config == config {
+            if config.mode == TransportMode::Tor && config.tor.enabled {
+                self.ensure_tor_bootstrapped(&config).await?;
+                return Ok(());
+            }
+
             log_debug_event(
                 "transport.rs:TransportManager::update_config",
                 "transport_update_config_skip",

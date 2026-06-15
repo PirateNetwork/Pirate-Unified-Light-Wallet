@@ -7,16 +7,33 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/background/background_sync_manager.dart' as bg;
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/ffi/generated/models.dart'
+    show TunnelMode, TunnelMode_Tor;
 import '../../../core/providers/wallet_providers.dart';
 
 /// Tor status details for UI.
 class TorStatusNotifier extends Notifier<TorStatusDetails> {
+  static const int _maxRecoveryAttempts = 5;
+  static const List<Duration> _recoveryBackoff = [
+    Duration(seconds: 2),
+    Duration(seconds: 8),
+    Duration(seconds: 20),
+    Duration(seconds: 45),
+    Duration(seconds: 90),
+  ];
+
   Timer? _timer;
+  Timer? _recoveryTimer;
+  bool _recovering = false;
+  int _recoveryAttempts = 0;
 
   @override
   TorStatusDetails build() {
     _startPolling();
-    ref.onDispose(() => _timer?.cancel());
+    ref.onDispose(() {
+      _timer?.cancel();
+      _recoveryTimer?.cancel();
+    });
     return const TorStatusDetails(status: 'not_started');
   }
 
@@ -34,10 +51,94 @@ class TorStatusNotifier extends Notifier<TorStatusDetails> {
       final status = await FfiBridge.getTorStatusDetails();
       if (!ref.mounted) return;
       state = status;
+      _handleRecovery(status);
     } catch (_) {
       if (!ref.mounted) return;
       state = const TorStatusDetails(status: 'error');
+      _handleRecovery(state);
     }
+  }
+
+  void _handleRecovery(TorStatusDetails status) {
+    if (status.isReady || status.status == 'bootstrapping') {
+      _resetRecovery();
+      return;
+    }
+    if (status.status != 'not_started' && status.status != 'error') {
+      return;
+    }
+    unawaited(_scheduleRecoveryIfTorSelected());
+  }
+
+  Future<void> _scheduleRecoveryIfTorSelected() async {
+    if (_recovering ||
+        (_recoveryTimer?.isActive ?? false) ||
+        _recoveryAttempts >= _maxRecoveryAttempts) {
+      return;
+    }
+
+    final TunnelMode mode;
+    try {
+      mode = await FfiBridge.getTunnel();
+    } catch (_) {
+      return;
+    }
+    if (!ref.mounted) return;
+    if (mode is! TunnelMode_Tor) {
+      _resetRecovery();
+      return;
+    }
+
+    final delay = _recoveryBackoff[_recoveryAttempts];
+    _recoveryAttempts += 1;
+    _recoveryTimer = Timer(delay, () {
+      unawaited(_recoverTor());
+    });
+  }
+
+  Future<void> _recoverTor() async {
+    if (_recovering) return;
+    _recovering = true;
+    var shouldContinueRecovery = false;
+
+    try {
+      final mode = await FfiBridge.getTunnel();
+      if (!ref.mounted) return;
+      if (mode is! TunnelMode_Tor) {
+        _resetRecovery();
+        return;
+      }
+
+      const torMode = TunnelMode.tor();
+      await FfiBridge.shutdownTransport();
+      await FfiBridge.setTunnel(torMode, ensureReady: false);
+      await FfiBridge.bootstrapTunnel(torMode);
+
+      final status = await FfiBridge.getTorStatusDetails();
+      if (!ref.mounted) return;
+      state = status;
+      shouldContinueRecovery =
+          status.status == 'not_started' || status.status == 'error';
+      if (!shouldContinueRecovery) {
+        _resetRecovery();
+      }
+    } catch (_) {
+      if (!ref.mounted) return;
+      state = const TorStatusDetails(status: 'error');
+      shouldContinueRecovery = true;
+    } finally {
+      _recovering = false;
+    }
+
+    if (ref.mounted && shouldContinueRecovery) {
+      _handleRecovery(state);
+    }
+  }
+
+  void _resetRecovery() {
+    _recoveryTimer?.cancel();
+    _recoveryTimer = null;
+    _recoveryAttempts = 0;
   }
 }
 
@@ -431,8 +532,12 @@ class TransportConfigNotifier extends Notifier<TransportConfig> {
         return;
       }
       await tunnelNotifier.setTor();
+      ref.invalidate(torStatusProvider);
       applied = true;
     } catch (_) {
+      if (config.mode.toLowerCase() == 'tor' && requestId == _applyRequestId) {
+        ref.invalidate(torStatusProvider);
+      }
       // Keep silent to avoid UI noise during startup, but don't resume sync if
       // the requested mode was not applied.
     } finally {

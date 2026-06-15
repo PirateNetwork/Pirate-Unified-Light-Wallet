@@ -1006,7 +1006,11 @@ class FfiBridge {
   }
 
   // Network Tunnel
-  static Future<void> setTunnel(TunnelMode mode, {String? socksUrl}) async {
+  static Future<void> setTunnel(
+    TunnelMode mode, {
+    String? socksUrl,
+    bool ensureReady = true,
+  }) async {
     if (kUseFrbBindings) {
       // If mode is socks5 but url is provided separately, reconstruct with the url
       TunnelMode tunnelMode = mode;
@@ -1022,6 +1026,9 @@ class FfiBridge {
         }
       }
       await api.setTunnel(mode: tunnelMode);
+      if (ensureReady && tunnelMode is TunnelMode_Tor) {
+        await api.bootstrapTunnel(mode: tunnelMode);
+      }
       return;
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
