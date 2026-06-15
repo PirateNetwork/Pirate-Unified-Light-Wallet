@@ -178,6 +178,9 @@ flutter pub get --enforce-lockfile
 log "Fetching KDF Linux artifact..."
 bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
 
+log "Preparing Komodo coin assets..."
+bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
+
 # Build Linux app
 log "Building Linux app..."
 flutter_build_linux_release

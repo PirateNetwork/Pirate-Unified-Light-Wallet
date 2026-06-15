@@ -123,6 +123,9 @@ chmod +x "$SCRIPT_DIR/prefetch-kdf-artifact.sh"
 bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
 export OVERRIDE_DEFI_API_DOWNLOAD=false
 
+log "Preparing Komodo coin assets..."
+bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
+
 # Build based on type
 if [ "$BUILD_TYPE" = "bundle" ]; then
     log "Building Android App Bundle..."

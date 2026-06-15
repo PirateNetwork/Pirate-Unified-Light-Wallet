@@ -353,6 +353,9 @@ flutter pub get --enforce-lockfile
 log "Fetching KDF iOS artifact..."
 bash "$SCRIPT_DIR/prefetch-kdf-ios.sh"
 
+log "Preparing Komodo coin assets..."
+bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
+
 pushd "$IOS_DIR" >/dev/null
 if [ -f Podfile.lock ]; then
     pod install --deployment

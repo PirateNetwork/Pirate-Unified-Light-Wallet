@@ -569,6 +569,7 @@ jobs:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
+          bash ../scripts/prepare-komodo-assets.sh
           status=1
           for attempt in 1 2 3; do
             if flutter build apk --release --split-per-abi --target-platform=android-arm64,android-arm; then
@@ -587,6 +588,7 @@ jobs:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
+          bash ../scripts/prepare-komodo-assets.sh
           flutter build ios --release --no-codesign --config-only
           status=1
           for attempt in 1 2 3; do
@@ -619,6 +621,7 @@ jobs:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
+          bash ../scripts/prepare-komodo-assets.sh
           status=1
           for attempt in 1 2 3; do
             if flutter build linux --release; then
@@ -638,6 +641,7 @@ jobs:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
         run: |
           cd app
+          bash ../scripts/prepare-komodo-assets.sh
           status=1
           for attempt in 1 2 3; do
             if flutter build macos --release; then
@@ -658,6 +662,7 @@ jobs:
         shell: bash
         run: |
           cd app
+          bash ../scripts/prepare-komodo-assets.sh
           status=1
           for attempt in 1 2 3; do
             if flutter build windows --release; then

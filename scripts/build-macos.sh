@@ -537,6 +537,9 @@ flutter pub get --enforce-lockfile
 log "Fetching KDF macOS artifact..."
 bash "$SCRIPT_DIR/prefetch-kdf-artifact.sh" native
 
+log "Preparing Komodo coin assets..."
+bash "$SCRIPT_DIR/prepare-komodo-assets.sh"
+
 log "Building macOS app (universal2)..."
 # On modern Flutter versions, `flutter build macos` produces a universal build by
 # default. We validate the result below via lipo checks.
