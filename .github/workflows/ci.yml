@@ -1365,21 +1365,9 @@ jobs:
             exit 1
           }
 
-      - name: Build iOS Simulator app
-        run: |
-          cd app
-          flutter build ios --simulator --debug
-          SIM_APP="build/ios/iphonesimulator/Runner.app"
-          if [ ! -d "$SIM_APP" ]; then
-            echo "Simulator app not found at $SIM_APP" >&2
-            find build/ios -maxdepth 4 -type d -name "*.app" -print || true
-            exit 1
-          fi
-          OUTPUT_DIR="$GITHUB_WORKSPACE/dist/ios"
-          mkdir -p "$OUTPUT_DIR"
-          ZIP_PATH="$OUTPUT_DIR/pirate-unified-wallet-ios-simulator.app.zip"
-          (cd build/ios/iphonesimulator && zip -X -r "$ZIP_PATH" Runner.app)
-          (cd "$OUTPUT_DIR" && shasum -a 256 "$(basename "$ZIP_PATH")" > "$(basename "$ZIP_PATH").sha256")
+      # komodo_defi_framework currently ships KDF for physical iOS devices only
+      # (ios-aarch64). Do not build/package an iOS simulator app until the SDK
+      # provides an iphonesimulator slice or an xcframework containing one.
 
       - name: Reclaim workspace disk
         run: |
@@ -1403,14 +1391,6 @@ jobs:
           path: |
             dist/ios/*.ipa
             dist/ios/*.ipa.sha256
-
-      - name: Upload iOS Simulator app
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: ios-simulator-app
-          path: |
-            dist/ios/pirate-unified-wallet-ios-simulator.app.zip
-            dist/ios/pirate-unified-wallet-ios-simulator.app.zip.sha256
 
       - name: Upload SBOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

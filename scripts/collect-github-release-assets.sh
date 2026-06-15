@@ -370,7 +370,6 @@ copy_matching "$DEV_DIR/mobile-store-and-test-builds" \( \
   -name 'pirate-unified-wallet-android*.aab' \
   -o -name 'pirate-unified-wallet-android-*-unsigned.apk' \
   -o -name 'pirate-unified-wallet-ios-unsigned.ipa' \
-  -o -name 'pirate-unified-wallet-ios-simulator.app.zip' \
 \)
 
 copy_matching "$DEV_DIR/unsigned-desktop-test-builds" \( \
