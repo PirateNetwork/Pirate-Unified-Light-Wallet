@@ -32,6 +32,14 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# VS 18 / MSVC 14.51 promotes C++/WinRT's legacy
+# <experimental/coroutine> path to a hard error. Apply the compatibility macro
+# before Flutter/plugin subdirectories are added so generated plugin targets,
+# including local_auth_windows, inherit it.
+if(MSVC)
+  add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+endif()
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
@@ -56,14 +64,6 @@ add_subdirectory("runner")
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
 include(flutter/generated_plugins.cmake)
-
-if(TARGET local_auth_windows_plugin)
-  # VS 18 / MSVC 14.51 turns local_auth_windows' C++/WinRT
-  # <experimental/coroutine> include into a hard error unless this compatibility
-  # macro is defined.
-  target_compile_definitions(local_auth_windows_plugin PRIVATE
-    "_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
-endif()
 
 
 # === Installation ===
