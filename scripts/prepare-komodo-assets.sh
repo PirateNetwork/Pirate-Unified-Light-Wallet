@@ -18,16 +18,19 @@ error() {
 resolve_tool() {
     local name="$1"
     local tool_path=""
+    local bat_path=""
 
-    if tool_path="$(command -v "$name" 2>/dev/null)"; then
+    tool_path="$(command -v "$name" 2>/dev/null || true)"
+    if [ -n "$tool_path" ]; then
         case "$(uname -s 2>/dev/null || true)" in
             MINGW*|MSYS*|CYGWIN*)
                 if [ -f "${tool_path}.bat" ]; then
                     echo "${tool_path}.bat"
                     return 0
                 fi
-                if tool_path="$(command -v "${name}.bat" 2>/dev/null)"; then
-                    echo "$tool_path"
+                bat_path="$(command -v "${name}.bat" 2>/dev/null || true)"
+                if [ -n "$bat_path" ]; then
+                    echo "$bat_path"
                     return 0
                 fi
                 ;;
@@ -36,8 +39,9 @@ resolve_tool() {
         return 0
     fi
 
-    if tool_path="$(command -v "${name}.bat" 2>/dev/null)"; then
-        echo "$tool_path"
+    bat_path="$(command -v "${name}.bat" 2>/dev/null || true)"
+    if [ -n "$bat_path" ]; then
+        echo "$bat_path"
         return 0
     fi
 
@@ -75,16 +79,18 @@ run_transformer_pass() {
     rm -f "$output_file"
     log "Running coin asset transformer preflight pass $attempt..."
 
-    set +e
-    "$FLUTTER_CMD" pub run komodo_wallet_build_transformer \
+    local status
+    if "$FLUTTER_CMD" pub run komodo_wallet_build_transformer \
         --fetch_coin_assets \
         --artifact_output_package=komodo_defi_framework \
         --config_output_path=app_build/build_config.json \
         --input "$input_file" \
         --output "$output_file" \
-        --log_level=info >"$log_file" 2>&1
-    local status=$?
-    set -e
+        --log_level=info >"$log_file" 2>&1; then
+        status=0
+    else
+        status=$?
+    fi
 
     cat "$log_file"
 
@@ -101,14 +107,11 @@ run_transformer_pass() {
 }
 
 for attempt in 1 2 3; do
-    set +e
-    run_transformer_pass "$attempt"
-    status=$?
-    set -e
-
-    if [ "$status" -eq 0 ]; then
+    if run_transformer_pass "$attempt"; then
         log "Coin assets are stable."
         exit 0
+    else
+        status=$?
     fi
 
     if [ "$status" -eq 2 ]; then
