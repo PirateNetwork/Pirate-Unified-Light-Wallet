@@ -48,17 +48,40 @@ if ! hdiutil imageinfo "$DMG_PATH" >/dev/null 2>&1; then
   exit 1
 fi
 
+detach_partial_attach() {
+  local attach_output="$1"
+  local device=""
+
+  while IFS= read -r device; do
+    [[ -n "$device" ]] || continue
+    hdiutil detach "$device" -force -quiet >/dev/null 2>&1 || true
+  done < <(printf '%s\n' "$attach_output" | awk '/^\/dev\// {print $1}')
+
+  hdiutil detach "$MOUNT_DIR" -force -quiet >/dev/null 2>&1 || true
+}
+
+parse_mount_point() {
+  local attach_output="$1"
+  local parsed=""
+
+  parsed="$(printf '%s\n' "$attach_output" | awk -F '\t' '/^\/dev\// && $NF ~ /^\// {mp=$NF} END{print mp}')"
+  if [[ -z "$parsed" || ! -d "$parsed" ]]; then
+    parsed="$(printf '%s\n' "$attach_output" | sed -nE 's#^/dev/[^[:space:]]+[[:space:]].*[[:space:]](/Volumes/.*)$#\1#p' | tail -n 1)"
+  fi
+  printf '%s' "$parsed"
+}
+
 attach_with_retries() {
-  local max_attempts=4
+  local max_attempts="${DMG_VERIFY_ATTACH_ATTEMPTS:-10}"
   local attempt=1
-  local delay=2
+  local delay=3
   local out=""
   local rc=0
 
   while (( attempt <= max_attempts )); do
     echo "[verify-macos-dmg] Attach attempt $attempt/$max_attempts (explicit mountpoint)..."
     set +e
-    out="$(hdiutil attach -nobrowse -readonly -mountpoint "$MOUNT_DIR" "$DMG_PATH" 2>&1)"
+    out="$(hdiutil attach -noautoopen -nobrowse -readonly -noverify -mountpoint "$MOUNT_DIR" "$DMG_PATH" 2>&1)"
     rc=$?
     set -e
     if (( rc == 0 )); then
@@ -70,28 +93,38 @@ attach_with_retries() {
 
     echo "[verify-macos-dmg] Explicit mountpoint attach failed (attempt $attempt):" >&2
     echo "$out" >&2
+    detach_partial_attach "$out"
 
     echo "[verify-macos-dmg] Retrying without explicit mountpoint..." >&2
     set +e
-    out="$(hdiutil attach -nobrowse -readonly "$DMG_PATH" 2>&1)"
+    out="$(hdiutil attach -noautoopen -nobrowse -readonly -noverify "$DMG_PATH" 2>&1)"
     rc=$?
     set -e
     if (( rc == 0 )); then
       echo "$out"
       MOUNT_DEVICE="$(printf '%s\n' "$out" | awk '/^\/dev\// {print $1; exit}')"
-      MOUNT_POINT="$(printf '%s\n' "$out" | awk '/^\/dev\// {mp=$NF} END{print mp}')"
+      MOUNT_POINT="$(parse_mount_point "$out")"
       if [[ -n "$MOUNT_POINT" && -d "$MOUNT_POINT" ]]; then
         return 0
       fi
       echo "[verify-macos-dmg] Fallback attach succeeded but mountpoint parse failed." >&2
       echo "$out" >&2
+      detach_partial_attach "$out"
     else
       echo "[verify-macos-dmg] Fallback attach failed (attempt $attempt):" >&2
       echo "$out" >&2
+      detach_partial_attach "$out"
     fi
 
     if (( attempt < max_attempts )); then
+      echo "[verify-macos-dmg] Waiting ${delay}s before retry..." >&2
       sleep "$delay"
+      if (( delay < 20 )); then
+        delay=$((delay * 2))
+        if (( delay > 20 )); then
+          delay=20
+        fi
+      fi
     fi
     attempt=$((attempt + 1))
   done
@@ -101,6 +134,7 @@ attach_with_retries() {
 
 if ! attach_with_retries; then
   echo "[verify-macos-dmg] Failed to mount DMG after retries: $DMG_PATH" >&2
+  hdiutil info >&2 || true
   exit 1
 fi
 

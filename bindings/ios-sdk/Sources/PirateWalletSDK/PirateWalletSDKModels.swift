@@ -201,6 +201,31 @@ public struct TransactionOutput: Codable, Equatable {
         self.amount = amount
         self.memo = memo
     }
+
+    enum CodingKeys: String, CodingKey {
+        case address
+        case addr
+        case amount
+        case memo
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let wireAddress = try container.decodeIfPresent(String.self, forKey: .addr) {
+            address = wireAddress
+        } else {
+            address = try container.decode(String.self, forKey: .address)
+        }
+        amount = try container.decode(Int64.self, forKey: .amount)
+        memo = try container.decodeIfPresent(String.self, forKey: .memo)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(address, forKey: .addr)
+        try container.encode(amount, forKey: .amount)
+        try container.encodeIfPresent(memo, forKey: .memo)
+    }
 }
 
 public struct BuildTransactionRequest: Codable, Equatable {

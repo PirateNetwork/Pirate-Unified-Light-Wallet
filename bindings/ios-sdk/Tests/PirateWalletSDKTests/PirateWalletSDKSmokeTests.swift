@@ -119,6 +119,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
                 XCTAssertEqual(request["fee_opt"] as? String, "1000")
                 let outputs = try XCTUnwrap(request["outputs"] as? [[String: Any]])
+                XCTAssertEqual(outputs.first?["addr"] as? String, "zs1recipient")
                 XCTAssertEqual(outputs.first?["amount"] as? String, "9007199254740993")
                 return try ok([
                     "id": "pending-1",
