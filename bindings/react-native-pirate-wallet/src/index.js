@@ -129,6 +129,35 @@ function camelize(value) {
   return value
 }
 
+function pendingTransactionForWire(pending) {
+  if (!pending || typeof pending !== 'object' || Array.isArray(pending)) {
+    return pending
+  }
+
+  const mapValue = (snakeKey, camelKey) =>
+    pending[snakeKey] !== undefined ? pending[snakeKey] : pending[camelKey]
+
+  const wire = {
+    id: pending.id,
+    outputs: pending.outputs,
+    total_amount: mapValue('total_amount', 'totalAmount'),
+    fee: pending.fee,
+    change: pending.change,
+    input_total: mapValue('input_total', 'inputTotal'),
+    num_inputs: mapValue('num_inputs', 'numInputs'),
+    expiry_height: mapValue('expiry_height', 'expiryHeight'),
+    created_at: mapValue('created_at', 'createdAt')
+  }
+
+  for (const key of Object.keys(wire)) {
+    if (wire[key] === undefined) {
+      delete wire[key]
+    }
+  }
+
+  return wire
+}
+
 function isSyncComplete(syncStatus) {
   return (
     syncStatus != null &&
@@ -463,7 +492,7 @@ class PirateWalletSdk {
 
   // Like _call, but returns the result without camelizing it. Use for RPCs
   // whose result is an opaque payload that must be passed back into a later
-  // RPC unchanged (build_tx -> sign_tx -> broadcast_tx).
+  // RPC unchanged (for example, sign_tx -> broadcast_tx).
   async _callRaw(method, params = {}, pretty = false) {
     const response = await this.invoke(buildRequest(method, params), pretty)
     return unwrapEnvelope(response, method, { camelizeResult: false })
@@ -749,7 +778,7 @@ class PirateWalletSdk {
       request = { walletId: walletIdOrRequest, outputs: [outputs], fee }
     }
 
-    return this._callRaw('build_tx', {
+    return this._call('build_tx', {
       wallet_id: request.walletId,
       outputs: request.outputs,
       fee_opt: request.fee
@@ -759,7 +788,7 @@ class PirateWalletSdk {
   signTransaction(walletId, pending) {
     return this._callRaw('sign_tx', {
       wallet_id: walletId,
-      pending
+      pending: pendingTransactionForWire(pending)
     })
   }
 

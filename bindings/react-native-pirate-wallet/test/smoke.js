@@ -62,6 +62,18 @@ function createMockNativeModule() {
             expiry_height: 123456,
             created_at: 1710000001
           })
+        case 'sign_tx':
+          assert.strictEqual(request.pending.total_amount, '9007199254740993')
+          assert.strictEqual(request.pending.totalAmount, undefined)
+          assert.strictEqual(request.pending.input_total, '9007199254741993')
+          return ok({
+            txid: 'tx-1',
+            raw: [1, 2, 3],
+            size: 3
+          })
+        case 'broadcast_tx':
+          assert.strictEqual(request.signed.txid, 'tx-1')
+          return ok('tx-1')
         case 'sync_status':
           return ok({
             local_height: 120,
@@ -157,6 +169,11 @@ async function main() {
     1000
   )
   assert.strictEqual(pending.totalAmount, '9007199254740993')
+  assert.strictEqual(pending.outputs[0].amount, '9007199254740993')
+
+  const signed = await sdk.signTransaction('wallet-1', pending)
+  const txid = await sdk.broadcastTransaction(signed)
+  assert.strictEqual(txid, 'tx-1')
 
   const synchronizer = sdk.createSynchronizer('wallet-1')
   const snapshot = await synchronizer.refresh()
