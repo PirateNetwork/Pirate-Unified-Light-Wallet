@@ -12,8 +12,8 @@ use pirate_core::keys::{
 };
 use pirate_params::NetworkType;
 use pirate_storage_sqlite::{AddressType, Repository};
+use sapling::PaymentAddress as SaplingPaymentAddress;
 use std::collections::{HashMap, HashSet};
-use zcash_primitives::sapling::PaymentAddress as SaplingPaymentAddress;
 
 pub(super) fn current_receive_address(wallet_id: WalletId) -> Result<String> {
     if is_decoy_mode_active() {

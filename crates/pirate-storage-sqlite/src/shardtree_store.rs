@@ -8,14 +8,15 @@ use std::{
     sync::Arc,
 };
 
-use incrementalmerkletree::{Address, Hashable, Level, Position, Retention};
+use incrementalmerkletree::{Address, Hashable, Level, Marking, Position, Retention};
 use shardtree::{
-    error::ShardTreeError,
+    error::{QueryError, ShardTreeError},
     store::{Checkpoint, ShardStore, TreeState},
     LocatedPrunableTree, LocatedTree, PrunableTree, RetentionFlags,
 };
 
-use zcash_primitives::{consensus::BlockHeight, merkle_tree::HashSer};
+use zcash_primitives::merkle_tree::HashSer;
+use zcash_protocol::consensus::BlockHeight;
 
 use crate::shardtree_serialization::{read_shard, write_shard};
 
@@ -164,8 +165,12 @@ impl<'conn, 'a: 'conn, H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         get_shard_roots(self.conn, self.table_prefix, Self::SHARD_ROOT_LEVEL)
     }
 
-    fn truncate(&mut self, from: Address) -> Result<(), Self::Error> {
-        truncate(self.conn, self.table_prefix, from)
+    fn truncate_shards(&mut self, shard_index: u64) -> Result<(), Self::Error> {
+        truncate(
+            self.conn,
+            self.table_prefix,
+            Address::from_parts(Self::SHARD_ROOT_LEVEL, shard_index),
+        )
     }
 
     fn get_cap(&self) -> Result<PrunableTree<Self::H>, Self::Error> {
@@ -217,6 +222,13 @@ impl<'conn, 'a: 'conn, H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         with_checkpoints(self.conn, self.table_prefix, limit, callback)
     }
 
+    fn for_each_checkpoint<F>(&self, limit: usize, callback: F) -> Result<(), Self::Error>
+    where
+        F: FnMut(&Self::CheckpointId, &Checkpoint) -> Result<(), Self::Error>,
+    {
+        with_checkpoints(self.conn, self.table_prefix, limit, callback)
+    }
+
     fn update_checkpoint_with<F>(
         &mut self,
         checkpoint_id: &Self::CheckpointId,
@@ -232,11 +244,11 @@ impl<'conn, 'a: 'conn, H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         remove_checkpoint(self.conn, self.table_prefix, *checkpoint_id)
     }
 
-    fn truncate_checkpoints(
+    fn truncate_checkpoints_retaining(
         &mut self,
         checkpoint_id: &Self::CheckpointId,
     ) -> Result<(), Self::Error> {
-        truncate_checkpoints(self.conn, self.table_prefix, *checkpoint_id)
+        truncate_checkpoints_retaining(self.conn, self.table_prefix, *checkpoint_id)
     }
 }
 
@@ -269,8 +281,12 @@ impl<H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         get_shard_roots(&self.conn, self.table_prefix, Self::SHARD_ROOT_LEVEL)
     }
 
-    fn truncate(&mut self, from: Address) -> Result<(), Self::Error> {
-        truncate(&self.conn, self.table_prefix, from)
+    fn truncate_shards(&mut self, shard_index: u64) -> Result<(), Self::Error> {
+        truncate(
+            &self.conn,
+            self.table_prefix,
+            Address::from_parts(Self::SHARD_ROOT_LEVEL, shard_index),
+        )
     }
 
     fn get_cap(&self) -> Result<PrunableTree<Self::H>, Self::Error> {
@@ -326,6 +342,15 @@ impl<H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         tx.commit().map_err(Error::Query)
     }
 
+    fn for_each_checkpoint<F>(&self, limit: usize, callback: F) -> Result<(), Self::Error>
+    where
+        F: FnMut(&Self::CheckpointId, &Checkpoint) -> Result<(), Self::Error>,
+    {
+        let tx = self.conn.unchecked_transaction().map_err(Error::Query)?;
+        with_checkpoints(&tx, self.table_prefix, limit, callback)?;
+        tx.commit().map_err(Error::Query)
+    }
+
     fn update_checkpoint_with<F>(
         &mut self,
         checkpoint_id: &Self::CheckpointId,
@@ -346,12 +371,12 @@ impl<H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         tx.commit().map_err(Error::Query)
     }
 
-    fn truncate_checkpoints(
+    fn truncate_checkpoints_retaining(
         &mut self,
         checkpoint_id: &Self::CheckpointId,
     ) -> Result<(), Self::Error> {
         let tx = self.conn.transaction().map_err(Error::Query)?;
-        truncate_checkpoints(&tx, self.table_prefix, *checkpoint_id)?;
+        truncate_checkpoints_retaining(&tx, self.table_prefix, *checkpoint_id)?;
         tx.commit().map_err(Error::Query)
     }
 }
@@ -385,8 +410,12 @@ impl<H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         get_shard_roots(self.conn, self.table_prefix, Self::SHARD_ROOT_LEVEL)
     }
 
-    fn truncate(&mut self, from: Address) -> Result<(), Self::Error> {
-        truncate(self.conn, self.table_prefix, from)
+    fn truncate_shards(&mut self, shard_index: u64) -> Result<(), Self::Error> {
+        truncate(
+            self.conn,
+            self.table_prefix,
+            Address::from_parts(Self::SHARD_ROOT_LEVEL, shard_index),
+        )
     }
 
     fn get_cap(&self) -> Result<PrunableTree<Self::H>, Self::Error> {
@@ -444,6 +473,15 @@ impl<H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         Ok(())
     }
 
+    fn for_each_checkpoint<F>(&self, limit: usize, callback: F) -> Result<(), Self::Error>
+    where
+        F: FnMut(&Self::CheckpointId, &Checkpoint) -> Result<(), Self::Error>,
+    {
+        let tx = self.conn.unchecked_transaction().map_err(Error::Query)?;
+        with_checkpoints(&tx, self.table_prefix, limit, callback)?;
+        tx.commit().map_err(Error::Query)
+    }
+
     fn update_checkpoint_with<F>(
         &mut self,
         checkpoint_id: &Self::CheckpointId,
@@ -465,12 +503,12 @@ impl<H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         Ok(())
     }
 
-    fn truncate_checkpoints(
+    fn truncate_checkpoints_retaining(
         &mut self,
         checkpoint_id: &Self::CheckpointId,
     ) -> Result<(), Self::Error> {
         let tx = self.conn.unchecked_transaction().map_err(Error::Query)?;
-        truncate_checkpoints(&tx, self.table_prefix, *checkpoint_id)?;
+        truncate_checkpoints_retaining(&tx, self.table_prefix, *checkpoint_id)?;
         tx.commit().map_err(Error::Query)?;
         Ok(())
     }
@@ -495,7 +533,13 @@ pub(crate) fn get_shard<H: HashSer>(
     .map_err(Error::Query)?
     .map(|(shard_data, root_hash)| {
         let shard_tree = read_shard(&mut Cursor::new(shard_data)).map_err(Error::Serialization)?;
-        let located_tree = LocatedPrunableTree::from_parts(shard_root_addr, shard_tree);
+        let located_tree =
+            LocatedPrunableTree::from_parts(shard_root_addr, shard_tree).map_err(|addr| {
+                Error::Serialization(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("stored shard is not located at {:?}", addr),
+                ))
+            })?;
         if let Some(root_hash_data) = root_hash {
             let root_hash = H::read(Cursor::new(root_hash_data)).map_err(Error::Serialization)?;
             Ok(located_tree.reannotate_root(Some(Arc::new(root_hash))))
@@ -531,7 +575,12 @@ pub(crate) fn last_shard<H: HashSer>(
     .map(|(shard_index, shard_data)| {
         let shard_root = Address::from_parts(shard_root_level, shard_index);
         let shard_tree = read_shard(&mut Cursor::new(shard_data)).map_err(Error::Serialization)?;
-        Ok(LocatedPrunableTree::from_parts(shard_root, shard_tree))
+        LocatedPrunableTree::from_parts(shard_root, shard_tree).map_err(|addr| {
+            Error::Serialization(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("stored shard is not located at {:?}", addr),
+            ))
+        })
     })
     .transpose()
 }
@@ -922,10 +971,6 @@ pub(crate) fn get_checkpoint_at_depth(
     table_prefix: &'static str,
     checkpoint_depth: usize,
 ) -> Result<Option<(BlockHeight, Checkpoint)>, Error> {
-    if checkpoint_depth == 0 {
-        return Ok(None);
-    }
-
     let checkpoint_parts = conn
         .query_row(
             &format!(
@@ -936,7 +981,7 @@ pub(crate) fn get_checkpoint_at_depth(
                 OFFSET :offset",
                 table_prefix
             ),
-            named_params![":offset": (checkpoint_depth - 1) as i64],
+            named_params![":offset": checkpoint_depth as i64],
             |row| {
                 let checkpoint_id: u32 = row.get(0)?;
                 let position: Option<i64> = row.get(1)?;
@@ -1091,7 +1136,7 @@ pub(crate) fn remove_checkpoint(
     Ok(())
 }
 
-pub(crate) fn truncate_checkpoints(
+pub(crate) fn truncate_checkpoints_retaining(
     conn: &rusqlite::Transaction<'_>,
     table_prefix: &'static str,
     checkpoint_id: BlockHeight,
@@ -1109,7 +1154,7 @@ pub(crate) fn truncate_checkpoints(
 
     conn.execute(
         &format!(
-            "DELETE FROM {}_tree_checkpoints WHERE checkpoint_id >= ?",
+            "DELETE FROM {}_tree_checkpoints WHERE checkpoint_id > ?",
             table_prefix
         ),
         [u32::from(checkpoint_id)],
@@ -1169,7 +1214,8 @@ pub fn put_shard_roots<
         Address::from_parts((DEPTH - SHARD_HEIGHT).into(), 0),
         get_cap::<LevelShifter<H, SHARD_HEIGHT>>(conn, table_prefix)
             .map_err(ShardTreeError::Storage)?,
-    );
+    )
+    .map_err(|addr| ShardTreeError::Query(QueryError::NotContained(addr)))?;
 
     let cap_result = cap
         .batch_insert(
@@ -1179,7 +1225,7 @@ pub fn put_shard_roots<
                     LevelShifter(r.root_hash().clone()),
                     Retention::Checkpoint {
                         id: (),
-                        is_marked: false,
+                        marking: Marking::None,
                     },
                 )
             }),

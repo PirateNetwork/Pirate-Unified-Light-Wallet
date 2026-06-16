@@ -161,7 +161,7 @@ pub fn try_decrypt_compact_orchard_action(
     enc_ciphertext.copy_from_slice(&action.enc_ciphertext[..52]);
 
     let compact_action = CompactAction::from_parts(nullifier, cmx, ephemeral_key, enc_ciphertext);
-    let domain = OrchardDomain::for_nullifier(nullifier);
+    let domain = OrchardDomain::for_compact_action(&compact_action);
 
     match try_compact_note_decryption(&domain, &prepared_ivk, &compact_action) {
         Some((note, payment_address)) => {

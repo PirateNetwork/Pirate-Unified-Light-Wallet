@@ -34,10 +34,14 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 zcash_client_backend = { workspace = true }
+zcash_keys = { workspace = true }
 zcash_note_encryption = { workspace = true }
 zcash_primitives = { workspace = true }
+zcash_protocol = { workspace = true }
+zcash_transparent = { workspace = true }
+sapling = { workspace = true }
 
 [dev-dependencies]
 incrementalmerkletree = { workspace = true }
-shardtree = "0.1"
+shardtree = { workspace = true }
 tempfile = { workspace = true }

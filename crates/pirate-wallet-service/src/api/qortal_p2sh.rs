@@ -5,7 +5,7 @@ use pirate_core::{
     build_qortal_p2sh_funding_transaction, build_qortal_p2sh_redeem_transaction, Memo,
     QortalP2shFundingPlan, QortalP2shRedeemPlan, QortalRecipient,
 };
-use zcash_client_backend::address::RecipientAddress;
+use zcash_keys::address::Address as RecipientAddress;
 use zcash_primitives::transaction::Transaction;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -85,11 +85,11 @@ fn validate_qortal_input_address(network_type: NetworkType, input: &str) -> Resu
         .ok_or_else(|| anyhow!("Invalid input address: {}", input))?;
     match input_address {
         RecipientAddress::Transparent(_) => Ok(()),
-        RecipientAddress::Shielded(_)
-        | RecipientAddress::Orchard(_)
-        | RecipientAddress::Unified(_) => Err(anyhow!(
-            "Input address must be a transparent address for Qortal P2SH commands"
-        )),
+        RecipientAddress::Sapling(_) | RecipientAddress::Unified(_) | RecipientAddress::Tex(_) => {
+            Err(anyhow!(
+                "Input address must be a transparent address for Qortal P2SH commands"
+            ))
+        }
     }
 }
 
@@ -180,13 +180,8 @@ fn parse_qortal_recipient(
     })?;
 
     match recipient {
-        RecipientAddress::Shielded(address) => Ok(QortalRecipient::Sapling {
+        RecipientAddress::Sapling(address) => Ok(QortalRecipient::Sapling {
             address: PaymentAddress { inner: address },
-            amount: output.amount,
-            memo,
-        }),
-        RecipientAddress::Orchard(address) => Ok(QortalRecipient::Orchard {
-            address,
             amount: output.amount,
             memo,
         }),
@@ -194,8 +189,26 @@ fn parse_qortal_recipient(
             address,
             amount: output.amount,
         }),
-        RecipientAddress::Unified(_) => Err(anyhow!(
-            "Unified addresses are not supported for Qortal P2SH commands"
+        RecipientAddress::Unified(address) => {
+            let orchard = address.orchard().copied();
+            if orchard.is_some()
+                && !address.has_sapling()
+                && !address.has_transparent()
+                && address.unknown().is_empty()
+            {
+                Ok(QortalRecipient::Orchard {
+                    address: orchard.expect("checked above"),
+                    amount: output.amount,
+                    memo,
+                })
+            } else {
+                Err(anyhow!(
+                    "Unified addresses are not supported for Qortal P2SH commands"
+                ))
+            }
+        }
+        RecipientAddress::Tex(_) => Err(anyhow!(
+            "TEX addresses are not supported for Qortal P2SH commands"
         )),
     }
 }
@@ -493,11 +506,11 @@ mod tests {
     use crate::models::Output;
     use pirate_core::keys::OrchardExtendedSpendingKey;
     use pirate_core::transaction::PirateNetwork;
-    use zcash_client_backend::address::RecipientAddress;
-    use zcash_primitives::legacy::TransparentAddress;
+    use zcash_keys::address::Address as RecipientAddress;
+    use zcash_transparent::address::TransparentAddress;
 
     fn sample_transparent_input() -> String {
-        RecipientAddress::Transparent(TransparentAddress::PublicKey([7u8; 20]))
+        RecipientAddress::Transparent(TransparentAddress::PublicKeyHash([7u8; 20]))
             .encode(&PirateNetwork::new(NetworkType::Mainnet))
     }
 

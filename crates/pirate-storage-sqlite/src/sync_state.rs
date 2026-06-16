@@ -579,11 +579,9 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
     {
         use crate::shardtree_store::SqliteShardStore;
         use orchard::tree::MerkleHashOrchard;
+        use sapling::{Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH};
         use shardtree::ShardTree;
-        use zcash_primitives::{
-            consensus::BlockHeight,
-            sapling::{Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH},
-        };
+        use zcash_protocol::consensus::BlockHeight;
 
         const PRUNING_DEPTH: usize = 100;
         const SAPLING_TABLE_PREFIX: &str = "sapling";
@@ -606,10 +604,10 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
             ORCHARD_SHARD_HEIGHT,
         >;
 
-        let first_checkpoint_above = |table_prefix: &'static str| -> Result<Option<BlockHeight>> {
+        let checkpoint_at_or_below = |table_prefix: &'static str| -> Result<Option<BlockHeight>> {
             let checkpoint_id: Option<u32> = tx.query_row(
                 &format!(
-                    "SELECT MIN(checkpoint_id) FROM {}_tree_checkpoints WHERE checkpoint_id > ?1",
+                    "SELECT MAX(checkpoint_id) FROM {}_tree_checkpoints WHERE checkpoint_id <= ?1",
                     table_prefix
                 ),
                 [height],
@@ -618,31 +616,45 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
             Ok(checkpoint_id.map(BlockHeight::from))
         };
 
-        if let Some(checkpoint_id) = first_checkpoint_above(SAPLING_TABLE_PREFIX)? {
+        let clear_shardtree = |table_prefix: &'static str| -> Result<()> {
+            tx.execute(
+                &format!("DELETE FROM {}_tree_checkpoint_marks_removed", table_prefix),
+                [],
+            )?;
+            tx.execute(
+                &format!("DELETE FROM {}_tree_checkpoints", table_prefix),
+                [],
+            )?;
+            tx.execute(&format!("DELETE FROM {}_tree_shards", table_prefix), [])?;
+            tx.execute(&format!("DELETE FROM {}_tree_cap", table_prefix), [])?;
+            Ok(())
+        };
+
+        if let Some(checkpoint_id) = checkpoint_at_or_below(SAPLING_TABLE_PREFIX)? {
             let store = SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
                 &tx,
                 SAPLING_TABLE_PREFIX,
             )?;
             let mut tree: SaplingTree<'_, '_> = ShardTree::new(store, PRUNING_DEPTH);
-            let _ = tree
-                .truncate_removing_checkpoint(&checkpoint_id)
-                .map_err(|e| {
-                    Error::Storage(format!("Failed to truncate Sapling shardtree: {}", e))
-                })?;
+            let _ = tree.truncate_to_checkpoint(&checkpoint_id).map_err(|e| {
+                Error::Storage(format!("Failed to truncate Sapling shardtree: {}", e))
+            })?;
+        } else {
+            clear_shardtree(SAPLING_TABLE_PREFIX)?;
         }
 
-        if let Some(checkpoint_id) = first_checkpoint_above(ORCHARD_TABLE_PREFIX)? {
+        if let Some(checkpoint_id) = checkpoint_at_or_below(ORCHARD_TABLE_PREFIX)? {
             let store =
                 SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
                     &tx,
                     ORCHARD_TABLE_PREFIX,
                 )?;
             let mut tree: OrchardTree<'_, '_> = ShardTree::new(store, PRUNING_DEPTH);
-            let _ = tree
-                .truncate_removing_checkpoint(&checkpoint_id)
-                .map_err(|e| {
-                    Error::Storage(format!("Failed to truncate Orchard shardtree: {}", e))
-                })?;
+            let _ = tree.truncate_to_checkpoint(&checkpoint_id).map_err(|e| {
+                Error::Storage(format!("Failed to truncate Orchard shardtree: {}", e))
+            })?;
+        } else {
+            clear_shardtree(ORCHARD_TABLE_PREFIX)?;
         }
     }
 
@@ -1028,6 +1040,71 @@ mod tests {
             .collect::<std::result::Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(orchard_ids, vec![100]);
+    }
+
+    #[test]
+    fn test_truncate_above_height_clears_trees_without_retained_checkpoint() {
+        let mut db = test_db();
+
+        for prefix in ["sapling", "orchard"] {
+            db.conn()
+                .execute(
+                    &format!(
+                        "INSERT INTO {}_tree_cap (cap_id, cap_data) VALUES (0, X'01')",
+                        prefix
+                    ),
+                    [],
+                )
+                .unwrap();
+            db.conn()
+                .execute(
+                    &format!(
+                        "INSERT INTO {}_tree_checkpoints (checkpoint_id, position) VALUES (105, 10)",
+                        prefix
+                    ),
+                    [],
+                )
+                .unwrap();
+            db.conn()
+                .execute(
+                    &format!(
+                        "INSERT INTO {}_tree_checkpoint_marks_removed (checkpoint_id, mark_removed_position) VALUES (105, 7)",
+                        prefix
+                    ),
+                    [],
+                )
+                .unwrap();
+            db.conn()
+                .execute(
+                    &format!(
+                        "INSERT INTO {}_tree_shards (shard_index, subtree_end_height, root_hash, shard_data, contains_marked) VALUES (0, 105, X'02', X'03', 1)",
+                        prefix
+                    ),
+                    [],
+                )
+                .unwrap();
+        }
+
+        truncate_above_height(&mut db, 100).unwrap();
+
+        for table in [
+            "sapling_tree_cap",
+            "sapling_tree_checkpoints",
+            "sapling_tree_checkpoint_marks_removed",
+            "sapling_tree_shards",
+            "orchard_tree_cap",
+            "orchard_tree_checkpoints",
+            "orchard_tree_checkpoint_marks_removed",
+            "orchard_tree_shards",
+        ] {
+            let count: i64 = db
+                .conn()
+                .query_row(&format!("SELECT COUNT(*) FROM {}", table), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(count, 0, "{} should be empty after rollback", table);
+        }
     }
 
     #[test]

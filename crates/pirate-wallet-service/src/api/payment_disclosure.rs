@@ -1,8 +1,9 @@
 use super::*;
 use bech32::{Bech32, Hrp};
+use sapling::note_encryption::{prf_ock, try_sapling_output_recovery_with_ock};
 use std::convert::TryInto;
 use zcash_note_encryption::{try_output_recovery_with_ock, Domain, EphemeralKeyBytes};
-use zcash_primitives::sapling::note_encryption::{prf_ock, try_sapling_output_recovery_with_ock};
+use zcash_primitives::transaction::components::sapling::zip212_enforcement;
 use zcash_primitives::transaction::TxId as ZcashTxId;
 
 const SAPLING_DISCLOSURE_MAINNET_HRP: &str = "pirate-sapling-payment-disclosure";
@@ -225,6 +226,7 @@ fn recover_payment_disclosures_from_tx(
 
     let network = PirateNetwork::new(network_type);
     let block_height = BlockHeight::from_u32(tx_height.unwrap_or(0));
+    let sapling_zip212 = zip212_enforcement(&network, block_height);
     let txid = txid_string(txid_bytes);
 
     if let Some(bundle) = tx.sapling_bundle() {
@@ -235,7 +237,7 @@ fn recover_payment_disclosures_from_tx(
                 let cmu_bytes = output.cmu().to_bytes();
                 let ock = prf_ock(&ovk, output.cv(), &cmu_bytes, output.ephemeral_key());
                 if let Some((note, address, memo)) =
-                    try_sapling_output_recovery_with_ock(&network, block_height, &ock, output)
+                    try_sapling_output_recovery_with_ock(&ock, output, sapling_zip212)
                 {
                     let ock_bytes = ock.0;
                     let disclosure = match encode_payment_disclosure(
@@ -248,7 +250,7 @@ fn recover_payment_disclosures_from_tx(
                         Ok(value) => value,
                         Err(_) => break,
                     };
-                    let memo_vec = memo.as_array().to_vec();
+                    let memo_vec = memo.to_vec();
                     disclosures.push(PaymentDisclosure {
                         disclosure_type: DisclosureKind::Sapling.as_str().to_string(),
                         txid: txid.clone(),
@@ -499,7 +501,6 @@ async fn verify_payment_disclosure_inner(
         .or_else(|_| Transaction::read(raw.bytes.as_slice(), BranchId::Canopy))
         .map_err(|e| anyhow!("Failed to parse transaction: {}", e))?;
     let txid_bytes = *tx.txid().as_ref();
-    let block_height = BlockHeight::from_u32(raw.height.unwrap_or(0));
     let ock = zcash_note_encryption::OutgoingCipherKey(decoded.ock);
 
     match decoded.kind {
@@ -513,11 +514,13 @@ async fn verify_payment_disclosure_inner(
                 .ok_or_else(|| {
                     anyhow!("Sapling output index {} out of range", decoded.output_index)
                 })?;
+            let block_height = BlockHeight::from_u32(raw.height.unwrap_or(0));
             let network = PirateNetwork::new(wallet_network);
+            let sapling_zip212 = zip212_enforcement(&network, block_height);
             let (note, address, memo) =
-                try_sapling_output_recovery_with_ock(&network, block_height, &ock, output)
+                try_sapling_output_recovery_with_ock(&ock, output, sapling_zip212)
                     .ok_or_else(|| anyhow!("Failed to decrypt Sapling output with disclosure"))?;
-            let memo_vec = memo.as_array().to_vec();
+            let memo_vec = memo.to_vec();
             Ok(PaymentDisclosureVerification {
                 disclosure_type: DisclosureKind::Sapling.as_str().to_string(),
                 txid: txid_string(&txid_bytes),

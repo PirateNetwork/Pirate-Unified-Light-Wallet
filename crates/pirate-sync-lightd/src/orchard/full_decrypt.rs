@@ -14,8 +14,8 @@ use orchard::{
 };
 use tracing;
 use zcash_note_encryption::try_note_decryption;
-use zcash_primitives::consensus::BranchId;
 use zcash_primitives::transaction::Transaction;
+use zcash_protocol::consensus::BranchId;
 
 /// Decrypted Orchard note with memo
 pub struct DecryptedOrchardFullNote {
@@ -136,11 +136,11 @@ pub fn decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
     // Validate commitment if provided
     if let Some(expected_cmx) = cmx {
         let action_cmx_bytes = action.cmx().to_bytes();
-        if action_cmx_bytes.as_ref() != expected_cmx {
+        if &action_cmx_bytes[..] != expected_cmx {
             tracing::debug!(
                 "CMX mismatch: expected {}, got {}",
                 hex::encode(expected_cmx),
-                hex::encode(action_cmx_bytes.as_ref())
+                hex::encode(action_cmx_bytes)
             );
             return Ok(None);
         }

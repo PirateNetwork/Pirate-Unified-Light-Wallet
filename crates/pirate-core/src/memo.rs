@@ -4,7 +4,7 @@
 //! Enforces UTF-8 encoding and maximum length limits.
 
 use crate::{Error, Result};
-use zcash_primitives::memo::MemoBytes;
+use zcash_protocol::memo::MemoBytes;
 
 /// Maximum memo length in bytes (512 bytes for Sapling)
 pub const MAX_MEMO_LENGTH: usize = 512;

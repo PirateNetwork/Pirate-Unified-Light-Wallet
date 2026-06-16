@@ -22,14 +22,14 @@ use group::ff::PrimeField;
 use hex;
 use incrementalmerkletree::frontier::CommitmentTree;
 use incrementalmerkletree::Hashable;
-use incrementalmerkletree::{Position, Retention};
+use incrementalmerkletree::{Marking, Position, Retention};
 use orchard::keys::{
     Diversifier as OrchardDiversifier, IncomingViewingKey as OrchardIncomingViewingKey,
     PreparedIncomingViewingKey as OrchardPreparedIncomingViewingKey,
 };
 use orchard::note::{
     ExtractedNoteCommitment as OrchardExtractedNoteCommitment, Note as OrchardNote,
-    Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed,
+    Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed, Rho as OrchardRho,
 };
 use orchard::note_encryption::{CompactAction, OrchardDomain};
 use orchard::tree::MerkleHashOrchard;
@@ -54,6 +54,12 @@ use pirate_storage_sqlite::{
     ScanQueueStorage, SpendabilityStateStorage, SyncStateStorage,
 };
 use rayon::prelude::*;
+use sapling::keys::{OutgoingViewingKey as SaplingOutgoingViewingKey, PreparedIncomingViewingKey};
+use sapling::note_encryption::{try_sapling_output_recovery, SaplingDomain};
+use sapling::{
+    note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment, Node as SaplingNode,
+    PaymentAddress as SaplingPaymentAddress, Rseed, SaplingIvk, NOTE_COMMITMENT_TREE_DEPTH,
+};
 use shardtree::store::caching::CachingShardStore;
 use shardtree::ShardTree;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -69,20 +75,13 @@ use zcash_note_encryption::try_output_recovery_with_ovk;
 use zcash_note_encryption::{
     batch as note_batch, EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE,
 };
-use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::merkle_tree::{
     read_commitment_tree, read_frontier_v0, read_frontier_v1, HashSer,
 };
-use zcash_primitives::sapling::keys::{
-    OutgoingViewingKey as SaplingOutgoingViewingKey, PreparedIncomingViewingKey,
-};
-use zcash_primitives::sapling::note_encryption::{try_sapling_output_recovery, SaplingDomain};
-use zcash_primitives::sapling::{
-    note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment, Node as SaplingNode,
-    PaymentAddress as SaplingPaymentAddress, Rseed, SaplingIvk, NOTE_COMMITMENT_TREE_DEPTH,
-};
+use zcash_primitives::transaction::components::sapling::zip212_enforcement;
 use zcash_primitives::transaction::Transaction;
-use zcash_primitives::zip32::Scope as SaplingScope;
+use zcash_protocol::consensus::{BlockHeight, BranchId};
+use zip32::Scope as SaplingScope;
 
 mod shardtree_support;
 
@@ -1425,7 +1424,7 @@ impl SyncEngine {
                     nonempty.clone(),
                     Retention::Checkpoint {
                         id: checkpoint_id,
-                        is_marked: false,
+                        marking: Marking::None,
                     },
                 )
                 .map_err(|e| Error::Sync(format!("Failed to seed Sapling shardtree: {}", e)))?;
@@ -1464,7 +1463,7 @@ impl SyncEngine {
                         nonempty.clone(),
                         Retention::Checkpoint {
                             id: checkpoint_id,
-                            is_marked: false,
+                            marking: Marking::None,
                         },
                     )
                     .map_err(|e| Error::Sync(format!("Failed to seed Orchard shardtree: {}", e)))?;
@@ -5308,15 +5307,16 @@ impl SyncEngine {
 
         if let Some(ovk) = sapling_ovk {
             if let Some(bundle) = tx.sapling_bundle() {
+                let zip212 = zip212_enforcement(
+                    &PirateNetwork::default(),
+                    BlockHeight::from_u32(height as u32),
+                );
                 for output in bundle.shielded_outputs() {
-                    if let Some((_note, _address, memo)) = try_sapling_output_recovery(
-                        &PirateNetwork::default(),
-                        BlockHeight::from_u32(height as u32),
-                        ovk,
-                        output,
-                    ) {
-                        if !memo.as_array().iter().all(|b| *b == 0) {
-                            memo_to_store = Some(memo.as_array().to_vec());
+                    if let Some((_note, _address, memo)) =
+                        try_sapling_output_recovery(ovk, output, zip212)
+                    {
+                        if !memo.iter().all(|b| *b == 0) {
+                            memo_to_store = Some(memo.to_vec());
                             break;
                         }
                     }
@@ -5540,7 +5540,11 @@ impl SyncEngine {
                 if let Some((_, retention)) = shardtree_batch.sapling.last_mut() {
                     *retention = Retention::Checkpoint {
                         id: checkpoint_id,
-                        is_marked: retention.is_marked(),
+                        marking: if retention.is_marked() {
+                            Marking::Marked
+                        } else {
+                            Marking::None
+                        },
                     };
                 } else {
                     shardtree_batch.sapling_empty_checkpoint = true;
@@ -5548,7 +5552,11 @@ impl SyncEngine {
                 if let Some((_, retention)) = shardtree_batch.orchard.last_mut() {
                     *retention = Retention::Checkpoint {
                         id: checkpoint_id,
-                        is_marked: retention.is_marked(),
+                        marking: if retention.is_marked() {
+                            Marking::Marked
+                        } else {
+                            Marking::None
+                        },
                     };
                 } else {
                     shardtree_batch.orchard_empty_checkpoint = true;
@@ -5733,11 +5741,11 @@ impl SyncEngine {
                 }
             };
             let rseed = if leadbyte == 0x02 {
-                zcash_primitives::sapling::Rseed::AfterZip212(rseed_bytes)
+                sapling::Rseed::AfterZip212(rseed_bytes)
             } else {
                 let rcm = Option::from(jubjub::Fr::from_bytes(&rseed_bytes))
                     .ok_or_else(|| Error::Sync("Invalid Sapling rseed bytes".to_string()))?;
-                zcash_primitives::sapling::Rseed::BeforeZip212(rcm)
+                sapling::Rseed::BeforeZip212(rcm)
             };
 
             let position = TxOutputKey::new(&note.tx_hash, note.output_index)
@@ -5777,7 +5785,7 @@ impl SyncEngine {
             let diversifier = if note.diversifier.len() == 11 {
                 let mut d = [0u8; 11];
                 d.copy_from_slice(&note.diversifier[..11]);
-                Some(zcash_primitives::sapling::Diversifier(d))
+                Some(sapling::Diversifier(d))
             } else {
                 None
             };
@@ -5809,13 +5817,9 @@ impl SyncEngine {
                 let mut external_nf: Option<[u8; 32]> = None;
                 let mut internal_nf: Option<[u8; 32]> = None;
                 if let Some(pos) = position {
-                    let note_value =
-                        zcash_primitives::sapling::value::NoteValue::from_raw(note.value);
-                    let sapling_note = zcash_primitives::sapling::Note::from_parts(
-                        payment_address,
-                        note_value,
-                        rseed,
-                    );
+                    let note_value = sapling::value::NoteValue::from_raw(note.value);
+                    let sapling_note =
+                        sapling::Note::from_parts(payment_address, note_value, rseed);
                     external_nf = Some(
                         sapling_note
                             .nf(
@@ -6268,9 +6272,8 @@ impl SyncEngine {
                 Ok(value) => value,
                 Err(_) => continue,
             };
-            let note_value = zcash_primitives::sapling::value::NoteValue::from_raw(value);
-            let sapling_note =
-                zcash_primitives::sapling::Note::from_parts(payment_address, note_value, rseed);
+            let note_value = sapling::value::NoteValue::from_raw(value);
+            let sapling_note = sapling::Note::from_parts(payment_address, note_value, rseed);
 
             // Try the stored key first, then all other keys as fallback.
             // This recovers from stale/misassigned key_id values without requiring local hacks.
@@ -6859,7 +6862,7 @@ fn encode_sapling_note_bytes_from_address_bytes(
 }
 
 fn encode_sapling_note_bytes(
-    address: zcash_primitives::sapling::PaymentAddress,
+    address: sapling::PaymentAddress,
     leadbyte: u8,
     rseed: [u8; 32],
 ) -> Vec<u8> {
@@ -6969,7 +6972,7 @@ fn orchard_nullifier_from_parts(
 ) -> Result<[u8; 32]> {
     let address = de_ct(OrchardAddress::from_raw_address_bytes(&address_bytes))
         .ok_or_else(|| Error::Sync("Invalid Orchard address bytes".to_string()))?;
-    let rho = de_ct(OrchardNullifier::from_bytes(&rho_bytes))
+    let rho = de_ct(OrchardRho::from_bytes(&rho_bytes))
         .ok_or_else(|| Error::Sync("Invalid Orchard rho bytes".to_string()))?;
     let rseed = de_ct(OrchardRandomSeed::from_bytes(rseed_bytes, &rho))
         .ok_or_else(|| Error::Sync("Invalid Orchard rseed bytes".to_string()))?;
@@ -7755,15 +7758,14 @@ struct SaplingBatchOutput {
     ciphertext: [u8; 52],
 }
 
-impl ShieldedOutput<SaplingDomain<PirateNetwork>, COMPACT_NOTE_SIZE> for SaplingBatchOutput {
+impl ShieldedOutput<SaplingDomain, COMPACT_NOTE_SIZE> for SaplingBatchOutput {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         EphemeralKeyBytes(self.epk)
     }
 
     fn cmstar_bytes(
         &self,
-    ) -> <SaplingDomain<PirateNetwork> as zcash_note_encryption::Domain>::ExtractedCommitmentBytes
-    {
+    ) -> <SaplingDomain as zcash_note_encryption::Domain>::ExtractedCommitmentBytes {
         self.cmu
     }
 
@@ -7772,7 +7774,7 @@ impl ShieldedOutput<SaplingDomain<PirateNetwork>, COMPACT_NOTE_SIZE> for Sapling
     }
 }
 
-fn sapling_rseed_to_bytes(note: &zcash_primitives::sapling::Note) -> (u8, [u8; 32]) {
+fn sapling_rseed_to_bytes(note: &sapling::Note) -> (u8, [u8; 32]) {
     match note.rseed() {
         Rseed::BeforeZip212(rcm) => {
             let mut bytes = [0u8; 32];
@@ -7909,7 +7911,7 @@ fn trial_decrypt_batch_impl(
         max_parallel,
     } = inputs;
 
-    let mut sapling_outputs: Vec<(SaplingDomain<PirateNetwork>, SaplingBatchOutput)> = Vec::new();
+    let mut sapling_outputs: Vec<(SaplingDomain, SaplingBatchOutput)> = Vec::new();
     let mut sapling_meta: Vec<SaplingOutputMeta> = Vec::new();
     let mut orchard_outputs: Vec<(OrchardDomain, CompactAction)> = Vec::new();
     let mut orchard_meta: Vec<OrchardOutputMeta> = Vec::new();
@@ -7936,10 +7938,10 @@ fn trial_decrypt_batch_impl(
                     let mut ciphertext = [0u8; 52];
                     ciphertext.copy_from_slice(&output.ciphertext[..52]);
 
-                    let domain = SaplingDomain::for_height(
-                        PirateNetwork::default(),
+                    let domain = SaplingDomain::new(zip212_enforcement(
+                        &PirateNetwork::default(),
                         BlockHeight::from_u32(height as u32),
-                    );
+                    ));
                     sapling_outputs.push((
                         domain,
                         SaplingBatchOutput {
@@ -7994,7 +7996,7 @@ fn trial_decrypt_batch_impl(
                         EphemeralKeyBytes(epk),
                         enc_ciphertext,
                     );
-                    let domain = OrchardDomain::for_nullifier(nullifier);
+                    let domain = OrchardDomain::for_compact_action(&compact_action);
                     orchard_outputs.push((domain, compact_action));
                     orchard_meta.push(OrchardOutputMeta {
                         height,

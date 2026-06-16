@@ -1,9 +1,9 @@
 use super::*;
 use bech32::{Bech32, Hrp};
+use sapling::zip32::ExtendedFullViewingKey as SaplingExtendedFullViewingKey;
 use zcash_client_backend::encoding::{
     encode_extended_full_viewing_key, encode_extended_spending_key,
 };
-use zcash_primitives::zip32::ExtendedFullViewingKey as SaplingExtendedFullViewingKey;
 
 pub(super) fn export_sapling_viewing_key(wallet_id: WalletId) -> Result<String> {
     let wallet = get_wallet_meta(&wallet_id)?;

@@ -32,7 +32,6 @@ allow = [
 ]
 confidence-threshold = 0.8
 unused-allowed-license = "allow"
-exceptions = [{ crate = "orchard@0.6.0", allow = ["LicenseRef-BOSL-1.0"] }]
 
 [licenses.private]
 ignore = false
@@ -51,11 +50,6 @@ license-files = [
     { path = "LICENSE-BSD", hash = 0xe87d5752 },
 ]
 
-[[licenses.clarify]]
-crate = "orchard@0.6.0"
-expression = "LicenseRef-BOSL-1.0"
-license-files = [{ path = "LICENSE-BOSL", hash = 0xf2d16f6e }]
-
 [bans]
 multiple-versions = "allow"
 wildcards = "allow"
@@ -68,7 +62,13 @@ skip-tree = []
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = ["https://github.com/piratenetwork/librustzcash"]
+allow-git = [
+    "https://github.com/PirateNetwork/halo2.git",
+    "https://github.com/PirateNetwork/orchard.git",
+    "https://github.com/PirateNetwork/zcash_note_encryption.git",
+    "https://github.com/piratenetwork/librustzcash",
+    "https://github.com/piratenetwork/sapling-crypto.git",
+]
 
 [sources.allow-org]
 github = []

@@ -17,10 +17,12 @@ pirate-params = { path = "../pirate-params" }
 # Protocol primitives for note deserialization
 zcash_primitives = { workspace = true }
 zcash_client_backend = { workspace = true }
+zcash_protocol = { workspace = true }
+sapling = { workspace = true }
 orchard = { workspace = true }
 incrementalmerkletree = { workspace = true }
-shardtree = "0.1"
-zcash_encoding = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
+shardtree = { workspace = true }
+zcash_encoding = { workspace = true }
 byteorder = "1.5"
 jubjub = "0.10"
 

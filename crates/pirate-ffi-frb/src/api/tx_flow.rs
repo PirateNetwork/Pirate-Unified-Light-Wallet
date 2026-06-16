@@ -37,16 +37,15 @@ fn parse_sapling_root_from_tree_state(
             .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok());
     }
     let bytes = hex::decode(encoded).ok()?;
-    if let Ok(tree) = read_commitment_tree::<
-        zcash_primitives::sapling::Node,
-        _,
-        { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
-    >(&bytes[..])
+    if let Ok(tree) =
+        read_commitment_tree::<sapling::Node, _, { sapling::NOTE_COMMITMENT_TREE_DEPTH }>(
+            &bytes[..],
+        )
     {
         return Some(tree.root().to_bytes());
     }
-    let frontier = read_frontier_v1::<zcash_primitives::sapling::Node, _>(&bytes[..])
-        .or_else(|_| read_frontier_v0::<zcash_primitives::sapling::Node, _>(&bytes[..]))
+    let frontier = read_frontier_v1::<sapling::Node, _>(&bytes[..])
+        .or_else(|_| read_frontier_v0::<sapling::Node, _>(&bytes[..]))
         .ok()?;
     Some(frontier.root().to_bytes())
 }
@@ -68,7 +67,7 @@ fn parse_orchard_root_from_tree_state(
     if let Ok(tree) = read_commitment_tree::<
         orchard::tree::MerkleHashOrchard,
         _,
-        { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
+        { sapling::NOTE_COMMITMENT_TREE_DEPTH },
     >(&bytes[..])
     {
         return Some(tree.root().to_bytes());

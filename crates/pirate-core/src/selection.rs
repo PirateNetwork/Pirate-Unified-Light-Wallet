@@ -4,7 +4,7 @@
 
 use crate::{Error, Result};
 use incrementalmerkletree::MerklePath;
-use zcash_primitives::sapling::{Diversifier, Node, Note};
+use sapling::{Diversifier, Node, Note};
 
 /// Note type discriminator
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,8 +37,7 @@ pub struct SelectableNote {
     /// Eligible for auto-consolidation (unlabeled/untagged address)
     pub auto_consolidation_eligible: bool,
     /// Optional merkle path for spends (Sapling)
-    pub merkle_path:
-        Option<MerklePath<Node, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>>,
+    pub merkle_path: Option<MerklePath<Node, { sapling::NOTE_COMMITMENT_TREE_DEPTH }>>,
     /// Optional Sapling note position in the commitment tree (for witness refresh)
     pub sapling_position: Option<u64>,
     /// Optional diversifier used to derive the address (Sapling)
@@ -135,7 +134,7 @@ impl SelectableNote {
     /// Attach Sapling witness path and diversifier
     pub fn with_witness(
         mut self,
-        path: MerklePath<Node, { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH }>,
+        path: MerklePath<Node, { sapling::NOTE_COMMITMENT_TREE_DEPTH }>,
         diversifier: Diversifier,
         note: Note,
     ) -> Self {

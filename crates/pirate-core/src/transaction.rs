@@ -10,13 +10,18 @@ use crate::{Error, Memo, Result};
 use pirate_params::{Network, NetworkType};
 
 use incrementalmerkletree::MerklePath;
-use zcash_primitives::{
-    consensus::{BlockHeight, NetworkUpgrade, Parameters},
-    memo::MemoBytes,
-    sapling::{Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH},
-    transaction::{builder::Builder as TxBuilder, components::Amount, TxId},
+use sapling::{Anchor as SaplingAnchor, Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH};
+use zcash_primitives::transaction::{
+    builder::{BuildConfig, Builder as TxBuilder},
+    TxId,
 };
 use zcash_proofs::prover::LocalTxProver;
+use zcash_protocol::{
+    consensus::{BlockHeight, NetworkType as ConsensusNetworkType, NetworkUpgrade, Parameters},
+    memo::MemoBytes,
+    value::Zatoshis as Amount,
+};
+use zcash_transparent::builder::TransparentSigningSet;
 
 /// Pirate Chain network parameters
 #[derive(Clone, Debug)]
@@ -49,48 +54,12 @@ impl Default for PirateNetwork {
 }
 
 impl Parameters for PirateNetwork {
-    fn coin_type(&self) -> u32 {
-        self.network.coin_type
-    }
-
-    fn address_network(&self) -> Option<zcash_address::Network> {
-        // Use the workspace zcash_address dependency
+    fn network_type(&self) -> ConsensusNetworkType {
         match self.network.network_type {
-            NetworkType::Mainnet => Some(zcash_address::Network::Main),
-            NetworkType::Testnet | NetworkType::Regtest => Some(zcash_address::Network::Test),
+            NetworkType::Mainnet => ConsensusNetworkType::Main,
+            NetworkType::Testnet => ConsensusNetworkType::Test,
+            NetworkType::Regtest => ConsensusNetworkType::Regtest,
         }
-    }
-
-    fn hrp_sapling_extended_spending_key(&self) -> &str {
-        match self.network.network_type {
-            NetworkType::Mainnet => "secret-extended-key-main",
-            NetworkType::Testnet => "secret-extended-key-test",
-            NetworkType::Regtest => "secret-extended-key-regtest",
-        }
-    }
-
-    fn hrp_sapling_extended_full_viewing_key(&self) -> &str {
-        match self.network.network_type {
-            NetworkType::Mainnet => "zxviews",
-            NetworkType::Testnet => "zxviewtestsapling",
-            NetworkType::Regtest => "zxviewregtestsapling",
-        }
-    }
-
-    fn hrp_sapling_payment_address(&self) -> &str {
-        match self.network.network_type {
-            NetworkType::Mainnet => "zs",
-            NetworkType::Testnet => "ztestsapling",
-            NetworkType::Regtest => "zregtestsapling",
-        }
-    }
-
-    fn b58_pubkey_address_prefix(&self) -> &[u8] {
-        &[0x1C, 0xB8] // Pirate Chain P2PKH prefix
-    }
-
-    fn b58_script_address_prefix(&self) -> &[u8] {
-        &[0x1C, 0xBD] // Pirate Chain P2SH prefix
     }
 
     fn activation_height(&self, nu: NetworkUpgrade) -> Option<BlockHeight> {
@@ -318,25 +287,41 @@ impl TransactionBuilder {
         // Create prover from cached Sapling parameters (loaded once per process)
         let prover: LocalTxProver = sapling_prover();
 
-        // Create transaction builder (Anchor is optional for Sapling-only)
+        let sapling_anchor = selection
+            .notes
+            .iter()
+            .find_map(|note| {
+                let sapling_note = note.note.as_ref()?;
+                let merkle_path = note.merkle_path.as_ref()?;
+                let cmu = sapling_note.cmu();
+                Some(SaplingAnchor::from(
+                    merkle_path.root(SaplingNode::from_cmu(&cmu)),
+                ))
+            })
+            .ok_or_else(|| {
+                Error::TransactionBuild(
+                    "Missing Sapling anchor for selected Sapling spend set".to_string(),
+                )
+            })?;
+
+        // Create transaction builder.
         let mut tx_builder = TxBuilder::new(
             self.network.clone(),
             BlockHeight::from_u32(target_height),
-            None, // No anchor specified - will be determined during build
+            BuildConfig::Standard {
+                sapling_anchor: Some(sapling_anchor),
+                orchard_anchor: None,
+            },
         );
 
         let use_sapling_internal_change = crate::sapling_internal_change_active(
             self.network.network_type(),
             u64::from(target_height),
         );
-        let mut first_legacy_sapling_change: Option<zcash_primitives::sapling::PaymentAddress> =
-            None;
+        let mut first_legacy_sapling_change: Option<sapling::PaymentAddress> = None;
 
         // Add Sapling spends with witness data
         for note in &selection.notes {
-            let diversifier = note.diversifier.ok_or_else(|| {
-                Error::TransactionBuild("Missing diversifier for note".to_string())
-            })?;
             let sapling_note = note
                 .note
                 .clone()
@@ -350,12 +335,7 @@ impl TransactionBuilder {
                 })?;
 
             tx_builder
-                .add_sapling_spend(
-                    spending_key.inner().clone(),
-                    diversifier,
-                    sapling_note,
-                    merkle_path,
-                )
+                .add_sapling_spend::<()>(spending_key.full_viewing_key(), sapling_note, merkle_path)
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to add Sapling spend: {:?}", e))
                 })?;
@@ -370,10 +350,10 @@ impl TransactionBuilder {
             };
 
             tx_builder
-                .add_sapling_output(
+                .add_sapling_output::<()>(
                     Some(ovk),
                     output.address.inner,
-                    Amount::from_i64(output.amount as i64)
+                    Amount::from_u64(output.amount)
                         .map_err(|_| Error::InvalidAmount("Amount out of range".to_string()))?,
                     memo_bytes,
                 )
@@ -398,10 +378,10 @@ impl TransactionBuilder {
             };
 
             tx_builder
-                .add_sapling_output(
+                .add_sapling_output::<()>(
                     Some(ovk),
                     change_addr,
-                    Amount::from_i64(change as i64).map_err(|_| {
+                    Amount::from_u64(change).map_err(|_| {
                         Error::InvalidAmount("Change amount out of range".to_string())
                     })?,
                     MemoBytes::empty(),
@@ -416,9 +396,24 @@ impl TransactionBuilder {
         let fee_amount = Amount::from_u64(actual_fee)
             .map_err(|_| Error::InvalidAmount("Fee amount out of range".to_string()))?;
         let fee_rule = FeeRule::non_standard(fee_amount);
-        let (tx, _tx_metadata) = tx_builder.build(&prover, &fee_rule).map_err(|e| {
-            Error::TransactionBuild(format!("Failed to build transaction: {:?}", e))
-        })?;
+        let transparent_signing_set = TransparentSigningSet::new();
+        let sapling_extsks = [spending_key.inner().clone()];
+        let orchard_saks = Vec::<orchard::keys::SpendAuthorizingKey>::new();
+        let mut rng = rand::rngs::OsRng;
+        let build_result = tx_builder
+            .build(
+                &transparent_signing_set,
+                &sapling_extsks,
+                &orchard_saks,
+                &mut rng,
+                &prover,
+                &prover,
+                &fee_rule,
+            )
+            .map_err(|e| {
+                Error::TransactionBuild(format!("Failed to build transaction: {:?}", e))
+            })?;
+        let tx = build_result.transaction();
 
         // Serialize transaction to raw bytes
         let mut raw_tx = Vec::new();

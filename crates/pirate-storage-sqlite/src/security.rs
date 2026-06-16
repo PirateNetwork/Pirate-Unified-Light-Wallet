@@ -82,7 +82,8 @@ impl MasterKey {
     }
 
     fn encrypt_aes_gcm(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
-        let cipher = Aes256Gcm::new(self.key.as_ref().into());
+        let cipher = Aes256Gcm::new_from_slice(self.as_bytes())
+            .map_err(|e| Error::Encryption(e.to_string()))?;
 
         // Generate random nonce
         let mut nonce_bytes = [0u8; 12];
@@ -120,7 +121,8 @@ impl MasterKey {
                     "Invalid legacy ciphertext length".to_string(),
                 ));
             }
-            let cipher = Aes256Gcm::new(self.key.as_ref().into());
+            let cipher = Aes256Gcm::new_from_slice(self.as_bytes())
+                .map_err(|e| Error::Encryption(e.to_string()))?;
             let nonce = Nonce::from_slice(&data[..12]);
             let ciphertext = &data[12..];
             return cipher
@@ -142,7 +144,8 @@ impl MasterKey {
             )));
         }
 
-        let cipher = Aes256Gcm::new(self.key.as_ref().into());
+        let cipher = Aes256Gcm::new_from_slice(self.as_bytes())
+            .map_err(|e| Error::Encryption(e.to_string()))?;
 
         // Extract nonce and ciphertext
         let nonce = Nonce::from_slice(&data[2..14]);
@@ -154,7 +157,8 @@ impl MasterKey {
     }
 
     fn encrypt_chacha20(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
-        let cipher = ChaCha20Poly1305::new(self.key.as_ref().into());
+        let cipher = ChaCha20Poly1305::new_from_slice(self.as_bytes())
+            .map_err(|e| Error::Encryption(e.to_string()))?;
 
         // Generate random nonce (12 bytes for ChaCha20)
         let mut nonce_bytes = [0u8; 12];
@@ -192,7 +196,8 @@ impl MasterKey {
                     "Invalid legacy ciphertext length".to_string(),
                 ));
             }
-            let cipher = ChaCha20Poly1305::new(self.key.as_ref().into());
+            let cipher = ChaCha20Poly1305::new_from_slice(self.as_bytes())
+                .map_err(|e| Error::Encryption(e.to_string()))?;
             let nonce = chacha20poly1305::Nonce::from_slice(&data[..12]);
             let ciphertext = &data[12..];
             return cipher
@@ -214,7 +219,8 @@ impl MasterKey {
             )));
         }
 
-        let cipher = ChaCha20Poly1305::new(self.key.as_ref().into());
+        let cipher = ChaCha20Poly1305::new_from_slice(self.as_bytes())
+            .map_err(|e| Error::Encryption(e.to_string()))?;
 
         // Extract nonce and ciphertext
         let nonce = chacha20poly1305::Nonce::from_slice(&data[2..14]);

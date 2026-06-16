@@ -17,6 +17,10 @@ zcash_primitives = { workspace = true }
 zcash_client_backend = { workspace = true }
 zcash_proofs = { workspace = true }
 zcash_address = { workspace = true }
+zcash_protocol = { workspace = true }
+zcash_transparent = { workspace = true }
+sapling = { workspace = true }
+zip32 = { workspace = true }
 orchard = { workspace = true }
 wagyu-zcash-parameters = { workspace = true }
 incrementalmerkletree = { workspace = true }

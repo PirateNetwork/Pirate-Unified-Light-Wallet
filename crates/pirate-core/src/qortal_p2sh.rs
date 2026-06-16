@@ -8,29 +8,37 @@ use crate::selection::{NoteType, SelectableNote};
 use crate::shielded_builder::SelectedSpendNoteRef;
 use crate::transaction::PirateNetwork;
 use crate::{Error, Result};
-use orchard::builder::Builder as OrchardBuilder;
-use orchard::bundle::Flags as OrchardFlags;
+use orchard::builder::{Builder as OrchardBuilder, BundleType as OrchardBundleType};
 use orchard::keys::FullViewingKey as OrchardFullViewingKey;
-use orchard::keys::SpendAuthorizingKey;
 use orchard::tree::Anchor as OrchardAnchor;
 use orchard::value::NoteValue as OrchardNoteValue;
+use sapling::{
+    builder::{
+        Builder as SaplingBuilder, BundleType as SaplingBundleType, Proven as SaplingProven,
+        Unsigned as SaplingUnsigned,
+    },
+    Anchor as SaplingAnchor, Node as SaplingNode,
+};
 use secp256k1::SecretKey;
 use std::collections::HashMap;
-use zcash_primitives::consensus::BlockHeight;
-use zcash_primitives::legacy::{Script, TransparentAddress};
-use zcash_primitives::memo::MemoBytes;
-use zcash_primitives::sapling::prover::TxProver;
-use zcash_primitives::transaction::components::amount::Amount;
-use zcash_primitives::transaction::components::sapling::builder::SaplingBuilder;
-use zcash_primitives::transaction::components::transparent::{
-    self, Bundle as TransparentBundle, TxIn, TxOut,
-};
-use zcash_primitives::transaction::components::OutPoint;
-use zcash_primitives::transaction::sighash::{
-    signature_hash, SignableInput, TransparentAuthorizingContext, SIGHASH_ALL,
-};
+use zcash_primitives::transaction::components::sapling::zip212_enforcement;
+use zcash_primitives::transaction::sighash::{signature_hash, SignableInput as TxSignableInput};
 use zcash_primitives::transaction::txid::TxIdDigester;
 use zcash_primitives::transaction::{Authorization as TxAuthorization, TransactionData, TxVersion};
+use zcash_protocol::consensus::BlockHeight;
+use zcash_protocol::memo::MemoBytes;
+use zcash_protocol::value::{ZatBalance, Zatoshis as Amount};
+use zcash_transparent::{
+    address::{Script, TransparentAddress},
+    bundle::{
+        Authorization as TransparentAuthorization, Authorized as TransparentAuthorized,
+        Bundle as TransparentBundle, OutPoint, TxIn, TxOut,
+    },
+    sighash::{
+        SighashType, SignableInput as TransparentSignableInput, TransparentAuthorizingContext,
+        SIGHASH_ALL,
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct TransparentAuthContext {
@@ -38,7 +46,7 @@ pub struct TransparentAuthContext {
     pub input_scriptpubkeys: Vec<Script>,
 }
 
-impl transparent::Authorization for TransparentAuthContext {
+impl TransparentAuthorization for TransparentAuthContext {
     type ScriptSig = ();
 }
 
@@ -57,7 +65,7 @@ pub struct CustomUnauthorized;
 
 impl TxAuthorization for CustomUnauthorized {
     type TransparentAuth = TransparentAuthContext;
-    type SaplingAuth = zcash_primitives::transaction::components::sapling::builder::Unauthorized;
+    type SaplingAuth = sapling::builder::InProgress<SaplingProven, SaplingUnsigned>;
     type OrchardAuth =
         orchard::builder::InProgress<orchard::builder::Unproven, orchard::builder::Unauthorized>;
 
@@ -119,17 +127,96 @@ pub fn build_script_pubkey(script_bytes: &[u8]) -> Result<Script> {
             "Script pubkey bytes are empty".to_string(),
         ));
     }
-    Ok(Script(script_bytes.to_vec()))
+    Ok(script_from_bytes(script_bytes))
+}
+
+fn script_from_bytes(script_bytes: &[u8]) -> Script {
+    let mut script = Script::default();
+    script.0 .0 = script_bytes.to_vec();
+    script
+}
+
+fn push_script_data(script: &mut Vec<u8>, data: &[u8]) {
+    match data.len() {
+        0..=75 => script.push(data.len() as u8),
+        76..=0xff => {
+            script.push(0x4c);
+            script.push(data.len() as u8);
+        }
+        0x100..=0xffff => {
+            script.push(0x4d);
+            script.extend_from_slice(&(data.len() as u16).to_le_bytes());
+        }
+        _ => {
+            script.push(0x4e);
+            script.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        }
+    }
+    script.extend_from_slice(data);
 }
 
 pub fn build_p2sh_script_sig(sig_bytes: &[u8], secret: &[u8], redeem_script: &[u8]) -> Script {
+    let mut script = Vec::new();
     if secret.is_empty() {
         let is_refund = [0x51u8];
-        Script::default() << sig_bytes << &is_refund[..] << redeem_script
+        push_script_data(&mut script, sig_bytes);
+        push_script_data(&mut script, &is_refund);
+        push_script_data(&mut script, redeem_script);
     } else {
         let is_redeem = [0x00u8];
-        Script::default() << sig_bytes << secret << &is_redeem[..] << redeem_script
+        push_script_data(&mut script, sig_bytes);
+        push_script_data(&mut script, secret);
+        push_script_data(&mut script, &is_redeem);
+        push_script_data(&mut script, redeem_script);
     }
+    script_from_bytes(&script)
+}
+
+fn sapling_anchor_from_note(note: &SelectableNote) -> Result<SaplingAnchor> {
+    let sapling_note = note
+        .note
+        .as_ref()
+        .ok_or_else(|| Error::TransactionBuild("Missing Sapling note".to_string()))?;
+    let merkle_path = note
+        .merkle_path
+        .as_ref()
+        .ok_or_else(|| Error::TransactionBuild("Missing Sapling merkle path".to_string()))?;
+    let cmu = sapling_note.cmu();
+    Ok(SaplingAnchor::from(
+        merkle_path.root(SaplingNode::from_cmu(&cmu)),
+    ))
+}
+
+fn selected_sapling_anchor(notes: &[SelectableNote]) -> Result<Option<SaplingAnchor>> {
+    let mut selected_anchor = None;
+    for note in notes {
+        if note.note_type != NoteType::Sapling {
+            continue;
+        }
+        let note_anchor = sapling_anchor_from_note(note)?;
+        if let Some(existing) = selected_anchor.as_ref() {
+            if existing != &note_anchor {
+                return Err(Error::TransactionBuild(
+                    "Selected Sapling spend notes are not anchored to a single root".to_string(),
+                ));
+            }
+        } else {
+            selected_anchor = Some(note_anchor);
+        }
+    }
+    Ok(selected_anchor)
+}
+
+fn new_sapling_builder(
+    network: &PirateNetwork,
+    target_height: BlockHeight,
+    anchor: SaplingAnchor,
+) -> SaplingBuilder {
+    SaplingBuilder::new(
+        zip212_enforcement(network, target_height),
+        SaplingBundleType::DEFAULT,
+        anchor,
+    )
 }
 
 fn memo_bytes_array(memo: &Option<Memo>) -> Result<[u8; 512]> {
@@ -142,12 +229,12 @@ fn memo_bytes_array(memo: &Option<Memo>) -> Result<[u8; 512]> {
 struct OutputBuildOptions<'a> {
     script_pubkey: Option<&'a Script>,
     script_each_recipient: bool,
-    sapling_ovk: zcash_primitives::sapling::keys::OutgoingViewingKey,
+    sapling_ovk: sapling::keys::OutgoingViewingKey,
     orchard_ovk: Option<orchard::keys::OutgoingViewingKey>,
 }
 
 fn add_outputs_and_script(
-    sapling_builder: &mut SaplingBuilder<PirateNetwork>,
+    sapling_builder: &mut SaplingBuilder,
     orchard_builder: &mut Option<OrchardBuilder>,
     transparent_vout: &mut Vec<TxOut>,
     recipients: &[QortalRecipient],
@@ -170,11 +257,10 @@ fn add_outputs_and_script(
                 };
                 sapling_builder
                     .add_output(
-                        &mut rand::rngs::OsRng,
                         Some(options.sapling_ovk),
                         address.inner,
-                        zcash_primitives::sapling::value::NoteValue::from_raw(*amount),
-                        memo_bytes,
+                        sapling::value::NoteValue::from_raw(*amount),
+                        *memo_bytes.as_array(),
                     )
                     .map_err(|e| {
                         Error::TransactionBuild(format!("Failed to add Sapling output: {:?}", e))
@@ -190,23 +276,23 @@ fn add_outputs_and_script(
                     Error::TransactionBuild("Orchard builder not initialized".to_string())
                 })?;
                 builder
-                    .add_recipient(
+                    .add_output(
                         options.orchard_ovk.clone(),
                         *address,
                         OrchardNoteValue::from_raw(*amount),
-                        Some(memo_bytes_array(memo)?),
+                        memo_bytes_array(memo)?,
                     )
                     .map_err(|e| {
                         Error::TransactionBuild(format!("Failed to add Orchard output: {:?}", e))
                     })?;
             }
             QortalRecipient::Transparent { address, amount } => {
-                transparent_vout.push(TxOut {
-                    value: Amount::from_u64(*amount).map_err(|_| {
+                transparent_vout.push(TxOut::new(
+                    Amount::from_u64(*amount).map_err(|_| {
                         Error::InvalidAmount("Transparent amount out of range".to_string())
                     })?,
-                    script_pubkey: address.script(),
-                });
+                    address.script().into(),
+                ));
             }
         }
 
@@ -214,19 +300,13 @@ fn add_outputs_and_script(
             let script_pubkey = options.script_pubkey.ok_or_else(|| {
                 Error::TransactionBuild("Missing script output bytes".to_string())
             })?;
-            transparent_vout.push(TxOut {
-                value: Amount::zero(),
-                script_pubkey: script_pubkey.clone(),
-            });
+            transparent_vout.push(TxOut::new(Amount::ZERO, script_pubkey.clone()));
         }
     }
 
     if !options.script_each_recipient {
         if let Some(script_pubkey) = options.script_pubkey {
-            transparent_vout.push(TxOut {
-                value: Amount::zero(),
-                script_pubkey: script_pubkey.clone(),
-            });
+            transparent_vout.push(TxOut::new(Amount::ZERO, script_pubkey.clone()));
         }
     }
 
@@ -276,21 +356,36 @@ pub fn build_qortal_p2sh_funding_transaction(
         .notes
         .iter()
         .any(|note| note.note_type == NoteType::Orchard);
+    let has_sapling_spends = selection
+        .notes
+        .iter()
+        .any(|note| note.note_type == NoteType::Sapling);
     let has_orchard_outputs = plan
         .recipients
         .iter()
         .any(|recipient| matches!(recipient, QortalRecipient::Orchard { .. }));
+    let has_sapling_outputs = plan
+        .recipients
+        .iter()
+        .any(|recipient| matches!(recipient, QortalRecipient::Sapling { .. }));
     let use_orchard_change = has_orchard_spends || has_orchard_outputs;
+    let use_sapling_change = change >= CHANGE_DUST_THRESHOLD && !use_orchard_change;
     let use_sapling_internal_change =
         crate::sapling_internal_change_active(plan.network_type, u64::from(plan.target_height));
 
-    let mut sapling_builder = SaplingBuilder::new(network.clone(), target_height);
+    let sapling_anchor = if has_sapling_spends {
+        selected_sapling_anchor(&selection.notes)?.ok_or_else(|| {
+            Error::TransactionBuild("Missing Sapling anchor for selected spends".to_string())
+        })?
+    } else if has_sapling_outputs || use_sapling_change {
+        SaplingAnchor::empty_tree()
+    } else {
+        SaplingAnchor::empty_tree()
+    };
+    let mut sapling_builder = new_sapling_builder(&network, target_height, sapling_anchor);
     let mut orchard_builder = if has_orchard_spends || has_orchard_outputs || use_orchard_change {
         Some(OrchardBuilder::new(
-            OrchardFlags::from_parts(
-                has_orchard_spends,
-                has_orchard_outputs || use_orchard_change,
-            ),
+            OrchardBundleType::DEFAULT,
             plan.orchard_anchor
                 .ok_or_else(|| Error::TransactionBuild("Missing Orchard anchor".to_string()))?,
         ))
@@ -299,10 +394,11 @@ pub fn build_qortal_p2sh_funding_transaction(
     };
     let mut transparent_vout = Vec::new();
     let mut orchard_spend_auth_keys = Vec::new();
+    let mut sapling_extsks = Vec::new();
     let mut spent_notes = Vec::new();
     let mut first_legacy_sapling_change: Option<(
-        zcash_primitives::sapling::keys::OutgoingViewingKey,
-        zcash_primitives::sapling::PaymentAddress,
+        sapling::keys::OutgoingViewingKey,
+        sapling::PaymentAddress,
     )> = None;
     let mut rng = rand::rngs::OsRng;
 
@@ -353,16 +449,11 @@ pub fn build_qortal_p2sh_funding_transaction(
                     }
                 }
                 sapling_builder
-                    .add_spend(
-                        &mut rng,
-                        spend_key.inner().clone(),
-                        diversifier,
-                        sapling_note,
-                        merkle_path,
-                    )
+                    .add_spend(spend_key.full_viewing_key(), sapling_note, merkle_path)
                     .map_err(|e| {
                         Error::TransactionBuild(format!("Failed to add Sapling spend: {:?}", e))
                     })?;
+                sapling_extsks.push(spend_key.inner().clone());
             }
             NoteType::Orchard => {
                 let orchard_note = note
@@ -378,8 +469,8 @@ pub fn build_qortal_p2sh_funding_transaction(
                     .ok_or_else(|| {
                         Error::TransactionBuild("Missing Orchard spending key".to_string())
                     })?;
-                let fvk: OrchardFullViewingKey = (&orchard_key.inner).into();
-                orchard_spend_auth_keys.push(SpendAuthorizingKey::from(&orchard_key.inner));
+                let fvk: OrchardFullViewingKey = orchard_key.full_viewing_key();
+                orchard_spend_auth_keys.push(orchard_key.spend_authorizing_key());
                 orchard_builder
                     .as_mut()
                     .expect("orchard builder")
@@ -415,11 +506,11 @@ pub fn build_qortal_p2sh_funding_transaction(
             orchard_builder
                 .as_mut()
                 .expect("orchard builder")
-                .add_recipient(
+                .add_output(
                     orchard_ovk,
                     address.inner,
                     OrchardNoteValue::from_raw(change),
-                    Some(*MemoBytes::empty().as_array()),
+                    *MemoBytes::empty().as_array(),
                 )
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to add Orchard change: {:?}", e))
@@ -431,11 +522,10 @@ pub fn build_qortal_p2sh_funding_transaction(
                 .derive_address(plan.change_diversifier_index);
             sapling_builder
                 .add_output(
-                    &mut rng,
                     Some(sapling_ovk),
                     address.inner,
-                    zcash_primitives::sapling::value::NoteValue::from_raw(change),
-                    MemoBytes::empty(),
+                    sapling::value::NoteValue::from_raw(change),
+                    *MemoBytes::empty().as_array(),
                 )
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to add Sapling change: {:?}", e))
@@ -448,11 +538,10 @@ pub fn build_qortal_p2sh_funding_transaction(
             })?;
             sapling_builder
                 .add_output(
-                    &mut rng,
                     Some(legacy_ovk),
                     legacy_address,
-                    zcash_primitives::sapling::value::NoteValue::from_raw(change),
-                    MemoBytes::empty(),
+                    sapling::value::NoteValue::from_raw(change),
+                    *MemoBytes::empty().as_array(),
                 )
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to add legacy Sapling change: {:?}", e))
@@ -461,15 +550,21 @@ pub fn build_qortal_p2sh_funding_transaction(
     }
 
     let prover = sapling_prover();
-    let mut sapling_ctx = prover.new_sapling_proving_context();
     let sapling_bundle = sapling_builder
-        .build(&prover, &mut sapling_ctx, &mut rng, target_height, None)
-        .map_err(|e| Error::TransactionBuild(format!("Failed to build Sapling bundle: {:?}", e)))?;
+        .build::<zcash_proofs::prover::LocalTxProver, zcash_proofs::prover::LocalTxProver, _, ZatBalance>(
+            &sapling_extsks,
+            &mut rng,
+        )
+        .map_err(|e| Error::TransactionBuild(format!("Failed to build Sapling bundle: {:?}", e)))?
+        .map(|(bundle, _meta)| bundle.create_proofs(&prover, &prover, &mut rng, ()));
 
     let orchard_bundle = if let Some(builder) = orchard_builder {
-        Some(builder.build(&mut rng).map_err(|e| {
-            Error::TransactionBuild(format!("Failed to build Orchard bundle: {:?}", e))
-        })?)
+        builder
+            .build::<ZatBalance>(&mut rng)
+            .map_err(|e| {
+                Error::TransactionBuild(format!("Failed to build Orchard bundle: {:?}", e))
+            })?
+            .map(|(bundle, _meta)| bundle)
     } else {
         None
     };
@@ -487,7 +582,7 @@ pub fn build_qortal_p2sh_funding_transaction(
         })
     };
 
-    let branch_id = zcash_primitives::consensus::BranchId::for_height(&network, target_height);
+    let branch_id = zcash_protocol::consensus::BranchId::for_height(&network, target_height);
     let tx_version = TxVersion::suggested_for_branch(branch_id);
     let expiry_height = target_height + 20;
 
@@ -505,7 +600,7 @@ pub fn build_qortal_p2sh_funding_transaction(
     );
 
     let txid_parts = unauth_tx.digest(TxIdDigester);
-    let shielded_sighash = signature_hash(&unauth_tx, &SignableInput::Shielded, &txid_parts);
+    let shielded_sighash = signature_hash(&unauth_tx, &TxSignableInput::Shielded, &txid_parts);
 
     let signed_transparent_bundle =
         unauth_tx
@@ -514,22 +609,20 @@ pub fn build_qortal_p2sh_funding_transaction(
             .map(|bundle| TransparentBundle {
                 vin: vec![],
                 vout: bundle.vout.clone(),
-                authorization: transparent::Authorized,
+                authorization: TransparentAuthorized,
             });
 
+    let sapling_asks = sapling_extsks
+        .iter()
+        .map(|extsk| extsk.expsk.ask.clone())
+        .collect::<Vec<_>>();
     let signed_sapling_bundle = match unauth_tx.sapling_bundle().cloned() {
         Some(bundle) => Some(
             bundle
-                .apply_signatures(
-                    &prover,
-                    &mut sapling_ctx,
-                    &mut rng,
-                    shielded_sighash.as_ref(),
-                )
+                .apply_signatures(&mut rng, *shielded_sighash.as_ref(), &sapling_asks)
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to sign Sapling bundle: {:?}", e))
-                })?
-                .0,
+                })?,
         ),
         None => None,
     };
@@ -542,7 +635,11 @@ pub fn build_qortal_p2sh_funding_transaction(
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to prove Orchard bundle: {:?}", e))
                 })?
-                .apply_signatures(rng, *shielded_sighash.as_ref(), &orchard_spend_auth_keys)
+                .apply_signatures(
+                    &mut rng,
+                    *shielded_sighash.as_ref(),
+                    &orchard_spend_auth_keys,
+                )
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to sign Orchard bundle: {:?}", e))
                 })?,
@@ -581,7 +678,7 @@ pub fn build_qortal_p2sh_funding_transaction(
 pub fn build_qortal_p2sh_redeem_transaction(
     plan: QortalP2shRedeemPlan,
 ) -> Result<crate::transaction::SignedTransaction> {
-    let script_code = Script(plan.redeem_script.clone());
+    let script_code = build_script_pubkey(&plan.redeem_script)?;
     let sequence = if plan.lock_time > 0 {
         0xFFFFFFFE
     } else {
@@ -589,18 +686,19 @@ pub fn build_qortal_p2sh_redeem_transaction(
     };
     let network = PirateNetwork::new(plan.network_type);
     let target_height = BlockHeight::from_u32(plan.target_height);
-    let branch_id = zcash_primitives::consensus::BranchId::for_height(&network, target_height);
+    let branch_id = zcash_protocol::consensus::BranchId::for_height(&network, target_height);
     let tx_version = TxVersion::suggested_for_branch(branch_id);
     let expiry_height = target_height + 20;
 
-    let mut sapling_builder = SaplingBuilder::new(network.clone(), target_height);
     let has_orchard_outputs = plan
         .recipients
         .iter()
         .any(|recipient| matches!(recipient, QortalRecipient::Orchard { .. }));
+    let mut sapling_builder =
+        new_sapling_builder(&network, target_height, SaplingAnchor::empty_tree());
     let mut orchard_builder = if has_orchard_outputs {
         Some(OrchardBuilder::new(
-            OrchardFlags::from_parts(false, true),
+            OrchardBundleType::DEFAULT,
             plan.orchard_anchor
                 .ok_or_else(|| Error::TransactionBuild("Missing Orchard anchor".to_string()))?,
         ))
@@ -618,52 +716,56 @@ pub fn build_qortal_p2sh_redeem_transaction(
         OutputBuildOptions {
             script_pubkey: None,
             script_each_recipient: false,
-            sapling_ovk: zcash_primitives::sapling::keys::OutgoingViewingKey([0u8; 32]),
+            sapling_ovk: sapling::keys::OutgoingViewingKey([0u8; 32]),
             orchard_ovk: None,
         },
     )?;
 
     let fee_amount =
         Amount::from_u64(plan.fee).map_err(|_| Error::InvalidAmount("Invalid fee".to_string()))?;
-    let outputs_total = transparent_vout
-        .iter()
-        .try_fold(Amount::zero(), |acc, out| {
-            (acc + out.value).ok_or(Error::AmountOverflow(
-                "Transparent output overflow".to_string(),
-            ))
-        })?;
+    let outputs_total = transparent_vout.iter().try_fold(Amount::ZERO, |acc, out| {
+        (acc + out.value()).ok_or(Error::AmountOverflow(
+            "Transparent output overflow".to_string(),
+        ))
+    })?;
     let required_total = (outputs_total + fee_amount)
         .ok_or_else(|| Error::AmountOverflow("Transparent output + fee overflow".to_string()))?;
 
-    if plan.funding_coin.value < required_total {
+    if plan.funding_coin.value() < required_total {
         return Err(Error::InsufficientFunds(
             "Funding output value is less than outputs plus fee".to_string(),
         ));
     }
 
     let prover = sapling_prover();
-    let mut sapling_ctx = prover.new_sapling_proving_context();
     let sapling_bundle = sapling_builder
-        .build(&prover, &mut sapling_ctx, &mut rng, target_height, None)
-        .map_err(|e| Error::TransactionBuild(format!("Failed to build Sapling bundle: {:?}", e)))?;
+        .build::<zcash_proofs::prover::LocalTxProver, zcash_proofs::prover::LocalTxProver, _, ZatBalance>(
+            &[],
+            &mut rng,
+        )
+        .map_err(|e| Error::TransactionBuild(format!("Failed to build Sapling bundle: {:?}", e)))?
+        .map(|(bundle, _meta)| bundle.create_proofs(&prover, &prover, &mut rng, ()));
     let orchard_bundle = if let Some(builder) = orchard_builder {
-        Some(builder.build(&mut rng).map_err(|e| {
-            Error::TransactionBuild(format!("Failed to build Orchard bundle: {:?}", e))
-        })?)
+        builder
+            .build::<ZatBalance>(&mut rng)
+            .map_err(|e| {
+                Error::TransactionBuild(format!("Failed to build Orchard bundle: {:?}", e))
+            })?
+            .map(|(bundle, _meta)| bundle)
     } else {
         None
     };
 
     let transparent_bundle = Some(TransparentBundle {
-        vin: vec![TxIn {
-            prevout: OutPoint::new(plan.funding_txid, 0),
-            script_sig: (),
+        vin: vec![TxIn::from_parts(
+            OutPoint::new(plan.funding_txid, 0),
+            (),
             sequence,
-        }],
+        )],
         vout: transparent_vout.clone(),
         authorization: TransparentAuthContext {
-            input_amounts: vec![plan.funding_coin.value],
-            input_scriptpubkeys: vec![plan.funding_coin.script_pubkey.clone()],
+            input_amounts: vec![plan.funding_coin.value()],
+            input_scriptpubkeys: vec![plan.funding_coin.script_pubkey().clone()],
         },
     });
 
@@ -681,15 +783,21 @@ pub fn build_qortal_p2sh_redeem_transaction(
     );
 
     let txid_parts = unauth_tx.digest(TxIdDigester);
+    let transparent_signable = TransparentSignableInput::from_parts(
+        unauth_tx
+            .transparent_bundle()
+            .as_ref()
+            .expect("transparent bundle exists"),
+        SighashType::ALL,
+        0,
+        &script_code,
+        plan.funding_coin.script_pubkey(),
+        plan.funding_coin.value(),
+    )
+    .map_err(|e| Error::TransactionBuild(format!("Invalid transparent input: {}", e)))?;
     let sighash = signature_hash(
         &unauth_tx,
-        &SignableInput::Transparent {
-            hash_type: SIGHASH_ALL,
-            index: 0,
-            script_code: &script_code,
-            script_pubkey: &plan.funding_coin.script_pubkey,
-            value: plan.funding_coin.value,
-        },
+        &TxSignableInput::Transparent(transparent_signable),
         &txid_parts,
     );
     let msg = secp256k1::Message::from_slice(sighash.as_ref())
@@ -700,21 +808,15 @@ pub fn build_qortal_p2sh_redeem_transaction(
     sig_bytes.push(SIGHASH_ALL);
     let script_sig = build_p2sh_script_sig(&sig_bytes, &plan.secret, &plan.redeem_script);
 
-    let shielded_sighash = signature_hash(&unauth_tx, &SignableInput::Shielded, &txid_parts);
+    let shielded_sighash = signature_hash(&unauth_tx, &TxSignableInput::Shielded, &txid_parts);
 
     let signed_sapling_bundle = match unauth_tx.sapling_bundle().cloned() {
         Some(bundle) => Some(
             bundle
-                .apply_signatures(
-                    &prover,
-                    &mut sapling_ctx,
-                    &mut rng,
-                    shielded_sighash.as_ref(),
-                )
+                .apply_signatures(&mut rng, *shielded_sighash.as_ref(), &[])
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to sign Sapling bundle: {:?}", e))
-                })?
-                .0,
+                })?,
         ),
         None => None,
     };
@@ -727,7 +829,7 @@ pub fn build_qortal_p2sh_redeem_transaction(
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to prove Orchard bundle: {:?}", e))
                 })?
-                .apply_signatures(rng, *shielded_sighash.as_ref(), &[])
+                .apply_signatures(&mut rng, *shielded_sighash.as_ref(), &[])
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to sign Orchard bundle: {:?}", e))
                 })?,
@@ -736,13 +838,13 @@ pub fn build_qortal_p2sh_redeem_transaction(
     };
 
     let signed_transparent_bundle = Some(TransparentBundle {
-        vin: vec![TxIn {
-            prevout: OutPoint::new(plan.funding_txid, 0),
+        vin: vec![TxIn::from_parts(
+            OutPoint::new(plan.funding_txid, 0),
             script_sig,
             sequence,
-        }],
+        )],
         vout: transparent_vout,
-        authorization: transparent::Authorized,
+        authorization: TransparentAuthorized,
     });
 
     let authorized_tx = TransactionData::from_parts(
@@ -775,10 +877,10 @@ pub fn build_qortal_p2sh_redeem_transaction(
 mod tests {
     use super::*;
     use crate::selection::SelectableNote;
-    use zcash_primitives::consensus::BranchId;
-    use zcash_primitives::legacy::TransparentAddress;
-    use zcash_primitives::transaction::components::TxOut;
     use zcash_primitives::transaction::Transaction;
+    use zcash_protocol::consensus::BranchId;
+    use zcash_transparent::address::TransparentAddress;
+    use zcash_transparent::bundle::TxOut;
 
     fn sample_spending_key() -> ExtendedSpendingKey {
         let mnemonic = ExtendedSpendingKey::generate_mnemonic(None);
@@ -787,16 +889,16 @@ mod tests {
 
     fn transparent_recipient(tag: u8, amount: u64) -> QortalRecipient {
         QortalRecipient::Transparent {
-            address: TransparentAddress::PublicKey([tag; 20]),
+            address: TransparentAddress::PublicKeyHash([tag; 20]),
             amount,
         }
     }
 
     fn funding_coin(value: u64) -> TxOut {
-        TxOut {
-            value: Amount::from_u64(value).unwrap(),
-            script_pubkey: TransparentAddress::Script([9u8; 20]).script(),
-        }
+        TxOut::new(
+            Amount::from_u64(value).unwrap(),
+            TransparentAddress::ScriptHash([9u8; 20]).script().into(),
+        )
     }
 
     fn redeem_plan(lock_time: u32, secret: Vec<u8>) -> QortalP2shRedeemPlan {
@@ -849,7 +951,8 @@ mod tests {
         let sapling_key = sample_spending_key();
         let network = PirateNetwork::new(pirate_params::NetworkType::Mainnet);
         let target_height = BlockHeight::from_u32(200_000);
-        let mut sapling_builder = SaplingBuilder::new(network, target_height);
+        let mut sapling_builder =
+            new_sapling_builder(&network, target_height, SaplingAnchor::empty_tree());
         let mut orchard_builder = None;
         let mut transparent_vout = Vec::new();
         let script_pubkey = build_script_pubkey(&[0x6a, 0x00]).unwrap();
@@ -876,12 +979,18 @@ mod tests {
         assert!(!has_sapling);
         assert!(!has_orchard);
         assert_eq!(transparent_vout.len(), 4);
-        assert_eq!(transparent_vout[0].value, Amount::from_u64(20_000).unwrap());
-        assert_eq!(transparent_vout[1].value, Amount::zero());
-        assert_eq!(transparent_vout[2].value, Amount::from_u64(30_000).unwrap());
-        assert_eq!(transparent_vout[3].value, Amount::zero());
-        assert_eq!(transparent_vout[1].script_pubkey, script_pubkey);
-        assert_eq!(transparent_vout[3].script_pubkey, script_pubkey);
+        assert_eq!(
+            transparent_vout[0].value(),
+            Amount::from_u64(20_000).unwrap()
+        );
+        assert_eq!(transparent_vout[1].value(), Amount::ZERO);
+        assert_eq!(
+            transparent_vout[2].value(),
+            Amount::from_u64(30_000).unwrap()
+        );
+        assert_eq!(transparent_vout[3].value(), Amount::ZERO);
+        assert_eq!(transparent_vout[1].script_pubkey(), &script_pubkey);
+        assert_eq!(transparent_vout[3].script_pubkey(), &script_pubkey);
     }
 
     #[test]
@@ -889,7 +998,7 @@ mod tests {
         let secret = vec![8u8, 9u8, 10u8];
         let signed = build_qortal_p2sh_redeem_transaction(redeem_plan(0, secret.clone())).unwrap();
         let tx = Transaction::read(&signed.raw_tx[..], BranchId::Nu5).unwrap();
-        let script_sig = &tx.transparent_bundle().unwrap().vin[0].script_sig.0;
+        let script_sig = &tx.transparent_bundle().unwrap().vin[0].script_sig().0 .0;
 
         assert!(script_sig
             .windows(secret.len())
@@ -901,7 +1010,7 @@ mod tests {
     fn refund_build_uses_refund_branch_without_secret() {
         let signed = build_qortal_p2sh_redeem_transaction(redeem_plan(10, Vec::new())).unwrap();
         let tx = Transaction::read(&signed.raw_tx[..], BranchId::Nu5).unwrap();
-        let script_sig = &tx.transparent_bundle().unwrap().vin[0].script_sig.0;
+        let script_sig = &tx.transparent_bundle().unwrap().vin[0].script_sig().0 .0;
 
         assert!(script_sig.contains(&0x51));
         assert!(script_sig.ends_with(&[0x51, 0x21, 0x02]));

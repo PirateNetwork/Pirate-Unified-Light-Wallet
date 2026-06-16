@@ -43,6 +43,8 @@ use pirate_storage_sqlite::{
 use pirate_sync_lightd::client::{LightClient, RetryConfig};
 use pirate_sync_lightd::SyncEngine;
 use rusqlite::params;
+use sapling::keys::OutgoingViewingKey as SaplingOutgoingViewingKey;
+use sapling::note_encryption::try_sapling_output_recovery;
 use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
@@ -57,11 +59,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Once};
 use std::time::Duration;
 use zcash_note_encryption::try_output_recovery_with_ovk;
-use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::merkle_tree::{read_commitment_tree, read_frontier_v0, read_frontier_v1};
-use zcash_primitives::sapling::keys::OutgoingViewingKey as SaplingOutgoingViewingKey;
-use zcash_primitives::sapling::note_encryption::try_sapling_output_recovery;
+use zcash_primitives::transaction::components::sapling::zip212_enforcement;
 use zcash_primitives::transaction::Transaction;
+use zcash_protocol::consensus::{BlockHeight, BranchId};
 
 use pirate_wallet_service as service;
 
@@ -160,18 +161,16 @@ fn recover_outgoing_memo_from_raw_tx(
         .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
         .ok()?;
     let block_height = BlockHeight::from_u32(tx_height.unwrap_or(0));
+    let sapling_zip212 = zip212_enforcement(&PirateNetwork::default(), block_height);
 
     if let Some(bundle) = tx.sapling_bundle() {
         for ovk in sapling_ovks {
             for output in bundle.shielded_outputs() {
-                if let Some((_note, _address, memo)) = try_sapling_output_recovery(
-                    &PirateNetwork::default(),
-                    block_height,
-                    ovk,
-                    output,
-                ) {
-                    if !memo.as_array().iter().all(|b| *b == 0) {
-                        return Some(memo.as_array().to_vec());
+                if let Some((_note, _address, memo)) =
+                    try_sapling_output_recovery(ovk, output, sapling_zip212)
+                {
+                    if !memo.iter().all(|b| *b == 0) {
+                        return Some(memo.to_vec());
                     }
                 }
             }

@@ -12,17 +12,15 @@ use pirate_storage_sqlite::{
     EncryptionAlgorithm, EncryptionKey, KeyScope, KeyType, MasterKey, NoteRecord,
     NoteType as DbNoteType, Repository,
 };
+use sapling::{
+    note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment,
+    value::NoteValue as SaplingNoteValue, zip32::ExtendedSpendingKey as SaplingExtendedSpendingKey,
+    Note as SaplingNote, Rseed,
+};
 use shardtree::ShardTree;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use zcash_primitives::{
-    consensus::BlockHeight,
-    sapling::value::NoteValue as SaplingNoteValue,
-    sapling::{
-        note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment, Note as SaplingNote, Rseed,
-    },
-    zip32::sapling::ExtendedSpendingKey as SaplingExtendedSpendingKey,
-};
+use zcash_protocol::consensus::BlockHeight;
 
 fn test_db_path() -> PathBuf {
     std::env::temp_dir().join(format!("pirate-ffi-regression-{}.db", uuid::Uuid::new_v4()))
@@ -154,7 +152,7 @@ fn insert_sapling_note(
 fn seed_sapling_shardtree_checkpoint(db: &Database, checkpoint_height: u32, cmus: &[[u8; 32]]) {
     const SAPLING_TABLE_PREFIX: &str = "sapling";
     const SHARDTREE_PRUNING_DEPTH: usize = 1000;
-    const SAPLING_SHARD_HEIGHT: u8 = zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH / 2;
+    const SAPLING_SHARD_HEIGHT: u8 = sapling::NOTE_COMMITMENT_TREE_DEPTH / 2;
 
     let tx = db
         .conn()
@@ -162,21 +160,18 @@ fn seed_sapling_shardtree_checkpoint(db: &Database, checkpoint_height: u32, cmus
         .expect("failed to open shardtree transaction");
     let store = pirate_storage_sqlite::shardtree_store::SqliteShardStore::<
         _,
-        zcash_primitives::sapling::Node,
+        sapling::Node,
         SAPLING_SHARD_HEIGHT,
     >::from_connection(&tx, SAPLING_TABLE_PREFIX)
     .expect("failed to open shardtree store");
-    let mut tree: ShardTree<
-        _,
-        { zcash_primitives::sapling::NOTE_COMMITMENT_TREE_DEPTH },
-        SAPLING_SHARD_HEIGHT,
-    > = ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
+    let mut tree: ShardTree<_, { sapling::NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT> =
+        ShardTree::new(store, SHARDTREE_PRUNING_DEPTH);
 
     for cmu in cmus {
         let cmu_opt: Option<SaplingExtractedNoteCommitment> =
             SaplingExtractedNoteCommitment::from_bytes(cmu).into();
         let cmu_value = cmu_opt.expect("test cmu must be valid");
-        let node = zcash_primitives::sapling::Node::from_cmu(&cmu_value);
+        let node = sapling::Node::from_cmu(&cmu_value);
         tree.append(node, Retention::Marked)
             .expect("failed to append test commitment");
     }

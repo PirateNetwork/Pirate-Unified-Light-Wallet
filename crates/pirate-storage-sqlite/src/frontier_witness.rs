@@ -5,8 +5,8 @@ use orchard::note::ExtractedNoteCommitment as OrchardExtractedNoteCommitment;
 use orchard::tree::{MerkleHashOrchard, MerklePath as OrchardMerklePath};
 use pirate_core::selection::{NoteType as SelectableNoteType, SelectableNote};
 use rusqlite::OptionalExtension;
+use sapling::{Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH};
 use shardtree::{error::ShardTreeError, ShardTree};
-use zcash_primitives::sapling::{Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH};
 
 const SAPLING_TABLE_PREFIX: &str = "sapling";
 const ORCHARD_TABLE_PREFIX: &str = "orchard";
@@ -55,12 +55,8 @@ fn checkpoint_depth_at_or_below(
         return Ok(None);
     };
 
-    // In shardtree 0.1:
-    // - `checkpoint_depth = 0` means "latest tree state" (tip), not "latest checkpoint".
-    // - `checkpoint_depth = 1` means "latest checkpoint", then 2, 3, ... for older checkpoints.
-    //
-    // For a selected checkpoint id, depth must therefore be:
-    //   1 + count(checkpoints strictly newer than selected checkpoint).
+    // In shardtree 0.6, checkpoint depth is zero-based over checkpoints in
+    // reverse checkpoint-id order: 0 is latest, 1 is previous, and so on.
     let depth: i64 = conn.query_row(
         &format!(
             "SELECT COUNT(*) FROM {}_tree_checkpoints WHERE checkpoint_id > ?1",
@@ -70,11 +66,10 @@ fn checkpoint_depth_at_or_below(
         |row| row.get(0),
     )?;
 
-    let checkpoint_depth = usize::try_from(depth + 1).map_err(|_| {
+    let checkpoint_depth = usize::try_from(depth).map_err(|_| {
         Error::Storage(format!(
             "checkpoint depth {} out of range for {}",
-            depth + 1,
-            table_prefix
+            depth, table_prefix
         ))
     })?;
 
@@ -86,8 +81,8 @@ fn sapling_witness_for_position(
     position: u64,
     checkpoint_depth: usize,
 ) -> Result<Option<incrementalmerkletree::MerklePath<SaplingNode, NOTE_COMMITMENT_TREE_DEPTH>>> {
-    match tree.witness_caching(Position::from(position), checkpoint_depth) {
-        Ok(path) => Ok(Some(path)),
+    match tree.witness_at_checkpoint_depth_caching(Position::from(position), checkpoint_depth) {
+        Ok(path) => Ok(path),
         Err(ShardTreeError::Query(_)) => Ok(None),
         Err(err) => Err(map_shardtree_error(
             "Failed to compute Sapling witness from shardtree",
@@ -100,8 +95,8 @@ fn sapling_anchor_root_at_depth(
     tree: &mut SaplingTree<'_>,
     checkpoint_depth: usize,
 ) -> Result<Option<SaplingNode>> {
-    match tree.root_at_checkpoint_caching(checkpoint_depth) {
-        Ok(root) => Ok(Some(root)),
+    match tree.root_at_checkpoint_depth_caching(Some(checkpoint_depth)) {
+        Ok(root) => Ok(root),
         Err(ShardTreeError::Query(_)) => Ok(None),
         Err(err) => Err(map_shardtree_error(
             "Failed to compute Sapling root at checkpoint from shardtree",
@@ -115,8 +110,11 @@ fn orchard_witness_for_position(
     position: u64,
     checkpoint_depth: usize,
 ) -> Result<Option<OrchardMerklePath>> {
-    let path = match tree.witness_caching(Position::from(position), checkpoint_depth) {
-        Ok(path) => path,
+    let path = match tree
+        .witness_at_checkpoint_depth_caching(Position::from(position), checkpoint_depth)
+    {
+        Ok(Some(path)) => path,
+        Ok(None) => return Ok(None),
         Err(ShardTreeError::Query(_)) => return Ok(None),
         Err(err) => {
             return Err(map_shardtree_error(
@@ -150,8 +148,9 @@ fn orchard_anchor_at_depth(
     tree: &mut OrchardTree<'_>,
     checkpoint_depth: usize,
 ) -> Result<Option<orchard::tree::Anchor>> {
-    let root = match tree.root_at_checkpoint_caching(checkpoint_depth) {
-        Ok(root) => root,
+    let root = match tree.root_at_checkpoint_depth_caching(Some(checkpoint_depth)) {
+        Ok(Some(root)) => root,
+        Ok(None) => return Ok(None),
         Err(ShardTreeError::Query(_)) => return Ok(None),
         Err(err) => {
             return Err(map_shardtree_error(
@@ -272,9 +271,8 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
                         let leaf = if note.commitment.len() == 32 {
                             let mut cmu = [0u8; 32];
                             cmu.copy_from_slice(&note.commitment);
-                            let cmu: Option<zcash_primitives::sapling::note::ExtractedNoteCommitment> =
-                                zcash_primitives::sapling::note::ExtractedNoteCommitment::from_bytes(&cmu)
-                                    .into();
+                            let cmu: Option<sapling::note::ExtractedNoteCommitment> =
+                                sapling::note::ExtractedNoteCommitment::from_bytes(&cmu).into();
                             cmu.map(|cmu| SaplingNode::from_cmu(&cmu))
                         } else {
                             None
@@ -384,29 +382,29 @@ mod tests {
             .unwrap();
         }
 
-        // Latest checkpoint is depth 1 (depth 0 is latest tree state in shardtree 0.1).
+        // Latest checkpoint is depth 0 in shardtree 0.6.
         let (_, depth) = checkpoint_depth_at_or_below(&conn, "sapling", 200)
             .unwrap()
             .expect("checkpoint");
-        assert_eq!(depth, 1);
+        assert_eq!(depth, 0);
 
-        // Exact checkpoint depth is 1 + number of strictly newer checkpoints.
+        // Exact checkpoint depth is the number of strictly newer checkpoints.
         let (_, depth) = checkpoint_depth_at_or_below(&conn, "sapling", 105)
             .unwrap()
             .expect("checkpoint");
         // Newer checkpoints: 110
-        assert_eq!(depth, 2);
+        assert_eq!(depth, 1);
 
         // Anchor between checkpoints selects MAX <= anchor.
         let (_, depth) = checkpoint_depth_at_or_below(&conn, "sapling", 109)
             .unwrap()
             .expect("checkpoint");
-        assert_eq!(depth, 2);
+        assert_eq!(depth, 1);
 
-        // Oldest checkpoint has depth 1 + count(newer checkpoints).
+        // Oldest checkpoint has depth count(newer checkpoints).
         let (_, depth) = checkpoint_depth_at_or_below(&conn, "sapling", 100)
             .unwrap()
             .expect("checkpoint");
-        assert_eq!(depth, 4);
+        assert_eq!(depth, 3);
     }
 }

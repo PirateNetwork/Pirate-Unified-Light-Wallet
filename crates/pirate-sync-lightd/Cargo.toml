@@ -18,17 +18,18 @@ pirate-params = { path = "../pirate-params" }
 pirate-net = { path = "../pirate-net" }
 pirate-storage-sqlite = { path = "../pirate-storage-sqlite" }
 
-# Merkle tree for Sapling commitment tree (compatible with zcash_primitives 0.22)
-# Align with node version
-incrementalmerkletree = "0.5"
-shardtree = "0.1"
+# Merkle tree for Sapling commitment tree; keep aligned with Sapling/Orchard.
+incrementalmerkletree = { workspace = true }
+shardtree = { workspace = true }
 
 # Sapling primitives for proper Pedersen hash using Jubjub curve
-sapling-crypto = { workspace = true }
+sapling = { workspace = true }
 group = "0.13"
 jubjub = "0.10"
 zcash_primitives = { workspace = true }
+zcash_protocol = { workspace = true }
 zcash_note_encryption = { workspace = true }
+zip32 = { workspace = true }
 orchard = { workspace = true }
 subtle = "2.5"
 

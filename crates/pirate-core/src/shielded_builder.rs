@@ -17,13 +17,18 @@ use std::collections::HashMap;
 
 use incrementalmerkletree::MerklePath;
 use orchard::tree::Anchor as OrchardAnchor;
-use zcash_primitives::{
-    consensus::{BlockHeight, NetworkUpgrade, Parameters},
-    memo::MemoBytes,
-    sapling::{Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH},
-    transaction::{builder::Builder as TxBuilder, components::Amount, TxId},
+use sapling::{Anchor as SaplingAnchor, Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH};
+use zcash_primitives::transaction::{
+    builder::{BuildConfig, Builder as TxBuilder},
+    TxId,
 };
 use zcash_proofs::prover::LocalTxProver;
+use zcash_protocol::{
+    consensus::{BlockHeight, NetworkType as ConsensusNetworkType, NetworkUpgrade, Parameters},
+    memo::MemoBytes,
+    value::Zatoshis as Amount,
+};
+use zcash_transparent::builder::TransparentSigningSet;
 
 /// Pirate Chain network parameters
 #[derive(Clone, Debug)]
@@ -56,47 +61,12 @@ impl Default for PirateNetwork {
 }
 
 impl Parameters for PirateNetwork {
-    fn coin_type(&self) -> u32 {
-        self.network.coin_type
-    }
-
-    fn address_network(&self) -> Option<zcash_address::Network> {
+    fn network_type(&self) -> ConsensusNetworkType {
         match self.network.network_type {
-            NetworkType::Mainnet => Some(zcash_address::Network::Main),
-            NetworkType::Testnet | NetworkType::Regtest => Some(zcash_address::Network::Test),
+            NetworkType::Mainnet => ConsensusNetworkType::Main,
+            NetworkType::Testnet => ConsensusNetworkType::Test,
+            NetworkType::Regtest => ConsensusNetworkType::Regtest,
         }
-    }
-
-    fn hrp_sapling_extended_spending_key(&self) -> &str {
-        match self.network.network_type {
-            NetworkType::Mainnet => "secret-extended-key-main",
-            NetworkType::Testnet => "secret-extended-key-test",
-            NetworkType::Regtest => "secret-extended-key-regtest",
-        }
-    }
-
-    fn hrp_sapling_extended_full_viewing_key(&self) -> &str {
-        match self.network.network_type {
-            NetworkType::Mainnet => "zxviews",
-            NetworkType::Testnet => "zxviewtestsapling",
-            NetworkType::Regtest => "zxviewregtestsapling",
-        }
-    }
-
-    fn hrp_sapling_payment_address(&self) -> &str {
-        match self.network.network_type {
-            NetworkType::Mainnet => "zs",
-            NetworkType::Testnet => "ztestsapling",
-            NetworkType::Regtest => "zregtestsapling",
-        }
-    }
-
-    fn b58_pubkey_address_prefix(&self) -> &[u8] {
-        &[0x1C, 0xB8] // Pirate Chain P2PKH prefix
-    }
-
-    fn b58_script_address_prefix(&self) -> &[u8] {
-        &[0x1C, 0xBD] // Pirate Chain P2SH prefix
     }
 
     fn activation_height(&self, nu: NetworkUpgrade) -> Option<BlockHeight> {
@@ -223,8 +193,8 @@ pub struct BuildAndSignMultiInputs<'a> {
 
 #[derive(Clone)]
 struct LegacySaplingChange {
-    ovk: zcash_primitives::sapling::keys::OutgoingViewingKey,
-    address: zcash_primitives::sapling::PaymentAddress,
+    ovk: sapling::keys::OutgoingViewingKey,
+    address: sapling::PaymentAddress,
 }
 
 impl ShieldedBuilder {
@@ -420,10 +390,18 @@ impl ShieldedBuilder {
             .notes
             .iter()
             .any(|n| n.note_type == crate::selection::NoteType::Orchard);
+        let has_sapling_spends = selection
+            .notes
+            .iter()
+            .any(|n| n.note_type == crate::selection::NoteType::Sapling);
         let has_orchard_outputs = self
             .outputs
             .iter()
             .any(|o| matches!(o, ShieldedOutput::Orchard { .. }));
+        let has_sapling_outputs = self
+            .outputs
+            .iter()
+            .any(|o| matches!(o, ShieldedOutput::Sapling { .. }));
         let use_sapling_internal_change = crate::sapling_internal_change_active(
             self.network.network_type(),
             u64::from(target_height),
@@ -454,6 +432,48 @@ impl ShieldedBuilder {
                 change
             );
         }
+
+        let effective_sapling_anchor = if has_sapling_spends {
+            let mut selected_anchor: Option<SaplingAnchor> = None;
+            for note in &selection.notes {
+                if note.note_type != crate::selection::NoteType::Sapling {
+                    continue;
+                }
+                let sapling_note = note.note.as_ref().ok_or_else(|| {
+                    Error::TransactionBuild(
+                        "Missing Sapling note data for selected Sapling spend note".to_string(),
+                    )
+                })?;
+                let merkle_path = note.merkle_path.as_ref().ok_or_else(|| {
+                    Error::TransactionBuild(
+                        "Missing Sapling witness path for selected Sapling spend note".to_string(),
+                    )
+                })?;
+                let cmu = sapling_note.cmu();
+                let note_anchor =
+                    SaplingAnchor::from(merkle_path.root(SaplingNode::from_cmu(&cmu)));
+                if let Some(existing) = selected_anchor.as_ref() {
+                    if existing != &note_anchor {
+                        return Err(Error::TransactionBuild(
+                            "Selected Sapling spend notes are not anchored to a single root"
+                                .to_string(),
+                        ));
+                    }
+                } else {
+                    selected_anchor = Some(note_anchor);
+                }
+            }
+
+            Some(selected_anchor.ok_or_else(|| {
+                Error::TransactionBuild(
+                    "Missing Sapling anchor for selected Sapling spend set".to_string(),
+                )
+            })?)
+        } else if has_sapling_outputs {
+            Some(SaplingAnchor::empty_tree())
+        } else {
+            None
+        };
 
         let effective_orchard_anchor = if has_orchard_spends {
             let mut selected_anchor: Option<OrchardAnchor> = None;
@@ -505,80 +525,78 @@ impl ShieldedBuilder {
         let mut tx_builder = TxBuilder::new(
             self.network.clone(),
             BlockHeight::from_u32(target_height),
-            effective_orchard_anchor,
+            BuildConfig::Standard {
+                sapling_anchor: effective_sapling_anchor,
+                orchard_anchor: effective_orchard_anchor,
+            },
         );
 
         let mut first_legacy_sapling_change: Option<LegacySaplingChange> = None;
+        let mut sapling_extsks = Vec::new();
+        let mut orchard_saks = Vec::new();
 
         // Add Sapling and Orchard spends with witness data
         // Note: We iterate by value because Orchard MerklePath doesn't implement Clone
         for note in selection.notes {
             match note.note_type {
                 crate::selection::NoteType::Sapling => {
-                    if note.diversifier.is_some() {
-                        let diversifier = note.diversifier.as_ref().ok_or_else(|| {
-                            Error::TransactionBuild("Missing diversifier for note".to_string())
-                        })?;
-                        let sapling_note = note.note.as_ref().ok_or_else(|| {
-                            Error::TransactionBuild("Missing Sapling note data".to_string())
-                        })?;
-                        let merkle_path: MerklePath<SaplingNode, { NOTE_COMMITMENT_TREE_DEPTH }> =
-                            note.merkle_path
-                                .as_ref()
-                                .ok_or_else(|| {
-                                    Error::TransactionBuild(
-                                        "Missing Sapling witness path".to_string(),
-                                    )
-                                })?
-                                .clone();
+                    let diversifier = note.diversifier.as_ref().ok_or_else(|| {
+                        Error::TransactionBuild("Missing diversifier for note".to_string())
+                    })?;
+                    let sapling_note = note.note.as_ref().ok_or_else(|| {
+                        Error::TransactionBuild("Missing Sapling note data".to_string())
+                    })?;
+                    let merkle_path: MerklePath<SaplingNode, { NOTE_COMMITMENT_TREE_DEPTH }> = note
+                        .merkle_path
+                        .as_ref()
+                        .ok_or_else(|| {
+                            Error::TransactionBuild("Missing Sapling witness path".to_string())
+                        })?
+                        .clone();
 
-                        let base_sapling_key = note
-                            .key_id
-                            .and_then(|key_id| sapling_spending_keys_by_id.get(&key_id))
-                            .unwrap_or(default_sapling_spending_key);
-                        if first_legacy_sapling_change.is_none() {
-                            first_legacy_sapling_change = Some(LegacySaplingChange {
-                                ovk: base_sapling_key.to_extended_fvk().outgoing_viewing_key(),
-                                address: sapling_note.recipient(),
-                            });
-                        }
-                        let mut sapling_key = base_sapling_key.clone();
+                    let base_sapling_key = note
+                        .key_id
+                        .and_then(|key_id| sapling_spending_keys_by_id.get(&key_id))
+                        .unwrap_or(default_sapling_spending_key);
+                    if first_legacy_sapling_change.is_none() {
+                        first_legacy_sapling_change = Some(LegacySaplingChange {
+                            ovk: base_sapling_key.to_extended_fvk().outgoing_viewing_key(),
+                            address: sapling_note.recipient(),
+                        });
+                    }
+                    let mut sapling_key = base_sapling_key.clone();
 
-                        // Match selected key scope (external/internal) to the actual note
-                        // recipient to avoid spend-proof failures on internal change notes.
-                        let recipient = sapling_note.recipient();
-                        let external_matches = base_sapling_key
+                    // Match selected key scope (external/internal) to the actual note
+                    // recipient to avoid spend-proof failures on internal change notes.
+                    let recipient = sapling_note.recipient();
+                    let external_matches = base_sapling_key
+                        .to_extended_fvk()
+                        .address_from_diversifier(diversifier.0)
+                        .map(|addr| addr.inner == recipient)
+                        .unwrap_or(false);
+
+                    if !external_matches {
+                        let internal_candidate = base_sapling_key.derive_internal();
+                        let internal_matches = internal_candidate
                             .to_extended_fvk()
                             .address_from_diversifier(diversifier.0)
                             .map(|addr| addr.inner == recipient)
                             .unwrap_or(false);
-
-                        if !external_matches {
-                            let internal_candidate = base_sapling_key.derive_internal();
-                            let internal_matches = internal_candidate
-                                .to_extended_fvk()
-                                .address_from_diversifier(diversifier.0)
-                                .map(|addr| addr.inner == recipient)
-                                .unwrap_or(false);
-                            if internal_matches {
-                                sapling_key = internal_candidate;
-                            }
+                        if internal_matches {
+                            sapling_key = internal_candidate;
                         }
-
-                        tx_builder
-                            .add_sapling_spend(
-                                sapling_key.inner().clone(),
-                                *diversifier,
-                                sapling_note.clone(),
-                                merkle_path,
-                            )
-                            .map_err(|e| {
-                                Error::TransactionBuild(format!(
-                                    "Failed to add Sapling spend: {:?}",
-                                    e
-                                ))
-                            })?;
                     }
+
+                    tx_builder
+                        .add_sapling_spend::<()>(
+                            sapling_key.full_viewing_key(),
+                            sapling_note.clone(),
+                            merkle_path,
+                        )
+                        .map_err(|e| {
+                            Error::TransactionBuild(format!("Failed to add Sapling spend: {:?}", e))
+                        })?;
+                    sapling_extsks.push(sapling_key.inner().clone());
                 }
                 crate::selection::NoteType::Orchard => {
                     // For Orchard spends, we need the note, merkle path, and spending key
@@ -598,14 +616,16 @@ impl ShieldedBuilder {
                             )
                         })?;
 
-                    // Extract SpendingKey from OrchardExtendedSpendingKey
-                    let sk = &orchard_sk.inner;
-
                     tx_builder
-                        .add_orchard_spend::<()>(*sk, *orchard_note, orchard_merkle_path)
+                        .add_orchard_spend::<()>(
+                            orchard_sk.full_viewing_key(),
+                            *orchard_note,
+                            orchard_merkle_path,
+                        )
                         .map_err(|e| {
                             Error::TransactionBuild(format!("Failed to add Orchard spend: {:?}", e))
                         })?;
+                    orchard_saks.push(orchard_sk.spend_authorizing_key());
                 }
             }
         }
@@ -628,10 +648,10 @@ impl ShieldedBuilder {
                     };
 
                     tx_builder
-                        .add_sapling_output(
+                        .add_sapling_output::<()>(
                             Some(sapling_ovk),
                             address.inner,
-                            Amount::from_i64(*amount as i64).map_err(|_| {
+                            Amount::from_u64(*amount).map_err(|_| {
                                 Error::InvalidAmount("Amount out of range".to_string())
                             })?,
                             memo_bytes,
@@ -660,7 +680,9 @@ impl ShieldedBuilder {
                         .add_orchard_output::<()>(
                             orchard_ovk.clone(),
                             *address,
-                            *amount,
+                            Amount::from_u64(*amount).map_err(|_| {
+                                Error::InvalidAmount("Amount out of range".to_string())
+                            })?,
                             memo_bytes,
                         )
                         .map_err(|e| {
@@ -700,7 +722,9 @@ impl ShieldedBuilder {
                     .add_orchard_output::<()>(
                         orchard_ovk.clone(),
                         change_addr.inner, // Extract inner orchard::Address
-                        change,
+                        Amount::from_u64(change).map_err(|_| {
+                            Error::InvalidAmount("Change amount out of range".to_string())
+                        })?,
                         MemoBytes::empty(),
                     )
                     .map_err(|e| {
@@ -717,10 +741,10 @@ impl ShieldedBuilder {
                     .inner;
 
                 tx_builder
-                    .add_sapling_output(
+                    .add_sapling_output::<()>(
                         Some(sapling_ovk),
                         change_addr,
-                        Amount::from_i64(change as i64).map_err(|_| {
+                        Amount::from_u64(change).map_err(|_| {
                             Error::InvalidAmount("Change amount out of range".to_string())
                         })?,
                         MemoBytes::empty(),
@@ -739,10 +763,10 @@ impl ShieldedBuilder {
                 })?;
 
                 tx_builder
-                    .add_sapling_output(
+                    .add_sapling_output::<()>(
                         Some(legacy_change.ovk),
                         legacy_change.address,
-                        Amount::from_i64(change as i64).map_err(|_| {
+                        Amount::from_u64(change).map_err(|_| {
                             Error::InvalidAmount("Change amount out of range".to_string())
                         })?,
                         MemoBytes::empty(),
@@ -761,9 +785,22 @@ impl ShieldedBuilder {
         let fee_amount = Amount::from_u64(actual_fee)
             .map_err(|_| Error::InvalidAmount("Fee amount out of range".to_string()))?;
         let fee_rule = FeeRule::non_standard(fee_amount);
-        let (tx, _tx_metadata) = tx_builder.build(&prover, &fee_rule).map_err(|e| {
-            Error::TransactionBuild(format!("Failed to build transaction: {:?}", e))
-        })?;
+        let transparent_signing_set = TransparentSigningSet::new();
+        let mut rng = rand::rngs::OsRng;
+        let build_result = tx_builder
+            .build(
+                &transparent_signing_set,
+                &sapling_extsks,
+                &orchard_saks,
+                &mut rng,
+                &prover,
+                &prover,
+                &fee_rule,
+            )
+            .map_err(|e| {
+                Error::TransactionBuild(format!("Failed to build transaction: {:?}", e))
+            })?;
+        let tx = build_result.transaction();
 
         // Serialize transaction to raw bytes
         let mut raw_tx = Vec::new();

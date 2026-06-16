@@ -8,24 +8,21 @@ use blake2b_simd::Params as Blake2bParams;
 use blake2s_simd::Params as Blake2sParams;
 use orchard::keys::{FullViewingKey as OrchardFullViewingKey, SpendingKey};
 use pirate_params::{Network, NetworkType};
+use sapling::{
+    self, constants,
+    keys::FullViewingKey,
+    keys::{NullifierDerivingKey, OutgoingViewingKey, SaplingIvk},
+    zip32::{
+        DiversifiableFullViewingKey, ExtendedFullViewingKey as SaplingExtendedFullViewingKey,
+        ExtendedSpendingKey as SaplingExtendedSpendingKey,
+    },
+};
 use zcash_client_backend::encoding::{
     decode_extended_full_viewing_key, decode_extended_spending_key, decode_payment_address,
     encode_extended_full_viewing_key, encode_payment_address,
 };
 use zcash_client_backend::keys::sapling as sapling_keys;
-use zcash_primitives::{
-    constants,
-    sapling::{
-        self,
-        keys::FullViewingKey,
-        keys::{NullifierDerivingKey, OutgoingViewingKey, SaplingIvk},
-    },
-    zip32::{
-        AccountId, DiversifiableFullViewingKey, DiversifierIndex,
-        ExtendedFullViewingKey as SaplingExtendedFullViewingKey,
-        ExtendedSpendingKey as SaplingExtendedSpendingKey, Scope,
-    },
-};
+use zip32::{AccountId, DiversifierIndex, Scope};
 
 /// PRF^Expand domain separator for ZIP-32 Orchard child key derivation
 const PRF_EXPAND_PERSONALIZATION: &[u8; 16] = b"Zcash_ExpandSeed";
@@ -103,6 +100,12 @@ impl ExtendedSpendingKey {
         &self.inner
     }
 
+    /// Derive the Sapling full viewing key used to describe spends to the
+    /// transaction builder.
+    pub fn full_viewing_key(&self) -> FullViewingKey {
+        self.inner.to_diversifiable_full_viewing_key().fvk().clone()
+    }
+
     /// Generate from mnemonic seed phrase
     pub fn from_mnemonic(mnemonic: &str) -> Result<Self> {
         Self::from_mnemonic_with_account_and_language(mnemonic, NetworkType::Mainnet, 0, None)
@@ -128,11 +131,9 @@ impl ExtendedSpendingKey {
     ) -> Result<Self> {
         let seed_bytes = mnemonic::seed_bytes_from_mnemonic(mnemonic, language)?;
         let network_params = Network::from_type(network);
-        let extsk = sapling_keys::spending_key(
-            &seed_bytes,
-            network_params.coin_type,
-            AccountId::from(account),
-        );
+        let account_id = AccountId::try_from(account)
+            .map_err(|_| Error::InvalidKey("Invalid ZIP-32 account id".to_string()))?;
+        let extsk = sapling_keys::spending_key(&seed_bytes, network_params.coin_type, account_id);
 
         Ok(Self { inner: extsk })
     }
@@ -444,6 +445,11 @@ impl ExtendedFullViewingKey {
         self.inner.fvk().ovk
     }
 
+    /// Get the Sapling full viewing key.
+    pub fn full_viewing_key(&self) -> FullViewingKey {
+        self.inner.fvk().clone()
+    }
+
     /// Get the Sapling incoming viewing key (SaplingIvk).
     pub fn sapling_ivk(&self) -> SaplingIvk {
         self.inner.fvk().vk.ivk()
@@ -747,6 +753,17 @@ impl OrchardExtendedSpendingKey {
             parent_fvk_tag: self.parent_fvk_tag,
             child_index: self.child_index,
         }
+    }
+
+    /// Derive the Orchard full viewing key used to describe spends to the
+    /// transaction builder.
+    pub fn full_viewing_key(&self) -> OrchardFullViewingKey {
+        (&self.inner).into()
+    }
+
+    /// Derive the Orchard spend-authorizing key used to sign spends.
+    pub fn spend_authorizing_key(&self) -> orchard::keys::SpendAuthorizingKey {
+        (&self.inner).into()
     }
 
     /// Serialize to bytes (73 bytes: depth + parent_fvk_tag + child_index + chain_code + sk)

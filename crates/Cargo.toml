@@ -26,19 +26,24 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/pirate-chain/pirate-unified-wallet"
 
 [workspace.dependencies]
-# Shielded protocol dependencies - Pirate fork (pirate_master_node_13.0 branch)
-zcash_primitives = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
-zcash_client_backend = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
-zcash_proofs = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
-# NOTE: We use crates.io here to match the `orchard` crate's `zcash_note_encryption` dependency
-# so the `Domain` + `ShieldedOutput` trait impls line up (avoids duplicate versions in the graph).
-zcash_note_encryption = "0.4.1"
-zcash_address = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
-zcash_history = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
-sapling-crypto = "0.3"
-orchard = "0.6"
+# Shielded protocol dependencies - pinned to the full-node core revisions.
+zcash_primitives = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab", features = ["non-standard-fees", "transparent-inputs"] }
+zcash_client_backend = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab", features = ["orchard"] }
+zcash_proofs = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_note_encryption = { git = "https://github.com/PirateNetwork/zcash_note_encryption.git", rev = "ede44ea608e667c78309c598fbf4d70f69c15c29" }
+zcash_address = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_encoding = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_history = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_keys = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab", features = ["std", "sapling", "orchard"] }
+zcash_protocol = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab", features = ["local-consensus"] }
+zcash_transparent = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab", features = ["transparent-inputs"] }
+sapling = { package = "sapling-crypto", git = "https://github.com/piratenetwork/sapling-crypto.git", rev = "62fcf59a4d933244ee6280182c6cd3e5290e8a90" }
+sapling-crypto = { git = "https://github.com/piratenetwork/sapling-crypto.git", rev = "62fcf59a4d933244ee6280182c6cd3e5290e8a90" }
+orchard = { git = "https://github.com/PirateNetwork/orchard.git", rev = "af86f0b2603d149ee2e7da7ce195ee8cd46c7664" }
 wagyu-zcash-parameters = "0.2"
-incrementalmerkletree = "0.5"
+incrementalmerkletree = { version = "0.8.2", features = ["legacy-api"] }
+shardtree = { version = "0.6.2", features = ["legacy-api"] }
+zip32 = "0.2.1"
 base64ct = "1.5.3"
 password-hash = "0.5.0"
 pbkdf2 = "0.12.1"
@@ -115,7 +120,16 @@ parking_lot = "0.12"
 once_cell = "1.20"
 
 [patch.crates-io]
-zcash_address = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
-zcash_encoding = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
-zcash_primitives = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
-zcash_proofs = { git = "https://github.com/piratenetwork/librustzcash", branch = "pirate_master_node_13.0" }
+halo2_gadgets = { git = "https://github.com/PirateNetwork/halo2.git", rev = "261faaccd5a30c19bb8468600841a0dac305adf5" }
+halo2_poseidon = { git = "https://github.com/PirateNetwork/halo2.git", rev = "261faaccd5a30c19bb8468600841a0dac305adf5" }
+halo2_proofs = { git = "https://github.com/PirateNetwork/halo2.git", rev = "261faaccd5a30c19bb8468600841a0dac305adf5" }
+orchard = { git = "https://github.com/PirateNetwork/orchard.git", rev = "af86f0b2603d149ee2e7da7ce195ee8cd46c7664" }
+sapling-crypto = { git = "https://github.com/piratenetwork/sapling-crypto.git", rev = "62fcf59a4d933244ee6280182c6cd3e5290e8a90" }
+zcash_address = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_encoding = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_keys = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_note_encryption = { git = "https://github.com/PirateNetwork/zcash_note_encryption.git", rev = "ede44ea608e667c78309c598fbf4d70f69c15c29" }
+zcash_primitives = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_proofs = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_protocol = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }
+zcash_transparent = { git = "https://github.com/piratenetwork/librustzcash", rev = "96d88f8efca4a22dcfb870455527f6ff001d15ab" }

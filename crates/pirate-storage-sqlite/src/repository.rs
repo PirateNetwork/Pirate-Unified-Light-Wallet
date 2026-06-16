@@ -1795,13 +1795,13 @@ impl<'a> Repository<'a> {
         address_ids_filter: Option<Vec<i64>>,
     ) -> Result<Vec<pirate_core::selection::SelectableNote>> {
         use orchard::note::{
-            Note as OrchardNote, Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed,
+            Note as OrchardNote, RandomSeed as OrchardRandomSeed, Rho as OrchardRho,
         };
         use orchard::value::NoteValue as OrchardNoteValue;
         use orchard::Address as OrchardAddress;
         use pirate_core::selection::SelectableNote;
-        use zcash_primitives::sapling::value::NoteValue as SaplingNoteValue;
-        use zcash_primitives::sapling::{Note as SaplingNote, PaymentAddress, Rseed};
+        use sapling::value::NoteValue as SaplingNoteValue;
+        use sapling::{Note as SaplingNote, PaymentAddress, Rseed};
 
         const SAPLING_NOTE_BYTES_VERSION: u8 = 1;
         const ORCHARD_NOTE_BYTES_VERSION: u8 = 1;
@@ -2019,7 +2019,7 @@ impl<'a> Repository<'a> {
                         }
                     };
 
-                    let rho = match Option::from(OrchardNullifier::from_bytes(&rho_bytes)) {
+                    let rho = match Option::from(OrchardRho::from_bytes(&rho_bytes)) {
                         Some(value) => value,
                         None => {
                             skipped_invalid_note += 1;
@@ -4544,15 +4544,13 @@ mod tests {
         FrontierStorage,
     };
     use incrementalmerkletree::Retention;
+    use sapling::note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment;
+    use sapling::value::NoteValue as SaplingNoteValue;
+    use sapling::zip32::ExtendedSpendingKey as SaplingExtendedSpendingKey;
+    use sapling::{Node as SaplingNode, Note as SaplingNote, Rseed, NOTE_COMMITMENT_TREE_DEPTH};
     use shardtree::ShardTree;
     use tempfile::NamedTempFile;
-    use zcash_primitives::consensus::BlockHeight;
-    use zcash_primitives::sapling::note::ExtractedNoteCommitment as SaplingExtractedNoteCommitment;
-    use zcash_primitives::sapling::value::NoteValue as SaplingNoteValue;
-    use zcash_primitives::sapling::{
-        Node as SaplingNode, Note as SaplingNote, Rseed, NOTE_COMMITMENT_TREE_DEPTH,
-    };
-    use zcash_primitives::zip32::sapling::ExtendedSpendingKey as SaplingExtendedSpendingKey;
+    use zcash_protocol::consensus::BlockHeight;
 
     fn test_db() -> Database {
         let file = NamedTempFile::new().unwrap();
