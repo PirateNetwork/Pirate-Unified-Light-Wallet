@@ -52,6 +52,7 @@ FLUTTER_CMD="$(resolve_tool flutter)" || error "flutter is required; run this af
 MAX_ATTEMPTS="${KOMODO_ASSET_PREPARE_ATTEMPTS:-5}"
 RETRY_BASE_SECONDS="${KOMODO_ASSET_RETRY_BASE_SECONDS:-10}"
 CDN_FALLBACK_DISABLED=0
+CDN_FALLBACK_DISABLE_ALLOWED="${KOMODO_ASSET_DISABLE_CDN_FALLBACK:-0}"
 
 cd "$APP_DIR"
 
@@ -203,7 +204,9 @@ while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
     fi
 
     if is_transient_transformer_failure "$LAST_TRANSFORMER_LOG" && [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
-        if [ "$CDN_FALLBACK_DISABLED" -eq 0 ] && grep -q "kmdclassic.github.io" "$LAST_TRANSFORMER_LOG"; then
+        if [ "$CDN_FALLBACK_DISABLE_ALLOWED" = "1" ] &&
+            [ "$CDN_FALLBACK_DISABLED" -eq 0 ] &&
+            grep -q "kmdclassic.github.io" "$LAST_TRANSFORMER_LOG"; then
             log "Coin asset CDN returned a transient error; disabling CDN mirror for fallback."
             disable_coin_cdn_mirror || true
             CDN_FALLBACK_DISABLED=1
