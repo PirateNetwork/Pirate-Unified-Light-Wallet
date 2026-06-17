@@ -1967,6 +1967,39 @@ class RustLibWire implements BaseWire {
   late final _store_dart_post_cobject = _store_dart_post_cobjectPtr
       .asFunction<void Function(DartPostCObjectFnType)>();
 
+  void pirate_debug_log_set_enabled(int enabled) {
+    return _pirate_debug_log_set_enabled(enabled);
+  }
+
+  late final _pirate_debug_log_set_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Uint8)>>(
+        'pirate_debug_log_set_enabled',
+      );
+  late final _pirate_debug_log_set_enabled = _pirate_debug_log_set_enabledPtr
+      .asFunction<void Function(int)>();
+
+  int pirate_debug_log_is_enabled() {
+    return _pirate_debug_log_is_enabled();
+  }
+
+  late final _pirate_debug_log_is_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Uint8 Function()>>(
+        'pirate_debug_log_is_enabled',
+      );
+  late final _pirate_debug_log_is_enabled = _pirate_debug_log_is_enabledPtr
+      .asFunction<int Function()>();
+
+  void pirate_debug_log_clear() {
+    return _pirate_debug_log_clear();
+  }
+
+  late final _pirate_debug_log_clearPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>(
+        'pirate_debug_log_clear',
+      );
+  late final _pirate_debug_log_clear = _pirate_debug_log_clearPtr
+      .asFunction<void Function()>();
+
   void wire__crate__api__acknowledge_seed_warning(int port_) {
     return _wire__crate__api__acknowledge_seed_warning(port_);
   }
@@ -2402,6 +2435,17 @@ class RustLibWire implements BaseWire {
           .asFunction<
             void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
           >();
+
+  void wire__crate__api__clear_debug_logs(int port_) {
+    return _wire__crate__api__clear_debug_logs(port_);
+  }
+
+  late final _wire__crate__api__clear_debug_logsPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+        'frbgen_pirate_wallet_wire__crate__api__clear_debug_logs',
+      );
+  late final _wire__crate__api__clear_debug_logs =
+      _wire__crate__api__clear_debug_logsPtr.asFunction<void Function(int)>();
 
   void wire__crate__api__clear_duress_passphrase(int port_) {
     return _wire__crate__api__clear_duress_passphrase(port_);
@@ -3431,6 +3475,18 @@ class RustLibWire implements BaseWire {
           .asFunction<
             void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, int)
           >();
+
+  void wire__crate__api__get_debug_logging_enabled(int port_) {
+    return _wire__crate__api__get_debug_logging_enabled(port_);
+  }
+
+  late final _wire__crate__api__get_debug_logging_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64)>>(
+        'frbgen_pirate_wallet_wire__crate__api__get_debug_logging_enabled',
+      );
+  late final _wire__crate__api__get_debug_logging_enabled =
+      _wire__crate__api__get_debug_logging_enabledPtr
+          .asFunction<void Function(int)>();
 
   void wire__crate__api__get_fee_info(int port_) {
     return _wire__crate__api__get_fee_info(port_);
@@ -4650,6 +4706,18 @@ class RustLibWire implements BaseWire {
           .asFunction<
             void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, bool)
           >();
+
+  void wire__crate__api__set_debug_logging_enabled(int port_, bool enabled) {
+    return _wire__crate__api__set_debug_logging_enabled(port_, enabled);
+  }
+
+  late final _wire__crate__api__set_debug_logging_enabledPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Int64, ffi.Bool)>>(
+        'frbgen_pirate_wallet_wire__crate__api__set_debug_logging_enabled',
+      );
+  late final _wire__crate__api__set_debug_logging_enabled =
+      _wire__crate__api__set_debug_logging_enabledPtr
+          .asFunction<void Function(int, bool)>();
 
   void wire__crate__api__set_decoy_wallet_name(
     int port_,

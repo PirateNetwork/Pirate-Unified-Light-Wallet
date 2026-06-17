@@ -10,7 +10,7 @@ import 'frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_matches_expected_network_prefix`, `address_prefix_network_type`, `convert_from_service`, `convert_into_service`, `current_linux_fd_count`, `debug_log_path`, `ensure_primary_account_key`, `escape_json`, `fetch_transaction_memo_inner`, `infer_key_network_type_from_addresses`, `install_debug_panic_hook`, `install_runtime_diagnostics`, `log_orchard_address_samples`, `mark_runtime_clean_shutdown`, `orchard_activation_override`, `read_runtime_marker`, `recover_outgoing_memo_from_raw_tx`, `rederive_wallet_keys_for_network`, `run_on_runtime_blocking`, `run_on_runtime`, `run_sync_engine_task`, `runtime_marker_path`, `should_generate_orchard`, `truncate_for_log`, `unix_timestamp_millis`, `update_runtime_marker`, `wallet_network_type`, `write_runtime_debug_event`, `write_runtime_marker`
+// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_matches_expected_network_prefix`, `address_prefix_network_type`, `clear_runtime_marker`, `convert_from_service`, `convert_into_service`, `current_linux_fd_count`, `ensure_primary_account_key`, `escape_json`, `fetch_transaction_memo_inner`, `infer_key_network_type_from_addresses`, `install_debug_panic_hook`, `install_runtime_diagnostics`, `is_service_amount_key`, `log_orchard_address_samples`, `mark_runtime_clean_shutdown`, `normalize_decimal_integer_string`, `normalize_service_amount_strings_for_typed_bridge`, `orchard_activation_override`, `read_runtime_marker`, `recover_outgoing_memo_from_raw_tx`, `rederive_wallet_keys_for_network`, `run_on_runtime_blocking`, `run_on_runtime`, `run_sync_engine_task`, `runtime_marker_path`, `should_generate_orchard`, `truncate_for_log`, `unix_timestamp_millis`, `update_runtime_marker`, `wallet_network_type`, `write_runtime_debug_event`, `write_runtime_marker`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `PENDING_TUNNEL_MODE`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
 
@@ -909,6 +909,14 @@ Future<void> setDecoyWalletName({required String name}) =>
 /// Exit decoy mode (requires real passphrase re-authentication).
 Future<void> exitDecoyMode({required String passphrase}) =>
     RustLib.instance.api.crateApiExitDecoyMode(passphrase: passphrase);
+
+Future<void> setDebugLoggingEnabled({required bool enabled}) =>
+    RustLib.instance.api.crateApiSetDebugLoggingEnabled(enabled: enabled);
+
+Future<bool> getDebugLoggingEnabled() =>
+    RustLib.instance.api.crateApiGetDebugLoggingEnabled();
+
+Future<void> clearDebugLogs() => RustLib.instance.api.crateApiClearDebugLogs();
 
 /// Start seed export flow (step 1: show warning)
 Future<String> startSeedExport({required String walletId}) =>

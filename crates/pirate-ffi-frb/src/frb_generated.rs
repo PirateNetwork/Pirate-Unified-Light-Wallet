@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1269225147;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -526250162;
 
 // Section: executor
 
@@ -482,6 +482,25 @@ fn wire__crate__api__change_app_passphrase_with_cached_impl(
                     (move || {
                         let output_ok =
                             crate::api::change_app_passphrase_with_cached(api_new_passphrase)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__clear_debug_logs_impl(port_: flutter_rust_bridge::for_generated::MessagePort) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "clear_debug_logs",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::clear_debug_logs()?;
                         Ok(output_ok)
                     })(),
                 )
@@ -1501,6 +1520,27 @@ fn wire__crate__api__get_checkpoint_details_impl(
                     (move || {
                         let output_ok =
                             crate::api::get_checkpoint_details(api__wallet_id, api_height)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__get_debug_logging_enabled_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_debug_logging_enabled",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::get_debug_logging_enabled()?;
                         Ok(output_ok)
                     })(),
                 )
@@ -2857,6 +2897,29 @@ fn wire__crate__api__set_auto_consolidation_enabled_impl(
                     (move || {
                         let output_ok =
                             crate::api::set_auto_consolidation_enabled(api_wallet_id, api_enabled)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__set_debug_logging_enabled_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    enabled: impl CstDecode<bool>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_debug_logging_enabled",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_enabled = enabled.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::set_debug_logging_enabled(api_enabled)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -8069,6 +8132,11 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__clear_debug_logs(port_: i64) {
+        wire__crate__api__clear_debug_logs_impl(port_)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__clear_duress_passphrase(port_: i64) {
         wire__crate__api__clear_duress_passphrase_impl(port_)
     }
@@ -8435,6 +8503,11 @@ mod io {
         height: u32,
     ) {
         wire__crate__api__get_checkpoint_details_impl(port_, _wallet_id, height)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__get_debug_logging_enabled(port_: i64) {
+        wire__crate__api__get_debug_logging_enabled_impl(port_)
     }
 
     #[unsafe(no_mangle)]
@@ -8900,6 +8973,14 @@ mod io {
         enabled: bool,
     ) {
         wire__crate__api__set_auto_consolidation_enabled_impl(port_, wallet_id, enabled)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__set_debug_logging_enabled(
+        port_: i64,
+        enabled: bool,
+    ) {
+        wire__crate__api__set_debug_logging_enabled_impl(port_, enabled)
     }
 
     #[unsafe(no_mangle)]
@@ -11184,6 +11265,13 @@ mod web {
     }
 
     #[wasm_bindgen]
+    pub fn wire__crate__api__clear_debug_logs(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__clear_debug_logs_impl(port_)
+    }
+
+    #[wasm_bindgen]
     pub fn wire__crate__api__clear_duress_passphrase(
         port_: flutter_rust_bridge::for_generated::MessagePort,
     ) {
@@ -11558,6 +11646,13 @@ mod web {
         height: u32,
     ) {
         wire__crate__api__get_checkpoint_details_impl(port_, _wallet_id, height)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__get_debug_logging_enabled(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+    ) {
+        wire__crate__api__get_debug_logging_enabled_impl(port_)
     }
 
     #[wasm_bindgen]
@@ -12045,6 +12140,14 @@ mod web {
         enabled: bool,
     ) {
         wire__crate__api__set_auto_consolidation_enabled_impl(port_, wallet_id, enabled)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__set_debug_logging_enabled(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        enabled: bool,
+    ) {
+        wire__crate__api__set_debug_logging_enabled_impl(port_, enabled)
     }
 
     #[wasm_bindgen]

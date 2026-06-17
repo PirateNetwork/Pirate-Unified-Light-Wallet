@@ -1888,6 +1888,9 @@ class RustLibWire implements BaseWire {
     new_passphrase,
   );
 
+  void wire__crate__api__clear_debug_logs(NativePortType port_) =>
+      wasmModule.wire__crate__api__clear_debug_logs(port_);
+
   void wire__crate__api__clear_duress_passphrase(NativePortType port_) =>
       wasmModule.wire__crate__api__clear_duress_passphrase(port_);
 
@@ -2211,6 +2214,9 @@ class RustLibWire implements BaseWire {
     _wallet_id,
     height,
   );
+
+  void wire__crate__api__get_debug_logging_enabled(NativePortType port_) =>
+      wasmModule.wire__crate__api__get_debug_logging_enabled(port_);
 
   void wire__crate__api__get_fee_info(NativePortType port_) =>
       wasmModule.wire__crate__api__get_fee_info(port_);
@@ -2555,6 +2561,11 @@ class RustLibWire implements BaseWire {
     wallet_id,
     enabled,
   );
+
+  void wire__crate__api__set_debug_logging_enabled(
+    NativePortType port_,
+    bool enabled,
+  ) => wasmModule.wire__crate__api__set_debug_logging_enabled(port_, enabled);
 
   void wire__crate__api__set_decoy_wallet_name(
     NativePortType port_,
@@ -2932,6 +2943,8 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String new_passphrase,
   );
 
+  external void wire__crate__api__clear_debug_logs(NativePortType port_);
+
   external void wire__crate__api__clear_duress_passphrase(NativePortType port_);
 
   external void wire__crate__api__clear_panic_pin(NativePortType port_);
@@ -3146,6 +3159,10 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     NativePortType port_,
     String _wallet_id,
     int height,
+  );
+
+  external void wire__crate__api__get_debug_logging_enabled(
+    NativePortType port_,
   );
 
   external void wire__crate__api__get_fee_info(NativePortType port_);
@@ -3410,6 +3427,11 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
   external void wire__crate__api__set_auto_consolidation_enabled(
     NativePortType port_,
     String wallet_id,
+    bool enabled,
+  );
+
+  external void wire__crate__api__set_debug_logging_enabled(
+    NativePortType port_,
     bool enabled,
   );
 

@@ -70,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -1269225147;
+  int get rustContentHash => -526250162;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -152,6 +152,8 @@ abstract class RustLibApi extends BaseApi {
   Future<void> crateApiChangeAppPassphraseWithCached({
     required String newPassphrase,
   });
+
+  Future<void> crateApiClearDebugLogs();
 
   Future<void> crateApiClearDuressPassphrase();
 
@@ -312,6 +314,8 @@ abstract class RustLibApi extends BaseApi {
     required String walletId,
     required int height,
   });
+
+  Future<bool> crateApiGetDebugLoggingEnabled();
 
   Future<FeeInfo> crateApiGetFeeInfo();
 
@@ -511,6 +515,8 @@ abstract class RustLibApi extends BaseApi {
     required String walletId,
     required bool enabled,
   });
+
+  Future<void> crateApiSetDebugLoggingEnabled({required bool enabled});
 
   Future<void> crateApiSetDecoyWalletName({required String name});
 
@@ -1164,6 +1170,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         debugName: "change_app_passphrase_with_cached",
         argNames: ["newPassphrase"],
       );
+
+  @override
+  Future<void> crateApiClearDebugLogs() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__clear_debug_logs(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiClearDebugLogsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiClearDebugLogsConstMeta =>
+      const TaskConstMeta(debugName: "clear_debug_logs", argNames: []);
 
   @override
   Future<void> crateApiClearDuressPassphrase() {
@@ -2323,6 +2350,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         debugName: "get_checkpoint_details",
         argNames: ["walletId", "height"],
       );
+
+  @override
+  Future<bool> crateApiGetDebugLoggingEnabled() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          return wire.wire__crate__api__get_debug_logging_enabled(port_);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_bool,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGetDebugLoggingEnabledConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGetDebugLoggingEnabledConstMeta =>
+      const TaskConstMeta(debugName: "get_debug_logging_enabled", argNames: []);
 
   @override
   Future<FeeInfo> crateApiGetFeeInfo() {
@@ -3849,6 +3897,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "set_auto_consolidation_enabled",
         argNames: ["walletId", "enabled"],
+      );
+
+  @override
+  Future<void> crateApiSetDebugLoggingEnabled({required bool enabled}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_bool(enabled);
+          return wire.wire__crate__api__set_debug_logging_enabled(port_, arg0);
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_unit,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiSetDebugLoggingEnabledConstMeta,
+        argValues: [enabled],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSetDebugLoggingEnabledConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_debug_logging_enabled",
+        argNames: ["enabled"],
       );
 
   @override
