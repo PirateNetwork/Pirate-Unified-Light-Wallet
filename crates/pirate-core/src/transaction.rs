@@ -399,13 +399,13 @@ impl TransactionBuilder {
         let transparent_signing_set = TransparentSigningSet::new();
         let sapling_extsks = [spending_key.inner().clone()];
         let orchard_saks = Vec::<orchard::keys::SpendAuthorizingKey>::new();
-        let mut rng = rand::rngs::OsRng;
+        let rng = rand::rngs::OsRng;
         let build_result = tx_builder
             .build(
                 &transparent_signing_set,
                 &sapling_extsks,
                 &orchard_saks,
-                &mut rng,
+                rng,
                 &prover,
                 &prover,
                 &fee_rule,

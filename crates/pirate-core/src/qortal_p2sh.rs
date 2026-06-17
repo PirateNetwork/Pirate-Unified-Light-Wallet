@@ -364,12 +364,7 @@ pub fn build_qortal_p2sh_funding_transaction(
         .recipients
         .iter()
         .any(|recipient| matches!(recipient, QortalRecipient::Orchard { .. }));
-    let has_sapling_outputs = plan
-        .recipients
-        .iter()
-        .any(|recipient| matches!(recipient, QortalRecipient::Sapling { .. }));
     let use_orchard_change = has_orchard_spends || has_orchard_outputs;
-    let use_sapling_change = change >= CHANGE_DUST_THRESHOLD && !use_orchard_change;
     let use_sapling_internal_change =
         crate::sapling_internal_change_active(plan.network_type, u64::from(plan.target_height));
 
@@ -377,8 +372,6 @@ pub fn build_qortal_p2sh_funding_transaction(
         selected_sapling_anchor(&selection.notes)?.ok_or_else(|| {
             Error::TransactionBuild("Missing Sapling anchor for selected spends".to_string())
         })?
-    } else if has_sapling_outputs || use_sapling_change {
-        SaplingAnchor::empty_tree()
     } else {
         SaplingAnchor::empty_tree()
     };
@@ -553,7 +546,7 @@ pub fn build_qortal_p2sh_funding_transaction(
     let sapling_bundle = sapling_builder
         .build::<zcash_proofs::prover::LocalTxProver, zcash_proofs::prover::LocalTxProver, _, ZatBalance>(
             &sapling_extsks,
-            &mut rng,
+            rng,
         )
         .map_err(|e| Error::TransactionBuild(format!("Failed to build Sapling bundle: {:?}", e)))?
         .map(|(bundle, _meta)| bundle.create_proofs(&prover, &prover, &mut rng, ()));
@@ -619,7 +612,7 @@ pub fn build_qortal_p2sh_funding_transaction(
     let signed_sapling_bundle = match unauth_tx.sapling_bundle().cloned() {
         Some(bundle) => Some(
             bundle
-                .apply_signatures(&mut rng, *shielded_sighash.as_ref(), &sapling_asks)
+                .apply_signatures(rng, *shielded_sighash.as_ref(), &sapling_asks)
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to sign Sapling bundle: {:?}", e))
                 })?,
@@ -635,11 +628,7 @@ pub fn build_qortal_p2sh_funding_transaction(
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to prove Orchard bundle: {:?}", e))
                 })?
-                .apply_signatures(
-                    &mut rng,
-                    *shielded_sighash.as_ref(),
-                    &orchard_spend_auth_keys,
-                )
+                .apply_signatures(rng, *shielded_sighash.as_ref(), &orchard_spend_auth_keys)
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to sign Orchard bundle: {:?}", e))
                 })?,
@@ -813,7 +802,7 @@ pub fn build_qortal_p2sh_redeem_transaction(
     let signed_sapling_bundle = match unauth_tx.sapling_bundle().cloned() {
         Some(bundle) => Some(
             bundle
-                .apply_signatures(&mut rng, *shielded_sighash.as_ref(), &[])
+                .apply_signatures(rng, *shielded_sighash.as_ref(), &[])
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to sign Sapling bundle: {:?}", e))
                 })?,
@@ -829,7 +818,7 @@ pub fn build_qortal_p2sh_redeem_transaction(
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to prove Orchard bundle: {:?}", e))
                 })?
-                .apply_signatures(&mut rng, *shielded_sighash.as_ref(), &[])
+                .apply_signatures(rng, *shielded_sighash.as_ref(), &[])
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to sign Orchard bundle: {:?}", e))
                 })?,

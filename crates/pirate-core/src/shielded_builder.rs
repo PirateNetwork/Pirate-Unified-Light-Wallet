@@ -786,13 +786,13 @@ impl ShieldedBuilder {
             .map_err(|_| Error::InvalidAmount("Fee amount out of range".to_string()))?;
         let fee_rule = FeeRule::non_standard(fee_amount);
         let transparent_signing_set = TransparentSigningSet::new();
-        let mut rng = rand::rngs::OsRng;
+        let rng = rand::rngs::OsRng;
         let build_result = tx_builder
             .build(
                 &transparent_signing_set,
                 &sapling_extsks,
                 &orchard_saks,
-                &mut rng,
+                rng,
                 &prover,
                 &prover,
                 &fee_rule,
