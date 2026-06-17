@@ -1,6 +1,8 @@
 use super::*;
 use crate::models::{Output, SignedTx};
-use pirate_core::keys::{ExtendedSpendingKey, OrchardExtendedSpendingKey, PaymentAddress};
+use pirate_core::keys::{
+    ExtendedSpendingKey, OrchardExtendedSpendingKey, OrchardPaymentAddress, PaymentAddress,
+};
 use pirate_core::{
     build_qortal_p2sh_funding_transaction, build_qortal_p2sh_redeem_transaction, Memo,
     QortalP2shFundingPlan, QortalP2shRedeemPlan, QortalRecipient,
@@ -78,19 +80,46 @@ fn validate_script_bytes(name: &str, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+fn decode_pirate_orchard_address(
+    network_type: NetworkType,
+    address: &str,
+) -> Result<Option<OrchardPaymentAddress>> {
+    let expected_prefix = match network_type {
+        NetworkType::Mainnet => "pirate1",
+        NetworkType::Testnet => "pirate-test1",
+        NetworkType::Regtest => "pirate-regtest1",
+    };
+
+    if !address.starts_with(expected_prefix) {
+        return Ok(None);
+    }
+
+    OrchardPaymentAddress::decode_any_network(address)
+        .map(Some)
+        .map_err(|e| anyhow!("Invalid Orchard address: {}", e))
+}
+
 fn validate_qortal_input_address(network_type: NetworkType, input: &str) -> Result<()> {
     ensure_non_empty("input", input)?;
     let params = pirate_core::transaction::PirateNetwork::new(network_type);
-    let input_address = RecipientAddress::decode(&params, input)
-        .ok_or_else(|| anyhow!("Invalid input address: {}", input))?;
-    match input_address {
-        RecipientAddress::Transparent(_) => Ok(()),
-        RecipientAddress::Sapling(_) | RecipientAddress::Unified(_) | RecipientAddress::Tex(_) => {
-            Err(anyhow!(
+    if let Some(input_address) = RecipientAddress::decode(&params, input) {
+        return match input_address {
+            RecipientAddress::Transparent(_) => Ok(()),
+            RecipientAddress::Sapling(_)
+            | RecipientAddress::Unified(_)
+            | RecipientAddress::Tex(_) => Err(anyhow!(
                 "Input address must be a transparent address for Qortal P2SH commands"
-            ))
-        }
+            )),
+        };
     }
+
+    if decode_pirate_orchard_address(network_type, input)?.is_some() {
+        return Err(anyhow!(
+            "Input address must be a transparent address for Qortal P2SH commands"
+        ));
+    }
+
+    Err(anyhow!("Invalid input address: {}", input))
 }
 
 fn parse_qortal_recipients(
@@ -171,6 +200,14 @@ fn parse_qortal_recipient(
         .filter(|s| !s.is_empty())
         .map(|s| Memo::from_text_truncated(s.clone()));
 
+    if let Some(address) = decode_pirate_orchard_address(network_type, &output.addr)? {
+        return Ok(QortalRecipient::Orchard {
+            address: address.inner,
+            amount: output.amount,
+            memo,
+        });
+    }
+
     let recipient = RecipientAddress::decode(&params, &output.addr).ok_or_else(|| {
         anyhow!(
             "Invalid recipient address in output #{}: {}",
@@ -191,13 +228,11 @@ fn parse_qortal_recipient(
         }),
         RecipientAddress::Unified(address) => {
             let orchard = address.orchard().copied();
-            if orchard.is_some()
-                && !address.has_sapling()
-                && !address.has_transparent()
-                && address.unknown().is_empty()
-            {
+            if let Some(orchard) = orchard.filter(|_| {
+                !address.has_sapling() && !address.has_transparent() && address.unknown().is_empty()
+            }) {
                 Ok(QortalRecipient::Orchard {
-                    address: orchard.expect("checked above"),
+                    address: orchard,
                     amount: output.amount,
                     memo,
                 })
