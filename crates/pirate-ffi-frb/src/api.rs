@@ -44,7 +44,7 @@ use pirate_sync_lightd::SyncEngine;
 use rusqlite::params;
 use sapling::keys::OutgoingViewingKey as SaplingOutgoingViewingKey;
 use sapling::note_encryption::try_sapling_output_recovery;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -132,9 +132,11 @@ const RUNTIME_MARKER_FILE: &str = "runtime_session.marker";
 pub(super) fn convert_from_service<T, U>(value: U) -> Result<T>
 where
     T: DeserializeOwned,
-    U: serde::Serialize,
+    U: Serialize,
 {
-    Ok(serde_json::from_value(serde_json::to_value(value)?)?)
+    let mut value = serde_json::to_value(value)?;
+    normalize_service_amount_strings_for_typed_bridge(&mut value);
+    Ok(serde_json::from_value(value)?)
 }
 
 pub(super) fn convert_into_service<T, U>(value: T) -> Result<U>
@@ -143,6 +145,66 @@ where
     U: DeserializeOwned,
 {
     convert_from_service(value)
+}
+
+// The service JSON ABI emits amount-like integers as decimal strings for
+// JavaScript clients. FRB is a typed bridge, so convert those fields back before
+// serde deserializes into the Flutter-facing Rust models.
+fn normalize_service_amount_strings_for_typed_bridge(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Array(entries) => {
+            for entry in entries {
+                normalize_service_amount_strings_for_typed_bridge(entry);
+            }
+        }
+        serde_json::Value::Object(entries) => {
+            for (key, entry) in entries {
+                if is_service_amount_key(key) {
+                    normalize_decimal_integer_string(entry);
+                }
+                normalize_service_amount_strings_for_typed_bridge(entry);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_decimal_integer_string(value: &mut serde_json::Value) {
+    let Some(text) = value.as_str().map(str::trim) else {
+        return;
+    };
+
+    if text.starts_with('-') {
+        if let Ok(parsed) = text.parse::<i64>() {
+            *value = serde_json::Value::Number(parsed.into());
+        }
+    } else if let Ok(parsed) = text.parse::<u64>() {
+        *value = serde_json::Value::Number(parsed.into());
+    }
+}
+
+fn is_service_amount_key(key: &str) -> bool {
+    matches!(
+        key,
+        "amount"
+            | "available"
+            | "balance"
+            | "change"
+            | "default_fee"
+            | "fee"
+            | "fee_opt"
+            | "fee_per_output"
+            | "input_total"
+            | "max_fee"
+            | "min_fee"
+            | "new_balance"
+            | "pending"
+            | "required"
+            | "spendable"
+            | "total"
+            | "total_amount"
+            | "value"
+    )
 }
 
 fn recover_outgoing_memo_from_raw_tx(
