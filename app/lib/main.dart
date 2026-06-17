@@ -17,7 +17,7 @@ import 'core/desktop/single_instance.dart';
 import 'core/desktop/desktop_update_prompt_host.dart';
 import 'core/desktop/windows_version.dart';
 import 'core/i18n/arb_text_localizer.dart';
-import 'core/logging/debug_log_path.dart';
+import 'core/logging/debug_log_controller.dart';
 import 'core/logging/debug_log_writer.dart';
 import 'core/security/clipboard_manager.dart';
 import 'core/swaps/swap_providers.dart';
@@ -42,8 +42,8 @@ void main() async {
   _appInitialized = true;
 
   WidgetsFlutterBinding.ensureInitialized();
-  final logPath = await resolveDebugLogPath();
-  _installFlutterErrorLogging(logPath);
+  await DebugLogController.initialize();
+  _installFlutterErrorLogging();
 
   final isTest = Platform.environment.containsKey('FLUTTER_TEST');
 
@@ -87,7 +87,7 @@ Future<void> backgroundSyncMain() async {
   initializeBackgroundSyncHandler();
 }
 
-void _installFlutterErrorLogging(String logPath) {
+void _installFlutterErrorLogging() {
   Future<void> writeLog(String message, StackTrace? stack) async {
     try {
       final payload = jsonEncode({
@@ -96,7 +96,7 @@ void _installFlutterErrorLogging(String logPath) {
         'message': message,
         'stack': stack?.toString(),
       });
-      await appendDebugLogLine(payload, logPath: logPath);
+      await appendDebugLogLine(payload);
     } catch (_) {
       // Ignore logging failures.
     }

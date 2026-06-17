@@ -61,7 +61,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   // This prevents any flash of wrong screen
   return GoRouter(
     initialLocation: '/splash',
-    debugLogDiagnostics: true,
+    debugLogDiagnostics: false,
     redirect: (context, state) {
       final walletsExistAsync = ref.read(walletsExistProvider);
       final walletsAsync = ref.read(walletsProvider);

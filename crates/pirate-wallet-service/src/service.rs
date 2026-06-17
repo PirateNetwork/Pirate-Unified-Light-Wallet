@@ -371,6 +371,11 @@ pub enum WalletServiceRequest {
     ExitDecoyMode {
         passphrase: String,
     },
+    SetDebugLoggingEnabled {
+        enabled: bool,
+    },
+    GetDebugLoggingEnabled,
+    ClearDebugLogs,
     GetSyncLogs {
         wallet_id: WalletId,
         limit: Option<u32>,
@@ -878,6 +883,17 @@ impl WalletService {
             }
             WalletServiceRequest::ExitDecoyMode { passphrase } => {
                 ffi::exit_decoy_mode(passphrase)?;
+                Ok(ack())
+            }
+            WalletServiceRequest::SetDebugLoggingEnabled { enabled } => {
+                ffi::set_debug_logging_enabled(enabled)?;
+                Ok(ack())
+            }
+            WalletServiceRequest::GetDebugLoggingEnabled => {
+                serialize(ffi::get_debug_logging_enabled()?)
+            }
+            WalletServiceRequest::ClearDebugLogs => {
+                ffi::clear_debug_logs()?;
                 Ok(ack())
             }
             WalletServiceRequest::GetSyncLogs { wallet_id, limit } => {

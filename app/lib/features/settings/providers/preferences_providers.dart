@@ -10,6 +10,7 @@ import '../../../core/security/keystore_channel.dart';
 import '../../../core/security/passphrase_cache.dart';
 import '../../../core/ffi/generated/models.dart';
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/logging/debug_log_controller.dart';
 
 enum AppThemeMode { system, light, dark }
 
@@ -793,6 +794,19 @@ class ExternalKomodoSwapApiNotifier extends _SecureBoolPreferenceNotifier {
   Future<void> setEnabled({required bool enabled}) => setValue(value: enabled);
 }
 
+class DebugLoggingPreferenceNotifier extends _SecureBoolPreferenceNotifier {
+  @override
+  String get storageKey => kDebugLoggingStorageKey;
+
+  @override
+  bool get defaultValue => false;
+
+  Future<void> setEnabled({required bool enabled}) async {
+    await DebugLogController.setEnabled(enabled: enabled);
+    state = enabled;
+  }
+}
+
 final appThemeModeProvider = NotifierProvider<ThemeModeNotifier, AppThemeMode>(
   ThemeModeNotifier.new,
 );
@@ -859,6 +873,11 @@ final externalDesktopUpdateApiProvider =
 final externalKomodoSwapApiProvider =
     NotifierProvider<ExternalKomodoSwapApiNotifier, bool>(
       ExternalKomodoSwapApiNotifier.new,
+    );
+
+final debugLoggingProvider =
+    NotifierProvider<DebugLoggingPreferenceNotifier, bool>(
+      DebugLoggingPreferenceNotifier.new,
     );
 
 final allowPriceApisProvider = Provider<bool>((ref) {

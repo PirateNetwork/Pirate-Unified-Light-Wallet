@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'debug_log_controller.dart';
 import 'debug_log_path.dart';
 
 const int _defaultDebugLogMaxBytes = 100 * 1024 * 1024;
@@ -117,6 +118,10 @@ Future<void> _rotateDebugLog({
 }
 
 Future<void> appendDebugLogLine(String line, {String? logPath}) async {
+  if (!DebugLogController.isEnabled) {
+    return;
+  }
+
   try {
     final resolvedPath = logPath ?? await resolveDebugLogPath();
     final file = File(resolvedPath);
@@ -124,7 +129,7 @@ Future<void> appendDebugLogLine(String line, {String? logPath}) async {
 
     final maxBytes = _maxDebugLogBytes();
     final backups = _debugLogBackupCount();
-    final payload = '$line\n';
+    final payload = '${DebugLogController.redactDebugLogText(line)}\n';
     final incomingBytes = utf8.encode(payload).length;
 
     final beforeWrite = await _fileLength(file);

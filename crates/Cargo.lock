@@ -3917,6 +3917,7 @@ dependencies = [
  "pirate-params",
  "proptest",
  "rand 0.8.6",
+ "regex",
  "sapling-crypto",
  "secp256k1 0.27.0",
  "serde",

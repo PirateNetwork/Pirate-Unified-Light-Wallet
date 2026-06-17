@@ -13,7 +13,6 @@ use rusqlite::params_from_iter;
 use rusqlite::types::{Value, ValueRef};
 use rusqlite::{params, OptionalExtension};
 use std::collections::{HashMap, HashSet};
-use std::io::Write;
 use std::ops::Deref;
 use std::rc::Rc;
 

@@ -18,7 +18,6 @@ use pirate_net::{
 };
 use rand::Rng;
 use std::env;
-use std::io::Write;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;

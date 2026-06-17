@@ -64,7 +64,7 @@ use shardtree::store::caching::CachingShardStore;
 use shardtree::ShardTree;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
-use std::io::{Cursor, Write};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -101,17 +101,12 @@ type TypedRecoveredSpend = (i64, StorageNoteType, NullifierBytes, TxidBytes);
 
 fn verbose_note_logging_enabled() -> bool {
     static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        if cfg!(debug_assertions) {
-            return true;
+    *ENABLED.get_or_init(|| match env::var("PIRATE_VERBOSE_NOTE_LOGS") {
+        Ok(v) => {
+            let v = v.trim();
+            v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
         }
-        match env::var("PIRATE_VERBOSE_NOTE_LOGS") {
-            Ok(v) => {
-                let v = v.trim();
-                v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
-            }
-            Err(_) => false,
-        }
+        Err(_) => false,
     })
 }
 
@@ -128,10 +123,7 @@ fn verbose_sync_batch_logging_enabled() -> bool {
             }
             true
         }
-        // Keep detailed sync timings on by default so field logs always contain
-        // enough data to diagnose frontier/witness bottlenecks. Set
-        // PIRATE_VERBOSE_SYNC_LOGS=0 to disable.
-        Err(_) => true,
+        Err(_) => false,
     })
 }
 

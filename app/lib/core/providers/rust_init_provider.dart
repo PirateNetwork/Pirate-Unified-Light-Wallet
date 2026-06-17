@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../ffi/generated/frb_generated.dart';
+import '../logging/debug_log_controller.dart';
 
 final rustInitProvider = FutureProvider<void>((ref) async {
   if (Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -20,6 +21,7 @@ final rustInitProvider = FutureProvider<void>((ref) async {
         );
       },
     );
+    await DebugLogController.syncNativeState();
     debugPrint('Rust library initialized successfully');
   } catch (e, stackTrace) {
     debugPrint('Failed to initialize Rust library: $e');

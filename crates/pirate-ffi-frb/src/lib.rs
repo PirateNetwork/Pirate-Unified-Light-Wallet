@@ -30,3 +30,22 @@ pub mod streams;
 
 pub use api::*;
 pub use models::*;
+
+#[no_mangle]
+pub extern "C" fn pirate_debug_log_set_enabled(enabled: u8) {
+    let _ = crate::api::set_debug_logging_enabled(enabled != 0);
+}
+
+#[no_mangle]
+pub extern "C" fn pirate_debug_log_is_enabled() -> u8 {
+    if pirate_core::debug_log::is_enabled() {
+        1
+    } else {
+        0
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn pirate_debug_log_clear() {
+    let _ = crate::api::clear_debug_logs();
+}

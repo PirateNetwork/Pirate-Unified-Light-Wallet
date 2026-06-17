@@ -5,7 +5,6 @@ use pirate_sync_lightd::{
     CancelToken, PerfCounters, SyncEngine, SyncProgress, SyncWorkload,
 };
 use std::collections::{HashMap, HashSet};
-use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;

@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
@@ -22,7 +23,7 @@ import '../../ui/molecules/connection_status_indicator.dart';
 import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
-import '../../core/logging/debug_log_path.dart';
+import '../../core/logging/debug_log_controller.dart';
 import '../../core/logging/debug_log_writer.dart';
 import '../../core/i18n/arb_text_localizer.dart';
 
@@ -43,13 +44,12 @@ class SettingsScreen extends ConsumerWidget {
 
   static Future<void> _appendRescanLog(String message) async {
     try {
-      final logPath = await resolveDebugLogPath();
       final payload = jsonEncode({
         'id': 'log_dart_rescan',
         'timestamp': DateTime.now().millisecondsSinceEpoch,
         'message': message,
       });
-      await appendDebugLogLine(payload, logPath: logPath);
+      await appendDebugLogLine(payload);
     } catch (_) {
       // Ignore logging failures.
     }
@@ -351,6 +351,23 @@ class SettingsScreen extends ConsumerWidget {
                 );
               },
             ),
+            Consumer(
+              builder: (context, ref, _) {
+                final enabled = ref.watch(debugLoggingProvider);
+                return PListTile(
+                  leading: const Icon(Icons.bug_report_outlined),
+                  title: 'Debug logging'.tr,
+                  subtitle: enabled ? 'On'.tr : 'Off'.tr,
+                  onTap: () => enabled
+                      ? _showDebugLogActions(context, ref)
+                      : _setDebugLogging(context, ref, true),
+                  trailing: Switch(
+                    value: enabled,
+                    onChanged: (value) => _setDebugLogging(context, ref, value),
+                  ),
+                );
+              },
+            ),
           ],
         ),
 
@@ -611,6 +628,121 @@ class SettingsScreen extends ConsumerWidget {
         );
       }
     }
+  }
+
+  Future<void> _setDebugLogging(
+    BuildContext context,
+    WidgetRef ref,
+    bool enabled,
+  ) async {
+    if (enabled) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text('Enable debug logging?'.tr),
+          content: Text(
+            'Debug logs can contain troubleshooting metadata. Exported logs are redacted, but only enable this while reproducing an issue.'
+                .tr,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text('Cancel'.tr),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text('Enable'.tr),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) {
+        return;
+      }
+    }
+
+    await ref.read(debugLoggingProvider.notifier).setEnabled(enabled: enabled);
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enabled ? 'Debug logging enabled'.tr : 'Debug logs cleared'.tr,
+        ),
+        backgroundColor: enabled ? AppColors.success : AppColors.info,
+      ),
+    );
+  }
+
+  Future<void> _showDebugLogActions(BuildContext context, WidgetRef ref) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Debug logging'.tr),
+        content: Text('Share a redacted copy or clear the current log.'.tr),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await DebugLogController.clearAllLogs();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Debug logs cleared'.tr),
+                    backgroundColor: AppColors.info,
+                  ),
+                );
+              }
+            },
+            child: Text('Clear'.tr),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _shareDebugLog(context);
+            },
+            child: Text('Share'.tr),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _setDebugLogging(context, ref, false);
+            },
+            child: Text('Disable'.tr),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text('Close'.tr),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareDebugLog(BuildContext context) async {
+    final file = await DebugLogController.exportRedactedDebugLogFile();
+    if (!context.mounted) {
+      return;
+    }
+    if (file == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No debug log found'.tr),
+          backgroundColor: AppColors.info,
+        ),
+      );
+      return;
+    }
+
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(file.path)],
+        text: 'Pirate Wallet debug log'.tr,
+      ),
+    );
   }
 
   String _formatHeight(int height) {

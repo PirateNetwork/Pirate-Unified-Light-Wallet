@@ -1,4 +1,5 @@
 use super::*;
+use directories::ProjectDirs;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -392,26 +393,6 @@ pub(super) fn open_wallet_db_with_passphrase(
     passphrase: &str,
 ) -> Result<(Database, EncryptionKey, MasterKey)> {
     let path = wallet_db_path_for(wallet_id)?;
-    // #region agent log
-    {
-        pirate_core::debug_log::with_locked_file(|file| {
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let cwd = std::env::current_dir()
-                .ok()
-                .and_then(|p| p.to_str().map(|s| s.to_string()))
-                .unwrap_or_else(|| "<unknown>".to_string());
-            let path_str = path.to_string_lossy();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_db_path","timestamp":{},"location":"encrypted_db.rs:open_wallet_db_with_passphrase","message":"open_wallet_db_with_passphrase","data":{{"wallet_id":"{}","path":{:?},"cwd":{:?}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                ts, wallet_id, path_str, cwd
-            );
-        });
-    }
-    // #endregion
     let salt_path = wallet_db_salt_path(wallet_id)?;
     let key_path = wallet_db_key_path(wallet_id)?;
     let master_key = wallet_master_key(wallet_id, passphrase)?;

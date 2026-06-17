@@ -21,7 +21,6 @@
 
 use crate::models::*;
 use anyhow::{anyhow, Result};
-use directories::ProjectDirs;
 use hex;
 use orchard::note_encryption::OrchardDomain;
 use parking_lot::RwLock;
@@ -52,7 +51,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::future::Future;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -199,24 +197,6 @@ fn recover_outgoing_memo_from_raw_tx(
     None
 }
 
-fn debug_log_path() -> PathBuf {
-    let path = if let Ok(path) = env::var("PIRATE_DEBUG_LOG_PATH") {
-        PathBuf::from(path)
-    } else {
-        ProjectDirs::from("com", "Pirate", "PirateWallet")
-            .map(|dirs| dirs.data_local_dir().join("logs").join("debug.log"))
-            .unwrap_or_else(|| {
-                env::current_dir()
-                    .map(|dir| dir.join(".cursor").join("debug.log"))
-                    .unwrap_or_else(|_| PathBuf::from(".cursor").join("debug.log"))
-            })
-    };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    path
-}
-
 fn unix_timestamp_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -237,7 +217,7 @@ fn truncate_for_log(input: &str, max_chars: usize) -> String {
 }
 
 fn runtime_marker_path() -> PathBuf {
-    let log_path = debug_log_path();
+    let log_path = pirate_core::debug_log::debug_log_path();
     let dir = log_path
         .parent()
         .map(Path::to_path_buf)
@@ -260,6 +240,9 @@ fn read_runtime_marker(path: &Path) -> BTreeMap<String, String> {
 }
 
 fn write_runtime_marker(path: &Path, marker: &BTreeMap<String, String>) {
+    if !pirate_core::debug_log::is_enabled() {
+        return;
+    }
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -277,10 +260,17 @@ fn update_runtime_marker<F>(mutator: F)
 where
     F: FnOnce(&mut BTreeMap<String, String>),
 {
+    if !pirate_core::debug_log::is_enabled() {
+        return;
+    }
     let path = runtime_marker_path();
     let mut marker = read_runtime_marker(&path);
     mutator(&mut marker);
     write_runtime_marker(&path, &marker);
+}
+
+fn clear_runtime_marker() {
+    let _ = fs::remove_file(runtime_marker_path());
 }
 
 fn write_runtime_debug_event(id: &str, message: &str, data_json: &str) {
@@ -311,6 +301,9 @@ fn current_linux_fd_count() -> Option<usize> {
 }
 
 fn install_runtime_diagnostics() {
+    if !pirate_core::debug_log::is_enabled() {
+        return;
+    }
     RUNTIME_DIAGNOSTICS_ONCE.call_once(|| {
         let marker_path = runtime_marker_path();
         let previous = read_runtime_marker(&marker_path);
@@ -489,55 +482,8 @@ fn install_debug_panic_hook() {
 // Wallet Lifecycle
 // ============================================================================
 
-fn log_orchard_address_samples(wallet_id: &WalletId) {
-    let (_db, repo) = match open_wallet_db_for(wallet_id) {
-        Ok(result) => result,
-        Err(_) => return,
-    };
-    let secret = match repo.get_wallet_secret(wallet_id) {
-        Ok(Some(secret)) => secret,
-        _ => return,
-    };
-    let orchard_extsk_bytes = match secret.orchard_extsk.as_ref() {
-        Some(bytes) => bytes,
-        None => return,
-    };
-    let orchard_extsk = match OrchardExtendedSpendingKey::from_bytes(orchard_extsk_bytes) {
-        Ok(key) => key,
-        Err(_) => return,
-    };
-    let orchard_fvk = orchard_extsk.to_extended_fvk();
-
-    pirate_core::debug_log::with_locked_file(|file| {
-        let ts = chrono::Utc::now().timestamp_millis();
-        let _ = writeln!(
-            file,
-            r#"{{"id":"log_orchard_address_samples","timestamp":{},"location":"api.rs:log_orchard_address_samples","message":"orchard address sample header","data":{{"wallet_id":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-            ts, wallet_id
-        );
-    });
-
-    for index in 0u32..10u32 {
-        let address = orchard_fvk.address_at(index);
-        let addr_mainnet = address
-            .encode_for_network(NetworkType::Mainnet)
-            .unwrap_or_default();
-        let addr_testnet = address
-            .encode_for_network(NetworkType::Testnet)
-            .unwrap_or_default();
-        let addr_regtest = address
-            .encode_for_network(NetworkType::Regtest)
-            .unwrap_or_default();
-
-        pirate_core::debug_log::with_locked_file(|file| {
-            let ts = chrono::Utc::now().timestamp_millis();
-            let _ = writeln!(
-                file,
-                r#"{{"id":"log_orchard_address_sample","timestamp":{},"location":"api.rs:log_orchard_address_samples","message":"orchard address sample","data":{{"wallet_id":"{}","index":{},"mainnet":"{}","testnet":"{}","regtest":"{}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                ts, wallet_id, index, addr_mainnet, addr_testnet, addr_regtest
-            );
-        });
-    }
+fn log_orchard_address_samples(_wallet_id: &WalletId) {
+    // Address derivation samples are intentionally omitted from user diagnostics.
 }
 
 /// Create new wallet
@@ -2479,6 +2425,32 @@ pub fn set_decoy_wallet_name(name: String) -> Result<()> {
 /// Exit decoy mode (requires real passphrase re-authentication).
 pub fn exit_decoy_mode(passphrase: String) -> Result<()> {
     service::exit_decoy_mode(passphrase)
+}
+
+// ============================================================================
+// Debug Logging
+// ============================================================================
+
+pub fn set_debug_logging_enabled(enabled: bool) -> Result<()> {
+    pirate_core::debug_log::set_enabled(enabled);
+    if enabled {
+        RUNTIME_DIAGNOSTICS_STOP.store(false, Ordering::SeqCst);
+        install_runtime_diagnostics();
+    } else {
+        RUNTIME_DIAGNOSTICS_STOP.store(true, Ordering::SeqCst);
+        clear_runtime_marker();
+    }
+    Ok(())
+}
+
+pub fn get_debug_logging_enabled() -> Result<bool> {
+    Ok(pirate_core::debug_log::is_enabled())
+}
+
+pub fn clear_debug_logs() -> Result<()> {
+    pirate_core::debug_log::clear_logs();
+    clear_runtime_marker();
+    Ok(())
 }
 
 // ============================================================================
