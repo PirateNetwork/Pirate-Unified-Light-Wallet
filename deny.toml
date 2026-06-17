@@ -10,6 +10,7 @@ unmaintained = "workspace"
 unsound = "workspace"
 ignore = [
     { id = "RUSTSEC-2023-0071", reason = "No fixed upgrade yet; rsa is pulled in via Arti/Tor." },
+    { id = "RUSTSEC-2026-0009", reason = "time >=0.3.47 is blocked by the pinned Pirate librustzcash stack selecting time-core 0.1.2; revisit when the upstream Zcash dependency can move." },
 ]
 
 [licenses]
