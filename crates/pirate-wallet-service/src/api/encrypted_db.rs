@@ -1,7 +1,29 @@
 use super::*;
 use std::rc::Rc;
+use std::sync::OnceLock;
+
+static WALLET_BASE_DIR_OVERRIDE: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+
+fn wallet_base_dir_override() -> &'static RwLock<Option<PathBuf>> {
+    WALLET_BASE_DIR_OVERRIDE.get_or_init(|| RwLock::new(None))
+}
+
+pub(super) fn set_wallet_base_dir_override(base_dir: PathBuf) -> Result<PathBuf> {
+    if base_dir.as_os_str().is_empty() {
+        return Err(anyhow!("Wallet storage base directory cannot be empty"));
+    }
+
+    fs::create_dir_all(&base_dir)?;
+    let resolved = fs::canonicalize(&base_dir).unwrap_or(base_dir);
+    *wallet_base_dir_override().write() = Some(resolved.clone());
+    Ok(resolved)
+}
 
 pub(super) fn wallet_base_dir() -> Result<PathBuf> {
+    if let Some(dir) = wallet_base_dir_override().read().clone() {
+        return Ok(dir);
+    }
+
     if let Ok(dir) = std::env::var("PIRATE_WALLET_DB_DIR") {
         if !dir.trim().is_empty() {
             return Ok(PathBuf::from(dir));

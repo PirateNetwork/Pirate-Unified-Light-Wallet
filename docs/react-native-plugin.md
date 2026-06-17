@@ -22,7 +22,7 @@ Platform layers:
 - Android
   - Kotlin bridge over `libpirate_ffi_native.so`
 - iOS
-  - Swift bridge over `PirateWalletNative.xcframework`
+  - Objective-C bridge over `PirateWalletNative.xcframework`
 - JavaScript
   - typed wrapper and polling synchronizer
 
@@ -36,9 +36,30 @@ amount request fields and serializes them as strings before native invocation.
 
 ## Wallet and sync model
 
-Wallet metadata lives in the shared backend registry. The registry stores an
-active wallet ID for flows that need a current-wallet pointer, while most React
-Native SDK methods remain explicitly wallet-scoped through `walletId`.
+Wallet metadata lives in the backend registry for the configured storage
+namespace. The registry stores an active wallet ID for flows that need a
+current-wallet pointer, while most React Native SDK methods remain explicitly
+wallet-scoped through `walletId`.
+
+React Native apps must call `configureAccountStorage()` before any wallet
+operation:
+
+```js
+await sdk.configureAccountStorage({
+  accountId: edgeAccountIdHash,
+  passphrase: edgeAccountDerivedSecret
+})
+```
+
+The account ID is used only to derive an app-private storage directory name.
+The passphrase must be unique per local account and derived from high-entropy
+account secret material. Do not use a hardcoded passphrase, public account ID,
+email address, or device ID as the passphrase.
+
+The selected account namespace contains the wallet registry, per-wallet
+databases, salts, and sealed database key files. Switching namespaces clears the
+loaded registry state, active-wallet state, database caches, endpoint caches,
+and sync caches before opening the requested account namespace.
 
 `switchWallet(walletId)` updates the active-wallet pointer and stops sync for
 the previously active wallet. Apps that sync more than one wallet should create
@@ -129,12 +150,16 @@ cd ios && pod install
 Android:
 
 - the module autolinks like a normal React Native native module
-- the native module sets `PIRATE_WALLET_DB_DIR` on initialization to an
-  app-private directory under `Context.filesDir/pirate_wallet`
+- `configureAccountStorage()` derives account directories under
+  `Context.filesDir/pirate_wallet/accounts/<sanitized-account-id>` unless the
+  caller provides `storagePath`
 
 iOS:
 
 - CocoaPods links the vendored `PirateWalletNative.xcframework`
+- `configureAccountStorage()` derives account directories under
+  `Application Support/PirateWallet/accounts/<sanitized-account-id>` unless the
+  caller provides `storagePath`
 
 ## Mnemonic language support
 
@@ -204,7 +229,7 @@ When adding a new React Native API:
 3. update the React Native bridge code
 4. update `src/index.js`
 5. update `src/index.d.ts`
-6. update `bindings/react-native-pirate-wallet/README.md`
+6. update the package README and integration guide
 7. rerun the staging and smoke checks
 
 Keep the React Native layer thin. If a change belongs in the shared wallet backend, put it there first.

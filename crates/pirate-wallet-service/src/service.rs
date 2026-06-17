@@ -51,6 +51,10 @@ pub enum WalletServiceRequest {
     DeleteWallet {
         wallet_id: WalletId,
     },
+    ConfigureWalletStorage {
+        base_dir: String,
+        passphrase: String,
+    },
     SetAppPassphrase {
         passphrase: String,
     },
@@ -476,6 +480,13 @@ impl WalletService {
             }
             WalletServiceRequest::DeleteWallet { wallet_id } => {
                 ffi::delete_wallet(wallet_id)?;
+                Ok(ack())
+            }
+            WalletServiceRequest::ConfigureWalletStorage {
+                base_dir,
+                passphrase,
+            } => {
+                ffi::configure_wallet_storage(base_dir, passphrase)?;
                 Ok(ack())
             }
             WalletServiceRequest::SetAppPassphrase { passphrase } => {

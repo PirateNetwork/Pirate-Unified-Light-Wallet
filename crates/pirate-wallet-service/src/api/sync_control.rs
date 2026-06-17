@@ -2375,9 +2375,20 @@ pub(super) fn clear_wallet_sync_state(wallet_id: &WalletId) {
     clear_sync_runtime_cache(wallet_id);
 }
 
-pub(super) fn clear_passphrase_change_sync_state() {
+pub(super) fn active_sync_wallet_ids() -> Vec<WalletId> {
+    SYNC_SESSIONS.read().keys().cloned().collect()
+}
+
+pub(super) fn clear_all_runtime_state() {
     SYNC_SESSIONS.write().clear();
     SYNC_RUNTIME_HANDLES.write().clear();
     SYNC_STATUS_SNAPSHOT_CACHE.write().clear();
     TX_LIST_CACHE.write().clear();
+    BALANCE_CACHE.write().clear();
+    RESCAN_IN_FLIGHT.write().clear();
+    RESCAN_ACTIVE.write().clear();
+}
+
+pub(super) fn clear_passphrase_change_sync_state() {
+    clear_all_runtime_state();
 }

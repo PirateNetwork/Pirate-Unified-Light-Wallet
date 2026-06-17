@@ -36,6 +36,12 @@ export interface SynchronizerConfig {
   transactionLimit?: number | null
 }
 
+export interface PirateWalletAccountStorageConfig {
+  accountId: string
+  passphrase: string
+  storagePath?: string | null
+}
+
 export interface SynchronizerSnapshot {
   walletId: string
   alias: string
@@ -179,6 +185,7 @@ export class PirateWalletSynchronizer {
 export class PirateWalletSdk {
   advancedKeyManagement: PirateWalletAdvancedKeyManagement
   invoke(requestJson: string, pretty?: boolean): Promise<string>
+  configureAccountStorage(config: PirateWalletAccountStorageConfig): Promise<any>
   createSynchronizer(walletId: string, config?: SynchronizerConfig): PirateWalletSynchronizer
   buildInfoJson(pretty?: boolean): Promise<string>
   buildInfo(): Promise<any>

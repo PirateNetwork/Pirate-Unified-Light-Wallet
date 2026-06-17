@@ -16,6 +16,13 @@ function createMockNativeModule() {
 
   return {
     calls,
+    async configureAccountStorage(accountId, passphrase, storagePath) {
+      assert.strictEqual(accountId, 'edge-account-a')
+      assert.strictEqual(passphrase, 'EdgeAccountSecretPassphrase123!')
+      assert.strictEqual(storagePath, '/tmp/pirate-wallet/edge-account-a')
+      calls.push('configure_wallet_storage')
+      return ok(null)
+    },
     async invoke(requestJson) {
       const request = JSON.parse(requestJson)
       calls.push(request.method)
@@ -126,6 +133,12 @@ function createMockNativeModule() {
 async function main() {
   const nativeModule = createMockNativeModule()
   const sdk = new PirateWalletSdk(nativeModule)
+
+  await sdk.configureAccountStorage({
+    accountId: 'edge-account-a',
+    passphrase: 'EdgeAccountSecretPassphrase123!',
+    storagePath: '/tmp/pirate-wallet/edge-account-a'
+  })
 
   const buildInfo = await sdk.buildInfo()
   assert.strictEqual(buildInfo.version, '1.2.3')

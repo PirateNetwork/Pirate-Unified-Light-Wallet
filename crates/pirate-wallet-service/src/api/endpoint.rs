@@ -137,6 +137,10 @@ pub(super) fn remove_cached_lightd_endpoint(wallet_id: &WalletId) {
     LIGHTD_ENDPOINTS.write().remove(wallet_id);
 }
 
+pub(super) fn clear_cached_lightd_endpoints() {
+    LIGHTD_ENDPOINTS.write().clear();
+}
+
 pub(super) fn load_registry_endpoints(db: &Database, wallets: &[WalletMeta]) -> Result<()> {
     let mut endpoints = LIGHTD_ENDPOINTS.write();
     endpoints.clear();

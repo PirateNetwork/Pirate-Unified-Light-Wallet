@@ -13,17 +13,60 @@ Repo-level build and integration notes:
 ## What it wraps
 
 - Android: JNI bridge over `libpirate_ffi_native.so`
-- iOS: Swift bridge over `PirateWalletNative.xcframework`
+- iOS: Objective-C bridge over `PirateWalletNative.xcframework`
 - JS: typed wallet wrapper plus a polling synchronizer
 
 The JS surface mirrors the SDK boundary used by the native Android and iOS SDKs.
 
-## Android wallet database path
+## Account-scoped wallet storage
 
-On Android, the native module sets `PIRATE_WALLET_DB_DIR` during initialization
-to an app-private directory under `Context.filesDir/pirate_wallet`. The Rust
-service uses that directory for the wallet registry, wallet database files, and
-related encrypted key material before the native library is invoked.
+Configure wallet storage before any wallet operation:
+
+```js
+const sdk = createPirateWalletSdk()
+
+await sdk.configureAccountStorage({
+  accountId: edgeAccountIdHash,
+  passphrase: edgeAccountDerivedSecret
+})
+```
+
+The native module creates an app-private directory for that account and asks the
+Rust service to open or create that account's wallet namespace. The selected
+directory contains:
+
+- `wallet_registry.db`
+- per-wallet database files
+- database salts
+- sealed database key files
+
+The passphrase unlocks both the registry and the per-wallet databases in that
+namespace. It must be unique per local account and derived from high-entropy
+account secret material. Do not use a hardcoded passphrase, a public account ID,
+email address, or device ID as the passphrase.
+
+By default, Android derives the directory under:
+
+```text
+Context.filesDir/pirate_wallet/accounts/<sanitized-account-id>
+```
+
+iOS derives the directory under:
+
+```text
+Application Support/PirateWallet/accounts/<sanitized-account-id>
+```
+
+Integrations that need to provide their own app-private path may pass
+`storagePath`:
+
+```js
+await sdk.configureAccountStorage({
+  accountId: edgeAccountIdHash,
+  storagePath: accountPrivatePath,
+  passphrase: edgeAccountDerivedSecret
+})
+```
 
 ## Repo layout
 
@@ -72,6 +115,13 @@ Low-level entry points:
 - `sdk.invoke(requestJson, pretty = false)`
   - sends a raw JSON request to the native bridge
   - returns a JSON envelope string
+- `sdk.configureAccountStorage({ accountId, passphrase, storagePath? })`
+  - RPC: `configure_wallet_storage`
+  - selects an account-specific registry/database directory
+  - creates the registry with `passphrase` if it does not exist
+  - unlocks the existing registry with `passphrase` if it already exists
+  - clears loaded registry state, active wallet state, DB caches, and sync caches
+    before switching namespaces
 - `sdk.buildInfoJson(pretty = false)`
   - raw JSON envelope for `get_build_info`
 - `sdk.buildInfo()`

@@ -502,6 +502,39 @@ class PirateWalletSdk {
     return new PirateWalletSynchronizer(this, walletId, config)
   }
 
+  async configureAccountStorage(config) {
+    if (!config || typeof config !== 'object') {
+      throw new Error('configureAccountStorage requires a config object.')
+    }
+
+    const accountId = String(config.accountId || '').trim()
+    if (!accountId) {
+      throw new Error('configureAccountStorage requires accountId.')
+    }
+
+    if (typeof config.passphrase !== 'string' || config.passphrase.length === 0) {
+      throw new Error('configureAccountStorage requires passphrase.')
+    }
+
+    const storagePath =
+      typeof config.storagePath === 'string' && config.storagePath.length > 0
+        ? config.storagePath
+        : null
+
+    if (typeof this._native.configureAccountStorage !== 'function') {
+      throw new Error(
+        'PirateWalletReactNative native module does not expose configureAccountStorage. Rebuild the app with the current native module.'
+      )
+    }
+
+    const response = await this._native.configureAccountStorage(
+      accountId,
+      config.passphrase,
+      storagePath
+    )
+    return unwrapEnvelope(response, 'configure_wallet_storage')
+  }
+
   buildInfoJson(pretty = false) {
     return this.invoke(buildRequest('get_build_info'), pretty)
   }

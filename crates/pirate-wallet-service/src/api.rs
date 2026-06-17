@@ -102,9 +102,9 @@ use self::wallet_registry::{
 };
 use encrypted_db::{
     app_passphrase, get_registry_setting, open_wallet_db_for, open_wallet_db_with_passphrase,
-    open_wallet_registry, set_registry_setting, wallet_db_key_path, wallet_db_keys,
-    wallet_db_path_for, wallet_db_salt_path, wallet_registry_key_path, wallet_registry_path,
-    wallet_registry_salt_path,
+    open_wallet_registry, set_registry_setting, set_wallet_base_dir_override, wallet_db_key_path,
+    wallet_db_keys, wallet_db_path_for, wallet_db_salt_path, wallet_registry_key_path,
+    wallet_registry_path, wallet_registry_salt_path,
 };
 // Global state with thread-safe access
 lazy_static::lazy_static! {
@@ -812,6 +812,64 @@ fn escape_json(value: &str) -> String {
         }
     }
     escaped
+}
+
+fn reset_runtime_state_for_storage_switch() {
+    let active_sync_wallets = sync_control::active_sync_wallet_ids();
+    for wallet_id in active_sync_wallets {
+        let wallet_id_for_cancel = wallet_id.clone();
+        if let Err(err) = run_on_runtime_blocking(move || async move {
+            sync_control::cancel_sync_internal(wallet_id_for_cancel, true).await
+        }) {
+            tracing::warn!(
+                "Failed to cancel sync while switching wallet storage namespace for {}: {}",
+                wallet_id,
+                err
+            );
+        }
+    }
+
+    sync_control::clear_all_runtime_state();
+    encrypted_db::invalidate_all_wallet_db_caches();
+    endpoint::clear_cached_lightd_endpoints();
+    passphrase_store::clear_passphrase();
+    panic_duress::deactivate_decoy();
+
+    *WALLETS.write() = Vec::new();
+    *ACTIVE_WALLET.write() = None;
+    *TUNNEL_MODE.write() = TunnelMode::Tor;
+    *PENDING_TUNNEL_MODE.write() = None;
+    REGISTRY_LOADED.store(false, Ordering::SeqCst);
+}
+
+/// Select an account-scoped wallet storage namespace and unlock/create it.
+///
+/// Hosts with multiple local app accounts should call this before any wallet
+/// operation. The base directory contains that account's registry, wallet DBs,
+/// salts, and sealed DB keys. The passphrase is the account-specific secret
+/// used to create or unlock the registry and wallet databases in that namespace.
+pub fn configure_wallet_storage(base_dir: String, passphrase: String) -> Result<()> {
+    let base_dir = PathBuf::from(base_dir);
+    if base_dir.as_os_str().is_empty() {
+        return Err(anyhow!("Wallet storage base directory cannot be empty"));
+    }
+    fs::create_dir_all(&base_dir)?;
+    let base_dir = fs::canonicalize(&base_dir).unwrap_or(base_dir);
+
+    reset_runtime_state_for_storage_switch();
+    let resolved_base = set_wallet_base_dir_override(base_dir)?;
+
+    if wallet_registry_path()?.exists() {
+        encrypted_db::unlock_app(passphrase)?;
+    } else {
+        encrypted_db::set_app_passphrase(passphrase)?;
+    }
+
+    tracing::info!(
+        "Configured wallet storage namespace at {}",
+        resolved_base.display()
+    );
+    Ok(())
 }
 
 /// Store app passphrase hash for local verification
