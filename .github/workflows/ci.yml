@@ -55,7 +55,7 @@ jobs:
           channel: stable
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -97,7 +97,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt, clippy
@@ -131,7 +131,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -156,7 +156,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -184,7 +184,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -208,7 +208,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -232,7 +232,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -260,7 +260,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -400,7 +400,7 @@ jobs:
           channel: stable
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -466,7 +466,7 @@ jobs:
 
       - name: Setup Java
         if: matrix.platform == 'Android'
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -744,7 +744,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -788,7 +788,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -830,7 +830,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -902,12 +902,12 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1007,7 +1007,7 @@ jobs:
           npm install
 
       - name: Setup Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1170,7 +1170,7 @@ jobs:
           fetch-depth: 0  # Full history for SOURCE_DATE_EPOCH
 
       - name: Setup Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1194,13 +1194,13 @@ jobs:
           pub-cache-key: flutter-pub-${{ runner.os }}-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-v2
 
       - name: Setup Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -1211,7 +1211,7 @@ jobs:
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1316,12 +1316,12 @@ jobs:
           pub-cache-key: flutter-pub-${{ runner.os }}-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-v2
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1439,7 +1439,7 @@ jobs:
           pub-cache-key: flutter-pub-${{ runner.os }}-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-v2
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -1450,7 +1450,7 @@ jobs:
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1558,7 +1558,7 @@ jobs:
           pub-cache-key: flutter-pub-${{ runner.os }}-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-v2
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -1569,7 +1569,7 @@ jobs:
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1663,7 +1663,7 @@ jobs:
           pub-cache-key: flutter-pub-${{ runner.os }}-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-v2
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -1674,7 +1674,7 @@ jobs:
           cache: false
 
       - name: Setup Java
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -1804,7 +1804,7 @@ jobs:
 
       - name: Setup Java
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
@@ -2091,7 +2091,7 @@ jobs:
 
       - name: Setup Rust
         if: steps.signing.outputs.enabled == 'true'
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
@@ -2266,7 +2266,7 @@ jobs:
 
       - name: Setup Rust
         if: steps.signing.outputs.enabled == 'true'
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
