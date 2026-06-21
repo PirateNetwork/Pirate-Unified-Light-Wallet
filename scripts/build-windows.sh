@@ -29,8 +29,9 @@ flutter_build_windows_release() {
     for attempt in 1 2 3; do
         if OVERRIDE_DEFI_API_DOWNLOAD=false flutter build windows --release; then
             return 0
+        else
+            status=$?
         fi
-        status=$?
         if [ "$attempt" -lt 3 ]; then
             warn "Windows build attempt $attempt failed; retrying..."
             sleep $((attempt * 20))

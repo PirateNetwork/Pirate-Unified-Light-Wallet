@@ -39,10 +39,14 @@ autofail() {
 flutter_build_macos_release() {
   local status=1
   for attempt in 1 2 3; do
-    if OVERRIDE_DEFI_API_DOWNLOAD=false flutter build macos --release; then
+    if OVERRIDE_DEFI_API_DOWNLOAD=false \
+      FLUTTER_XCODE_CODE_SIGNING_ALLOWED=NO \
+      FLUTTER_XCODE_CODE_SIGNING_REQUIRED=NO \
+      flutter build macos --release; then
       return 0
+    else
+      status=$?
     fi
-    status=$?
     if [ "$attempt" -lt 3 ]; then
       warn "macOS build attempt $attempt failed; retrying..."
       sleep $((attempt * 20))

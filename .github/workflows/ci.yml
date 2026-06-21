@@ -556,8 +556,9 @@ jobs:
           for attempt in 1 2 3; do
             if ./gradlew --no-daemon help; then
               exit 0
+            else
+              status=$?
             fi
-            status=$?
             if [ "$attempt" -lt 3 ]; then
               sleep $((attempt * 20))
             fi
@@ -575,8 +576,9 @@ jobs:
           for attempt in 1 2 3; do
             if flutter build apk --release --split-per-abi --target-platform=android-arm64,android-arm; then
               exit 0
+            else
+              status=$?
             fi
-            status=$?
             if [ "$attempt" -lt 3 ]; then
               sleep $((attempt * 20))
             fi
@@ -607,8 +609,9 @@ jobs:
               PROVISIONING_PROFILE_SPECIFIER="" \
               build; then
               exit 0
+            else
+              status=$?
             fi
-            status=$?
             if [ "$attempt" -lt 3 ]; then
               echo "iOS build attempt $attempt failed; retrying..."
               sleep $((attempt * 20))
@@ -627,8 +630,9 @@ jobs:
           for attempt in 1 2 3; do
             if flutter build linux --release; then
               exit 0
+            else
+              status=$?
             fi
-            status=$?
             if [ "$attempt" -lt 3 ]; then
               echo "Linux build attempt $attempt failed; retrying..."
               sleep $((attempt * 20))
@@ -640,6 +644,8 @@ jobs:
         if: matrix.platform == 'macOS'
         env:
           OVERRIDE_DEFI_API_DOWNLOAD: "false"
+          FLUTTER_XCODE_CODE_SIGNING_ALLOWED: "NO"
+          FLUTTER_XCODE_CODE_SIGNING_REQUIRED: "NO"
         run: |
           cd app
           bash ../scripts/prepare-komodo-assets.sh
@@ -647,8 +653,9 @@ jobs:
           for attempt in 1 2 3; do
             if flutter build macos --release; then
               exit 0
+            else
+              status=$?
             fi
-            status=$?
             if [ "$attempt" -lt 3 ]; then
               echo "macOS build attempt $attempt failed; retrying..."
               sleep $((attempt * 20))
@@ -668,8 +675,9 @@ jobs:
           for attempt in 1 2 3; do
             if flutter build windows --release; then
               exit 0
+            else
+              status=$?
             fi
-            status=$?
             if [ "$attempt" -lt 3 ]; then
               echo "Windows build attempt $attempt failed; retrying..."
               sleep $((attempt * 20))
@@ -932,8 +940,9 @@ jobs:
           for attempt in 1 2 3; do
             if gradle --no-daemon :smoke-consumer:assembleDebug; then
               exit 0
+            else
+              status=$?
             fi
-            status=$?
             if [ "$attempt" -lt 3 ]; then
               sleep $((attempt * 20))
             fi

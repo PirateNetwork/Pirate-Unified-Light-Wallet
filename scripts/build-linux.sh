@@ -29,8 +29,9 @@ flutter_build_linux_release() {
     for attempt in 1 2 3; do
         if OVERRIDE_DEFI_API_DOWNLOAD=false flutter build linux --release; then
             return 0
+        else
+            status=$?
         fi
-        status=$?
         if [ "$attempt" -lt 3 ]; then
             warn "Linux build attempt $attempt failed; retrying..."
             sleep $((attempt * 20))

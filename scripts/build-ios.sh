@@ -238,8 +238,9 @@ run_xcodebuild_with_retry() {
     for attempt in 1 2 3; do
         if xcodebuild "$@"; then
             return 0
+        else
+            status=$?
         fi
-        status=$?
         if [ "$attempt" -lt 3 ]; then
             warn "iOS xcodebuild attempt $attempt failed; retrying..."
             sleep $((attempt * 20))
