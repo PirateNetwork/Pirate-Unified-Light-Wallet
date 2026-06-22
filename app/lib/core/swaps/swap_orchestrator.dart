@@ -4,6 +4,7 @@ import 'package:decimal/decimal.dart';
 
 import '../ffi/ffi_bridge.dart';
 import '../ffi/generated/models.dart';
+import '../i18n/arb_text_localizer.dart';
 import 'atomic_swap_service.dart';
 import 'swap_amount_utils.dart';
 import 'swap_models.dart';
@@ -192,14 +193,14 @@ class SwapOrchestrator {
       onProgress,
       intent.id,
       SwapProgressStage.placingLimitRemainder,
-      'Placing your limit order on the book...',
+      'Placing your limit order on the book...'.tr,
     );
     final updated = await _service.placeBuyRemainderLimit(intent);
     _emit(
       onProgress,
       updated.id,
       SwapProgressStage.placingLimitRemainder,
-      'Limit order placed. It will fill when the market reaches your price.',
+      'Limit order placed. It will fill when the market reaches your price.'.tr,
     );
     return updated;
   }
@@ -322,8 +323,9 @@ class SwapOrchestrator {
   }) async {
     if (intent.status != SwapIntentStatus.marketSwapStarted &&
         intent.status != SwapIntentStatus.limitOrderPlaced) {
-      throw const SwapOrchestratorException(
-        'This swap has not started yet. Resume from the deposit screen instead.',
+      throw SwapOrchestratorException(
+        'This swap has not started yet. Resume from the deposit screen instead.'
+            .tr,
       );
     }
 
@@ -332,7 +334,7 @@ class SwapOrchestrator {
         onProgress,
         intent.id,
         SwapProgressStage.placingLimitRemainder,
-        'Limit order is open. You can cancel it from Open swap orders.',
+        'Limit order is open. You can cancel it from Open swap orders.'.tr,
       );
       return;
     }
@@ -355,7 +357,7 @@ class SwapOrchestrator {
       onProgress,
       intent.id,
       SwapProgressStage.startingKdf,
-      'Preparing your swap...',
+      'Preparing your swap...'.tr,
     );
 
     final bridgeAddress = await _service.getArrrDepositAddress(intent.walletId);
@@ -364,14 +366,14 @@ class SwapOrchestrator {
       onProgress,
       intent.id,
       SwapProgressStage.matchingMarketOrder,
-      'Sending ARRR to the swap engine...',
+      'Sending ARRR to the swap engine...'.tr,
     );
 
     final marketArrrAmount = intent.plan.marketArrrAmount;
     final appFeeArrrAmount = intent.plan.appFeeArrrAmount;
     if (marketArrrAmount <= Decimal.zero) {
-      throw const SwapOrchestratorException(
-        'No ARRR market amount available for this swap.',
+      throw SwapOrchestratorException(
+        'No ARRR market amount available for this swap.'.tr,
       );
     }
 
@@ -472,7 +474,7 @@ class SwapOrchestrator {
       onProgress,
       '',
       SwapProgressStage.startingKdf,
-      'Preparing limit sell...',
+      'Preparing limit sell...'.tr,
     );
 
     final bridgeAddress = await _service.getArrrDepositAddress(walletId);
@@ -481,7 +483,7 @@ class SwapOrchestrator {
       onProgress,
       '',
       SwapProgressStage.matchingMarketOrder,
-      'Sending ARRR to the swap engine...',
+      'Sending ARRR to the swap engine...'.tr,
     );
     final pending = await FfiBridge.buildTx(
       walletId: walletId,
@@ -510,7 +512,7 @@ class SwapOrchestrator {
       onProgress,
       '',
       SwapProgressStage.placingLimitRemainder,
-      'Placing your limit order on the book...',
+      'Placing your limit order on the book...'.tr,
     );
     final intent = await _service.placeSellLimitArrr(
       walletId: walletId,
@@ -523,7 +525,7 @@ class SwapOrchestrator {
       onProgress,
       intent.id,
       SwapProgressStage.placingLimitRemainder,
-      'Limit order placed. It will fill when the market reaches your price.',
+      'Limit order placed. It will fill when the market reaches your price.'.tr,
     );
     return intent;
   }
@@ -539,7 +541,7 @@ class SwapOrchestrator {
         onProgress,
         current.id,
         SwapProgressStage.matchingMarketOrder,
-        'Matching and settling your atomic swap...',
+        'Matching and settling your atomic swap...'.tr,
       );
       if (current.marketSwapUuid == null) {
         current = await _service.executeBuyMarket(current);
@@ -557,7 +559,7 @@ class SwapOrchestrator {
         onProgress,
         current.id,
         SwapProgressStage.placingLimitRemainder,
-        'Placing a limit order for the remainder...',
+        'Placing a limit order for the remainder...'.tr,
       );
       current = await _service.placeBuyRemainderLimit(current);
     }
@@ -567,7 +569,7 @@ class SwapOrchestrator {
         onProgress,
         current.id,
         SwapProgressStage.withdrawing,
-        'Withdrawing ARRR to your wallet...',
+        'Withdrawing ARRR to your wallet...'.tr,
       );
       if (current.plan.appFeeArrrAmount > Decimal.zero) {
         await _service.withdrawArrrToWallet(
@@ -600,8 +602,8 @@ class SwapOrchestrator {
           ? SwapProgressStage.placingLimitRemainder
           : SwapProgressStage.complete,
       current.plan.hasLimitRemainder
-          ? 'Market fill complete. A limit order is open for the remainder.'
-          : 'Swap complete. ARRR is in your wallet.',
+          ? 'Market fill complete. A limit order is open for the remainder.'.tr
+          : 'Swap complete. ARRR is in your wallet.'.tr,
     );
   }
 
@@ -617,7 +619,7 @@ class SwapOrchestrator {
         onProgress,
         current.id,
         SwapProgressStage.matchingMarketOrder,
-        'Matching and settling your atomic swap...',
+        'Matching and settling your atomic swap...'.tr,
       );
       current = await _service.executeSellMarket(current);
     }
@@ -651,7 +653,7 @@ class SwapOrchestrator {
         onProgress,
         current.id,
         SwapProgressStage.placingLimitRemainder,
-        'Placing a limit order for the remainder...',
+        'Placing a limit order for the remainder...'.tr,
       );
       // Remainder limit sell would need separate handling; market path only for now.
     }
@@ -661,7 +663,9 @@ class SwapOrchestrator {
       onProgress,
       current.id,
       SwapProgressStage.complete,
-      'Swap complete. ${current.pair.relTicker} is on its way to your address.',
+      'Swap complete. {ticker} is on its way to your address.'.trArgs({
+        'ticker': current.pair.relTicker,
+      }),
     );
   }
 
@@ -675,7 +679,7 @@ class SwapOrchestrator {
     final deadline = DateTime.now().add(depositTimeout);
     while (DateTime.now().isBefore(deadline)) {
       if (isCancelled?.call() ?? false) {
-        throw const SwapOrchestratorException('Swap cancelled.');
+        throw SwapOrchestratorException('Swap cancelled.'.tr);
       }
       final balance = await _service.currentRelDepositBalance(
         walletId,
@@ -686,7 +690,9 @@ class SwapOrchestrator {
       await Future<void>.delayed(depositPollInterval);
     }
     throw SwapOrchestratorException(
-      'Timed out waiting for your ${pair.relTicker} deposit.',
+      'Timed out waiting for your {ticker} deposit.'.trArgs({
+        'ticker': pair.relTicker,
+      }),
     );
   }
 
@@ -699,15 +705,15 @@ class SwapOrchestrator {
     final deadline = DateTime.now().add(depositTimeout);
     while (DateTime.now().isBefore(deadline)) {
       if (isCancelled?.call() ?? false) {
-        throw const SwapOrchestratorException('Swap cancelled.');
+        throw SwapOrchestratorException('Swap cancelled.'.tr);
       }
       final balance = await _service.currentArrrBalance(walletId);
       onProgress?.call(balance);
       if (balance >= requiredAmount) return;
       await Future<void>.delayed(depositPollInterval);
     }
-    throw const SwapOrchestratorException(
-      'Timed out waiting for ARRR to reach the swap engine.',
+    throw SwapOrchestratorException(
+      'Timed out waiting for ARRR to reach the swap engine.'.tr,
     );
   }
 
@@ -721,8 +727,8 @@ class SwapOrchestrator {
       if (_isTerminalSwapStatus(status)) return;
       await Future<void>.delayed(swapPollInterval);
     }
-    throw const SwapOrchestratorException(
-      'Timed out waiting for the atomic swap to finish.',
+    throw SwapOrchestratorException(
+      'Timed out waiting for the atomic swap to finish.'.tr,
     );
   }
 

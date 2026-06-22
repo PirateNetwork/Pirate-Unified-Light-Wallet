@@ -272,7 +272,7 @@ class _AddressBookDetailScreenState
               Expanded(
                 child: _ActionChip(
                   icon: _addressCopied ? Icons.check : Icons.copy_outlined,
-                  label: _addressCopied ? 'Copied!' : 'Copy',
+                  label: _addressCopied ? 'Copied!'.tr : 'Copy'.tr,
                   color: _addressCopied
                       ? AppColors.success
                       : AppColors.gradientAStart,
@@ -283,7 +283,7 @@ class _AddressBookDetailScreenState
               Expanded(
                 child: _ActionChip(
                   icon: Icons.qr_code,
-                  label: _showQR ? 'Hide QR' : 'Show QR',
+                  label: _showQR ? 'Hide QR'.tr : 'Show QR'.tr,
                   color: AppColors.textSecondary,
                   onPressed: () => setState(() => _showQR = !_showQR),
                 ),
@@ -392,7 +392,7 @@ class _AddressBookDetailScreenState
 
   Widget _buildActionButtons() {
     return PGradientButton(
-      text: 'Send to ${_entry.label}',
+      text: 'Send to {label}'.trArgs({'label': _entry.label}),
       icon: Icons.send,
       fullWidth: true,
       onPressed: _sendToAddress,
@@ -504,7 +504,9 @@ class _DeleteConfirmationDialog extends StatelessWidget {
         style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
       ),
       content: Text(
-        'Delete "${entry.label}"? This cannot be undone.',
+        'Delete "{label}"? This cannot be undone.'.trArgs({
+          'label': entry.label,
+        }),
         style: AppTypography.body.copyWith(color: AppColors.textSecondary),
       ),
       actions: [
@@ -622,7 +624,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
   }
 
   void _showError(String? message) {
-    final text = message ?? 'Failed to save address';
+    final text = message ?? 'Failed to save address'.tr;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(text), backgroundColor: AppColors.error),
     );
@@ -632,7 +634,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
   Widget build(BuildContext context) {
     return PScaffold(
       appBar: PAppBar(
-        title: _isEditing ? 'Edit Address' : 'Add Address',
+        title: _isEditing ? 'Edit Address'.tr : 'Add Address'.tr,
         subtitle: 'Edit label, notes, and color'.tr,
         onBack: () => Navigator.of(context).pop(),
         actions: [
@@ -658,10 +660,10 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
             _buildTextField(
               controller: _labelController,
               label: 'Label'.tr,
-              hint: 'e.g., Alice, Cold Storage',
+              hint: 'e.g., Alice, Cold Storage'.tr,
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'Please enter a label';
+                  return 'Please enter a label'.tr;
                 }
                 if (value.length > kMaxLabelLength) {
                   return 'Label must be $kMaxLabelLength characters or less';
@@ -681,13 +683,13 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
               enabled: !_isEditing,
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
-                  return 'Please enter an address';
+                  return 'Please enter an address'.tr;
                 }
                 if (!value.startsWith('zs1')) {
-                  return 'Address must be a Sapling address (zs1...)';
+                  return 'Address must be a Sapling address (zs1...)'.tr;
                 }
                 if (value.length < 70) {
-                  return 'Invalid address length';
+                  return 'Invalid address length'.tr;
                 }
                 return null;
               },
@@ -699,7 +701,7 @@ class _AddressBookEditScreenState extends ConsumerState<AddressBookEditScreen> {
             _buildTextField(
               controller: _notesController,
               label: 'Notes (optional)'.tr,
-              hint: 'Add notes for this address',
+              hint: 'Add notes for this address'.tr,
               maxLines: 4,
               validator: (value) {
                 if (value != null && value.length > kMaxNotesLength) {

@@ -95,12 +95,12 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
   String? _validateEndpoint(String? value) {
     if (value == null || value.trim().isEmpty) {
-      return 'Endpoint is required';
+      return 'Endpoint is required'.tr;
     }
 
     final parsed = endpoints.LightdEndpoint.tryParse(value);
     if (parsed == null) {
-      return 'Invalid endpoint format (use host:port)';
+      return 'Invalid endpoint format (use host:port)'.tr;
     }
 
     return null;
@@ -113,7 +113,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
     final normalized = _normalizeSpkiPin(value.trim());
     if (!_isValidSpkiPin(normalized)) {
-      return 'Invalid TLS pin format (base64-encoded SPKI hash)';
+      return 'Invalid TLS pin format (base64-encoded SPKI hash)'.tr;
     }
 
     return null;
@@ -137,7 +137,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
   Future<void> _fetchSpkiPin() async {
     if (!_useTls) {
       setState(() {
-        _spkiPinMessage = 'Enable TLS to fetch a pin.';
+        _spkiPinMessage = 'Enable TLS to fetch a pin.'.tr;
         _spkiPinMessageIsError = true;
       });
       return;
@@ -147,7 +147,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
     final parsed = endpoints.LightdEndpoint.tryParse(endpointInput);
     if (parsed == null) {
       setState(() {
-        _spkiPinMessage = 'Invalid endpoint format.';
+        _spkiPinMessage = 'Invalid endpoint format.'.tr;
         _spkiPinMessageIsError = true;
       });
       return;
@@ -170,7 +170,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         final normalizedPin = _normalizeSpkiPin(actualPin);
         if (!_isValidSpkiPin(normalizedPin)) {
           setState(() {
-            _spkiPinMessage = 'SPKI pin returned by server is invalid.';
+            _spkiPinMessage = 'SPKI pin returned by server is invalid.'.tr;
             _spkiPinMessageIsError = true;
           });
           return;
@@ -187,7 +187,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
         if (mounted) {
           setState(() {
             _hasChanges = false;
-            _spkiPinMessage = 'SPKI pin retrieved and saved.';
+            _spkiPinMessage = 'SPKI pin retrieved and saved.'.tr;
             _spkiPinMessageIsError = false;
           });
         }
@@ -203,20 +203,26 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 normalizedError.contains('dns'));
         setState(() {
           if (tlsLikelyUnsupported) {
-            _spkiPinMessage =
-                'This endpoint likely does not support TLS. Disable TLS or use a TLS-enabled endpoint. ${errorMessage ?? ''}'
-                    .trim();
+            _spkiPinMessage = errorMessage?.isNotEmpty ?? false
+                ? 'This endpoint likely does not support TLS. Disable TLS or use a TLS-enabled endpoint. {error}'
+                      .trArgs({'error': errorMessage})
+                : 'This endpoint likely does not support TLS. Disable TLS or use a TLS-enabled endpoint.'
+                      .tr;
           } else {
             _spkiPinMessage = errorMessage?.isNotEmpty ?? false
-                ? 'SPKI pin not available: $errorMessage'
-                : 'SPKI pin not available for this endpoint.';
+                ? 'SPKI pin not available: {error}'.trArgs({
+                    'error': errorMessage,
+                  })
+                : 'SPKI pin not available for this endpoint.'.tr;
           }
           _spkiPinMessageIsError = true;
         });
       }
     } catch (e) {
       setState(() {
-        _spkiPinMessage = 'Failed to fetch SPKI pin: $e';
+        _spkiPinMessage = 'Failed to fetch SPKI pin: {error}'.trArgs({
+          'error': e,
+        });
         _spkiPinMessageIsError = true;
       });
     } finally {
@@ -240,7 +246,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
       // Build URL with scheme
       final parsed = endpoints.LightdEndpoint.tryParse(endpoint);
       if (parsed == null) {
-        throw Exception('Invalid endpoint');
+        throw Exception('Invalid endpoint'.tr);
       }
 
       final fullUrl = _useTls
@@ -261,7 +267,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
         PSnack.show(
           context: context,
-          message: 'Node endpoint saved',
+          message: 'Node endpoint saved'.tr,
           variant: PSnackVariant.success,
         );
       }
@@ -271,7 +277,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
         PSnack.show(
           context: context,
-          message: 'Failed to save endpoint: $e',
+          message: 'Failed to save endpoint: {error}'.trArgs({'error': e}),
           variant: PSnackVariant.error,
         );
       }
@@ -413,8 +419,8 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                         title: Text('Use TLS'.tr),
                         subtitle: Text(
                           _useTls
-                              ? 'Encrypted connection (recommended)'
-                              : 'Unencrypted connection (not recommended)',
+                              ? 'Encrypted connection (recommended)'.tr
+                              : 'Unencrypted connection (not recommended)'.tr,
                           style: AppTypography.bodySmall.copyWith(
                             color: _useTls
                                 ? AppColors.success
@@ -458,7 +464,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                       PInput(
                         controller: _tlsPinController,
                         label: 'SPKI Pin (base64)'.tr,
-                        hint: 'Leave empty to skip certificate pinning',
+                        hint: 'Leave empty to skip certificate pinning'.tr,
                         validator: _validateTlsPin,
                         onChanged: _onTlsPinChanged,
                         prefixIcon: const Icon(Icons.lock_outline),
@@ -468,7 +474,9 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                       const SizedBox(height: AppSpacing.md),
 
                       PButton(
-                        text: _isFetchingSpkiPin ? 'Fetching...' : 'Fetch SPKI',
+                        text: _isFetchingSpkiPin
+                            ? 'Fetching...'.tr
+                            : 'Fetch SPKI'.tr,
                         onPressed: _useTls && !_isFetchingSpkiPin && !_isLoading
                             ? _fetchSpkiPin
                             : null,
@@ -511,7 +519,8 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                             Expanded(
                               child: Text(
                                 "TLS pinning adds extra security by verifying the server's certificate. "
-                                'Use Fetch SPKI to grab the pin from the current endpoint.',
+                                        'Use Fetch SPKI to grab the pin from the current endpoint.'
+                                    .tr,
                                 style: AppTypography.bodySmall.copyWith(
                                   color: AppColors.warning,
                                 ),
@@ -615,7 +624,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                   Clipboard.setData(ClipboardData(text: config.url));
                   PSnack.show(
                     context: context,
-                    message: 'Endpoint copied',
+                    message: 'Endpoint copied'.tr,
                     variant: PSnackVariant.info,
                   );
                 },
@@ -638,7 +647,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 size: 16,
               ),
               Text(
-                config.useTls ? 'TLS Enabled' : 'TLS Disabled',
+                config.useTls ? 'TLS Enabled'.tr : 'TLS Disabled'.tr,
                 style: AppTypography.bodySmall.copyWith(
                   color: config.useTls ? AppColors.success : AppColors.warning,
                 ),
@@ -672,7 +681,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(
-              'Failed to load endpoint: $error',
+              'Failed to load endpoint: {error}'.trArgs({'error': error}),
               style: AppTypography.bodySmall.copyWith(color: AppColors.error),
             ),
           ),

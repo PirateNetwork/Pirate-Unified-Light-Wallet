@@ -269,21 +269,22 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                               value: requestUri ?? state.currentAddress!,
                               successMessage: hasRequestData
                                   ? 'Payment request copied! Will clear in 60 seconds'
+                                        .tr
                                   : null,
                             ),
                             onShare: () => viewModel.shareAddress(
                               context,
                               value: requestUri ?? state.currentAddress!,
                               successMessage: hasRequestData
-                                  ? 'Payment request ready to share'
+                                  ? 'Payment request ready to share'.tr
                                   : null,
                             ),
                             copyTooltip: hasRequestData
-                                ? 'Copy request'
-                                : 'Copy address',
+                                ? 'Copy request'.tr
+                                : 'Copy address'.tr,
                             shareTooltip: hasRequestData
-                                ? 'Share request'
-                                : 'Share address',
+                                ? 'Share request'.tr
+                                : 'Share address'.tr,
                           ),
 
                           SizedBox(height: PSpacing.lg),
@@ -321,7 +322,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                   PInput(
                                     controller: _memoController,
                                     label: 'Memo (optional)'.tr,
-                                    hint: 'Optional note for the sender',
+                                    hint: 'Optional note for the sender'.tr,
                                     maxLines: 3,
                                     maxLength: 512,
                                     helperText:
@@ -390,6 +391,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                     value: requestUri ?? state.currentAddress!,
                                     successMessage: hasRequestData
                                         ? 'Payment request copied! Will clear in 60 seconds'
+                                              .tr
                                         : null,
                                   ),
                                   icon: const Icon(Icons.copy),
@@ -398,8 +400,8 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                                       : PButtonVariant.primary,
                                   child: Text(
                                     hasRequestData
-                                        ? 'Copy request'
-                                        : 'Copy address',
+                                        ? 'Copy request'.tr
+                                        : 'Copy address'.tr,
                                   ),
                                 ),
                               ),
@@ -511,7 +513,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                           SizedBox(height: PSpacing.sm),
                           PInput(
                             controller: _searchController,
-                            hint: 'Search labels or addresses',
+                            hint: 'Search labels or addresses'.tr,
                             prefixIcon: const Icon(Icons.search),
                             textInputAction: TextInputAction.search,
                             suffixIcon: _addressQuery.isNotEmpty
@@ -844,13 +846,13 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   String _sortLabel(_AddressSort sort) {
     switch (sort) {
       case _AddressSort.newest:
-        return 'Newest';
+        return 'Newest'.tr;
       case _AddressSort.oldest:
-        return 'Oldest';
+        return 'Oldest'.tr;
       case _AddressSort.balanceHigh:
-        return 'Balance high';
+        return 'Balance high'.tr;
       case _AddressSort.balanceLow:
-        return 'Balance low';
+        return 'Balance low'.tr;
     }
   }
 }

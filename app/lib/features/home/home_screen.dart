@@ -237,9 +237,11 @@ class _HomeHeader extends ConsumerWidget {
         : (showFiatPrimary ? arrrText : fiatText);
     String? balanceHelper;
     if (balanceArrr <= 0) {
-      balanceHelper = 'Share your address to get paid.';
+      balanceHelper = 'Share your address to get paid.'.tr;
     } else if (pendingBalance > BigInt.zero) {
-      balanceHelper = 'Pending: ${pendingArrr.toStringAsFixed(8)} ARRR';
+      balanceHelper = 'Pending: {amount} ARRR'.trArgs({
+        'amount': pendingArrr.toStringAsFixed(8),
+      });
     }
 
     final headerSurface = DecoratedBox(
@@ -368,13 +370,13 @@ class _HomeSyncIndicator extends ConsumerWidget {
         : 0.0;
     final syncProgress = displayPercent / 100.0;
     final stage = isComplete
-        ? 'Synced'
+        ? 'Synced'.tr
         : displaySyncStatus?.stageName ??
-              (displaySyncStatus != null ? 'Syncing' : 'Not synced');
+              (displaySyncStatus != null ? 'Syncing'.tr : 'Not synced'.tr);
     final eta = isComplete
         ? null
         : displaySyncStatus?.etaFormatted ??
-              (isSyncing ? 'Calculating...' : null);
+              (isSyncing ? 'Calculating...'.tr : null);
 
     return RepaintBoundary(
       child: _SyncIndicator(
@@ -463,7 +465,7 @@ class _HomeTransactionsSection extends ConsumerWidget {
                 ),
                 const SizedBox(height: PSpacing.md),
                 Text(
-                  isSyncing ? 'Syncing activity...' : 'No activity yet.',
+                  isSyncing ? 'Syncing activity...'.tr : 'No activity yet.'.tr,
                   style: PTypography.bodyMedium().copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -604,7 +606,7 @@ class _SyncIndicator extends StatelessWidget {
                       AppColors.accentPrimary,
                     ),
                     minHeight: 4,
-                    semanticsLabel: 'Sync progress',
+                    semanticsLabel: 'Sync progress'.tr,
                   ),
                 ),
               ],
@@ -614,12 +616,19 @@ class _SyncIndicator extends StatelessWidget {
                   Expanded(
                     child: Text(
                       (targetHeight > 0 && currentHeight > 0)
-                          ? 'Block $currentHeight / $targetHeight'
+                          ? 'Block {currentHeight} / {targetHeight}'.trArgs({
+                              'currentHeight': currentHeight,
+                              'targetHeight': targetHeight,
+                            })
                           : (currentHeight > 0)
-                          ? 'Block $currentHeight'
+                          ? 'Block {currentHeight}'.trArgs({
+                              'currentHeight': currentHeight,
+                            })
                           : (targetHeight > 0)
-                          ? 'Block 0 / $targetHeight'
-                          : 'Block 0',
+                          ? 'Block 0 / {targetHeight}'.trArgs({
+                              'targetHeight': targetHeight,
+                            })
+                          : 'Block 0'.tr,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: PTypography.caption().copyWith(
@@ -637,7 +646,7 @@ class _SyncIndicator extends StatelessWidget {
                   else if (isComplete)
                     Text(
                       // Show "Up to date" when caught up - sync is still monitoring for new blocks
-                      stage == 'Monitoring' ? 'Up to date' : 'Synced',
+                      stage == 'Monitoring'.tr ? 'Up to date'.tr : 'Synced'.tr,
                       style: PTypography.caption().copyWith(
                         color: AppColors.success,
                       ),

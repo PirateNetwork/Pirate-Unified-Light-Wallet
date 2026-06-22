@@ -11,15 +11,27 @@ import '../../core/i18n/arb_text_localizer.dart';
 
 /// Sync stages matching Rust SyncStage enum
 enum SyncStage {
-  headers('Headers', 'Fetching block headers'),
-  notes('Notes', 'Scanning for transactions'),
-  witness('Witness', 'Building witness tree'),
-  verify('Verify', 'Verifying commitments'),
-  idle('Idle', 'Sync complete');
+  headers,
+  notes,
+  witness,
+  verify,
+  idle;
 
-  const SyncStage(this.label, this.description);
-  final String label;
-  final String description;
+  String get label => switch (this) {
+    SyncStage.headers => 'Headers'.tr,
+    SyncStage.notes => 'Notes'.tr,
+    SyncStage.witness => 'Witness'.tr,
+    SyncStage.verify => 'Verify'.tr,
+    SyncStage.idle => 'Idle'.tr,
+  };
+
+  String get description => switch (this) {
+    SyncStage.headers => 'Fetching block headers'.tr,
+    SyncStage.notes => 'Scanning for transactions'.tr,
+    SyncStage.witness => 'Building witness tree'.tr,
+    SyncStage.verify => 'Verifying commitments'.tr,
+    SyncStage.idle => 'Sync complete'.tr,
+  };
 
   /// Get stage from string (FFI interop)
   static SyncStage fromString(String s) {
@@ -278,7 +290,7 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
               Icon(Icons.check_circle, size: 14, color: AppColors.success),
             const SizedBox(width: 6),
             Text(
-              isActive ? '${status.percent.toStringAsFixed(0)}%' : 'Synced',
+              isActive ? '${status.percent.toStringAsFixed(0)}%' : 'Synced'.tr,
               style: AppTypography.caption.copyWith(
                 color: isActive ? AppColors.gradientAStart : AppColors.success,
                 fontWeight: FontWeight.w600,
@@ -530,7 +542,7 @@ class _PSyncIndicatorState extends State<PSyncIndicator>
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _PerfCounter(
-            label: 'blk/s'.tr,
+            label: 'blk/s',
             value: status.blocksPerSecond.toStringAsFixed(1),
             icon: Icons.speed,
           ),

@@ -9,8 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../features/settings/providers/preferences_providers.dart';
-import '../../l10n/app_localizations.dart';
 import '../../ui/molecules/p_snack.dart';
+import '../i18n/arb_text_localizer.dart';
 import '../services/desktop_update_service.dart';
 
 class DesktopUpdatePromptHost extends ConsumerStatefulWidget {
@@ -89,13 +89,12 @@ class _DesktopUpdatePromptHostState
   Future<void> _showUpdateDialog(DesktopUpdateCandidate candidate) async {
     _dialogVisible = true;
     final context = this.context;
-    final l10n = AppLocalizations.of(context);
     final displayVersion = candidate.release.tagName.isEmpty
         ? candidate.release.name
         : candidate.release.tagName;
     final publishedAt = candidate.release.publishedAt?.toLocal();
     final publishedText = publishedAt == null
-        ? l10n.unknownPublishTime
+        ? 'Unknown publish time'.tr
         : '${publishedAt.year.toString().padLeft(4, '0')}-'
               '${publishedAt.month.toString().padLeft(2, '0')}-'
               '${publishedAt.day.toString().padLeft(2, '0')} '
@@ -107,9 +106,13 @@ class _DesktopUpdatePromptHostState
       barrierDismissible: false,
       builder: (dialogContext) {
         return AlertDialog(
-          title: Text(l10n.updateAvailableTitle),
+          title: Text('Update Available'.tr),
           content: Text(
-            l10n.updateAvailableMessage(displayVersion, publishedText),
+            'A new version ({version}) is available.\nPublished: {published}\n\nChoose Update to download and install now.'
+                .trArgs({
+                  'version': displayVersion,
+                  'published': publishedText,
+                }),
           ),
           actions: [
             FilledButton(
@@ -119,7 +122,7 @@ class _DesktopUpdatePromptHostState
                 }
                 await _downloadAndInstall(candidate);
               },
-              child: Text(l10n.updateButton),
+              child: Text('Update'.tr),
             ),
             TextButton(
               onPressed: () async {
@@ -131,7 +134,7 @@ class _DesktopUpdatePromptHostState
                   Navigator.of(dialogContext).pop();
                 }
               },
-              child: Text(l10n.changelogButton),
+              child: Text('Changelog'.tr),
             ),
             TextButton(
               onPressed: () async {
@@ -143,7 +146,7 @@ class _DesktopUpdatePromptHostState
                   Navigator.of(dialogContext).pop();
                 }
               },
-              child: Text(l10n.cancelButton),
+              child: Text('Cancel'.tr),
             ),
           ],
         );
@@ -156,8 +159,6 @@ class _DesktopUpdatePromptHostState
     if (!mounted) {
       return;
     }
-    final l10n = AppLocalizations.of(context);
-
     unawaited(
       showDialog<void>(
         context: context,
@@ -191,8 +192,9 @@ class _DesktopUpdatePromptHostState
         return;
       }
       final message = result.shouldCloseApp
-          ? l10n.installerLaunchedClosing
-          : l10n.installerLaunchedDoNotClose;
+          ? 'Installer launched. Closing app to finish update...'.tr
+          : 'Installer launched. Follow the installer prompts. Only close the app if the installer asks.'
+                .tr;
       PSnack.show(
         context: context,
         message: message,
@@ -210,7 +212,9 @@ class _DesktopUpdatePromptHostState
       if (mounted) {
         PSnack.show(
           context: context,
-          message: l10n.automaticUpdateFailedMessage(e.toString()),
+          message:
+              'Automatic update failed: {error}. Use Changelog to download manually.'
+                  .trArgs({'error': e}),
           variant: PSnackVariant.error,
           duration: const Duration(seconds: 6),
         );
@@ -242,7 +246,6 @@ class _PreparingUpdateLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Text(l10n.preparingUpdateInstaller);
+    return Text('Preparing update installer...'.tr);
   }
 }

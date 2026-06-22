@@ -66,7 +66,9 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
 
       final available = await BiometricAuth.isAvailable();
       if (!available) {
-        setState(() => _error = 'Biometrics are not available on this device.');
+        setState(
+          () => _error = 'Biometrics are not available on this device.'.tr,
+        );
         return;
       }
 
@@ -74,11 +76,11 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
       // Unlock still requires biometric auth on the unlock screen.
       if (!Platform.isMacOS) {
         final authenticated = await BiometricAuth.authenticate(
-          reason: 'Enable biometric unlock for Pirate Wallet',
+          reason: 'Enable biometric unlock for Pirate Wallet'.tr,
           biometricOnly: true,
         );
         if (!authenticated) {
-          setState(() => _error = 'Biometric authentication was cancelled.');
+          setState(() => _error = 'Biometric authentication was cancelled.'.tr);
           return;
         }
       }
@@ -87,7 +89,8 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
       if (!ready) {
         setState(() {
           _error =
-              'Biometrics need your passphrase once to finish setup. Try enabling again.';
+              'Biometrics need your passphrase once to finish setup. Try enabling again.'
+                  .tr;
         });
         return;
       }
@@ -113,10 +116,12 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
     if (lowered.contains('-34018') ||
         lowered.contains('required entitlement') ||
         lowered.contains('keychain')) {
-      return 'Secure storage is unavailable for this macOS build. '
-          'Install the latest build and try again.';
+      return 'Secure storage is unavailable for this macOS build. Install the latest build and try again.'
+          .tr;
     }
-    return 'Unable to update biometrics settings: $raw';
+    return 'Unable to update biometrics settings: {error}'.trArgs({
+      'error': raw,
+    });
   }
 
   Future<bool> _ensurePassphraseCacheReady() async {
@@ -131,7 +136,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
 
     final verified = await FfiBridge.verifyAppPassphrase(passphrase);
     if (!verified) {
-      throw Exception('Passphrase verification failed.');
+      throw Exception('Passphrase verification failed.'.tr);
     }
 
     await PassphraseCache.store(passphrase);
@@ -190,7 +195,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                       final value = controller.text.trim();
                       if (value.isEmpty) {
                         setStateDialog(
-                          () => errorText = 'Passphrase is required.',
+                          () => errorText = 'Passphrase is required.'.tr,
                         );
                         return;
                       }
@@ -215,7 +220,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                     final value = controller.text.trim();
                     if (value.isEmpty) {
                       setStateDialog(
-                        () => errorText = 'Passphrase is required.',
+                        () => errorText = 'Passphrase is required.'.tr,
                       );
                       return;
                     }
@@ -250,7 +255,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
         .map(BiometricAuth.getBiometricName)
         .toList(growable: false);
     final typeSummary = typeLabels.isEmpty
-        ? 'None detected'
+        ? 'None detected'.tr
         : typeLabels.join(', ');
 
     return PScaffold(
@@ -277,7 +282,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _isAvailable ? 'Available' : 'Unavailable',
+                            _isAvailable ? 'Available'.tr : 'Unavailable'.tr,
                             style: AppTypography.bodyBold.copyWith(
                               color: AppColors.textPrimary,
                             ),
@@ -285,7 +290,7 @@ class _BiometricsScreenState extends ConsumerState<BiometricsScreen> {
                           const SizedBox(height: AppSpacing.xxs),
                           Text(
                             _isAvailable
-                                ? 'Access your wallet faster'
+                                ? 'Access your wallet faster'.tr
                                 : typeSummary,
                             style: AppTypography.caption.copyWith(
                               color: AppColors.textSecondary,

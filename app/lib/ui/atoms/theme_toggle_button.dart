@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../design/tokens/colors.dart';
 import '../../features/settings/providers/preferences_providers.dart';
 import 'p_icon_button.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// Clean theme toggle button that switches between light and dark mode
 /// Toggles between light and dark (skips system mode for quick switching)
@@ -31,7 +32,7 @@ class ThemeToggleButton extends ConsumerWidget {
                   : AppThemeMode.light);
         ref.read(appThemeModeProvider.notifier).setThemeMode(newMode);
       },
-      tooltip: isDark ? 'Switch to light mode' : 'Switch to dark mode',
+      tooltip: isDark ? 'Switch to light mode'.tr : 'Switch to dark mode'.tr,
       size: PIconButtonSize.medium,
     );
   }

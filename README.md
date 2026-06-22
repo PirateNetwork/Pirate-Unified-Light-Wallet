@@ -206,7 +206,7 @@ Development notes
 -----------------
 
 - The generated Flutter FFI files live under `app/lib/core/ffi/generated/`.
-- The generated localization files live under `app/lib/l10n/`.
+- The app loads translations from `app/assets/i18n/`.
 - Rust quality checks:
 
 ```bash

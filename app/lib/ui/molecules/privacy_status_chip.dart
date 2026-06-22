@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/arb_text_localizer.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -23,13 +24,13 @@ class PrivacyStatusChip extends StatelessWidget {
   String get _label {
     switch (status) {
       case PrivacyStatus.private:
-        return 'Connected - Secure';
+        return 'Connected - Secure'.tr;
       case PrivacyStatus.limited:
-        return 'Connected - Limited';
+        return 'Connected - Limited'.tr;
       case PrivacyStatus.connecting:
-        return 'Connecting';
+        return 'Connecting'.tr;
       case PrivacyStatus.offline:
-        return 'Offline';
+        return 'Offline'.tr;
     }
   }
 

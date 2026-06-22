@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../ffi/ffi_bridge.dart';
+import '../i18n/arb_text_localizer.dart';
 
 part 'desktop_update_service_asset_selection.dart';
 
@@ -252,7 +253,7 @@ class DesktopUpdateService {
   ) async {
     final checksums = await _fetchChecksums(candidate.release.assets);
     if (checksums.entries.isEmpty) {
-      throw Exception('No published checksums were found for this release.');
+      throw Exception('No published checksums were found for this release.'.tr);
     }
 
     final expected = _lookupChecksum(checksums.entries, candidate.asset.name);
@@ -501,7 +502,7 @@ exit /b 0
     final currentAppImage = _assetSelection.resolveLinuxAppImagePath();
     if (currentAppImage == null) {
       throw Exception(
-        'Unable to determine the current AppImage path for in-place update.',
+        'Unable to determine the current AppImage path for in-place update.'.tr,
       );
     }
 

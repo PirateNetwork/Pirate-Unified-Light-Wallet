@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/i18n/arb_text_localizer.dart';
+
 /// Additional fee per extra output in arrrtoshis.
 const int kAdditionalOutputFeeArrrtoshis = 5000;
 
@@ -9,13 +11,13 @@ extension FeePresetLabel on FeePreset {
   String get label {
     switch (this) {
       case FeePreset.low:
-        return 'Low';
+        return 'Low'.tr;
       case FeePreset.standard:
-        return 'Standard';
+        return 'Standard'.tr;
       case FeePreset.high:
-        return 'High';
+        return 'High'.tr;
       case FeePreset.custom:
-        return 'Custom';
+        return 'Custom'.tr;
     }
   }
 }

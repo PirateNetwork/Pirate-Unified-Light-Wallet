@@ -115,7 +115,7 @@ class DecoyView extends StatelessWidget {
           ),
           SizedBox(height: PirateSpacing.sm),
           Text(
-            '0.05234 ARRR'.tr,
+            '0.05234 ARRR',
             style: PirateTypography.h1.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -199,21 +199,21 @@ class DecoyView extends StatelessWidget {
         ),
         SizedBox(height: PSpacing.md),
         _buildActivityItem(
-          type: 'Received',
+          type: 'Received'.tr,
           amount: '+0.02134 ARRR',
-          date: '2 days ago',
+          date: '2 days ago'.tr,
           isPositive: true,
         ),
         _buildActivityItem(
-          type: 'Sent',
+          type: 'Sent'.tr,
           amount: '-0.01500 ARRR',
-          date: '5 days ago',
+          date: '5 days ago'.tr,
           isPositive: false,
         ),
         _buildActivityItem(
-          type: 'Received',
+          type: 'Received'.tr,
           amount: '+0.04600 ARRR',
-          date: '1 week ago',
+          date: '1 week ago'.tr,
           isPositive: true,
         ),
       ],

@@ -92,7 +92,7 @@ class SwapComposeCard extends StatelessWidget {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(candidate.ticker),
-                    subtitle: Text(_assetPickerSubtitle(candidate).tr),
+                    subtitle: Text(_assetPickerSubtitle(candidate)),
                     onTap: () => Navigator.of(sheetContext).pop(candidate),
                   ),
               ],
@@ -108,9 +108,9 @@ class SwapComposeCard extends StatelessWidget {
 
   String _assetPickerSubtitle(SwapAsset asset) {
     return switch (asset) {
-      SwapAsset.arrr => 'Switch to paying or receiving ARRR',
-      SwapAsset.ltc => 'Use LTC for this ARRR swap',
-      SwapAsset.varrr => 'Use vARRR for this ARRR swap',
+      SwapAsset.arrr => 'Switch to paying or receiving ARRR'.tr,
+      SwapAsset.ltc => 'Use LTC for this ARRR swap'.tr,
+      SwapAsset.varrr => 'Use vARRR for this ARRR swap'.tr,
     };
   }
 
@@ -324,14 +324,14 @@ class SwapComposeCard extends StatelessWidget {
         if (!isBuy) ...[
           const SizedBox(height: PSpacing.xl),
           Text(
-            '${pair.relTicker} receiving address'.tr,
+            '{ticker} receiving address'.trArgs({'ticker': pair.relTicker}),
             style: PTypography.labelMedium(color: AppColors.textPrimary),
           ),
           const SizedBox(height: PSpacing.xs),
           PInput(
             hint: pair.relAsset == SwapAsset.ltc
-                ? 'ltc1... or L...'.tr
-                : 'Enter ${pair.relTicker} address'.tr,
+                ? 'ltc1... or L...'
+                : 'Enter {ticker} address'.trArgs({'ticker': pair.relTicker}),
             value: ltcPayoutAddress,
             onChanged: onLtcAddressChanged,
             monospace: true,

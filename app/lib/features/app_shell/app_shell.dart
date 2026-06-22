@@ -190,7 +190,7 @@ class AppShell extends ConsumerWidget {
           )
         : content;
     return PScaffold(
-      title: 'Pirate Wallet'.tr,
+      title: 'Pirate Wallet',
       useSafeArea: false,
       body: body,
       bottomNavigationBar: _isDesktop ? null : nav,

@@ -78,7 +78,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
         walletId: walletId,
         onSave: (entry) {
           Navigator.of(context).pop();
-          _showSnackBar('Address saved');
+          _showSnackBar('Address saved'.tr);
         },
       ),
     );
@@ -98,7 +98,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
         entry: entry,
         onSave: (updated) {
           Navigator.of(context).pop();
-          _showSnackBar('Address updated');
+          _showSnackBar('Address updated'.tr);
         },
       ),
     );
@@ -136,7 +136,8 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
       builder: (context) => PDialog(
         title: 'Delete Address?'.tr,
         content: Text(
-          'Are you sure you want to delete "${entry.label}" from your address book?',
+          'Are you sure you want to delete "{label}" from your address book?'
+              .trArgs({'label': entry.label}),
           style: AppTypography.body,
         ),
         actions: [
@@ -161,7 +162,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
           .read(addressBookProvider(entry.walletId).notifier)
           .deleteEntry(entry.id);
       if (success) {
-        _showSnackBar('Address deleted');
+        _showSnackBar('Address deleted'.tr);
       }
     }
   }
@@ -277,8 +278,8 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
       appBar: PAppBar(
         title: 'Address Book'.tr,
         subtitle: widget.onSelectAddress != null
-            ? 'Tap an entry to autofill the send form'
-            : 'Manage your trusted contacts',
+            ? 'Tap an entry to autofill the send form'.tr
+            : 'Manage your trusted contacts'.tr,
         actions: [
           const WalletSwitcherButton(compact: true),
           PIconButton(
@@ -300,7 +301,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
             ),
             child: PInput(
               controller: _searchController,
-              hint: 'Search addresses...',
+              hint: 'Search addresses...'.tr,
               prefixIcon: const Icon(Icons.search),
               suffixIcon: state.searchQuery.isNotEmpty
                   ? IconButton(
@@ -333,7 +334,7 @@ class _AddressBookScreenState extends ConsumerState<AddressBookScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     PButton(
-                      text: 'Retry',
+                      text: 'Retry'.tr,
                       onPressed: () {
                         ref
                             .read(addressBookProvider(walletId).notifier)
@@ -511,8 +512,8 @@ class AddressCard extends StatelessWidget {
                 ),
                 onPressed: onFavoriteToggle,
                 tooltip: entry.isFavorite
-                    ? 'Remove from favorites'
-                    : 'Add to favorites',
+                    ? 'Remove from favorites'.tr
+                    : 'Add to favorites'.tr,
               ),
             ],
           ),
@@ -551,15 +552,15 @@ class EmptyAddressBookState extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              hasSearch ? 'No Results Found' : 'No Saved Addresses',
+              hasSearch ? 'No Results Found'.tr : 'No Saved Addresses'.tr,
               style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
               hasSearch
-                  ? 'Try a different search or clear filters'
-                  : 'Add addresses to quickly send ARRR to your contacts',
+                  ? 'Try a different search or clear filters'.tr
+                  : 'Add addresses to quickly send ARRR to your contacts'.tr,
               style: AppTypography.body.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -568,7 +569,7 @@ class EmptyAddressBookState extends StatelessWidget {
             if (hasSearch) ...[
               const SizedBox(height: AppSpacing.lg),
               PButton(
-                text: 'Clear Filters',
+                text: 'Clear Filters'.tr,
                 onPressed: onClearFilters,
                 variant: PButtonVariant.secondary,
               ),
@@ -806,7 +807,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              _isEditing ? 'Edit Address' : 'Add Address',
+              _isEditing ? 'Edit Address'.tr : 'Add Address'.tr,
               style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
             ),
 
@@ -840,7 +841,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
             PInput(
               controller: _labelController,
               label: 'Label *'.tr,
-              hint: 'e.g., Alice, Coffee Shop',
+              hint: 'e.g., Alice, Coffee Shop'.tr,
               maxLength: kMaxLabelLength,
               onChanged: (_) => setState(() {}),
             ),
@@ -874,8 +875,8 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
                           icon: const Icon(Icons.qr_code_scanner, size: 20),
                           onPressed: _scanQr,
                           tooltip: _supportsCameraScan
-                              ? 'Scan QR'
-                              : 'Import QR',
+                              ? 'Scan QR'.tr
+                              : 'Import QR'.tr,
                         ),
                       ],
                     ),
@@ -886,7 +887,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
             PInput(
               controller: _notesController,
               label: 'Notes (Optional)'.tr,
-              hint: 'Add a note about this address',
+              hint: 'Add a note about this address'.tr,
               maxLines: 2,
               maxLength: kMaxNotesLength,
             ),
@@ -941,7 +942,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
               children: [
                 Expanded(
                   child: PButton(
-                    text: 'Cancel',
+                    text: 'Cancel'.tr,
                     onPressed: () => Navigator.of(context).pop(),
                     variant: PButtonVariant.secondary,
                     size: PButtonSize.large,
@@ -950,7 +951,7 @@ class _AddEditAddressSheetState extends ConsumerState<AddEditAddressSheet> {
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: PButton(
-                    text: _isSaving ? 'Saving...' : 'Save',
+                    text: _isSaving ? 'Saving...'.tr : 'Save'.tr,
                     onPressed: _canSave() ? _save : null,
                     variant: PButtonVariant.primary,
                     size: PButtonSize.large,
@@ -1098,7 +1099,7 @@ class AddressDetailsSheet extends StatelessWidget {
           const SizedBox(height: AppSpacing.xl),
 
           PButton(
-            text: 'Send to This Address',
+            text: 'Send to This Address'.tr,
             onPressed: onSend,
             variant: PButtonVariant.primary,
             size: PButtonSize.large,

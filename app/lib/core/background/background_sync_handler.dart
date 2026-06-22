@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'background_sync_execution_result.dart';
 import '../ffi/ffi_bridge.dart';
 import '../ffi/generated/models.dart' hide NodeTestResult;
+import '../i18n/arb_text_localizer.dart';
 
 /// Method channel name (must match native code)
 const String kBackgroundSyncChannel = 'com.pirate.wallet/background_sync';
@@ -144,7 +145,7 @@ class BackgroundSyncHandler {
               code: BackgroundSyncErrorCodes.torConnectionFailed,
               message:
                   torCheck.errorMessage ??
-                  'Unable to reach the configured node through Tor.',
+                  'Unable to reach the configured node through Tor.'.tr,
             );
           }
         } else if (currentTunnel is TunnelMode_I2p) {
@@ -154,7 +155,7 @@ class BackgroundSyncHandler {
               code: BackgroundSyncErrorCodes.i2pConnectionFailed,
               message:
                   i2pCheck.errorMessage ??
-                  'Unable to reach the configured node through I2P.',
+                  'Unable to reach the configured node through I2P.'.tr,
             );
           }
         } else if (currentTunnel is TunnelMode_Socks5) {
@@ -164,7 +165,8 @@ class BackgroundSyncHandler {
               code: BackgroundSyncErrorCodes.socks5ConnectionFailed,
               message:
                   socks5Check.errorMessage ??
-                  'Unable to reach the configured node through the SOCKS5 proxy.',
+                  'Unable to reach the configured node through the SOCKS5 proxy.'
+                      .tr,
             );
           }
         }

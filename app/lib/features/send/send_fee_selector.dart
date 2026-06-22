@@ -54,8 +54,10 @@ Future<SendFeeSelection?> showSendFeeSelectorSheet({
     final feeArrrtoshis = (parsed * 100000000).round();
     if (feeArrrtoshis < feeState.minFeeArrrtoshis ||
         feeArrrtoshis > feeState.maxFeeArrrtoshis) {
-      return 'Fee must be between ${formatFeeArrrtoshis(feeState.minFeeArrrtoshis)} and ${formatFeeArrrtoshis(feeState.maxFeeArrrtoshis)}.'
-          .tr;
+      return 'Fee must be between {minimum} and {maximum}.'.trArgs({
+        'minimum': formatFeeArrrtoshis(feeState.minFeeArrrtoshis),
+        'maximum': formatFeeArrrtoshis(feeState.maxFeeArrrtoshis),
+      });
     }
 
     return null;
@@ -170,7 +172,10 @@ Future<SendFeeSelection?> showSendFeeSelectorSheet({
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'Min ${formatFeeArrrtoshis(feeState.minFeeArrrtoshis)} - Max ${formatFeeArrrtoshis(feeState.maxFeeArrrtoshis)}',
+                'Min {minimum} - Max {maximum}'.trArgs({
+                  'minimum': formatFeeArrrtoshis(feeState.minFeeArrrtoshis),
+                  'maximum': formatFeeArrrtoshis(feeState.maxFeeArrrtoshis),
+                }),
                 style: AppTypography.caption.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -188,7 +193,7 @@ Future<SendFeeSelection?> showSendFeeSelectorSheet({
                 children: [
                   Expanded(
                     child: PButton(
-                      text: 'Cancel',
+                      text: 'Cancel'.tr,
                       variant: PButtonVariant.secondary,
                       onPressed: () => Navigator.of(context).pop(),
                     ),
@@ -196,7 +201,7 @@ Future<SendFeeSelection?> showSendFeeSelectorSheet({
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: PButton(
-                      text: 'Apply',
+                      text: 'Apply'.tr,
                       onPressed: () {
                         if (pendingPreset == FeePreset.custom) {
                           final error = validateCustomFee(controller.text);

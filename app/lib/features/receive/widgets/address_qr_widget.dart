@@ -78,7 +78,7 @@ class AddressQRWidget extends StatelessWidget {
                 IconButton(
                   onPressed: onCopy,
                   icon: const Icon(Icons.copy, size: 20),
-                  tooltip: copyTooltip ?? 'Copy address',
+                  tooltip: copyTooltip ?? 'Copy address'.tr,
                   style: IconButton.styleFrom(
                     backgroundColor: AppColors.backgroundPanel,
                     foregroundColor: AppColors.textPrimary,
@@ -88,7 +88,7 @@ class AddressQRWidget extends StatelessWidget {
                 IconButton(
                   onPressed: onShare,
                   icon: const Icon(Icons.share, size: 20),
-                  tooltip: shareTooltip ?? 'Share address',
+                  tooltip: shareTooltip ?? 'Share address'.tr,
                   style: IconButton.styleFrom(
                     backgroundColor: AppColors.backgroundPanel,
                     foregroundColor: AppColors.textPrimary,

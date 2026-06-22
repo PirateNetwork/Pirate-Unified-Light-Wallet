@@ -1,5 +1,6 @@
 import 'package:decimal/decimal.dart';
 
+import '../i18n/arb_text_localizer.dart';
 import 'swap_models.dart';
 
 class SwapQuoteUnavailableException implements Exception {
@@ -47,7 +48,7 @@ class SwapQuoteEngine {
 
     if (relAmount.compareTo(Decimal.zero) <= 0) {
       throw SwapQuoteUnavailableException(
-        '${pair.relTicker} amount must be positive.',
+        '{ticker} amount must be positive.'.trArgs({'ticker': pair.relTicker}),
       );
     }
 
@@ -63,7 +64,7 @@ class SwapQuoteEngine {
 
     if (sortedAsks.isEmpty) {
       throw SwapQuoteUnavailableException(
-        '${pair.displayName} orderbook is empty.',
+        '{pair} orderbook is empty.'.trArgs({'pair': pair.displayName}),
       );
     }
 
@@ -156,9 +157,7 @@ class SwapQuoteEngine {
     final effectiveAppFeeRate = appFeeRate ?? appTakerFeeRate;
 
     if (arrrAmount.compareTo(Decimal.zero) <= 0) {
-      throw const SwapQuoteUnavailableException(
-        'ARRR amount must be positive.',
-      );
+      throw SwapQuoteUnavailableException('ARRR amount must be positive.'.tr);
     }
 
     final sortedBids =
@@ -173,7 +172,7 @@ class SwapQuoteEngine {
 
     if (sortedBids.isEmpty) {
       throw SwapQuoteUnavailableException(
-        '${pair.displayName} orderbook is empty.',
+        '{pair} orderbook is empty.'.trArgs({'pair': pair.displayName}),
       );
     }
 
@@ -182,7 +181,7 @@ class SwapQuoteEngine {
         referencePrice * (Decimal.one - effectiveSlippageCap);
     final feeMultiplier = Decimal.one - totalTakerFeeRate;
     if (feeMultiplier <= Decimal.zero) {
-      throw const SwapQuoteUnavailableException('Invalid ARRR swap fee.');
+      throw SwapQuoteUnavailableException('Invalid ARRR swap fee.'.tr);
     }
 
     var remainingGrossArrr = arrrAmount;

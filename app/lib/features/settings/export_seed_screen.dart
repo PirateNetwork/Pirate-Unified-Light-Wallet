@@ -152,7 +152,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'Failed to change seed phrase language: $e';
+        _error = 'Failed to change seed phrase language: {error}'.trArgs({
+          'error': e,
+        });
       });
     } finally {
       if (mounted) {
@@ -425,7 +427,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       await FfiBridge.acknowledgeSeedWarning();
       setState(() => _step1Complete = true);
     } catch (e) {
-      setState(() => _error = 'Failed to start export: $e');
+      setState(
+        () => _error = 'Failed to start export: {error}'.trArgs({'error': e}),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -656,7 +660,9 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
                   SizedBox(width: PirateSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Clipboard clears in ${countdown}s',
+                      'Clipboard clears in {seconds}s'.trArgs({
+                        'seconds': countdown,
+                      }),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: PirateTypography.body.copyWith(
@@ -704,12 +710,14 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       }
       final available = await BiometricAuth.isAvailable();
       if (!available) {
-        setState(() => _error = 'Biometrics are not available on this device.');
+        setState(
+          () => _error = 'Biometrics are not available on this device.'.tr,
+        );
         return;
       }
 
       final authenticated = await BiometricAuth.authenticate(
-        reason: 'Verify to reveal your recovery phrase',
+        reason: 'Verify to reveal your recovery phrase'.tr,
         biometricOnly: true,
       );
 
@@ -720,13 +728,13 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
         );
         await _applyRevealedMnemonic(words.join(' '));
       } else {
-        setState(() => _error = 'Biometric authentication failed');
+        setState(() => _error = 'Biometric authentication failed'.tr);
       }
     } on BiometricException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
       setState(() {
-        _error = 'Biometric authentication error: $e';
+        _error = 'Biometric authentication error: {error}'.trArgs({'error': e});
       });
     } finally {
       setState(() => _isLoading = false);
@@ -747,7 +755,10 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       await FfiBridge.skipSeedBiometric();
       setState(() => _step2Complete = true);
     } catch (e) {
-      setState(() => _error = 'Failed to skip biometrics: $e');
+      setState(
+        () =>
+            _error = 'Failed to skip biometrics: {error}'.trArgs({'error': e}),
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -757,7 +768,7 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
 
   Future<void> _verifyPassphrase() async {
     if (_passphraseController.text.isEmpty) {
-      setState(() => _error = 'Enter your passphrase');
+      setState(() => _error = 'Enter your passphrase'.tr);
       return;
     }
 
@@ -783,7 +794,11 @@ class _ExportSeedScreenState extends ConsumerState<ExportSeedScreen> {
       );
       _passphraseController.clear();
     } catch (e) {
-      setState(() => _error = 'Failed to verify passphrase: $e');
+      setState(
+        () => _error = 'Failed to verify passphrase: {error}'.trArgs({
+          'error': e,
+        }),
+      );
     } finally {
       setState(() => _isLoading = false);
     }

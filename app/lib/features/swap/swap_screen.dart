@@ -481,13 +481,13 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
 
     final detail = isLimit
         ? (isBuy
-              ? "You'll deposit ${state.pair.relTicker}. Once enough confirmed balance is detected, a limit order is placed on the book at your price."
-                    .tr
+              ? "You'll deposit {ticker}. Once enough confirmed balance is detected, a limit order is placed on the book at your price."
+                    .trArgs({'ticker': state.pair.relTicker})
               : 'Your ARRR will be sent to the swap engine and a limit order placed at your price. This is on-chain and cannot be undone.'
                     .tr)
         : (isBuy
-              ? "You'll deposit ${state.pair.relTicker}. Once enough confirmed balance is detected, the app starts matching and settling the market swap."
-                    .tr
+              ? "You'll deposit {ticker}. Once enough confirmed balance is detected, the app starts matching and settling the market swap."
+                    .trArgs({'ticker': state.pair.relTicker})
               : 'Your ARRR will be sent on-chain to the swap engine, then matched and settled at market. This cannot be undone.'
                     .tr);
 
@@ -546,10 +546,10 @@ class _SwapScreenState extends ConsumerState<SwapScreen> {
       builder: (dialogContext) => AlertDialog(
         title: Text('Cancel this swap?'.tr),
         content: Text(
-          "If you already sent $ticker, it won't be lost. It stays in your "
+          "If you already sent {ticker}, it won't be lost. It stays in your "
                   'swap funding balance. You can use it for another swap or '
                   'refund it from the funding card.'
-              .tr,
+              .trArgs({'ticker': ticker}),
         ),
         actions: [
           TextButton(

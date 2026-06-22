@@ -110,7 +110,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Invalid passphrase. Please try again.';
+          _error = 'Invalid passphrase. Please try again.'.tr;
           _isUnlocking = false;
         });
       }
@@ -166,7 +166,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
     try {
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         final authenticated = await BiometricAuth.authenticate(
-          reason: 'Unlock your wallet',
+          reason: 'Unlock your wallet'.tr,
           biometricOnly: true,
         );
         if (!authenticated) {
@@ -182,7 +182,8 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
         if (mounted && !silentFailure) {
           setState(() {
             _error =
-                'Secure biometric data is unavailable. Use passphrase unlock.';
+                'Secure biometric data is unavailable. Use passphrase unlock.'
+                    .tr;
           });
         }
         return;
@@ -199,7 +200,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
     } catch (e) {
       if (mounted && !silentFailure) {
         setState(() {
-          _error = 'Biometric unlock failed. Use your passphrase instead.';
+          _error = 'Biometric unlock failed. Use your passphrase instead.'.tr;
         });
       }
     } finally {
@@ -346,7 +347,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
                         PInput(
                           controller: _passphraseController,
                           label: 'Passphrase'.tr,
-                          hint: 'Enter your passphrase',
+                          hint: 'Enter your passphrase'.tr,
                           obscureText: _obscurePassphrase,
                           autocorrect: false,
                           enableSuggestions: false,
@@ -367,7 +368,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'Please enter your passphrase';
+                              return 'Please enter your passphrase'.tr;
                             }
                             return null;
                           },
@@ -410,7 +411,7 @@ class _UnlockScreenState extends ConsumerState<UnlockScreen> {
 
                         // Unlock button
                         PButton(
-                          text: 'Unlock',
+                          text: 'Unlock'.tr,
                           onPressed: (_isUnlocking || _isBiometricUnlocking)
                               ? null
                               : _unlock,

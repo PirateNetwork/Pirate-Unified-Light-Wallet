@@ -349,6 +349,11 @@ jobs:
           cd app
           flutter pub get --enforce-lockfile
 
+      - name: Audit translations
+        run: |
+          cd app
+          dart run tool/audit_runtime_translations.dart
+
       - name: Analyze code
         run: |
           cd app

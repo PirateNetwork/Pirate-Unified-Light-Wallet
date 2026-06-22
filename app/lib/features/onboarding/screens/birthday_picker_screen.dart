@@ -33,19 +33,19 @@ class BirthdayPickerScreen extends ConsumerStatefulWidget {
 }
 
 class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
-  static const List<String> _monthLabels = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
+  static List<String> get _monthLabels => [
+    'January'.tr,
+    'February'.tr,
+    'March'.tr,
+    'April'.tr,
+    'May'.tr,
+    'June'.tr,
+    'July'.tr,
+    'August'.tr,
+    'September'.tr,
+    'October'.tr,
+    'November'.tr,
+    'December'.tr,
   ];
 
   final _exactHeightController = TextEditingController();
@@ -117,14 +117,16 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
       } else {
         setState(() {
           _heightError =
-              'Tor is still connecting. Latest network height will appear when available.';
+              'Tor is still connecting. Latest network height will appear when available.'
+                  .tr;
         });
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _heightError =
-            'Tor is still connecting. Latest network height will appear when available.';
+            'Tor is still connecting. Latest network height will appear when available.'
+                .tr;
       });
     } finally {
       if (mounted) {
@@ -139,18 +141,18 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     final hasAppPassphrase = await FfiBridge.hasAppPassphrase();
     if ((state.passphrase == null || state.passphrase!.isEmpty) &&
         !hasAppPassphrase) {
-      setState(() => _error = 'Passphrase missing. Go back and set one.');
+      setState(() => _error = 'Passphrase missing. Go back and set one.'.tr);
       return;
     }
 
     final selectedHeight = _selectedHeight;
     if (selectedHeight == null || selectedHeight <= 0) {
-      setState(() => _error = 'Enter a valid block height.');
+      setState(() => _error = 'Enter a valid block height.'.tr);
       return;
     }
     if (_latestHeight != null && selectedHeight > _latestHeight!) {
       setState(
-        () => _error = 'Block height cannot be higher than the network tip.',
+        () => _error = 'Block height cannot be higher than the network tip.'.tr,
       );
       return;
     }
@@ -163,17 +165,17 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     try {
       if (state.mode == OnboardingMode.create) {
         await FfiBridge.createWallet(
-          name: 'My Pirate Wallet',
+          name: 'My Pirate Wallet'.tr,
           entropyLen: 256,
           birthday: selectedHeight,
         );
       } else {
         if (state.mnemonic == null || state.mnemonic!.isEmpty) {
-          throw StateError('Mnemonic not provided for restore');
+          throw StateError('Mnemonic not provided for restore'.tr);
         }
 
         await FfiBridge.restoreWallet(
-          name: 'Restored Wallet',
+          name: 'Restored Wallet'.tr,
           mnemonic: state.mnemonic!,
           birthday: selectedHeight,
         );
@@ -188,7 +190,8 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
       if (!mounted) return;
       if (!walletsExist) {
         setState(() {
-          _error = 'Wallet creation succeeded but was not detected. Try again.';
+          _error =
+              'Wallet creation succeeded but was not detected. Try again.'.tr;
           _isCreating = false;
         });
         return;
@@ -203,8 +206,10 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
           SnackBar(
             content: Text(
               state.mode == OnboardingMode.create
-                  ? 'Wallet created. Syncing...'
-                  : 'Wallet restored. Syncing from block ${_formatHeight(selectedHeight)}...',
+                  ? 'Wallet created. Syncing...'.tr
+                  : 'Wallet restored. Syncing from block {height}...'.trArgs({
+                      'height': _formatHeight(selectedHeight),
+                    }),
             ),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
@@ -223,7 +228,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
       }
     } catch (e) {
       setState(() {
-        _error = 'Failed to create wallet: $e';
+        _error = 'Failed to create wallet: {error}'.trArgs({'error': e});
         _isCreating = false;
       });
     }
@@ -248,10 +253,10 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
     return PScaffold(
       title: 'Birthday Picker'.tr,
       appBar: PAppBar(
-        title: isRestore ? 'Wallet birthday' : 'Almost done',
+        title: isRestore ? 'Wallet birthday'.tr : 'Almost done'.tr,
         subtitle: isRestore
-            ? 'Pick a start point to speed up sync'
-            : 'Pick a start height for first sync',
+            ? 'Pick a start point to speed up sync'.tr
+            : 'Pick a start height for first sync'.tr,
         onBack: () => context.pop(),
       ),
       body: Column(
@@ -276,8 +281,8 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                 children: [
                   Text(
                     isRestore
-                        ? 'When did this wallet first transact?'
-                        : 'Ready to create your wallet',
+                        ? 'When did this wallet first transact?'.tr
+                        : 'Ready to create your wallet'.tr,
                     style: AppTypography.h2.copyWith(
                       color: AppColors.textPrimary,
                     ),
@@ -286,7 +291,9 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                   Text(
                     isRestore
                         ? 'Choose an approximate date or enter the exact block height.'
-                        : 'We will start sync from a recent block height to speed up setup.',
+                              .tr
+                        : 'We will start sync from a recent block height to speed up setup.'
+                              .tr,
                     style: AppTypography.body.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -302,17 +309,20 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                           Expanded(
                             child: Text(
                               _loadingHeight
-                                  ? 'Fetching latest block height...'
+                                  ? 'Fetching latest block height...'.tr
                                   : tip == null
                                   ? 'Latest network height unavailable while Tor connects'
-                                  : 'Network tip: ${_formatHeight(tip)}',
+                                        .tr
+                                  : 'Network tip: {height}'.trArgs({
+                                      'height': _formatHeight(tip),
+                                    }),
                               style: AppTypography.body.copyWith(
                                 color: AppColors.textPrimary,
                               ),
                             ),
                           ),
                           PTextButton(
-                            label: _loadingHeight ? 'Loading' : 'Refresh',
+                            label: _loadingHeight ? 'Loading'.tr : 'Refresh'.tr,
                             onPressed: _loadingHeight
                                 ? null
                                 : _loadLatestHeight,
@@ -407,7 +417,7 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                     PInput(
                       controller: _exactHeightController,
                       label: 'Block height'.tr,
-                      hint: 'Enter the exact block height',
+                      hint: 'Enter the exact block height'.tr,
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     ),
@@ -530,9 +540,11 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
                           child: Text(
                             isRestore
                                 ? 'If you are unsure, choose an earlier start. '
-                                      'Sync takes longer but avoids missing activity. '
-                                      'Latest network height is optional during restore and will appear once Tor connects.'
-                                : 'You can use the app while it syncs in the background.',
+                                          'Sync takes longer but avoids missing activity. '
+                                          'Latest network height is optional during restore and will appear once Tor connects.'
+                                      .tr
+                                : 'You can use the app while it syncs in the background.'
+                                      .tr,
                             style: AppTypography.caption.copyWith(
                               color: AppColors.textPrimary,
                             ),
@@ -550,8 +562,8 @@ class _BirthdayPickerScreenState extends ConsumerState<BirthdayPickerScreen> {
             padding: const EdgeInsets.all(AppSpacing.lg),
             child: PButton(
               text: _isCreating
-                  ? 'Creating...'
-                  : (isRestore ? 'Restore wallet' : 'Create wallet'),
+                  ? 'Creating...'.tr
+                  : (isRestore ? 'Restore wallet'.tr : 'Create wallet'.tr),
               onPressed: !_isCreating ? _completeSetup : null,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,

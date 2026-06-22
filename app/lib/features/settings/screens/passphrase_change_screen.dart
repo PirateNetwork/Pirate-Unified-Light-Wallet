@@ -127,15 +127,15 @@ class _PassphraseChangeScreenState
   String _strengthText() {
     switch (_strength) {
       case _PassphraseStrength.weak:
-        return 'Weak';
+        return 'Weak'.tr;
       case _PassphraseStrength.fair:
-        return 'Fair';
+        return 'Fair'.tr;
       case _PassphraseStrength.good:
-        return 'Good';
+        return 'Good'.tr;
       case _PassphraseStrength.strong:
-        return 'Strong';
+        return 'Strong'.tr;
       case _PassphraseStrength.veryStrong:
-        return 'Very strong';
+        return 'Very strong'.tr;
     }
   }
 
@@ -150,7 +150,7 @@ class _PassphraseChangeScreenState
   Future<void> _verifyCurrentPassphrase() async {
     if (_isVerifying) return;
     if (_currentController.text.trim().isEmpty) {
-      setState(() => _error = 'Enter your current passphrase.');
+      setState(() => _error = 'Enter your current passphrase.'.tr);
       return;
     }
 
@@ -164,7 +164,7 @@ class _PassphraseChangeScreenState
         _currentController.text.trim(),
       );
       if (!isValid) {
-        setState(() => _error = 'Current passphrase is incorrect.');
+        setState(() => _error = 'Current passphrase is incorrect.'.tr);
         return;
       }
 
@@ -173,7 +173,7 @@ class _PassphraseChangeScreenState
         _authMethod = _AuthMethod.passphrase;
       });
     } catch (e) {
-      setState(() => _error = 'Unable to verify passphrase.');
+      setState(() => _error = 'Unable to verify passphrase.'.tr);
     } finally {
       if (mounted) {
         setState(() => _isVerifying = false);
@@ -190,11 +190,11 @@ class _PassphraseChangeScreenState
 
     try {
       final authenticated = await BiometricAuth.authenticate(
-        reason: 'Authorize passphrase change',
+        reason: 'Authorize passphrase change'.tr,
         biometricOnly: true,
       );
       if (!authenticated) {
-        setState(() => _error = 'Biometric authentication was cancelled.');
+        setState(() => _error = 'Biometric authentication was cancelled.'.tr);
         return;
       }
 
@@ -205,7 +205,11 @@ class _PassphraseChangeScreenState
     } on BiometricException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Biometric authentication failed: $e');
+      setState(
+        () => _error = 'Biometric authentication failed: {error}'.trArgs({
+          'error': e,
+        }),
+      );
     } finally {
       if (mounted) {
         setState(() => _isVerifying = false);
@@ -274,7 +278,7 @@ class _PassphraseChangeScreenState
         context.pop();
       }
     } catch (e) {
-      setState(() => _error = 'Passphrase update failed.');
+      setState(() => _error = 'Passphrase update failed.'.tr);
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -348,7 +352,7 @@ class _PassphraseChangeScreenState
                         _actionButton(
                           isDesktop: isDesktop,
                           child: PButton(
-                            text: 'Use biometrics',
+                            text: 'Use biometrics'.tr,
                             onPressed: _isVerifying
                                 ? null
                                 : _authenticateBiometric,
@@ -370,7 +374,7 @@ class _PassphraseChangeScreenState
                       PInput(
                         controller: _currentController,
                         label: 'Current passphrase'.tr,
-                        hint: 'Enter your current passphrase',
+                        hint: 'Enter your current passphrase'.tr,
                         obscureText: _obscureCurrent,
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -388,7 +392,7 @@ class _PassphraseChangeScreenState
                       _actionButton(
                         isDesktop: isDesktop,
                         child: PButton(
-                          text: 'Continue',
+                          text: 'Continue'.tr,
                           onPressed: _isVerifying
                               ? null
                               : _verifyCurrentPassphrase,
@@ -416,7 +420,7 @@ class _PassphraseChangeScreenState
                       PInput(
                         controller: _newController,
                         label: 'New passphrase'.tr,
-                        hint: 'Enter a new passphrase',
+                        hint: 'Enter a new passphrase'.tr,
                         obscureText: _obscureNew,
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -462,12 +466,12 @@ class _PassphraseChangeScreenState
                       PInput(
                         controller: _confirmController,
                         label: 'Confirm new passphrase'.tr,
-                        hint: 'Re-enter to confirm',
+                        hint: 'Re-enter to confirm'.tr,
                         obscureText: _obscureConfirm,
                         errorText:
                             _confirmController.text.isNotEmpty &&
                                 !_passwordsMatch
-                            ? 'Passphrases do not match'
+                            ? 'Passphrases do not match'.tr
                             : null,
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -485,7 +489,7 @@ class _PassphraseChangeScreenState
                       _actionButton(
                         isDesktop: isDesktop,
                         child: PButton(
-                          text: 'Update passphrase',
+                          text: 'Update passphrase'.tr,
                           onPressed: _canSave && !_isSaving
                               ? _savePassphrase
                               : null,

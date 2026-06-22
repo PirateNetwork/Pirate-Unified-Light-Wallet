@@ -25,7 +25,6 @@ import 'design/theme.dart';
 import 'design/tokens/colors.dart';
 import 'features/settings/providers/preferences_providers.dart';
 import 'features/settings/providers/transport_providers.dart';
-import 'l10n/app_localizations.dart';
 import 'routes/app_router.dart';
 import 'core/providers/rust_init_provider.dart';
 import 'ui/molecules/p_overlay_toast.dart';
@@ -65,7 +64,7 @@ void main() async {
       size: windowSpec.initialSize,
       minimumSize: windowSpec.minimumSize,
       center: true,
-      title: 'Pirate Wallet'.tr,
+      title: 'Pirate Wallet',
       backgroundColor: Color(0xFF0B0F14),
       titleBarStyle: useCustomTitleBar
           ? TitleBarStyle.hidden
@@ -349,7 +348,7 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
     return MaterialApp.router(
       key: ValueKey(themeModeSetting.themeMode),
-      title: 'Pirate Wallet'.tr,
+      title: 'Pirate Wallet',
       debugShowCheckedModeBanner: false,
       scrollBehavior: const PirateScrollBehavior(),
 
@@ -394,12 +393,13 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
       // Locale
       locale: locale,
       localizationsDelegates: const [
-        AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
       ],
-      supportedLocales: AppLocalizations.supportedLocales,
+      supportedLocales: AppLocalePreference.values.map(
+        (preference) => preference.locale,
+      ),
     );
   }
 }

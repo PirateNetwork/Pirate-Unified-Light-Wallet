@@ -1,6 +1,8 @@
 /// Transaction error mapping - converts FFI errors to human-readable messages
 library;
 
+import '../i18n/arb_text_localizer.dart';
+
 /// Transaction error types
 enum TransactionErrorType {
   /// Invalid recipient address
@@ -68,7 +70,7 @@ class TransactionError implements Exception {
   final String? technicalDetails;
   final String? suggestion;
 
-  const TransactionError({
+  TransactionError({
     required this.type,
     required this.message,
     this.technicalDetails,
@@ -110,19 +112,19 @@ class TransactionErrorMapper {
         errorStr.contains('err_sync_finalizing')) {
       return TransactionError(
         type: TransactionErrorType.syncFinalizing,
-        message: 'Spendability is finalizing',
+        message: 'Spendability is finalizing'.tr,
         technicalDetails: error.toString(),
-        suggestion: 'Let wallet sync finish, then try sending again.',
+        suggestion: 'Let wallet sync finish, then try sending again.'.tr,
       );
     }
 
     if (errorStr.contains('err_rescan_required')) {
       return TransactionError(
         type: TransactionErrorType.rescanRequired,
-        message: 'Rescan required before sending',
+        message: 'Rescan required before sending'.tr,
         technicalDetails: error.toString(),
         suggestion:
-            'Run a rescan, let it complete, then retry the transaction.',
+            'Run a rescan, let it complete, then retry the transaction.'.tr,
       );
     }
 
@@ -130,11 +132,11 @@ class TransactionErrorMapper {
     if (errorStr.contains('invalid address') ||
         errorStr.contains('must be sapling') ||
         errorStr.contains('must start with zs')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.invalidAddress,
-        message: 'Invalid recipient address',
+        message: 'Invalid recipient address'.tr,
         suggestion:
-            'Please enter a valid Pirate Chain address starting with "zs1".',
+            'Please enter a valid Pirate Chain address starting with "zs1".'.tr,
       );
     }
 
@@ -142,18 +144,18 @@ class TransactionErrorMapper {
     if (errorStr.contains('invalid amount') ||
         errorStr.contains('zero amount') ||
         errorStr.contains('negative')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.invalidAmount,
-        message: 'Invalid amount',
-        suggestion: 'Please enter a valid positive amount.',
+        message: 'Invalid amount'.tr,
+        suggestion: 'Please enter a valid positive amount.'.tr,
       );
     }
 
     if (errorStr.contains('overflow')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.invalidAmount,
-        message: 'Amount too large',
-        suggestion: 'Please enter a smaller amount.',
+        message: 'Amount too large'.tr,
+        suggestion: 'Please enter a smaller amount.'.tr,
       );
     }
 
@@ -161,10 +163,11 @@ class TransactionErrorMapper {
     if (errorStr.contains('insufficient') || errorStr.contains('not enough')) {
       return TransactionError(
         type: TransactionErrorType.insufficientFunds,
-        message: 'Insufficient funds',
+        message: 'Insufficient funds'.tr,
         technicalDetails: error.toString(),
         suggestion:
-            "You don't have enough ARRR to complete this transaction including fees.",
+            "You don't have enough ARRR to complete this transaction including fees."
+                .tr,
       );
     }
 
@@ -173,26 +176,28 @@ class TransactionErrorMapper {
         (errorStr.contains('too long') || errorStr.contains('bytes'))) {
       return TransactionError(
         type: TransactionErrorType.memoTooLong,
-        message: 'Memo is too long',
-        suggestion: 'Please shorten your memo to $maxMemoBytes bytes or less.',
+        message: 'Memo is too long'.tr,
+        suggestion: 'Please shorten your memo to {maxBytes} bytes or less.'
+            .trArgs({'maxBytes': maxMemoBytes}),
       );
     }
 
     if (errorStr.contains('memo') && errorStr.contains('utf-8')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.memoInvalidUtf8,
-        message: 'Memo contains invalid characters',
+        message: 'Memo contains invalid characters'.tr,
         suggestion:
-            'Please remove any special or non-text characters from the memo.',
+            'Please remove any special or non-text characters from the memo.'
+                .tr,
       );
     }
 
     if (errorStr.contains('memo') && errorStr.contains('control')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.memoControlChars,
-        message: 'Memo contains invalid control characters',
+        message: 'Memo contains invalid control characters'.tr,
         suggestion:
-            'Please remove any hidden formatting characters from the memo.',
+            'Please remove any hidden formatting characters from the memo.'.tr,
       );
     }
 
@@ -200,26 +205,28 @@ class TransactionErrorMapper {
     if (errorStr.contains('too many outputs') || errorStr.contains('maximum')) {
       return TransactionError(
         type: TransactionErrorType.tooManyOutputs,
-        message: 'Too many recipients',
-        suggestion: 'Maximum $maxOutputs recipients per transaction.',
+        message: 'Too many recipients'.tr,
+        suggestion: 'Maximum {maxOutputs} recipients per transaction.'.trArgs({
+          'maxOutputs': maxOutputs,
+        }),
       );
     }
 
     // Fee errors
     if (errorStr.contains('fee') && errorStr.contains('low')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.feeTooLow,
-        message: 'Network fee too low',
+        message: 'Network fee too low'.tr,
         suggestion:
-            'The fee is below the minimum required. Please increase it.',
+            'The fee is below the minimum required. Please increase it.'.tr,
       );
     }
 
     if (errorStr.contains('fee') && errorStr.contains('high')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.feeTooHigh,
-        message: 'Network fee unusually high',
-        suggestion: 'The fee seems too high. Please review before sending.',
+        message: 'Network fee unusually high'.tr,
+        suggestion: 'The fee seems too high. Please review before sending.'.tr,
       );
     }
 
@@ -227,74 +234,77 @@ class TransactionErrorMapper {
     if (errorStr.contains('network') ||
         errorStr.contains('connection') ||
         errorStr.contains('timeout')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.networkError,
-        message: 'Network connection failed',
-        suggestion: 'Please check your internet connection and try again.',
+        message: 'Network connection failed'.tr,
+        suggestion: 'Please check your internet connection and try again.'.tr,
       );
     }
 
     if (errorStr.contains('rejected')) {
       return TransactionError(
         type: TransactionErrorType.txRejected,
-        message: 'Transaction rejected by network',
+        message: 'Transaction rejected by network'.tr,
         technicalDetails: error.toString(),
         suggestion:
-            'The network rejected this transaction. Please try again later.',
+            'The network rejected this transaction. Please try again later.'.tr,
       );
     }
 
     if (errorStr.contains('already in mempool') ||
         errorStr.contains('duplicate')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.txAlreadyInMempool,
-        message: 'Transaction already sent',
+        message: 'Transaction already sent'.tr,
         suggestion:
-            'This transaction was already broadcast. Check your history.',
+            'This transaction was already broadcast. Check your history.'.tr,
       );
     }
 
     if (errorStr.contains('conflict') || errorStr.contains('double spend')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.txConflict,
-        message: 'Transaction conflicts with pending transaction',
+        message: 'Transaction conflicts with pending transaction'.tr,
         suggestion:
-            'Wait for your previous transaction to confirm before sending again.',
+            'Wait for your previous transaction to confirm before sending again.'
+                .tr,
       );
     }
 
     if (errorStr.contains('expired') || errorStr.contains('expiry')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.txExpired,
-        message: 'Transaction expired',
-        suggestion: 'Please rebuild and send the transaction again.',
+        message: 'Transaction expired'.tr,
+        suggestion: 'Please rebuild and send the transaction again.'.tr,
       );
     }
 
     // Wallet errors
     if (errorStr.contains('locked') || errorStr.contains('unavailable')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.walletLocked,
-        message: 'Wallet is locked',
-        suggestion: 'Please unlock your wallet to send transactions.',
+        message: 'Wallet is locked'.tr,
+        suggestion: 'Please unlock your wallet to send transactions.'.tr,
       );
     }
 
     if (errorStr.contains('watch') && errorStr.contains('only')) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.watchOnlyCannotSpend,
-        message: 'Cannot send from view only wallet',
+        message: 'Cannot send from view only wallet'.tr,
         suggestion:
-            'This wallet can only view incoming transactions. Use the full wallet to send.',
+            'This wallet can only view incoming transactions. Use the full wallet to send.'
+                .tr,
       );
     }
 
     // Unknown error
     return TransactionError(
       type: TransactionErrorType.unknown,
-      message: 'Transaction failed',
+      message: 'Transaction failed'.tr,
       technicalDetails: error.toString(),
-      suggestion: 'Please try again. If the problem persists, contact support.',
+      suggestion:
+          'Please try again. If the problem persists, contact support.'.tr,
     );
   }
 
@@ -312,28 +322,31 @@ class TransactionErrorMapper {
       if (bytes.length > maxMemoBytes) {
         return TransactionError(
           type: TransactionErrorType.memoTooLong,
-          message: 'Memo is too long (${bytes.length}/$maxMemoBytes bytes)',
-          suggestion: 'Please shorten your memo.',
+          message: 'Memo is too long ({length}/{maxBytes} bytes)'.trArgs({
+            'length': bytes.length,
+            'maxBytes': maxMemoBytes,
+          }),
+          suggestion: 'Please shorten your memo.'.tr,
         );
       }
 
       // Check for control characters (except newline, tab, carriage return)
       for (final char in memo.runes) {
         if (_isControlChar(char)) {
-          return const TransactionError(
+          return TransactionError(
             type: TransactionErrorType.memoControlChars,
-            message: 'Memo contains invalid control characters',
-            suggestion: 'Please remove any hidden formatting characters.',
+            message: 'Memo contains invalid control characters'.tr,
+            suggestion: 'Please remove any hidden formatting characters.'.tr,
           );
         }
       }
 
       return null;
     } catch (e) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.memoInvalidUtf8,
-        message: 'Memo contains invalid characters',
-        suggestion: 'Please use only standard text characters.',
+        message: 'Memo contains invalid characters'.tr,
+        suggestion: 'Please use only standard text characters.'.tr,
       );
     }
   }
@@ -351,10 +364,10 @@ class TransactionErrorMapper {
   /// Validate address format
   static TransactionError? validateAddress(String address) {
     if (address.isEmpty) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.invalidAddress,
-        message: 'Address is required',
-        suggestion: 'Please enter a recipient address.',
+        message: 'Address is required'.tr,
+        suggestion: 'Please enter a recipient address.'.tr,
       );
     }
 
@@ -362,10 +375,10 @@ class TransactionErrorMapper {
     final isSapling = lower.startsWith('zs1');
     final isOrchard = lower.startsWith('pirate1');
     if (!isSapling && !isOrchard) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.invalidAddress,
-        message: 'Invalid address format',
-        suggestion: 'Address must start with "zs1" or "pirate1".',
+        message: 'Invalid address format'.tr,
+        suggestion: 'Address must start with "zs1" or "pirate1".'.tr,
       );
     }
 
@@ -373,10 +386,10 @@ class TransactionErrorMapper {
     const minLen = 70;
     final maxLen = isOrchard ? 120 : 90;
     if (address.length < minLen || address.length > maxLen) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.invalidAddress,
-        message: 'Address has invalid length',
-        suggestion: 'Please check the address and try again.',
+        message: 'Address has invalid length'.tr,
+        suggestion: 'Please check the address and try again.'.tr,
       );
     }
 
@@ -389,18 +402,18 @@ class TransactionErrorMapper {
     int availableBalance,
   ) {
     if (arrrtoshis <= 0) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.invalidAmount,
-        message: 'Amount must be greater than zero',
-        suggestion: 'Please enter a valid amount to send.',
+        message: 'Amount must be greater than zero'.tr,
+        suggestion: 'Please enter a valid amount to send.'.tr,
       );
     }
 
     if (arrrtoshis > availableBalance) {
-      return const TransactionError(
+      return TransactionError(
         type: TransactionErrorType.insufficientFunds,
-        message: 'Insufficient funds',
-        suggestion: "You don't have enough ARRR to send this amount.",
+        message: 'Insufficient funds'.tr,
+        suggestion: "You don't have enough ARRR to send this amount.".tr,
       );
     }
 

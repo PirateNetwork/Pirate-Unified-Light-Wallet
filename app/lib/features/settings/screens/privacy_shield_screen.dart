@@ -103,8 +103,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             // Warning if using Direct mode
             if (transportMode == 'direct')
               _buildWarningCard(
-                'Privacy Warning',
-                'Direct connection mode is NOT PRIVATE. All network traffic can be monitored. Use Tor or SOCKS5 for privacy.',
+                'Privacy Warning'.tr,
+                'Direct connection mode is NOT PRIVATE. All network traffic can be monitored. Use Tor or SOCKS5 for privacy.'
+                    .tr,
                 Icons.warning,
                 Colors.red,
               ),
@@ -112,7 +113,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             const SizedBox(height: 16),
 
             // Transport Mode
-            _buildSectionTitle('Transport Mode'),
+            _buildSectionTitle('Transport Mode'.tr),
             const SizedBox(height: 8),
             _buildTransportModeSelector(context, ref, transportMode),
 
@@ -120,7 +121,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
             // SOCKS5 Settings (if mode is SOCKS5)
             if (transportMode == 'socks5') ...[
-              _buildSectionTitle('SOCKS5 Proxy Configuration'),
+              _buildSectionTitle('SOCKS5 Proxy Configuration'.tr),
               const SizedBox(height: PirateSpacing.sm),
               _buildSocks5Settings(context, ref, socks5Config),
               const SizedBox(height: PirateSpacing.lg),
@@ -128,7 +129,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
             // Tor Settings (if mode is Tor)
             if (transportMode == 'tor') ...[
-              _buildSectionTitle('Tor Settings'),
+              _buildSectionTitle('Tor Settings'.tr),
               const SizedBox(height: PirateSpacing.sm),
               _buildTorSettings(context, ref),
               const SizedBox(height: PirateSpacing.lg),
@@ -136,14 +137,14 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
             // I2P Settings (desktop only)
             if (transportMode == 'i2p' && _isDesktop) ...[
-              _buildSectionTitle('I2P Endpoint'),
+              _buildSectionTitle('I2P Endpoint'.tr),
               const SizedBox(height: PirateSpacing.sm),
               _buildI2pEndpointSettings(context, ref),
               const SizedBox(height: PirateSpacing.lg),
             ],
 
             // DNS Resolver
-            _buildSectionTitle('DNS Resolver'),
+            _buildSectionTitle('DNS Resolver'.tr),
             const SizedBox(height: 8),
             _buildDnsSelector(context, ref, dnsProvider),
 
@@ -154,8 +155,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
               width: double.infinity,
               child: PButton(
                 text: _isTestingConnection
-                    ? 'Testing...'
-                    : 'Test Node Connection',
+                    ? 'Testing...'.tr
+                    : 'Test Node Connection'.tr,
                 onPressed: _isTestingConnection
                     ? null
                     : () => _testNodeConnection(context, ref),
@@ -239,8 +240,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             context,
             ref,
             'tor',
-            'Tor (Most Private)',
-            'All traffic routed through Tor network. Slowest but most private.',
+            'Tor (Most Private)'.tr,
+            'All traffic routed through Tor network. Slowest but most private.'
+                .tr,
             Icons.security,
             AppColors.accentPrimary,
             currentMode == 'tor',
@@ -251,8 +253,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
               context,
               ref,
               'i2p',
-              'I2P (Desktop Only)',
-              'Embedded I2P router with ephemeral identity. First startup may take a few minutes.',
+              'I2P (Desktop Only)'.tr,
+              'Embedded I2P router with ephemeral identity. First startup may take a few minutes.'
+                  .tr,
               Icons.router,
               AppColors.accentSecondary,
               currentMode == 'i2p',
@@ -263,8 +266,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             context,
             ref,
             'socks5',
-            'SOCKS5 Proxy',
-            'Route traffic through custom SOCKS5 proxy. Privacy depends on proxy.',
+            'SOCKS5 Proxy'.tr,
+            'Route traffic through custom SOCKS5 proxy. Privacy depends on proxy.'
+                .tr,
             Icons.vpn_lock,
             AppColors.accentSecondary,
             currentMode == 'socks5',
@@ -274,8 +278,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             context,
             ref,
             'direct',
-            'Direct (Not Private)',
-            'Direct connection without privacy protection. NOT RECOMMENDED.',
+            'Direct (Not Private)'.tr,
+            'Direct connection without privacy protection. NOT RECOMMENDED.'.tr,
             Icons.warning,
             Colors.red,
             currentMode == 'direct',
@@ -467,7 +471,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             controller: _i2pEndpointController,
             label: 'I2P Lightwalletd Endpoint'.tr,
             hint: 'http://<base32>.b32.i2p:9067',
-            helperText: 'Example: http://<hash>.b32.i2p:9067'.tr,
+            helperText: 'Example: {endpoint}'.trArgs({
+              'endpoint': 'http://<hash>.b32.i2p:9067',
+            }),
             errorText: _i2pEndpointError,
             autocorrect: false,
             enableSuggestions: false,
@@ -492,21 +498,23 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           SizedBox(
             width: double.infinity,
             child: PButton(
-              text: _isSavingI2pEndpoint ? 'Saving...' : 'Save I2P Endpoint',
+              text: _isSavingI2pEndpoint
+                  ? 'Saving...'.tr
+                  : 'Save I2P Endpoint'.tr,
               onPressed: _isSavingI2pEndpoint
                   ? null
                   : () async {
                       final candidate = _i2pEndpointController.text.trim();
                       if (candidate.isEmpty) {
                         setState(() {
-                          _i2pEndpointError = 'Enter an .i2p endpoint.';
+                          _i2pEndpointError = 'Enter an .i2p endpoint.'.tr;
                         });
                         return;
                       }
                       if (!_isValidI2pEndpoint(candidate)) {
                         setState(() {
                           _i2pEndpointError =
-                              'Endpoint must use a .i2p hostname.';
+                              'Endpoint must use a .i2p hostname.'.tr;
                         });
                         return;
                       }
@@ -525,7 +533,11 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Failed to save I2P endpoint: $e'),
+                            content: Text(
+                              'Failed to save I2P endpoint: {error}'.trArgs({
+                                'error': e,
+                              }),
+                            ),
                             backgroundColor: AppColors.error,
                           ),
                         );
@@ -590,7 +602,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
                 children: [
                   _buildTorStatusIndicator(torStatus),
                   PTextButton(
-                    text: 'Switch exit node',
+                    text: 'Switch exit node'.tr,
                     compact: true,
                     onPressed: torStatus.isReady ? _switchTorExit : null,
                   ),
@@ -620,14 +632,16 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             const SizedBox(height: PirateSpacing.xs),
             Text(
               progress == null
-                  ? 'Bootstrapping...'
-                  : 'Bootstrapping... $progress%',
+                  ? 'Bootstrapping...'.tr
+                  : 'Bootstrapping... {progress}%'.trArgs({
+                      'progress': progress,
+                    }),
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
             if (torStatus.blocked != null && torStatus.blocked!.isNotEmpty) ...[
               const SizedBox(height: PirateSpacing.xs),
               Text(
-                'Blocked: ${torStatus.blocked}',
+                'Blocked: {reason}'.trArgs({'reason': torStatus.blocked}),
                 style: TextStyle(color: AppColors.warning, fontSize: 12),
               ),
             ],
@@ -655,19 +669,19 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
     switch (status.status) {
       case 'ready':
         color = Colors.green;
-        label = 'Ready';
+        label = 'Ready'.tr;
         break;
       case 'bootstrapping':
         color = Colors.orange;
-        label = 'Bootstrapping...';
+        label = 'Bootstrapping...'.tr;
         break;
       case 'error':
         color = Colors.red;
-        label = 'Error';
+        label = 'Error'.tr;
         break;
       default:
         color = Colors.grey;
-        label = 'Not Started';
+        label = 'Not Started'.tr;
     }
 
     return Row(
@@ -701,7 +715,9 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to switch exit node: $e'),
+          content: Text(
+            'Failed to switch exit node: {error}'.trArgs({'error': e}),
+          ),
           backgroundColor: AppColors.error,
         ),
       );
@@ -764,8 +780,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           label: Text('Fallback bridge transport'.tr),
           helperText: 'Only used if direct Tor fails.'.tr,
           dropdownMenuEntries: [
-            DropdownMenuEntry(value: 'snowflake', label: 'Snowflake'.tr),
-            DropdownMenuEntry(value: 'obfs4', label: 'obfs4'.tr),
+            const DropdownMenuEntry(value: 'snowflake', label: 'Snowflake'),
+            const DropdownMenuEntry(value: 'obfs4', label: 'obfs4'),
           ],
           onSelected: (value) {
             if (value == null) return;
@@ -779,8 +795,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           controller: _torBridgeLinesController,
           label: 'Bridge lines'.tr,
           hint: _torBridgeTransport == 'snowflake'
-              ? 'Leave blank to use bundled Snowflake bridges'
-              : 'Paste one bridge line per row',
+              ? 'Leave blank to use bundled Snowflake bridges'.tr
+              : 'Paste one bridge line per row'.tr,
           helperText: 'One bridge per line. Used only for bridges/fallback.'.tr,
           maxLines: 4,
           monospace: true,
@@ -789,7 +805,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         PInput(
           controller: _torTransportPathController,
           label: 'Transport binary path (optional)'.tr,
-          hint: 'Leave blank to use PATH',
+          hint: 'Leave blank to use PATH'.tr,
           monospace: true,
         ),
         if (_torBridgeError != null) ...[
@@ -804,7 +820,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           children: [
             Expanded(
               child: PButton(
-                text: 'Apply & Restart Tor',
+                text: 'Apply & Restart Tor'.tr,
                 variant: PButtonVariant.secondary,
                 onPressed: () => _applyTorBridgeSettings(ref),
               ),
@@ -812,7 +828,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             const SizedBox(width: PirateSpacing.sm),
             Expanded(
               child: PTextButton(
-                text: 'Use Snowflake',
+                text: 'Use Snowflake'.tr,
                 onPressed: () => _applyTorBridgePreset(ref, 'snowflake'),
               ),
             ),
@@ -823,14 +839,14 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           children: [
             Expanded(
               child: PTextButton(
-                text: 'Use obfs4',
+                text: 'Use obfs4'.tr,
                 onPressed: () => _applyTorBridgePreset(ref, 'obfs4'),
               ),
             ),
             const SizedBox(width: PirateSpacing.sm),
             Expanded(
               child: PTextButton(
-                text: 'Disable Bridges',
+                text: 'Disable Bridges'.tr,
                 onPressed: () => _disableTorBridges(ref),
               ),
             ),
@@ -861,22 +877,26 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
 
   String _torRoutingSummary() {
     if (!_isDesktop) {
-      return 'Attempting: Direct (bridges disabled on mobile)';
+      return 'Attempting: Direct (bridges disabled on mobile)'.tr;
     }
     final transportLabel = _torTransportLabel(_torBridgeTransport);
     if (_useTorBridges) {
-      return 'Attempting: $transportLabel (bridges)';
+      return 'Attempting: {transport} (bridges)'.trArgs({
+        'transport': transportLabel,
+      });
     }
     if (_fallbackToTorBridges) {
-      return 'Attempting: Direct -> Fallback: $transportLabel';
+      return 'Attempting: Direct -> Fallback: {transport}'.trArgs({
+        'transport': transportLabel,
+      });
     }
-    return 'Attempting: Direct (no fallback bridges)';
+    return 'Attempting: Direct (no fallback bridges)'.tr;
   }
 
   Future<void> _applyTorBridgeSettings(WidgetRef ref) async {
     if (!_isDesktop) {
       setState(() {
-        _torBridgeError = 'Bridge transports are desktop-only.';
+        _torBridgeError = 'Bridge transports are desktop-only.'.tr;
       });
       return;
     }
@@ -886,7 +906,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
         _torBridgeTransport == 'obfs4' &&
         lines.isEmpty) {
       setState(() {
-        _torBridgeError = 'obfs4 requires bridge lines from a provider.';
+        _torBridgeError = 'obfs4 requires bridge lines from a provider.'.tr;
       });
       return;
     }
@@ -955,7 +975,7 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           _buildDnsOption(
             ref,
             'system',
-            'System (Not Private)',
+            'System (Not Private)'.tr,
             currentProvider,
           ),
         ],
@@ -1065,32 +1085,32 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildResultRow(
-              'Transport',
+              'Transport'.tr,
               '${result.transportIcon} ${result.transportMode.toUpperCase()}',
             ),
             _buildResultRow(
               'TLS',
-              result.tlsEnabled ? 'Enabled ✓' : 'Disabled',
+              result.tlsEnabled ? 'Enabled ✓'.tr : 'Disabled'.tr,
             ),
             if (result.tlsPinMatched != null)
               _buildResultRow(
-                'Pin Verified',
-                result.tlsPinMatched! ? 'Yes ✓' : 'MISMATCH ✗',
+                'Pin Verified'.tr,
+                result.tlsPinMatched! ? 'Yes ✓'.tr : 'MISMATCH ✗'.tr,
                 valueColor: result.tlsPinMatched! ? Colors.green : Colors.red,
               ),
             if (result.latestBlockHeight != null)
-              _buildResultRow('Latest Block', '#${result.latestBlockHeight}')
+              _buildResultRow('Latest Block'.tr, '#${result.latestBlockHeight}')
             else
               _buildResultRow(
-                'Latest Block',
-                'Unavailable (Connection Failed)',
+                'Latest Block'.tr,
+                'Unavailable (Connection Failed)'.tr,
                 valueColor: AppColors.error,
               ),
-            _buildResultRow('Response Time', '${result.responseTimeMs}ms'),
+            _buildResultRow('Response Time'.tr, '${result.responseTimeMs}ms'),
             if (result.serverVersion != null)
-              _buildResultRow('Server', result.serverVersion!),
+              _buildResultRow('Server'.tr, result.serverVersion!),
             if (result.chainName != null)
-              _buildResultRow('Chain', result.chainName!),
+              _buildResultRow('Chain'.tr, result.chainName!),
           ],
         ),
         actions: [
@@ -1122,8 +1142,8 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             Expanded(
               child: Text(
                 isPinMismatch
-                    ? 'Certificate Pin Mismatch'
-                    : 'Connection Failed',
+                    ? 'Certificate Pin Mismatch'.tr
+                    : 'Connection Failed'.tr,
                 style: TextStyle(color: AppColors.textPrimary),
               ),
             ),
@@ -1135,14 +1155,14 @@ class _PrivacyShieldScreenState extends ConsumerState<PrivacyShieldScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildResultRow(
-                'Transport',
+                'Transport'.tr,
                 '${result.transportIcon} ${result.transportMode.toUpperCase()}',
               ),
               _buildResultRow(
                 'TLS',
-                result.tlsEnabled ? 'Enabled' : 'Disabled',
+                result.tlsEnabled ? 'Enabled'.tr : 'Disabled'.tr,
               ),
-              _buildResultRow('Response Time', '${result.responseTimeMs}ms'),
+              _buildResultRow('Response Time'.tr, '${result.responseTimeMs}ms'),
 
               const SizedBox(height: 16),
 

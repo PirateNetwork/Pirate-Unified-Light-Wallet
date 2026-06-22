@@ -265,11 +265,11 @@ class SwapProgressView extends StatelessWidget {
     bool isError,
     bool isComplete,
   ) {
-    const labels = [
-      'Prepare swap',
-      'Send deposit',
-      'Match and settle',
-      'Deliver funds',
+    final labels = [
+      'Prepare swap'.tr,
+      'Send deposit'.tr,
+      'Match and settle'.tr,
+      'Deliver funds'.tr,
     ];
     final index = switch (stage) {
       SwapProgressStage.startingKdf || SwapProgressStage.activatingCoins => 0,
@@ -281,7 +281,7 @@ class SwapProgressView extends StatelessWidget {
     };
     return List.generate(labels.length, (i) {
       return _ProgressStep(
-        label: labels[i].tr,
+        label: labels[i],
         active: i == index && !isComplete,
         done: i < index || isComplete,
       );

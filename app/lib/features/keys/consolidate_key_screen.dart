@@ -139,7 +139,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
     if (walletId == null) return;
     final target = _addressController.text.trim();
     if (target.isEmpty) {
-      setState(() => _error = 'Enter a target address');
+      setState(() => _error = 'Enter a target address'.tr);
       return;
     }
 
@@ -247,7 +247,9 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
                     onPressed: _isBuilding ? null : _buildConsolidation,
                     variant: PButtonVariant.primary,
                     child: Text(
-                      _isBuilding ? 'Building...' : 'Preview consolidation',
+                      _isBuilding
+                          ? 'Building...'.tr
+                          : 'Preview consolidation'.tr,
                     ),
                   ),
                   if (_pending != null) ...[
@@ -258,7 +260,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
                       onPressed: _isSending ? null : _send,
                       variant: PButtonVariant.primary,
                       child: Text(
-                        _isSending ? 'Sending...' : 'Confirm and send',
+                        _isSending ? 'Sending...'.tr : 'Confirm and send'.tr,
                       ),
                     ),
                   ],
@@ -283,7 +285,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
         Text(label, style: PTypography.heading3()),
         SizedBox(height: PSpacing.xs),
         Text(
-          'Birthday ${key.birthdayHeight}',
+          'Birthday {height}'.trArgs({'height': key.birthdayHeight}),
           style: PTypography.bodySmall(color: AppColors.textSecondary),
         ),
       ],
@@ -426,7 +428,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
     if (key.keyType == KeyTypeInfo.seed) {
       final label = key.label?.trim();
       if (label == null || label.isEmpty || label == 'Seed') {
-        return 'Default wallet keys';
+        return 'Default wallet keys'.tr;
       }
     }
     return key.label ?? 'Key ${key.id}';

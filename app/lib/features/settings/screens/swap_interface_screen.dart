@@ -86,13 +86,13 @@ class _SwapInterfaceOption extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      preference.label.tr,
+                      preference.label,
                       style: AppTypography.bodyBold.copyWith(
                         color: AppColors.textPrimary,
                       ),
                     ),
                     Text(
-                      preference.description.tr,
+                      preference.description,
                       style: AppTypography.caption.copyWith(
                         color: AppColors.textSecondary,
                       ),

@@ -3,23 +3,36 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/arb_text_localizer.dart';
+
 /// Color tag for address book entries
 enum ColorTag {
-  none(0, 'None', Color(0xFF6B7280)),
-  red(1, 'Red', Color(0xFFEF4444)),
-  orange(2, 'Orange', Color(0xFFF97316)),
-  yellow(3, 'Yellow', Color(0xFFEAB308)),
-  green(4, 'Green', Color(0xFF22C55E)),
-  blue(5, 'Blue', Color(0xFF3B82F6)),
-  purple(6, 'Purple', Color(0xFF8B5CF6)),
-  pink(7, 'Pink', Color(0xFFEC4899)),
-  gray(8, 'Gray', Color(0xFF6B7280));
+  none(0, Color(0xFF6B7280)),
+  red(1, Color(0xFFEF4444)),
+  orange(2, Color(0xFFF97316)),
+  yellow(3, Color(0xFFEAB308)),
+  green(4, Color(0xFF22C55E)),
+  blue(5, Color(0xFF3B82F6)),
+  purple(6, Color(0xFF8B5CF6)),
+  pink(7, Color(0xFFEC4899)),
+  gray(8, Color(0xFF6B7280));
 
   final int value;
-  final String displayName;
   final Color color;
 
-  const ColorTag(this.value, this.displayName, this.color);
+  const ColorTag(this.value, this.color);
+
+  String get displayName => switch (this) {
+    ColorTag.none => 'None'.tr,
+    ColorTag.red => 'Red'.tr,
+    ColorTag.orange => 'Orange'.tr,
+    ColorTag.yellow => 'Yellow'.tr,
+    ColorTag.green => 'Green'.tr,
+    ColorTag.blue => 'Blue'.tr,
+    ColorTag.purple => 'Purple'.tr,
+    ColorTag.pink => 'Pink'.tr,
+    ColorTag.gray => 'Gray'.tr,
+  };
 
   static ColorTag fromValue(int value) {
     return ColorTag.values.firstWhere(
@@ -170,17 +183,25 @@ class AddressEntry {
     final errors = <String>[];
 
     if (label.isEmpty) {
-      errors.add('Label cannot be empty');
+      errors.add('Label cannot be empty'.tr);
     } else if (label.length > kMaxLabelLength) {
-      errors.add('Label too long (max $kMaxLabelLength characters)');
+      errors.add(
+        'Label too long (max {maximum} characters)'.trArgs({
+          'maximum': kMaxLabelLength,
+        }),
+      );
     }
 
     if (!address.startsWith('zs1')) {
-      errors.add('Address must be a Sapling address (zs1...)');
+      errors.add('Address must be a Sapling address (zs1...)'.tr);
     }
 
     if (notes != null && notes!.length > kMaxNotesLength) {
-      errors.add('Notes too long (max $kMaxNotesLength characters)');
+      errors.add(
+        'Notes too long (max {maximum} characters)'.trArgs({
+          'maximum': kMaxNotesLength,
+        }),
+      );
     }
 
     return errors;

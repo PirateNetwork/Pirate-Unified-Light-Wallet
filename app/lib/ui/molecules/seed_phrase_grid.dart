@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/arb_text_localizer.dart';
 import '../../design/tokens/colors.dart';
 import '../../design/tokens/spacing.dart';
 import '../../design/tokens/typography.dart';
@@ -85,7 +86,10 @@ class _SeedWordCell extends StatelessWidget {
     ).copyWith(fontWeight: PTypography.semiBold);
 
     return Semantics(
-      label: 'Seed word ${index + 1}: $word',
+      label: 'Seed word {number}: {word}'.trArgs({
+        'number': index + 1,
+        'word': word,
+      }),
       child: Container(
         alignment: Alignment.center,
         padding: EdgeInsets.symmetric(

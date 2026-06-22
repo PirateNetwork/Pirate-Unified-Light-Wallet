@@ -68,6 +68,7 @@ dependencies:
   zxing2: ^0.2.1
 
 dev_dependencies:
+  analyzer: ^10.2.0
   build_runner: ^2.15.0
   ffigen: ^20.1.1
   flutter_lints: ^6.0.0
@@ -136,7 +137,6 @@ dependency_overrides:
 
 flutter:
   uses-material-design: true
-  generate: true
   assets:
     - assets/i18n/
     - assets/bip39/
@@ -149,6 +149,3 @@ flutter:
     - family: JetBrainsMono
       fonts:
         - asset: assets/fonts/JetBrainsMono/JetBrainsMono.ttf
-
-flutter_intl:
-  enabled: true

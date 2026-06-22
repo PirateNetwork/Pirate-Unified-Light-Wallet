@@ -15,7 +15,6 @@ import '../../design/deep_space_theme.dart';
 import '../../core/ffi/ffi_bridge.dart';
 import '../../core/crypto/mnemonic_language.dart';
 import '../../core/providers/wallet_providers.dart';
-import '../../l10n/app_localizations.dart';
 import 'providers/preferences_providers.dart';
 import 'providers/transport_providers.dart';
 import '../../ui/molecules/p_list_tile.dart';
@@ -57,7 +56,6 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
     final size = MediaQuery.of(context).size;
     final screenWidth = size.width;
     final isMobile = AppSpacing.isMobile(screenWidth);
@@ -80,11 +78,11 @@ class SettingsScreen extends ConsumerWidget {
                       if (!available) return 'Unavailable';
                       return enabled ? 'On' : 'Off';
                     },
-                    loading: () => 'Checking...',
-                    error: (_, _) => enabled ? 'On' : 'Off',
+                    loading: () => 'Checking...'.tr,
+                    error: (_, _) => enabled ? 'On'.tr : 'Off'.tr,
                   ),
-                  loading: () => 'Checking...',
-                  error: (_, _) => enabled ? 'On' : 'Off',
+                  loading: () => 'Checking...'.tr,
+                  error: (_, _) => enabled ? 'On'.tr : 'Off'.tr,
                 );
                 return PListTile(
                   leading: const Icon(Icons.fingerprint),
@@ -120,7 +118,7 @@ class SettingsScreen extends ConsumerWidget {
                 final endpointAsync = ref.watch(lightdEndpointConfigProvider);
                 final subtitle = endpointAsync.when(
                   data: (config) => config.displayString,
-                  loading: () => 'Loading...',
+                  loading: () => 'Loading...'.tr,
                   error: (_, _) => '64.23.167.130:9067',
                 );
                 return PListTile(
@@ -136,11 +134,11 @@ class SettingsScreen extends ConsumerWidget {
               builder: (context, ref, _) {
                 final config = ref.watch(transportConfigProvider);
                 final subtitle = switch (config.mode) {
-                  'tor' => 'Current: Tor',
-                  'direct' => 'Current: Direct',
-                  'socks5' => 'Current: SOCKS5',
-                  'i2p' => 'Current: I2P',
-                  _ => 'Current: ${config.mode}',
+                  'tor' => 'Current: Tor'.tr,
+                  'direct' => 'Current: Direct'.tr,
+                  'socks5' => 'Current: SOCKS5'.tr,
+                  'i2p' => 'Current: I2P'.tr,
+                  _ => 'Current: {mode}'.trArgs({'mode': config.mode}),
                 };
                 return PListTile(
                   leading: const Icon(Icons.shield_outlined),
@@ -171,8 +169,8 @@ class SettingsScreen extends ConsumerWidget {
                   leading: Icon(Icons.key_outlined, color: AppColors.warning),
                   title: 'Backup seed phrase'.tr,
                   subtitle: wallet == null
-                      ? 'No active wallet'
-                      : 'View your recovery phrase',
+                      ? 'No active wallet'.tr
+                      : 'View your recovery phrase'.tr,
                   onTap: wallet == null
                       ? null
                       : () => context.push(
@@ -207,12 +205,13 @@ class SettingsScreen extends ConsumerWidget {
                   required bool enabled,
                   required bool loading,
                 }) {
-                  final status = enabled ? 'On' : 'Off';
+                  final status = enabled ? 'On'.tr : 'Off'.tr;
                   final subtitle = walletId == null
-                      ? 'No active wallet'
+                      ? 'No active wallet'.tr
                       : loading
-                      ? 'Loading...'
-                      : '$status - Combine unlabeled notes during sends';
+                      ? 'Loading...'.tr
+                      : '{status} - Combine unlabeled notes during sends'
+                            .trArgs({'status': status});
                   return PListTile(
                     leading: const Icon(Icons.merge_type_outlined),
                     title: 'Auto consolidation'.tr,
@@ -252,7 +251,7 @@ class SettingsScreen extends ConsumerWidget {
                 return PListTile(
                   leading: const Icon(Icons.swap_horiz),
                   title: 'Swap interface'.tr,
-                  subtitle: mode.label.tr,
+                  subtitle: mode.label,
                   onTap: () => context.push('/settings/swap-interface'),
                   trailing: const Icon(Icons.chevron_right),
                 );
@@ -291,12 +290,10 @@ class SettingsScreen extends ConsumerWidget {
             Consumer(
               builder: (context, ref, _) {
                 final locale = ref.watch(localePreferenceProvider);
-                final subtitle = locale == AppLocalePreference.english
-                    ? l10n.englishLanguage
-                    : locale.label;
+                final subtitle = locale.label;
                 return PListTile(
                   leading: const Icon(Icons.language_outlined),
-                  title: l10n.languageSettingTitle,
+                  title: 'Language'.tr,
                   subtitle: subtitle,
                   onTap: () => context.push('/settings/language'),
                   trailing: const Icon(Icons.chevron_right),
@@ -327,8 +324,10 @@ class SettingsScreen extends ConsumerWidget {
               builder: (context, ref, _) {
                 final meta = ref.watch(activeWalletMetaProvider);
                 final subtitle = meta == null
-                    ? 'Not set'
-                    : 'Block ${_formatHeight(meta.birthdayHeight)}';
+                    ? 'Not set'.tr
+                    : 'Block {height}'.trArgs({
+                        'height': _formatHeight(meta.birthdayHeight),
+                      });
                 return PListTile(
                   leading: const Icon(Icons.cake_outlined),
                   title: 'Birthday height'.tr,
@@ -379,8 +378,8 @@ class SettingsScreen extends ConsumerWidget {
                 final versionAsync = ref.watch(appVersionProvider);
                 final subtitle = versionAsync.when(
                   data: (value) => value,
-                  loading: () => 'Loading...',
-                  error: (_, _) => 'Unknown',
+                  loading: () => 'Loading...'.tr,
+                  error: (_, _) => 'Unknown'.tr,
                 );
                 return PListTile(
                   leading: const Icon(Icons.info_outlined),
@@ -429,11 +428,11 @@ class SettingsScreen extends ConsumerWidget {
         return content;
       }
       return PScaffold(
-        title: l10n.settingsTitle,
+        title: 'Settings'.tr,
         useSafeArea: false,
         appBar: PAppBar(
-          title: l10n.settingsTitle,
-          subtitle: l10n.settingsSubtitle,
+          title: 'Settings'.tr,
+          subtitle: 'Security and privacy controls.'.tr,
           actions: appBarActions,
         ),
         body: content,
@@ -441,12 +440,12 @@ class SettingsScreen extends ConsumerWidget {
     }
 
     return PScaffold(
-      title: l10n.settingsTitle,
+      title: 'Settings'.tr,
       appBar: isDesktop
           ? null
           : PAppBar(
-              title: l10n.settingsTitle,
-              subtitle: l10n.settingsSubtitle,
+              title: 'Settings'.tr,
+              subtitle: 'Security and privacy controls.'.tr,
               actions: appBarActions,
             ),
       body: content,
@@ -505,8 +504,8 @@ class SettingsScreen extends ConsumerWidget {
                 }
               }
               final helperText = suggestedHeight == null
-                  ? 'Enter a block height to rescan from.'
-                  : 'Suggested: $suggestedHeight';
+                  ? 'Enter a block height to rescan from.'.tr
+                  : 'Suggested: {height}'.trArgs({'height': suggestedHeight});
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -581,7 +580,11 @@ class SettingsScreen extends ConsumerWidget {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Failed to start rescan: $e'),
+                        content: Text(
+                          'Failed to start rescan: {error}'.trArgs({
+                            'error': e,
+                          }),
+                        ),
                         backgroundColor: AppColors.error,
                       ),
                     );
@@ -591,7 +594,11 @@ class SettingsScreen extends ConsumerWidget {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Rescan started from block $fromHeight'),
+                content: Text(
+                  'Rescan started from block {height}'.trArgs({
+                    'height': fromHeight,
+                  }),
+                ),
                 backgroundColor: AppColors.success,
               ),
             );
@@ -605,7 +612,9 @@ class SettingsScreen extends ConsumerWidget {
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Failed to start rescan: $e'),
+                content: Text(
+                  'Failed to start rescan: {error}'.trArgs({'error': e}),
+                ),
                 backgroundColor: AppColors.error,
               ),
             );
@@ -622,7 +631,9 @@ class SettingsScreen extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error showing rescan dialog: $e'),
+            content: Text(
+              'Error showing rescan dialog: {error}'.trArgs({'error': e}),
+            ),
             backgroundColor: AppColors.error,
           ),
         );

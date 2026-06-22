@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../i18n/arb_text_localizer.dart';
+
 /// Biometric authentication manager
 class BiometricAuth {
   static final _auth = LocalAuthentication();
@@ -60,12 +62,12 @@ class BiometricAuth {
 
   /// Authenticate with biometrics
   static Future<bool> authenticate({
-    String reason = 'Please authenticate to unlock wallet',
+    String? reason,
     bool biometricOnly = false,
   }) async {
     if (Platform.isLinux) {
       throw BiometricException(
-        'Biometric authentication is not supported on Linux builds yet.',
+        'Biometric authentication is not supported on Linux builds yet.'.tr,
       );
     }
 
@@ -77,7 +79,7 @@ class BiometricAuth {
 
     try {
       return await _auth.authenticate(
-        localizedReason: reason,
+        localizedReason: reason ?? 'Please authenticate to unlock wallet'.tr,
         biometricOnly: effectiveBiometricOnly,
         persistAcrossBackgrounding: true,
         sensitiveTransaction: true,
@@ -95,19 +97,26 @@ class BiometricAuth {
         return false;
       }
       if (code.contains('notavailable') || code.contains('nohardware')) {
-        throw BiometricException('Biometric hardware is not available.');
+        throw BiometricException('Biometric hardware is not available.'.tr);
       }
       if (code.contains('notenrolled')) {
-        throw BiometricException('No biometrics are enrolled on this device.');
+        throw BiometricException(
+          'No biometrics are enrolled on this device.'.tr,
+        );
       }
       if (code.contains('lockout')) {
         throw BiometricException(
-          'Biometric authentication is locked. Unlock your device and try again.',
+          'Biometric authentication is locked. Unlock your device and try again.'
+              .tr,
         );
       }
-      throw BiometricException(e.message ?? 'Biometric authentication failed.');
+      throw BiometricException(
+        e.message ?? 'Biometric authentication failed.'.tr,
+      );
     } catch (e) {
-      throw BiometricException('Biometric authentication failed: $e');
+      throw BiometricException(
+        'Biometric authentication failed: {error}'.trArgs({'error': e}),
+      );
     }
   }
 
@@ -144,13 +153,13 @@ class BiometricAuth {
       case BiometricType.face:
         return 'Face ID';
       case BiometricType.fingerprint:
-        return 'Fingerprint';
+        return 'Fingerprint'.tr;
       case BiometricType.iris:
-        return 'Iris';
+        return 'Iris'.tr;
       case BiometricType.strong:
-        return 'Strong Biometric';
+        return 'Strong Biometric'.tr;
       case BiometricType.weak:
-        return 'Weak Biometric';
+        return 'Weak Biometric'.tr;
     }
   }
 
@@ -165,26 +174,27 @@ class BiometricAuth {
     switch (error.code) {
       case LocalAuthExceptionCode.noBiometricHardware:
       case LocalAuthExceptionCode.biometricHardwareTemporarilyUnavailable:
-        return 'Biometric hardware is not available.';
+        return 'Biometric hardware is not available.'.tr;
       case LocalAuthExceptionCode.noBiometricsEnrolled:
-        return 'No biometrics are enrolled on this device.';
+        return 'No biometrics are enrolled on this device.'.tr;
       case LocalAuthExceptionCode.noCredentialsSet:
-        return 'Set up a device passcode/credentials first, then try again.';
+        return 'Set up a device passcode/credentials first, then try again.'.tr;
       case LocalAuthExceptionCode.temporaryLockout:
       case LocalAuthExceptionCode.biometricLockout:
-        return 'Biometric authentication is locked. Unlock your device and try again.';
+        return 'Biometric authentication is locked. Unlock your device and try again.'
+            .tr;
       case LocalAuthExceptionCode.authInProgress:
-        return 'Another biometric authentication is already in progress.';
+        return 'Another biometric authentication is already in progress.'.tr;
       case LocalAuthExceptionCode.uiUnavailable:
-        return 'Biometric prompt is currently unavailable.';
+        return 'Biometric prompt is currently unavailable.'.tr;
       case LocalAuthExceptionCode.deviceError:
       case LocalAuthExceptionCode.unknownError:
-        return error.description ?? 'Biometric authentication failed.';
+        return error.description ?? 'Biometric authentication failed.'.tr;
       case LocalAuthExceptionCode.userCanceled:
       case LocalAuthExceptionCode.systemCanceled:
       case LocalAuthExceptionCode.timeout:
       case LocalAuthExceptionCode.userRequestedFallback:
-        return 'Biometric authentication was cancelled.';
+        return 'Biometric authentication was cancelled.'.tr;
     }
   }
 }

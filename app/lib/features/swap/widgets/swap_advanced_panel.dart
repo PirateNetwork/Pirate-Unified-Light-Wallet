@@ -297,7 +297,9 @@ class _SwapOrderBookPanelState extends State<SwapOrderBookPanel> {
                 Expanded(
                   flex: 3,
                   child: Text(
-                    'Price (${widget.pair.relTicker})'.tr,
+                    'Price ({ticker})'.trArgs({
+                      'ticker': widget.pair.relTicker,
+                    }),
                     style: PTypography.labelSmall(
                       color: AppColors.textTertiary,
                     ),
@@ -316,7 +318,9 @@ class _SwapOrderBookPanelState extends State<SwapOrderBookPanel> {
                 Expanded(
                   flex: 3,
                   child: Text(
-                    'Total (${widget.pair.relTicker})'.tr,
+                    'Total ({ticker})'.trArgs({
+                      'ticker': widget.pair.relTicker,
+                    }),
                     style: PTypography.labelSmall(
                       color: AppColors.textTertiary,
                     ),
@@ -848,7 +852,7 @@ class _DepthStatsCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             _DepthStatRow(
-              label: 'Sum $relTicker:'.tr,
+              label: 'Sum {ticker}:'.trArgs({'ticker': relTicker}),
               value: formatSwapAmount(level.cumulativeTotal, fractionDigits: 4),
             ),
           ],
@@ -959,7 +963,7 @@ class _MidPriceRow extends StatelessWidget {
           ),
           const SizedBox(width: PSpacing.md),
           Text(
-            '≈ 1 ARRR',
+            '≈ 1 ARRR'.tr,
             style: PTypography.bodySmall(color: AppColors.textSecondary),
           ),
           if (usdLabel != null) ...[
@@ -1267,7 +1271,9 @@ class _TradeForm extends StatelessWidget {
           const SizedBox(height: PSpacing.lg),
           if (state.advancedOrderType == SwapAdvancedOrderType.limit) ...[
             PInput(
-              label: 'Limit price (${state.pair.relTicker} per ARRR)'.tr,
+              label: 'Limit price ({ticker} per ARRR)'.trArgs({
+                'ticker': state.pair.relTicker,
+              }),
               hint: '0.0000',
               value: state.limitPriceText,
               onChanged: onLimitPriceChanged,
@@ -1370,7 +1376,9 @@ class _TradeForm extends StatelessWidget {
           if (!isBuy) ...[
             const SizedBox(height: PSpacing.md),
             PInput(
-              label: '${state.pair.relTicker} receiving address'.tr,
+              label: '{ticker} receiving address'.trArgs({
+                'ticker': state.pair.relTicker,
+              }),
               value: state.ltcPayoutAddress,
               onChanged: onLtcAddressChanged,
               monospace: true,
@@ -1489,7 +1497,7 @@ class _TradeForm extends StatelessWidget {
     return _usdPriceLabel(
       relPrice: price,
       relUsdPrice: relUsdPrice,
-      suffix: 'per ARRR',
+      suffix: 'per ARRR'.tr,
     );
   }
 }

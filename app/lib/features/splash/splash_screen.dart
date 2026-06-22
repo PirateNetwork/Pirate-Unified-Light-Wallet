@@ -70,7 +70,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             ),
             SizedBox(height: AppSpacing.xl),
             Text(
-              'Pirate Wallet'.tr,
+              'Pirate Wallet',
               style: AppTypography.h1.copyWith(color: AppColors.textPrimary),
             ),
             SizedBox(height: AppSpacing.md),
@@ -78,7 +78,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: Text(
-                  'Core failed to initialize.\n$initError',
+                  'Core failed to initialize.\n{error}'.trArgs({
+                    'error': initError,
+                  }),
                   style: AppTypography.body.copyWith(color: Colors.redAccent),
                   textAlign: TextAlign.center,
                 ),
@@ -93,8 +95,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
               SizedBox(height: AppSpacing.md),
               Text(
                 rustInit.isLoading
-                    ? 'Initializing core...'
-                    : 'Loading wallets...',
+                    ? 'Initializing core...'.tr
+                    : 'Loading wallets...'.tr,
                 style: AppTypography.body.copyWith(
                   color: AppColors.textSecondary,
                 ),

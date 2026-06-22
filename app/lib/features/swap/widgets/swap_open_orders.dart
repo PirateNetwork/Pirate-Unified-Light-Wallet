@@ -183,7 +183,7 @@ class _SwapHistoryPanelState extends State<SwapHistoryPanel> {
               children: [
                 for (final filter in _HistoryFilter.values)
                   ChoiceChip(
-                    label: Text(filter.label.tr),
+                    label: Text(filter.label),
                     selected: _filter == filter,
                     onSelected: (_) {
                       setState(() {
@@ -278,7 +278,7 @@ class _SwapHistoryPanelState extends State<SwapHistoryPanel> {
           suggestedName: fileName,
           acceptedTypeGroups: [
             XTypeGroup(
-              label: 'CSV'.tr,
+              label: 'CSV',
               extensions: ['csv'],
               mimeTypes: ['text/csv'],
             ),
@@ -362,11 +362,11 @@ enum _HistoryFilter { all, active, completed, failed, cancelled }
 extension _HistoryFilterLabel on _HistoryFilter {
   String get label {
     return switch (this) {
-      _HistoryFilter.all => 'All',
-      _HistoryFilter.active => 'Active',
-      _HistoryFilter.completed => 'Completed',
-      _HistoryFilter.failed => 'Failed',
-      _HistoryFilter.cancelled => 'Cancelled',
+      _HistoryFilter.all => 'All'.tr,
+      _HistoryFilter.active => 'Active'.tr,
+      _HistoryFilter.completed => 'Completed'.tr,
+      _HistoryFilter.failed => 'Failed'.tr,
+      _HistoryFilter.cancelled => 'Cancelled'.tr,
     };
   }
 }
@@ -390,7 +390,9 @@ class _EmptyHistoryFilter extends StatelessWidget {
           const SizedBox(width: PSpacing.sm),
           Expanded(
             child: Text(
-              'No ${filter.label.toLowerCase()} swaps yet.'.tr,
+              'No {status} swaps yet.'.trArgs({
+                'status': filter.label.toLowerCase(),
+              }),
               style: PTypography.bodySmall(color: AppColors.textSecondary),
             ),
           ),
@@ -441,7 +443,9 @@ class _HistoryRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Updated ${_timeLabel(intent.updatedAt)}'.tr,
+                  'Updated {time}'.trArgs({
+                    'time': _timeLabel(intent.updatedAt),
+                  }),
                   style: PTypography.labelSmall(color: AppColors.textSecondary),
                 ),
                 if (intent.status == SwapIntentStatus.failed &&

@@ -351,7 +351,7 @@ class SwapFundingBalanceCard extends StatelessWidget {
                 controller: addressController,
                 label: '${asset.ticker} ${'address'.tr}',
                 hint: asset == SwapAsset.ltc
-                    ? 'ltc1... or L...'.tr
+                    ? 'ltc1... or L...'
                     : '${'Enter'.tr} ${asset.ticker} ${'address'.tr}',
                 monospace: true,
                 autofocus: true,

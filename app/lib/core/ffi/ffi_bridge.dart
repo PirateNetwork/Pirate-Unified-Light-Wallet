@@ -10,6 +10,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
     show Int64List;
 
 import '../background/background_sync_execution_result.dart';
+import '../i18n/arb_text_localizer.dart';
 import 'generated/api.dart' as api;
 import 'generated/api/diagnostics.dart' as diagnostics;
 import 'generated/models.dart'
@@ -113,11 +114,12 @@ class FfiBridgeStatus {
 }
 
 /// Watch-only wallet label constant
-const String kWatchOnlyLabel = 'View only';
+String get kWatchOnlyLabel => 'View only'.tr;
 
 /// Watch-only wallet banner message
-const String kWatchOnlyBannerMessage =
-    'This wallet can only view incoming transactions. Spending is not available.';
+String get kWatchOnlyBannerMessage =>
+    'This wallet can only view incoming transactions. Spending is not available.'
+        .tr;
 
 /// Lightwalletd endpoint configuration
 class LightdEndpointConfig {
@@ -593,7 +595,7 @@ class FfiBridge {
     required int birthday,
   }) async {
     if (saplingViewingKey == null && orchardViewingKey == null) {
-      throw ArgumentError('Provide a Sapling or Orchard viewing key.');
+      throw ArgumentError('Provide a Sapling or Orchard viewing key.'.tr);
     }
     if (kUseFrbBindings) {
       final walletId = await api.importViewingWallet(
@@ -1950,21 +1952,32 @@ class SyncLogEntryFfi {
 
 /// Color tag for address book entries
 enum AddressBookColorTag {
-  none(0, 'None', 0xFF6B7280),
-  red(1, 'Red', 0xFFEF4444),
-  orange(2, 'Orange', 0xFFF97316),
-  yellow(3, 'Yellow', 0xFFEAB308),
-  green(4, 'Green', 0xFF22C55E),
-  blue(5, 'Blue', 0xFF3B82F6),
-  purple(6, 'Purple', 0xFF8B5CF6),
-  pink(7, 'Pink', 0xFFEC4899),
-  gray(8, 'Gray', 0xFF6B7280);
+  none(0, 0xFF6B7280),
+  red(1, 0xFFEF4444),
+  orange(2, 0xFFF97316),
+  yellow(3, 0xFFEAB308),
+  green(4, 0xFF22C55E),
+  blue(5, 0xFF3B82F6),
+  purple(6, 0xFF8B5CF6),
+  pink(7, 0xFFEC4899),
+  gray(8, 0xFF6B7280);
 
   final int value;
-  final String displayName;
   final int colorValue;
 
-  const AddressBookColorTag(this.value, this.displayName, this.colorValue);
+  const AddressBookColorTag(this.value, this.colorValue);
+
+  String get displayName => switch (this) {
+    AddressBookColorTag.none => 'None'.tr,
+    AddressBookColorTag.red => 'Red'.tr,
+    AddressBookColorTag.orange => 'Orange'.tr,
+    AddressBookColorTag.yellow => 'Yellow'.tr,
+    AddressBookColorTag.green => 'Green'.tr,
+    AddressBookColorTag.blue => 'Blue'.tr,
+    AddressBookColorTag.purple => 'Purple'.tr,
+    AddressBookColorTag.pink => 'Pink'.tr,
+    AddressBookColorTag.gray => 'Gray'.tr,
+  };
 
   static AddressBookColorTag fromValue(int value) {
     return AddressBookColorTag.values.firstWhere(
@@ -2409,18 +2422,18 @@ extension SyncStatusExtension on SyncStatus {
   String get stageName {
     // When caught up, show "Monitoring" instead of "Verify"
     if (isComplete) {
-      return 'Monitoring';
+      return 'Monitoring'.tr;
     }
     // Map stage enum to user-friendly names
     switch (stage) {
       case SyncStage.headers:
-        return 'Fetching Headers';
+        return 'Fetching headers'.tr;
       case SyncStage.notes:
-        return 'Scanning Notes';
+        return 'Scanning notes'.tr;
       case SyncStage.witness:
-        return 'Building Witnesses';
+        return 'Building witnesses'.tr;
       case SyncStage.verify:
-        return 'Synching Chain';
+        return 'Syncing chain'.tr;
     }
   }
 

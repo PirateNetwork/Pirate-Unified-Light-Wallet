@@ -10,6 +10,8 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 
+import '../i18n/arb_text_localizer.dart';
+
 /// OS Keystore manager
 class KeystoreChannel {
   static const MethodChannel _channel = MethodChannel(
@@ -185,11 +187,11 @@ class KeystoreCapabilities {
   String get description {
     final features = <String>[];
     if (hasStrongBox) features.add('StrongBox');
-    if (hasSecureEnclave) features.add('Secure Enclave');
-    if (hasSecureHardware) features.add('Secure Hardware');
-    if (hasBiometrics) features.add('Biometrics');
+    if (hasSecureEnclave) features.add('Secure Enclave'.tr);
+    if (hasSecureHardware) features.add('Secure Hardware'.tr);
+    if (hasBiometrics) features.add('Biometrics'.tr);
 
-    return features.isEmpty ? 'No secure hardware' : features.join(', ');
+    return features.isEmpty ? 'No secure hardware'.tr : features.join(', ');
   }
 }
 

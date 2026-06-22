@@ -31,11 +31,11 @@ class AddressHistoryList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (addresses.isEmpty) {
       final emptyTitle = isFiltered
-          ? 'No matches found.'
-          : 'No previous addresses.';
+          ? 'No matches found.'.tr
+          : 'No previous addresses.'.tr;
       final emptySubtitle = isFiltered
-          ? 'Try a different label or address.'
-          : 'Generate a new address to see it here.';
+          ? 'Try a different label or address.'.tr
+          : 'Generate a new address to see it here.'.tr;
       return PCard(
         child: Padding(
           padding: EdgeInsets.all(PSpacing.lg),
@@ -101,11 +101,11 @@ class AddressHistorySliver extends StatelessWidget {
   Widget build(BuildContext context) {
     if (addresses.isEmpty) {
       final emptyTitle = isFiltered
-          ? 'No matches found.'
-          : 'No previous addresses.';
+          ? 'No matches found.'.tr
+          : 'No previous addresses.'.tr;
       final emptySubtitle = isFiltered
-          ? 'Try a different label or address.'
-          : 'Generate a new address to see it here.';
+          ? 'Try a different label or address.'.tr
+          : 'Generate a new address to see it here.'.tr;
       return SliverToBoxAdapter(
         child: PCard(
           child: Padding(
@@ -339,7 +339,9 @@ class _AddressHistoryItem extends StatelessWidget {
                                   ),
                                   SizedBox(width: PSpacing.xs),
                                   Text(
-                                    'Balance ${_formatArrr(address.balance)}',
+                                    'Balance {balance}'.trArgs({
+                                      'balance': _formatArrr(address.balance),
+                                    }),
                                     style: PTypography.bodySmall().copyWith(
                                       color: AppColors.textSecondary,
                                     ),
@@ -348,7 +350,9 @@ class _AddressHistoryItem extends StatelessWidget {
                               ),
                               if (address.pending > BigInt.zero)
                                 Text(
-                                  'Pending ${_formatArrr(address.pending)}',
+                                  'Pending {amount}'.trArgs({
+                                    'amount': _formatArrr(address.pending),
+                                  }),
                                   style: PTypography.bodySmall().copyWith(
                                     color: AppColors.warning,
                                   ),

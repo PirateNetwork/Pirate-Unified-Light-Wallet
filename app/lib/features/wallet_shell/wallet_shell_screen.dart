@@ -38,7 +38,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     final tunnelMode = ref.watch(tunnelModeProvider);
 
     return PScaffold(
-      title: 'Pirate Wallet'.tr,
+      title: 'Pirate Wallet',
       body: ListView(
         padding: padding,
         children: [
@@ -55,11 +55,11 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                   ),
                   const SizedBox(height: PSpacing.sm),
                   _buildInfoRow(
-                    'Active Wallet',
-                    activeWallet?.toString() ?? 'None',
+                    'Active Wallet'.tr,
+                    activeWallet?.toString() ?? 'None'.tr,
                   ),
                   _buildInfoRow(
-                    'Tunnel Mode',
+                    'Tunnel Mode'.tr,
                     _getTunnelModeDisplayName(tunnelMode),
                   ),
                 ],
@@ -102,7 +102,8 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                         );
                       },
                       loading: () => const CircularProgressIndicator(),
-                      error: (err, stack) => Text('Error: $err'),
+                      error: (err, stack) =>
+                          Text('Error: {error}'.trArgs({'error': err})),
                     ),
                   ],
                 ),
@@ -152,7 +153,8 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                         );
                       },
                       loading: () => const CircularProgressIndicator(),
-                      error: (err, stack) => Text('Error: $err'),
+                      error: (err, stack) =>
+                          Text('Error: {error}'.trArgs({'error': err})),
                     ),
                   ],
                 ),
@@ -235,20 +237,24 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
                       networkInfoAsync.when(
                         data: (info) => Column(
                           children: [
-                            _buildInfoRow('Network', info.name),
+                            _buildInfoRow('Network'.tr, info.name),
                             _buildInfoRow(
-                              'Coin Type',
+                              'Coin Type'.tr,
                               info.coinType.toString(),
                             ),
-                            _buildInfoRow('RPC Port', info.rpcPort.toString()),
                             _buildInfoRow(
-                              'Default Birthday',
+                              'RPC Port'.tr,
+                              info.rpcPort.toString(),
+                            ),
+                            _buildInfoRow(
+                              'Default Birthday'.tr,
                               info.defaultBirthday.toString(),
                             ),
                           ],
                         ),
                         loading: () => const CircularProgressIndicator(),
-                        error: (err, stack) => Text('Error: $err'),
+                        error: (err, stack) =>
+                            Text('Error: {error}'.trArgs({'error': err})),
                       ),
                     ],
                   ),
@@ -311,20 +317,28 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
   Future<void> _createWallet() async {
     try {
       final createWallet = ref.read(createWalletProvider);
-      final walletId = await createWallet(name: 'My Wallet', entropyLen: 256);
+      final walletId = await createWallet(
+        name: 'My Wallet'.tr,
+        entropyLen: 256,
+      );
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Wallet created: $walletId'),
+          content: Text(
+            'Wallet created: {walletId}'.trArgs({'walletId': walletId}),
+          ),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Error: {error}'.trArgs({'error': e})),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -336,7 +350,7 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
 
       final restoreWallet = ref.read(restoreWalletProvider);
       final walletId = await restoreWallet(
-        name: 'Restored Wallet',
+        name: 'Restored Wallet'.tr,
         mnemonic: mnemonic,
       );
 
@@ -344,14 +358,19 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Wallet restored: $walletId'),
+          content: Text(
+            'Wallet restored: {walletId}'.trArgs({'walletId': walletId}),
+          ),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Error: {error}'.trArgs({'error': e})),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -365,14 +384,17 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Sync started: ${mode.name}'),
+          content: Text('Sync started: {mode}'.trArgs({'mode': mode.name})),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Error: {error}'.trArgs({'error': e})),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -386,14 +408,21 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('New address: ${address.substring(0, 20)}...'),
+          content: Text(
+            'New address: {address}...'.trArgs({
+              'address': address.substring(0, 20),
+            }),
+          ),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Error: {error}'.trArgs({'error': e})),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -434,7 +463,11 @@ class _WalletShellScreenState extends ConsumerState<WalletShellScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Tunnel mode: ${_getTunnelModeDisplayName(next)}'),
+        content: Text(
+          'Tunnel mode: {mode}'.trArgs({
+            'mode': _getTunnelModeDisplayName(next),
+          }),
+        ),
       ),
     );
   }

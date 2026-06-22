@@ -13,6 +13,7 @@ import '../../core/swaps/swap_models.dart';
 import '../../core/swaps/swap_orchestrator.dart';
 import '../../core/swaps/swap_providers.dart';
 import '../../features/settings/providers/preferences_providers.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 enum SwapUiStep { compose, review, deposit, executing, complete, error }
 
@@ -996,7 +997,7 @@ class SwapViewModel extends Notifier<SwapViewModelState> {
         amountInputMode: SwapAmountInputMode.pay,
         progress: SwapProgressStage.placingLimitRemainder,
         progressMessage:
-            'Limit order is open. You can cancel it from Open swap orders.',
+            'Limit order is open. You can cancel it from Open swap orders.'.tr,
         clearErrors: true,
         clearQuote: true,
       );
@@ -1014,7 +1015,7 @@ class SwapViewModel extends Notifier<SwapViewModelState> {
         receiveAmountText: formatSwapAmount(intent.expectedReceiveAmount),
         amountInputMode: SwapAmountInputMode.pay,
         progress: SwapProgressStage.complete,
-        progressMessage: 'Swap completed successfully.',
+        progressMessage: 'Swap completed successfully.'.tr,
         completionKind: SwapCompletionKind.swap,
         clearErrors: true,
         clearQuote: true,
@@ -1047,7 +1048,7 @@ class SwapViewModel extends Notifier<SwapViewModelState> {
       payAmountText: formatSwapAmount(intent.requestedPayAmount),
       receiveAmountText: formatSwapAmount(intent.expectedReceiveAmount),
       progress: SwapProgressStage.matchingMarketOrder,
-      progressMessage: 'Swap is already in progress. Checking status...',
+      progressMessage: 'Swap is already in progress. Checking status...'.tr,
       depositDetected: true,
       clearErrors: true,
     );
@@ -1091,7 +1092,8 @@ class SwapViewModel extends Notifier<SwapViewModelState> {
       isExecuting: false,
       progress: SwapProgressStage.failed,
       executionError:
-          'Deposit window expired. Start a fresh quote before sending more ${intent.pair.relTicker}. If you already sent funds, check the funding balance once it confirms.',
+          'Deposit window expired. Start a fresh quote before sending more {ticker}. If you already sent funds, check the funding balance once it confirms.'
+              .trArgs({'ticker': intent.pair.relTicker}),
       clearIntent: true,
       clearQuote: true,
     );
@@ -1158,10 +1160,19 @@ class SwapViewModel extends Notifier<SwapViewModelState> {
       final requiredAmount = intent.requestedPayAmount;
       final detected = balance >= requiredAmount;
       final message = detected
-          ? 'Deposit detected. Starting the atomic swap...'
+          ? 'Deposit detected. Starting the atomic swap...'.tr
           : balance > Decimal.zero
-          ? 'Detected ${formatSwapAmount(balance, fractionDigits: 8)} ${intent.pair.relTicker} so far. Waiting for ${formatSwapAmount(requiredAmount - balance, fractionDigits: 8)} ${intent.pair.relTicker} more...'
-          : 'No confirmed ${intent.pair.relTicker} detected yet. After you send it, the swap starts automatically once enough balance is confirmed.';
+          ? 'Detected {detected} {ticker} so far. Waiting for {remaining} {ticker} more...'
+                .trArgs({
+                  'detected': formatSwapAmount(balance, fractionDigits: 8),
+                  'remaining': formatSwapAmount(
+                    requiredAmount - balance,
+                    fractionDigits: 8,
+                  ),
+                  'ticker': intent.pair.relTicker,
+                })
+          : 'No confirmed {ticker} detected yet. After you send it, the swap starts automatically once enough balance is confirmed.'
+                .trArgs({'ticker': intent.pair.relTicker});
 
       state = state.copyWith(
         progressMessage: message,
@@ -1237,7 +1248,7 @@ class SwapViewModel extends Notifier<SwapViewModelState> {
     } catch (_) {
       state = state.copyWith(
         isQuoting: false,
-        quoteError: 'Enter a valid amount.',
+        quoteError: 'Enter a valid amount.'.tr,
         clearQuote: true,
       );
       return;
@@ -1483,7 +1494,7 @@ class SwapViewModel extends Notifier<SwapViewModelState> {
 
     final priceError =
         priceText.isNotEmpty && (price == null || price <= Decimal.zero)
-        ? 'Enter a valid price.'
+        ? 'Enter a valid price.'.tr
         : null;
 
     if (amount == null ||

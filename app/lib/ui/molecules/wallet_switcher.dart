@@ -30,7 +30,7 @@ class WalletSwitcherButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final walletMeta = ref.watch(activeWalletMetaProvider);
-    final label = walletMeta?.name ?? 'Wallets';
+    final label = walletMeta?.name ?? 'Wallets'.tr;
     final isWatchOnly = walletMeta?.watchOnly ?? false;
 
     return InkWell(
@@ -161,7 +161,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
               variant: PButtonVariant.secondary,
               fullWidth: true,
               icon: const Icon(Icons.add),
-              text: 'Add wallet',
+              text: 'Add wallet'.tr,
             ),
             const SizedBox(height: PSpacing.sm),
             PTextButton(
@@ -204,7 +204,7 @@ class _WalletSwitcherContent extends ConsumerWidget {
       content: PInput(
         controller: controller,
         label: 'Wallet name'.tr,
-        hint: 'e.g. Savings',
+        hint: 'e.g. Savings'.tr,
         autofocus: true,
       ),
       actions: [
@@ -241,7 +241,8 @@ class _WalletSwitcherContent extends ConsumerWidget {
       context: context,
       title: 'Remove wallet?'.tr,
       content: Text(
-        'This deletes "${wallet.name}" from this device. Make sure you have the seed saved if you want it back.',
+        'This deletes "{walletName}" from this device. Make sure you have the seed saved if you want it back.'
+            .trArgs({'walletName': wallet.name}),
         style: PTypography.bodyMedium(color: AppColors.textSecondary),
       ),
       actions: [
@@ -342,7 +343,7 @@ class _WalletRow extends StatelessWidget {
                   ),
                   const SizedBox(height: PSpacing.xxs),
                   Text(
-                    wallet.watchOnly ? 'View only' : 'Full access',
+                    wallet.watchOnly ? 'View only'.tr : 'Full access'.tr,
                     style: PTypography.bodySmall(
                       color: AppColors.textSecondary,
                     ),
@@ -416,7 +417,7 @@ class _EmptyWalletState extends StatelessWidget {
         PButton(
           onPressed: onAddWallet,
           icon: const Icon(Icons.add),
-          text: 'Add wallet',
+          text: 'Add wallet'.tr,
           fullWidth: true,
         ),
       ],
@@ -448,7 +449,7 @@ class _WalletErrorState extends StatelessWidget {
         PButton(
           onPressed: onRetry,
           variant: PButtonVariant.outline,
-          text: 'Try again',
+          text: 'Try again'.tr,
           fullWidth: true,
         ),
       ],

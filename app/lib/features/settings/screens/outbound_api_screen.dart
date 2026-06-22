@@ -5,8 +5,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/i18n/arb_text_localizer.dart';
 import '../../../design/deep_space_theme.dart';
-import '../../../l10n/app_localizations.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
@@ -17,7 +17,6 @@ class OutboundApiScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
     final masterEnabled = ref.watch(externalApiMasterProvider);
     final priceEnabled = ref.watch(externalPriceApiProvider);
     final githubEnabled = ref.watch(externalGithubApiProvider);
@@ -27,10 +26,10 @@ class OutboundApiScreen extends ConsumerWidget {
         Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
     return PScaffold(
-      title: l10n.outboundApiTitle,
+      title: 'Outbound API Calls'.tr,
       appBar: PAppBar(
-        title: l10n.outboundApiTitle,
-        subtitle: l10n.outboundApiSubtitle,
+        title: 'Outbound API Calls'.tr,
+        subtitle: 'Control non-lightserver internet requests'.tr,
         showBackButton: true,
       ),
       body: ListView(
@@ -46,12 +45,13 @@ class OutboundApiScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          l10n.allowNonLightserverApiCalls,
+                          'Allow non-lightserver API calls'.tr,
                           style: AppTypography.bodyBold,
                         ),
                         const SizedBox(height: AppSpacing.xs),
                         Text(
-                          l10n.allowNonLightserverApiCallsHelp,
+                          'Master switch for all outbound connections except your configured lightwalletd server.'
+                              .tr,
                           style: AppTypography.caption.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -74,8 +74,10 @@ class OutboundApiScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           _ApiToggleCard(
-            title: l10n.livePriceFeedsTitle,
-            subtitle: l10n.livePriceFeedsSubtitle,
+            title: 'Live Price Feeds'.tr,
+            subtitle:
+                'CoinGecko primary + CoinMarketCap fallback for ARRR prices and fiat conversion.'
+                    .tr,
             enabled: priceEnabled,
             available: masterEnabled,
             onChanged: (value) {
@@ -86,8 +88,10 @@ class OutboundApiScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           _ApiToggleCard(
-            title: l10n.verifyBuildGithubChecksTitle,
-            subtitle: l10n.verifyBuildGithubChecksSubtitle,
+            title: 'Verify Build GitHub Checks'.tr,
+            subtitle:
+                'When enabled, Verify Build fetches releases and checksum files from GitHub over your selected transport.'
+                    .tr,
             enabled: githubEnabled,
             available: masterEnabled,
             onChanged: (value) {
@@ -98,8 +102,10 @@ class OutboundApiScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           _ApiToggleCard(
-            title: l10n.komodoSwapsTitle,
-            subtitle: l10n.komodoSwapsSubtitle,
+            title: 'Komodo Swaps'.tr,
+            subtitle:
+                'Enables the local KDF swap engine, order books, swap quotes, and funding-balance checks when the selected wallet networking mode supports swaps.'
+                    .tr,
             enabled: komodoSwapEnabled,
             available: masterEnabled,
             onChanged: (value) {
@@ -111,8 +117,10 @@ class OutboundApiScreen extends ConsumerWidget {
           if (isDesktop) ...[
             const SizedBox(height: AppSpacing.md),
             _ApiToggleCard(
-              title: l10n.desktopUpdateChecksTitle,
-              subtitle: l10n.desktopUpdateChecksSubtitle,
+              title: 'Desktop Update Checks'.tr,
+              subtitle:
+                  'When enabled, periodically checks GitHub for desktop updates over your selected transport.'
+                      .tr,
               enabled: desktopUpdateEnabled,
               available: masterEnabled && githubEnabled,
               onChanged: (value) {
@@ -127,7 +135,8 @@ class OutboundApiScreen extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.md),
               child: Text(
-                l10n.outboundApiFeaturesSummary,
+                'Current non-lightserver network features: live price feeds, Verify Build GitHub checks, Komodo swap order books and quotes, and desktop release checks. These outbound calls use your selected transport where supported and can be disabled in Settings.'
+                    .tr,
                 style: AppTypography.caption.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -157,7 +166,6 @@ class _ApiToggleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final effectiveEnabled = available && enabled;
 
     return PCard(
@@ -189,7 +197,7 @@ class _ApiToggleCard extends StatelessWidget {
                   if (!available) ...[
                     const SizedBox(height: AppSpacing.xs),
                     Text(
-                      l10n.disabledByMasterSwitch,
+                      'Disabled by master switch'.tr,
                       style: AppTypography.caption.copyWith(
                         color: AppColors.warning,
                       ),

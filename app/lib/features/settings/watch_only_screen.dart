@@ -55,9 +55,9 @@ class _WatchOnlyScreenState extends ConsumerState<WatchOnlyScreen>
                 indicatorColor: PirateTheme.accentColor,
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.grey[500],
-                tabs: const [
-                  Tab(text: 'Export Sapling Viewing Key'),
-                  Tab(text: 'Import Sapling Viewing Key'),
+                tabs: [
+                  Tab(text: 'Export Sapling Viewing Key'.tr),
+                  Tab(text: 'Import Sapling Viewing Key'.tr),
                 ],
               ),
             ),
@@ -217,11 +217,11 @@ class _ExportSaplingViewingKeyTabState
             ],
           ),
           SizedBox(height: PirateSpacing.md),
-          _buildInfoItem('View incoming transactions'),
-          _buildInfoItem('Cannot spend'),
-          _buildInfoItem('Useful for accounting'),
+          _buildInfoItem('View incoming transactions'.tr),
+          _buildInfoItem('Cannot spend'.tr),
+          _buildInfoItem('Useful for accounting'.tr),
           _buildInfoItem(
-            'Keep viewing keys private. They reveal incoming history.',
+            'Keep viewing keys private. They reveal incoming history.'.tr,
           ),
         ],
       ),
@@ -286,14 +286,18 @@ class _ExportSaplingViewingKeyTabState
     try {
       final walletId = await FfiBridge.getActiveWallet();
       if (walletId == null) {
-        throw StateError('No active wallet');
+        throw StateError('No active wallet'.tr);
       }
 
       final ivk = await FfiBridge.exportSaplingViewingKeySecure(walletId);
       setState(() => _ivk = ivk);
       _disableScreenshots();
     } catch (e) {
-      setState(() => _error = 'Failed to export Sapling viewing key: $e');
+      setState(
+        () => _error = 'Failed to export Sapling viewing key: {error}'.trArgs({
+          'error': e,
+        }),
+      );
     } finally {
       setState(() => _isLoading = false);
     }
@@ -381,13 +385,13 @@ class _ImportSaplingViewingKeyTabState
           PInput(
             controller: _nameController,
             label: 'Wallet name'.tr,
-            hint: 'e.g., Savings (view only)',
+            hint: 'e.g., Savings (view only)'.tr,
           ),
           SizedBox(height: PirateSpacing.lg),
           PInput(
             controller: _ivkController,
             label: 'Sapling viewing key'.tr,
-            hint: 'Paste your Sapling viewing key',
+            hint: 'Paste your Sapling viewing key'.tr,
             maxLines: 3,
           ),
           SizedBox(height: PirateSpacing.lg),
@@ -473,19 +477,19 @@ class _ImportSaplingViewingKeyTabState
   Future<void> _importWallet() async {
     // Validate inputs
     if (_nameController.text.trim().isEmpty) {
-      setState(() => _error = 'Please enter a wallet name');
+      setState(() => _error = 'Please enter a wallet name'.tr);
       return;
     }
 
     if (_ivkController.text.trim().isEmpty) {
-      setState(() => _error = 'Please enter a Sapling viewing key');
+      setState(() => _error = 'Please enter a Sapling viewing key'.tr);
       return;
     }
 
     final trimmed = _ivkController.text.trim();
     if (!(trimmed.startsWith('zxviews') ||
         trimmed.startsWith('pirate-extended-viewing-key'))) {
-      setState(() => _error = 'Invalid Sapling viewing key format.');
+      setState(() => _error = 'Invalid Sapling viewing key format.'.tr);
       return;
     }
 
@@ -500,7 +504,7 @@ class _ImportSaplingViewingKeyTabState
           : null;
       final fallbackBirthday = birthday ?? await _getDefaultBirthdayHeight();
       if (fallbackBirthday == null) {
-        throw StateError('Failed to resolve a default birthday height.');
+        throw StateError('Failed to resolve a default birthday height.'.tr);
       }
 
       // Import via FFI
@@ -520,7 +524,9 @@ class _ImportSaplingViewingKeyTabState
         Navigator.pop(context);
       }
     } catch (e) {
-      setState(() => _error = 'Failed to import wallet: $e');
+      setState(
+        () => _error = 'Failed to import wallet: {error}'.trArgs({'error': e}),
+      );
     } finally {
       setState(() => _isLoading = false);
     }

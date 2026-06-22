@@ -137,21 +137,21 @@ class NodeTestResult {
   /// Get a human-readable status message
   String get statusMessage {
     if (!success) {
-      return errorMessage ?? 'Connection failed';
+      return errorMessage ?? 'Connection failed'.tr;
     }
 
     final parts = <String>[];
-    parts.add('Connected via $transportMode');
+    parts.add('Connected via {transport}'.trArgs({'transport': transportMode}));
     if (tlsEnabled) {
-      parts.add('TLS enabled');
+      parts.add('TLS enabled'.tr);
       if (tlsPinMatched == true) {
-        parts.add('Pin verified (OK)');
+        parts.add('Pin verified (OK)'.tr);
       } else if (tlsPinMatched == false) {
-        parts.add('Pin MISMATCH');
+        parts.add('Pin MISMATCH'.tr);
       }
     }
     if (latestBlockHeight != null) {
-      parts.add('Block #$latestBlockHeight');
+      parts.add('Block #{height}'.trArgs({'height': latestBlockHeight}));
     }
     return parts.join(' - ');
   }
@@ -162,7 +162,7 @@ class NodeTestResult {
       case 'tor':
         return '🧅';
       case 'i2p':
-        return 'dYO?';
+        return '🕸️';
       case 'socks5':
         return '🔌';
       case 'direct':
@@ -215,8 +215,8 @@ class _FfiBridgeNetworkHelper {
         transportMode: transportName,
         tlsEnabled: useTls,
         errorMessage:
-            'Tor connection failed: ${e.message}\n\n'
-            'Please check your Tor settings or try a different transport mode.',
+            'Tor connection failed: {error}\n\nPlease check your Tor settings or try a different transport mode.'
+                .trArgs({'error': e.message}),
         responseTimeMs: _elapsedMs(startTime),
       );
     } on Socks5ConnectionException catch (e) {
@@ -225,8 +225,8 @@ class _FfiBridgeNetworkHelper {
         transportMode: transportName,
         tlsEnabled: useTls,
         errorMessage:
-            'SOCKS5 proxy connection failed: ${e.message}\n\n'
-            'Please verify your proxy settings.',
+            'SOCKS5 proxy connection failed: {error}\n\nPlease verify your proxy settings.'
+                .trArgs({'error': e.message}),
         responseTimeMs: _elapsedMs(startTime),
       );
     } catch (e) {
@@ -234,7 +234,7 @@ class _FfiBridgeNetworkHelper {
         success: false,
         transportMode: transportName,
         tlsEnabled: useTls,
-        errorMessage: 'Connection failed: $e',
+        errorMessage: 'Connection failed: {error}'.trArgs({'error': e}),
         responseTimeMs: _elapsedMs(startTime),
       );
     }

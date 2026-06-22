@@ -152,8 +152,8 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
 
         if (expectedWord != enteredWord) {
           setState(() {
-            _error =
-                'Word ${_selectedIndices[i]} is incorrect. Please check and try again.';
+            _error = 'Word {number} is incorrect. Please check and try again.'
+                .trArgs({'number': _selectedIndices[i]});
             _isVerifying = false;
           });
           return;
@@ -167,7 +167,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
       // Create wallet with the mnemonic we generated
       await ref
           .read(onboardingControllerProvider.notifier)
-          .complete('My Pirate Wallet');
+          .complete('My Pirate Wallet'.tr);
 
       ref.invalidate(walletsExistProvider);
       final walletsExist = await ref
@@ -176,7 +176,8 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
       if (!mounted) return;
       if (!walletsExist) {
         setState(() {
-          _error = 'Wallet creation succeeded but was not detected. Try again.';
+          _error =
+              'Wallet creation succeeded but was not detected. Try again.'.tr;
           _isVerifying = false;
         });
         return;
@@ -210,7 +211,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
       }
     } catch (e) {
       setState(() {
-        _error = 'Verification failed: $e';
+        _error = 'Verification failed: {error}'.trArgs({'error': e});
         _isVerifying = false;
       });
     }
@@ -247,7 +248,8 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              "This confirms you've written down your seed phrase correctly.",
+              "This confirms you've written down your seed phrase correctly."
+                  .tr,
               style: AppTypography.body.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -263,8 +265,12 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
                   controller: _wordControllers[i],
                   focusNode: _focusNodes[i],
                   wordlist: _activeWordlist,
-                  label: 'Word ${_selectedIndices[i]}',
-                  hint: 'Enter word ${_selectedIndices[i]}',
+                  label: 'Word {number}'.trArgs({
+                    'number': _selectedIndices[i],
+                  }),
+                  hint: 'Enter word {number}'.trArgs({
+                    'number': _selectedIndices[i],
+                  }),
                   textInputAction: i < 2
                       ? TextInputAction.next
                       : TextInputAction.done,
@@ -311,7 +317,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
             const SizedBox(height: AppSpacing.xl),
 
             PButton(
-              text: 'Verify & Create Wallet',
+              text: 'Verify & Create Wallet'.tr,
               onPressed: _isComplete && !_isVerifying
                   ? _verifyAndProceed
                   : null,

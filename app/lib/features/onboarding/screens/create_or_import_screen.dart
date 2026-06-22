@@ -71,7 +71,7 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                "Choose how you'd like to set up your wallet",
+                "Choose how you'd like to set up your wallet".tr,
                 style: AppTypography.body.copyWith(
                   color: AppColors.textSecondary,
                 ),

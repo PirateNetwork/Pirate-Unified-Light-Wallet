@@ -10,6 +10,7 @@ import '../../../core/security/keystore_channel.dart';
 import '../../../core/security/passphrase_cache.dart';
 import '../../../core/ffi/generated/models.dart';
 import '../../../core/ffi/ffi_bridge.dart';
+import '../../../core/i18n/arb_text_localizer.dart';
 import '../../../core/logging/debug_log_controller.dart';
 
 enum AppThemeMode { system, light, dark }
@@ -29,11 +30,11 @@ extension AppThemeModeX on AppThemeMode {
   String get label {
     switch (this) {
       case AppThemeMode.light:
-        return 'Light';
+        return 'Light'.tr;
       case AppThemeMode.dark:
-        return 'Dark';
+        return 'Dark'.tr;
       case AppThemeMode.system:
-        return 'System';
+        return 'System'.tr;
     }
   }
 }
@@ -58,18 +59,18 @@ enum SwapInterfacePreference {
   String get label {
     switch (this) {
       case SwapInterfacePreference.simple:
-        return 'Simple swap';
+        return 'Simple swap'.tr;
       case SwapInterfacePreference.advanced:
-        return 'Advanced trading';
+        return 'Advanced trading'.tr;
     }
   }
 
   String get description {
     switch (this) {
       case SwapInterfacePreference.simple:
-        return 'Guided swap with simple steps';
+        return 'Guided swap with simple steps'.tr;
       case SwapInterfacePreference.advanced:
-        return 'Order book, limits, and slippage controls';
+        return 'Order book, limits, and slippage controls'.tr;
     }
   }
 }
@@ -149,47 +150,47 @@ extension CurrencyPreferenceX on CurrencyPreference {
   String get label {
     switch (this) {
       case CurrencyPreference.usd:
-        return 'US Dollar';
+        return 'US Dollar'.tr;
       case CurrencyPreference.eur:
-        return 'Euro';
+        return 'Euro'.tr;
       case CurrencyPreference.gbp:
-        return 'British Pound';
+        return 'British Pound'.tr;
       case CurrencyPreference.btc:
         return 'Bitcoin';
       case CurrencyPreference.cad:
-        return 'Canadian Dollar';
+        return 'Canadian Dollar'.tr;
       case CurrencyPreference.aud:
-        return 'Australian Dollar';
+        return 'Australian Dollar'.tr;
       case CurrencyPreference.jpy:
-        return 'Japanese Yen';
+        return 'Japanese Yen'.tr;
       case CurrencyPreference.chf:
-        return 'Swiss Franc';
+        return 'Swiss Franc'.tr;
       case CurrencyPreference.cny:
-        return 'Chinese Yuan';
+        return 'Chinese Yuan'.tr;
       case CurrencyPreference.inr:
-        return 'Indian Rupee';
+        return 'Indian Rupee'.tr;
       case CurrencyPreference.brl:
-        return 'Brazilian Real';
+        return 'Brazilian Real'.tr;
       case CurrencyPreference.krw:
-        return 'South Korean Won';
+        return 'South Korean Won'.tr;
       case CurrencyPreference.rub:
-        return 'Russian Ruble';
+        return 'Russian Ruble'.tr;
       case CurrencyPreference.uah:
-        return 'Ukrainian Hryvnia';
+        return 'Ukrainian Hryvnia'.tr;
       case CurrencyPreference.mxn:
-        return 'Mexican Peso';
+        return 'Mexican Peso'.tr;
       case CurrencyPreference.ars:
-        return 'Argentine Peso';
+        return 'Argentine Peso'.tr;
       case CurrencyPreference.aed:
-        return 'UAE Dirham';
+        return 'UAE Dirham'.tr;
       case CurrencyPreference.bhd:
-        return 'Bahraini Dinar';
+        return 'Bahraini Dinar'.tr;
       case CurrencyPreference.kwd:
-        return 'Kuwaiti Dinar';
+        return 'Kuwaiti Dinar'.tr;
       case CurrencyPreference.sar:
-        return 'Saudi Riyal';
+        return 'Saudi Riyal'.tr;
       case CurrencyPreference.tryCurrency:
-        return 'Turkish Lira';
+        return 'Turkish Lira'.tr;
     }
   }
 

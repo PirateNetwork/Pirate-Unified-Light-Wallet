@@ -134,8 +134,8 @@ class _SwapDepositPanelState extends State<SwapDepositPanel> {
                       style: PTypography.heading5(color: AppColors.textPrimary),
                     ),
                     Text(
-                      'Send at least this amount of $assetTicker. Once enough confirmed balance is detected, the swap starts automatically.'
-                          .tr,
+                      'Send at least this amount of {ticker}. Once enough confirmed balance is detected, the swap starts automatically.'
+                          .trArgs({'ticker': assetTicker}),
                       style: PTypography.bodySmall(
                         color: AppColors.textSecondary,
                       ),
@@ -171,8 +171,8 @@ class _SwapDepositPanelState extends State<SwapDepositPanel> {
                   Expanded(
                     child: Text(
                       isExpired
-                          ? 'Deposit window expired. Do not send more to this quote. If you already sent $assetTicker, check the funding balance once it confirms.'
-                                .tr
+                          ? 'Deposit window expired. Do not send more to this quote. If you already sent {ticker}, check the funding balance once it confirms.'
+                                .trArgs({'ticker': assetTicker})
                           : '${'Deposit window'.tr}: ${_formatRemaining(remaining)} ${'remaining'.tr}',
                       style: PTypography.bodySmall(
                         color: isExpired ? AppColors.error : AppColors.warning,

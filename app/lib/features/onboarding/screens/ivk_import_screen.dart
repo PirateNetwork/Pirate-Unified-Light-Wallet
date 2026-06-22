@@ -27,7 +27,7 @@ class ViewingKeysImportScreen extends ConsumerStatefulWidget {
 
 class _ViewingKeysImportScreenState
     extends ConsumerState<ViewingKeysImportScreen> {
-  final _nameController = TextEditingController(text: 'View only wallet');
+  final _nameController = TextEditingController(text: 'View only wallet'.tr);
   final _saplingIvkController = TextEditingController();
   final _orchardIvkController = TextEditingController();
   final _birthdayController = TextEditingController();
@@ -102,7 +102,7 @@ class _ViewingKeysImportScreenState
       final hasPassphrase = await FfiBridge.hasAppPassphrase();
       if (hasPassphrase && !ref.read(appUnlockedProvider)) {
         setState(() {
-          _error = 'App is locked. Unlock to import a view only wallet.';
+          _error = 'App is locked. Unlock to import a view only wallet.'.tr;
           _isImporting = false;
         });
         return;
@@ -110,13 +110,13 @@ class _ViewingKeysImportScreenState
 
       final birthday = int.tryParse(_birthdayController.text.trim());
       if (birthday == null || birthday < 1) {
-        throw ArgumentError('Invalid birthday height');
+        throw ArgumentError('Invalid birthday height'.tr);
       }
 
       final saplingKey = _saplingIvkController.text.trim();
       final orchardKey = _orchardIvkController.text.trim();
       if (saplingKey.isEmpty && orchardKey.isEmpty) {
-        throw ArgumentError('Enter a Sapling or Orchard viewing key');
+        throw ArgumentError('Enter a Sapling or Orchard viewing key'.tr);
       }
 
       // Import viewing key via FFI
@@ -141,7 +141,8 @@ class _ViewingKeysImportScreenState
         if (!mounted) return;
         if (!walletsExist) {
           setState(() {
-            _error = 'Wallet import succeeded but was not detected. Try again.';
+            _error =
+                'Wallet import succeeded but was not detected. Try again.'.tr;
             _isImporting = false;
           });
           return;
@@ -251,17 +252,17 @@ class _ViewingKeysImportScreenState
                   _InfoRow(
                     icon: Icons.check_circle_outline,
                     iconColor: AppColors.success,
-                    text: 'View incoming transactions',
+                    text: 'View incoming transactions'.tr,
                   ),
                   _InfoRow(
                     icon: Icons.check_circle_outline,
                     iconColor: AppColors.success,
-                    text: 'See balance and incoming activity',
+                    text: 'See balance and incoming activity'.tr,
                   ),
                   _InfoRow(
                     icon: Icons.cancel_outlined,
                     iconColor: AppColors.error,
-                    text: 'Cannot spend funds',
+                    text: 'Cannot spend funds'.tr,
                   ),
                 ],
               ),
@@ -273,7 +274,7 @@ class _ViewingKeysImportScreenState
             PInput(
               controller: _nameController,
               label: 'Wallet name'.tr,
-              hint: 'e.g., View only wallet',
+              hint: 'e.g., View only wallet'.tr,
             ),
 
             const SizedBox(height: AppSpacing.lg),
@@ -282,7 +283,7 @@ class _ViewingKeysImportScreenState
             PInput(
               controller: _saplingIvkController,
               label: 'Sapling viewing key (optional)'.tr,
-              hint: 'Starts with zxviews1…',
+              hint: 'Starts with zxviews1…'.tr,
               maxLines: 3,
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste),
@@ -296,7 +297,7 @@ class _ViewingKeysImportScreenState
             PInput(
               controller: _orchardIvkController,
               label: 'Orchard viewing key (optional)'.tr,
-              hint: 'Starts with pirate-extended-viewing-key1…',
+              hint: 'Starts with pirate-extended-viewing-key1…'.tr,
               maxLines: 3,
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste),
@@ -311,7 +312,7 @@ class _ViewingKeysImportScreenState
             PInput(
               controller: _birthdayController,
               label: 'Birthday height'.tr,
-              hint: 'Block height when the wallet was created',
+              hint: 'Block height when the wallet was created'.tr,
               keyboardType: TextInputType.number,
               helperText: 'Lower values scan more blocks and take longer.'.tr,
             ),
@@ -379,7 +380,9 @@ class _ViewingKeysImportScreenState
 
             // Import button
             PButton(
-              text: _isImporting ? 'Importing...' : 'Import view only wallet',
+              text: _isImporting
+                  ? 'Importing...'.tr
+                  : 'Import view only wallet'.tr,
               onPressed: _isValid && !_isImporting ? _importViewingKeys : null,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,

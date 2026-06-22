@@ -8,6 +8,7 @@ import '../../core/security/decoy_data.dart';
 import '../../core/security/clipboard_manager.dart';
 import '../../core/services/address_rotation_service.dart';
 import '../../design/tokens/colors.dart';
+import '../../core/i18n/arb_text_localizer.dart';
 
 /// State for receive screen
 class ReceiveState {
@@ -188,8 +189,8 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
   /// Initialize the receive screen
   Future<void> _init() async {
     if (_walletId == null) {
-      const errorState = ReceiveState(
-        error: 'No wallet selected',
+      final errorState = ReceiveState(
+        error: 'No wallet selected'.tr,
         isLoading: false,
       );
       _lastState = errorState;
@@ -352,7 +353,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              successMessage ?? 'Address copied! Will clear in 60 seconds',
+              successMessage ?? 'Address copied! Will clear in 60 seconds'.tr,
             ),
             duration: const Duration(seconds: 2),
             backgroundColor: AppColors.success,
@@ -363,7 +364,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to copy: $e'),
+            content: Text('Failed to copy: {error}'.trArgs({'error': e})),
             backgroundColor: AppColors.error,
           ),
         );
@@ -380,10 +381,14 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       await ClipboardManager.copyAddress(info.address);
 
       if (context.mounted) {
-        final label = info.label != null ? ' (${info.label})' : '';
+        final message = info.label == null
+            ? 'Address copied! Will clear in 30 seconds'.tr
+            : 'Address ({label}) copied! Will clear in 30 seconds'.trArgs({
+                'label': info.label,
+              });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Address$label copied! Will clear in 30 seconds'),
+            content: Text(message),
             duration: const Duration(seconds: 2),
             backgroundColor: AppColors.success,
           ),
@@ -393,7 +398,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to copy: $e'),
+            content: Text('Failed to copy: {error}'.trArgs({'error': e})),
             backgroundColor: AppColors.error,
           ),
         );
@@ -423,7 +428,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(successMessage ?? 'Address ready to share'),
+            content: Text(successMessage ?? 'Address ready to share'.tr),
             duration: const Duration(seconds: 2),
             backgroundColor: AppColors.success,
           ),
@@ -433,7 +438,7 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to share: $e'),
+            content: Text('Failed to share: {error}'.trArgs({'error': e})),
             backgroundColor: AppColors.error,
           ),
         );

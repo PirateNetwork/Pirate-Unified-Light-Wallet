@@ -154,7 +154,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Copied ${filteredLogs.length} redacted log entries',
+              'Copied {count} redacted log entries'.trArgs({
+                'count': filteredLogs.length,
+              }),
               style: AppTypography.body.copyWith(color: AppColors.textPrimary),
             ),
             backgroundColor: AppColors.surfaceElevated,
@@ -210,11 +212,12 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
             ),
             const SizedBox(height: AppSpacing.sm),
             _ActionItem(
-              text:
-                  'Restore wallet state to height ${_formatHeight(checkpointHeight)}',
+              text: 'Restore wallet state to height {height}'.trArgs({
+                'height': _formatHeight(checkpointHeight),
+              }),
             ),
-            _ActionItem(text: 'Remove transactions after this height'),
-            _ActionItem(text: 'Re-scan blocks from checkpoint'),
+            _ActionItem(text: 'Remove transactions after this height'.tr),
+            _ActionItem(text: 'Re-scan blocks from checkpoint'.tr),
             const SizedBox(height: AppSpacing.md),
             Container(
               padding: const EdgeInsets.all(AppSpacing.sm),
@@ -233,7 +236,13 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
-                      'Checkpoint from ${_formatCheckpointTime(DateTime.fromMillisecondsSinceEpoch(checkpoint.timestamp))}',
+                      'Checkpoint from {time}'.trArgs({
+                        'time': _formatCheckpointTime(
+                          DateTime.fromMillisecondsSinceEpoch(
+                            checkpoint.timestamp,
+                          ),
+                        ),
+                      }),
                       style: AppTypography.caption.copyWith(
                         color: AppColors.textSecondary,
                       ),
@@ -318,7 +327,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Rescan started from height ${_formatHeight(checkpointHeight)}',
+                'Rescan started from height {height}'.trArgs({
+                  'height': _formatHeight(checkpointHeight),
+                }),
                 style: AppTypography.body.copyWith(
                   color: AppColors.textPrimary,
                 ),
@@ -335,7 +346,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Rescan failed: $e',
+                'Rescan failed: {error}'.trArgs({'error': e}),
                 style: AppTypography.body.copyWith(
                   color: AppColors.textPrimary,
                 ),
@@ -474,7 +485,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                 Icon(Icons.check_circle, size: 16, color: AppColors.success),
               const SizedBox(width: AppSpacing.sm),
               Text(
-                isComplete ? 'Rescan Complete' : 'Rescanning...',
+                isComplete ? 'Rescan Complete'.tr : 'Rescanning...'.tr,
                 style: AppTypography.body.copyWith(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.w600,
@@ -506,7 +517,9 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
             children: [
               Expanded(
                 child: Text(
-                  'Height: ${_formatHeight(status.localHeight.toInt())}',
+                  'Height: {height}'.trArgs({
+                    'height': _formatHeight(status.localHeight.toInt()),
+                  }),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.caption.copyWith(
@@ -516,7 +529,7 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
               ),
               if (status.eta != null && !isComplete)
                 Text(
-                  'ETA: ${status.etaFormatted}',
+                  'ETA: {eta}'.trArgs({'eta': status.etaFormatted}),
                   style: AppTypography.caption.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -589,8 +602,10 @@ class _DiagnosticsScreenState extends ConsumerState<DiagnosticsScreen> {
                 ),
                 Text(
                   checkpoint != null
-                      ? 'Height ${_formatHeight(checkpoint.height)}'
-                      : 'No checkpoint',
+                      ? 'Height {height}'.trArgs({
+                          'height': _formatHeight(checkpoint.height),
+                        })
+                      : 'No checkpoint'.tr,
                   style: AppTypography.body.copyWith(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600,
@@ -1034,7 +1049,7 @@ class _ActionItem extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '•'.tr,
+            '•',
             style: AppTypography.body.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(width: 8),

@@ -17,7 +17,7 @@ class WelcomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return PScaffold(
-      title: 'Pirate Unified Wallet'.tr,
+      title: 'Pirate Unified Wallet',
       body: LayoutBuilder(
         builder: (context, constraints) {
           final screenWidth = MediaQuery.of(context).size.width;
@@ -75,14 +75,14 @@ class WelcomeScreen extends ConsumerWidget {
                           Icons.shield_outlined,
                           size: logoSize,
                           color: AppColors.accentPrimary,
-                          semanticLabel: 'Pirate Wallet Logo'.tr,
+                          semanticLabel: 'Pirate Wallet logo'.tr,
                         ),
                       ),
                       SizedBox(
                         height: isCompactHeight ? AppSpacing.md : AppSpacing.xl,
                       ),
                       Text(
-                        'Pirate Unified Wallet'.tr,
+                        'Pirate Unified Wallet',
                         style: titleStyle.copyWith(
                           color: AppColors.textPrimary,
                           height: isMobile ? 1.3 : null,
@@ -93,7 +93,8 @@ class WelcomeScreen extends ConsumerWidget {
                         height: isCompactHeight ? AppSpacing.xs : AppSpacing.md,
                       ),
                       Text(
-                        'Privacy made convenient.\nKeys stay on your device.',
+                        'Privacy made convenient.\nKeys stay on your device.'
+                            .tr,
                         style: AppTypography.body.copyWith(
                           color: AppColors.textSecondary,
                           height: isMobile ? 1.6 : 1.5,
@@ -126,7 +127,7 @@ class WelcomeScreen extends ConsumerWidget {
                       ),
                       SizedBox(height: largeGap),
                       PButton(
-                        text: 'Get Started',
+                        text: 'Get Started'.tr,
                         onPressed: () {
                           ref.read(onboardingControllerProvider.notifier)
                             ..reset(startAt: OnboardingStep.welcome)

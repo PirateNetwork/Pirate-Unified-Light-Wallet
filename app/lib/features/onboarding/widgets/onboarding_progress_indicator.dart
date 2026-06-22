@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/arb_text_localizer.dart';
 import '../../../design/deep_space_theme.dart';
 
 class OnboardingProgressIndicator extends StatelessWidget {
@@ -31,7 +32,7 @@ class OnboardingProgressIndicator extends StatelessWidget {
                     AppColors.accentPrimary,
                   ),
                   minHeight: 4,
-                  semanticsLabel: 'Onboarding progress',
+                  semanticsLabel: 'Onboarding progress'.tr,
                   semanticsValue: '${(progress * 100).round()}%',
                 ),
               ),
@@ -43,7 +44,10 @@ class OnboardingProgressIndicator extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             Text(
-              'Step $currentStep of $totalSteps',
+              'Step {current} of {total}'.trArgs({
+                'current': currentStep,
+                'total': totalSteps,
+              }),
               style: AppTypography.caption.copyWith(
                 color: AppColors.textTertiary,
               ),

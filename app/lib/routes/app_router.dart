@@ -53,6 +53,7 @@ import '../features/settings/screens/licenses_screen.dart';
 import '../features/settings/screens/privacy_shield_screen.dart';
 import '../features/unlock/unlock_screen.dart';
 import '../features/splash/splash_screen.dart';
+import '../core/i18n/arb_text_localizer.dart';
 import '../core/providers/wallet_providers.dart';
 import '../ui/motion/durations.dart';
 
@@ -396,7 +397,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           state: state,
           child: ExportSeedScreen(
             walletId: state.uri.queryParameters['walletId'] ?? 'default',
-            walletName: state.uri.queryParameters['walletName'] ?? 'My Wallet',
+            walletName:
+                state.uri.queryParameters['walletName'] ?? 'My Wallet'.tr,
           ),
         ),
       ),

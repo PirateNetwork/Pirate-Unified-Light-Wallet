@@ -220,7 +220,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   PendingTx? _pendingTx;
 
   // Sending progress stages
-  String _sendingStage = 'Building transaction...';
+  String _sendingStage = 'Building transaction...'.tr;
 
   // Watch-only check
   bool _isWatchOnly = false;
@@ -519,7 +519,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'You have $candidateCount untagged notes. Auto consolidation can combine them during sends to keep the wallet fast.',
+              'You have {count} untagged notes. Auto consolidation can combine them during sends to keep the wallet fast.'
+                  .trArgs({'count': candidateCount}),
               style: AppTypography.body,
             ),
             const SizedBox(height: AppSpacing.md),
@@ -660,7 +661,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
   String _keyLabelForAddress(AddressBalanceInfo address) {
     final keyId = address.keyId;
-    if (keyId == null) return 'Unknown key group';
+    if (keyId == null) return 'Unknown key group'.tr;
     for (final key in _spendableKeys) {
       if (key.id == keyId) {
         return _displayKeyLabel(key);
@@ -684,7 +685,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       final balance = _formatArrr(_spendableForKey(_selectedKey!.id));
       return '$label - $balance';
     }
-    return 'Auto (all keys)';
+    return 'Auto (all keys)'.tr;
   }
 
   Future<void> _openSpendFromSelector() async {
@@ -780,7 +781,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                         if (isRefreshing)
                           Semantics(
                             label: 'Refreshing spend sources'.tr,
-                            value: 'In progress',
+                            value: 'In progress'.tr,
                             child: const LinearProgressIndicator(minHeight: 2),
                           ),
                         if (isRefreshing) const SizedBox(height: AppSpacing.md),
@@ -793,7 +794,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                               child: Semantics(
                                 label:
                                     'Loading spendable keys and addresses'.tr,
-                                value: 'In progress',
+                                value: 'In progress'.tr,
                                 child: const CircularProgressIndicator(),
                               ),
                             ),
@@ -847,7 +848,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                   final pending = _pendingForKey(key.id);
                                   final balance = _formatArrr(spendable);
                                   final pendingSuffix = pending > BigInt.zero
-                                      ? ' • Pending ${_formatArrr(pending)}'
+                                      ? ' • Pending {amount}'.trArgs({
+                                          'amount': _formatArrr(pending),
+                                        })
                                       : '';
 
                                   final changeSpendable =
@@ -859,20 +862,36 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                   if (changeSpendable > BigInt.zero &&
                                       changePending > BigInt.zero) {
                                     changeSuffix =
-                                        ' • Change ${_formatArrr(changeSpendable)} (+${_formatArrr(changePending)} pending)';
+                                        ' • Change {spendable} (+{pending} pending)'
+                                            .trArgs({
+                                              'spendable': _formatArrr(
+                                                changeSpendable,
+                                              ),
+                                              'pending': _formatArrr(
+                                                changePending,
+                                              ),
+                                            });
                                   } else if (changeSpendable > BigInt.zero) {
-                                    changeSuffix =
-                                        ' • Change ${_formatArrr(changeSpendable)}';
+                                    changeSuffix = ' • Change {amount}'.trArgs({
+                                      'amount': _formatArrr(changeSpendable),
+                                    });
                                   } else if (changePending > BigInt.zero) {
-                                    changeSuffix =
-                                        ' • Change pending ${_formatArrr(changePending)}';
+                                    changeSuffix = ' • Change pending {amount}'
+                                        .trArgs({
+                                          'amount': _formatArrr(changePending),
+                                        });
                                   }
                                   selectorItems.add(
                                     _buildSpendOption(
                                       context,
                                       title: _displayKeyLabel(key),
                                       subtitle:
-                                          'Spendable $balance$pendingSuffix$changeSuffix',
+                                          'Spendable {balance}{pending}{change}'
+                                              .trArgs({
+                                                'balance': balance,
+                                                'pending': pendingSuffix,
+                                                'change': changeSuffix,
+                                              }),
                                       selected:
                                           pendingKey?.id == key.id &&
                                           pendingAddressIds.isEmpty,
@@ -933,18 +952,24 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                           explicitLabel.isNotEmpty
                                       ? explicitLabel
                                       : isInternal
-                                      ? 'Change ${_truncateAddress(address.address)}'
+                                      ? 'Change {address}'.trArgs({
+                                          'address': _truncateAddress(
+                                            address.address,
+                                          ),
+                                        })
                                       : _truncateAddress(address.address);
                                   final balance = _formatArrr(
                                     address.spendable,
                                   );
                                   final pending = address.pending;
                                   final pendingSuffix = pending > BigInt.zero
-                                      ? ' • Pending ${_formatArrr(pending)}'
+                                      ? ' • Pending {amount}'.trArgs({
+                                          'amount': _formatArrr(pending),
+                                        })
                                       : '';
                                   final kind = isInternal
-                                      ? 'Internal change'
-                                      : 'Receive';
+                                      ? 'Internal change'.tr
+                                      : 'Receive'.tr;
                                   final selected = pendingAddressIds.contains(
                                     address.addressId,
                                   );
@@ -953,7 +978,16 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                                       context,
                                       title: name,
                                       subtitle:
-                                          'Spendable $balance$pendingSuffix - $kind • $keyLabel • ${_truncateAddress(address.address)}',
+                                          'Spendable {balance}{pending} - {kind} • {keyLabel} • {address}'
+                                              .trArgs({
+                                                'balance': balance,
+                                                'pending': pendingSuffix,
+                                                'kind': kind,
+                                                'keyLabel': keyLabel,
+                                                'address': _truncateAddress(
+                                                  address.address,
+                                                ),
+                                              }),
                                       selected: selected,
                                       onTap: () => toggleAddress(address),
                                     ),
@@ -1209,7 +1243,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Live ${currency.code} price is unavailable right now. Showing ARRR amounts.',
+            'Live {currency} price is unavailable right now. Showing ARRR amounts.'
+                .trArgs({'currency': currency.code}),
           ),
         ),
       );
@@ -1282,7 +1317,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     if (key.keyType == KeyTypeInfo.seed) {
       final label = key.label?.trim();
       if (label == null || label.isEmpty || label == 'Seed') {
-        return 'Default wallet keys';
+        return 'Default wallet keys'.tr;
       }
     }
     return key.label ?? _defaultKeyLabel(key);
@@ -1291,11 +1326,11 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   String _defaultKeyLabel(KeyGroupInfo key) {
     switch (key.keyType) {
       case KeyTypeInfo.seed:
-        return 'Default wallet keys';
+        return 'Default wallet keys'.tr;
       case KeyTypeInfo.importedSpending:
-        return 'Imported spending key';
+        return 'Imported spending key'.tr;
       case KeyTypeInfo.importedViewing:
-        return 'Viewing key';
+        return 'Viewing key'.tr;
     }
   }
 
@@ -1319,7 +1354,13 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   void _addOutput() {
     if (_outputs.length >= kMaxRecipients) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Maximum $kMaxRecipients recipients allowed')),
+        SnackBar(
+          content: Text(
+            'Maximum {count} recipients allowed'.trArgs({
+              'count': kMaxRecipients,
+            }),
+          ),
+        ),
       );
       return;
     }
@@ -1553,19 +1594,19 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       final rawAmount = output.amountController.text.trim();
       if (rawAmount.isEmpty) {
         output
-          ..error = 'Amount is required'
+          ..error = 'Amount is required'.tr
           ..isValid = false;
         allValid = false;
       } else {
         final value = _parseInputAmountToArrr(rawAmount);
         if (value <= 0) {
           output
-            ..error = 'Amount must be greater than zero'
+            ..error = 'Amount must be greater than zero'.tr
             ..isValid = false;
           allValid = false;
         } else if (value < 0.00000001) {
           output
-            ..error = 'Amount too small (minimum 0.00000001 ARRR)'
+            ..error = 'Amount too small (minimum 0.00000001 ARRR)'.tr
             ..isValid = false;
           allValid = false;
         }
@@ -1618,16 +1659,17 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         switch (spendability.reasonCode) {
           case 'ERR_RESCAN_REQUIRED':
             message =
-                'Wallet spendability requires a full rescan before sending.';
+                'Wallet spendability requires a full rescan before sending.'.tr;
             break;
           case 'ERR_WITNESS_REPAIR_QUEUED':
             message =
-                'Witness repair was queued. Let sync complete, then retry send.';
+                'Witness repair was queued. Let sync complete, then retry send.'
+                    .tr;
             break;
           case 'ERR_SYNC_FINALIZING':
           default:
             message =
-                'Sync is finalizing spendability. Please retry in a moment.';
+                'Sync is finalizing spendability. Please retry in a moment.'.tr;
             break;
         }
         setState(() {
@@ -1647,13 +1689,19 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         setState(() {
           if (pending > 0) {
             _errorMessage =
-                'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '
-                'have ${available.toStringAsFixed(8)} ARRR. '
-                '${pending.toStringAsFixed(8)} ARRR is pending and becomes spendable after 1 confirmation.';
+                'Insufficient spendable funds: need {needed} ARRR, have {available} ARRR. {pending} ARRR is pending and becomes spendable after 1 confirmation.'
+                    .trArgs({
+                      'needed': total.toStringAsFixed(8),
+                      'available': available.toStringAsFixed(8),
+                      'pending': pending.toStringAsFixed(8),
+                    });
           } else {
             _errorMessage =
-                'Insufficient spendable funds: need ${total.toStringAsFixed(8)} ARRR, '
-                'have ${available.toStringAsFixed(8)} ARRR';
+                'Insufficient spendable funds: need {needed} ARRR, have {available} ARRR'
+                    .trArgs({
+                      'needed': total.toStringAsFixed(8),
+                      'available': available.toStringAsFixed(8),
+                    });
           }
           _isValidating = false;
         });
@@ -1769,7 +1817,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                       final value = controller.text.trim();
                       if (value.isEmpty) {
                         setDialogState(
-                          () => errorText = 'Passphrase is required.',
+                          () => errorText = 'Passphrase is required.'.tr,
                         );
                         return;
                       }
@@ -1794,7 +1842,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
                     final value = controller.text.trim();
                     if (value.isEmpty) {
                       setDialogState(
-                        () => errorText = 'Passphrase is required.',
+                        () => errorText = 'Passphrase is required.'.tr,
                       );
                       return;
                     }
@@ -1826,7 +1874,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         final available = await BiometricAuth.isAvailable();
         if (available) {
           final authenticated = await BiometricAuth.authenticate(
-            reason: 'Authenticate to send this transaction',
+            reason: 'Authenticate to send this transaction'.tr,
             biometricOnly: true,
           );
           if (authenticated) {
@@ -1881,7 +1929,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   Future<void> _sendTransaction() async {
     if (_pendingTx == null) {
       setState(() {
-        _errorMessage = 'Transaction not built. Please try again.';
+        _errorMessage = 'Transaction not built. Please try again.'.tr;
         _currentStep = SendStep.error;
       });
       return;
@@ -1890,7 +1938,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
     setState(() {
       _currentStep = SendStep.sending;
       _isSending = true;
-      _sendingStage = 'Signing transaction...';
+      _sendingStage = 'Signing transaction...'.tr;
     });
 
     try {
@@ -1901,7 +1949,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       }
 
       // Sign transaction via FFI
-      setState(() => _sendingStage = 'Generating Cryptographic Proofs...');
+      setState(() => _sendingStage = 'Generating cryptographic proofs...'.tr);
       final signedTx = (_pendingKeyIds != null || _pendingAddressIds != null)
           ? await FfiBridge.signTxFiltered(
               walletId: walletId,
@@ -1912,7 +1960,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
           : await FfiBridge.signTx(walletId, _pendingTx!);
 
       // Broadcast transaction via FFI
-      setState(() => _sendingStage = 'Broadcasting to network...');
+      setState(() => _sendingStage = 'Broadcasting to network...'.tr);
       final txId = await FfiBridge.broadcastTx(signedTx);
 
       // Success!
@@ -1957,7 +2005,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
           if (_totalAmount > 0) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Amount: ${_totalAmount.toStringAsFixed(8)} ARRR',
+              'Amount: {amount} ARRR'.trArgs({
+                'amount': _totalAmount.toStringAsFixed(8),
+              }),
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -2043,10 +2093,10 @@ class _SendScreenState extends ConsumerState<SendScreen> {
   @override
   Widget build(BuildContext context) {
     final title = _currentStep == SendStep.review
-        ? 'Review'
+        ? 'Review'.tr
         : _currentStep == SendStep.sending
-        ? 'Sending'
-        : 'Send';
+        ? 'Sending'.tr
+        : 'Send'.tr;
     final isMobile = PSpacing.isMobile(MediaQuery.of(context).size.width);
 
     return PopScope(
@@ -2062,9 +2112,9 @@ class _SendScreenState extends ConsumerState<SendScreen> {
         appBar: PAppBar(
           title: title,
           subtitle: _isWatchOnly
-              ? 'This is view only. Sending is off.'
+              ? 'This is view only. Sending is off.'.tr
               : (_currentStep == SendStep.recipients
-                    ? 'Paste an address.'
+                    ? 'Paste an address.'.tr
                     : null),
           onBack: _isSending ? null : _handleBackNavigation,
           showBackButton: true,
@@ -2182,7 +2232,7 @@ class _SendScreenState extends ConsumerState<SendScreen> {
 
       case SendStep.error:
         return _ErrorStep(
-          error: _errorMessage ?? 'Unknown error',
+          error: _errorMessage ?? 'Unknown error'.tr,
           onRetry: () => setState(() => _currentStep = SendStep.recipients),
         );
     }
@@ -2447,11 +2497,11 @@ class _RecipientsStep extends StatelessWidget {
         Semantics(
           button: true,
           label: isValidating
-              ? 'Validating transaction details'
-              : 'Review transaction',
-          value: isValidating ? 'In progress' : 'Ready',
+              ? 'Validating transaction details'.tr
+              : 'Review transaction'.tr,
+          value: isValidating ? 'In progress'.tr : 'Ready'.tr,
           child: PButton(
-            text: isValidating ? 'Validating...' : 'Review',
+            text: isValidating ? 'Validating...'.tr : 'Review'.tr,
             onPressed: isValidating ? null : onContinue,
             variant: PButtonVariant.primary,
             size: PButtonSize.large,
@@ -2508,8 +2558,8 @@ class _OutputCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final canMax = maxAmount >= 0.00000001;
     final amountLabel = showFiatAmounts
-        ? 'Amount (${currency.code})'
-        : 'Amount (ARRR)';
+        ? 'Amount ({currency})'.trArgs({'currency': currency.code})
+        : 'Amount (ARRR)'.tr;
     final amountHint = showFiatAmounts
         ? (currency.fractionDigits == 0
               ? '0'
@@ -2539,7 +2589,7 @@ class _OutputCard extends StatelessWidget {
                 ),
                 const SizedBox(width: AppSpacing.sm),
                 Text(
-                  'Recipient ${index + 1}',
+                  'Recipient {number}'.trArgs({'number': index + 1}),
                   style: AppTypography.labelMedium,
                 ),
                 const Spacer(),
@@ -2632,7 +2682,7 @@ class _OutputCard extends StatelessWidget {
             PInput(
               controller: output.memoController,
               label: 'Memo (optional)'.tr,
-              hint: 'Add a private note',
+              hint: 'Add a private note'.tr,
               helperText: 'A private note only the receiver can read.'.tr,
               maxLines: 2,
               maxLength: kMaxMemoBytes,
@@ -2643,7 +2693,10 @@ class _OutputCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: AppSpacing.xs),
                 child: Text(
-                  '${output.memoByteLength}/$kMaxMemoBytes bytes',
+                  '{used}/{maximum} bytes'.trArgs({
+                    'used': output.memoByteLength,
+                    'maximum': kMaxMemoBytes,
+                  }),
                   style: AppTypography.caption.copyWith(
                     color: output.memoByteLength > kMaxMemoBytes
                         ? AppColors.error
@@ -2735,7 +2788,7 @@ class _RecipientAddressAutocompleteFieldState
           controller: textController,
           focusNode: focusNode,
           label: 'Recipient address'.tr,
-          hint: 'Paste address',
+          hint: 'Paste address'.tr,
           maxLines: 1,
           onChanged: widget.onChanged,
           onSubmitted: (_) => onFieldSubmitted(),
@@ -2934,8 +2987,8 @@ class _AmountInputSuffix extends StatelessWidget {
         ? AppColors.textSecondary
         : AppColors.textTertiary;
     final tooltip = showFiatAmounts
-        ? 'Enter amount in ARRR'
-        : 'Enter amount in $currencyCode';
+        ? 'Enter amount in ARRR'.tr
+        : 'Enter amount in {currency}'.trArgs({'currency': currencyCode});
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -3123,7 +3176,7 @@ class _AmountPresetSliderState extends State<_AmountPresetSlider> {
                     Positioned(
                       left: clampLeft(xFor(0.0) - (w0 / 2), w0),
                       child: _AmountPresetLabel(
-                        label: '0'.tr,
+                        label: '0',
                         isSelected: isAt0,
                         onTap: enabled
                             ? () => _setValue(0.0, commit: true)
@@ -3133,7 +3186,7 @@ class _AmountPresetSliderState extends State<_AmountPresetSlider> {
                     Positioned(
                       left: clampLeft(xFor(0.5) - (wHalf / 2), wHalf),
                       child: _AmountPresetLabel(
-                        label: '1/2'.tr,
+                        label: '1/2',
                         isSelected: isAtHalf,
                         onTap: enabled
                             ? () => _setValue(0.5, commit: true)
@@ -3367,7 +3420,7 @@ class _ReviewStep extends StatelessWidget {
                       Row(
                         children: [
                           Text(
-                            'Recipient ${i + 1}',
+                            'Recipient {number}'.trArgs({'number': i + 1}),
                             style: AppTypography.labelMedium,
                           ),
                           const Spacer(),
@@ -3559,7 +3612,7 @@ class _ReviewStep extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
-                    "Transactions can't be undone.",
+                    "Transactions can't be undone.".tr,
                     style: AppTypography.caption.copyWith(
                       color: AppColors.textPrimary,
                     ),
@@ -3576,7 +3629,7 @@ class _ReviewStep extends StatelessWidget {
             children: [
               Expanded(
                 child: PButton(
-                  text: 'Edit',
+                  text: 'Edit'.tr,
                   onPressed: onEdit,
                   variant: PButtonVariant.secondary,
                   size: PButtonSize.large,
@@ -3586,7 +3639,7 @@ class _ReviewStep extends StatelessWidget {
               Expanded(
                 flex: 2,
                 child: PButton(
-                  text: 'Unlock to send',
+                  text: 'Unlock to send'.tr,
                   onPressed: onConfirm,
                   variant: PButtonVariant.primary,
                   size: PButtonSize.large,
@@ -3601,13 +3654,10 @@ class _ReviewStep extends StatelessWidget {
 }
 
 class _SelectionAwareCopyBlock extends StatefulWidget {
-  const _SelectionAwareCopyBlock({
-    required this.child,
-    this.helperText = 'Selection active. Press Ctrl+C (or Cmd+C) to copy.',
-  });
+  const _SelectionAwareCopyBlock({required this.child, this.helperText});
 
   final Widget child;
-  final String helperText;
+  final String? helperText;
 
   @override
   State<_SelectionAwareCopyBlock> createState() =>
@@ -3673,7 +3723,8 @@ class _SelectionAwareCopyBlockState extends State<_SelectionAwareCopyBlock> {
             if (_selectionActive) ...[
               const SizedBox(height: AppSpacing.xs),
               Text(
-                widget.helperText,
+                widget.helperText ??
+                    'Selection active. Press Ctrl+C (or Cmd+C) to copy.'.tr,
                 style: AppTypography.caption.copyWith(
                   color: AppColors.textTertiary,
                 ),
@@ -3825,7 +3876,7 @@ class _ErrorStep extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.xxl),
             PButton(
-              text: 'Try Again',
+              text: 'Try Again'.tr,
               onPressed: onRetry,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,

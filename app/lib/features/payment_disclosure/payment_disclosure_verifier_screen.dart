@@ -165,7 +165,7 @@ class _PaymentDisclosureVerifierScreenState
     if (!mounted) return;
     PSnack.show(
       context: context,
-      message: '$label copied'.tr,
+      message: '{label} copied'.trArgs({'label': label}),
       variant: PSnackVariant.success,
       duration: const Duration(seconds: 2),
     );
@@ -591,8 +591,9 @@ class _VerifiedResultCard extends StatelessWidget {
           ),
           const SizedBox(height: PSpacing.sm),
           Text(
-            'This disclosure decrypts one ${result.disclosureType} payment only.'
-                .tr,
+            'This disclosure decrypts one {type} payment only.'.trArgs({
+              'type': result.disclosureType,
+            }),
             style: PTypography.bodySmall(color: AppColors.textSecondary),
           ),
           const SizedBox(height: PSpacing.lg),
@@ -744,7 +745,7 @@ class _ProofField extends StatelessWidget {
                 ),
                 if (onCopy != null)
                   IconButton(
-                    tooltip: 'Copy $label'.tr,
+                    tooltip: 'Copy {label}'.trArgs({'label': label}),
                     visualDensity: VisualDensity.compact,
                     onPressed: onCopy,
                     icon: const Icon(Icons.copy, size: 18),
@@ -886,12 +887,12 @@ String _formatArrr(BigInt arrrtoshis) {
 String _verificationSummary(PaymentDisclosureVerification result) {
   final memo = result.memo?.trim();
   return [
-    'Payment disclosure verified',
-    'Type: ${result.disclosureType}',
-    'Amount: ${_formatArrr(result.amount)}',
-    'Recipient: ${result.address}',
-    'Transaction ID: ${result.txid}',
-    'Output/action index: ${result.outputIndex}',
-    if (memo != null && memo.isNotEmpty) 'Memo: $memo',
+    'Payment disclosure verified'.tr,
+    'Type: {type}'.trArgs({'type': result.disclosureType}),
+    'Amount: {amount}'.trArgs({'amount': _formatArrr(result.amount)}),
+    'Recipient: {address}'.trArgs({'address': result.address}),
+    'Transaction ID: {txid}'.trArgs({'txid': result.txid}),
+    'Output/action index: {index}'.trArgs({'index': result.outputIndex}),
+    if (memo != null && memo.isNotEmpty) 'Memo: {memo}'.trArgs({'memo': memo}),
   ].join('\n');
 }

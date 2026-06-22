@@ -127,7 +127,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = 'Failed to load build info: $e';
+        _error = 'Failed to load build info: {error}'.trArgs({'error': e});
         _isLoading = false;
       });
     }
@@ -137,7 +137,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
     if (kIsWeb) {
       setState(() {
         _verificationStatus = ReleaseVerificationStatus.error;
-        _verificationMessage = 'Release verification is not supported on web.';
+        _verificationMessage =
+            'Release verification is not supported on web.'.tr;
       });
       return;
     }
@@ -147,7 +148,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
       setState(() {
         _verificationStatus = ReleaseVerificationStatus.error;
         _verificationMessage =
-            'Outbound GitHub checks are disabled in Settings > Outbound API Calls.';
+            'Outbound GitHub checks are disabled in Settings > Outbound API Calls.'
+                .tr;
       });
       return;
     }
@@ -185,7 +187,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         setState(() {
           _verificationStatus = ReleaseVerificationStatus.noRelease;
           _verificationMessage =
-              'No GitHub releases found yet. This page will verify hashes once releases are published.';
+              'No GitHub releases found yet. This page will verify hashes once releases are published.'
+                  .tr;
         });
         return;
       }
@@ -210,7 +213,8 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         setState(() {
           _verificationStatus = ReleaseVerificationStatus.noChecksums;
           _verificationMessage =
-              'This release cannot be verified because no readable checksums were published. Only install builds from official PirateNetwork release assets.';
+              'This release cannot be verified because no readable checksums were published. Only install builds from official PirateNetwork release assets.'
+                  .tr;
         });
         return;
       }
@@ -219,7 +223,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
         setState(() {
           _verificationStatus = ReleaseVerificationStatus.noLocalArtifact;
           _verificationMessage =
-              'Local build artifact could not be accessed on this platform.';
+              'Local build artifact could not be accessed on this platform.'.tr;
         });
         return;
       }
@@ -241,8 +245,13 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
           _verificationStatus = ReleaseVerificationStatus.noMatchingChecksum;
           _verificationMessage =
               'This build is not verified against the selected official release. '
-              'Published checksums were found, but none match local artifacts'
-              '${sampledNames.isEmpty ? '.' : ' ($sampledNames).'}';
+                      'Published checksums were found, but none match local '
+                      'artifacts{sampledNames}.'
+                  .trArgs({
+                    'sampledNames': sampledNames.isEmpty
+                        ? ''
+                        : ' ($sampledNames)',
+                  });
         });
         return;
       }
@@ -265,14 +274,17 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
             ? ReleaseVerificationStatus.match
             : ReleaseVerificationStatus.mismatch;
         _verificationMessage = matched
-            ? 'Local build hash matches the published release.'
-            : 'Local build hash does not match the published release. Do not trust this build for funds unless you can independently verify its source and build pipeline.';
+            ? 'Local build hash matches the published release.'.tr
+            : 'Local build hash does not match the published release. Do not trust this build for funds unless you can independently verify its source and build pipeline.'
+                  .tr;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _verificationStatus = ReleaseVerificationStatus.error;
-        _verificationMessage = 'Verification failed: $e';
+        _verificationMessage = 'Verification failed: {error}'.trArgs({
+          'error': e,
+        });
       });
     }
   }
@@ -608,23 +620,23 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
   String _statusLabel(ReleaseVerificationStatus status) {
     switch (status) {
       case ReleaseVerificationStatus.match:
-        return 'Match';
+        return 'Match'.tr;
       case ReleaseVerificationStatus.mismatch:
-        return 'Mismatch';
+        return 'Mismatch'.tr;
       case ReleaseVerificationStatus.checking:
-        return 'Checking';
+        return 'Checking'.tr;
       case ReleaseVerificationStatus.noRelease:
-        return 'No Releases';
+        return 'No Releases'.tr;
       case ReleaseVerificationStatus.noChecksums:
-        return 'No Checksums';
+        return 'No Checksums'.tr;
       case ReleaseVerificationStatus.noMatchingChecksum:
-        return 'Unverified Build';
+        return 'Unverified Build'.tr;
       case ReleaseVerificationStatus.noLocalArtifact:
-        return 'No Local Artifact';
+        return 'No Local Artifact'.tr;
       case ReleaseVerificationStatus.error:
-        return 'Error';
+        return 'Error'.tr;
       case ReleaseVerificationStatus.idle:
-        return 'Not Checked';
+        return 'Not Checked'.tr;
     }
   }
 
@@ -783,7 +795,10 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
             ),
             SizedBox(height: PSpacing.md),
           ],
-          _buildDataRow(label: 'Release'.tr, value: _releaseTag ?? 'Not found'),
+          _buildDataRow(
+            label: 'Release'.tr,
+            value: _releaseTag ?? 'Not found'.tr,
+          ),
           if (_releaseUrl != null)
             _buildDataRow(
               label: 'Release URL'.tr,
@@ -893,7 +908,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                               ReleaseVerificationStatus.checking
                           ? null
                           : _checkReleaseVerification,
-                      text: 'Check GitHub',
+                      text: 'Check GitHub'.tr,
                       variant: PButtonVariant.outline,
                       loading:
                           _verificationStatus ==
@@ -904,7 +919,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                       SizedBox(height: PSpacing.sm),
                       PButton(
                         onPressed: () => _copyToClipboard(_localHash!),
-                        text: 'Copy Local Hash',
+                        text: 'Copy Local Hash'.tr,
                         variant: PButtonVariant.secondary,
                         fullWidth: true,
                       ),
@@ -922,7 +937,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                               ReleaseVerificationStatus.checking
                           ? null
                           : _checkReleaseVerification,
-                      text: 'Check GitHub',
+                      text: 'Check GitHub'.tr,
                       variant: PButtonVariant.outline,
                       loading:
                           _verificationStatus ==
@@ -935,7 +950,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
                     Expanded(
                       child: PButton(
                         onPressed: () => _copyToClipboard(_localHash!),
-                        text: 'Copy Local Hash',
+                        text: 'Copy Local Hash'.tr,
                         variant: PButtonVariant.secondary,
                         fullWidth: true,
                       ),
@@ -949,7 +964,7 @@ class _VerifyBuildScreenState extends ConsumerState<VerifyBuildScreen> {
             SizedBox(height: PSpacing.sm),
             PButton(
               onPressed: () => _openLink(officialReleaseUrl),
-              text: 'Open Official Releases',
+              text: 'Open Official Releases'.tr,
               variant: PButtonVariant.outline,
               fullWidth: true,
             ),

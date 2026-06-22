@@ -91,7 +91,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     final externalAddresses = keyAddresses.map((addr) => addr.address).toSet();
     final key = keys.firstWhere(
       (k) => k.id == widget.keyId,
-      orElse: () => throw StateError('Key group not found'),
+      orElse: () => throw StateError('Key group not found'.tr),
     );
     return _KeyDetailData(
       key: key,
@@ -152,7 +152,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     if (biometricsEnabled && biometricAvailable) {
       try {
         final authenticated = await BiometricAuth.authenticate(
-          reason: 'Verify identity to export keys',
+          reason: 'Verify identity to export keys'.tr,
           biometricOnly: true,
         );
         if (authenticated) return true;
@@ -178,7 +178,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
             Future<void> handleVerify() async {
               final passphrase = controller.text.trim();
               if (passphrase.isEmpty) {
-                setDialogState(() => error = 'Enter your passphrase');
+                setDialogState(() => error = 'Enter your passphrase'.tr);
                 return;
               }
               setDialogState(() {
@@ -193,14 +193,14 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                   Navigator.of(context).pop(true);
                 } else {
                   setDialogState(() {
-                    error = 'Passphrase is incorrect';
+                    error = 'Passphrase is incorrect'.tr;
                     isVerifying = false;
                   });
                 }
               } catch (_) {
                 if (!context.mounted) return;
                 setDialogState(() {
-                  error = 'Unable to verify passphrase';
+                  error = 'Unable to verify passphrase'.tr;
                   isVerifying = false;
                 });
               }
@@ -234,7 +234,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                             PInput(
                               controller: controller,
                               label: 'Passphrase'.tr,
-                              hint: 'Enter your wallet passphrase',
+                              hint: 'Enter your wallet passphrase'.tr,
                               obscureText: true,
                             ),
                             if (error != null) ...[
@@ -264,7 +264,9 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                         PButton(
                           onPressed: isVerifying ? null : handleVerify,
                           variant: PButtonVariant.primary,
-                          child: Text(isVerifying ? 'Verifying...' : 'Verify'),
+                          child: Text(
+                            isVerifying ? 'Verifying...'.tr : 'Verify'.tr,
+                          ),
                         ),
                       ],
                     ),
@@ -298,29 +300,29 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
 
       final sections = <Widget?>[
         _buildKeyExportSection(
-          'Sapling viewing key',
+          'Sapling viewing key'.tr,
           export.saplingViewingKey,
           ClipboardDataType.viewingKey,
         ),
         _buildKeyExportSection(
-          'Orchard viewing key',
+          'Orchard viewing key'.tr,
           export.orchardViewingKey,
           ClipboardDataType.viewingKey,
         ),
         _buildKeyExportSection(
-          'Sapling spending key',
+          'Sapling spending key'.tr,
           export.saplingSpendingKey,
           ClipboardDataType.spendingKey,
         ),
         _buildKeyExportSection(
-          'Orchard spending key',
+          'Orchard spending key'.tr,
           export.orchardSpendingKey,
           ClipboardDataType.spendingKey,
         ),
       ].whereType<Widget>().toList();
 
       if (sections.isEmpty) {
-        throw StateError('No exportable keys for this key group.');
+        throw StateError('No exportable keys for this key group.'.tr);
       }
 
       final protection = ScreenshotProtection.protect();
@@ -346,7 +348,9 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
         protection.dispose();
       }
     } catch (e) {
-      setState(() => _error = 'Failed to export keys: $e');
+      setState(
+        () => _error = 'Failed to export keys: {error}'.trArgs({'error': e}),
+      );
     }
   }
 
@@ -446,12 +450,13 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
                 }
                 if (snapshot.hasError) {
                   return _buildError(
-                    snapshot.error?.toString() ?? 'Failed to load key details',
+                    snapshot.error?.toString() ??
+                        'Failed to load key details'.tr,
                   );
                 }
                 final data = snapshot.data;
                 if (data == null) {
-                  return _buildError('Key details missing');
+                  return _buildError('Key details missing'.tr);
                 }
 
                 final key = data.key;
@@ -664,7 +669,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     await _copyManagedText(
       address.address,
       dataType: ClipboardDataType.address,
-      successMessage: 'Address copied. Clears in 60 seconds.',
+      successMessage: 'Address copied. Clears in 60 seconds.'.tr,
     );
   }
 }
@@ -713,7 +718,7 @@ class _KeySummaryCard extends StatelessWidget {
                 ),
               if (!keyInfo.spendable)
                 _chip(
-                  'View only',
+                  'View only'.tr,
                   AppColors.warningBackground,
                   AppColors.warning,
                 ),
@@ -728,7 +733,7 @@ class _KeySummaryCard extends StatelessWidget {
     if (keyInfo.keyType == KeyTypeInfo.seed) {
       final label = keyInfo.label?.trim();
       if (label == null || label.isEmpty || label == 'Seed') {
-        return 'Default wallet keys';
+        return 'Default wallet keys'.tr;
       }
     }
     return keyInfo.label ?? _defaultLabel(keyInfo);
@@ -736,19 +741,22 @@ class _KeySummaryCard extends StatelessWidget {
 
   String _defaultLabel(KeyGroupInfo keyInfo) {
     return switch (keyInfo.keyType) {
-      KeyTypeInfo.seed => 'Default wallet keys',
-      KeyTypeInfo.importedSpending => 'Imported spending key',
-      KeyTypeInfo.importedViewing => 'Viewing key',
+      KeyTypeInfo.seed => 'Default wallet keys'.tr,
+      KeyTypeInfo.importedSpending => 'Imported spending key'.tr,
+      KeyTypeInfo.importedViewing => 'Viewing key'.tr,
     };
   }
 
   String _subtitle(KeyGroupInfo keyInfo) {
     final type = switch (keyInfo.keyType) {
-      KeyTypeInfo.seed => 'Seed phrase keys',
-      KeyTypeInfo.importedSpending => 'Imported spending key',
-      KeyTypeInfo.importedViewing => 'Imported viewing key',
+      KeyTypeInfo.seed => 'Seed phrase keys'.tr,
+      KeyTypeInfo.importedSpending => 'Imported spending key'.tr,
+      KeyTypeInfo.importedViewing => 'Imported viewing key'.tr,
     };
-    return '$type | Birthday ${keyInfo.birthdayHeight}';
+    return '{type} | Birthday {height}'.trArgs({
+      'type': type,
+      'height': keyInfo.birthdayHeight,
+    });
   }
 
   Widget _chip(String text, Color background, Color foreground) {
@@ -834,12 +842,17 @@ class _AddressListItem extends StatelessWidget {
                 ],
                 SizedBox(height: PSpacing.xs),
                 Text(
-                  'Index ${address.diversifierIndex} | ${_formatTimestamp(address.createdAt)}',
+                  'Index {index} | {timestamp}'.trArgs({
+                    'index': address.diversifierIndex,
+                    'timestamp': _formatTimestamp(address.createdAt),
+                  }),
                   style: PTypography.bodySmall(color: AppColors.textSecondary),
                 ),
                 SizedBox(height: PSpacing.xs),
                 Text(
-                  'Balance ${_formatArrr(address.balance)}',
+                  'Balance {balance}'.trArgs({
+                    'balance': _formatArrr(address.balance),
+                  }),
                   style: PTypography.bodySmall(color: AppColors.textSecondary),
                 ),
               ],

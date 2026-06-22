@@ -112,7 +112,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
       if (mounted && success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Deleted "${entry.label}"'),
+            content: Text('Deleted "{label}"'.trArgs({'label': entry.label})),
             backgroundColor: AppColors.surfaceElevated,
           ),
         );
@@ -141,11 +141,13 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
             // Hero Header
             PGradientHeroHeader(
               title: 'Address Book'.tr,
-              subtitle: '${state.entries.length} saved addresses',
+              subtitle: '{count} saved addresses'.trArgs({
+                'count': state.entries.length,
+              }),
               actions: [
                 const WalletSwitcherButton(compact: true),
                 PGradientButton(
-                  text: 'Add',
+                  text: 'Add'.tr,
                   icon: Icons.add,
                   size: PGradientButtonSize.small,
                   onPressed: () => _navigateToAdd(walletId),
@@ -249,7 +251,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
     }
 
     if (state.error != null) {
-      return _buildErrorState(state.error ?? 'Unknown error', walletId);
+      return _buildErrorState(state.error ?? 'Unknown error'.tr, walletId);
     }
 
     if (filteredEntries.isEmpty) {
@@ -313,14 +315,14 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              hasSearch ? 'No matches found' : 'No saved addresses',
+              hasSearch ? 'No matches found'.tr : 'No saved addresses'.tr,
               style: AppTypography.h3.copyWith(color: AppColors.textPrimary),
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               hasSearch
-                  ? 'Try adjusting your search or filters'
-                  : 'Save trusted addresses for faster sends.',
+                  ? 'Try adjusting your search or filters'.tr
+                  : 'Save trusted addresses for faster sends.'.tr,
               style: AppTypography.body.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -329,7 +331,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
             if (!hasSearch) ...[
               const SizedBox(height: AppSpacing.xl),
               PGradientButton(
-                text: 'Add First Address',
+                text: 'Add First Address'.tr,
                 icon: Icons.add,
                 onPressed: () => _navigateToAdd(walletId),
               ),
@@ -366,7 +368,7 @@ class _AddressBookListScreenState extends ConsumerState<AddressBookListScreen> {
             ),
             const SizedBox(height: AppSpacing.xl),
             PGradientButton(
-              text: 'Retry',
+              text: 'Retry'.tr,
               icon: Icons.refresh,
               onPressed: () => _refreshEntries(walletId),
             ),
@@ -569,7 +571,8 @@ class _DeleteConfirmationDialog extends StatelessWidget {
     return PDialog(
       title: 'Delete address?'.tr,
       content: Text(
-        'Remove "${entry.label}" from your address book? This cannot be undone.',
+        'Remove "{label}" from your address book? This cannot be undone.'
+            .trArgs({'label': entry.label}),
         style: AppTypography.body.copyWith(color: AppColors.textSecondary),
       ),
       actions: [

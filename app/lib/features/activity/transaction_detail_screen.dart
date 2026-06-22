@@ -182,7 +182,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
       currentHeight: currentHeight,
     );
     final isConfirmed = tx.confirmed || confirmations >= 1;
-    final statusText = isConfirmed ? 'Confirmed' : 'Pending';
+    final statusText = isConfirmed ? 'Confirmed'.tr : 'Pending'.tr;
     final statusColor = isConfirmed ? AppColors.success : AppColors.warning;
     final timestamp = _convertTimestamp(tx.timestamp);
     final localizations = MaterialLocalizations.of(context);
@@ -203,7 +203,7 @@ class _TransactionDetailsState extends ConsumerState<_TransactionDetails> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isReceived ? 'Received' : 'Sent',
+                  isReceived ? 'Received'.tr : 'Sent'.tr,
                   style: PTypography.heading4(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: PSpacing.xs),

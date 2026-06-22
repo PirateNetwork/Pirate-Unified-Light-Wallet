@@ -84,7 +84,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
   Future<void> _showImportViewingKeyDialog() async {
     final defaultBirthday = await _getDefaultBirthdayHeight();
     if (!mounted) return;
-    final nameController = TextEditingController(text: 'View only wallet');
+    final nameController = TextEditingController(text: 'View only wallet'.tr);
     final saplingController = TextEditingController();
     final orchardController = TextEditingController();
     final birthdayController = TextEditingController(
@@ -108,15 +108,17 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
               final birthday = int.tryParse(birthdayText);
 
               if (name.isEmpty) {
-                setDialogState(() => error = 'Enter a wallet name');
+                setDialogState(() => error = 'Enter a wallet name'.tr);
                 return;
               }
               if (saplingKey.isEmpty && orchardKey.isEmpty) {
-                setDialogState(() => error = 'Provide a viewing key');
+                setDialogState(() => error = 'Provide a viewing key'.tr);
                 return;
               }
               if (birthday == null || birthday <= 0) {
-                setDialogState(() => error = 'Enter a valid birthday height');
+                setDialogState(
+                  () => error = 'Enter a valid birthday height'.tr,
+                );
                 return;
               }
 
@@ -136,7 +138,10 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 if (!context.mounted) return;
                 Navigator.of(context).pop(true);
               } catch (e) {
-                setDialogState(() => error = 'Failed to import: $e');
+                setDialogState(
+                  () =>
+                      error = 'Failed to import: {error}'.trArgs({'error': e}),
+                );
               } finally {
                 if (context.mounted) {
                   setDialogState(() => isLoading = false);
@@ -172,27 +177,27 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                             PInput(
                               controller: nameController,
                               label: 'Wallet name'.tr,
-                              hint: 'e.g. View only wallet',
+                              hint: 'e.g. View only wallet'.tr,
                             ),
                             SizedBox(height: PSpacing.md),
                             PInput(
                               controller: saplingController,
                               label: 'Sapling viewing key (optional)'.tr,
-                              hint: 'Paste your Sapling viewing key',
+                              hint: 'Paste your Sapling viewing key'.tr,
                               maxLines: 4,
                             ),
                             SizedBox(height: PSpacing.md),
                             PInput(
                               controller: orchardController,
                               label: 'Orchard viewing key (optional)'.tr,
-                              hint: 'Paste your Orchard viewing key',
+                              hint: 'Paste your Orchard viewing key'.tr,
                               maxLines: 4,
                             ),
                             SizedBox(height: PSpacing.md),
                             PInput(
                               controller: birthdayController,
                               label: 'Birthday height'.tr,
-                              hint: 'Block height to start scanning',
+                              hint: 'Block height to start scanning'.tr,
                               keyboardType: TextInputType.number,
                             ),
                             if (error != null) ...[
@@ -222,7 +227,9 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                         PButton(
                           onPressed: isLoading ? null : handleImport,
                           variant: PButtonVariant.primary,
-                          child: Text(isLoading ? 'Importing...' : 'Import'),
+                          child: Text(
+                            isLoading ? 'Importing...'.tr : 'Import'.tr,
+                          ),
                         ),
                       ],
                     ),
@@ -241,7 +248,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     birthdayController.dispose();
 
     if (imported ?? false) {
-      _showSnack('View only wallet imported.');
+      _showSnack('View only wallet imported.'.tr);
     }
   }
 
@@ -312,7 +319,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 }
                 if (snapshot.hasError) {
                   return _buildError(
-                    snapshot.error?.toString() ?? 'Failed to load keys',
+                    snapshot.error?.toString() ?? 'Failed to load keys'.tr,
                   );
                 }
                 final keys = snapshot.data ?? [];
@@ -461,7 +468,7 @@ class _KeyCard extends StatelessWidget {
                 ),
               if (!keyInfo.spendable)
                 _chip(
-                  'View only',
+                  'View only'.tr,
                   AppColors.warningBackground,
                   AppColors.warning,
                 ),
@@ -476,7 +483,7 @@ class _KeyCard extends StatelessWidget {
     if (key.keyType == KeyTypeInfo.seed) {
       final label = key.label?.trim();
       if (label == null || label.isEmpty || label == 'Seed') {
-        return 'Default wallet keys';
+        return 'Default wallet keys'.tr;
       }
     }
     return key.label ?? _defaultKeyLabel(key);
@@ -485,21 +492,24 @@ class _KeyCard extends StatelessWidget {
   String _defaultKeyLabel(KeyGroupInfo key) {
     switch (key.keyType) {
       case KeyTypeInfo.seed:
-        return 'Default wallet keys';
+        return 'Default wallet keys'.tr;
       case KeyTypeInfo.importedSpending:
-        return 'Imported spending key';
+        return 'Imported spending key'.tr;
       case KeyTypeInfo.importedViewing:
-        return 'Viewing key';
+        return 'Viewing key'.tr;
     }
   }
 
   String _keyTypeLabel(KeyGroupInfo key) {
     final type = switch (key.keyType) {
-      KeyTypeInfo.seed => 'Seed phrase keys',
-      KeyTypeInfo.importedSpending => 'Imported spending key',
-      KeyTypeInfo.importedViewing => 'Imported viewing key',
+      KeyTypeInfo.seed => 'Seed phrase keys'.tr,
+      KeyTypeInfo.importedSpending => 'Imported spending key'.tr,
+      KeyTypeInfo.importedViewing => 'Imported viewing key'.tr,
     };
-    return '$type | Birthday ${key.birthdayHeight}';
+    return '{type} | Birthday {height}'.trArgs({
+      'type': type,
+      'height': key.birthdayHeight,
+    });
   }
 
   Widget _chip(String text, Color background, Color foreground) {

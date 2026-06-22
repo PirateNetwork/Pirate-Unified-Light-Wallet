@@ -81,7 +81,7 @@ class BalanceHero extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
                   onPressed: onToggleVisibility,
-                  tooltip: isHidden ? 'Show balance' : 'Hide balance',
+                  tooltip: isHidden ? 'Show balance'.tr : 'Hide balance'.tr,
                   size: compact
                       ? PIconButtonSize.medium
                       : PIconButtonSize.large,

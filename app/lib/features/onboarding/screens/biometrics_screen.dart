@@ -53,11 +53,11 @@ class _OnboardingBiometricsScreenState
 
     try {
       final authenticated = await BiometricAuth.authenticate(
-        reason: 'Enable biometric unlock for Pirate Wallet',
+        reason: 'Enable biometric unlock for Pirate Wallet'.tr,
         biometricOnly: true,
       );
       if (!authenticated) {
-        setState(() => _error = 'Biometric authentication failed.');
+        setState(() => _error = 'Biometric authentication failed.'.tr);
         return;
       }
 
@@ -66,7 +66,8 @@ class _OnboardingBiometricsScreenState
       if (passphrase == null || passphrase.isEmpty) {
         setState(() {
           _error =
-              'Biometrics need your passphrase once to finish setup. You can enable it later in Settings.';
+              'Biometrics need your passphrase once to finish setup. You can enable it later in Settings.'
+                  .tr;
         });
         return;
       }
@@ -97,10 +98,10 @@ class _OnboardingBiometricsScreenState
     if (lowered.contains('-34018') ||
         lowered.contains('required entitlement') ||
         lowered.contains('keychain')) {
-      return 'Secure storage is unavailable for this macOS build. '
-          'Install the latest build and try again.';
+      return 'Secure storage is unavailable for this macOS build. Install the latest build and try again.'
+          .tr;
     }
-    return 'Unable to enable biometrics.';
+    return 'Unable to enable biometrics.'.tr;
   }
 
   Future<void> _skip() async {
@@ -127,7 +128,8 @@ class _OnboardingBiometricsScreenState
       if (mounted) {
         setState(() {
           _error =
-              'Unable to persist biometric preference right now. Please try again.';
+              'Unable to persist biometric preference right now. Please try again.'
+                  .tr;
         });
       }
       debugPrint('Failed to complete onboarding biometric skip: $e');
@@ -222,8 +224,8 @@ class _OnboardingBiometricsScreenState
               ),
             PButton(
               text: _isAvailable
-                  ? 'Enable biometrics'
-                  : 'Biometrics unavailable',
+                  ? 'Enable biometrics'.tr
+                  : 'Biometrics unavailable'.tr,
               onPressed: !_isAvailable || _isLoading ? null : _enableBiometrics,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,

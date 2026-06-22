@@ -3,13 +3,14 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// Runtime ARB-backed localizer for bulk string migration.
-///
-/// Keys are source English strings. Values are translated strings.
+/// Loads runtime ARB catalogs keyed by their English source strings.
 class ArbTextLocalizer extends ChangeNotifier {
   ArbTextLocalizer._();
 
   static final ArbTextLocalizer instance = ArbTextLocalizer._();
+  static final RegExp _placeholderPattern = RegExp(
+    r'\{([A-Za-z][A-Za-z0-9_]*)\}',
+  );
 
   final Map<String, Map<String, String>> _cache =
       <String, Map<String, String>>{};
@@ -70,6 +71,15 @@ class ArbTextLocalizer extends ChangeNotifier {
     return source;
   }
 
+  String translateWithArgs(String source, Map<String, Object?> arguments) {
+    return translate(source).replaceAllMapped(_placeholderPattern, (match) {
+      final name = match.group(1)!;
+      return arguments.containsKey(name)
+          ? '${arguments[name]}'
+          : match.group(0)!;
+    });
+  }
+
   Future<Map<String, String>> _loadLocaleMap(String locale) async {
     final cached = _cache[locale];
     if (cached != null) {
@@ -106,4 +116,7 @@ class ArbTextLocalizer extends ChangeNotifier {
 
 extension ArbTrStringExtension on String {
   String get tr => ArbTextLocalizer.instance.translate(this);
+
+  String trArgs(Map<String, Object?> arguments) =>
+      ArbTextLocalizer.instance.translateWithArgs(this, arguments);
 }

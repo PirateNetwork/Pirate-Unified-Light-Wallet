@@ -32,19 +32,19 @@ class BirthdayHeightScreen extends ConsumerStatefulWidget {
 }
 
 class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
-  static const List<String> _monthLabels = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
+  static List<String> get _monthLabels => [
+    'January'.tr,
+    'February'.tr,
+    'March'.tr,
+    'April'.tr,
+    'May'.tr,
+    'June'.tr,
+    'July'.tr,
+    'August'.tr,
+    'September'.tr,
+    'October'.tr,
+    'November'.tr,
+    'December'.tr,
   ];
 
   final _exactHeightController = TextEditingController();
@@ -109,12 +109,12 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
       } else {
         setState(() {
           _heightError =
-              result.errorMessage ?? 'Unable to fetch latest block height.';
+              result.errorMessage ?? 'Unable to fetch latest block height.'.tr;
         });
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _heightError = 'Unable to fetch latest block height.');
+      setState(() => _heightError = 'Unable to fetch latest block height.'.tr);
     } finally {
       if (mounted) {
         setState(() => _loadingHeight = false);
@@ -127,7 +127,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
 
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) {
-      setState(() => _error = 'No active wallet selected.');
+      setState(() => _error = 'No active wallet selected.'.tr);
       return;
     }
 
@@ -135,17 +135,17 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
     if (_inputMode == BirthdayHeightInputMode.approxDate &&
         _latestHeight == null) {
       setState(
-        () => _error = 'Load the latest block height or enter one manually.',
+        () => _error = 'Load the latest block height or enter one manually.'.tr,
       );
       return;
     }
     if (selectedHeight == null || selectedHeight <= 0) {
-      setState(() => _error = 'Enter a valid block height.');
+      setState(() => _error = 'Enter a valid block height.'.tr);
       return;
     }
     if (_latestHeight != null && selectedHeight > _latestHeight!) {
       setState(
-        () => _error = 'Block height cannot be higher than the network tip.',
+        () => _error = 'Block height cannot be higher than the network tip.'.tr,
       );
       return;
     }
@@ -172,7 +172,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
             await FfiBridge.rescan(walletId, selectedHeight);
           } catch (e) {
             if (mounted) {
-              setState(() => _error = 'Rescan failed to start.');
+              setState(() => _error = 'Rescan failed to start.'.tr);
             }
           }
         }());
@@ -187,8 +187,10 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
           SnackBar(
             content: Text(
               rescan ?? false
-                  ? 'Rescanning from block ${_formatHeight(selectedHeight)}...'
-                  : 'Birthday height saved.',
+                  ? 'Rescanning from block {height}...'.trArgs({
+                      'height': _formatHeight(selectedHeight),
+                    })
+                  : 'Birthday height saved.'.tr,
             ),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
@@ -197,7 +199,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Failed to update birthday height.');
+      setState(() => _error = 'Failed to update birthday height.'.tr);
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -278,17 +280,19 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
                     Expanded(
                       child: Text(
                         _loadingHeight
-                            ? 'Fetching latest block height...'
+                            ? 'Fetching latest block height...'.tr
                             : tip == null
-                            ? 'Latest block height unavailable'
-                            : 'Network tip: ${_formatHeight(tip)}',
+                            ? 'Latest block height unavailable'.tr
+                            : 'Network tip: {height}'.trArgs({
+                                'height': _formatHeight(tip),
+                              }),
                         style: AppTypography.body.copyWith(
                           color: AppColors.textPrimary,
                         ),
                       ),
                     ),
                     PTextButton(
-                      label: _loadingHeight ? 'Loading' : 'Refresh',
+                      label: _loadingHeight ? 'Loading'.tr : 'Refresh'.tr,
                       onPressed: _loadingHeight ? null : _loadLatestHeight,
                       variant: PTextButtonVariant.subtle,
                     ),
@@ -330,7 +334,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
               PInput(
                 controller: _exactHeightController,
                 label: 'Block height'.tr,
-                hint: 'Enter the exact block height',
+                hint: 'Enter the exact block height'.tr,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
@@ -480,7 +484,7 @@ class _BirthdayHeightScreenState extends ConsumerState<BirthdayHeightScreen> {
             ],
             const SizedBox(height: AppSpacing.xl),
             PButton(
-              text: _isSaving ? 'Saving...' : 'Save birthday height',
+              text: _isSaving ? 'Saving...'.tr : 'Save birthday height'.tr,
               onPressed: _isSaving ? null : _saveBirthdayHeight,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,

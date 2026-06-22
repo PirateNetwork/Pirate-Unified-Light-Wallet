@@ -118,7 +118,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
     if (walletId == null) return;
     final target = _addressController.text.trim();
     if (target.isEmpty) {
-      setState(() => _error = 'Enter a target address');
+      setState(() => _error = 'Enter a target address'.tr);
       return;
     }
 
@@ -244,7 +244,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                   PInput(
                     controller: _addressController,
                     label: 'Target address'.tr,
-                    hint: 'Any address (external or wallet)',
+                    hint: 'Any address (external or wallet)'.tr,
                     maxLines: 2,
                   ),
                   SizedBox(height: PSpacing.sm),
@@ -283,7 +283,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                   PButton(
                     onPressed: _isBuilding ? null : _buildSweep,
                     variant: PButtonVariant.primary,
-                    child: Text(_isBuilding ? 'Building...' : 'Preview sweep'),
+                    child: Text(
+                      _isBuilding ? 'Building...'.tr : 'Preview sweep'.tr,
+                    ),
                   ),
                   if (_pending != null) ...[
                     SizedBox(height: PSpacing.lg),
@@ -293,7 +295,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                       onPressed: _isSending ? null : _send,
                       variant: PButtonVariant.primary,
                       child: Text(
-                        _isSending ? 'Sending...' : 'Confirm and send',
+                        _isSending ? 'Sending...'.tr : 'Confirm and send'.tr,
                       ),
                     ),
                   ],
@@ -318,7 +320,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
         Text(label, style: PTypography.heading3()),
         SizedBox(height: PSpacing.xs),
         Text(
-          'Spendable ${_formatArrr(_selectedSpendable())}',
+          'Spendable {amount}'.trArgs({
+            'amount': _formatArrr(_selectedSpendable()),
+          }),
           style: PTypography.bodySmall(color: AppColors.textSecondary),
         ),
       ],
@@ -361,7 +365,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
 
   String get _sweepFromLabel {
     if (_selectedAddressIds.isEmpty) {
-      return 'All addresses';
+      return 'All addresses'.tr;
     }
     final count = _selectedAddressIds.length;
     final balance = _formatArrr(_selectedSpendable());
@@ -688,7 +692,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
     if (key.keyType == KeyTypeInfo.seed) {
       final label = key.label?.trim();
       if (label == null || label.isEmpty || label == 'Seed') {
-        return 'Default wallet keys';
+        return 'Default wallet keys'.tr;
       }
     }
     return key.label ?? 'Key ${key.id}';

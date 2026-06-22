@@ -121,15 +121,15 @@ class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
   String _getStrengthText() {
     switch (_strength) {
       case PassphraseStrength.weak:
-        return 'Weak';
+        return 'Weak'.tr;
       case PassphraseStrength.fair:
-        return 'Fair';
+        return 'Fair'.tr;
       case PassphraseStrength.good:
-        return 'Good';
+        return 'Good'.tr;
       case PassphraseStrength.strong:
-        return 'Strong';
+        return 'Strong'.tr;
       case PassphraseStrength.veryStrong:
-        return 'Very strong';
+        return 'Very strong'.tr;
     }
   }
 
@@ -224,7 +224,7 @@ class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
             PInput(
               controller: _passphraseController,
               label: 'Passphrase'.tr,
-              hint: 'Enter a passphrase',
+              hint: 'Enter a passphrase'.tr,
               obscureText: _obscurePassphrase,
               autocorrect: false,
               enableSuggestions: false,
@@ -238,8 +238,8 @@ class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
                   });
                 },
                 tooltip: _obscurePassphrase
-                    ? 'Show passphrase'
-                    : 'Hide passphrase',
+                    ? 'Show passphrase'.tr
+                    : 'Hide passphrase'.tr,
               ),
             ),
 
@@ -259,7 +259,7 @@ class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
                           _getStrengthColor(),
                         ),
                         minHeight: 6,
-                        semanticsLabel: 'Passphrase strength',
+                        semanticsLabel: 'Passphrase strength'.tr,
                         semanticsValue: _getStrengthText(),
                       ),
                     ),
@@ -283,12 +283,12 @@ class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
             PInput(
               controller: _confirmController,
               label: 'Confirm passphrase'.tr,
-              hint: 'Re-enter to confirm',
+              hint: 'Re-enter to confirm'.tr,
               obscureText: _obscureConfirm,
               autocorrect: false,
               enableSuggestions: false,
               errorText: _confirmController.text.isNotEmpty && !_passwordsMatch
-                  ? 'Passphrases do not match'
+                  ? 'Passphrases do not match'.tr
                   : null,
               suffixIcon: IconButton(
                 icon: Icon(
@@ -300,8 +300,8 @@ class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
                   });
                 },
                 tooltip: _obscureConfirm
-                    ? 'Show passphrase'
-                    : 'Hide passphrase',
+                    ? 'Show passphrase'.tr
+                    : 'Hide passphrase'.tr,
               ),
             ),
 
@@ -376,7 +376,7 @@ class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
             ],
             const SizedBox(height: AppSpacing.xl),
             PButton(
-              text: _isSaving ? 'Saving...' : 'Continue',
+              text: _isSaving ? 'Saving...'.tr : 'Continue'.tr,
               onPressed: _canProceed() && !_isSaving ? _proceed : null,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,
@@ -407,27 +407,27 @@ class _RequirementsList extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.sm),
         _RequirementItem(
-          text: 'At least 12 characters',
+          text: 'At least 12 characters'.tr,
           met: passphrase.length >= 12,
         ),
         _RequirementItem(
-          text: 'Uppercase letter',
+          text: 'Uppercase letter'.tr,
           met: RegExp('[A-Z]').hasMatch(passphrase),
         ),
         _RequirementItem(
-          text: 'Lowercase letter',
+          text: 'Lowercase letter'.tr,
           met: RegExp('[a-z]').hasMatch(passphrase),
         ),
         _RequirementItem(
-          text: 'Number',
+          text: 'Number'.tr,
           met: RegExp('[0-9]').hasMatch(passphrase),
         ),
         _RequirementItem(
-          text: 'Symbol',
+          text: 'Symbol'.tr,
           met: RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(passphrase),
         ),
         _RequirementItem(
-          text: 'Not the same backwards',
+          text: 'Not the same backwards'.tr,
           met: passphrase.isNotEmpty && passphrase != reversed,
         ),
       ],
@@ -452,7 +452,9 @@ class _RequirementItem extends StatelessWidget {
             met ? Icons.check_circle : Icons.circle_outlined,
             size: 20,
             color: met ? AppColors.success : AppColors.textTertiary,
-            semanticLabel: met ? 'Requirement met' : 'Requirement not met',
+            semanticLabel: met
+                ? 'Requirement met'.tr
+                : 'Requirement not met'.tr,
           ),
           const SizedBox(width: AppSpacing.sm),
           Text(

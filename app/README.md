@@ -23,8 +23,11 @@ Generated files
 These files are generated and should be refreshed through project tooling rather than edited by hand:
 
 - `lib/core/ffi/generated/`
-- `lib/l10n/app_localizations*.dart`
 - platform plugin registrants under the Flutter runner directories
+
+Refresh the runtime English catalog with
+`dart run tool/audit_runtime_translations.dart --write`; see the translation
+workflow before adding a locale.
 
 Common commands
 ---------------
@@ -35,10 +38,10 @@ Install dependencies:
 flutter pub get --enforce-lockfile
 ```
 
-Generate localization code:
+Audit translations:
 
 ```bash
-flutter gen-l10n
+dart run tool/audit_runtime_translations.dart
 ```
 
 Build app-only outputs for development:

@@ -10,6 +10,7 @@ import '../ffi/generated/models.dart'
         TunnelMode_Socks5,
         TunnelMode_Tor;
 import '../providers/wallet_providers.dart';
+import '../i18n/arb_text_localizer.dart';
 import '../../features/settings/providers/preferences_providers.dart';
 import '../../features/settings/providers/transport_providers.dart';
 import 'atomic_swap_service.dart';
@@ -33,9 +34,10 @@ final kdfSwapEngineProvider = Provider<KdfSwapEngine>((ref) {
   final swapApisAllowed = ref.watch(allowKomodoSwapApisProvider);
   final policy = swapApisAllowed
       ? _kdfNetworkPolicyForTunnelMode(tunnelMode)
-      : const KdfSwapNetworkPolicy.blocked(
-          'Komodo Swaps',
-          'Komodo swap outbound API calls are disabled in Settings. Enable Komodo Swaps under Outbound API Calls to use swaps.',
+      : KdfSwapNetworkPolicy.blocked(
+          'Komodo Swaps'.tr,
+          'Komodo swap outbound API calls are disabled in Settings. Enable Komodo Swaps under Outbound API Calls to use swaps.'
+              .tr,
         );
   final engine = KdfSwapEngine(networkPolicyReader: () => policy);
   ref.onDispose(() => unawaited(engine.dispose()));
@@ -46,9 +48,10 @@ KdfSwapNetworkPolicy _kdfNetworkPolicyForTunnelMode(TunnelMode mode) {
   return switch (mode) {
     TunnelMode_Direct() => const KdfSwapNetworkPolicy.direct(),
     TunnelMode_Tor() => const KdfSwapNetworkPolicy.tor(),
-    TunnelMode_I2p() => const KdfSwapNetworkPolicy.blocked(
+    TunnelMode_I2p() => KdfSwapNetworkPolicy.blocked(
       'I2P',
-      'Swaps are not available over I2P yet because we do not have an I2P-compatible KDF/light server route. Switch wallet networking to Tor, SOCKS5, or Direct before using swaps.',
+      'Swaps are not available over I2P yet because we do not have an I2P-compatible KDF/light server route. Switch wallet networking to Tor, SOCKS5, or Direct before using swaps.'
+          .tr,
     ),
     TunnelMode_Socks5() => const KdfSwapNetworkPolicy.socks5(),
   };

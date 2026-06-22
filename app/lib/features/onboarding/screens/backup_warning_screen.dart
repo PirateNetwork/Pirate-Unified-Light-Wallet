@@ -87,20 +87,20 @@ class _BackupWarningScreenState extends ConsumerState<BackupWarningScreen> {
                 constraints: const BoxConstraints(maxWidth: 520),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     _WarningPoint(
                       icon: Icons.lock_outline,
-                      text: 'Never share your seed phrase with anyone',
+                      text: 'Never share your seed phrase with anyone'.tr,
                     ),
-                    SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.md),
                     _WarningPoint(
                       icon: Icons.visibility_off_outlined,
-                      text: 'Store it securely offline',
+                      text: 'Store it securely offline'.tr,
                     ),
-                    SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.md),
                     _WarningPoint(
                       icon: Icons.backup_outlined,
-                      text: 'Write it down or use a hardware wallet',
+                      text: 'Write it down or use a hardware wallet'.tr,
                     ),
                   ],
                 ),
@@ -138,7 +138,7 @@ class _BackupWarningScreenState extends ConsumerState<BackupWarningScreen> {
             const SizedBox(height: AppSpacing.xl),
 
             PButton(
-              text: 'Continue',
+              text: 'Continue'.tr,
               onPressed: _acknowledged ? _proceed : null,
               variant: PButtonVariant.primary,
               size: PButtonSize.large,

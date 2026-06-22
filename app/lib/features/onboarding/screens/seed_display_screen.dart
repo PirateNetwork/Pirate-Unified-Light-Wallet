@@ -87,7 +87,9 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to generate seed: $e'),
+            content: Text(
+              'Failed to generate seed: {error}'.trArgs({'error': e}),
+            ),
             backgroundColor: AppColors.error,
           ),
         );
@@ -251,7 +253,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                           ),
                           const SizedBox(height: AppSpacing.lg),
                           PButton(
-                            text: 'Reveal Seed Phrase',
+                            text: 'Reveal Seed Phrase'.tr,
                             onPressed: _revealSeed,
                             variant: PButtonVariant.primary,
                             size: PButtonSize.medium,
@@ -274,7 +276,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
                     PButton(
-                      text: 'Copy to Clipboard',
+                      text: 'Copy to Clipboard'.tr,
                       onPressed: _copyToClipboard,
                       variant: PButtonVariant.secondary,
                       size: PButtonSize.medium,
@@ -303,7 +305,8 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                           const SizedBox(width: AppSpacing.sm),
                           Expanded(
                             child: Text(
-                              "Make sure you've written it down before continuing",
+                              "Make sure you've written it down before continuing"
+                                  .tr,
                               style: AppTypography.caption.copyWith(
                                 color: AppColors.textPrimary,
                               ),
@@ -314,7 +317,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     PButton(
-                      text: "I've Written It Down",
+                      text: "I've Written It Down".tr,
                       onPressed: _proceed,
                       variant: PButtonVariant.primary,
                       size: PButtonSize.large,

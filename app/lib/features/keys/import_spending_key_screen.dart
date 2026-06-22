@@ -45,21 +45,21 @@ class _ImportSpendingKeyScreenState
   Future<void> _submit() async {
     final walletId = ref.read(activeWalletProvider);
     if (walletId == null) {
-      setState(() => _error = 'No active wallet');
+      setState(() => _error = 'No active wallet'.tr);
       return;
     }
 
     final sapling = _saplingKeyController.text.trim();
     final orchard = _orchardKeyController.text.trim();
     if (sapling.isEmpty && orchard.isEmpty) {
-      setState(() => _error = 'Enter a Sapling or Orchard spending key');
+      setState(() => _error = 'Enter a Sapling or Orchard spending key'.tr);
       return;
     }
 
     final birthdayText = _birthdayController.text.trim();
     final birthday = int.tryParse(birthdayText);
     if (birthday == null || birthday <= 0) {
-      setState(() => _error = 'Enter a valid birthday height');
+      setState(() => _error = 'Enter a valid birthday height'.tr);
       return;
     }
 
@@ -86,7 +86,9 @@ class _ImportSpendingKeyScreenState
       unawaited(context.push('/settings/keys/detail?keyId=$keyId'));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Rescan started from block $birthday'),
+          content: Text(
+            'Rescan started from block {height}'.trArgs({'height': birthday}),
+          ),
           backgroundColor: AppColors.success,
         ),
       );
@@ -121,27 +123,27 @@ class _ImportSpendingKeyScreenState
             PInput(
               controller: _labelController,
               label: 'Label (optional)'.tr,
-              hint: 'Example: Legacy wallet',
+              hint: 'Example: Legacy wallet'.tr,
             ),
             SizedBox(height: PSpacing.md),
             PInput(
               controller: _birthdayController,
               label: 'Birthday height'.tr,
-              hint: 'Block height to start scanning',
+              hint: 'Block height to start scanning'.tr,
               keyboardType: TextInputType.number,
             ),
             SizedBox(height: PSpacing.md),
             PInput(
               controller: _saplingKeyController,
               label: 'Sapling spending key (optional)'.tr,
-              hint: 'Paste your Sapling spending key',
+              hint: 'Paste your Sapling spending key'.tr,
               maxLines: 2,
             ),
             SizedBox(height: PSpacing.md),
             PInput(
               controller: _orchardKeyController,
               label: 'Orchard spending key (optional)'.tr,
-              hint: 'Paste your Orchard spending key',
+              hint: 'Paste your Orchard spending key'.tr,
               maxLines: 2,
             ),
             SizedBox(height: PSpacing.md),
@@ -160,7 +162,7 @@ class _ImportSpendingKeyScreenState
             PButton(
               onPressed: _isSubmitting ? null : _submit,
               variant: PButtonVariant.primary,
-              child: Text(_isSubmitting ? 'Importing...' : 'Import key'),
+              child: Text(_isSubmitting ? 'Importing...'.tr : 'Import key'.tr),
             ),
           ],
         ),

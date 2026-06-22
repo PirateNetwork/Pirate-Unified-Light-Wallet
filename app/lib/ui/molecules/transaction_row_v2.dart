@@ -29,9 +29,9 @@ class TransactionRowV2 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusText = isConfirmed ? 'Confirmed' : 'Pending';
+    final statusText = isConfirmed ? 'Confirmed'.tr : 'Pending'.tr;
     final statusColor = isConfirmed ? AppColors.success : AppColors.warning;
-    final directionLabel = isReceived ? 'Received' : 'Sent';
+    final directionLabel = isReceived ? 'Received'.tr : 'Sent'.tr;
     final timeLabel = timeago.format(timestamp);
 
     return PCard(

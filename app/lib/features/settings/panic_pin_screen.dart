@@ -63,7 +63,9 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
           _hasExisting = false;
           _showSetup = true;
           _isLoading = false;
-          _error = 'Failed to check duress passphrase: $e';
+          _error = 'Failed to check duress passphrase: {error}'.trArgs({
+            'error': e,
+          });
         });
       }
     }
@@ -149,7 +151,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
             PInput(
               controller: _customController,
               label: 'Custom duress passphrase'.tr,
-              hint: 'Enter a duress passphrase',
+              hint: 'Enter a duress passphrase'.tr,
               obscureText: _obscureCustom,
               autocorrect: false,
               enableSuggestions: false,
@@ -169,14 +171,14 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
             PInput(
               controller: _confirmController,
               label: 'Confirm duress passphrase'.tr,
-              hint: 'Re-enter to confirm',
+              hint: 'Re-enter to confirm'.tr,
               obscureText: _obscureConfirm,
               autocorrect: false,
               enableSuggestions: false,
               errorText:
                   _confirmController.text.isNotEmpty &&
                       _confirmController.text != _customController.text
-                  ? 'Passphrases do not match'
+                  ? 'Passphrases do not match'.tr
                   : null,
               suffixIcon: IconButton(
                 icon: Icon(
@@ -210,7 +212,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
           const SizedBox(height: PSpacing.xl),
           PButton(
             onPressed: _isSaving ? null : _saveDuressPassphrase,
-            text: _isSaving ? 'Saving...' : 'Enable duress passphrase',
+            text: _isSaving ? 'Saving...'.tr : 'Enable duress passphrase'.tr,
             fullWidth: true,
             isLoading: _isSaving,
           ),
@@ -295,7 +297,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
                       _error = null;
                     });
                   },
-                  text: 'Update duress passphrase',
+                  text: 'Update duress passphrase'.tr,
                   fullWidth: true,
                 ),
                 const SizedBox(height: PSpacing.md),
@@ -303,7 +305,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
                   onPressed: _removeDuressPassphrase,
                   icon: const Icon(Icons.delete_outline),
                   variant: PButtonVariant.danger,
-                  text: 'Remove duress passphrase',
+                  text: 'Remove duress passphrase'.tr,
                 ),
               ],
             ),
@@ -337,10 +339,10 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
             ],
           ),
           const SizedBox(height: PSpacing.md),
-          _buildInfoItem('Opens a decoy wallet with empty data.'),
-          _buildInfoItem('Default is your passphrase reversed.'),
-          _buildInfoItem('Use a custom passphrase if you prefer.'),
-          _buildInfoItem('Close and reopen to return to the real wallet.'),
+          _buildInfoItem('Opens a decoy wallet with empty data.'.tr),
+          _buildInfoItem('Default is your passphrase reversed.'.tr),
+          _buildInfoItem('Use a custom passphrase if you prefer.'.tr),
+          _buildInfoItem('Close and reopen to return to the real wallet.'.tr),
         ],
       ),
     );
@@ -352,7 +354,7 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('-'.tr, style: TextStyle(color: AppColors.info, fontSize: 16)),
+          Text('-', style: TextStyle(color: AppColors.info, fontSize: 16)),
           Expanded(
             child: Text(
               text,
@@ -371,11 +373,11 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
       final custom = _customController.text.trim();
       final confirm = _confirmController.text.trim();
       if (custom.isEmpty) {
-        setState(() => _error = 'Enter a custom duress passphrase.');
+        setState(() => _error = 'Enter a custom duress passphrase.'.tr);
         return;
       }
       if (custom != confirm) {
-        setState(() => _error = 'Passphrases do not match.');
+        setState(() => _error = 'Passphrases do not match.'.tr);
         return;
       }
       final validationError = _validateCustomPassphrase(custom);
@@ -410,7 +412,11 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
         );
       }
     } catch (e) {
-      setState(() => _error = 'Failed to save duress passphrase: $e');
+      setState(
+        () => _error = 'Failed to save duress passphrase: {error}'.trArgs({
+          'error': e,
+        }),
+      );
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -420,23 +426,23 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
 
   String? _validateCustomPassphrase(String value) {
     if (value.length < 12) {
-      return 'Duress passphrase must be at least 12 characters.';
+      return 'Duress passphrase must be at least 12 characters.'.tr;
     }
     if (!RegExp('[a-z]').hasMatch(value)) {
-      return 'Include a lowercase letter.';
+      return 'Include a lowercase letter.'.tr;
     }
     if (!RegExp('[A-Z]').hasMatch(value)) {
-      return 'Include an uppercase letter.';
+      return 'Include an uppercase letter.'.tr;
     }
     if (!RegExp('[0-9]').hasMatch(value)) {
-      return 'Include a number.';
+      return 'Include a number.'.tr;
     }
     if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(value)) {
-      return r'Include a symbol like !@#$%.';
+      return r'Include a symbol like !@#$%.'.tr;
     }
     final reversed = value.split('').reversed.join();
     if (value == reversed) {
-      return 'Passphrase cannot read the same forwards and backwards.';
+      return 'Passphrase cannot read the same forwards and backwards.'.tr;
     }
     return null;
   }
@@ -475,7 +481,11 @@ class _PanicPinScreenState extends ConsumerState<PanicPinScreen> {
           );
         }
       } catch (e) {
-        setState(() => _error = 'Failed to remove duress passphrase: $e');
+        setState(
+          () => _error = 'Failed to remove duress passphrase: {error}'.trArgs({
+            'error': e,
+          }),
+        );
       }
     }
   }

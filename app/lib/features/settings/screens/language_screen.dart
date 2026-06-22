@@ -3,8 +3,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/i18n/arb_text_localizer.dart';
 import '../../../design/deep_space_theme.dart';
-import '../../../l10n/app_localizations.dart';
 import '../../../ui/molecules/p_card.dart';
 import '../../../ui/organisms/p_app_bar.dart';
 import '../../../ui/organisms/p_scaffold.dart';
@@ -15,13 +15,12 @@ class LanguageScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
     final selected = ref.watch(localePreferenceProvider);
     return PScaffold(
-      title: l10n.languageTitle,
+      title: 'Language'.tr,
       appBar: PAppBar(
-        title: l10n.languageTitle,
-        subtitle: l10n.languageSubtitle,
+        title: 'Language'.tr,
+        subtitle: 'Select application language'.tr,
         showBackButton: true,
       ),
       body: ListView(
@@ -31,9 +30,7 @@ class LanguageScreen extends ConsumerWidget {
             child: Column(
               children: AppLocalePreference.values
                   .map((option) {
-                    final label = option == AppLocalePreference.english
-                        ? l10n.englishLanguage
-                        : option.label;
+                    final label = option.label;
                     final isSelected = selected == option;
                     return InkWell(
                       onTap: () {
@@ -87,7 +84,7 @@ class LanguageScreen extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.md),
               child: Text(
-                l10n.moreLanguagesSoon,
+                'More languages are coming soon.'.tr,
                 style: AppTypography.caption.copyWith(
                   color: AppColors.textSecondary,
                 ),

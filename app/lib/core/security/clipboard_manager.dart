@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../i18n/arb_text_localizer.dart';
+
 /// Managed clipboard helper for wallet-sensitive data.
 ///
 /// The manager tracks the last value it placed on the clipboard so it can:
@@ -242,17 +244,17 @@ extension ClipboardDataTypeExtension on ClipboardDataType {
   String get displayName {
     switch (this) {
       case ClipboardDataType.seed:
-        return 'Seed Phrase';
+        return 'Seed Phrase'.tr;
       case ClipboardDataType.spendingKey:
-        return 'Spending Key';
+        return 'Spending Key'.tr;
       case ClipboardDataType.viewingKey:
-        return 'Viewing Key';
+        return 'Viewing Key'.tr;
       case ClipboardDataType.address:
-        return 'Address';
+        return 'Address'.tr;
       case ClipboardDataType.txid:
-        return 'Transaction ID';
+        return 'Transaction ID'.tr;
       case ClipboardDataType.text:
-        return 'Text';
+        return 'Text'.tr;
     }
   }
 }

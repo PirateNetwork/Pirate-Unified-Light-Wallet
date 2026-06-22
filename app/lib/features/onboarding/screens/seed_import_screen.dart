@@ -183,7 +183,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
         if (!inspection.isValid) {
           setState(() {
             _validationError =
-                'Invalid seed phrase. Check the words, language, and order.';
+                'Invalid seed phrase. Check the words, language, and order.'.tr;
             _isValidating = false;
           });
           return;
@@ -194,7 +194,8 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
             _ambiguousLanguages = inspection.ambiguousLanguages;
             _ambiguousLanguageSelection = inspection.ambiguousLanguages.first;
             _validationError =
-                'This seed phrase matches multiple languages. Choose the correct language to continue.';
+                'This seed phrase matches multiple languages. Choose the correct language to continue.'
+                    .tr;
             _isValidating = false;
           });
           return;
@@ -211,7 +212,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
       if (!isValid) {
         setState(() {
           _validationError =
-              'Invalid seed phrase. Check the words, language, and order.';
+              'Invalid seed phrase. Check the words, language, and order.'.tr;
           _isValidating = false;
         });
         return;
@@ -243,7 +244,7 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
       }
     } catch (e) {
       setState(() {
-        _validationError = 'Could not validate the phrase. Try again.';
+        _validationError = 'Could not validate the phrase. Try again.'.tr;
         _isValidating = false;
       });
     }
@@ -338,7 +339,9 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
                             const SizedBox(height: AppSpacing.sm),
 
                             Text(
-                              'Enter the $_wordCount words in order.',
+                              'Enter the {count} words in order.'.trArgs({
+                                'count': _wordCount,
+                              }),
                               style: AppTypography.body.copyWith(
                                 color: AppColors.textSecondary,
                               ),
@@ -574,8 +577,8 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
 
                             PButton(
                               text: _isValidating
-                                  ? 'Validating...'
-                                  : 'Continue',
+                                  ? 'Validating...'.tr
+                                  : 'Continue'.tr,
                               onPressed: _isComplete && !_isValidating
                                   ? _validateAndProceed
                                   : null,

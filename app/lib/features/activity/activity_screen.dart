@@ -26,13 +26,13 @@ extension ActivityFilterLabel on ActivityFilter {
   String get label {
     switch (this) {
       case ActivityFilter.all:
-        return 'All';
+        return 'All'.tr;
       case ActivityFilter.sent:
-        return 'Sent';
+        return 'Sent'.tr;
       case ActivityFilter.received:
-        return 'Received';
+        return 'Received'.tr;
       case ActivityFilter.pending:
-        return 'Pending';
+        return 'Pending'.tr;
     }
   }
 }
@@ -160,7 +160,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
               return PInput(
                 controller: _searchController,
                 label: 'Search'.tr,
-                hint: 'Search activity',
+                hint: 'Search activity'.tr,
                 prefixIcon: const Icon(Icons.search),
                 textInputAction: TextInputAction.search,
                 onChanged: _onSearchChanged,
