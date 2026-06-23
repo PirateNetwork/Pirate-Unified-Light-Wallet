@@ -40,14 +40,24 @@ extension AppThemeModeX on AppThemeMode {
 }
 
 enum AppLocalePreference {
-  english;
+  english,
+  indonesian;
 
-  Locale get locale => const Locale('en');
+  Locale get locale {
+    switch (this) {
+      case AppLocalePreference.english:
+        return const Locale('en');
+      case AppLocalePreference.indonesian:
+        return const Locale('id');
+    }
+  }
 
   String get label {
     switch (this) {
       case AppLocalePreference.english:
         return 'English';
+      case AppLocalePreference.indonesian:
+        return 'Bahasa Indonesia';
     }
   }
 }
