@@ -40,11 +40,14 @@ Flutter bridge:
 - `crates/pirate-ffi-frb` now acts as a thin Flutter adapter over the shared backend surface
 - app-facing wallet logic lives in `crates/pirate-wallet-service`
 
-Qortal CLI:
+Qortal integration:
 
 - new repo-owned adapter: `crates/pirate-qortal-cli`
-- current state: Qortal schema compatibility exists for `syncstatus`, `balance`, `list`, `sendp2sh`, and `redeemp2sh`
-- current limitation: `sendp2sh` funds from wallet-owned shielded notes, not from a transparent wallet balance
+- embeddable desktop JNI library: `crates/pirate-qortal-jni`
+- shared Qortal behavior lives in `crates/pirate-wallet-service`
+- `send` and `sendp2sh` select notes from Qortal's supplied wallet-owned shielded address
+- `list` supplies the incoming, outgoing, and change metadata consumed by Qortal Core
+- existing Qortal `wallet-<hash>.dat` blobs require one deterministic entropy-seed restore into encrypted SQLite; see `docs/qortal-handoff.md`
 
 iOS SDK:
 

@@ -38,6 +38,7 @@ Additional backend deliverables are built from the Rust workspace:
 
 - `piratewallet-cli` under `crates/piratewallet-cli/`
 - `pirate-qortal-cli` under `crates/pirate-qortal-cli/`
+- Qortal desktop JNI library under `crates/pirate-qortal-jni/`
 - `pirate-ffi-native` under `crates/pirate-ffi-native/`
 - iOS SDK XCFramework inputs under `bindings/ios-sdk/`
 - Android SDK module and AAR packaging inputs under `bindings/android-sdk/`
@@ -223,7 +224,8 @@ Documentation index
 - Security notes: `docs/security.md`
 - Release process: `docs/release-process.md`
 - CLI guide: `docs/cli.md`
-- Qortal adapter notes: `docs/qortal-cli.md`
+- Qortal integration handoff: `docs/qortal-handoff.md`
+- Qortal CLI test adapter: `docs/qortal-cli.md`
 - iOS SDK notes: `docs/native-sdk-ios.md`
 - iOS SDK API reference: `docs/native-sdk-ios-api.md`
 - Android SDK notes: `docs/native-sdk-android.md`
