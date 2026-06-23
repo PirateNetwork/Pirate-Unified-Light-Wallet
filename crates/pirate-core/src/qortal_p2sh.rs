@@ -725,6 +725,12 @@ pub fn build_qortal_p2sh_redeem_transaction(
             "Funding output value is less than outputs plus fee".to_string(),
         ));
     }
+    if plan.funding_coin.value() > required_total {
+        return Err(Error::TransactionBuild(
+            "Funding output value exceeds outputs plus fee; refusing to burn the remainder"
+                .to_string(),
+        ));
+    }
 
     let prover = sapling_prover();
     let sapling_bundle = sapling_builder
@@ -897,7 +903,7 @@ mod tests {
             orchard_anchor: None,
             funding_txid: [4u8; 32],
             funding_coin: funding_coin(50_000),
-            recipients: vec![transparent_recipient(7, 20_000)],
+            recipients: vec![transparent_recipient(7, 40_000)],
             fee: 10_000,
             redeem_script: vec![0x51, 0x21, 0x02],
             lock_time,
@@ -1003,5 +1009,16 @@ mod tests {
 
         assert!(script_sig.contains(&0x51));
         assert!(script_sig.ends_with(&[0x51, 0x21, 0x02]));
+    }
+
+    #[test]
+    fn redeem_rejects_unallocated_funding_value() {
+        let mut plan = redeem_plan(0, vec![8u8]);
+        plan.recipients = vec![transparent_recipient(7, 20_000)];
+
+        let error = build_qortal_p2sh_redeem_transaction(plan)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("refusing to burn"));
     }
 }

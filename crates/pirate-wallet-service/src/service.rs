@@ -6,10 +6,10 @@ pub use crate::{
     AddressBalanceInfo, AddressBookColorTag, AddressBookEntryFfi, AddressInfo, AddressValidation,
     Balance, BuildInfo, CheckpointInfo, ConsensusBranchValidation, FeeInfo, KeyExportInfo,
     KeyGroupInfo, KeyTypeInfo, LightdEndpoint, NodeTestResult, NoteInfo, Output, PaymentDisclosure,
-    PaymentDisclosureVerification, PendingTx, SeedExportWarnings, ShieldedPoolBalances, SignedTx,
-    SpendabilityStatus, SyncLogEntryFfi, SyncMode, SyncStatus, TransactionDetails,
-    TransactionRecipient, TunnelMode, TxInfo, WalletId, WalletMeta, WatchOnlyBannerInfo,
-    WatchOnlyCapabilitiesInfo,
+    PaymentDisclosureVerification, PendingTx, QortalP2shRedeemRequest, QortalP2shSendRequest,
+    QortalSendRequest, SeedExportWarnings, ShieldedPoolBalances, SignedTx, SpendabilityStatus,
+    SyncLogEntryFfi, SyncMode, SyncStatus, TransactionDetails, TransactionRecipient, TunnelMode,
+    TxInfo, WalletId, WalletMeta, WatchOnlyBannerInfo, WatchOnlyCapabilitiesInfo,
 };
 pub use pirate_core::{MnemonicInspection, MnemonicLanguage};
 
@@ -130,6 +130,28 @@ pub enum WalletServiceRequest {
     ListTransactions {
         wallet_id: WalletId,
         limit: Option<u32>,
+    },
+    QortalSyncStatus {
+        wallet_id: WalletId,
+    },
+    QortalBalance {
+        wallet_id: WalletId,
+    },
+    QortalListTransactions {
+        wallet_id: WalletId,
+        limit: Option<u32>,
+    },
+    QortalSend {
+        wallet_id: WalletId,
+        request: QortalSendRequest,
+    },
+    QortalSendP2sh {
+        wallet_id: WalletId,
+        request: QortalP2shSendRequest,
+    },
+    QortalRedeemP2sh {
+        wallet_id: WalletId,
+        request: QortalP2shRedeemRequest,
     },
     ListNotes {
         wallet_id: WalletId,
@@ -586,6 +608,24 @@ impl WalletService {
             } => serialize(ffi::export_seed_raw(wallet_id, mnemonic_language)?),
             WalletServiceRequest::ListTransactions { wallet_id, limit } => {
                 serialize(ffi::list_transactions(wallet_id, limit)?)
+            }
+            WalletServiceRequest::QortalSyncStatus { wallet_id } => {
+                serialize(ffi::qortal_sync_status(wallet_id)?)
+            }
+            WalletServiceRequest::QortalBalance { wallet_id } => {
+                serialize(ffi::qortal_balance(wallet_id)?)
+            }
+            WalletServiceRequest::QortalListTransactions { wallet_id, limit } => {
+                serialize(ffi::qortal_list_transactions(wallet_id, limit).await?)
+            }
+            WalletServiceRequest::QortalSend { wallet_id, request } => {
+                serialize(ffi::qortal_send(wallet_id, request).await?)
+            }
+            WalletServiceRequest::QortalSendP2sh { wallet_id, request } => {
+                serialize(ffi::qortal_send_p2sh(wallet_id, request).await?)
+            }
+            WalletServiceRequest::QortalRedeemP2sh { wallet_id, request } => {
+                serialize(ffi::qortal_redeem_p2sh(wallet_id, request).await?)
             }
             WalletServiceRequest::ListNotes {
                 wallet_id,

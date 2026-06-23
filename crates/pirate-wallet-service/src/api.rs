@@ -75,6 +75,7 @@ pub(crate) mod key_management;
 pub(crate) mod panic_duress;
 pub(crate) mod payment_disclosure;
 pub(crate) mod provisioning;
+pub(crate) mod qortal;
 pub(crate) mod qortal_p2sh;
 pub(crate) mod seed_export;
 pub(crate) mod sync_control;
@@ -90,6 +91,9 @@ use self::panic_duress::{ensure_not_decoy, is_decoy_mode_active};
 pub use self::payment_disclosure::{
     export_orchard_payment_disclosure, export_payment_disclosures,
     export_sapling_payment_disclosure, verify_payment_disclosure,
+};
+pub use self::qortal::{
+    qortal_balance, qortal_list_transactions, qortal_send, qortal_sync_status, QortalSendRequest,
 };
 pub use self::qortal_p2sh::{QortalP2shRedeemRequest, QortalP2shSendRequest};
 pub use self::seed_export::SeedExportWarnings;

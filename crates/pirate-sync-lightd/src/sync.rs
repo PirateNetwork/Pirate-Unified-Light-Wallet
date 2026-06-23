@@ -641,8 +641,32 @@ impl SyncEngine {
 
     /// Attach wallet context and open encrypted storage (shared DB with FFI)
     pub fn with_wallet(
+        self,
+        wallet_id: String,
+        key: EncryptionKey,
+        master_key: MasterKey,
+        network_type: NetworkType,
+        address_network_type: NetworkType,
+    ) -> Result<Self> {
+        let db_path = wallet_db_path(&wallet_id)?;
+        self.with_wallet_at_path(
+            wallet_id,
+            db_path,
+            key,
+            master_key,
+            network_type,
+            address_network_type,
+        )
+    }
+
+    /// Attach wallet context using a database path resolved by the host.
+    ///
+    /// Embedders that support runtime storage namespaces must use this method
+    /// so the sync engine opens the same encrypted database as the host API.
+    pub fn with_wallet_at_path(
         mut self,
         wallet_id: String,
+        db_path: PathBuf,
         key: EncryptionKey,
         master_key: MasterKey,
         network_type: NetworkType,
@@ -651,7 +675,6 @@ impl SyncEngine {
         self.wallet_id = Some(wallet_id.clone());
         self.network_type = network_type;
 
-        let db_path = wallet_db_path(&wallet_id)?;
         let db = Database::open(&db_path, &key, master_key.clone())?;
         let repo = Repository::new(&db);
 

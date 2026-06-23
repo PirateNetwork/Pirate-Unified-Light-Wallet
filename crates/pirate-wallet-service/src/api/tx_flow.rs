@@ -50,7 +50,7 @@ fn parse_sapling_root_from_tree_state(
     Some(frontier.root().to_bytes())
 }
 
-fn parse_orchard_root_from_tree_state(
+pub(super) fn parse_orchard_root_from_tree_state(
     tree_state: &pirate_sync_lightd::client::TreeState,
 ) -> Option<[u8; 32]> {
     let encoded = tree_state.orchard_tree.trim();

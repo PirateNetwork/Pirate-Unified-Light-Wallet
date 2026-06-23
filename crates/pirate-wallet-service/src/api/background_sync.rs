@@ -63,6 +63,7 @@ async fn start_background_sync_inner(
 
     let network_type = wallet_network_type(&wallet_id)?;
     let address_network_type = address_prefix_network_type(&wallet_id)?;
+    let db_path = wallet_db_path_for(&wallet_id)?;
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
     let selection = begin_sync_profile_session(workload);
     let sync_profile = selection.profile;
@@ -83,8 +84,9 @@ async fn start_background_sync_inner(
 
     let client = LightClient::with_config(client_config);
     let sync_engine = match SyncEngine::with_client_and_config(client, birthday_height, config)
-        .with_wallet(
+        .with_wallet_at_path(
             wallet_id.clone(),
+            db_path,
             db_key,
             master_key,
             network_type,

@@ -6,9 +6,9 @@ use pirate_core::keys::{
 };
 use pirate_wallet_service::MnemonicLanguage;
 use pirate_wallet_service::{
-    AddressBalanceInfo, Balance, KeyAddressInfo, KeyExportInfo, KeyGroupInfo, Output, PendingTx,
-    QortalP2shRedeemRequest, QortalP2shSendRequest, SignedTx, SyncMode, SyncStatus, TxInfo,
-    WalletMeta, WalletService, WalletServiceRequest,
+    KeyAddressInfo, KeyExportInfo, KeyGroupInfo, Output, PendingTx, QortalP2shRedeemRequest,
+    QortalP2shSendRequest, SignedTx, SyncMode, SyncStatus, TxInfo, WalletMeta, WalletService,
+    WalletServiceRequest,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -1118,32 +1118,16 @@ async fn legacy_send(service: &WalletService, request_json: &str) -> Result<Valu
 
 async fn qortal_syncstatus(service: &WalletService, wallet_id: Option<String>) -> Result<Value> {
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
-    let status = service
-        .execute(WalletServiceRequest::SyncStatus {
-            wallet_id: wallet_id.clone(),
-        })
-        .await?;
-    let status: SyncStatus = serde_json::from_value(status)?;
-    Ok(format_qortal_syncstatus(wallet_id, &status))
+    service
+        .execute(WalletServiceRequest::QortalSyncStatus { wallet_id })
+        .await
 }
 
 async fn qortal_balance(service: &WalletService, wallet_id: Option<String>) -> Result<Value> {
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
-    let balance = service
-        .execute(WalletServiceRequest::GetBalance {
-            wallet_id: wallet_id.clone(),
-        })
-        .await?;
-    let balance: Balance = serde_json::from_value(balance)?;
-    let address_balances = service
-        .execute(WalletServiceRequest::ListAddressBalances {
-            wallet_id,
-            key_id: None,
-        })
-        .await?;
-    let address_balances: Vec<AddressBalanceInfo> = serde_json::from_value(address_balances)?;
-
-    Ok(format_qortal_balance(&balance, address_balances))
+    service
+        .execute(WalletServiceRequest::QortalBalance { wallet_id })
+        .await
 }
 
 async fn qortal_list(
@@ -1152,12 +1136,9 @@ async fn qortal_list(
     limit: Option<u32>,
 ) -> Result<Value> {
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
-    let txs = service
-        .execute(WalletServiceRequest::ListTransactions { wallet_id, limit })
-        .await?;
-    let txs: Vec<TxInfo> = serde_json::from_value(txs)?;
-
-    Ok(format_qortal_list(txs))
+    service
+        .execute(WalletServiceRequest::QortalListTransactions { wallet_id, limit })
+        .await
 }
 
 async fn qortal_sendp2sh(
@@ -1168,7 +1149,10 @@ async fn qortal_sendp2sh(
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
     let request: QortalP2shSendRequest =
         serde_json::from_str(request_json).map_err(|e| anyhow!("Invalid sendp2sh JSON: {}", e))?;
-    let txid = pirate_wallet_service::qortal_send_p2sh(wallet_id, request).await?;
+    let txid = service
+        .execute(WalletServiceRequest::QortalSendP2sh { wallet_id, request })
+        .await?;
+    let txid: String = serde_json::from_value(txid)?;
     Ok(format_qortal_txid(txid))
 }
 
@@ -1180,83 +1164,11 @@ async fn qortal_redeemp2sh(
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
     let request: QortalP2shRedeemRequest = serde_json::from_str(request_json)
         .map_err(|e| anyhow!("Invalid redeemp2sh JSON: {}", e))?;
-    let txid = pirate_wallet_service::qortal_redeem_p2sh(wallet_id, request).await?;
+    let txid = service
+        .execute(WalletServiceRequest::QortalRedeemP2sh { wallet_id, request })
+        .await?;
+    let txid: String = serde_json::from_value(txid)?;
     Ok(format_qortal_txid(txid))
-}
-
-fn format_qortal_syncstatus(wallet_id: String, status: &SyncStatus) -> Value {
-    if status.is_syncing() {
-        json!({
-            "sync_id": wallet_id,
-            "in_progress": true,
-            "last_error": null,
-            "start_block": status.local_height,
-            "end_block": status.target_height,
-            "synced_blocks": status.local_height,
-            "trial_decryptions_blocks": 0,
-            "txn_scan_blocks": 0,
-            "total_blocks": status.target_height,
-            "batch_num": 0,
-            "batch_total": 0,
-        })
-    } else {
-        json!({
-            "sync_id": wallet_id,
-            "in_progress": false,
-            "last_error": null,
-            "scanned_height": status.local_height,
-        })
-    }
-}
-
-fn format_qortal_balance(balance: &Balance, address_balances: Vec<AddressBalanceInfo>) -> Value {
-    let z_addresses: Vec<Value> = address_balances
-        .into_iter()
-        .map(|entry| {
-            json!({
-                "address": entry.address,
-                "zbalance": entry.balance,
-                "verified_zbalance": entry.spendable,
-                "spendable_zbalance": entry.spendable,
-                "unverified_zbalance": entry.balance.saturating_sub(entry.spendable),
-            })
-        })
-        .collect();
-
-    json!({
-        "zbalance": balance.total,
-        "verified_zbalance": balance.spendable,
-        "spendable_zbalance": balance.spendable,
-        "unverified_zbalance": balance.total.saturating_sub(balance.spendable),
-        "tbalance": 0,
-        "z_addresses": z_addresses,
-        "t_addresses": [],
-    })
-}
-
-fn format_qortal_list(txs: Vec<TxInfo>) -> Value {
-    Value::Array(
-        txs.into_iter()
-            .map(|tx| {
-                let mut entry = json!({
-                    "txid": tx.txid,
-                    "block_height": tx.height,
-                    "datetime": tx.timestamp,
-                    "amount": tx.amount,
-                    "fee": tx.fee,
-                    "memo": tx.memo,
-                    "incoming_metadata": [],
-                    "outgoing_metadata": [],
-                    "incoming_metadata_change": [],
-                    "outgoing_metadata_change": [],
-                });
-                if !tx.confirmed {
-                    entry["unconfirmed"] = Value::Bool(true);
-                }
-                entry
-            })
-            .collect(),
-    )
 }
 
 fn format_qortal_txid(txid: String) -> Value {
@@ -1323,15 +1235,9 @@ async fn repl(service: &WalletService, format: OutputFormat) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        format_qortal_balance, format_qortal_list, format_qortal_syncstatus, format_qortal_txid,
-        sanitize_cli_value, QortalCli, QortalCommand,
-    };
+    use super::{format_qortal_txid, sanitize_cli_value, QortalCli, QortalCommand};
     use clap::Parser;
-    use pirate_wallet_service::{
-        AddressBalanceInfo, Balance, QortalP2shRedeemRequest, QortalP2shSendRequest, SyncStage,
-        SyncStatus, TxInfo,
-    };
+    use pirate_wallet_service::{QortalP2shRedeemRequest, QortalP2shSendRequest};
     use serde_json::json;
 
     #[test]
@@ -1398,183 +1304,6 @@ mod tests {
         assert_eq!(request.locktime, 0);
         assert_eq!(request.secret, "");
         assert_eq!(request.privkey, "5HueCGU8rMjxEXxiPuD5");
-    }
-
-    #[test]
-    fn qortal_syncstatus_schema_when_syncing_matches_reference_contract() {
-        let status = SyncStatus {
-            local_height: 120,
-            target_height: 240,
-            percent: 50.0,
-            eta: Some(125),
-            stage: SyncStage::Notes,
-            last_checkpoint: Some(96),
-            blocks_per_second: 4.5,
-            notes_decrypted: 42,
-            last_batch_ms: 900,
-        };
-
-        let value = format_qortal_syncstatus("wallet-1".to_string(), &status);
-        let object = value.as_object().expect("syncstatus must be an object");
-
-        for key in [
-            "sync_id",
-            "in_progress",
-            "last_error",
-            "start_block",
-            "end_block",
-            "synced_blocks",
-            "trial_decryptions_blocks",
-            "txn_scan_blocks",
-            "total_blocks",
-            "batch_num",
-            "batch_total",
-        ] {
-            assert!(object.contains_key(key), "missing key {}", key);
-        }
-
-        assert!(!object.contains_key("scanned_height"));
-        assert_eq!(
-            object.get("in_progress").and_then(|v| v.as_bool()),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn qortal_syncstatus_schema_when_not_syncing_matches_reference_contract() {
-        let status = SyncStatus {
-            local_height: 240,
-            target_height: 240,
-            percent: 100.0,
-            eta: None,
-            stage: SyncStage::Verify,
-            last_checkpoint: Some(240),
-            blocks_per_second: 0.0,
-            notes_decrypted: 0,
-            last_batch_ms: 0,
-        };
-
-        let value = format_qortal_syncstatus("wallet-1".to_string(), &status);
-        let object = value.as_object().expect("syncstatus must be an object");
-
-        for key in ["sync_id", "in_progress", "last_error", "scanned_height"] {
-            assert!(object.contains_key(key), "missing key {}", key);
-        }
-
-        for forbidden in [
-            "start_block",
-            "end_block",
-            "synced_blocks",
-            "trial_decryptions_blocks",
-            "txn_scan_blocks",
-            "total_blocks",
-            "batch_num",
-            "batch_total",
-        ] {
-            assert!(
-                !object.contains_key(forbidden),
-                "unexpected key {} when not syncing",
-                forbidden
-            );
-        }
-    }
-
-    #[test]
-    fn qortal_balance_schema_matches_reference_contract() {
-        let balance = Balance {
-            total: 25_000,
-            spendable: 20_000,
-            pending: 5_000,
-        };
-        let address_balances = vec![AddressBalanceInfo {
-            address: "zs1recipient".to_string(),
-            balance: 25_000,
-            spendable: 20_000,
-            pending: 5_000,
-            key_id: Some(7),
-            address_id: 11,
-            label: Some("Main".to_string()),
-            created_at: 1_710_000_000,
-            color_tag: pirate_wallet_service::AddressBookColorTag::None,
-            diversifier_index: 0,
-        }];
-
-        let value = format_qortal_balance(&balance, address_balances);
-        let object = value.as_object().expect("balance must be an object");
-
-        for key in [
-            "zbalance",
-            "verified_zbalance",
-            "spendable_zbalance",
-            "unverified_zbalance",
-            "tbalance",
-            "z_addresses",
-            "t_addresses",
-        ] {
-            assert!(object.contains_key(key), "missing key {}", key);
-        }
-
-        assert_eq!(object.get("tbalance").and_then(|v| v.as_i64()), Some(0));
-        assert_eq!(
-            object
-                .get("t_addresses")
-                .and_then(|v| v.as_array())
-                .map(|v| v.len()),
-            Some(0)
-        );
-    }
-
-    #[test]
-    fn qortal_list_schema_matches_reference_contract() {
-        let txs = vec![
-            TxInfo {
-                txid: "confirmed".to_string(),
-                height: Some(123),
-                timestamp: 1_710_000_100,
-                amount: 50_000,
-                fee: 10_000,
-                memo: Some("hello".to_string()),
-                confirmed: true,
-            },
-            TxInfo {
-                txid: "unconfirmed".to_string(),
-                height: None,
-                timestamp: 1_710_000_200,
-                amount: -25_000,
-                fee: 10_000,
-                memo: None,
-                confirmed: false,
-            },
-        ];
-
-        let value = format_qortal_list(txs);
-        let array = value.as_array().expect("list must be an array");
-        assert_eq!(array.len(), 2);
-
-        let confirmed = array[0].as_object().expect("entry must be an object");
-        for key in [
-            "txid",
-            "block_height",
-            "datetime",
-            "amount",
-            "fee",
-            "memo",
-            "incoming_metadata",
-            "outgoing_metadata",
-            "incoming_metadata_change",
-            "outgoing_metadata_change",
-        ] {
-            assert!(confirmed.contains_key(key), "missing key {}", key);
-        }
-        assert!(!confirmed.contains_key("unconfirmed"));
-
-        let unconfirmed = array[1].as_object().expect("entry must be an object");
-        assert_eq!(
-            unconfirmed
-                .get("unconfirmed")
-                .and_then(|value| value.as_bool()),
-            Some(true)
-        );
     }
 
     #[test]

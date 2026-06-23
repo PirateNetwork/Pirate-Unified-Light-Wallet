@@ -9,6 +9,7 @@ use pirate_core::{
 };
 use zcash_keys::address::Address as RecipientAddress;
 use zcash_primitives::transaction::Transaction;
+use zcash_transparent::address::TransparentAddress;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct QortalP2shSendRequest {
@@ -30,7 +31,7 @@ pub struct QortalP2shRedeemRequest {
     pub privkey: String,
 }
 
-type RedeemValidation = (Vec<u8>, [u8; 32], Vec<u8>, Vec<u8>);
+type RedeemValidation = (Vec<u8>, [u8; 32], Vec<u8>, Vec<u8>, TransparentAddress);
 
 fn decode_base58_field(name: &str, value: &str, allow_empty: bool) -> Result<Vec<u8>> {
     if allow_empty && value.is_empty() {
@@ -99,12 +100,38 @@ fn decode_pirate_orchard_address(
         .map_err(|e| anyhow!("Invalid Orchard address: {}", e))
 }
 
-fn validate_qortal_input_address(network_type: NetworkType, input: &str) -> Result<()> {
+fn validate_qortal_funding_input_address(network_type: NetworkType, input: &str) -> Result<()> {
+    ensure_non_empty("input", input)?;
+    if decode_pirate_orchard_address(network_type, input)?.is_some() {
+        return Ok(());
+    }
+
+    let params = pirate_core::transaction::PirateNetwork::new(network_type);
+    match RecipientAddress::decode(&params, input) {
+        Some(RecipientAddress::Sapling(_)) => Ok(()),
+        Some(RecipientAddress::Transparent(_))
+        | Some(RecipientAddress::Unified(_))
+        | Some(RecipientAddress::Tex(_)) => Err(anyhow!(
+            "Input address must be a shielded wallet address for Qortal P2SH funding"
+        )),
+        None => Err(anyhow!("Invalid input address: {}", input)),
+    }
+}
+
+fn validate_qortal_redeem_input_address(
+    network_type: NetworkType,
+    input: &str,
+) -> Result<TransparentAddress> {
     ensure_non_empty("input", input)?;
     let params = pirate_core::transaction::PirateNetwork::new(network_type);
     if let Some(input_address) = RecipientAddress::decode(&params, input) {
         return match input_address {
-            RecipientAddress::Transparent(_) => Ok(()),
+            RecipientAddress::Transparent(address @ TransparentAddress::ScriptHash(_)) => {
+                Ok(address)
+            }
+            RecipientAddress::Transparent(TransparentAddress::PublicKeyHash(_)) => Err(anyhow!(
+                "Input address must be a P2SH transparent address for Qortal redemption"
+            )),
             RecipientAddress::Sapling(_)
             | RecipientAddress::Unified(_)
             | RecipientAddress::Tex(_) => Err(anyhow!(
@@ -148,7 +175,7 @@ fn validate_send_request(
     network_type: NetworkType,
     request: &QortalP2shSendRequest,
 ) -> Result<Vec<u8>> {
-    validate_qortal_input_address(network_type, &request.input)?;
+    validate_qortal_funding_input_address(network_type, &request.input)?;
     let script_pubkey = decode_base58_field("script", &request.script, false)?;
     validate_script_bytes("script", &script_pubkey)?;
     Ok(script_pubkey)
@@ -158,10 +185,19 @@ fn validate_redeem_request(
     network_type: NetworkType,
     request: &QortalP2shRedeemRequest,
 ) -> Result<RedeemValidation> {
-    validate_qortal_input_address(network_type, &request.input)?;
+    let input_address = validate_qortal_redeem_input_address(network_type, &request.input)?;
 
     let redeem_script = decode_base58_field("script", &request.script, false)?;
     validate_script_bytes("script", &redeem_script)?;
+    let TransparentAddress::ScriptHash(expected_script_hash) = input_address else {
+        unreachable!("redeem input validator only accepts P2SH addresses")
+    };
+    let actual_script_hash = zcash_transparent::util::hash160::hash(&redeem_script);
+    if actual_script_hash != expected_script_hash {
+        return Err(anyhow!(
+            "Redeem script does not match the P2SH input address"
+        ));
+    }
 
     let txid_bytes = decode_base58_field_exact("txid", &request.txid, 32)?;
     let mut txid = [0u8; 32];
@@ -181,7 +217,7 @@ fn validate_redeem_request(
 
     let privkey_bytes = decode_base58_field_exact("privkey", &request.privkey, 32)?;
 
-    Ok((redeem_script, txid, secret, privkey_bytes))
+    Ok((redeem_script, txid, secret, privkey_bytes, input_address))
 }
 
 fn parse_qortal_recipient(
@@ -462,7 +498,7 @@ pub async fn qortal_redeem_p2sh(
     request: QortalP2shRedeemRequest,
 ) -> Result<String> {
     let network_type = active_network_type(&wallet_id)?;
-    let (redeem_script, txid, secret, privkey_bytes) =
+    let (redeem_script, txid, secret, privkey_bytes, input_address) =
         validate_redeem_request(network_type, &request)?;
 
     let endpoint_config = get_lightd_endpoint_config(wallet_id.clone())?;
@@ -488,15 +524,26 @@ pub async fn qortal_redeem_p2sh(
         .and_then(|bundle| bundle.vout.first())
         .cloned()
         .ok_or_else(|| anyhow!("Funding transaction is missing transparent output 0"))?;
+    let expected_funding_script: zcash_transparent::address::Script =
+        (&input_address.script()).into();
+    if funding_output.script_pubkey() != &expected_funding_script {
+        return Err(anyhow!(
+            "Funding transaction output 0 does not match the P2SH input address"
+        ));
+    }
 
-    let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let orchard_anchor = if request.output.iter().any(|output| {
         output.addr.starts_with("pirate1")
             || output.addr.starts_with("pirate-test1")
             || output.addr.starts_with("pirate-regtest1")
     }) {
-        let spendability = sync_control::require_spendability_ready_with_sync_trigger(&wallet_id)?;
-        current_orchard_anchor(&repo, spendability.anchor_height)?
+        let tree_state = client.get_tree_state(latest_height).await?;
+        let anchor_bytes = tx_flow::parse_orchard_root_from_tree_state(&tree_state)
+            .ok_or_else(|| anyhow!("Lightwalletd did not return a valid Orchard tree root"))?;
+        let anchor =
+            Option::<orchard::tree::Anchor>::from(orchard::tree::Anchor::from_bytes(anchor_bytes))
+                .ok_or_else(|| anyhow!("Lightwalletd returned an invalid Orchard anchor"))?;
+        Some(anchor)
     } else {
         None
     };
@@ -545,6 +592,12 @@ mod tests {
     use zcash_transparent::address::TransparentAddress;
 
     fn sample_transparent_input() -> String {
+        let script_hash = zcash_transparent::util::hash160::hash(&[1u8; 4]);
+        RecipientAddress::Transparent(TransparentAddress::ScriptHash(script_hash))
+            .encode(&PirateNetwork::new(NetworkType::Mainnet))
+    }
+
+    fn sample_p2pkh_input() -> String {
         RecipientAddress::Transparent(TransparentAddress::PublicKeyHash([7u8; 20]))
             .encode(&PirateNetwork::new(NetworkType::Mainnet))
     }
@@ -667,9 +720,42 @@ mod tests {
     }
 
     #[test]
-    fn send_request_shape_accepts_minimal_valid_values() {
-        let request = QortalP2shSendRequest {
+    fn redeem_rejects_p2pkh_input_address() {
+        let request = QortalP2shRedeemRequest {
+            input: sample_p2pkh_input(),
+            output: vec![sample_output()],
+            fee: 10_000,
+            script: bs58::encode(vec![1u8; 4]).into_string(),
+            txid: bs58::encode(vec![2u8; 32]).into_string(),
+            locktime: 5,
+            secret: String::new(),
+            privkey: bs58::encode(vec![3u8; 32]).into_string(),
+        };
+        let err = validate_redeem_request(NetworkType::Mainnet, &request).unwrap_err();
+        assert!(err.to_string().contains("P2SH"));
+    }
+
+    #[test]
+    fn redeem_rejects_script_that_does_not_match_input() {
+        let request = QortalP2shRedeemRequest {
             input: sample_transparent_input(),
+            output: vec![sample_output()],
+            fee: 10_000,
+            script: bs58::encode(vec![2u8; 4]).into_string(),
+            txid: bs58::encode(vec![2u8; 32]).into_string(),
+            locktime: 5,
+            secret: String::new(),
+            privkey: bs58::encode(vec![3u8; 32]).into_string(),
+        };
+        let err = validate_redeem_request(NetworkType::Mainnet, &request).unwrap_err();
+        assert!(err.to_string().contains("does not match"));
+    }
+
+    #[test]
+    fn send_request_shape_accepts_minimal_valid_values() {
+        let shielded_input = sample_output().addr;
+        let request = QortalP2shSendRequest {
+            input: shielded_input,
             output: vec![sample_output()],
             script: bs58::encode(vec![1u8; 4]).into_string(),
             fee: 10_000,
@@ -679,6 +765,18 @@ mod tests {
         validate_send_request(NetworkType::Mainnet, &request).unwrap();
         let script = decode_base58_field("script", &request.script, false).unwrap();
         assert_eq!(script, vec![1u8; 4]);
+    }
+
+    #[test]
+    fn send_request_rejects_transparent_input_address() {
+        let request = QortalP2shSendRequest {
+            input: sample_transparent_input(),
+            output: vec![sample_output()],
+            script: bs58::encode(vec![1u8; 4]).into_string(),
+            fee: 10_000,
+        };
+        let err = validate_send_request(NetworkType::Mainnet, &request).unwrap_err();
+        assert!(err.to_string().contains("shielded wallet address"));
     }
 
     #[test]

@@ -680,6 +680,7 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
         SyncMode::Deep => SyncWorkload::Deep,
     };
 
+    let db_path = wallet_db_path_for(&wallet_id)?;
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
     let session_arc = {
         let mut sessions = SYNC_SESSIONS.write();
@@ -766,8 +767,9 @@ pub(super) async fn start_sync(wallet_id: WalletId, mode: SyncMode) -> Result<()
 
     let client = LightClient::with_config(client_config);
     let sync = match SyncEngine::with_client_and_config(client, birthday_height, config)
-        .with_wallet(
+        .with_wallet_at_path(
             wallet_id.clone(),
+            db_path,
             db_key,
             master_key,
             network_type,
@@ -1970,6 +1972,7 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
 
     let network_type = wallet_network_type(&wallet_id)?;
     let address_network_type = address_prefix_network_type(&wallet_id)?;
+    let db_path = wallet_db_path_for(&wallet_id)?;
     let (db_key, master_key) = wallet_db_keys(&wallet_id)?;
     let selection = begin_sync_profile_session(SyncWorkload::Rescan);
     let sync_profile = selection.profile;
@@ -1989,8 +1992,9 @@ pub(super) async fn rescan(wallet_id: WalletId, from_height: u32) -> Result<()> 
 
     let client = LightClient::with_config(client_config);
     let sync = match SyncEngine::with_client_and_config(client, effective_from_height, config)
-        .with_wallet(
+        .with_wallet_at_path(
             wallet_id.clone(),
+            db_path,
             db_key,
             master_key,
             network_type,

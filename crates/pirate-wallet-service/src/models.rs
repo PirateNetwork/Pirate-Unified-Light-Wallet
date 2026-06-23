@@ -133,6 +133,7 @@ pub struct WalletMeta {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Output {
     /// Recipient address (Sapling zs1... or Orchard pirate1...)
+    #[serde(alias = "address")]
     pub addr: String,
     /// Amount in arrrtoshis
     #[serde(with = "amount_json::u64")]
@@ -443,6 +444,81 @@ pub struct TxInfo {
     pub memo: Option<String>,
     /// Confirmed
     pub confirmed: bool,
+}
+
+/// One recipient entry in Qortal's transaction-history schema.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QortalTxMetadata {
+    /// Shielded recipient address.
+    pub address: String,
+    /// Value in arrrtoshis. Qortal's Java parser expects a JSON number here.
+    pub value: u64,
+    /// Decoded memo, when present.
+    pub memo: Option<String>,
+}
+
+/// Transaction entry consumed by Qortal Core.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QortalTransaction {
+    /// Confirmed block height, or zero for an unconfirmed transaction.
+    pub block_height: u32,
+    /// Unix timestamp in seconds.
+    pub datetime: i64,
+    /// Transaction id in display byte order.
+    pub txid: TxId,
+    /// Net wallet value in arrrtoshis.
+    pub amount: i64,
+    /// Transaction fee in arrrtoshis.
+    pub fee: u64,
+    /// Notes received by external wallet addresses.
+    pub incoming_metadata: Vec<QortalTxMetadata>,
+    /// Notes received by internal change addresses.
+    pub incoming_metadata_change: Vec<QortalTxMetadata>,
+    /// Outputs sent to external recipients.
+    pub outgoing_metadata: Vec<QortalTxMetadata>,
+    /// Outputs recovered as wallet change.
+    pub outgoing_metadata_change: Vec<QortalTxMetadata>,
+    /// Present only for unconfirmed transactions, matching the legacy schema.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unconfirmed: Option<bool>,
+}
+
+/// Qortal-compatible synchronization progress.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QortalSyncStatus {
+    /// Monotonically increasing identifier for a detected sync session.
+    pub sync_id: u64,
+    /// Whether synchronization is in progress.
+    pub in_progress: bool,
+    /// Last synchronization error, when one is available.
+    pub last_error: Option<String>,
+    /// First height in the current sync session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_block: Option<u64>,
+    /// Target height for the current sync session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_block: Option<u64>,
+    /// Blocks completed in the current sync session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub synced_blocks: Option<u64>,
+    /// Blocks trial-decrypted by the unified scanner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trial_decryptions_blocks: Option<u64>,
+    /// Blocks transaction-scanned by the unified scanner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub txn_scan_blocks: Option<u64>,
+    /// Total blocks in the current sync session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_blocks: Option<u64>,
+    /// Zero-based logical batch number, matching the legacy scanner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_num: Option<u64>,
+    /// Number of logical batches exposed to Qortal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_total: Option<u64>,
+    /// Last scanned height, emitted only when idle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scanned_height: Option<u64>,
 }
 
 /// Wallet note information for CLI and SDK inspection.
@@ -935,4 +1011,36 @@ pub struct AddressBookEntryFfi {
     /// Unix timestamp (seconds)
     pub last_used_at: Option<i64>,
     pub use_count: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Output;
+    use serde_json::json;
+
+    #[test]
+    fn output_accepts_qortal_address_field() {
+        let output: Output = serde_json::from_value(json!({
+            "address": "zs1qortal",
+            "amount": 10000,
+            "memo": null
+        }))
+        .unwrap();
+
+        assert_eq!(output.addr, "zs1qortal");
+        assert_eq!(output.amount, 10_000);
+    }
+
+    #[test]
+    fn output_keeps_native_addr_field() {
+        let output: Output = serde_json::from_value(json!({
+            "addr": "pirate1native",
+            "amount": "25000",
+            "memo": "test"
+        }))
+        .unwrap();
+
+        assert_eq!(output.addr, "pirate1native");
+        assert_eq!(output.amount, 25_000);
+    }
 }
