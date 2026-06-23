@@ -11,6 +11,7 @@ MANIFEST_PATH = Path("release-artifacts.toml")
 TRACKED = (
     "cli",
     "qortal_cli",
+    "qortal_jni",
     "native_ffi",
     "ios_sdk",
     "android_sdk",

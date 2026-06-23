@@ -310,6 +310,19 @@ if is_true "${CLI_CHANGED:-false}" || is_true "${QORTAL_CLI_CHANGED:-false}"; th
   \)
 fi
 
+if is_true "${QORTAL_JNI_CHANGED:-false}"; then
+  copy_matching "$DEV_DIR/qortal-jni" \( \
+    -name 'librust-linux-x86_64.so' \
+    -o -name 'librust-linux-aarch64.so' \
+    -o -name 'librust-windows-x86_64.dll' \
+    -o -name 'librust-macos-x86_64.dylib' \
+    -o -name 'librust-macos-aarch64.dylib' \
+    -o -name 'LiteWalletJni.java' \
+    -o -name 'qortal-handoff.md' \
+    -o -name 'LICENSE-qortal-jni.txt' \
+  \)
+fi
+
 native_ffi_archive_changed=false
 if is_true "${NATIVE_FFI_CHANGED:-false}" ||
   is_true "${IOS_SDK_CHANGED:-false}" ||
@@ -349,6 +362,10 @@ stage_developer_archive "$cli_archive_changed" \
   "$DEV_DIR/cli" \
   "pirate-unified-wallet-cli-artifacts" \
   "cli"
+stage_developer_archive "${QORTAL_JNI_CHANGED:-false}" \
+  "$DEV_DIR/qortal-jni" \
+  "pirate-unified-wallet-qortal-jni-artifacts" \
+  "qortal-jni"
 stage_developer_archive "$native_ffi_archive_changed" \
   "$DEV_DIR/native-ffi" \
   "pirate-unified-wallet-native-ffi-artifacts" \

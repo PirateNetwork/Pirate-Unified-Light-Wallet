@@ -9,6 +9,10 @@ artifact = "piratewallet-cli"
 version = "0.1.1"
 artifact = "pirate-qortal-cli"
 
+[qortal_jni]
+version = "0.1.1"
+artifact = "pirate-qortal-jni"
+
 [native_ffi]
 version = "0.1.1"
 artifact = "pirate-ffi-native"

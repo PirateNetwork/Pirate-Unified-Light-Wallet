@@ -160,6 +160,12 @@ jobs:
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
+      - name: Set up Java
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Cache cargo
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
@@ -175,7 +181,18 @@ jobs:
           cargo test -p pirate-cli-core --lib qortal_ --locked
           cargo check -p pirate-wallet-service --locked
           cargo test -p pirate-core qortal_p2sh --locked -- --nocapture
+          cargo test -p pirate-qortal-jni --locked
           cargo build --release -p pirate-qortal-cli --locked
+          cargo build --release -p pirate-qortal-jni --locked
+          mkdir -p target/qortal-jni-java
+          javac -d target/qortal-jni-java \
+            ../bindings/qortal-jni/src/main/java/com/rust/litewalletjni/LiteWalletJni.java \
+            ../bindings/qortal-jni/src/test/java/com/rust/litewalletjni/QortalJniSmoke.java
+          java \
+            -Dqortal.jni.library="$(pwd)/target/release/librust.so" \
+            -Dqortal.jni.storage="$(pwd)/target/qortal-jni-smoke-wallet" \
+            -cp target/qortal-jni-java \
+            com.rust.litewalletjni.QortalJniSmoke
 
   rust-property-tests:
     name: Rust - Property Tests
@@ -707,6 +724,7 @@ jobs:
     outputs:
       cli_changed: ${{ steps.diff.outputs.cli_changed }}
       qortal_cli_changed: ${{ steps.diff.outputs.qortal_cli_changed }}
+      qortal_jni_changed: ${{ steps.diff.outputs.qortal_jni_changed }}
       native_ffi_changed: ${{ steps.diff.outputs.native_ffi_changed }}
       ios_sdk_changed: ${{ steps.diff.outputs.ios_sdk_changed }}
       android_sdk_changed: ${{ steps.diff.outputs.android_sdk_changed }}
@@ -781,6 +799,68 @@ jobs:
         with:
           name: ${{ matrix.artifact-name }}
           path: dist/cli/*
+
+  package-qortal-jni:
+    name: Package - Qortal JNI (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    needs:
+      - rust-qortal-tests
+      - backend-release-plan
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')))
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact-name: qortal-jni-linux-x86_64
+          - platform: Linux aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact-name: qortal-jni-linux-aarch64
+          - platform: macOS x86_64
+            os: macos-15
+            target: x86_64-apple-darwin
+            artifact-name: qortal-jni-macos-x86_64
+          - platform: macOS aarch64
+            os: macos-15
+            target: aarch64-apple-darwin
+            artifact-name: qortal-jni-macos-aarch64
+          - platform: Windows x86_64
+            os: windows-2025-vs2026
+            target: x86_64-pc-windows-msvc
+            artifact-name: qortal-jni-windows-x86_64
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.target }}
+
+      - name: Install Perl (OpenSSL build)
+        if: startsWith(matrix.platform, 'Windows')
+        shell: pwsh
+        run: |
+          choco install strawberryperl --version 5.42.0.1 --no-progress -y
+          "C:\Strawberry\perl\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding ascii -Append
+
+      - name: Build Qortal JNI library
+        shell: bash
+        env:
+          CARGO_INCREMENTAL: "0"
+          QORTAL_JNI_TARGET: ${{ matrix.target }}
+        run: |
+          chmod +x scripts/build-qortal-jni.sh
+          scripts/build-qortal-jni.sh
+
+      - name: Upload Qortal JNI library
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: dist/qortal-jni/**/*
 
   package-native-ffi:
     name: Package - Native FFI
@@ -2524,6 +2604,7 @@ jobs:
       - ci-success
       - backend-release-plan
       - package-cli
+      - package-qortal-jni
       - package-native-ffi
       - package-ios-sdk
       - package-android-sdk
@@ -2549,6 +2630,7 @@ jobs:
         env:
           CLI_CHANGED: ${{ needs.backend-release-plan.outputs.cli_changed }}
           QORTAL_CLI_CHANGED: ${{ needs.backend-release-plan.outputs.qortal_cli_changed }}
+          QORTAL_JNI_CHANGED: ${{ needs.backend-release-plan.outputs.qortal_jni_changed }}
           NATIVE_FFI_CHANGED: ${{ needs.backend-release-plan.outputs.native_ffi_changed }}
           IOS_SDK_CHANGED: ${{ needs.backend-release-plan.outputs.ios_sdk_changed }}
           ANDROID_SDK_CHANGED: ${{ needs.backend-release-plan.outputs.android_sdk_changed }}
@@ -2605,6 +2687,7 @@ jobs:
       - frb-codegen
       - rust-lint
       - rust-test
+      - rust-qortal-tests
       - rust-property-tests
       - rust-migration-tests
       - rust-perf-tests
@@ -2617,6 +2700,7 @@ jobs:
       - build-matrix
       - backend-release-plan
       - package-cli
+      - package-qortal-jni
       - package-native-ffi
       - package-ios-sdk
       - package-android-sdk

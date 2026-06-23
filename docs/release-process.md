@@ -198,6 +198,11 @@ Current script outputs are:
   - `piratewallet-cli.exe`
   - `pirate-qortal-cli`
   - `pirate-qortal-cli.exe`
+  - `librust-linux-x86_64.so`
+  - `librust-linux-aarch64.so`
+  - `librust-windows-x86_64.dll`
+  - `librust-macos-x86_64.dylib`
+  - `librust-macos-aarch64.dylib`
   - `libpirate_ffi_native.a`
   - `libpirate_ffi_native.so`
   - `pirate_ffi_native.dll`

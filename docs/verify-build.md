@@ -36,6 +36,7 @@ The project build scripts currently generate these artifact names:
   - `piratewallet-cli.exe`
   - `pirate-qortal-cli`
   - `pirate-qortal-cli.exe`
+  - Qortal JNI libraries named `librust-<platform>-<architecture>`
   - `libpirate_ffi_native.a`
   - `libpirate_ffi_native.so`
   - `pirate_ffi_native.dll`
