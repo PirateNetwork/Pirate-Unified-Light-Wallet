@@ -12,6 +12,7 @@ members = [
     "pirate-cli-core",
     "piratewallet-cli",
     "pirate-qortal-cli",
+    "pirate-qortal-jni",
     "pirate-ffi-native",
     # "pirate-name-resolution",  # Feature-flagged, not implemented yet
     "pirate-ffi-frb",

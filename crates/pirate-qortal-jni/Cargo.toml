@@ -1,0 +1,22 @@
+[package]
+name = "pirate-qortal-jni"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "rust"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+pirate-core = { path = "../pirate-core" }
+pirate-wallet-service = { path = "../pirate-wallet-service" }
+
+anyhow = { workspace = true }
+base64 = { workspace = true }
+hex = { workspace = true }
+jni = "0.21"
+serde_json = { workspace = true }
+sha2 = { workspace = true }

@@ -4041,6 +4041,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pirate-qortal-jni"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "base64",
+ "hex",
+ "jni",
+ "pirate-core",
+ "pirate-wallet-service",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "pirate-storage-sqlite"
 version = "0.1.1"
 dependencies = [
