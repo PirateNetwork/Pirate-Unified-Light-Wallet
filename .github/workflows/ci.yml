@@ -1290,7 +1290,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -1529,7 +1529,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -1648,7 +1648,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -1753,7 +1753,7 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Setup Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -2182,7 +2182,7 @@ jobs:
 
       - name: Setup Go
         if: steps.signing.outputs.enabled == 'true'
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
