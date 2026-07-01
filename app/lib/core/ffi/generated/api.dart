@@ -434,14 +434,10 @@ Future<String> exportSeedRaw({
 /// Export the active wallet seed for immediate KDF swap-engine startup.
 ///
 /// This uses the Rust service's KDF-specific guardrails and rejects decoy,
-/// locked, watch-only, and seedless/private-key-import wallet states.
-Future<String> exportSeedForKdf({
-  required String walletId,
-  MnemonicLanguage? mnemonicLanguage,
-}) => RustLib.instance.api.crateApiExportSeedForKdf(
-  walletId: walletId,
-  mnemonicLanguage: mnemonicLanguage,
-);
+/// locked, watch-only, and seedless/private-key-import wallet states. The
+/// mnemonic is always rendered as English BIP39 for KDF/Komodo compatibility.
+Future<String> exportSeedForKdf({required String walletId}) =>
+    RustLib.instance.api.crateApiExportSeedForKdf(walletId: walletId);
 
 /// Build transaction with note selection, fee calculation, and change.
 Future<PendingTx> buildTx({

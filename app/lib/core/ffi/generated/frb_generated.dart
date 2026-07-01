@@ -228,10 +228,7 @@ abstract class RustLibApi extends BaseApi {
     required String walletId,
   });
 
-  Future<String> crateApiExportSeedForKdf({
-    required String walletId,
-    MnemonicLanguage? mnemonicLanguage,
-  });
+  Future<String> crateApiExportSeedForKdf({required String walletId});
 
   Future<String> crateApiExportSeedRaw({
     required String walletId,
@@ -1728,25 +1725,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiExportSeedForKdf({
-    required String walletId,
-    MnemonicLanguage? mnemonicLanguage,
-  }) {
+  Future<String> crateApiExportSeedForKdf({required String walletId}) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           var arg0 = cst_encode_String(walletId);
-          var arg1 = cst_encode_opt_box_autoadd_mnemonic_language(
-            mnemonicLanguage,
-          );
-          return wire.wire__crate__api__export_seed_for_kdf(port_, arg0, arg1);
+          return wire.wire__crate__api__export_seed_for_kdf(port_, arg0);
         },
         codec: DcoCodec(
           decodeSuccessData: dco_decode_String,
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiExportSeedForKdfConstMeta,
-        argValues: [walletId, mnemonicLanguage],
+        argValues: [walletId],
         apiImpl: this,
       ),
     );
@@ -1754,7 +1745,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiExportSeedForKdfConstMeta => const TaskConstMeta(
     debugName: "export_seed_for_kdf",
-    argNames: ["walletId", "mnemonicLanguage"],
+    argNames: ["walletId"],
   );
 
   @override

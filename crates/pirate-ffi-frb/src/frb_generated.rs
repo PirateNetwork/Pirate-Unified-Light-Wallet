@@ -990,7 +990,6 @@ fn wire__crate__api__export_sapling_viewing_key_secure_impl(
 fn wire__crate__api__export_seed_for_kdf_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
-    mnemonic_language: impl CstDecode<Option<crate::models::MnemonicLanguage>>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -1000,12 +999,10 @@ fn wire__crate__api__export_seed_for_kdf_impl(
         },
         move || {
             let api_wallet_id = wallet_id.cst_decode();
-            let api_mnemonic_language = mnemonic_language.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok =
-                            crate::api::export_seed_for_kdf(api_wallet_id, api_mnemonic_language)?;
+                        let output_ok = crate::api::export_seed_for_kdf(api_wallet_id)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -8322,9 +8319,8 @@ mod io {
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_seed_for_kdf(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
-        mnemonic_language: *mut i32,
     ) {
-        wire__crate__api__export_seed_for_kdf_impl(port_, wallet_id, mnemonic_language)
+        wire__crate__api__export_seed_for_kdf_impl(port_, wallet_id)
     }
 
     #[unsafe(no_mangle)]
@@ -11461,9 +11457,8 @@ mod web {
     pub fn wire__crate__api__export_seed_for_kdf(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
-        mnemonic_language: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
-        wire__crate__api__export_seed_for_kdf_impl(port_, wallet_id, mnemonic_language)
+        wire__crate__api__export_seed_for_kdf_impl(port_, wallet_id)
     }
 
     #[wasm_bindgen]

@@ -1387,14 +1387,28 @@ pub fn export_seed_raw(
 
     let original_language = wallet_secret_mnemonic_language(&secret, &mnemonic)?;
     let display_language = mnemonic_language.unwrap_or(original_language);
-    let mnemonic = if display_language == original_language {
-        canonicalize_mnemonic(&mnemonic, Some(original_language))?.0
-    } else {
-        convert_mnemonic_language_core(&mnemonic, Some(original_language), display_language)?
-    };
+    let mnemonic = render_mnemonic_in_language(&mnemonic, original_language, display_language)?;
 
     tracing::info!("Raw seed export completed for wallet {}", wallet_id);
     Ok(mnemonic)
+}
+
+const KDF_MNEMONIC_LANGUAGE: MnemonicLanguage = MnemonicLanguage::English;
+
+fn render_mnemonic_in_language(
+    mnemonic: &str,
+    original_language: MnemonicLanguage,
+    display_language: MnemonicLanguage,
+) -> Result<String> {
+    if display_language == original_language {
+        Ok(canonicalize_mnemonic(mnemonic, Some(original_language))?.0)
+    } else {
+        Ok(convert_mnemonic_language_core(
+            mnemonic,
+            Some(original_language),
+            display_language,
+        )?)
+    }
 }
 
 /// Export the active seed only for KDF swap initialization.
@@ -1403,20 +1417,33 @@ pub fn export_seed_raw(
 /// - decoy mode is rejected;
 /// - the app must already be unlocked;
 /// - watch-only and private-key-import wallets are rejected;
+/// - localized mnemonics are rendered in English because KDF and Komodo Wallet
+///   validate against the English BIP39 word list;
 /// - the seed is returned for immediate handoff to KDF, not broad UI display.
-pub fn export_seed_for_kdf(
-    wallet_id: WalletId,
-    mnemonic_language: Option<MnemonicLanguage>,
-) -> Result<String> {
+pub fn export_seed_for_kdf(wallet_id: WalletId) -> Result<String> {
     ensure_not_decoy("KDF swap seed handoff")?;
     let _passphrase = app_passphrase()?;
+    let active_wallet = get_active_wallet()?;
+    ensure_kdf_wallet_is_active(&wallet_id, active_wallet.as_deref())?;
 
     let wallet = get_wallet_meta(&wallet_id)?;
     ensure_kdf_seed_wallet_supported(&wallet)?;
 
-    let seed = export_seed_raw(wallet_id.clone(), mnemonic_language)?;
+    let seed = export_seed_raw(wallet_id.clone(), Some(KDF_MNEMONIC_LANGUAGE))?;
     tracing::info!("Seed handed to KDF swap engine for wallet {}", wallet_id);
     Ok(seed)
+}
+
+fn ensure_kdf_wallet_is_active(wallet_id: &str, active_wallet: Option<&str>) -> Result<()> {
+    match active_wallet {
+        Some(active_wallet) if active_wallet == wallet_id => Ok(()),
+        Some(_) => Err(anyhow!(
+            "Cannot initialize KDF swaps for a wallet that is not active"
+        )),
+        None => Err(anyhow!(
+            "Cannot initialize KDF swaps without an active wallet"
+        )),
+    }
 }
 
 fn ensure_kdf_seed_wallet_supported(wallet: &WalletMeta) -> Result<()> {
@@ -1431,6 +1458,9 @@ fn ensure_kdf_seed_wallet_supported(wallet: &WalletMeta) -> Result<()> {
 #[cfg(test)]
 mod kdf_seed_handoff_tests {
     use super::*;
+    use pirate_core::mnemonic::{
+        mnemonic_from_entropy, seed_bytes_from_mnemonic as core_seed_bytes_from_mnemonic,
+    };
 
     fn wallet_meta(watch_only: bool) -> WalletMeta {
         WalletMeta {
@@ -1457,9 +1487,30 @@ mod kdf_seed_handoff_tests {
     }
 
     #[test]
+    fn kdf_seed_handoff_requires_the_requested_wallet_to_be_active() {
+        ensure_kdf_wallet_is_active("wallet-a", Some("wallet-a")).unwrap();
+
+        let inactive = ensure_kdf_wallet_is_active("wallet-a", Some("wallet-b"))
+            .expect_err("inactive wallet must not initialize KDF")
+            .to_string();
+        assert!(
+            inactive.contains("not active"),
+            "unexpected error: {inactive}"
+        );
+
+        let missing = ensure_kdf_wallet_is_active("wallet-a", None)
+            .expect_err("KDF requires an active wallet")
+            .to_string();
+        assert!(
+            missing.contains("without an active wallet"),
+            "unexpected error: {missing}"
+        );
+    }
+
+    #[test]
     fn kdf_seed_handoff_rejects_locked_app_before_wallet_lookup() {
         passphrase_store::clear_passphrase();
-        let error = export_seed_for_kdf("missing-wallet".to_string(), None)
+        let error = export_seed_for_kdf("missing-wallet".to_string())
             .expect_err("locked app must not export a KDF seed")
             .to_string();
         assert!(
@@ -1474,13 +1525,42 @@ mod kdf_seed_handoff_tests {
         panic_duress::set_panic_pin("1234".to_string()).unwrap();
         assert!(panic_duress::verify_panic_pin("1234".to_string()).unwrap());
 
-        let error = export_seed_for_kdf("missing-wallet".to_string(), None)
+        let error = export_seed_for_kdf("missing-wallet".to_string())
             .expect_err("decoy mode must not export a KDF seed")
             .to_string();
         assert!(error.contains("decoy mode"), "unexpected error: {error}");
 
         panic_duress::deactivate_decoy();
         let _ = panic_duress::clear_panic_pin();
+    }
+
+    #[test]
+    fn kdf_seed_handoff_is_english_bip39_with_identical_seed_bytes() {
+        let entropy = [
+            0x92, 0x11, 0x73, 0xa4, 0xd8, 0x2c, 0x0f, 0x5b, 0x76, 0xe9, 0x31, 0xc8, 0x44, 0x6d,
+            0xaa, 0x10, 0x3e, 0xf7, 0x55, 0x81, 0x2a, 0x9c, 0xd0, 0x68, 0xb3, 0x4f, 0x26, 0x99,
+            0x07, 0xe1, 0xbc, 0x5d,
+        ];
+        let expected_english =
+            mnemonic_from_entropy(&entropy, KDF_MNEMONIC_LANGUAGE).expect("english mnemonic");
+        let expected_seed =
+            core_seed_bytes_from_mnemonic(&expected_english, Some(KDF_MNEMONIC_LANGUAGE))
+                .expect("english seed bytes");
+
+        for language in MnemonicLanguage::ALL {
+            let stored = mnemonic_from_entropy(&entropy, language).expect("localized mnemonic");
+            let handed_to_kdf =
+                render_mnemonic_in_language(&stored, language, KDF_MNEMONIC_LANGUAGE)
+                    .expect("KDF mnemonic");
+
+            assert_eq!(handed_to_kdf, expected_english);
+            assert_eq!(
+                core_seed_bytes_from_mnemonic(&handed_to_kdf, Some(KDF_MNEMONIC_LANGUAGE),)
+                    .expect("KDF seed bytes"),
+                expected_seed,
+                "KDF seed changed for {language:?}",
+            );
+        }
     }
 }
 

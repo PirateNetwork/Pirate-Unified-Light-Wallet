@@ -2930,13 +2930,8 @@ class RustLibWire implements BaseWire {
   void wire__crate__api__export_seed_for_kdf(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
-    ffi.Pointer<ffi.Int32> mnemonic_language,
   ) {
-    return _wire__crate__api__export_seed_for_kdf(
-      port_,
-      wallet_id,
-      mnemonic_language,
-    );
+    return _wire__crate__api__export_seed_for_kdf(port_, wallet_id);
   }
 
   late final _wire__crate__api__export_seed_for_kdfPtr =
@@ -2945,18 +2940,13 @@ class RustLibWire implements BaseWire {
           ffi.Void Function(
             ffi.Int64,
             ffi.Pointer<wire_cst_list_prim_u_8_strict>,
-            ffi.Pointer<ffi.Int32>,
           )
         >
       >('frbgen_pirate_wallet_wire__crate__api__export_seed_for_kdf');
   late final _wire__crate__api__export_seed_for_kdf =
       _wire__crate__api__export_seed_for_kdfPtr
           .asFunction<
-            void Function(
-              int,
-              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
-              ffi.Pointer<ffi.Int32>,
-            )
+            void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
           >();
 
   void wire__crate__api__export_seed_raw(

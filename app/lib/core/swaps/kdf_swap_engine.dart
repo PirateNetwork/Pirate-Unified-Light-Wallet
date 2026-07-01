@@ -31,6 +31,8 @@ typedef KdfSwapStartupForTesting =
       int generation,
     );
 
+enum _KdfSeedMatch { canonical, legacyLocalized, mismatch }
+
 class KdfSwapNetworkPolicy {
   const KdfSwapNetworkPolicy._({
     required this.name,
@@ -518,6 +520,7 @@ class KdfSwapEngine {
     // swap gets interrupted, the KDF balances remain recoverable in Komodo
     // Wallet by restoring that same seed.
     var seed = await FfiBridge.exportSeedForKdf(walletId);
+    var originalSeed = await FfiBridge.exportSeedRaw(walletId);
     final walletPassword = await _getOrCreateKdfWalletPassword(walletId);
     final rpcPassword = _randomSecret(32);
     final walletName = _kdfWalletName(walletId);
@@ -537,20 +540,52 @@ class KdfSwapEngine {
         derivationMethod: kdf_types.DerivationMethod.hdWallet,
         allowWeakPassword: true,
       );
+      var useCanonicalWallet = false;
       try {
-        await sdk.auth.register(
+        await _registerOrSignIn(
+          sdk: sdk,
           walletName: walletName,
-          password: walletPassword,
+          walletPassword: walletPassword,
           options: options,
-          mnemonic: kdf_types.Mnemonic.plaintext(seed),
+          seed: seed,
         );
       } catch (error) {
-        if (!_looksLikeExistingWallet(error)) rethrow;
-        await sdk.auth.signIn(
-          walletName: walletName,
-          password: walletPassword,
+        if (!_looksLikeInvalidBip39Seed(error)) rethrow;
+        useCanonicalWallet = true;
+      }
+
+      if (!useCanonicalWallet) {
+        switch (await _kdfSeedMatch(
+          sdk,
+          canonicalSeed: seed,
+          originalSeed: originalSeed,
+          walletPassword: walletPassword,
+        )) {
+          case _KdfSeedMatch.canonical:
+            break;
+          case _KdfSeedMatch.legacyLocalized:
+            await sdk.auth.signOut();
+            useCanonicalWallet = true;
+            break;
+          case _KdfSeedMatch.mismatch:
+            throw const KdfSwapEngineException(
+              'The KDF wallet seed does not match the active Unified Wallet.',
+            );
+        }
+      }
+
+      if (useCanonicalWallet) {
+        // Older builds could register a localized mnemonic before the SDK's
+        // English-only BIP39 validation rejected it. Preserve that record and
+        // use a stable corrected wallet name for the canonical English seed.
+        await _registerOrSignIn(
+          sdk: sdk,
+          walletName: _canonicalKdfWalletName(walletId),
+          walletPassword: walletPassword,
           options: options,
+          seed: seed,
         );
+        await _assertKdfSeedMatches(sdk, seed, walletPassword);
       }
       if (generation != _lifecycleGeneration) {
         await sdk.dispose();
@@ -565,7 +600,61 @@ class KdfSwapEngine {
       throw KdfSwapEngineException('Failed to start KDF swap engine', error);
     } finally {
       seed = '';
+      originalSeed = '';
     }
+  }
+
+  Future<void> _registerOrSignIn({
+    required KomodoDefiSdk sdk,
+    required String walletName,
+    required String walletPassword,
+    required kdf_types.AuthOptions options,
+    required String seed,
+  }) async {
+    try {
+      await sdk.auth.register(
+        walletName: walletName,
+        password: walletPassword,
+        options: options,
+        mnemonic: kdf_types.Mnemonic.plaintext(seed),
+      );
+    } catch (error) {
+      if (!_looksLikeExistingWallet(error)) rethrow;
+      await sdk.auth.signIn(
+        walletName: walletName,
+        password: walletPassword,
+        options: options,
+      );
+    }
+  }
+
+  Future<void> _assertKdfSeedMatches(
+    KomodoDefiSdk sdk,
+    String expectedSeed,
+    String walletPassword,
+  ) async {
+    final mnemonic = await sdk.auth.getMnemonicPlainText(walletPassword);
+    if (mnemonic.plaintextMnemonic?.trim() != expectedSeed.trim()) {
+      throw const KdfSwapEngineException(
+        'The KDF wallet seed does not match the active Unified Wallet.',
+      );
+    }
+  }
+
+  Future<_KdfSeedMatch> _kdfSeedMatch(
+    KomodoDefiSdk sdk, {
+    required String canonicalSeed,
+    required String originalSeed,
+    required String walletPassword,
+  }) async {
+    final mnemonic = await sdk.auth.getMnemonicPlainText(walletPassword);
+    final actualSeed = mnemonic.plaintextMnemonic?.trim();
+    if (actualSeed == canonicalSeed.trim()) return _KdfSeedMatch.canonical;
+    if (originalSeed.trim() != canonicalSeed.trim() &&
+        actualSeed == originalSeed.trim()) {
+      return _KdfSeedMatch.legacyLocalized;
+    }
+    return _KdfSeedMatch.mismatch;
   }
 
   Future<void> _configureArrrParamsIfAvailable(KomodoDefiSdk sdk) async {
@@ -663,9 +752,17 @@ class KdfSwapEngine {
         message.contains('duplicate');
   }
 
+  bool _looksLikeInvalidBip39Seed(Object error) {
+    return error.toString().toLowerCase().contains('bip39');
+  }
+
   String _kdfWalletName(String walletId) {
     final digest = sha256.convert(utf8.encode(walletId)).toString();
     return 'pirate_swap_${digest.substring(0, 24)}';
+  }
+
+  String _canonicalKdfWalletName(String walletId) {
+    return '${_kdfWalletName(walletId)}_bip39';
   }
 
   String _randomSecret(int length) {

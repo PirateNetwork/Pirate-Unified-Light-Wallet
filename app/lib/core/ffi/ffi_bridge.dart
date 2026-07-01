@@ -1686,16 +1686,11 @@ class FfiBridge {
   /// The Rust side enforces the same high-risk-wallet protections as the secure
   /// seed export path: the app must be unlocked, decoy mode is rejected,
   /// watch-only wallets are rejected, and seedless imported-key wallets cannot
-  /// produce a mnemonic.
-  static Future<String> exportSeedForKdf(
-    WalletId walletId, {
-    MnemonicLanguage? mnemonicLanguage,
-  }) async {
+  /// produce a mnemonic. Rust always renders the seed as English BIP39 because
+  /// that is the recovery format accepted by KDF and Komodo Wallet.
+  static Future<String> exportSeedForKdf(WalletId walletId) async {
     if (kUseFrbBindings) {
-      return await api.exportSeedForKdf(
-        walletId: walletId,
-        mnemonicLanguage: mnemonicLanguage,
-      );
+      return await api.exportSeedForKdf(walletId: walletId);
     }
     throw UnimplementedError('FRB bindings not available');
   }
