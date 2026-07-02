@@ -40,7 +40,8 @@ class _PButtonState extends State<PButton> {
   @override
   Widget build(BuildContext context) {
     final isDisabled = widget.onPressed == null || widget.loading;
-    final contentChild = widget.child ?? Text(widget.text ?? '');
+    final contentChild =
+        widget.child ?? Text(widget.text ?? '', textAlign: TextAlign.center);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -56,7 +57,7 @@ class _PButtonState extends State<PButton> {
             AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   width: widget.fullWidth ? double.infinity : null,
-                  height: widget.size.height,
+                  constraints: BoxConstraints(minHeight: widget.size.height),
                   decoration: BoxDecoration(
                     gradient: widget.variant.gradient(
                       isDisabled: isDisabled,
@@ -113,13 +114,16 @@ class _PButtonState extends State<PButton> {
                               ),
                               SizedBox(width: PSpacing.iconTextGap),
                             ],
-                            DefaultTextStyle(
-                              style: widget.size.textStyle.copyWith(
-                                color: widget.variant.textColor(
-                                  isDisabled: isDisabled,
+                            Flexible(
+                              child: DefaultTextStyle(
+                                textAlign: TextAlign.center,
+                                style: widget.size.textStyle.copyWith(
+                                  color: widget.variant.textColor(
+                                    isDisabled: isDisabled,
+                                  ),
                                 ),
+                                child: contentChild,
                               ),
-                              child: contentChild,
                             ),
                           ],
                         ),
