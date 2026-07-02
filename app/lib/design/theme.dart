@@ -84,6 +84,7 @@ class PTheme {
       // Typography
       // ========================================================================
       fontFamily: PTypography.fontFamilyUI,
+      fontFamilyFallback: PTypography.fontFamilyFallback,
 
       textTheme: TextTheme(
         displayLarge: PTypography.displayLarge(color: PColors.textPrimary),
@@ -501,6 +502,7 @@ class PTheme {
       // Typography
       // ========================================================================
       fontFamily: PTypography.fontFamilyUI,
+      fontFamilyFallback: PTypography.fontFamilyFallback,
 
       textTheme: TextTheme(
         displayLarge: PTypography.displayLarge(color: PColorsLight.textPrimary),

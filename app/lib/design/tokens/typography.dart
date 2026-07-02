@@ -17,6 +17,17 @@ class PTypography {
   /// JetBrains Mono font family for code/monospace text (local asset)
   static String get fontFamilyMono => 'JetBrainsMono';
 
+  /// Bundled fallbacks for every script available in the language picker.
+  static const List<String> fontFamilyFallback = <String>[
+    'NotoSans',
+    'NotoSansSymbols2',
+    'NotoSansArabic',
+    'NotoSansDevanagari',
+    'NotoSansSC',
+    'NotoSansJP',
+    'NotoSansKR',
+  ];
+
   // ============================================================================
   // Font Weights
   // ============================================================================
@@ -70,6 +81,7 @@ class PTypography {
     letterSpacing: letterSpacingTight,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Display Medium - 60px/semiBold/tight
@@ -81,6 +93,7 @@ class PTypography {
     letterSpacing: letterSpacingTight,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Display Small - 48px/semiBold/tight
@@ -92,6 +105,7 @@ class PTypography {
     letterSpacing: letterSpacingTight,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   // ============================================================================
@@ -107,6 +121,7 @@ class PTypography {
     letterSpacing: letterSpacingTight,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Heading 2 - 32px/semiBold/tight
@@ -118,6 +133,7 @@ class PTypography {
     letterSpacing: letterSpacingTight,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Heading 3 - 28px/semiBold/normal
@@ -129,6 +145,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Heading 4 - 24px/semiBold/normal
@@ -140,6 +157,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Heading 5 - 20px/semiBold/normal
@@ -151,6 +169,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Heading 6 - 18px/semiBold/normal
@@ -162,6 +181,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   // ============================================================================
@@ -177,6 +197,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Title Medium - 18px/medium/normal
@@ -188,6 +209,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Title Small - 16px/medium/normal
@@ -199,6 +221,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   // ============================================================================
@@ -214,6 +237,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Body Medium - 16px/regular/normal
@@ -225,6 +249,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Body Small - 14px/regular/normal
@@ -236,6 +261,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   // ============================================================================
@@ -251,6 +277,7 @@ class PTypography {
     letterSpacing: letterSpacingWide,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Label Medium - 14px/medium/normal
@@ -262,6 +289,7 @@ class PTypography {
     letterSpacing: letterSpacingWide,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Label Small - 12px/medium/normal
@@ -273,6 +301,7 @@ class PTypography {
     letterSpacing: letterSpacingWide,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   // ============================================================================
@@ -288,6 +317,7 @@ class PTypography {
     letterSpacing: letterSpacingWide,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Overline - 11px/medium/extraWide (ALL CAPS)
@@ -299,6 +329,7 @@ class PTypography {
     letterSpacing: letterSpacingExtraWide,
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   // ============================================================================
@@ -314,6 +345,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyMono,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Code Medium - 14px/regular/relaxed
@@ -325,6 +357,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyMono,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Code Small - 12px/regular/relaxed
@@ -336,6 +369,7 @@ class PTypography {
     letterSpacing: letterSpacingNormal,
     color: color,
     fontFamily: fontFamilyMono,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   // ============================================================================
@@ -352,6 +386,7 @@ class PTypography {
     fontFeatures: [FontFeature.tabularFigures()],
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Number Medium - 18px/medium/normal (tabular)
@@ -364,6 +399,7 @@ class PTypography {
     fontFeatures: [FontFeature.tabularFigures()],
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   /// Number Small - 14px/medium/normal (tabular)
@@ -376,6 +412,7 @@ class PTypography {
     fontFeatures: [FontFeature.tabularFigures()],
     color: color,
     fontFamily: fontFamilyUI,
+    fontFamilyFallback: fontFamilyFallback,
   );
 
   // ============================================================================

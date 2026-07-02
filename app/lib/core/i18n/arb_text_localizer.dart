@@ -14,21 +14,29 @@ class ArbTextLocalizer extends ChangeNotifier {
 
   final Map<String, Map<String, String>> _cache =
       <String, Map<String, String>>{};
+  Future<void>? _bootstrapFuture;
   Map<String, String> _fallbackEn = <String, String>{};
   Map<String, String> _active = <String, String>{};
   String _activeLocale = 'en';
+  var _localeRequestGeneration = 0;
 
   String get activeLocale => _activeLocale;
 
-  Future<void> bootstrap() async {
+  Future<void> bootstrap() {
     if (_fallbackEn.isEmpty) {
-      _fallbackEn = await _loadLocaleMap('en');
-      _active = _fallbackEn;
-      _activeLocale = 'en';
+      return _bootstrapFuture ??= _loadFallbackEnglish();
     }
+    return Future<void>.value();
+  }
+
+  Future<void> _loadFallbackEnglish() async {
+    _fallbackEn = await _loadLocaleMap('en');
+    _active = _fallbackEn;
+    _activeLocale = 'en';
   }
 
   Future<void> setLocale(String languageCode, {String? countryCode}) async {
+    final generation = ++_localeRequestGeneration;
     await bootstrap();
 
     final normalizedLang = languageCode.trim().toLowerCase();
@@ -38,6 +46,9 @@ class ArbTextLocalizer extends ChangeNotifier {
       final full = '${normalizedLang}_$normalizedCountry';
       final fullMap = await _loadLocaleMap(full);
       if (fullMap.isNotEmpty) {
+        if (generation != _localeRequestGeneration) {
+          return;
+        }
         _activeLocale = full;
         _active = fullMap;
         notifyListeners();
@@ -46,6 +57,9 @@ class ArbTextLocalizer extends ChangeNotifier {
     }
 
     final langMap = await _loadLocaleMap(normalizedLang);
+    if (generation != _localeRequestGeneration) {
+      return;
+    }
     if (langMap.isEmpty) {
       _activeLocale = 'en';
       _active = _fallbackEn;

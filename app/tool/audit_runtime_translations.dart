@@ -359,6 +359,65 @@ Set<String> placeholders(String value) => RegExp(
   r'\{([A-Za-z][A-Za-z0-9_]*)\}',
 ).allMatches(value).map((match) => match.group(1)!).toSet();
 
+int newlineCount(String value) => '\n'.allMatches(value).length;
+
+String leadingWhitespace(String value) =>
+    RegExp(r'^\s*').firstMatch(value)?.group(0) ?? '';
+
+String trailingWhitespace(String value) =>
+    RegExp(r'\s*$').firstMatch(value)?.group(0) ?? '';
+
+const protectedRuntimeTerms = <String>{
+  'ARRR',
+  'AppImage',
+  'CoinGecko',
+  'CoinMarketCap',
+  'Face ID',
+  'GitHub',
+  'I2P',
+  'JetBrains Mono',
+  'KDF',
+  'Komodo',
+  'LTC',
+  'Linux',
+  'Litecoin',
+  'Orchard',
+  'Pirate',
+  'Pirate Chain',
+  'Rust',
+  'SHA256',
+  'SOCKS5',
+  'SPKI',
+  'Sapling',
+  'Snowflake',
+  'TLS',
+  'Tor',
+  'Windows',
+  'lightwalletd',
+  'macOS',
+  'obfs4',
+  'pirate1',
+  'pirate-extended-viewing-key1',
+  'pirate-orchard-payment-disclosure1',
+  'pirate-sapling-payment-disclosure1',
+  'txid',
+  'vARRR',
+  'zs1',
+};
+
+Set<String> protectedLiterals(String source) {
+  final literals =
+      <String>{
+        for (final term in protectedRuntimeTerms)
+          if (source.contains(term)) term,
+      }..addAll(
+        RegExp(
+          r'https?://[^\s<>"\]]+',
+        ).allMatches(source).map((match) => match.group(0)!),
+      );
+  return literals;
+}
+
 String buildRuntimeEnglishArb(Iterable<String> keys) {
   final sortedKeys = keys.toList()..sort();
   final output = <String, dynamic>{
@@ -452,6 +511,17 @@ void main(List<String> arguments) {
             p.basename(file.path) != 'app_en.arb',
       );
   for (final localeFile in runtimeLocaleFiles) {
+    final decoded =
+        jsonDecode(localeFile.readAsStringSync()) as Map<String, dynamic>;
+    final fileLocale = p
+        .basenameWithoutExtension(localeFile.path)
+        .substring('app_'.length);
+    if (decoded['@@locale'] != fileLocale) {
+      localeProblems.add(
+        '${localeFile.path}: @@locale is ${jsonEncode(decoded['@@locale'])}, '
+        'expected ${jsonEncode(fileLocale)}',
+      );
+    }
     final locale = readArb(localeFile);
     final localeKeys = locale.keys.toSet();
     for (final key in translatedKeys.difference(localeKeys)) {
@@ -461,13 +531,53 @@ void main(List<String> arguments) {
       localeProblems.add('${localeFile.path}: stale ${jsonEncode(key)}');
     }
     for (final key in translatedKeys.intersection(localeKeys)) {
+      final value = locale[key]!;
       final expected = placeholders(key);
-      final actual = placeholders(locale[key]!);
+      final actual = placeholders(value);
       if (!expected.containsAll(actual) || !actual.containsAll(expected)) {
         localeProblems.add(
           '${localeFile.path}: placeholders for ${jsonEncode(key)} are '
           '${actual.toList()..sort()}, expected ${expected.toList()..sort()}',
         );
+      }
+      if (value.trim().isEmpty) {
+        localeProblems.add(
+          '${localeFile.path}: empty translation for ${jsonEncode(key)}',
+        );
+      }
+      if (newlineCount(value) != newlineCount(key)) {
+        localeProblems.add(
+          '${localeFile.path}: newline count for ${jsonEncode(key)} is '
+          '${newlineCount(value)}, expected ${newlineCount(key)}',
+        );
+      }
+      if (leadingWhitespace(value) != leadingWhitespace(key) ||
+          trailingWhitespace(value) != trailingWhitespace(key)) {
+        localeProblems.add(
+          '${localeFile.path}: edge whitespace differs for ${jsonEncode(key)}',
+        );
+      }
+      if (RegExp(
+        r'[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]',
+      ).hasMatch(value)) {
+        localeProblems.add(
+          '${localeFile.path}: hidden direction or formatting character in '
+          '${jsonEncode(key)}',
+        );
+      }
+      if (value.contains('\uFFFD') || value.contains('ZXQFIX')) {
+        localeProblems.add(
+          '${localeFile.path}: invalid or generated marker in '
+          '${jsonEncode(key)}',
+        );
+      }
+      for (final literal in protectedLiterals(key)) {
+        if (!value.contains(literal)) {
+          localeProblems.add(
+            '${localeFile.path}: protected literal ${jsonEncode(literal)} '
+            'is missing from ${jsonEncode(key)}',
+          );
+        }
       }
     }
   }

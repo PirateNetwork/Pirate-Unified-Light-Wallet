@@ -41,14 +41,56 @@ extension AppThemeModeX on AppThemeMode {
 
 enum AppLocalePreference {
   english,
-  indonesian;
+  arabic,
+  simplifiedChinese,
+  dutch,
+  french,
+  german,
+  hindi,
+  indonesian,
+  italian,
+  japanese,
+  korean,
+  portuguese,
+  russian,
+  spanish,
+  turkish,
+  urdu;
 
   Locale get locale {
     switch (this) {
       case AppLocalePreference.english:
         return const Locale('en');
+      case AppLocalePreference.arabic:
+        return const Locale('ar');
+      case AppLocalePreference.simplifiedChinese:
+        return const Locale('zh', 'CN');
+      case AppLocalePreference.dutch:
+        return const Locale('nl');
+      case AppLocalePreference.french:
+        return const Locale('fr');
+      case AppLocalePreference.german:
+        return const Locale('de');
+      case AppLocalePreference.hindi:
+        return const Locale('hi');
       case AppLocalePreference.indonesian:
         return const Locale('id');
+      case AppLocalePreference.italian:
+        return const Locale('it');
+      case AppLocalePreference.japanese:
+        return const Locale('ja');
+      case AppLocalePreference.korean:
+        return const Locale('ko');
+      case AppLocalePreference.portuguese:
+        return const Locale('pt');
+      case AppLocalePreference.russian:
+        return const Locale('ru');
+      case AppLocalePreference.spanish:
+        return const Locale('es');
+      case AppLocalePreference.turkish:
+        return const Locale('tr');
+      case AppLocalePreference.urdu:
+        return const Locale('ur');
     }
   }
 
@@ -56,8 +98,36 @@ enum AppLocalePreference {
     switch (this) {
       case AppLocalePreference.english:
         return 'English';
+      case AppLocalePreference.arabic:
+        return 'العربية';
+      case AppLocalePreference.simplifiedChinese:
+        return '简体中文';
+      case AppLocalePreference.dutch:
+        return 'Nederlands';
+      case AppLocalePreference.french:
+        return 'Français';
+      case AppLocalePreference.german:
+        return 'Deutsch';
+      case AppLocalePreference.hindi:
+        return 'हिन्दी';
       case AppLocalePreference.indonesian:
         return 'Bahasa Indonesia';
+      case AppLocalePreference.italian:
+        return 'Italiano';
+      case AppLocalePreference.japanese:
+        return '日本語';
+      case AppLocalePreference.korean:
+        return '한국어';
+      case AppLocalePreference.portuguese:
+        return 'Português';
+      case AppLocalePreference.russian:
+        return 'Русский';
+      case AppLocalePreference.spanish:
+        return 'Español';
+      case AppLocalePreference.turkish:
+        return 'Türkçe';
+      case AppLocalePreference.urdu:
+        return 'اردو';
     }
   }
 }
@@ -384,6 +454,7 @@ class SwapInterfacePreferenceNotifier
 
 class LocalePreferenceNotifier extends Notifier<AppLocalePreference> {
   late final FlutterSecureStorage _storage;
+  var _activationGeneration = 0;
   static const String _storageKey = 'ui_locale_pref_v1';
 
   @override
@@ -394,22 +465,38 @@ class LocalePreferenceNotifier extends Notifier<AppLocalePreference> {
   }
 
   Future<void> setLocale(AppLocalePreference preference) async {
+    final generation = ++_activationGeneration;
+    await _activateCatalog(preference);
+    if (!ref.mounted || generation != _activationGeneration) {
+      return;
+    }
     state = preference;
     await _storage.write(key: _storageKey, value: preference.name);
   }
 
   Future<void> _load() async {
+    final generation = ++_activationGeneration;
     final raw = await _storage.read(key: _storageKey);
-    if (!ref.mounted) {
+    if (!ref.mounted || generation != _activationGeneration) {
       return;
     }
-    if (raw == null || raw.isEmpty) {
-      state = AppLocalePreference.english;
-      return;
+    final preference = raw == null || raw.isEmpty
+        ? AppLocalePreference.english
+        : AppLocalePreference.values.firstWhere(
+            (locale) => locale.name == raw,
+            orElse: () => AppLocalePreference.english,
+          );
+    await _activateCatalog(preference);
+    if (ref.mounted && generation == _activationGeneration) {
+      state = preference;
     }
-    state = AppLocalePreference.values.firstWhere(
-      (locale) => locale.name == raw,
-      orElse: () => AppLocalePreference.english,
+  }
+
+  Future<void> _activateCatalog(AppLocalePreference preference) {
+    final locale = preference.locale;
+    return ArbTextLocalizer.instance.setLocale(
+      locale.languageCode,
+      countryCode: locale.countryCode,
     );
   }
 }
