@@ -56,6 +56,7 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(localePreferenceProvider);
     final size = MediaQuery.of(context).size;
     final screenWidth = size.width;
     final isMobile = AppSpacing.isMobile(screenWidth);

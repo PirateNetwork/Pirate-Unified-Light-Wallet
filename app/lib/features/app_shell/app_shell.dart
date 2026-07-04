@@ -16,6 +16,7 @@ import '../pay/pay_screen.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/services/address_rotation_service.dart';
 import '../../core/i18n/arb_text_localizer.dart';
+import '../settings/providers/preferences_providers.dart';
 
 /// App shell with persistent navigation.
 class AppShell extends ConsumerWidget {
@@ -27,7 +28,7 @@ class AppShell extends ConsumerWidget {
   bool get _isDesktop =>
       Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
-  static final List<PNavDestination> _destinations = [
+  List<PNavDestination> _destinations() => [
     PNavDestination(
       icon: Icons.home_outlined,
       selectedIcon: Icons.home,
@@ -150,12 +151,13 @@ class AppShell extends ConsumerWidget {
       ..watch(autoRotationWatcherProvider)
       ..watch(syncCompletionRotationWatcherProvider)
       ..watch(walletInitRotationWatcherProvider)
-      ..watch(kdfSwapWarmupProvider);
+      ..watch(kdfSwapWarmupProvider)
+      ..watch(localePreferenceProvider);
     final currentIndex = _locationToIndex(location);
     final nav = PNav(
       currentIndex: currentIndex,
       onDestinationSelected: (index) => _onDestinationSelected(context, index),
-      destinations: _destinations,
+      destinations: _destinations(),
       onPayTap: _isDesktop ? null : () => _openPaySheet(context),
       payIndex: 1,
     );
