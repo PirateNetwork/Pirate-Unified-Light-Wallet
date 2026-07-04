@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -70,8 +74,32 @@ Widget _testApp({required ProviderContainer container, required Widget home}) {
   );
 }
 
+Future<ByteData?> _loadI18nTestAsset(ByteData? message) async {
+  if (message == null) {
+    return null;
+  }
+  final key = utf8.decode(
+    message.buffer.asUint8List(message.offsetInBytes, message.lengthInBytes),
+  );
+  if (!key.startsWith('assets/i18n/')) {
+    return null;
+  }
+  final bytes = File(key).readAsBytesSync();
+  return ByteData.sublistView(bytes);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler('flutter/assets', _loadI18nTestAsset);
+  });
+
+  tearDownAll(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler('flutter/assets', null);
+  });
 
   setUp(() async {
     await ArbTextLocalizer.instance.setLocale('en');
