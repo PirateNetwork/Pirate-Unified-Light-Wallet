@@ -28,8 +28,10 @@ pub struct Network {
     pub p2p_port: u16,
     /// Sapling activation height
     pub sapling_activation_height: u32,
-    /// Orchard activation height (if activated)
-    pub orchard_activation_height: Option<u32>,
+    /// Overwinter activation height
+    pub overwinter_activation_height: u32,
+    /// Ironwood activation height (if activated)
+    pub ironwood_activation_height: Option<u32>,
     /// Default birthday height (wallet creation)
     pub default_birthday_height: u32,
 }
@@ -43,8 +45,9 @@ impl Network {
             coin_type: 141, // Pirate Chain BIP-44 coin type
             rpc_port: 45452,
             p2p_port: 45451,
+            overwinter_activation_height: 152_855,
             sapling_activation_height: 152_855,
-            orchard_activation_height: None, // Orchard not activated on mainnet
+            ironwood_activation_height: None, // Ironwood not activated on mainnet
             default_birthday_height: 3_750_000, // Recent checkpoint
         }
     }
@@ -57,8 +60,9 @@ impl Network {
             coin_type: 1, // Testnet coin type
             rpc_port: 45462,
             p2p_port: 45461,
+            overwinter_activation_height: 1,
             sapling_activation_height: 1,
-            orchard_activation_height: Some(61),
+            ironwood_activation_height: Some(61),
             default_birthday_height: 61,
         }
     }
@@ -71,8 +75,9 @@ impl Network {
             coin_type: 1,
             rpc_port: 18344,
             p2p_port: 18445,
+            overwinter_activation_height: 50,
             sapling_activation_height: 100,
-            orchard_activation_height: Some(200),
+            ironwood_activation_height: Some(200),
             default_birthday_height: 1,
         }
     }
@@ -91,9 +96,9 @@ impl Network {
         height >= self.sapling_activation_height
     }
 
-    /// Check if Orchard is activated at given height
-    pub const fn is_orchard_active(&self, height: u32) -> bool {
-        if let Some(activation_height) = self.orchard_activation_height {
+    /// Check if Ironwood is activated at given height
+    pub const fn is_ironwood_active(&self, height: u32) -> bool {
+        if let Some(activation_height) = self.ironwood_activation_height {
             height >= activation_height
         } else {
             false
@@ -112,7 +117,7 @@ mod tests {
         assert_eq!(net.coin_type, 141);
         assert_eq!(net.rpc_port, 45452);
         assert!(net.is_sapling_active(200_000));
-        assert!(!net.is_orchard_active(4_000_000));
+        assert!(!net.is_ironwood_active(4_000_000));
     }
 
     #[test]

@@ -13,11 +13,13 @@ use incrementalmerkletree::MerklePath;
 use sapling::{Anchor as SaplingAnchor, Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH};
 use zcash_primitives::transaction::{
     builder::{BuildConfig, Builder as TxBuilder},
-    TxId,
+    Transaction, TxId,
 };
 use zcash_proofs::prover::LocalTxProver;
 use zcash_protocol::{
-    consensus::{BlockHeight, NetworkType as ConsensusNetworkType, NetworkUpgrade, Parameters},
+    consensus::{
+        BlockHeight, BranchId, NetworkType as ConsensusNetworkType, NetworkUpgrade, Parameters,
+    },
     memo::MemoBytes,
     value::Zatoshis as Amount,
 };
@@ -42,7 +44,7 @@ impl PirateNetwork {
         Self::new(NetworkType::Mainnet)
     }
 
-    fn network_type(&self) -> NetworkType {
+    pub(crate) fn pirate_network_type(&self) -> NetworkType {
         self.network.network_type
     }
 }
@@ -64,24 +66,29 @@ impl Parameters for PirateNetwork {
 
     fn activation_height(&self, nu: NetworkUpgrade) -> Option<BlockHeight> {
         match nu {
-            NetworkUpgrade::Overwinter => match self.network.network_type {
-                NetworkType::Mainnet => Some(BlockHeight::from_u32(152_855)),
-                NetworkType::Testnet => Some(BlockHeight::from_u32(207_500)),
-                NetworkType::Regtest => Some(BlockHeight::from_u32(50)),
-            },
-            NetworkUpgrade::Sapling => match self.network.network_type {
-                NetworkType::Mainnet => Some(BlockHeight::from_u32(152_855)),
-                NetworkType::Testnet => Some(BlockHeight::from_u32(280_000)),
-                NetworkType::Regtest => Some(BlockHeight::from_u32(100)),
-            },
-            NetworkUpgrade::Nu5 => self
+            NetworkUpgrade::Overwinter => Some(BlockHeight::from_u32(
+                self.network.overwinter_activation_height,
+            )),
+            NetworkUpgrade::Sapling => Some(BlockHeight::from_u32(
+                self.network.sapling_activation_height,
+            )),
+            NetworkUpgrade::Nu6_3 => self
                 .network
-                .orchard_activation_height
+                .ironwood_activation_height
                 .map(BlockHeight::from_u32),
             #[allow(unreachable_patterns)]
             _ => None,
         }
     }
+}
+
+/// Parse a Pirate transaction across the legacy Sapling and Ironwood formats.
+///
+/// Transaction v5 and v6 encode their branch ID in the transaction header. The
+/// supplied branch ID is only used by legacy transaction formats, for which
+/// Pirate's active shielded branch is Sapling.
+pub fn read_pirate_transaction(raw_tx_bytes: &[u8]) -> std::io::Result<Transaction> {
+    Transaction::read(raw_tx_bytes, BranchId::Sapling)
 }
 
 /// Transaction output (Sapling-only for now)
@@ -316,7 +323,7 @@ impl TransactionBuilder {
         );
 
         let use_sapling_internal_change = crate::sapling_internal_change_active(
-            self.network.network_type(),
+            self.network.pirate_network_type(),
             u64::from(target_height),
         );
         let mut first_legacy_sapling_change: Option<sapling::PaymentAddress> = None;
@@ -443,11 +450,53 @@ impl Default for TransactionBuilder {
 mod tests {
     use super::*;
     use crate::selection::SelectableNote;
+    use zcash_primitives::transaction::{Authorized, TransactionData, TxVersion};
 
     #[test]
     fn test_builder_creation() {
         let builder = TransactionBuilder::new();
         assert_eq!(builder.outputs.len(), 0);
+    }
+
+    #[test]
+    fn testnet_switches_directly_from_sapling_to_ironwood() {
+        let network = PirateNetwork::new(NetworkType::Testnet);
+
+        assert_eq!(
+            BranchId::for_height(&network, BlockHeight::from_u32(60)),
+            BranchId::Sapling
+        );
+        assert_eq!(
+            BranchId::for_height(&network, BlockHeight::from_u32(61)),
+            BranchId::Nu6_3
+        );
+        assert_eq!(
+            TxVersion::suggested_for_branch(BranchId::Nu6_3),
+            TxVersion::V6
+        );
+    }
+
+    #[test]
+    fn pirate_transaction_reader_preserves_v6_ironwood_header() {
+        let tx = TransactionData::<Authorized>::from_parts_v6(
+            BranchId::Nu6_3,
+            0,
+            BlockHeight::from_u32(81),
+            None,
+            None,
+            None,
+            None,
+        )
+        .freeze()
+        .unwrap();
+        let mut raw = Vec::new();
+        tx.write(&mut raw).unwrap();
+
+        let parsed = read_pirate_transaction(&raw).unwrap().into_data();
+        assert_eq!(parsed.version(), TxVersion::V6);
+        assert_eq!(parsed.consensus_branch_id(), BranchId::Nu6_3);
+        assert!(parsed.orchard_bundle().is_none());
+        assert!(parsed.ironwood_bundle().is_none());
     }
 
     #[test]
