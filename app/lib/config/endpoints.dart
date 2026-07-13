@@ -15,12 +15,12 @@ const int kDefaultLightdPort = 9067;
 const String kDefaultLightd = '$kDefaultLightdHost:$kDefaultLightdPort';
 
 /// Known-working mainnet endpoint
-const String kOrchardMainnetHost = '64.23.167.130';
-const int kOrchardMainnetPort = 9067;
+const String kMainnetHost = '64.23.167.130';
+const int kMainnetPort = 9067;
 
-/// Orchard-capable testnet endpoint (provided)
-const String kOrchardTestnetHost = '64.23.167.130';
-const int kOrchardTestnetPort = 8067;
+/// Ironwood testnet endpoint.
+const String kIronwoodTestnetHost = '64.23.167.130';
+const int kIronwoodTestnetPort = 8067;
 
 /// Whether TLS is enabled by default
 const bool kDefaultUseTls = false;
@@ -55,37 +55,37 @@ class LightdEndpoint {
     this.label,
   });
 
-  /// Default Pirate Chain endpoint (Orchard-ready mainnet)
+  /// Default Pirate Chain mainnet endpoint.
   /// This is the working endpoint that replaces the old lightd1.piratechain.com
   static final LightdEndpoint defaultEndpoint = LightdEndpoint(
-    host: kOrchardMainnetHost,
-    port: kOrchardMainnetPort,
+    host: kMainnetHost,
+    port: kMainnetPort,
     useTls: kDefaultUseTls,
     tlsPin: kDefaultTlsPin.isEmpty ? null : kDefaultTlsPin,
     label: 'Pirate Chain Mainnet'.tr,
   );
 
-  /// Orchard-capable preset endpoints for quick selection
-  static final LightdEndpoint orchardMainnet = LightdEndpoint(
-    host: kOrchardMainnetHost,
-    port: kOrchardMainnetPort,
+  /// Preset endpoints for quick selection.
+  static final LightdEndpoint mainnet = LightdEndpoint(
+    host: kMainnetHost,
+    port: kMainnetPort,
     useTls: kDefaultUseTls,
     tlsPin: kDefaultTlsPin.isEmpty ? null : kDefaultTlsPin,
     label: 'Pirate Chain Mainnet'.tr,
   );
 
-  static final LightdEndpoint orchardTestnet = LightdEndpoint(
-    host: kOrchardTestnetHost,
-    port: kOrchardTestnetPort,
+  static final LightdEndpoint ironwoodTestnet = LightdEndpoint(
+    host: kIronwoodTestnetHost,
+    port: kIronwoodTestnetPort,
     useTls: false,
-    label: 'Orchard Testnet'.tr,
+    label: 'Ironwood Testnet'.tr,
   );
 
   /// Suggested endpoints presented in the node picker UI
   /// The suggested endpoints include the known-working mainnet endpoint.
   static final List<LightdEndpoint> suggested = <LightdEndpoint>[
-    orchardMainnet,
-    orchardTestnet,
+    mainnet,
+    ironwoodTestnet,
   ];
 
   /// Full URL for gRPC connection

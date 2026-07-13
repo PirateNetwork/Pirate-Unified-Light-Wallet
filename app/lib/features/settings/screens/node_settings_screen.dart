@@ -361,7 +361,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
 
                 const SizedBox(height: AppSpacing.xl),
 
-                // Suggested endpoints (Orchard-capable presets)
+                // Suggested network endpoints
                 Text(
                   'SUGGESTED ENDPOINTS'.tr,
                   style: AppTypography.caption.copyWith(
