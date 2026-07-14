@@ -6,7 +6,7 @@ use crate::{mnemonic, Error, Result};
 use bech32::{Bech32, Hrp};
 use blake2b_simd::Params as Blake2bParams;
 use blake2s_simd::Params as Blake2sParams;
-use orchard::keys::{FullViewingKey as OrchardFullViewingKey, SpendingKey};
+use orchard::keys::{FullViewingKey as IronwoodFullViewingKey, SpendingKey};
 use pirate_params::{Network, NetworkType};
 use sapling::{
     self, constants,
@@ -24,7 +24,7 @@ use zcash_client_backend::encoding::{
 use zcash_client_backend::keys::sapling as sapling_keys;
 use zip32::{AccountId, DiversifierIndex, Scope};
 
-/// PRF^Expand domain separator for ZIP-32 Orchard child key derivation
+/// PRF^Expand domain separator for ZIP-32 Ironwood child key derivation
 const PRF_EXPAND_PERSONALIZATION: &[u8; 16] = b"Zcash_ExpandSeed";
 const ZIP32_ORCHARD_CHILD_DOMAIN: u8 = 0x81;
 
@@ -52,7 +52,7 @@ fn sapling_incoming_viewing_key_hrp_for_network(network: NetworkType) -> &'stati
     }
 }
 
-fn orchard_extfvk_hrp_for_network(network: NetworkType) -> &'static str {
+fn ironwood_extfvk_hrp_for_network(network: NetworkType) -> &'static str {
     match network {
         NetworkType::Mainnet => "pirate-extended-viewing-key",
         NetworkType::Testnet => "pirate-extended-viewing-key-test",
@@ -60,8 +60,8 @@ fn orchard_extfvk_hrp_for_network(network: NetworkType) -> &'static str {
     }
 }
 
-/// Orchard extended spending key HRP for a given network.
-pub fn orchard_extsk_hrp_for_network(network: NetworkType) -> &'static str {
+/// Ironwood extended spending key HRP for a given network.
+pub fn ironwood_extsk_hrp_for_network(network: NetworkType) -> &'static str {
     match network {
         NetworkType::Mainnet => "pirate-secret-extended-key",
         NetworkType::Testnet => "pirate-secret-extended-key-test",
@@ -69,12 +69,12 @@ pub fn orchard_extsk_hrp_for_network(network: NetworkType) -> &'static str {
     }
 }
 
-fn orchard_fvk_tag(fvk: &OrchardFullViewingKey) -> Result<[u8; 4]> {
+fn ironwood_fvk_tag(fvk: &IronwoodFullViewingKey) -> Result<[u8; 4]> {
     const ORCHARD_FVK_TAG_PERSONALIZATION: &[u8; 16] = b"ZcashOrchardFVFP";
 
     let mut fvk_bytes = Vec::new();
     fvk.write(&mut fvk_bytes)
-        .map_err(|e| Error::InvalidKey(format!("Failed to serialize Orchard FVK: {e}")))?;
+        .map_err(|e| Error::InvalidKey(format!("Failed to serialize Ironwood FVK: {e}")))?;
 
     let mut hasher = Blake2bParams::new()
         .hash_length(32)
@@ -138,7 +138,7 @@ impl ExtendedSpendingKey {
         Ok(Self { inner: extsk })
     }
 
-    /// Get seed bytes from mnemonic (for Orchard derivation)
+    /// Get seed bytes from mnemonic (for Ironwood derivation)
     pub fn seed_bytes_from_mnemonic(mnemonic: &str) -> Result<Vec<u8>> {
         mnemonic::seed_bytes_from_mnemonic(mnemonic, None)
     }
@@ -533,18 +533,18 @@ impl PaymentAddress {
     }
 }
 
-/// Orchard payment address (Pirate encoding: bech32 HRP `pirate`, `pirate-test`, `pirate-regtest`)
+/// Ironwood payment address (Pirate encoding: bech32 HRP `pirate`, `pirate-test`, `pirate-regtest`)
 ///
-/// Pirate encodes raw Orchard address bytes directly
+/// Pirate encodes raw Ironwood address bytes directly
 /// under chain-specific HRPs, as seen in `pirate/src/key_io.cpp`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OrchardPaymentAddress {
-    /// Underlying Orchard address (raw 43 bytes)
+pub struct IronwoodPaymentAddress {
+    /// Underlying Ironwood address (raw 43 bytes)
     pub inner: orchard::Address,
 }
 
-impl OrchardPaymentAddress {
-    fn orchard_hrp_for_network(network: NetworkType) -> &'static str {
+impl IronwoodPaymentAddress {
+    fn ironwood_hrp_for_network(network: NetworkType) -> &'static str {
         // HRPs from `pirate/src/chainparams.cpp`:
         // - mainnet: "pirate"
         // - testnet: "pirate-test"
@@ -556,36 +556,36 @@ impl OrchardPaymentAddress {
         }
     }
 
-    /// Encode as bech32 under Pirate's Orchard HRP (e.g. `pirate1...`).
+    /// Encode as bech32 under Pirate's Ironwood HRP (e.g. `pirate1...`).
     pub fn encode_for_network(&self, network: NetworkType) -> Result<String> {
-        let hrp = Hrp::parse(Self::orchard_hrp_for_network(network))
-            .map_err(|e| Error::InvalidAddress(format!("Invalid Orchard HRP: {e}")))?;
+        let hrp = Hrp::parse(Self::ironwood_hrp_for_network(network))
+            .map_err(|e| Error::InvalidAddress(format!("Invalid Ironwood HRP: {e}")))?;
         bech32::encode::<Bech32>(hrp, &self.inner.to_raw_address_bytes())
-            .map_err(|e| Error::InvalidAddress(format!("Orchard bech32 encode failed: {e}")))
+            .map_err(|e| Error::InvalidAddress(format!("Ironwood bech32 encode failed: {e}")))
     }
 
-    /// Decode a Pirate Orchard payment address, accepting any Pirate network HRP.
+    /// Decode a Pirate Ironwood payment address, accepting any Pirate network HRP.
     pub fn decode_any_network(addr: &str) -> Result<Self> {
         let (hrp, data) = bech32::decode(addr)
-            .map_err(|e| Error::InvalidAddress(format!("Orchard bech32 decode failed: {e}")))?;
+            .map_err(|e| Error::InvalidAddress(format!("Ironwood bech32 decode failed: {e}")))?;
 
         let hrp_str = hrp.as_str();
         if hrp_str != "pirate" && hrp_str != "pirate-test" && hrp_str != "pirate-regtest" {
             return Err(Error::InvalidAddress(
-                "Invalid Orchard address HRP".to_string(),
+                "Invalid Ironwood address HRP".to_string(),
             ));
         }
 
         let raw: [u8; 43] = data
             .try_into()
-            .map_err(|_| Error::InvalidAddress("Invalid Orchard address length".to_string()))?;
+            .map_err(|_| Error::InvalidAddress("Invalid Ironwood address length".to_string()))?;
 
         let inner_ct = orchard::Address::from_raw_address_bytes(&raw);
         let inner = match bool::from(inner_ct.is_some()) {
             true => inner_ct.unwrap(),
             false => {
                 return Err(Error::InvalidAddress(
-                    "Invalid Orchard address bytes".to_string(),
+                    "Invalid Ironwood address bytes".to_string(),
                 ))
             }
         };
@@ -594,28 +594,28 @@ impl OrchardPaymentAddress {
     }
 }
 
-/// Orchard extended spending key
+/// Ironwood extended spending key
 ///
-/// Derived from master seed using ZIP-32 Orchard key derivation.
+/// Derived from master seed using ZIP-32 Ironwood key derivation.
 /// Path: m/32'/coin_type'/account'
 #[derive(Clone, Debug)]
-pub struct OrchardExtendedSpendingKey {
-    /// Underlying Orchard spending key
+pub struct IronwoodExtendedSpendingKey {
+    /// Underlying Ironwood spending key
     pub inner: orchard::keys::SpendingKey,
     /// Chain code for derivation
     pub chain_code: [u8; 32],
     /// Depth in derivation tree
     pub depth: u8,
-    /// Parent FVK tag (first 4 bytes of Orchard FVK fingerprint)
+    /// Parent FVK tag (first 4 bytes of Ironwood FVK fingerprint)
     pub parent_fvk_tag: [u8; 4],
     /// Child index
     pub child_index: u32,
 }
 
-impl OrchardExtendedSpendingKey {
-    /// Derive master Orchard spending key from seed bytes
+impl IronwoodExtendedSpendingKey {
+    /// Derive master Ironwood spending key from seed bytes
     ///
-    /// Uses ZIP-32 Orchard master key generation:
+    /// Uses ZIP-32 Ironwood master key generation:
     /// I := BLAKE2b-512(personalization, seed)
     /// sk_m := I[0..32]
     /// c_m := I[32..64]
@@ -627,23 +627,22 @@ impl OrchardExtendedSpendingKey {
         const ZIP32_ORCHARD_PERSONALIZATION: &[u8; 16] = b"ZcashIP32Orchard";
 
         // I := BLAKE2b-512(personalization, seed)
-        let i: [u8; 64] =
-            {
-                let mut hasher = Blake2bParams::new()
-                    .hash_length(64)
-                    .personal(ZIP32_ORCHARD_PERSONALIZATION)
-                    .to_state();
-                hasher.update(seed);
-                hasher.finalize().as_bytes().try_into().map_err(|_| {
-                    Error::InvalidKey("Failed to derive Orchard master key".to_string())
-                })?
-            };
+        let i: [u8; 64] = {
+            let mut hasher = Blake2bParams::new()
+                .hash_length(64)
+                .personal(ZIP32_ORCHARD_PERSONALIZATION)
+                .to_state();
+            hasher.update(seed);
+            hasher.finalize().as_bytes().try_into().map_err(|_| {
+                Error::InvalidKey("Failed to derive Ironwood master key".to_string())
+            })?
+        };
 
         // I_L is used as the master spending key sk_m
         let sk_m = SpendingKey::from_bytes(i[..32].try_into().unwrap());
         if sk_m.is_none().into() {
             return Err(Error::InvalidKey(
-                "Invalid Orchard spending key from seed".to_string(),
+                "Invalid Ironwood spending key from seed".to_string(),
             ));
         }
         let sk_m = sk_m.unwrap();
@@ -663,7 +662,7 @@ impl OrchardExtendedSpendingKey {
 
     /// Derive a child key at the given hardened index
     ///
-    /// Uses ZIP-32 Orchard child key derivation:
+    /// Uses ZIP-32 Ironwood child key derivation:
     /// I := PRF^Expand(c_par, [0x81] || sk_par || I2LEOSP(i))
     /// sk_i := I[0..32]
     /// c_i := I[32..64]
@@ -694,7 +693,7 @@ impl OrchardExtendedSpendingKey {
                 hasher.update(self.inner.to_bytes());
                 hasher.update(&hardened_index.to_le_bytes());
                 hasher.finalize().as_bytes().try_into().map_err(|_| {
-                    Error::InvalidKey("Failed to derive Orchard child key".to_string())
+                    Error::InvalidKey("Failed to derive Ironwood child key".to_string())
                 })?
             };
 
@@ -702,7 +701,7 @@ impl OrchardExtendedSpendingKey {
         let sk_i = SpendingKey::from_bytes(i[..32].try_into().unwrap());
         if sk_i.is_none().into() {
             return Err(Error::InvalidKey(
-                "Invalid Orchard child spending key".to_string(),
+                "Invalid Ironwood child spending key".to_string(),
             ));
         }
         let sk_i = sk_i.unwrap();
@@ -711,8 +710,8 @@ impl OrchardExtendedSpendingKey {
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&i[32..64]);
 
-        let fvk: OrchardFullViewingKey = (&sk_i).into();
-        let parent_fvk_tag = orchard_fvk_tag(&fvk)?;
+        let fvk: IronwoodFullViewingKey = (&sk_i).into();
+        let parent_fvk_tag = ironwood_fvk_tag(&fvk)?;
 
         Ok(Self {
             inner: sk_i,
@@ -743,10 +742,10 @@ impl OrchardExtendedSpendingKey {
         coin_type_key.derive_child(account)
     }
 
-    /// Derive Orchard extended full viewing key
-    pub fn to_extended_fvk(&self) -> OrchardExtendedFullViewingKey {
-        let fvk: OrchardFullViewingKey = (&self.inner).into();
-        OrchardExtendedFullViewingKey {
+    /// Derive Ironwood extended full viewing key
+    pub fn to_extended_fvk(&self) -> IronwoodExtendedFullViewingKey {
+        let fvk: IronwoodFullViewingKey = (&self.inner).into();
+        IronwoodExtendedFullViewingKey {
             inner: fvk,
             chain_code: self.chain_code,
             depth: self.depth,
@@ -755,13 +754,13 @@ impl OrchardExtendedSpendingKey {
         }
     }
 
-    /// Derive the Orchard full viewing key used to describe spends to the
+    /// Derive the Ironwood full viewing key used to describe spends to the
     /// transaction builder.
-    pub fn full_viewing_key(&self) -> OrchardFullViewingKey {
+    pub fn full_viewing_key(&self) -> IronwoodFullViewingKey {
         (&self.inner).into()
     }
 
-    /// Derive the Orchard spend-authorizing key used to sign spends.
+    /// Derive the Ironwood spend-authorizing key used to sign spends.
     pub fn spend_authorizing_key(&self) -> orchard::keys::SpendAuthorizingKey {
         (&self.inner).into()
     }
@@ -780,7 +779,7 @@ impl OrchardExtendedSpendingKey {
     /// Deserialize from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 73 {
-            return Err(Error::InvalidKey("Invalid Orchard key length".to_string()));
+            return Err(Error::InvalidKey("Invalid Ironwood key length".to_string()));
         }
 
         let depth = bytes[0];
@@ -790,7 +789,7 @@ impl OrchardExtendedSpendingKey {
         chain_code.copy_from_slice(&bytes[9..41]);
         let sk_bytes: [u8; 32] = bytes[41..73]
             .try_into()
-            .map_err(|_| Error::InvalidKey("Invalid Orchard key bytes".to_string()))?;
+            .map_err(|_| Error::InvalidKey("Invalid Ironwood key bytes".to_string()))?;
 
         let mut needs_fallback = false;
         if depth == 0 && child_index != 0 {
@@ -822,20 +821,20 @@ impl OrchardExtendedSpendingKey {
         chain_code.copy_from_slice(&bytes[5..37]);
         let sk_bytes: [u8; 32] = bytes[37..69]
             .try_into()
-            .map_err(|_| Error::InvalidKey("Invalid Orchard key bytes".to_string()))?;
+            .map_err(|_| Error::InvalidKey("Invalid Ironwood key bytes".to_string()))?;
 
         let sk = SpendingKey::from_bytes(sk_bytes);
         if sk.is_none().into() {
             return Err(Error::InvalidKey(
-                "Invalid Orchard spending key bytes".to_string(),
+                "Invalid Ironwood spending key bytes".to_string(),
             ));
         }
         let sk = sk.unwrap();
         let parent_fvk_tag = if depth == 0 {
             [0u8; 4]
         } else {
-            let fvk: OrchardFullViewingKey = (&sk).into();
-            orchard_fvk_tag(&fvk)?
+            let fvk: IronwoodFullViewingKey = (&sk).into();
+            ironwood_fvk_tag(&fvk)?
         };
 
         Ok(Self {
@@ -847,7 +846,7 @@ impl OrchardExtendedSpendingKey {
         })
     }
 
-    /// Decode an Orchard extended spending key for any Pirate network.
+    /// Decode an Ironwood extended spending key for any Pirate network.
     pub fn from_bech32_any(encoded: &str) -> Result<(Self, NetworkType)> {
         let (hrp, bytes) = bech32::decode(encoded)
             .map_err(|e| Error::InvalidKey(format!("Bech32 decoding failed: {e}")))?;
@@ -857,7 +856,7 @@ impl OrchardExtendedSpendingKey {
             "pirate-secret-extended-key-regtest" => NetworkType::Regtest,
             _ => {
                 return Err(Error::InvalidKey(
-                    "Invalid Orchard extended spending key HRP".to_string(),
+                    "Invalid Ironwood extended spending key HRP".to_string(),
                 ))
             }
         };
@@ -866,72 +865,75 @@ impl OrchardExtendedSpendingKey {
     }
 }
 
-/// Orchard extended full viewing key
+/// Ironwood extended full viewing key
 #[derive(Clone, Debug)]
-pub struct OrchardExtendedFullViewingKey {
-    /// Underlying Orchard full viewing key
-    pub inner: OrchardFullViewingKey,
+pub struct IronwoodExtendedFullViewingKey {
+    /// Underlying Ironwood full viewing key
+    pub inner: IronwoodFullViewingKey,
     /// Chain code
     pub chain_code: [u8; 32],
     /// Depth
     pub depth: u8,
-    /// Parent FVK tag (first 4 bytes of Orchard FVK fingerprint)
+    /// Parent FVK tag (first 4 bytes of Ironwood FVK fingerprint)
     pub parent_fvk_tag: [u8; 4],
     /// Child index
     pub child_index: u32,
 }
 
-impl OrchardExtendedFullViewingKey {
+impl IronwoodExtendedFullViewingKey {
     /// Get default address for this viewing key
-    pub fn default_address(&self) -> OrchardPaymentAddress {
-        OrchardPaymentAddress {
+    pub fn default_address(&self) -> IronwoodPaymentAddress {
+        IronwoodPaymentAddress {
             inner: self.inner.address_at(0u32, orchard::keys::Scope::External),
         }
     }
 
     /// Derive address at index
-    pub fn address_at(&self, index: u32) -> OrchardPaymentAddress {
-        OrchardPaymentAddress {
+    pub fn address_at(&self, index: u32) -> IronwoodPaymentAddress {
+        IronwoodPaymentAddress {
             inner: self.inner.address_at(index, orchard::keys::Scope::External),
         }
     }
 
     /// Derive internal (change) address at index.
-    pub fn address_at_internal(&self, index: u32) -> OrchardPaymentAddress {
-        OrchardPaymentAddress {
+    pub fn address_at_internal(&self, index: u32) -> IronwoodPaymentAddress {
+        IronwoodPaymentAddress {
             inner: self.inner.address_at(index, orchard::keys::Scope::Internal),
         }
     }
 
     /// Derive an address from a raw diversifier (11 bytes).
-    pub fn address_from_diversifier(&self, diversifier: [u8; 11]) -> Option<OrchardPaymentAddress> {
+    pub fn address_from_diversifier(
+        &self,
+        diversifier: [u8; 11],
+    ) -> Option<IronwoodPaymentAddress> {
         let div = orchard::keys::Diversifier::from_bytes(diversifier);
-        Some(OrchardPaymentAddress {
+        Some(IronwoodPaymentAddress {
             inner: self.inner.address(div, orchard::keys::Scope::External),
         })
     }
 
-    /// Derive Orchard incoming viewing key (IVK) from full viewing key
+    /// Derive Ironwood incoming viewing key (IVK) from full viewing key
     ///
     /// The IVK allows viewing incoming transactions but not spending.
-    /// Returns 64 bytes (Orchard IVK format).
+    /// Returns 64 bytes (Ironwood IVK format).
     pub fn to_ivk_bytes(&self) -> [u8; 64] {
         let ivk = self.inner.to_ivk(orchard::keys::Scope::External);
         ivk.to_bytes()
     }
 
-    /// Derive internal (change) Orchard IVK bytes.
+    /// Derive internal (change) Ironwood IVK bytes.
     pub fn to_internal_ivk_bytes(&self) -> [u8; 64] {
         let ivk = self.inner.to_ivk(orchard::keys::Scope::Internal);
         ivk.to_bytes()
     }
 
-    /// Get the Orchard outgoing viewing key (ovk).
+    /// Get the Ironwood outgoing viewing key (ovk).
     pub fn to_ovk(&self) -> orchard::keys::OutgoingViewingKey {
         self.inner.to_ovk(orchard::keys::Scope::External)
     }
 
-    /// Encode Orchard extended full viewing key as Bech32 for the given network.
+    /// Encode Ironwood extended full viewing key as Bech32 for the given network.
     ///
     /// Format: depth (1 byte) || parentFVKTag (4 bytes) || childIndex (4 bytes) || chaincode (32 bytes) || fvk (96 bytes)
     pub fn to_bech32_for_network(&self, network: NetworkType) -> Result<String> {
@@ -943,31 +945,34 @@ impl OrchardExtendedFullViewingKey {
         data.write_all(&self.child_index.to_le_bytes())?;
         data.write_all(&self.chain_code)?;
 
-        // Serialize Orchard Full Viewing Key (ak || nk || rivk)
+        // Serialize Ironwood Full Viewing Key (ak || nk || rivk)
         self.inner.write(&mut data).map_err(|e| {
-            Error::InvalidKey(format!("Failed to serialize Orchard FullViewingKey: {}", e))
+            Error::InvalidKey(format!(
+                "Failed to serialize Ironwood FullViewingKey: {}",
+                e
+            ))
         })?;
 
-        let hrp = Hrp::parse(orchard_extfvk_hrp_for_network(network))
+        let hrp = Hrp::parse(ironwood_extfvk_hrp_for_network(network))
             .map_err(|e| Error::InvalidKey(format!("Invalid HRP: {}", e)))?;
         bech32::encode::<Bech32>(hrp, &data)
             .map_err(|e| Error::InvalidKey(format!("Bech32 encoding failed: {}", e)))
     }
 
-    /// Encode Orchard extended full viewing key as Bech32 (defaults to mainnet HRP).
+    /// Encode Ironwood extended full viewing key as Bech32 (defaults to mainnet HRP).
     pub fn to_bech32(&self) -> Result<String> {
         self.to_bech32_for_network(NetworkType::Mainnet)
     }
 
-    /// Decode Orchard extended full viewing key for the given network HRP.
+    /// Decode Ironwood extended full viewing key for the given network HRP.
     pub fn from_bech32_for_network(network: NetworkType, encoded: &str) -> Result<Self> {
         let (hrp, bytes) = bech32::decode(encoded)
             .map_err(|e| Error::InvalidKey(format!("Bech32 decoding failed: {}", e)))?;
 
-        if hrp.as_str() != orchard_extfvk_hrp_for_network(network) {
+        if hrp.as_str() != ironwood_extfvk_hrp_for_network(network) {
             return Err(Error::InvalidKey(format!(
                 "Invalid HRP: expected '{}', got '{}'",
-                orchard_extfvk_hrp_for_network(network),
+                ironwood_extfvk_hrp_for_network(network),
                 hrp.as_str()
             )));
         }
@@ -975,7 +980,7 @@ impl OrchardExtendedFullViewingKey {
         Self::from_bech32_payload(bytes)
     }
 
-    /// Decode Orchard extended full viewing key for any Pirate network HRP.
+    /// Decode Ironwood extended full viewing key for any Pirate network HRP.
     pub fn from_bech32_any(encoded: &str) -> Result<Self> {
         let (hrp, bytes) = bech32::decode(encoded)
             .map_err(|e| Error::InvalidKey(format!("Bech32 decoding failed: {}", e)))?;
@@ -985,7 +990,7 @@ impl OrchardExtendedFullViewingKey {
             && hrp_str != "pirate-extended-viewing-key-regtest"
         {
             return Err(Error::InvalidKey(
-                "Invalid Orchard extended viewing key HRP".to_string(),
+                "Invalid Ironwood extended viewing key HRP".to_string(),
             ));
         }
 
@@ -1006,12 +1011,12 @@ impl OrchardExtendedFullViewingKey {
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&bytes[9..41]);
 
-        // Deserialize Orchard Full Viewing Key (96 bytes: ak || nk || rivk)
-        // Orchard FullViewingKey implements Read trait (like Sapling FullViewingKey)
+        // Deserialize Ironwood Full Viewing Key (96 bytes: ak || nk || rivk)
+        // Ironwood FullViewingKey implements Read trait (like Sapling FullViewingKey)
         let mut fvk_bytes = &bytes[41..137];
-        let fvk = OrchardFullViewingKey::read(&mut fvk_bytes).map_err(|e| {
+        let fvk = IronwoodFullViewingKey::read(&mut fvk_bytes).map_err(|e| {
             Error::InvalidKey(format!(
-                "Failed to deserialize Orchard FullViewingKey: {}",
+                "Failed to deserialize Ironwood FullViewingKey: {}",
                 e
             ))
         })?;
@@ -1032,10 +1037,10 @@ impl OrchardExtendedFullViewingKey {
         data.extend_from_slice(&self.parent_fvk_tag);
         data.extend_from_slice(&self.child_index.to_le_bytes());
         data.extend_from_slice(&self.chain_code);
-        // Serialize Orchard FullViewingKey using write() method
+        // Serialize Ironwood FullViewingKey using write() method
         self.inner
             .write(&mut data)
-            .expect("Failed to serialize Orchard FullViewingKey");
+            .expect("Failed to serialize Ironwood FullViewingKey");
         data
     }
 
@@ -1052,11 +1057,11 @@ impl OrchardExtendedFullViewingKey {
         let mut chain_code = [0u8; 32];
         chain_code.copy_from_slice(&bytes[9..41]);
 
-        // Deserialize Orchard FullViewingKey using read() method
+        // Deserialize Ironwood FullViewingKey using read() method
         let mut fvk_bytes = &bytes[41..137];
-        let fvk = OrchardFullViewingKey::read(&mut fvk_bytes).map_err(|e| {
+        let fvk = IronwoodFullViewingKey::read(&mut fvk_bytes).map_err(|e| {
             Error::InvalidKey(format!(
-                "Failed to deserialize Orchard FullViewingKey: {}",
+                "Failed to deserialize Ironwood FullViewingKey: {}",
                 e
             ))
         })?;
