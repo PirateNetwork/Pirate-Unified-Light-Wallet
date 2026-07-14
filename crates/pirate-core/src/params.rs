@@ -62,7 +62,7 @@ fn load_sapling_params() -> SaplingParams {
 }
 
 fn load_orchard_params() -> OrchardParams {
-    let circuit_version = OrchardCircuitVersion::FixedPostNu6_2;
+    let circuit_version = OrchardCircuitVersion::PostNu6_3;
     let proving_key = OrchardProvingKey::build(circuit_version);
     let verifying_key = OrchardVerifyingKey::build(circuit_version);
 
