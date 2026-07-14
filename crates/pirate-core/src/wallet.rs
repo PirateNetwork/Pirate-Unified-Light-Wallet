@@ -1,13 +1,13 @@
 //! Wallet management
 
 use crate::keys::{
-    ExtendedFullViewingKey, ExtendedSpendingKey, IncomingViewingKey, OrchardExtendedFullViewingKey,
-    PaymentAddress,
+    ExtendedFullViewingKey, ExtendedSpendingKey, IncomingViewingKey,
+    IronwoodExtendedFullViewingKey, PaymentAddress,
 };
 use crate::mnemonic::MnemonicLanguage;
 use crate::notes::Note;
 use crate::{Error, Result};
-use orchard::keys::IncomingViewingKey as OrchardIncomingViewingKey;
+use orchard::keys::IncomingViewingKey as IronwoodIncomingViewingKey;
 use pirate_params::Network;
 
 /// Wallet type
@@ -25,8 +25,8 @@ pub struct Wallet {
     spending_key: Option<ExtendedSpendingKey>,
     viewing_key: Option<ExtendedFullViewingKey>,
     incoming_ivk: Option<IncomingViewingKey>, // Sapling IVK
-    orchard_viewing_key: Option<OrchardExtendedFullViewingKey>,
-    orchard_incoming_ivk: Option<OrchardIncomingViewingKey>, // Orchard IVK
+    ironwood_viewing_key: Option<IronwoodExtendedFullViewingKey>,
+    ironwood_incoming_ivk: Option<IronwoodIncomingViewingKey>, // Ironwood IVK
     notes: Vec<Note>,
 }
 
@@ -50,46 +50,46 @@ impl Wallet {
         )?;
         let viewing_key = spending_key.to_extended_fvk();
 
-        // Derive Orchard keys from the same seed
+        // Derive Ironwood keys from the same seed
         // Get seed bytes from mnemonic (same as used for Sapling)
         let seed_bytes = crate::keys::ExtendedSpendingKey::seed_bytes_from_mnemonic_in_language(
             mnemonic, language,
         )?;
-        let orchard_master = crate::keys::OrchardExtendedSpendingKey::master(&seed_bytes)?;
-        let orchard_extsk = orchard_master.derive_account(network.coin_type, 0)?;
-        let orchard_viewing_key = orchard_extsk.to_extended_fvk();
+        let ironwood_master = crate::keys::IronwoodExtendedSpendingKey::master(&seed_bytes)?;
+        let ironwood_extsk = ironwood_master.derive_account(network.coin_type, 0)?;
+        let ironwood_viewing_key = ironwood_extsk.to_extended_fvk();
 
         Ok(Self {
             wallet_type: WalletType::Full,
             spending_key: Some(spending_key),
             viewing_key: Some(viewing_key),
             incoming_ivk: None,
-            orchard_viewing_key: Some(orchard_viewing_key),
-            orchard_incoming_ivk: None,
+            ironwood_viewing_key: Some(ironwood_viewing_key),
+            ironwood_incoming_ivk: None,
             notes: Vec::new(),
         })
     }
 
     /// Create from viewing key (watch-only wallet).
     ///
-    /// Accepts Sapling xFVK (zxviews...) or Orchard extended viewing key.
+    /// Accepts Sapling xFVK (zxviews...) or Ironwood extended viewing key.
     pub fn from_ivk(ivk: &str) -> Result<Self> {
         let mut sapling_viewing_key = None;
         let mut sapling_ivk = None;
-        let mut orchard_viewing_key = None;
-        let mut orchard_ivk = None;
+        let mut ironwood_viewing_key = None;
+        let mut ironwood_ivk = None;
 
         if let Ok((dfvk, ivk)) = parse_sapling_watch_key(ivk) {
             sapling_viewing_key = dfvk;
             sapling_ivk = Some(ivk);
-        } else if let Ok((fvk, ivk)) = parse_orchard_watch_key(ivk) {
-            orchard_viewing_key = fvk;
-            orchard_ivk = Some(ivk);
+        } else if let Ok((fvk, ivk)) = parse_ironwood_watch_key(ivk) {
+            ironwood_viewing_key = fvk;
+            ironwood_ivk = Some(ivk);
         }
 
-        if sapling_ivk.is_none() && orchard_ivk.is_none() {
+        if sapling_ivk.is_none() && ironwood_ivk.is_none() {
             return Err(Error::InvalidKey(
-                "Invalid viewing key format - must be Sapling xFVK or Orchard extended viewing key"
+                "Invalid viewing key format - must be Sapling xFVK or Ironwood extended viewing key"
                     .to_string(),
             ));
         }
@@ -99,16 +99,16 @@ impl Wallet {
             spending_key: None,
             viewing_key: sapling_viewing_key,
             incoming_ivk: sapling_ivk,
-            orchard_viewing_key,
-            orchard_incoming_ivk: orchard_ivk,
+            ironwood_viewing_key,
+            ironwood_incoming_ivk: ironwood_ivk,
             notes: Vec::new(),
         })
     }
 
-    /// Create from both Sapling and Orchard viewing keys (watch-only wallet).
+    /// Create from both Sapling and Ironwood viewing keys (watch-only wallet).
     pub fn from_viewing_keys(
         sapling_viewing_key_str: Option<&str>,
-        orchard_viewing_key_str: Option<&str>,
+        ironwood_viewing_key_str: Option<&str>,
     ) -> Result<Self> {
         let mut sapling_viewing_key = None;
         let mut sapling = None;
@@ -118,17 +118,17 @@ impl Wallet {
             sapling = Some(ivk);
         }
 
-        let mut orchard_viewing_key = None;
+        let mut ironwood_viewing_key = None;
         let mut orchard = None;
-        if let Some(value) = orchard_viewing_key_str {
-            let (fvk, ivk) = parse_orchard_watch_key(value)?;
-            orchard_viewing_key = fvk;
+        if let Some(value) = ironwood_viewing_key_str {
+            let (fvk, ivk) = parse_ironwood_watch_key(value)?;
+            ironwood_viewing_key = fvk;
             orchard = Some(ivk);
         }
 
         if sapling.is_none() && orchard.is_none() {
             return Err(Error::InvalidKey(
-                "At least one viewing key (Sapling or Orchard) must be provided".to_string(),
+                "At least one viewing key (Sapling or Ironwood) must be provided".to_string(),
             ));
         }
 
@@ -137,8 +137,8 @@ impl Wallet {
             spending_key: None,
             viewing_key: sapling_viewing_key,
             incoming_ivk: sapling,
-            orchard_viewing_key,
-            orchard_incoming_ivk: orchard,
+            ironwood_viewing_key,
+            ironwood_incoming_ivk: orchard,
             notes: Vec::new(),
         })
     }
@@ -163,14 +163,14 @@ impl Wallet {
         self.incoming_ivk.as_ref()
     }
 
-    /// Get the wallet's Orchard incoming viewing key (IVK), if this is a watch-only wallet.
-    pub fn orchard_incoming_ivk(&self) -> Option<&OrchardIncomingViewingKey> {
-        self.orchard_incoming_ivk.as_ref()
+    /// Get the wallet's Ironwood incoming viewing key (IVK), if this is a watch-only wallet.
+    pub fn ironwood_incoming_ivk(&self) -> Option<&IronwoodIncomingViewingKey> {
+        self.ironwood_incoming_ivk.as_ref()
     }
 
-    /// Get the wallet's Orchard viewing key, if available.
-    pub fn orchard_viewing_key(&self) -> Option<&OrchardExtendedFullViewingKey> {
-        self.orchard_viewing_key.as_ref()
+    /// Get the wallet's Ironwood viewing key, if available.
+    pub fn ironwood_viewing_key(&self) -> Option<&IronwoodExtendedFullViewingKey> {
+        self.ironwood_viewing_key.as_ref()
     }
 
     /// Check if wallet is watch-only
@@ -191,12 +191,12 @@ impl Wallet {
         }
     }
 
-    /// Export Orchard Extended Full Viewing Key as Bech32 (for watch-only wallets)
+    /// Export Ironwood Extended Full Viewing Key as Bech32 (for watch-only wallets)
     ///
     /// Returns Bech32-encoded string with "pirate-extended-viewing-key" HRP.
-    /// Uses the standard Orchard viewing key Bech32 format.
-    pub fn export_orchard_viewing_key(&self) -> Option<String> {
-        if let Some(fvk) = self.orchard_viewing_key.as_ref() {
+    /// Uses the standard Ironwood viewing key Bech32 format.
+    pub fn export_ironwood_viewing_key(&self) -> Option<String> {
+        if let Some(fvk) = self.ironwood_viewing_key.as_ref() {
             fvk.to_bech32().ok()
         } else {
             None
@@ -246,21 +246,21 @@ fn parse_sapling_watch_key(
     ))
 }
 
-fn parse_orchard_watch_key(
+fn parse_ironwood_watch_key(
     value: &str,
 ) -> Result<(
-    Option<OrchardExtendedFullViewingKey>,
-    OrchardIncomingViewingKey,
+    Option<IronwoodExtendedFullViewingKey>,
+    IronwoodIncomingViewingKey,
 )> {
-    if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bech32_any(value) {
+    if let Ok(fvk) = IronwoodExtendedFullViewingKey::from_bech32_any(value) {
         let ivk_bytes = fvk.to_ivk_bytes();
-        let ivk_ct = OrchardIncomingViewingKey::from_bytes(&ivk_bytes);
-        let ivk: Option<OrchardIncomingViewingKey> = ivk_ct.into();
-        let ivk = ivk.ok_or_else(|| Error::InvalidKey("Invalid Orchard IVK bytes".to_string()))?;
+        let ivk_ct = IronwoodIncomingViewingKey::from_bytes(&ivk_bytes);
+        let ivk: Option<IronwoodIncomingViewingKey> = ivk_ct.into();
+        let ivk = ivk.ok_or_else(|| Error::InvalidKey("Invalid Ironwood IVK bytes".to_string()))?;
         return Ok((Some(fvk), ivk));
     }
 
     Err(Error::InvalidKey(
-        "Invalid Orchard viewing key format (expected extended viewing key)".to_string(),
+        "Invalid Ironwood viewing key format (expected extended viewing key)".to_string(),
     ))
 }
