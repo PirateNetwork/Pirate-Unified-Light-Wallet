@@ -3,12 +3,13 @@
 use crate::fees::{apply_dust_policy_add_to_fee, CHANGE_DUST_THRESHOLD};
 use crate::keys::{ExtendedSpendingKey, OrchardExtendedSpendingKey, PaymentAddress};
 use crate::memo::Memo;
-use crate::params::sapling_prover;
+use crate::params::{orchard_params, sapling_prover};
 use crate::selection::{NoteType, SelectableNote};
 use crate::shielded_builder::SelectedSpendNoteRef;
 use crate::transaction::PirateNetwork;
 use crate::{Error, Result};
 use orchard::builder::{Builder as OrchardBuilder, BundleType as OrchardBundleType};
+use orchard::bundle::BundleVersion as OrchardBundleVersion;
 use orchard::keys::FullViewingKey as OrchardFullViewingKey;
 use orchard::tree::Anchor as OrchardAnchor;
 use orchard::value::NoteValue as OrchardNoteValue;
@@ -226,6 +227,17 @@ fn memo_bytes_array(memo: &Option<Memo>) -> Result<[u8; 512]> {
     }
 }
 
+fn new_orchard_builder(anchor: OrchardAnchor) -> Result<OrchardBuilder> {
+    let bundle_version = OrchardBundleVersion::orchard_v2();
+    OrchardBuilder::new(
+        OrchardBundleType::DEFAULT,
+        bundle_version,
+        bundle_version.default_flags(),
+        anchor,
+    )
+    .map_err(|e| Error::TransactionBuild(format!("Failed to create Orchard builder: {:?}", e)))
+}
+
 struct OutputBuildOptions<'a> {
     script_pubkey: Option<&'a Script>,
     script_each_recipient: bool,
@@ -377,11 +389,9 @@ pub fn build_qortal_p2sh_funding_transaction(
     };
     let mut sapling_builder = new_sapling_builder(&network, target_height, sapling_anchor);
     let mut orchard_builder = if has_orchard_spends || has_orchard_outputs || use_orchard_change {
-        Some(OrchardBuilder::new(
-            OrchardBundleType::DEFAULT,
-            plan.orchard_anchor
-                .ok_or_else(|| Error::TransactionBuild("Missing Orchard anchor".to_string()))?,
-        ))
+        Some(new_orchard_builder(plan.orchard_anchor.ok_or_else(
+            || Error::TransactionBuild("Missing Orchard anchor".to_string()),
+        )?)?)
     } else {
         None
     };
@@ -620,11 +630,11 @@ pub fn build_qortal_p2sh_funding_transaction(
         None => None,
     };
 
-    let orchard_proving_key = orchard::circuit::ProvingKey::build();
+    let orchard_proving_key = &orchard_params().proving_key;
     let signed_orchard_bundle = match unauth_tx.orchard_bundle().cloned() {
         Some(bundle) => Some(
             bundle
-                .create_proof(&orchard_proving_key, &mut rng)
+                .create_proof(orchard_proving_key, &mut rng)
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to prove Orchard bundle: {:?}", e))
                 })?
@@ -686,11 +696,9 @@ pub fn build_qortal_p2sh_redeem_transaction(
     let mut sapling_builder =
         new_sapling_builder(&network, target_height, SaplingAnchor::empty_tree());
     let mut orchard_builder = if has_orchard_outputs {
-        Some(OrchardBuilder::new(
-            OrchardBundleType::DEFAULT,
-            plan.orchard_anchor
-                .ok_or_else(|| Error::TransactionBuild("Missing Orchard anchor".to_string()))?,
-        ))
+        Some(new_orchard_builder(plan.orchard_anchor.ok_or_else(
+            || Error::TransactionBuild("Missing Orchard anchor".to_string()),
+        )?)?)
     } else {
         None
     };
@@ -816,11 +824,11 @@ pub fn build_qortal_p2sh_redeem_transaction(
         None => None,
     };
 
-    let orchard_proving_key = orchard::circuit::ProvingKey::build();
+    let orchard_proving_key = &orchard_params().proving_key;
     let signed_orchard_bundle = match unauth_tx.orchard_bundle().cloned() {
         Some(bundle) => Some(
             bundle
-                .create_proof(&orchard_proving_key, &mut rng)
+                .create_proof(orchard_proving_key, &mut rng)
                 .map_err(|e| {
                     Error::TransactionBuild(format!("Failed to prove Orchard bundle: {:?}", e))
                 })?

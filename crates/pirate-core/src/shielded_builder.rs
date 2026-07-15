@@ -528,6 +528,7 @@ impl ShieldedBuilder {
             BuildConfig::Standard {
                 sapling_anchor: effective_sapling_anchor,
                 orchard_anchor: effective_orchard_anchor,
+                ironwood_anchor: None,
             },
         );
 

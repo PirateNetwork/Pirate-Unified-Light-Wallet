@@ -311,6 +311,7 @@ impl TransactionBuilder {
             BuildConfig::Standard {
                 sapling_anchor: Some(sapling_anchor),
                 orchard_anchor: None,
+                ironwood_anchor: None,
             },
         );
 

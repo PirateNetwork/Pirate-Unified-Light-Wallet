@@ -1794,7 +1794,8 @@ impl<'a> Repository<'a> {
         address_ids_filter: Option<Vec<i64>>,
     ) -> Result<Vec<pirate_core::selection::SelectableNote>> {
         use orchard::note::{
-            Note as OrchardNote, RandomSeed as OrchardRandomSeed, Rho as OrchardRho,
+            Note as OrchardNote, NoteVersion as OrchardNoteVersion,
+            RandomSeed as OrchardRandomSeed, Rho as OrchardRho,
         };
         use orchard::value::NoteValue as OrchardNoteValue;
         use orchard::Address as OrchardAddress;
@@ -2041,7 +2042,11 @@ impl<'a> Repository<'a> {
                     };
                     let note_value = OrchardNoteValue::from_raw(value);
                     let note: OrchardNote = match Option::from(OrchardNote::from_parts(
-                        address, note_value, rho, rseed,
+                        address,
+                        note_value,
+                        rho,
+                        rseed,
+                        OrchardNoteVersion::V2,
                     )) {
                         Some(value) => value,
                         None => {

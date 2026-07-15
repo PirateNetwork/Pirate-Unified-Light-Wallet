@@ -1217,9 +1217,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -1819,7 +1819,7 @@ dependencies = [
 [[package]]
 name = "equihash"
 version = "0.3.0"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "blake2b_simd",
  "corez",
@@ -1855,7 +1855,7 @@ dependencies = [
 [[package]]
 name = "f4jumble"
 version = "0.1.1"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "blake2b_simd",
 ]
@@ -1945,6 +1945,18 @@ name = "fluid-let"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "749cff877dc1af878a0b31a41dd221a753634401ea0ef2f87b62d3171522485a"
+
+[[package]]
+name = "flume"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da0e4dd2a88388a1f4ccc7c9ce104604dab68d9f408dc34cd45823d5a9069095"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+ "nanorand",
+ "spin",
+]
 
 [[package]]
 name = "flutter_rust_bridge"
@@ -3287,6 +3299,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
+name = "nanorand"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a51313c5820b0b02bd422f4b44776fbf47961755c74ce64afc73bfad10226c3"
+dependencies = [
+ "getrandom 0.2.17",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3591,8 +3612,8 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orchard"
-version = "0.14.0"
-source = "git+https://github.com/PirateNetwork/orchard.git?rev=af86f0b2603d149ee2e7da7ce195ee8cd46c7664#af86f0b2603d149ee2e7da7ce195ee8cd46c7664"
+version = "0.15.0-pre.2"
+source = "git+https://github.com/PirateNetwork/orchard.git?rev=a997c1d9cdabdf9c973c9c12152d9291708162b5#a997c1d9cdabdf9c973c9c12152d9291708162b5"
 dependencies = [
  "aes",
  "bitvec",
@@ -8420,8 +8441,8 @@ dependencies = [
 
 [[package]]
 name = "zcash_address"
-version = "0.11.0"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+version = "0.13.0-pre.0"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "bech32",
  "bs58",
@@ -8433,15 +8454,15 @@ dependencies = [
 
 [[package]]
 name = "zcash_client_backend"
-version = "0.22.0"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+version = "0.23.0"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "base64",
  "bech32",
  "bls12_381",
  "bs58",
- "crossbeam-channel",
  "document-features",
+ "flume",
  "getset",
  "group",
  "hex",
@@ -8478,7 +8499,7 @@ dependencies = [
 [[package]]
 name = "zcash_encoding"
 version = "0.4.0"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "corez",
  "hex",
@@ -8487,8 +8508,8 @@ dependencies = [
 
 [[package]]
 name = "zcash_keys"
-version = "0.13.0"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+version = "0.15.0-pre.0"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "bech32",
  "blake2b_simd",
@@ -8526,8 +8547,8 @@ dependencies = [
 
 [[package]]
 name = "zcash_primitives"
-version = "0.27.1"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+version = "0.29.0-pre.0"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "blake2b_simd",
  "block-buffer 0.11.0-rc.3",
@@ -8556,8 +8577,8 @@ dependencies = [
 
 [[package]]
 name = "zcash_proofs"
-version = "0.27.0"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+version = "0.29.0-pre.0"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "bellman",
  "blake2b_simd",
@@ -8577,8 +8598,8 @@ dependencies = [
 
 [[package]]
 name = "zcash_protocol"
-version = "0.8.0"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+version = "0.10.0-pre.0"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "corez",
  "document-features",
@@ -8615,8 +8636,8 @@ dependencies = [
 
 [[package]]
 name = "zcash_transparent"
-version = "0.7.0"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+version = "0.9.0-pre.0"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "bip32 0.6.0-pre.1",
  "bs58",
@@ -8747,8 +8768,8 @@ dependencies = [
 
 [[package]]
 name = "zip321"
-version = "0.7.0"
-source = "git+https://github.com/piratenetwork/librustzcash?rev=96d88f8efca4a22dcfb870455527f6ff001d15ab#96d88f8efca4a22dcfb870455527f6ff001d15ab"
+version = "0.8.0"
+source = "git+https://github.com/piratenetwork/librustzcash?rev=cb402befcba3628bfe37cfbae0a89877f124647a#cb402befcba3628bfe37cfbae0a89877f124647a"
 dependencies = [
  "base64",
  "nom",

@@ -29,7 +29,8 @@ use orchard::keys::{
 };
 use orchard::note::{
     ExtractedNoteCommitment as OrchardExtractedNoteCommitment, Note as OrchardNote,
-    Nullifier as OrchardNullifier, RandomSeed as OrchardRandomSeed, Rho as OrchardRho,
+    NoteVersion as OrchardNoteVersion, Nullifier as OrchardNullifier,
+    RandomSeed as OrchardRandomSeed, Rho as OrchardRho,
 };
 use orchard::note_encryption::{CompactAction, OrchardDomain};
 use orchard::tree::MerkleHashOrchard;
@@ -6992,8 +6993,14 @@ fn orchard_nullifier_from_parts(
     let rseed = de_ct(OrchardRandomSeed::from_bytes(rseed_bytes, &rho))
         .ok_or_else(|| Error::Sync("Invalid Orchard rseed bytes".to_string()))?;
     let note_value = OrchardNoteValue::from_raw(value);
-    let note = de_ct(OrchardNote::from_parts(address, note_value, rho, rseed))
-        .ok_or_else(|| Error::Sync("Invalid Orchard note parts".to_string()))?;
+    let note = de_ct(OrchardNote::from_parts(
+        address,
+        note_value,
+        rho,
+        rseed,
+        OrchardNoteVersion::V2,
+    ))
+    .ok_or_else(|| Error::Sync("Invalid Orchard note parts".to_string()))?;
     Ok(note.nullifier(fvk).to_bytes())
 }
 

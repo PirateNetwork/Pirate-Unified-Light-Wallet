@@ -16,7 +16,9 @@ use std::sync::Arc;
 use tempfile::{Builder, NamedTempFile};
 use zcash_proofs::prover::LocalTxProver;
 
-use orchard::circuit::{ProvingKey as OrchardProvingKey, VerifyingKey as OrchardVerifyingKey};
+use orchard::circuit::{
+    OrchardCircuitVersion, ProvingKey as OrchardProvingKey, VerifyingKey as OrchardVerifyingKey,
+};
 
 /// Cached Sapling proving and verifying parameters.
 pub struct SaplingParams {
@@ -60,9 +62,9 @@ fn load_sapling_params() -> SaplingParams {
 }
 
 fn load_orchard_params() -> OrchardParams {
-    // These are deterministic builders provided by the Orchard crate.
-    let proving_key = OrchardProvingKey::build();
-    let verifying_key = OrchardVerifyingKey::build();
+    let circuit_version = OrchardCircuitVersion::FixedPostNu6_2;
+    let proving_key = OrchardProvingKey::build(circuit_version);
+    let verifying_key = OrchardVerifyingKey::build(circuit_version);
 
     OrchardParams {
         proving_key,
