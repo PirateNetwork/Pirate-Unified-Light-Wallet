@@ -11,14 +11,14 @@ use sapling::{Diversifier, Node, Note};
 pub enum NoteType {
     /// Sapling note.
     Sapling,
-    /// Orchard note.
-    Orchard,
+    /// Ironwood note.
+    Ironwood,
 }
 
-/// Sapling or Orchard note for selection
+/// Sapling or Ironwood note for selection
 #[derive(Debug)]
 pub struct SelectableNote {
-    /// Note type (Sapling or Orchard)
+    /// Note type (Sapling or Ironwood)
     pub note_type: NoteType,
     /// Note value in arrrtoshis
     pub value: u64,
@@ -44,14 +44,14 @@ pub struct SelectableNote {
     pub diversifier: Option<Diversifier>,
     /// Optional full Sapling note
     pub note: Option<Note>,
-    /// Optional Orchard anchor (Orchard)
-    pub orchard_anchor: Option<orchard::tree::Anchor>,
-    /// Optional Orchard note position (Orchard)
-    pub orchard_position: Option<u64>,
-    /// Optional full Orchard note (Orchard)
-    pub orchard_note: Option<orchard::Note>,
-    /// Optional Orchard merkle path (Orchard)
-    pub orchard_merkle_path: Option<orchard::tree::MerklePath>,
+    /// Optional Ironwood anchor (Ironwood)
+    pub ironwood_anchor: Option<orchard::tree::Anchor>,
+    /// Optional Ironwood note position (Ironwood)
+    pub ironwood_position: Option<u64>,
+    /// Optional full Ironwood note (Ironwood)
+    pub ironwood_note: Option<orchard::Note>,
+    /// Optional Ironwood merkle path (Ironwood)
+    pub ironwood_merkle_path: Option<orchard::tree::MerklePath>,
 }
 
 impl SelectableNote {
@@ -77,15 +77,15 @@ impl SelectableNote {
             sapling_position: None,
             diversifier: None,
             note: None,
-            orchard_anchor: None,
-            orchard_position: None,
-            orchard_note: None,
-            orchard_merkle_path: None,
+            ironwood_anchor: None,
+            ironwood_position: None,
+            ironwood_note: None,
+            ironwood_merkle_path: None,
         }
     }
 
-    /// Create new selectable Orchard note
-    pub fn new_orchard(
+    /// Create new selectable Ironwood note
+    pub fn new_ironwood(
         value: u64,
         commitment: Vec<u8>,
         height: u64,
@@ -93,7 +93,7 @@ impl SelectableNote {
         output_index: u32,
     ) -> Self {
         Self {
-            note_type: NoteType::Orchard,
+            note_type: NoteType::Ironwood,
             value,
             commitment,
             nullifier: None,
@@ -106,10 +106,10 @@ impl SelectableNote {
             sapling_position: None,
             diversifier: None,
             note: None,
-            orchard_anchor: None,
-            orchard_position: None,
-            orchard_note: None,
-            orchard_merkle_path: None,
+            ironwood_anchor: None,
+            ironwood_position: None,
+            ironwood_note: None,
+            ironwood_merkle_path: None,
         }
     }
 
@@ -150,18 +150,18 @@ impl SelectableNote {
         self
     }
 
-    /// Attach Orchard witness data
-    pub fn with_orchard_witness(
+    /// Attach Ironwood witness data
+    pub fn with_ironwood_witness(
         mut self,
         anchor: orchard::tree::Anchor,
         position: u64,
         merkle_path: orchard::tree::MerklePath,
         note: orchard::Note,
     ) -> Self {
-        self.orchard_anchor = Some(anchor);
-        self.orchard_position = Some(position);
-        self.orchard_merkle_path = Some(merkle_path);
-        self.orchard_note = Some(note);
+        self.ironwood_anchor = Some(anchor);
+        self.ironwood_position = Some(position);
+        self.ironwood_merkle_path = Some(merkle_path);
+        self.ironwood_note = Some(note);
         self
     }
 }
@@ -204,7 +204,7 @@ impl NoteSelector {
     /// Select notes to cover target amount plus fee
     ///
     /// Takes ownership of available_notes because SelectableNote can't be cloned
-    /// (Orchard MerklePath doesn't implement Clone)
+    /// (Ironwood MerklePath doesn't implement Clone)
     pub fn select_notes(
         &self,
         mut available_notes: Vec<SelectableNote>,
@@ -234,7 +234,7 @@ impl NoteSelector {
                 break;
             }
 
-            // Move note into selected (can't clone because Orchard MerklePath doesn't implement Clone)
+            // Move note into selected (can't clone because Ironwood MerklePath doesn't implement Clone)
             let note_value = note.value;
             selected.push(note);
             total = total
@@ -371,7 +371,7 @@ impl NoteSelector {
 
     /// Optimize selection (try multiple strategies, pick best)
     ///
-    /// Note: Since SelectableNote can't be cloned (Orchard MerklePath doesn't implement Clone),
+    /// Note: Since SelectableNote can't be cloned (Ironwood MerklePath doesn't implement Clone),
     /// this function takes ownership and can only try one strategy. For now, it uses SmallestFirst
     /// which is typically best for privacy. If you need to try multiple strategies, you'll need
     /// to call select_notes multiple times with different note sets.
