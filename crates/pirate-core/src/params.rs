@@ -1,8 +1,8 @@
-//! zk-SNARK parameter loading for Sapling and Orchard.
+//! zk-SNARK parameter loading for Sapling and Ironwood.
 //!
 //! - Sapling proving/verification parameters are loaded from embedded bytes
 //!   via an embedded parameter crate, so no external download is required.
-//! - Orchard proving/verification keys are constructed in-memory via
+//! - Ironwood proving/verification keys are constructed in-memory via
 //!   `orchard::circuit`.
 //!
 //! The parameters are initialised lazily and cached for reuse.
@@ -32,11 +32,11 @@ pub struct SaplingParams {
     pub output_vk: Arc<PreparedVerifyingKey<Bls12>>,
 }
 
-/// Cached Orchard proving and verifying parameters.
-pub struct OrchardParams {
-    /// Orchard proving key (constructed in-memory).
+/// Cached Ironwood proving and verifying parameters.
+pub struct IronwoodParams {
+    /// Ironwood proving key (constructed in-memory).
     pub proving_key: OrchardProvingKey,
-    /// Orchard verifying key (constructed in-memory).
+    /// Ironwood verifying key (constructed in-memory).
     pub verifying_key: OrchardVerifyingKey,
 }
 
@@ -61,12 +61,12 @@ fn load_sapling_params() -> SaplingParams {
     }
 }
 
-fn load_orchard_params() -> OrchardParams {
+fn load_ironwood_params() -> IronwoodParams {
     let circuit_version = OrchardCircuitVersion::PostNu6_3;
     let proving_key = OrchardProvingKey::build(circuit_version);
     let verifying_key = OrchardVerifyingKey::build(circuit_version);
 
-    OrchardParams {
+    IronwoodParams {
         proving_key,
         verifying_key,
     }
@@ -78,10 +78,10 @@ pub fn sapling_params() -> &'static SaplingParams {
     CELL.get_or_init(load_sapling_params)
 }
 
-/// Get shared Orchard parameters (lazy init).
-pub fn orchard_params() -> &'static OrchardParams {
-    static CELL: OnceCell<OrchardParams> = OnceCell::new();
-    CELL.get_or_init(load_orchard_params)
+/// Get shared Ironwood parameters (lazy init).
+pub fn ironwood_params() -> &'static IronwoodParams {
+    static CELL: OnceCell<IronwoodParams> = OnceCell::new();
+    CELL.get_or_init(load_ironwood_params)
 }
 
 /// Build a `LocalTxProver` using cached Sapling parameters.

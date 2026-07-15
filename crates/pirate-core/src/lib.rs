@@ -1,7 +1,7 @@
 //! Pirate Chain wallet core
 //!
-//! This crate implements the Sapling wallet engine including key derivation,
-//! note management, transaction building, and memo handling.
+//! This crate implements the Sapling and Ironwood wallet engine, including key
+//! derivation, note management, transaction building, and memo handling.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -36,7 +36,7 @@ pub use fees::{
 };
 pub use memo::{Memo, MAX_MEMO_LENGTH, MEMO_WARNING_LENGTH};
 pub use mnemonic::{inspect_mnemonic, MnemonicInspection, MnemonicLanguage};
-pub use params::{orchard_params, sapling_params, sapling_prover};
+pub use params::{ironwood_params, sapling_params, sapling_prover};
 pub use qortal_p2sh::{
     build_p2sh_script_sig, build_qortal_p2sh_funding_transaction,
     build_qortal_p2sh_redeem_transaction, build_script_pubkey, QortalP2shFundingPlan,
@@ -48,5 +48,6 @@ pub use shielded_builder::{
     SignedShieldedTransaction,
 };
 pub use transaction::{
-    PendingTransaction, SignedTransaction, TransactionBuilder, TransactionOutput,
+    read_pirate_transaction, PendingTransaction, SignedTransaction, TransactionBuilder,
+    TransactionOutput,
 };
