@@ -1,97 +1,33 @@
-//! Shielded transaction builder for Sapling and Orchard
+//! Shielded transaction builder for Sapling and Ironwood
 //!
 //! This module provides a unified transaction builder that uses
 //! the Rust transaction builder to construct
-//! transactions with both Sapling and Orchard outputs.
+//! transactions with both Sapling and Ironwood outputs.
 //!
 //! Based on the Rust builder path in the node (`builder_ffi.rs`), but
 //! adapted for lightwalletd anchors.
 
 use crate::fees::{apply_dust_policy_add_to_fee, FeeCalculator, CHANGE_DUST_THRESHOLD};
-use crate::keys::{ExtendedSpendingKey, OrchardExtendedSpendingKey, PaymentAddress};
+use crate::keys::{ExtendedSpendingKey, IronwoodExtendedSpendingKey, PaymentAddress};
 use crate::params::sapling_prover;
 use crate::selection::{NoteSelector, NoteType, SelectableNote, SelectionStrategy};
+use crate::transaction::PirateNetwork;
 use crate::{Error, Memo, Result};
-use pirate_params::{Network, NetworkType};
+use pirate_params::NetworkType;
 use std::collections::HashMap;
 
 use incrementalmerkletree::MerklePath;
-use orchard::tree::Anchor as OrchardAnchor;
+use orchard::tree::Anchor as IronwoodAnchor;
 use sapling::{Anchor as SaplingAnchor, Node as SaplingNode, NOTE_COMMITMENT_TREE_DEPTH};
 use zcash_primitives::transaction::{
     builder::{BuildConfig, Builder as TxBuilder},
     TxId,
 };
 use zcash_proofs::prover::LocalTxProver;
-use zcash_protocol::{
-    consensus::{BlockHeight, NetworkType as ConsensusNetworkType, NetworkUpgrade, Parameters},
-    memo::MemoBytes,
-    value::Zatoshis as Amount,
-};
+use zcash_protocol::{consensus::BlockHeight, memo::MemoBytes, value::Zatoshis as Amount};
 use zcash_transparent::builder::TransparentSigningSet;
 
-/// Pirate Chain network parameters
-#[derive(Clone, Debug)]
-pub struct PirateNetwork {
-    network: Network,
-}
-
-impl PirateNetwork {
-    /// Create parameters for the given network.
-    pub fn new(network_type: NetworkType) -> Self {
-        Self {
-            network: Network::from_type(network_type),
-        }
-    }
-
-    /// Mainnet parameters.
-    pub fn mainnet() -> Self {
-        Self::new(NetworkType::Mainnet)
-    }
-
-    fn network_type(&self) -> NetworkType {
-        self.network.network_type
-    }
-}
-
-impl Default for PirateNetwork {
-    fn default() -> Self {
-        Self::mainnet()
-    }
-}
-
-impl Parameters for PirateNetwork {
-    fn network_type(&self) -> ConsensusNetworkType {
-        match self.network.network_type {
-            NetworkType::Mainnet => ConsensusNetworkType::Main,
-            NetworkType::Testnet => ConsensusNetworkType::Test,
-            NetworkType::Regtest => ConsensusNetworkType::Regtest,
-        }
-    }
-
-    fn activation_height(&self, nu: NetworkUpgrade) -> Option<BlockHeight> {
-        match nu {
-            NetworkUpgrade::Overwinter => match self.network.network_type {
-                NetworkType::Mainnet => Some(BlockHeight::from_u32(152_855)),
-                NetworkType::Testnet => Some(BlockHeight::from_u32(207_500)),
-                NetworkType::Regtest => Some(BlockHeight::from_u32(50)),
-            },
-            NetworkUpgrade::Sapling => match self.network.network_type {
-                NetworkType::Mainnet => Some(BlockHeight::from_u32(152_855)),
-                NetworkType::Testnet => Some(BlockHeight::from_u32(280_000)),
-                NetworkType::Regtest => Some(BlockHeight::from_u32(100)),
-            },
-            NetworkUpgrade::Nu5 => self
-                .network
-                .orchard_activation_height
-                .map(BlockHeight::from_u32),
-            #[allow(unreachable_patterns)]
-            _ => None,
-        }
-    }
-}
-
-/// Shielded transaction output (Sapling or Orchard)
+/// Shielded transaction output (Sapling or Ironwood)
 #[derive(Debug, Clone)]
 pub enum ShieldedOutput {
     /// Sapling output
@@ -103,9 +39,9 @@ pub enum ShieldedOutput {
         /// Optional memo payload.
         memo: Option<Memo>,
     },
-    /// Orchard output
-    Orchard {
-        /// Destination Orchard address.
+    /// Ironwood output
+    Ironwood {
+        /// Destination Ironwood address.
         address: orchard::Address,
         /// Amount in arrrtoshis.
         amount: u64,
@@ -159,7 +95,7 @@ pub struct SelectedSpendNoteRef {
     pub nullifier: Option<Vec<u8>>,
 }
 
-/// Shielded transaction builder with Sapling and Orchard support
+/// Shielded transaction builder with Sapling and Ironwood support
 #[derive(Debug)]
 pub struct ShieldedBuilder {
     outputs: Vec<ShieldedOutput>,
@@ -175,18 +111,18 @@ pub struct ShieldedBuilder {
 pub struct BuildAndSignMultiInputs<'a> {
     /// Default Sapling spending key used when a note has no `key_id` mapping.
     pub default_sapling_spending_key: &'a ExtendedSpendingKey,
-    /// Default Orchard spending key used when a note has no `key_id` mapping.
-    pub default_orchard_spending_key: Option<&'a OrchardExtendedSpendingKey>,
+    /// Default Ironwood spending key used when a note has no `key_id` mapping.
+    pub default_ironwood_spending_key: Option<&'a IronwoodExtendedSpendingKey>,
     /// Optional Sapling spending keys by key-group id.
     pub sapling_spending_keys_by_id: HashMap<i64, ExtendedSpendingKey>,
-    /// Optional Orchard spending keys by key-group id.
-    pub orchard_spending_keys_by_id: HashMap<i64, OrchardExtendedSpendingKey>,
+    /// Optional Ironwood spending keys by key-group id.
+    pub ironwood_spending_keys_by_id: HashMap<i64, IronwoodExtendedSpendingKey>,
     /// Candidate notes selected from wallet state.
     pub available_notes: Vec<SelectableNote>,
     /// Target chain height for transaction construction.
     pub target_height: u32,
-    /// Optional Orchard anchor for Orchard spends/outputs.
-    pub orchard_anchor: Option<OrchardAnchor>,
+    /// Optional Ironwood anchor for Ironwood spends/outputs.
+    pub ironwood_anchor: Option<IronwoodAnchor>,
     /// Diversifier index for Sapling change address.
     pub change_diversifier_index: u32,
 }
@@ -248,8 +184,8 @@ impl ShieldedBuilder {
         Ok(self)
     }
 
-    /// Add Orchard output
-    pub fn add_orchard_output(
+    /// Add Ironwood output
+    pub fn add_ironwood_output(
         &mut self,
         address: orchard::Address,
         amount: u64,
@@ -263,7 +199,7 @@ impl ShieldedBuilder {
             m.validate()?;
         }
 
-        self.outputs.push(ShieldedOutput::Orchard {
+        self.outputs.push(ShieldedOutput::Ironwood {
             address,
             amount,
             memo,
@@ -282,10 +218,10 @@ impl ShieldedBuilder {
     ///
     /// # Arguments
     /// * `sapling_spending_key` - Sapling spending key (for Sapling spends/change)
-    /// * `orchard_spending_key` - Orchard spending key (for Orchard spends/change, optional)
-    /// * `available_notes` - Available notes for spending (both Sapling and Orchard)
+    /// * `ironwood_spending_key` - Ironwood spending key (for Ironwood spends/change, optional)
+    /// * `available_notes` - Available notes for spending (both Sapling and Ironwood)
     /// * `target_height` - Target block height for transaction
-    /// * `orchard_anchor` - Orchard tree anchor (required if any Orchard outputs)
+    /// * `ironwood_anchor` - Ironwood tree anchor (required if any Ironwood outputs)
     /// * `change_diversifier_index` - Diversifier index for Sapling change address
     ///
     /// # Returns
@@ -293,20 +229,20 @@ impl ShieldedBuilder {
     pub async fn build_and_sign(
         &self,
         sapling_spending_key: &ExtendedSpendingKey,
-        orchard_spending_key: Option<&OrchardExtendedSpendingKey>,
+        ironwood_spending_key: Option<&IronwoodExtendedSpendingKey>,
         available_notes: Vec<SelectableNote>,
         target_height: u32,
-        orchard_anchor: Option<OrchardAnchor>,
+        ironwood_anchor: Option<IronwoodAnchor>,
         change_diversifier_index: u32,
     ) -> Result<SignedShieldedTransaction> {
         self.build_and_sign_multi(BuildAndSignMultiInputs {
             default_sapling_spending_key: sapling_spending_key,
-            default_orchard_spending_key: orchard_spending_key,
+            default_ironwood_spending_key: ironwood_spending_key,
             sapling_spending_keys_by_id: HashMap::new(),
-            orchard_spending_keys_by_id: HashMap::new(),
+            ironwood_spending_keys_by_id: HashMap::new(),
             available_notes,
             target_height,
-            orchard_anchor,
+            ironwood_anchor,
             change_diversifier_index,
         })
         .await
@@ -323,29 +259,29 @@ impl ShieldedBuilder {
     ) -> Result<SignedShieldedTransaction> {
         let BuildAndSignMultiInputs {
             default_sapling_spending_key,
-            default_orchard_spending_key,
+            default_ironwood_spending_key,
             sapling_spending_keys_by_id,
-            orchard_spending_keys_by_id,
+            ironwood_spending_keys_by_id,
             available_notes,
             target_height,
-            orchard_anchor: provided_orchard_anchor,
+            ironwood_anchor: provided_ironwood_anchor,
             change_diversifier_index,
         } = inputs;
 
         // Calculate required output amount
-        let output_sum: u64 =
-            self.outputs
-                .iter()
-                .map(|o| match o {
-                    ShieldedOutput::Sapling { amount, .. }
-                    | ShieldedOutput::Orchard { amount, .. } => *amount,
-                })
-                .sum();
+        let output_sum: u64 = self
+            .outputs
+            .iter()
+            .map(|o| match o {
+                ShieldedOutput::Sapling { amount, .. }
+                | ShieldedOutput::Ironwood { amount, .. } => *amount,
+            })
+            .sum();
 
         // Calculate fee
         let fee_calc = FeeCalculator::new();
         let has_memo = self.outputs.iter().any(|o| match o {
-            ShieldedOutput::Sapling { memo, .. } | ShieldedOutput::Orchard { memo, .. } => {
+            ShieldedOutput::Sapling { memo, .. } | ShieldedOutput::Ironwood { memo, .. } => {
                 memo.is_some()
             }
         });
@@ -383,13 +319,13 @@ impl ShieldedBuilder {
             })
             .collect::<Vec<_>>();
 
-        // Get note count and check for Orchard spends before moving selection.notes
+        // Get note count and check for Ironwood spends before moving selection.notes
         let note_count = selection.notes.len();
         let total_input = selection.total_value;
         let has_orchard_spends = selection
             .notes
             .iter()
-            .any(|n| n.note_type == crate::selection::NoteType::Orchard);
+            .any(|n| n.note_type == crate::selection::NoteType::Ironwood);
         let has_sapling_spends = selection
             .notes
             .iter()
@@ -397,13 +333,13 @@ impl ShieldedBuilder {
         let has_orchard_outputs = self
             .outputs
             .iter()
-            .any(|o| matches!(o, ShieldedOutput::Orchard { .. }));
+            .any(|o| matches!(o, ShieldedOutput::Ironwood { .. }));
         let has_sapling_outputs = self
             .outputs
             .iter()
             .any(|o| matches!(o, ShieldedOutput::Sapling { .. }));
         let use_sapling_internal_change = crate::sapling_internal_change_active(
-            self.network.network_type(),
+            self.network.pirate_network_type(),
             u64::from(target_height),
         );
 
@@ -475,21 +411,21 @@ impl ShieldedBuilder {
             None
         };
 
-        let effective_orchard_anchor = if has_orchard_spends {
-            let mut selected_anchor: Option<OrchardAnchor> = None;
+        let effective_ironwood_anchor = if has_orchard_spends {
+            let mut selected_anchor: Option<IronwoodAnchor> = None;
             for note in &selection.notes {
-                if note.note_type != crate::selection::NoteType::Orchard {
+                if note.note_type != crate::selection::NoteType::Ironwood {
                     continue;
                 }
-                let note_anchor = note.orchard_anchor.ok_or_else(|| {
+                let note_anchor = note.ironwood_anchor.ok_or_else(|| {
                     Error::TransactionBuild(
-                        "Missing Orchard anchor for selected Orchard spend note".to_string(),
+                        "Missing Ironwood anchor for selected Ironwood spend note".to_string(),
                     )
                 })?;
                 if let Some(existing) = selected_anchor.as_ref() {
                     if existing != &note_anchor {
                         return Err(Error::TransactionBuild(
-                            "Selected Orchard spend notes are not anchored to a single root"
+                            "Selected Ironwood spend notes are not anchored to a single root"
                                 .to_string(),
                         ));
                     }
@@ -500,20 +436,20 @@ impl ShieldedBuilder {
 
             let selected_anchor = selected_anchor.ok_or_else(|| {
                 Error::TransactionBuild(
-                    "Missing Orchard anchor for selected Orchard spend set".to_string(),
+                    "Missing Ironwood anchor for selected Ironwood spend set".to_string(),
                 )
             })?;
-            if let Some(provided) = provided_orchard_anchor.as_ref() {
+            if let Some(provided) = provided_ironwood_anchor.as_ref() {
                 if provided != &selected_anchor {
                     return Err(Error::TransactionBuild(
-                        "Provided Orchard anchor does not match selected spend-note anchor"
+                        "Provided Ironwood anchor does not match selected spend-note anchor"
                             .to_string(),
                     ));
                 }
             }
             Some(selected_anchor)
         } else if has_orchard_outputs {
-            provided_orchard_anchor
+            provided_ironwood_anchor
         } else {
             None
         };
@@ -521,14 +457,14 @@ impl ShieldedBuilder {
         // Create prover from cached Sapling parameters
         let prover: LocalTxProver = sapling_prover();
 
-        // Create transaction builder with Orchard anchor
+        // Create transaction builder with Ironwood anchor
         let mut tx_builder = TxBuilder::new(
             self.network.clone(),
             BlockHeight::from_u32(target_height),
             BuildConfig::Standard {
                 sapling_anchor: effective_sapling_anchor,
-                orchard_anchor: effective_orchard_anchor,
-                ironwood_anchor: None,
+                orchard_anchor: None,
+                ironwood_anchor: effective_ironwood_anchor,
             },
         );
 
@@ -536,8 +472,8 @@ impl ShieldedBuilder {
         let mut sapling_extsks = Vec::new();
         let mut orchard_saks = Vec::new();
 
-        // Add Sapling and Orchard spends with witness data
-        // Note: We iterate by value because Orchard MerklePath doesn't implement Clone
+        // Add Sapling and Ironwood spends with witness data
+        // Note: We iterate by value because Ironwood MerklePath doesn't implement Clone
         for note in selection.notes {
             match note.note_type {
                 crate::selection::NoteType::Sapling => {
@@ -599,32 +535,35 @@ impl ShieldedBuilder {
                         })?;
                     sapling_extsks.push(sapling_key.inner().clone());
                 }
-                crate::selection::NoteType::Orchard => {
-                    // For Orchard spends, we need the note, merkle path, and spending key
-                    let orchard_note = note.orchard_note.as_ref().ok_or_else(|| {
-                        Error::TransactionBuild("Missing Orchard note data".to_string())
+                crate::selection::NoteType::Ironwood => {
+                    // For Ironwood spends, we need the note, merkle path, and spending key
+                    let ironwood_note = note.ironwood_note.as_ref().ok_or_else(|| {
+                        Error::TransactionBuild("Missing Ironwood note data".to_string())
                     })?;
-                    let orchard_merkle_path = note.orchard_merkle_path.ok_or_else(|| {
-                        Error::TransactionBuild("Missing Orchard merkle path".to_string())
+                    let ironwood_merkle_path = note.ironwood_merkle_path.ok_or_else(|| {
+                        Error::TransactionBuild("Missing Ironwood merkle path".to_string())
                     })?;
                     let orchard_sk = note
                         .key_id
-                        .and_then(|key_id| orchard_spending_keys_by_id.get(&key_id))
-                        .or(default_orchard_spending_key)
+                        .and_then(|key_id| ironwood_spending_keys_by_id.get(&key_id))
+                        .or(default_ironwood_spending_key)
                         .ok_or_else(|| {
                             Error::TransactionBuild(
-                                "Orchard spending key required for Orchard spends".to_string(),
+                                "Ironwood spending key required for Ironwood spends".to_string(),
                             )
                         })?;
 
                     tx_builder
-                        .add_orchard_spend::<()>(
+                        .add_ironwood_spend::<()>(
                             orchard_sk.full_viewing_key(),
-                            *orchard_note,
-                            orchard_merkle_path,
+                            *ironwood_note,
+                            ironwood_merkle_path,
                         )
                         .map_err(|e| {
-                            Error::TransactionBuild(format!("Failed to add Orchard spend: {:?}", e))
+                            Error::TransactionBuild(format!(
+                                "Failed to add Ironwood spend: {:?}",
+                                e
+                            ))
                         })?;
                     orchard_saks.push(orchard_sk.spend_authorizing_key());
                 }
@@ -635,7 +574,7 @@ impl ShieldedBuilder {
         let sapling_ovk = default_sapling_spending_key
             .to_extended_fvk()
             .outgoing_viewing_key();
-        let orchard_ovk = default_orchard_spending_key.map(|sk| sk.to_extended_fvk().to_ovk());
+        let orchard_ovk = default_ironwood_spending_key.map(|sk| sk.to_extended_fvk().to_ovk());
         for output in &self.outputs {
             match output {
                 ShieldedOutput::Sapling {
@@ -664,7 +603,7 @@ impl ShieldedBuilder {
                             ))
                         })?;
                 }
-                ShieldedOutput::Orchard {
+                ShieldedOutput::Ironwood {
                     address,
                     amount,
                     memo,
@@ -678,7 +617,7 @@ impl ShieldedBuilder {
                     };
 
                     tx_builder
-                        .add_orchard_output::<()>(
+                        .add_ironwood_output::<()>(
                             orchard_ovk.clone(),
                             *address,
                             Amount::from_u64(*amount).map_err(|_| {
@@ -688,7 +627,7 @@ impl ShieldedBuilder {
                         )
                         .map_err(|e| {
                             Error::TransactionBuild(format!(
-                                "Failed to add Orchard output: {:?}",
+                                "Failed to add Ironwood output: {:?}",
                                 e
                             ))
                         })?;
@@ -699,28 +638,28 @@ impl ShieldedBuilder {
         // Add change output if needed
         if change >= CHANGE_DUST_THRESHOLD {
             // Determine change address type:
-            // - Use Orchard if we have Orchard outputs or Orchard spends
+            // - Use Ironwood if we have Ironwood outputs or Ironwood spends
             // - Otherwise use Sapling
             // Note: has_orchard_spends was already computed before moving selection.notes
             let has_orchard_outputs = self
                 .outputs
                 .iter()
-                .any(|o| matches!(o, ShieldedOutput::Orchard { .. }));
+                .any(|o| matches!(o, ShieldedOutput::Ironwood { .. }));
             let use_orchard_change = has_orchard_outputs || has_orchard_spends;
 
             if use_orchard_change {
-                // Use Orchard change address
-                let orchard_fvk = default_orchard_spending_key
+                // Use Ironwood change address
+                let orchard_fvk = default_ironwood_spending_key
                     .ok_or_else(|| {
                         Error::TransactionBuild(
-                            "Orchard spending key required for Orchard change".to_string(),
+                            "Ironwood spending key required for Ironwood change".to_string(),
                         )
                     })?
                     .to_extended_fvk();
                 let change_addr = orchard_fvk.address_at_internal(change_diversifier_index);
 
                 tx_builder
-                    .add_orchard_output::<()>(
+                    .add_ironwood_output::<()>(
                         orchard_ovk.clone(),
                         change_addr.inner, // Extract inner orchard::Address
                         Amount::from_u64(change).map_err(|_| {
@@ -730,7 +669,7 @@ impl ShieldedBuilder {
                     )
                     .map_err(|e| {
                         Error::TransactionBuild(format!(
-                            "Failed to add Orchard change output: {:?}",
+                            "Failed to add Ironwood change output: {:?}",
                             e
                         ))
                     })?;
