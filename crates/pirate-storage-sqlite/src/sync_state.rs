@@ -463,7 +463,7 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
             let position_cell = row.get_ref(3)?;
             let note_type = match note_type_str.as_str() {
                 "Sapling" => crate::models::NoteType::Sapling,
-                "Orchard" => crate::models::NoteType::Orchard,
+                "Orchard" => crate::models::NoteType::Ironwood,
                 other => {
                     tracing::warn!(
                         "Skipping note id {} during truncate: unknown note_type {}",
@@ -705,7 +705,7 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
                     contains_marked = 1
                 "#
             }
-            crate::models::NoteType::Orchard => {
+            crate::models::NoteType::Ironwood => {
                 r#"
                 INSERT INTO orchard_note_shards (
                     shard_index,

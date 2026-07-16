@@ -31,16 +31,16 @@ pub struct SpendabilityStateRow {
     pub updated_at: String,
 }
 
-/// Canonical target height with independently snapped Sapling and Orchard anchors.
+/// Canonical target height with independently snapped Sapling and Ironwood anchors.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PerPoolAnchorHeights {
     /// Latest target height derived from scan queue extrema.
     pub target_height: u64,
     /// Sapling anchor snapped to the highest Sapling checkpoint at-or-below the ideal anchor.
     pub sapling_anchor_height: u64,
-    /// Orchard anchor snapped to the highest Orchard checkpoint at-or-below the ideal anchor.
-    pub orchard_anchor_height: u64,
-    /// Conservative anchor equal to `min(sapling_anchor_height, orchard_anchor_height)`.
+    /// Ironwood anchor snapped to the highest Ironwood checkpoint at-or-below the ideal anchor.
+    pub ironwood_anchor_height: u64,
+    /// Conservative anchor equal to `min(sapling_anchor_height, ironwood_anchor_height)`.
     pub conservative_anchor_height: u64,
 }
 
@@ -232,15 +232,15 @@ impl<'a> SpendabilityStateStorage<'a> {
         let sapling_anchor_height = self
             .snap_to_checkpoint_for_table("sapling_tree_checkpoints", ideal_anchor, anchor_floor)?
             .unwrap_or(ideal_anchor);
-        let orchard_anchor_height = self
+        let ironwood_anchor_height = self
             .snap_to_checkpoint_for_table("orchard_tree_checkpoints", ideal_anchor, anchor_floor)?
             .unwrap_or(ideal_anchor);
-        let conservative_anchor_height = sapling_anchor_height.min(orchard_anchor_height);
+        let conservative_anchor_height = sapling_anchor_height.min(ironwood_anchor_height);
 
         Ok(Some(PerPoolAnchorHeights {
             target_height,
             sapling_anchor_height,
-            orchard_anchor_height,
+            ironwood_anchor_height,
             conservative_anchor_height,
         }))
     }
@@ -289,7 +289,7 @@ impl<'a> SpendabilityStateStorage<'a> {
 
     /// Find the highest ShardTree checkpoint at-or-below `ceiling` that is >= `floor`.
     ///
-    /// Queries both Sapling and Orchard checkpoint tables and returns the more
+    /// Queries both Sapling and Ironwood checkpoint tables and returns the more
     /// conservative (lower) of the two, ensuring both pools can produce valid
     /// witnesses at the returned height.
     fn snap_to_checkpoint(&self, ceiling: u64, floor: u64) -> Result<Option<u64>> {

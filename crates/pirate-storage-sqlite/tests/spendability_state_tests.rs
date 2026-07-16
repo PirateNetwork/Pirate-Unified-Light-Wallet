@@ -214,7 +214,7 @@ fn test_anchor_target_heights_by_pool_for_account_are_independent() {
 
     assert_eq!(anchors.target_height, 240);
     assert_eq!(anchors.sapling_anchor_height, 228);
-    assert_eq!(anchors.orchard_anchor_height, 225);
+    assert_eq!(anchors.ironwood_anchor_height, 225);
     assert_eq!(
         anchors.conservative_anchor_height, 225,
         "conservative anchor should remain the lower pool checkpoint"

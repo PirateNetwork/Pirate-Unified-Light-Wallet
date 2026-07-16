@@ -297,10 +297,10 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
                     false
                 }
             }
-            SelectableNoteType::Orchard => {
-                match (note.orchard_position, note.orchard_note.as_ref()) {
+            SelectableNoteType::Ironwood => {
+                match (note.ironwood_position, note.ironwood_note.as_ref()) {
                     (Some(position), Some(orchard_note)) => {
-                        if note.orchard_merkle_path.is_some() && note.orchard_anchor.is_some() {
+                        if note.ironwood_merkle_path.is_some() && note.ironwood_anchor.is_some() {
                             true
                         } else if let (Some(tree), Some((_, depth)), Some(anchor)) =
                             (orchard_tree.as_mut(), orchard_checkpoint, orchard_anchor)
@@ -315,8 +315,8 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
                                 if path_root.to_bytes() != anchor.to_bytes() {
                                     false
                                 } else {
-                                    note.orchard_merkle_path = Some(merkle_path);
-                                    note.orchard_anchor = Some(anchor);
+                                    note.ironwood_merkle_path = Some(merkle_path);
+                                    note.ironwood_anchor = Some(anchor);
                                     true
                                 }
                             } else {
