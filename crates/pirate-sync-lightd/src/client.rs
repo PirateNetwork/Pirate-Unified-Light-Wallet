@@ -850,8 +850,8 @@ pub struct CompactTx {
     pub spends: Vec<CompactSaplingSpend>,
     /// Sapling outputs
     pub outputs: Vec<CompactSaplingOutput>,
-    /// Orchard actions
-    pub actions: Vec<CompactOrchardAction>,
+    /// Ironwood actions
+    pub actions: Vec<CompactIronwoodAction>,
 }
 
 impl From<proto::CompactTx> for CompactTx {
@@ -873,7 +873,7 @@ impl From<proto::CompactTx> for CompactTx {
             actions: pb
                 .actions
                 .into_iter()
-                .map(CompactOrchardAction::from)
+                .map(CompactIronwoodAction::from)
                 .collect(),
         }
     }
@@ -898,7 +898,7 @@ impl From<CompactTx> for proto::CompactTx {
             actions: tx
                 .actions
                 .into_iter()
-                .map(proto::CompactOrchardAction::from)
+                .map(proto::CompactIronwoodAction::from)
                 .collect(),
         }
     }
@@ -954,9 +954,9 @@ impl From<CompactSaplingOutput> for proto::CompactSaplingOutput {
     }
 }
 
-/// Compact Orchard action (for trial decryption)
+/// Compact Ironwood action (for trial decryption)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CompactOrchardAction {
+pub struct CompactIronwoodAction {
     /// Nullifier (32 bytes)
     pub nullifier: Vec<u8>,
     /// Note commitment (32 bytes)
@@ -969,8 +969,8 @@ pub struct CompactOrchardAction {
     pub out_ciphertext: Vec<u8>,
 }
 
-impl From<proto::CompactOrchardAction> for CompactOrchardAction {
-    fn from(pb: proto::CompactOrchardAction) -> Self {
+impl From<proto::CompactIronwoodAction> for CompactIronwoodAction {
+    fn from(pb: proto::CompactIronwoodAction) -> Self {
         Self {
             nullifier: pb.nullifier,
             cmx: pb.cmx,
@@ -981,8 +981,8 @@ impl From<proto::CompactOrchardAction> for CompactOrchardAction {
     }
 }
 
-impl From<CompactOrchardAction> for proto::CompactOrchardAction {
-    fn from(action: CompactOrchardAction) -> Self {
+impl From<CompactIronwoodAction> for proto::CompactIronwoodAction {
+    fn from(action: CompactIronwoodAction) -> Self {
         Self {
             nullifier: action.nullifier,
             cmx: action.cmx,
@@ -1054,7 +1054,7 @@ impl From<proto::LightdInfo> for LightdInfo {
     }
 }
 
-/// Tree state for Sapling and Orchard note commitment trees
+/// Tree state for Sapling and Ironwood note commitment trees
 #[derive(Debug, Clone)]
 pub struct TreeState {
     /// Network name ("main" or "test")
@@ -1069,8 +1069,8 @@ pub struct TreeState {
     pub sapling_tree: String,
     /// Sapling frontier (hex-encoded string)
     pub sapling_frontier: String,
-    /// Orchard tree state (hex-encoded string, empty if Orchard not activated)
-    pub orchard_tree: String,
+    /// Ironwood tree state (hex-encoded string, empty if Ironwood is not activated)
+    pub ironwood_tree: String,
 }
 
 /// Lightwalletd gRPC client
@@ -1849,7 +1849,7 @@ impl LightClient {
                 tree_state.network,
                 tree_state.hash,
                 tree_state.sapling_tree,
-                tree_state.orchard_tree
+                tree_state.ironwood_tree
             );
 
             Ok(TreeState {
@@ -1859,13 +1859,13 @@ impl LightClient {
                 time: tree_state.time,
                 sapling_tree: tree_state.sapling_tree,
                 sapling_frontier: tree_state.sapling_frontier,
-                orchard_tree: tree_state.orchard_tree,
+                ironwood_tree: tree_state.ironwood_tree,
             })
         })
         .await
     }
 
-    /// Get tree state (Sapling and Orchard anchors) at a specific block height
+    /// Get tree state (Sapling and Ironwood anchors) at a specific block height
     ///
     /// If `height` is 0, returns the latest tree state.
     /// Returns TreeState with saplingTree and orchardTree (hex-encoded strings).
@@ -1918,7 +1918,7 @@ impl LightClient {
                 tree_state.network,
                 tree_state.hash,
                 tree_state.sapling_tree,
-                tree_state.orchard_tree
+                tree_state.ironwood_tree
             );
 
             Ok(TreeState {
@@ -1928,7 +1928,7 @@ impl LightClient {
                 time: tree_state.time,
                 sapling_tree: tree_state.sapling_tree,
                 sapling_frontier: tree_state.sapling_frontier,
-                orchard_tree: tree_state.orchard_tree,
+                ironwood_tree: tree_state.ironwood_tree,
             })
         }).await
     }

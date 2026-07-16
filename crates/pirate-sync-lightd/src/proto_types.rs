@@ -68,7 +68,7 @@ pub struct CompactTx {
     #[prost(message, repeated, tag = "5")]
     pub outputs: Vec<CompactSaplingOutput>,
     #[prost(message, repeated, tag = "6")]
-    pub actions: Vec<CompactOrchardAction>,
+    pub actions: Vec<CompactIronwoodAction>,
 }
 
 /// Compact Sapling spend (nullifier only).
@@ -90,10 +90,10 @@ pub struct CompactSaplingOutput {
     pub ciphertext: Vec<u8>,
 }
 
-/// Compact Orchard action for trial decryption.
+/// Compact Ironwood action for trial decryption.
 /// Contains nullifier, commitment, ephemeral key, and ciphertexts.
 #[derive(Clone, PartialEq, Message)]
-pub struct CompactOrchardAction {
+pub struct CompactIronwoodAction {
     #[prost(bytes = "vec", tag = "1")]
     pub nullifier: Vec<u8>,
     #[prost(bytes = "vec", tag = "2")]
@@ -195,7 +195,7 @@ pub struct LightdInfo {
     pub zcashd_subversion: String,
 }
 
-/// Tree state for Sapling and Orchard note commitment trees.
+/// Tree state for Sapling and Ironwood note commitment trees.
 #[derive(Clone, PartialEq, Message)]
 pub struct TreeState {
     #[prost(string, tag = "1")]
@@ -211,7 +211,7 @@ pub struct TreeState {
     #[prost(string, tag = "6")]
     pub sapling_frontier: String,
     #[prost(string, tag = "7")]
-    pub orchard_tree: String,
+    pub ironwood_tree: String,
 }
 
 /// Shielded pool selector for subtree-root RPCs.
@@ -219,7 +219,7 @@ pub struct TreeState {
 #[repr(i32)]
 pub enum ShieldedProtocol {
     Sapling = 0,
-    Orchard = 1,
+    Ironwood = 1,
 }
 
 /// Request subtree roots starting from a given subtree index.
@@ -437,7 +437,7 @@ pub mod compact_tx_streamer_client {
             self.inner.unary(req, path, codec).await
         }
 
-        /// Get tree state (Sapling and Orchard anchors) at a specific block height.
+        /// Get tree state (Sapling and Ironwood anchors) at a specific block height.
         ///
         /// If BlockID.height is 0, returns latest tree state.
         /// Returns TreeState with saplingTree and orchardTree (hex-encoded strings).

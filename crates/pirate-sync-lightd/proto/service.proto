@@ -20,7 +20,7 @@ message CompactTx {
     uint32 fee = 3;     // The transaction fee: present if server can provide
     repeated CompactSaplingSpend spends = 4;   // inputs
     repeated CompactSaplingOutput outputs = 5; // outputs
-    repeated CompactOrchardAction actions = 6;
+    repeated CompactIronwoodAction actions = 6;
 }
 
 message CompactSaplingSpend {
@@ -33,7 +33,7 @@ message CompactSaplingOutput {
     bytes ciphertext = 3;   // first 52 bytes of ciphertext
 }
 
-message CompactOrchardAction {
+message CompactIronwoodAction {
     bytes nullifier = 1;        // [32] The nullifier of the input note
     bytes cmx = 2;              // [32] The x-coordinate of the note commitment for the output note
     bytes ephemeralKey = 3;     // [32] An encoding of an ephemeral Pallas public key
@@ -92,7 +92,7 @@ message LightdInfo {
     string zcashd_subversion = 14;
 }
 
-// Tree state for Sapling and Orchard note commitment trees
+// Tree state for Sapling and Ironwood note commitment trees
 message TreeState {
     string network = 1;     // "main" or "test"
     uint64 height = 2;      // block height
@@ -100,12 +100,12 @@ message TreeState {
     uint32 time = 4;        // Unix epoch time when the block was mined
     string saplingTree = 5; // sapling commitment tree state
     string saplingFrontier = 6; // sapling commitment tree state
-    string orchardTree = 7; // orchard commitment tree state
+    string ironwoodTree = 7; // Ironwood commitment tree state
 }
 
 enum ShieldedProtocol {
     sapling = 0;
-    orchard = 1;
+    ironwood = 1;
 }
 
 message GetSubtreeRootsArg {
@@ -140,7 +140,7 @@ service CompactTxStreamer {
     // Get lightwalletd server info
     rpc GetLightdInfo(Empty) returns (LightdInfo);
 
-    // Get tree state (Sapling and Orchard anchors) at a specific block height
+    // Get tree state (Sapling and Ironwood anchors) at a specific block height
     // If BlockID.height is 0, returns latest tree state
     // Uses legacy z_gettreestatelegacy RPC for backward compatibility
     rpc GetTreeState(BlockID) returns (TreeState);
