@@ -424,7 +424,7 @@ impl<'a> Repository<'a> {
         };
         let table = match note_type {
             crate::models::NoteType::Sapling => "sapling_tree_shards",
-            crate::models::NoteType::Orchard => "orchard_tree_shards",
+            crate::models::NoteType::Ironwood => "orchard_tree_shards",
         };
         let mut stmt = self.db.conn().prepare(&format!(
             "SELECT
@@ -495,7 +495,7 @@ impl<'a> Repository<'a> {
                     contains_marked = 1
                 "#
             }
-            crate::models::NoteType::Orchard => {
+            crate::models::NoteType::Ironwood => {
                 r#"
                 INSERT INTO orchard_note_shards (
                     shard_index,
@@ -606,7 +606,7 @@ impl<'a> Repository<'a> {
     ) -> Result<i64> {
         let note_type_str = match note.note_type {
             crate::models::NoteType::Sapling => "Sapling",
-            crate::models::NoteType::Orchard => "Orchard",
+            crate::models::NoteType::Ironwood => "Orchard",
         };
 
         // Encrypt ALL fields for maximum privacy (Pirate Chain privacy-first wallet)
@@ -684,7 +684,7 @@ impl<'a> Repository<'a> {
         })?;
         let note_type_str = match note.note_type {
             crate::models::NoteType::Sapling => "Sapling",
-            crate::models::NoteType::Orchard => "Orchard",
+            crate::models::NoteType::Ironwood => "Orchard",
         };
         let encrypted_account_id = self.encrypt_int64(note.account_id)?;
         let encrypted_value = self.encrypt_int64(note.value)?;
@@ -798,7 +798,7 @@ impl<'a> Repository<'a> {
                         contains_marked = 1
                     "#
                 }
-                crate::models::NoteType::Orchard => {
+                crate::models::NoteType::Ironwood => {
                     r#"
                     INSERT INTO orchard_note_shards (
                         shard_index,
@@ -1042,7 +1042,7 @@ impl<'a> Repository<'a> {
             .query_map([], |row| {
                 let note_type_str: String = row.get(2)?;
                 let note_type = match note_type_str.as_str() {
-                    "Orchard" => crate::models::NoteType::Orchard,
+                    "Orchard" => crate::models::NoteType::Ironwood,
                     _ => crate::models::NoteType::Sapling, // Default to Sapling for backward compatibility
                 };
 
@@ -1200,7 +1200,7 @@ impl<'a> Repository<'a> {
             .query_map([], |row| {
                 let note_type_str: String = row.get(2)?;
                 let note_type = match note_type_str.as_str() {
-                    "Orchard" => crate::models::NoteType::Orchard,
+                    "Orchard" => crate::models::NoteType::Ironwood,
                     _ => crate::models::NoteType::Sapling,
                 };
                 Ok((
@@ -1292,7 +1292,7 @@ impl<'a> Repository<'a> {
 
         let view_name = match note_type {
             crate::models::NoteType::Sapling => "v_sapling_shard_unscanned_ranges",
-            crate::models::NoteType::Orchard => "v_orchard_shard_unscanned_ranges",
+            crate::models::NoteType::Ironwood => "v_orchard_shard_unscanned_ranges",
         };
         let placeholders = std::iter::repeat_n("?", shard_indices.len())
             .collect::<Vec<_>>()
@@ -1350,7 +1350,7 @@ impl<'a> Repository<'a> {
             .query_map([], |row| {
                 let note_type_str: String = row.get(2)?;
                 let note_type = match note_type_str.as_str() {
-                    "Orchard" => crate::models::NoteType::Orchard,
+                    "Orchard" => crate::models::NoteType::Ironwood,
                     _ => crate::models::NoteType::Sapling,
                 };
 
@@ -1999,7 +1999,7 @@ impl<'a> Repository<'a> {
                     sn.note = Some(note);
                     result.push(sn);
                 }
-                crate::models::NoteType::Orchard => {
+                crate::models::NoteType::Ironwood => {
                     let (address_bytes, rho_bytes, rseed_bytes) =
                         match n.note.as_deref().and_then(parse_orchard_note_bytes) {
                             Some(data) => data,
@@ -2046,7 +2046,7 @@ impl<'a> Repository<'a> {
                         note_value,
                         rho,
                         rseed,
-                        OrchardNoteVersion::V2,
+                        OrchardNoteVersion::V3,
                     )) {
                         Some(value) => value,
                         None => {
@@ -2055,7 +2055,7 @@ impl<'a> Repository<'a> {
                         }
                     };
 
-                    let mut sn = SelectableNote::new_orchard(
+                    let mut sn = SelectableNote::new_ironwood(
                         value,
                         n.commitment.clone(),
                         n.height as u64,
@@ -2079,8 +2079,8 @@ impl<'a> Repository<'a> {
                             continue;
                         }
                     };
-                    sn.orchard_position = Some(position);
-                    sn.orchard_note = Some(note);
+                    sn.ironwood_position = Some(position);
+                    sn.ironwood_note = Some(note);
                     result.push(sn);
                 }
             }
@@ -2166,7 +2166,7 @@ impl<'a> Repository<'a> {
         // - keep deterministic wallet-birthday + fixed-anchor constraints
         notes.retain(|note| match note.note_type {
             pirate_core::selection::NoteType::Sapling => note.sapling_position.is_some(),
-            pirate_core::selection::NoteType::Orchard => note.orchard_position.is_some(),
+            pirate_core::selection::NoteType::Ironwood => note.ironwood_position.is_some(),
         });
         if notes.is_empty() {
             return Ok(notes);
@@ -2179,8 +2179,8 @@ impl<'a> Repository<'a> {
                 pirate_core::selection::NoteType::Sapling => note
                     .sapling_position
                     .and_then(|position| i64::try_from(position).ok()),
-                pirate_core::selection::NoteType::Orchard => note
-                    .orchard_position
+                pirate_core::selection::NoteType::Ironwood => note
+                    .ironwood_position
                     .and_then(|position| i64::try_from(position).ok()),
             };
             let Some(position_i64) = note_position_i64 else {
@@ -2193,7 +2193,7 @@ impl<'a> Repository<'a> {
                 pirate_core::selection::NoteType::Sapling => {
                     sapling_shard_indices.insert(shard_index);
                 }
-                pirate_core::selection::NoteType::Orchard => {
+                pirate_core::selection::NoteType::Ironwood => {
                     orchard_shard_indices.insert(shard_index);
                 }
             }
@@ -2205,7 +2205,7 @@ impl<'a> Repository<'a> {
             &sapling_shard_indices,
         )?;
         let blocked_orchard_shards = self.load_blocked_shard_ranges(
-            crate::models::NoteType::Orchard,
+            crate::models::NoteType::Ironwood,
             anchor_height_i64,
             wallet_birthday_i64,
             &orchard_shard_indices,
@@ -2217,8 +2217,8 @@ impl<'a> Repository<'a> {
                 pirate_core::selection::NoteType::Sapling => note
                     .sapling_position
                     .and_then(|position| i64::try_from(position).ok()),
-                pirate_core::selection::NoteType::Orchard => note
-                    .orchard_position
+                pirate_core::selection::NoteType::Ironwood => note
+                    .ironwood_position
                     .and_then(|position| i64::try_from(position).ok()),
             };
             let Some(note_position_i64) = note_position_i64 else {
@@ -2231,7 +2231,7 @@ impl<'a> Repository<'a> {
                 pirate_core::selection::NoteType::Sapling => {
                     blocked_sapling_shards.contains_key(&shard_index)
                 }
-                pirate_core::selection::NoteType::Orchard => {
+                pirate_core::selection::NoteType::Ironwood => {
                     blocked_orchard_shards.contains_key(&shard_index)
                 }
             };
@@ -2330,7 +2330,7 @@ impl<'a> Repository<'a> {
                 crate::models::NoteType::Sapling => {
                     sapling_shard_indices.insert(shard_index);
                 }
-                crate::models::NoteType::Orchard => {
+                crate::models::NoteType::Ironwood => {
                     orchard_shard_indices.insert(shard_index);
                 }
             }
@@ -2342,7 +2342,7 @@ impl<'a> Repository<'a> {
             &sapling_shard_indices,
         )?;
         let blocked_orchard_shards = self.load_blocked_shard_ranges(
-            crate::models::NoteType::Orchard,
+            crate::models::NoteType::Ironwood,
             anchor_height_i64,
             birthday_i64,
             &orchard_shard_indices,
@@ -2370,7 +2370,7 @@ impl<'a> Repository<'a> {
             if !missing_note_material && note_position_i64.is_some() {
                 let note_pool = match note.note_type {
                     crate::models::NoteType::Sapling => 0u8,
-                    crate::models::NoteType::Orchard => 1u8,
+                    crate::models::NoteType::Ironwood => 1u8,
                 };
                 if let Ok(output_index) = u32::try_from(note.output_index) {
                     anchor_candidates.push((
@@ -2389,7 +2389,7 @@ impl<'a> Repository<'a> {
                         crate::models::NoteType::Sapling => {
                             blocked_sapling_shards.get(&shard_index)
                         }
-                        crate::models::NoteType::Orchard => {
+                        crate::models::NoteType::Ironwood => {
                             blocked_orchard_shards.get(&shard_index)
                         }
                     };
@@ -2414,7 +2414,7 @@ impl<'a> Repository<'a> {
                     crate::models::NoteType::Sapling => {
                         result.sapling_missing = result.sapling_missing.saturating_add(1);
                     }
-                    crate::models::NoteType::Orchard => {
+                    crate::models::NoteType::Ironwood => {
                         result.orchard_missing = result.orchard_missing.saturating_add(1);
                     }
                 }
@@ -2426,7 +2426,7 @@ impl<'a> Repository<'a> {
                     crate::models::NoteType::Sapling => {
                         result.sapling_missing = result.sapling_missing.saturating_add(1);
                     }
-                    crate::models::NoteType::Orchard => {
+                    crate::models::NoteType::Ironwood => {
                         result.orchard_missing = result.orchard_missing.saturating_add(1);
                     }
                 }
@@ -2434,7 +2434,7 @@ impl<'a> Repository<'a> {
                 if let Some(position_i64) = note_position_i64 {
                     let shard_table = match note.note_type {
                         crate::models::NoteType::Sapling => "sapling_note_shards",
-                        crate::models::NoteType::Orchard => "orchard_note_shards",
+                        crate::models::NoteType::Ironwood => "orchard_note_shards",
                     };
                     if let Some(shard_index) = self.shard_index_from_position(position_i64) {
                         let mut shard_stmt = self.db.conn().prepare(&format!(
@@ -2495,7 +2495,7 @@ impl<'a> Repository<'a> {
                 for note in &anchor_ready {
                     let note_pool = match note.note_type {
                         pirate_core::selection::NoteType::Sapling => 0u8,
-                        pirate_core::selection::NoteType::Orchard => 1u8,
+                        pirate_core::selection::NoteType::Ironwood => 1u8,
                     };
                     ready_keys.insert((note.txid.clone(), note.output_index, note_pool));
                 }
@@ -2522,7 +2522,7 @@ impl<'a> Repository<'a> {
                         if let Some(position_i64) = note_position_i64 {
                             let note_type = match *note_pool {
                                 0 => crate::models::NoteType::Sapling,
-                                _ => crate::models::NoteType::Orchard,
+                                _ => crate::models::NoteType::Ironwood,
                             };
                             if let Some((range_start, range_end_exclusive)) =
                                 self.tree_shard_height_range_for_position(note_type, *position_i64)?
@@ -2908,7 +2908,7 @@ impl<'a> Repository<'a> {
             }
 
             let note_type = match note_type_str.as_str() {
-                "Orchard" => crate::models::NoteType::Orchard,
+                "Orchard" => crate::models::NoteType::Ironwood,
                 _ => crate::models::NoteType::Sapling,
             };
             let txid_bytes = self.decrypt_blob(&enc_txid)?;
@@ -3339,7 +3339,7 @@ impl<'a> Repository<'a> {
             .query_map([], |row| {
                 let note_type_str: String = row.get::<_, String>(2)?;
                 let note_type = match note_type_str.as_str() {
-                    "Orchard" => crate::models::NoteType::Orchard,
+                    "Orchard" => crate::models::NoteType::Ironwood,
                     _ => crate::models::NoteType::Sapling,
                 };
 
@@ -3470,7 +3470,7 @@ impl<'a> Repository<'a> {
             .query_map([], |row| {
                 let note_type_str: String = row.get::<_, String>(2)?;
                 let note_type = match note_type_str.as_str() {
-                    "Orchard" => crate::models::NoteType::Orchard,
+                    "Orchard" => crate::models::NoteType::Ironwood,
                     _ => crate::models::NoteType::Sapling,
                 };
                 Ok((
@@ -3715,7 +3715,7 @@ impl<'a> Repository<'a> {
             }
 
             let row_note_type = match note_type_str.as_str() {
-                "Orchard" => NoteType::Orchard,
+                "Orchard" => NoteType::Ironwood,
                 _ => NoteType::Sapling,
             };
 
@@ -3784,7 +3784,7 @@ impl<'a> Repository<'a> {
 
             let note_type_str = match note_type {
                 NoteType::Sapling => "Sapling",
-                NoteType::Orchard => "Orchard",
+                NoteType::Ironwood => "Orchard",
             };
             let encrypted_nullifier = self.encrypt_blob(nullifier)?;
             let encrypted_spending_txid = self.encrypt_blob(spending_txid)?;
@@ -3842,7 +3842,7 @@ impl<'a> Repository<'a> {
             }
 
             let note_type = match note_type_str.as_str() {
-                "Orchard" => NoteType::Orchard,
+                "Orchard" => NoteType::Ironwood,
                 _ => NoteType::Sapling,
             };
 
@@ -3869,11 +3869,11 @@ impl<'a> Repository<'a> {
         out.sort_by(|a, b| {
             let a_ty = match a.0 {
                 NoteType::Sapling => 0u8,
-                NoteType::Orchard => 1u8,
+                NoteType::Ironwood => 1u8,
             };
             let b_ty = match b.0 {
                 NoteType::Sapling => 0u8,
-                NoteType::Orchard => 1u8,
+                NoteType::Ironwood => 1u8,
             };
             a_ty.cmp(&b_ty)
                 .then_with(|| a.1.cmp(&b.1))
@@ -3929,7 +3929,7 @@ impl<'a> Repository<'a> {
             }
 
             let note_type = match note_type_str.as_str() {
-                "Orchard" => NoteType::Orchard,
+                "Orchard" => NoteType::Ironwood,
                 _ => NoteType::Sapling,
             };
 
@@ -3988,7 +3988,7 @@ impl<'a> Repository<'a> {
             }
 
             let note_type = match note_type_str.as_str() {
-                "Orchard" => NoteType::Orchard,
+                "Orchard" => NoteType::Ironwood,
                 _ => NoteType::Sapling,
             };
 
@@ -4062,7 +4062,7 @@ impl<'a> Repository<'a> {
             }
 
             let row_note_type = match note_type_str.as_str() {
-                "Orchard" => NoteType::Orchard,
+                "Orchard" => NoteType::Ironwood,
                 _ => NoteType::Sapling,
             };
             let row_nullifier = self.decrypt_blob(&enc_nullifier)?;
@@ -4418,7 +4418,7 @@ impl<'a> Repository<'a> {
             .query_map([], |row| {
                 let note_type_str: String = row.get::<_, String>(2)?;
                 let note_type = match note_type_str.as_str() {
-                    "Orchard" => crate::models::NoteType::Orchard,
+                    "Orchard" => crate::models::NoteType::Ironwood,
                     _ => crate::models::NoteType::Sapling,
                 };
 

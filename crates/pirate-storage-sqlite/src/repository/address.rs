@@ -183,7 +183,7 @@ fn decode_address_row(row: &Row<'_>) -> rusqlite::Result<Address> {
 fn decode_address_type(row: &Row<'_>) -> rusqlite::Result<AddressType> {
     let value: String = row.get(5).unwrap_or_else(|_| "Sapling".to_string());
     Ok(match value.as_str() {
-        "Orchard" => AddressType::Orchard,
+        "Orchard" => AddressType::Ironwood,
         _ => AddressType::Sapling,
     })
 }
@@ -199,7 +199,7 @@ fn decode_address_scope(row: &Row<'_>) -> rusqlite::Result<AddressScope> {
 fn address_type_str(address_type: AddressType) -> &'static str {
     match address_type {
         AddressType::Sapling => "Sapling",
-        AddressType::Orchard => "Orchard",
+        AddressType::Ironwood => "Orchard",
     }
 }
 

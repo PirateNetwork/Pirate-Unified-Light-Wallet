@@ -15,13 +15,13 @@ pub struct Account {
     pub created_at: i64,
 }
 
-/// Address type (Sapling or Orchard)
+/// Address type (Sapling or Ironwood)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AddressType {
     /// Sapling address (zs1...)
     Sapling,
-    /// Orchard address (pirate1...)
-    Orchard,
+    /// Ironwood address (pirate1...)
+    Ironwood,
 }
 
 /// Address scope (external receive or internal change)
@@ -46,7 +46,7 @@ pub struct Address {
     pub diversifier_index: u32,
     /// Address string
     pub address: String,
-    /// Address type (Sapling or Orchard)
+    /// Address type (Sapling or Ironwood)
     pub address_type: AddressType,
     /// Optional label for address book
     pub label: Option<String>,
@@ -58,13 +58,13 @@ pub struct Address {
     pub address_scope: AddressScope,
 }
 
-/// Note type (Sapling or Orchard)
+/// Note type (Sapling or Ironwood)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NoteType {
     /// Sapling note
     Sapling,
-    /// Orchard note
-    Orchard,
+    /// Ironwood note
+    Ironwood,
 }
 
 /// Note record
@@ -76,13 +76,13 @@ pub struct NoteRecord {
     pub account_id: i64,
     /// Key group ID (seed/import)
     pub key_id: Option<i64>,
-    /// Note type (Sapling or Orchard)
+    /// Note type (Sapling or Ironwood)
     pub note_type: NoteType,
     /// Value in arrrtoshis
     pub value: i64,
     /// Nullifier
     pub nullifier: Vec<u8>,
-    /// Commitment (Sapling) or Action Commitment (Orchard)
+    /// Commitment (Sapling) or action commitment (Ironwood)
     pub commitment: Vec<u8>,
     /// Is spent
     pub spent: bool,
@@ -98,9 +98,9 @@ pub struct NoteRecord {
     pub spent_txid: Option<Vec<u8>>,
     /// Diversifier used to derive address (11 bytes, Sapling only)
     pub diversifier: Option<Vec<u8>>,
-    /// Serialized note bytes (Sapling/Orchard)
+    /// Serialized note bytes (Sapling/Ironwood)
     pub note: Option<Vec<u8>>,
-    /// Position in Orchard note commitment tree (Orchard only)
+    /// Position in the Ironwood note commitment tree (Ironwood only)
     pub position: Option<i64>,
     /// Optional memo bytes
     pub memo: Option<Vec<u8>>,
@@ -149,9 +149,9 @@ pub struct AccountKey {
     pub sapling_extsk: Option<Vec<u8>>,
     /// Encrypted Sapling DFVK bytes (optional)
     pub sapling_dfvk: Option<Vec<u8>>,
-    /// Encrypted Orchard extended spending key (optional)
+    /// Encrypted Ironwood extended spending key (optional)
     pub orchard_extsk: Option<Vec<u8>>,
-    /// Encrypted Orchard extended FVK bytes (optional)
+    /// Encrypted Ironwood extended FVK bytes (optional)
     pub orchard_fvk: Option<Vec<u8>>,
     /// Encrypted mnemonic (seed accounts only)
     pub encrypted_mnemonic: Option<Vec<u8>>,
@@ -168,11 +168,11 @@ pub struct WalletSecret {
     pub extsk: Vec<u8>,
     /// Optional cached DFVK bytes (Sapling)
     pub dfvk: Option<Vec<u8>>,
-    /// Encrypted Orchard extended spending key bytes (optional) - None for watch-only
+    /// Encrypted Ironwood extended spending key bytes (optional) - None for watch-only
     pub orchard_extsk: Option<Vec<u8>>,
     /// Sapling IVK bytes (32 bytes) - for watch-only wallets
     pub sapling_ivk: Option<Vec<u8>>,
-    /// Orchard IVK bytes (64 bytes) - for watch-only wallets
+    /// Ironwood IVK bytes (64 bytes) - for watch-only wallets
     pub orchard_ivk: Option<Vec<u8>>,
     /// Encrypted mnemonic seed phrase (only for wallets created/restored from seed, None for private key imports or watch-only)
     pub encrypted_mnemonic: Option<Vec<u8>>,
