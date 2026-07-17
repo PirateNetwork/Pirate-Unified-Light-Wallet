@@ -635,7 +635,7 @@ pub(super) async fn prefill_historical_subtree_roots(
         client,
         conn,
         ORCHARD_TABLE_PREFIX,
-        crate::proto_types::ShieldedProtocol::Orchard,
+        crate::proto_types::ShieldedProtocol::Ironwood,
         start_orchard_index,
         historical_ceiling,
     )

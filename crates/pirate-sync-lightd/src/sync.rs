@@ -24,7 +24,7 @@ use incrementalmerkletree::frontier::CommitmentTree;
 use incrementalmerkletree::Hashable;
 use incrementalmerkletree::{Marking, Position, Retention};
 use orchard::keys::{
-    Diversifier as OrchardDiversifier, IncomingViewingKey as OrchardIncomingViewingKey,
+    Diversifier as OrchardDiversifier, IncomingViewingKey as IronwoodIncomingViewingKey,
     PreparedIncomingViewingKey as OrchardPreparedIncomingViewingKey,
 };
 use orchard::note::{
@@ -32,16 +32,16 @@ use orchard::note::{
     NoteVersion as OrchardNoteVersion, Nullifier as OrchardNullifier,
     RandomSeed as OrchardRandomSeed, Rho as OrchardRho,
 };
-use orchard::note_encryption::{CompactAction, OrchardDomain};
+use orchard::note_encryption::{CompactAction, IronwoodDomain};
 use orchard::tree::MerkleHashOrchard;
 use orchard::value::NoteValue as OrchardNoteValue;
 use orchard::Address as OrchardAddress;
 use pirate_core::keys::{
-    ExtendedFullViewingKey, ExtendedSpendingKey, OrchardExtendedFullViewingKey,
-    OrchardExtendedSpendingKey, OrchardPaymentAddress as PirateOrchardPaymentAddress,
+    ExtendedFullViewingKey, ExtendedSpendingKey, IronwoodExtendedFullViewingKey,
+    IronwoodExtendedSpendingKey, IronwoodPaymentAddress as PirateIronwoodPaymentAddress,
     PaymentAddress as PiratePaymentAddress,
 };
-use pirate_core::transaction::PirateNetwork;
+use pirate_core::transaction::{read_pirate_transaction, PirateNetwork};
 use pirate_params::consensus::ConsensusParams;
 use pirate_params::{Network as PirateParamsNetwork, NetworkType};
 use pirate_storage_sqlite::models::{AccountKey, AddressScope, KeyScope, KeyType};
@@ -80,8 +80,7 @@ use zcash_primitives::merkle_tree::{
     read_commitment_tree, read_frontier_v0, read_frontier_v1, HashSer,
 };
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;
-use zcash_primitives::transaction::Transaction;
-use zcash_protocol::consensus::{BlockHeight, BranchId};
+use zcash_protocol::consensus::BlockHeight;
 use zip32::Scope as SaplingScope;
 
 mod shardtree_support;
@@ -170,9 +169,9 @@ fn build_key_group_from_account_key(key: &AccountKey) -> Result<Option<WalletKey
     };
 
     let orchard_fvk = if let Some(ref bytes) = key.orchard_fvk {
-        OrchardExtendedFullViewingKey::from_bytes(bytes).ok()
+        IronwoodExtendedFullViewingKey::from_bytes(bytes).ok()
     } else if let Some(ref extsk_bytes) = key.orchard_extsk {
-        let extsk = OrchardExtendedSpendingKey::from_bytes(extsk_bytes)
+        let extsk = IronwoodExtendedSpendingKey::from_bytes(extsk_bytes)
             .map_err(|e| Error::Sync(format!("Invalid Orchard spending key bytes: {}", e)))?;
         Some(extsk.to_extended_fvk())
     } else {
@@ -697,7 +696,7 @@ impl SyncEngine {
             };
 
             let orchard_fvk_bytes = if let Some(ref extsk_bytes) = secret.orchard_extsk {
-                let extsk = OrchardExtendedSpendingKey::from_bytes(extsk_bytes).map_err(|e| {
+                let extsk = IronwoodExtendedSpendingKey::from_bytes(extsk_bytes).map_err(|e| {
                     Error::Sync(format!("Invalid Orchard spending key bytes: {}", e))
                 })?;
                 Some(extsk.to_extended_fvk().to_bytes())
@@ -1347,8 +1346,8 @@ impl SyncEngine {
             None
         };
 
-        let orchard_hex_len = tree_state.orchard_tree.len();
-        let orchard_frontier = if tree_state.orchard_tree.is_empty() {
+        let orchard_hex_len = tree_state.ironwood_tree.len();
+        let orchard_frontier = if tree_state.ironwood_tree.is_empty() {
             tracing::info!(
                 "No Orchard tree data from server at height {} -- empty tree",
                 tree_height
@@ -1356,8 +1355,8 @@ impl SyncEngine {
             None
         } else {
             match Self::parse_frontier_hex::<MerkleHashOrchard>(
-                "orchard_tree",
-                &tree_state.orchard_tree,
+                "ironwood_tree",
+                &tree_state.ironwood_tree,
             ) {
                 Ok(f) => {
                     let root_hex = hex::encode(f.root().to_bytes());
@@ -1917,7 +1916,7 @@ impl SyncEngine {
             // If we somehow exceed u32 range, prefer requiring Orchard tree data.
             return true;
         };
-        PirateParamsNetwork::from_type(self.network_type).is_orchard_active(height_u32)
+        PirateParamsNetwork::from_type(self.network_type).is_ironwood_active(height_u32)
     }
 
     async fn fetch_tree_state_with_retry(
@@ -2028,8 +2027,8 @@ impl SyncEngine {
 
             let legacy_err = match legacy_result {
                 Ok(Ok(state)) => {
-                    if orchard_required && state.orchard_tree.is_empty() {
-                        Some("missing_orchard_tree".to_string())
+                    if orchard_required && state.ironwood_tree.is_empty() {
+                        Some("missing_ironwood_tree".to_string())
                     } else {
                         return Ok(state);
                     }
@@ -2094,8 +2093,8 @@ impl SyncEngine {
 
                     match legacy_hash_result {
                         Ok(Ok(state)) => {
-                            if orchard_required && state.orchard_tree.is_empty() {
-                                legacy_hash_err = Some("missing_orchard_tree".to_string());
+                            if orchard_required && state.ironwood_tree.is_empty() {
+                                legacy_hash_err = Some("missing_ironwood_tree".to_string());
                             } else {
                                 return Ok(state);
                             }
@@ -2150,8 +2149,8 @@ impl SyncEngine {
                 };
                 let extended_legacy_err = match extended_legacy {
                     Ok(Ok(state)) => {
-                        if orchard_required && state.orchard_tree.is_empty() {
-                            Some("missing_orchard_tree".to_string())
+                        if orchard_required && state.ironwood_tree.is_empty() {
+                            Some("missing_ironwood_tree".to_string())
                         } else {
                             return Ok(state);
                         }
@@ -2212,9 +2211,9 @@ impl SyncEngine {
                         };
                         match extended_legacy_hash {
                             Ok(Ok(state)) => {
-                                if orchard_required && state.orchard_tree.is_empty() {
+                                if orchard_required && state.ironwood_tree.is_empty() {
                                     extended_legacy_hash_err =
-                                        Some("missing_orchard_tree".to_string());
+                                        Some("missing_ironwood_tree".to_string());
                                 } else {
                                     return Ok(state);
                                 }
@@ -3071,7 +3070,7 @@ impl SyncEngine {
                             return false;
                         }
                         if require_orchard_nullifier
-                            && note.note_type == NoteType::Orchard
+                            && note.note_type == NoteType::Ironwood
                             && note.nullifier.iter().all(|b| *b == 0)
                         {
                             filtered_nullifier += 1;
@@ -4094,7 +4093,7 @@ impl SyncEngine {
             }
 
             if let (Some(ivk_bytes), Some(fvk)) = (key.orchard_ivk, key.orchard_fvk.as_ref()) {
-                let ivk_ct = OrchardIncomingViewingKey::from_bytes(&ivk_bytes);
+                let ivk_ct = IronwoodIncomingViewingKey::from_bytes(&ivk_bytes);
                 if bool::from(ivk_ct.is_some()) {
                     let ivk = ivk_ct.unwrap();
                     orchard_ivks.push(OrchardPreparedIncomingViewingKey::new(&ivk));
@@ -4106,7 +4105,7 @@ impl SyncEngine {
 
             if let Some(fvk) = key.orchard_fvk.as_ref() {
                 let internal_ivk_bytes = fvk.to_internal_ivk_bytes();
-                let ivk_ct = OrchardIncomingViewingKey::from_bytes(&internal_ivk_bytes);
+                let ivk_ct = IronwoodIncomingViewingKey::from_bytes(&internal_ivk_bytes);
                 if bool::from(ivk_ct.is_some()) {
                     let ivk = ivk_ct.unwrap();
                     orchard_ivks.push(OrchardPreparedIncomingViewingKey::new(&ivk));
@@ -4171,7 +4170,7 @@ impl SyncEngine {
             let id = format!("{:08x}", ts);
             let orchard_notes = all_notes
                 .iter()
-                .filter(|note| note.note_type == crate::pipeline::NoteType::Orchard)
+                .filter(|note| note.note_type == crate::pipeline::NoteType::Ironwood)
                 .count();
             let sapling_notes = all_notes
                 .iter()
@@ -4642,7 +4641,7 @@ impl SyncEngine {
                     bytes.copy_from_slice(&ivk[..64]);
                     fallback.orchard_ivk = Some(bytes);
                 } else if ivk.len() == 137 {
-                    if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(&ivk) {
+                    if let Ok(fvk) = IronwoodExtendedFullViewingKey::from_bytes(&ivk) {
                         fallback.orchard_ivk = Some(fvk.to_ivk_bytes());
                         fallback.orchard_ovk = Some(fvk.to_ovk());
                         fallback.orchard_fvk = Some(fvk);
@@ -4665,7 +4664,7 @@ impl SyncEngine {
             .count();
         let orchard_notes_total = notes
             .iter()
-            .filter(|note| note.note_type == NoteType::Orchard)
+            .filter(|note| note.note_type == NoteType::Ironwood)
             .count();
         let mut txids: std::collections::HashSet<[u8; 32]> = std::collections::HashSet::new();
         for note in notes.iter() {
@@ -4750,7 +4749,7 @@ impl SyncEngine {
                 .and_then(|key_id| key_index_by_id.get(&key_id).and_then(|idx| keys.get(*idx)))
                 .or(fallback_group.as_ref());
             let orchard_nullifier_zero_local =
-                note.note_type == NoteType::Orchard && note.nullifier.iter().all(|b| *b == 0);
+                note.note_type == NoteType::Ironwood && note.nullifier.iter().all(|b| *b == 0);
             if orchard_nullifier_zero_local {
                 orchard_nullifier_zero += 1;
                 if key_group
@@ -4817,7 +4816,7 @@ impl SyncEngine {
                 }
                 match note.note_type {
                     NoteType::Sapling => sapling_needs_tx += 1,
-                    NoteType::Orchard => orchard_needs_tx += 1,
+                    NoteType::Ironwood => orchard_needs_tx += 1,
                 }
                 let entry = tx_work.entry(txid).or_default();
                 entry.indices.push(note_idx);
@@ -5003,7 +5002,7 @@ impl SyncEngine {
                             }
                         }
                     }
-                    NoteType::Orchard => {
+                    NoteType::Ironwood => {
                         let orchard_ivk =
                             match key_group.and_then(|group| group.orchard_ivk.as_ref()) {
                                 Some(ivk) => ivk,
@@ -5055,7 +5054,7 @@ impl SyncEngine {
                                     if let Err(e) = sink.update_note_memo(
                                         &note.tx_hash,
                                         note.output_index as i64,
-                                        NoteType::Orchard,
+                                        NoteType::Ironwood,
                                         Some(&memo),
                                     ) {
                                         tracing::warn!("Failed to update memo in database: {}", e);
@@ -5222,7 +5221,7 @@ impl SyncEngine {
                     bytes.copy_from_slice(&ivk[..64]);
                     orchard_ivk_bytes = Some(bytes);
                 } else if ivk.len() == 137 {
-                    if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(&ivk) {
+                    if let Ok(fvk) = IronwoodExtendedFullViewingKey::from_bytes(&ivk) {
                         orchard_ivk_bytes = Some(fvk.to_ivk_bytes());
                     }
                 }
@@ -5316,7 +5315,7 @@ impl SyncEngine {
             return Ok(());
         }
 
-        let tx = Transaction::read(raw_tx_bytes, BranchId::Canopy)
+        let tx = read_pirate_transaction(raw_tx_bytes)
             .map_err(|e| Error::Sync(format!("Failed to parse transaction: {}", e)))?;
 
         let mut memo_to_store: Option<Vec<u8>> = None;
@@ -5342,9 +5341,9 @@ impl SyncEngine {
 
         if memo_to_store.is_none() {
             if let Some(ovk) = orchard_ovk {
-                if let Some(bundle) = tx.orchard_bundle() {
+                if let Some(bundle) = tx.ironwood_bundle() {
                     for action in bundle.actions() {
-                        let domain = OrchardDomain::for_action(action);
+                        let domain = IronwoodDomain::for_action(action);
                         if let Some((_note, _address, memo)) = try_output_recovery_with_ovk(
                             &domain,
                             ovk,
@@ -5392,7 +5391,7 @@ impl SyncEngine {
             .collect();
         let orchard_owned: HashSet<[u8; 32]> = notes
             .iter()
-            .filter(|n| n.note_type == crate::pipeline::NoteType::Orchard)
+            .filter(|n| n.note_type == crate::pipeline::NoteType::Ironwood)
             .map(|n| n.commitment)
             .collect();
         let has_owned_sapling = !sapling_owned.is_empty();
@@ -5689,7 +5688,7 @@ impl SyncEngine {
                         note.position = Some(pos);
                     }
                 }
-                crate::pipeline::NoteType::Orchard => {
+                crate::pipeline::NoteType::Ironwood => {
                     if let Some(position) = position_mappings
                         .orchard_by_commitment
                         .get(&note.commitment)
@@ -5992,7 +5991,7 @@ impl SyncEngine {
                         let mut nf = [0u8; 32];
                         nf.copy_from_slice(&action.nullifier[..32]);
                         if !nf.iter().all(|b| *b == 0) {
-                            let note_type = pirate_storage_sqlite::models::NoteType::Orchard;
+                            let note_type = pirate_storage_sqlite::models::NoteType::Ironwood;
                             if let Some(id) = self.nullifier_cache.get(&nf).copied() {
                                 spend_updates.push((id, txid));
                                 matched_cache_nullifiers.push(nf);
@@ -6066,7 +6065,7 @@ impl SyncEngine {
                             pirate_storage_sqlite::models::NoteType::Sapling => {
                                 has_sapling_rederive_keys
                             }
-                            pirate_storage_sqlite::models::NoteType::Orchard => {
+                            pirate_storage_sqlite::models::NoteType::Ironwood => {
                                 has_orchard_rederive_keys
                             }
                         });
@@ -6368,7 +6367,7 @@ impl SyncEngine {
 
         let mut spend_map: HashMap<NullifierBytes, TxidBytes> = HashMap::new();
         for (note_type, nf, txid) in entries {
-            if *note_type == pirate_storage_sqlite::models::NoteType::Orchard {
+            if *note_type == pirate_storage_sqlite::models::NoteType::Ironwood {
                 spend_map.entry(*nf).or_insert(*txid);
             }
         }
@@ -6376,7 +6375,7 @@ impl SyncEngine {
             return Ok(Vec::new());
         }
 
-        let mut fvk_by_key: HashMap<i64, OrchardExtendedFullViewingKey> = HashMap::new();
+        let mut fvk_by_key: HashMap<i64, IronwoodExtendedFullViewingKey> = HashMap::new();
         for key in &self.keys {
             if let Some(fvk) = key.orchard_fvk.as_ref() {
                 fvk_by_key.insert(key.key_id, fvk.clone());
@@ -6398,7 +6397,7 @@ impl SyncEngine {
 
         let mut recovered: Vec<RecoveredSpend> = Vec::new();
         for mut note in notes {
-            if note.note_type != pirate_storage_sqlite::models::NoteType::Orchard {
+            if note.note_type != pirate_storage_sqlite::models::NoteType::Ironwood {
                 continue;
             }
             let id = match note.id {
@@ -6422,7 +6421,7 @@ impl SyncEngine {
                 Err(_) => continue,
             };
 
-            let mut candidate_keys: Vec<(i64, &OrchardExtendedFullViewingKey)> = Vec::new();
+            let mut candidate_keys: Vec<(i64, &IronwoodExtendedFullViewingKey)> = Vec::new();
             let mut seen_key_ids: HashSet<i64> = HashSet::new();
             if let Some(key_id) = note.key_id {
                 if let Some(fvk) = fvk_by_key.get(&key_id) {
@@ -6496,7 +6495,7 @@ impl SyncEngine {
         for (id, nf, txid) in self.rederive_unmatched_orchard_spends(entries, db)? {
             recovered.push((
                 id,
-                pirate_storage_sqlite::models::NoteType::Orchard,
+                pirate_storage_sqlite::models::NoteType::Ironwood,
                 nf,
                 txid,
             ));
@@ -6532,7 +6531,7 @@ impl SyncEngine {
                 sink.account_id,
             )
             .ok()??;
-        repo.resolve_orchard_anchor_from_db_state(anchors.orchard_anchor_height)
+        repo.resolve_orchard_anchor_from_db_state(anchors.ironwood_anchor_height)
             .ok()?
             .map(|a| a.to_bytes())
     }
@@ -6967,7 +6966,7 @@ fn orchard_address_from_ivk_diversifier(
     }
     let mut div_bytes = [0u8; 11];
     div_bytes.copy_from_slice(&diversifier[..11]);
-    let ivk_ct = OrchardIncomingViewingKey::from_bytes(ivk_bytes);
+    let ivk_ct = IronwoodIncomingViewingKey::from_bytes(ivk_bytes);
     if !bool::from(ivk_ct.is_some()) {
         return Err(Error::Sync("Invalid Orchard IVK bytes".to_string()));
     }
@@ -6998,7 +6997,7 @@ fn orchard_nullifier_from_parts(
         note_value,
         rho,
         rseed,
-        OrchardNoteVersion::V2,
+        OrchardNoteVersion::V3,
     ))
     .ok_or_else(|| Error::Sync("Invalid Orchard note parts".to_string()))?;
     Ok(note.nullifier(fvk).to_bytes())
@@ -7150,7 +7149,7 @@ impl StorageSink {
                     note.output_index as i64,
                     match note.note_type {
                         crate::pipeline::NoteType::Sapling => 0u8,
-                        crate::pipeline::NoteType::Orchard => 1u8,
+                        crate::pipeline::NoteType::Ironwood => 1u8,
                     },
                 )
             })
@@ -7162,7 +7161,7 @@ impl StorageSink {
                     existing.output_index,
                     match existing.note_type {
                         pirate_storage_sqlite::models::NoteType::Sapling => 0u8,
-                        pirate_storage_sqlite::models::NoteType::Orchard => 1u8,
+                        pirate_storage_sqlite::models::NoteType::Ironwood => 1u8,
                     },
                 );
                 if candidate_output_keys.contains(&key) {
@@ -7187,13 +7186,13 @@ impl StorageSink {
                                 .encode_for_network(self.address_network_type)
                         })
                 }
-                crate::pipeline::NoteType::Orchard => {
+                crate::pipeline::NoteType::Ironwood => {
                     decode_orchard_address_bytes_from_note_bytes(&note.note_bytes)
                         .and_then(|bytes| {
                             Option::from(OrchardAddress::from_raw_address_bytes(&bytes))
                         })
                         .and_then(|addr| {
-                            PirateOrchardPaymentAddress { inner: addr }
+                            PirateIronwoodPaymentAddress { inner: addr }
                                 .encode_for_network(self.address_network_type)
                                 .ok()
                         })
@@ -7212,8 +7211,8 @@ impl StorageSink {
                 crate::pipeline::NoteType::Sapling => {
                     pirate_storage_sqlite::models::AddressType::Sapling
                 }
-                crate::pipeline::NoteType::Orchard => {
-                    pirate_storage_sqlite::models::AddressType::Orchard
+                crate::pipeline::NoteType::Ironwood => {
+                    pirate_storage_sqlite::models::AddressType::Ironwood
                 }
             };
 
@@ -7249,8 +7248,8 @@ impl StorageSink {
                     return None;
                 }
                 let note_type = match n.note_type {
-                    crate::pipeline::NoteType::Orchard => {
-                        pirate_storage_sqlite::models::NoteType::Orchard
+                    crate::pipeline::NoteType::Ironwood => {
+                        pirate_storage_sqlite::models::NoteType::Ironwood
                     }
                     crate::pipeline::NoteType::Sapling => {
                         pirate_storage_sqlite::models::NoteType::Sapling
@@ -7273,8 +7272,8 @@ impl StorageSink {
                 continue;
             }
             let note_type = match n.note_type {
-                crate::pipeline::NoteType::Orchard => {
-                    pirate_storage_sqlite::models::NoteType::Orchard
+                crate::pipeline::NoteType::Ironwood => {
+                    pirate_storage_sqlite::models::NoteType::Ironwood
                 }
                 crate::pipeline::NoteType::Sapling => {
                     pirate_storage_sqlite::models::NoteType::Sapling
@@ -7329,7 +7328,7 @@ impl StorageSink {
             let address_id = derive_address_id(n, timestamp, &mut address_cache)?;
             let note_type_tag = match note_type {
                 pirate_storage_sqlite::models::NoteType::Sapling => 0u8,
-                pirate_storage_sqlite::models::NoteType::Orchard => 1u8,
+                pirate_storage_sqlite::models::NoteType::Ironwood => 1u8,
             };
             let output_key = (n.txid.clone(), n.output_index as i64, note_type_tag);
             let existing_note = existing_by_output.get(&output_key).cloned();
@@ -7495,7 +7494,7 @@ impl StorageSink {
                             TxOutputKey::new(&n.tx_hash, n.output_index)
                                 .and_then(|key| position_mappings.sapling_by_tx.get(&key).copied())
                         }
-                        crate::pipeline::NoteType::Orchard => position_mappings
+                        crate::pipeline::NoteType::Ironwood => position_mappings
                             .orchard_by_commitment
                             .get(&n.commitment)
                             .copied(),
@@ -7573,7 +7572,7 @@ impl StorageSink {
         let repo = Repository::new(&db);
         let note_type = match note_type {
             NoteType::Sapling => pirate_storage_sqlite::models::NoteType::Sapling,
-            NoteType::Orchard => pirate_storage_sqlite::models::NoteType::Orchard,
+            NoteType::Ironwood => pirate_storage_sqlite::models::NoteType::Ironwood,
         };
         Ok(repo.get_note_by_txid_and_index_with_type(
             self.account_id,
@@ -7600,7 +7599,7 @@ impl StorageSink {
         let repo = Repository::new(&db);
         let note_type = match note_type {
             NoteType::Sapling => pirate_storage_sqlite::models::NoteType::Sapling,
-            NoteType::Orchard => pirate_storage_sqlite::models::NoteType::Orchard,
+            NoteType::Ironwood => pirate_storage_sqlite::models::NoteType::Ironwood,
         };
         Ok(repo.update_note_memo_with_type(
             self.account_id,
@@ -7749,7 +7748,7 @@ struct PositionMaps {
 struct WalletKeyGroup {
     key_id: i64,
     sapling_dfvk: Option<ExtendedFullViewingKey>,
-    orchard_fvk: Option<OrchardExtendedFullViewingKey>,
+    orchard_fvk: Option<IronwoodExtendedFullViewingKey>,
     sapling_ivk: Option<[u8; 32]>,
     orchard_ivk: Option<[u8; 64]>,
     sapling_ovk: Option<SaplingOutgoingViewingKey>,
@@ -7935,7 +7934,7 @@ fn trial_decrypt_batch_impl(
 
     let mut sapling_outputs: Vec<(SaplingDomain, SaplingBatchOutput)> = Vec::new();
     let mut sapling_meta: Vec<SaplingOutputMeta> = Vec::new();
-    let mut orchard_outputs: Vec<(OrchardDomain, CompactAction)> = Vec::new();
+    let mut orchard_outputs: Vec<(IronwoodDomain, CompactAction)> = Vec::new();
     let mut orchard_meta: Vec<OrchardOutputMeta> = Vec::new();
 
     for block in blocks {
@@ -8018,7 +8017,7 @@ fn trial_decrypt_batch_impl(
                         EphemeralKeyBytes(epk),
                         enc_ciphertext,
                     );
-                    let domain = OrchardDomain::for_compact_action(&compact_action);
+                    let domain = IronwoodDomain::for_compact_action(&compact_action);
                     orchard_outputs.push((domain, compact_action));
                     orchard_meta.push(OrchardOutputMeta {
                         height,
@@ -8084,7 +8083,7 @@ fn trial_decrypt_batch_impl(
             &orchard_outputs,
             max_parallel,
         );
-        telemetry.merge_stage(&orchard_telemetry, NoteType::Orchard);
+        telemetry.merge_stage(&orchard_telemetry, NoteType::Ironwood);
 
         for (idx, result) in orchard_results.into_iter().enumerate() {
             if let Some(((note, address), ivk_index)) = result {
@@ -8100,7 +8099,7 @@ fn trial_decrypt_batch_impl(
                     .copied()
                     .unwrap_or(AddressScope::External);
 
-                let mut note_rec = DecryptedNote::new_orchard(OrchardDecryptedNoteInit {
+                let mut note_rec = DecryptedNote::new_ironwood(OrchardDecryptedNoteInit {
                     height: meta.height,
                     tx_index: meta.tx_index,
                     output_index: meta.output_index,
@@ -8156,7 +8155,7 @@ fn trial_decrypt_block(
         }
     }
     if let Some(ivk_bytes) = orchard_ivk_bytes_opt {
-        let ivk_ct = OrchardIncomingViewingKey::from_bytes(ivk_bytes);
+        let ivk_ct = IronwoodIncomingViewingKey::from_bytes(ivk_bytes);
         if bool::from(ivk_ct.is_some()) {
             let ivk = ivk_ct.unwrap();
             orchard_ivks.push(OrchardPreparedIncomingViewingKey::new(&ivk));
