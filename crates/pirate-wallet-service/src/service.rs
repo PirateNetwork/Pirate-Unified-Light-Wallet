@@ -34,7 +34,7 @@ pub enum WalletServiceRequest {
     ImportViewingWallet {
         name: String,
         sapling_viewing_key: Option<String>,
-        orchard_viewing_key: Option<String>,
+        ironwood_viewing_key: Option<String>,
         birthday: u32,
     },
     SwitchWallet {
@@ -119,7 +119,7 @@ pub enum WalletServiceRequest {
     ImportSpendingKey {
         wallet_id: WalletId,
         sapling_key: Option<String>,
-        orchard_key: Option<String>,
+        ironwood_key: Option<String>,
         label: Option<String>,
         birthday_height: u32,
     },
@@ -178,7 +178,7 @@ pub enum WalletServiceRequest {
         txid: String,
         output_index: u32,
     },
-    ExportOrchardPaymentDisclosure {
+    ExportIronwoodPaymentDisclosure {
         wallet_id: WalletId,
         txid: String,
         action_index: u32,
@@ -351,7 +351,7 @@ pub enum WalletServiceRequest {
     ExportSaplingViewingKey {
         wallet_id: WalletId,
     },
-    ExportOrchardViewingKey {
+    ExportIronwoodViewingKey {
         wallet_id: WalletId,
     },
     ExportSaplingViewingKeySecure {
@@ -479,12 +479,12 @@ impl WalletService {
             WalletServiceRequest::ImportViewingWallet {
                 name,
                 sapling_viewing_key,
-                orchard_viewing_key,
+                ironwood_viewing_key,
                 birthday,
             } => serialize(ffi::import_viewing_wallet(
                 name,
                 sapling_viewing_key,
-                orchard_viewing_key,
+                ironwood_viewing_key,
                 birthday,
             )?),
             WalletServiceRequest::SwitchWallet { wallet_id } => {
@@ -592,13 +592,13 @@ impl WalletService {
             WalletServiceRequest::ImportSpendingKey {
                 wallet_id,
                 sapling_key,
-                orchard_key,
+                ironwood_key,
                 label,
                 birthday_height,
             } => serialize(ffi::import_spending_key(
                 wallet_id,
                 sapling_key,
-                orchard_key,
+                ironwood_key,
                 label,
                 birthday_height,
             )?),
@@ -653,12 +653,12 @@ impl WalletService {
             } => serialize(
                 ffi::export_sapling_payment_disclosure(wallet_id, txid, output_index).await?,
             ),
-            WalletServiceRequest::ExportOrchardPaymentDisclosure {
+            WalletServiceRequest::ExportIronwoodPaymentDisclosure {
                 wallet_id,
                 txid,
                 action_index,
             } => serialize(
-                ffi::export_orchard_payment_disclosure(wallet_id, txid, action_index).await?,
+                ffi::export_ironwood_payment_disclosure(wallet_id, txid, action_index).await?,
             ),
             WalletServiceRequest::VerifyPaymentDisclosure {
                 wallet_id,
@@ -869,8 +869,8 @@ impl WalletService {
             WalletServiceRequest::ExportSaplingViewingKey { wallet_id } => {
                 serialize(ffi::export_sapling_viewing_key(wallet_id)?)
             }
-            WalletServiceRequest::ExportOrchardViewingKey { wallet_id } => {
-                serialize(ffi::export_orchard_viewing_key(wallet_id)?)
+            WalletServiceRequest::ExportIronwoodViewingKey { wallet_id } => {
+                serialize(ffi::export_ironwood_viewing_key(wallet_id)?)
             }
             WalletServiceRequest::ExportSaplingViewingKeySecure { wallet_id } => {
                 serialize(ffi::export_sapling_viewing_key_secure(wallet_id)?)

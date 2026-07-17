@@ -190,7 +190,7 @@ pub(super) fn get_lightd_endpoint_config(wallet_id: WalletId) -> Result<LightdEn
 ///
 /// Detects network based on hostname and port:
 /// - `64.23.167.130:9067` -> Mainnet (known-working endpoint)
-/// - `64.23.167.130:8067` -> Testnet (Orchard activated at block 61)
+/// - `64.23.167.130:8067` -> Testnet (Ironwood activated at block 61)
 pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<NetworkType> {
     let host_lower = host.to_ascii_lowercase();
 
@@ -220,7 +220,7 @@ pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<Netw
     None
 }
 
-pub(super) fn orchard_activation_override_height(endpoint: &LightdEndpoint) -> Option<u32> {
+pub(super) fn ironwood_activation_override_height(endpoint: &LightdEndpoint) -> Option<u32> {
     if endpoint.host == DEFAULT_LIGHTD_HOST && endpoint.port == 8067 {
         return Some(61);
     }

@@ -24,22 +24,22 @@ pub(super) fn export_sapling_viewing_key(wallet_id: WalletId) -> Result<String> 
     Ok(extsk.to_xfvk_bech32_for_network(network_type))
 }
 
-pub(super) fn export_orchard_viewing_key(wallet_id: WalletId) -> Result<String> {
+pub(super) fn export_ironwood_viewing_key(wallet_id: WalletId) -> Result<String> {
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
     let network_type = address_prefix_network_type(&wallet_id)?;
 
-    if let Some(orchard_extsk_bytes) = secret.orchard_extsk.as_ref() {
-        let orchard_extsk = OrchardExtendedSpendingKey::from_bytes(orchard_extsk_bytes)
-            .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
-        let orchard_fvk = orchard_extsk.to_extended_fvk();
-        orchard_fvk
+    if let Some(ironwood_extsk_bytes) = secret.orchard_extsk.as_ref() {
+        let ironwood_extsk = IronwoodExtendedSpendingKey::from_bytes(ironwood_extsk_bytes)
+            .map_err(|e| anyhow!("Invalid Ironwood spending key bytes: {}", e))?;
+        let ironwood_fvk = ironwood_extsk.to_extended_fvk();
+        ironwood_fvk
             .to_bech32_for_network(network_type)
-            .map_err(|e| anyhow!("Failed to encode Orchard viewing key: {}", e))
+            .map_err(|e| anyhow!("Failed to encode Ironwood viewing key: {}", e))
     } else {
-        Err(anyhow!("Orchard keys not available for this wallet"))
+        Err(anyhow!("Ironwood keys not available for this wallet"))
     }
 }
 
@@ -57,14 +57,14 @@ pub(super) fn list_key_groups(wallet_id: WalletId) -> Result<Vec<KeyGroupInfo>> 
         .filter_map(|key| {
             let id = key.id?;
             let has_sapling = key.sapling_extsk.is_some() || key.sapling_dfvk.is_some();
-            let has_orchard = key.orchard_extsk.is_some() || key.orchard_fvk.is_some();
+            let has_ironwood = key.orchard_extsk.is_some() || key.orchard_fvk.is_some();
             Some(KeyGroupInfo {
                 id,
                 label: key.label,
                 key_type: key_type_to_info(key.key_type),
                 spendable: key.spendable,
                 has_sapling,
-                has_orchard,
+                has_ironwood,
                 birthday_height: key.birthday_height,
                 created_at: key.created_at,
             })
@@ -108,21 +108,21 @@ pub(super) fn export_key_group_keys(wallet_id: WalletId, key_id: i64) -> Result<
         None
     };
 
-    let orchard_viewing_key = if let Some(ref bytes) = key.orchard_fvk {
-        let fvk = OrchardExtendedFullViewingKey::from_bytes(bytes)
-            .map_err(|e| anyhow!("Invalid Orchard viewing key bytes: {}", e))?;
+    let ironwood_viewing_key = if let Some(ref bytes) = key.orchard_fvk {
+        let fvk = IronwoodExtendedFullViewingKey::from_bytes(bytes)
+            .map_err(|e| anyhow!("Invalid Ironwood viewing key bytes: {}", e))?;
         Some(
             fvk.to_bech32_for_network(network_type)
-                .map_err(|e| anyhow!("Failed to encode Orchard viewing key: {}", e))?,
+                .map_err(|e| anyhow!("Failed to encode Ironwood viewing key: {}", e))?,
         )
     } else {
         None
     };
 
-    let orchard_spending_key = if let Some(ref bytes) = key.orchard_extsk {
-        let extsk = OrchardExtendedSpendingKey::from_bytes(bytes)
-            .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
-        Some(encode_orchard_extsk(&extsk, network_type)?)
+    let ironwood_spending_key = if let Some(ref bytes) = key.orchard_extsk {
+        let extsk = IronwoodExtendedSpendingKey::from_bytes(bytes)
+            .map_err(|e| anyhow!("Invalid Ironwood spending key bytes: {}", e))?;
+        Some(encode_ironwood_extsk(&extsk, network_type)?)
     } else {
         None
     };
@@ -130,9 +130,9 @@ pub(super) fn export_key_group_keys(wallet_id: WalletId, key_id: i64) -> Result<
     Ok(KeyExportInfo {
         key_id,
         sapling_viewing_key,
-        orchard_viewing_key,
+        ironwood_viewing_key,
         sapling_spending_key,
-        orchard_spending_key,
+        ironwood_spending_key,
     })
 }
 
@@ -170,10 +170,10 @@ pub(super) fn list_addresses_for_key(
 pub(super) fn generate_address_for_key(
     wallet_id: WalletId,
     key_id: i64,
-    use_orchard: bool,
+    use_ironwood: bool,
 ) -> Result<String> {
-    if use_orchard && !should_generate_orchard(&wallet_id)? {
-        return Err(anyhow!("Orchard is not active for this wallet"));
+    if use_ironwood && !should_generate_ironwood(&wallet_id)? {
+        return Err(anyhow!("Ironwood is not active for this wallet"));
     }
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let key = repo
@@ -184,17 +184,17 @@ pub(super) fn generate_address_for_key(
     let next_index = repo.get_next_diversifier_index(account_id, key_id)?;
     let network_type = address_prefix_network_type(&wallet_id)?;
 
-    let (addr_string, address_type) = if use_orchard {
+    let (addr_string, address_type) = if use_ironwood {
         let fvk_bytes = key
             .orchard_fvk
             .as_ref()
-            .ok_or_else(|| anyhow!("Orchard viewing key not available"))?;
-        let fvk = OrchardExtendedFullViewingKey::from_bytes(fvk_bytes)
-            .map_err(|e| anyhow!("Invalid Orchard viewing key bytes: {}", e))?;
+            .ok_or_else(|| anyhow!("Ironwood viewing key not available"))?;
+        let fvk = IronwoodExtendedFullViewingKey::from_bytes(fvk_bytes)
+            .map_err(|e| anyhow!("Invalid Ironwood viewing key bytes: {}", e))?;
         let addr = fvk
             .address_at(next_index)
             .encode_for_network(network_type)?;
-        (addr, AddressType::Orchard)
+        (addr, AddressType::Ironwood)
     } else {
         let dfvk_bytes = key
             .sapling_dfvk
@@ -228,7 +228,7 @@ pub(super) fn generate_address_for_key(
 pub(super) fn import_spending_key(
     wallet_id: WalletId,
     sapling_key: Option<String>,
-    orchard_key: Option<String>,
+    ironwood_key: Option<String>,
     label: Option<String>,
     birthday_height: u32,
 ) -> Result<i64> {
@@ -237,8 +237,8 @@ pub(super) fn import_spending_key(
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
 
-    if sapling_key.is_none() && orchard_key.is_none() {
-        return Err(anyhow!("Provide a Sapling or Orchard spending key"));
+    if sapling_key.is_none() && ironwood_key.is_none() {
+        return Err(anyhow!("Provide a Sapling or Ironwood spending key"));
     }
 
     let wallet_network = wallet_network_type(&wallet_id)?;
@@ -263,12 +263,12 @@ pub(super) fn import_spending_key(
         sapling_extsk = Some(extsk.to_bytes());
     }
 
-    if let Some(value) = orchard_key.as_ref() {
-        let (extsk, network) = OrchardExtendedSpendingKey::from_bech32_any(value)
-            .map_err(|e| anyhow!("Invalid Orchard spending key: {}", e))?;
+    if let Some(value) = ironwood_key.as_ref() {
+        let (extsk, network) = IronwoodExtendedSpendingKey::from_bech32_any(value)
+            .map_err(|e| anyhow!("Invalid Ironwood spending key: {}", e))?;
         if network != wallet_network {
             return Err(anyhow!(
-                "Orchard spending key network ({}) does not match wallet network ({})",
+                "Ironwood spending key network ({}) does not match wallet network ({})",
                 network_type_name(network),
                 network_type_name(wallet_network)
             ));
@@ -276,7 +276,7 @@ pub(super) fn import_spending_key(
         if let Some(existing) = network_from_key {
             if existing != network {
                 return Err(anyhow!(
-                    "Sapling and Orchard keys are for different networks"
+                    "Sapling and Ironwood keys are for different networks"
                 ));
             }
         }
@@ -343,12 +343,12 @@ fn encode_sapling_xfvk_from_bytes(bytes: &[u8], network: NetworkType) -> Option<
     ))
 }
 
-fn encode_orchard_extsk(
-    extsk: &OrchardExtendedSpendingKey,
+fn encode_ironwood_extsk(
+    extsk: &IronwoodExtendedSpendingKey,
     network: NetworkType,
 ) -> Result<String> {
-    let hrp = Hrp::parse(orchard_extsk_hrp_for_network(network))
-        .map_err(|e| anyhow!("Invalid Orchard HRP: {}", e))?;
+    let hrp = Hrp::parse(ironwood_extsk_hrp_for_network(network))
+        .map_err(|e| anyhow!("Invalid Ironwood HRP: {}", e))?;
     bech32::encode::<Bech32>(hrp, &extsk.to_bytes())
         .map_err(|e| anyhow!("Bech32 encoding failed: {}", e))
 }

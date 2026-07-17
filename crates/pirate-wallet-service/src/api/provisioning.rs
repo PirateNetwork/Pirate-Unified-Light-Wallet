@@ -95,7 +95,7 @@ pub(super) fn create_wallet(
         &mnemonic,
         Some(mnemonic_language),
     )?;
-    let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
+    let orchard_master = IronwoodExtendedSpendingKey::master(&seed_bytes)?;
 
     let coin_type = network.coin_type;
     let account = 0;
@@ -131,7 +131,7 @@ pub(super) fn create_wallet(
     };
     if persist_wallet_account_secret(&wallet_id, name_for_account, secret)? {
         tracing::info!(
-            "Persisted wallet secret (Sapling + Orchard) for wallet {}",
+            "Persisted wallet secret (Sapling + Ironwood) for wallet {}",
             wallet_id
         );
     }
@@ -161,7 +161,7 @@ pub(super) fn restore_wallet(
         &mnemonic,
         Some(mnemonic_language),
     )?;
-    let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
+    let orchard_master = IronwoodExtendedSpendingKey::master(&seed_bytes)?;
 
     let coin_type = network.coin_type;
     let account = 0;
@@ -206,13 +206,13 @@ pub(super) fn restore_wallet(
 pub(super) fn import_viewing_wallet(
     name: String,
     sapling_viewing_key: Option<String>,
-    orchard_viewing_key: Option<String>,
+    ironwood_viewing_key: Option<String>,
     birthday: u32,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
     let _wallet = Wallet::from_viewing_keys(
         sapling_viewing_key.as_deref(),
-        orchard_viewing_key.as_deref(),
+        ironwood_viewing_key.as_deref(),
     )?;
 
     let wallet_id = uuid::Uuid::new_v4().to_string();
@@ -246,15 +246,15 @@ pub(super) fn import_viewing_wallet(
         dfvk_bytes = Some(dfvk.to_bytes());
     }
 
-    let mut orchard_fvk_bytes: Option<Vec<u8>> = None;
-    if let Some(ref value) = orchard_viewing_key {
-        let fvk = OrchardExtendedFullViewingKey::from_bech32_any(value)
-            .map_err(|_| anyhow!("Invalid Orchard viewing key"))?;
-        orchard_fvk_bytes = Some(fvk.to_bytes());
+    let mut ironwood_fvk_bytes: Option<Vec<u8>> = None;
+    if let Some(ref value) = ironwood_viewing_key {
+        let fvk = IronwoodExtendedFullViewingKey::from_bech32_any(value)
+            .map_err(|_| anyhow!("Invalid Ironwood viewing key"))?;
+        ironwood_fvk_bytes = Some(fvk.to_bytes());
     }
 
     let dfvk_bytes_for_key = dfvk_bytes.clone();
-    let orchard_fvk_bytes_for_key = orchard_fvk_bytes.clone();
+    let ironwood_fvk_bytes_for_key = ironwood_fvk_bytes.clone();
 
     let secret = WalletSecret {
         wallet_id: wallet_id.clone(),
@@ -263,7 +263,7 @@ pub(super) fn import_viewing_wallet(
         dfvk: dfvk_bytes,
         orchard_extsk: None,
         sapling_ivk: None,
-        orchard_ivk: orchard_fvk_bytes,
+        orchard_ivk: ironwood_fvk_bytes,
         encrypted_mnemonic: None,
         mnemonic_language: None,
         created_at: account_created_at,
@@ -284,7 +284,7 @@ pub(super) fn import_viewing_wallet(
         sapling_extsk: None,
         sapling_dfvk: dfvk_bytes_for_key,
         orchard_extsk: None,
-        orchard_fvk: orchard_fvk_bytes_for_key,
+        orchard_fvk: ironwood_fvk_bytes_for_key,
         encrypted_mnemonic: None,
     };
     let encrypted_key = repo.encrypt_account_key_fields(&account_key)?;

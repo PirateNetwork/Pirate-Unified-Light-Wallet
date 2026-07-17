@@ -1,14 +1,14 @@
 use super::{
     address_book_color_to_ffi, address_matches_expected_network_prefix,
     address_prefix_network_type, ensure_primary_account_key, is_decoy_mode_active,
-    open_wallet_db_for, should_generate_orchard,
+    open_wallet_db_for, should_generate_ironwood,
 };
 use crate::models::{AddressBalanceInfo, AddressInfo, WalletId};
 use anyhow::{anyhow, Result};
-use orchard::Address as OrchardAddress;
+use orchard::Address as IronwoodAddress;
 use pirate_core::keys::{
-    ExtendedFullViewingKey, ExtendedSpendingKey, OrchardExtendedFullViewingKey,
-    OrchardExtendedSpendingKey, OrchardPaymentAddress, PaymentAddress,
+    ExtendedFullViewingKey, ExtendedSpendingKey, IronwoodExtendedFullViewingKey,
+    IronwoodExtendedSpendingKey, IronwoodPaymentAddress, PaymentAddress,
 };
 use pirate_params::NetworkType;
 use pirate_storage_sqlite::{AddressType, Repository};
@@ -44,7 +44,7 @@ pub(super) fn current_receive_address(wallet_id: WalletId) -> Result<String> {
         return Ok(addr_record.address);
     }
 
-    let use_orchard = should_generate_orchard(&wallet_id)?;
+    let use_orchard = should_generate_ironwood(&wallet_id)?;
     let (addr_string, address_type) = derive_receive_address(
         &wallet_id,
         &secret,
@@ -69,7 +69,7 @@ pub(super) fn current_receive_address(wallet_id: WalletId) -> Result<String> {
 
     tracing::debug!(
         "Generated and stored {} address at index {}: {}",
-        if use_orchard { "Orchard" } else { "Sapling" },
+        if use_orchard { "Ironwood" } else { "Sapling" },
         current_index,
         addr_string
     );
@@ -82,7 +82,7 @@ pub(super) fn next_receive_address(wallet_id: WalletId) -> Result<String> {
     }
     tracing::info!("Generating next receive address for wallet {}", wallet_id);
 
-    let use_orchard = should_generate_orchard(&wallet_id)?;
+    let use_orchard = should_generate_ironwood(&wallet_id)?;
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;
     let secret = repo
         .get_wallet_secret(&wallet_id)?
@@ -116,7 +116,7 @@ pub(super) fn next_receive_address(wallet_id: WalletId) -> Result<String> {
 
     tracing::info!(
         "Generated and stored next {} address at index {}: {}",
-        if use_orchard { "Orchard" } else { "Sapling" },
+        if use_orchard { "Ironwood" } else { "Sapling" },
         next_index,
         addr_string
     );
@@ -164,7 +164,7 @@ pub(super) fn list_address_balances(
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
     let primary_key_id = ensure_primary_account_key(&repo, &wallet_id, &secret)?;
     let network_type = address_prefix_network_type(&wallet_id)?;
-    let orchard_active = should_generate_orchard(&wallet_id)?;
+    let orchard_active = should_generate_ironwood(&wallet_id)?;
     let selected_key_id = key_id;
     let scan_key_id = selected_key_id.unwrap_or(primary_key_id);
     let key_material = if let Some(id) = key_id {
@@ -185,7 +185,7 @@ pub(super) fn list_address_balances(
 
     let mut notes = repo.get_unspent_notes(secret.account_id)?;
     let has_orchard_note_bytes = notes.iter().any(|note| {
-        note.note_type == pirate_storage_sqlite::models::NoteType::Orchard
+        note.note_type == pirate_storage_sqlite::models::NoteType::Ironwood
             && note
                 .note
                 .as_ref()
@@ -256,11 +256,11 @@ pub(super) fn list_address_balances(
                 .and_then(|bytes| ExtendedFullViewingKey::from_bytes(bytes))
         };
         let orchard_fvk = if let Some(bytes) = key.orchard_extsk.as_ref() {
-            Some(OrchardExtendedSpendingKey::from_bytes(bytes)?.to_extended_fvk())
+            Some(IronwoodExtendedSpendingKey::from_bytes(bytes)?.to_extended_fvk())
         } else {
             key.orchard_fvk
                 .as_ref()
-                .and_then(|bytes| OrchardExtendedFullViewingKey::from_bytes(bytes).ok())
+                .and_then(|bytes| IronwoodExtendedFullViewingKey::from_bytes(bytes).ok())
         };
         (sapling_fvk, orchard_fvk)
     } else {
@@ -273,12 +273,12 @@ pub(super) fn list_address_balances(
                 .and_then(|bytes| ExtendedFullViewingKey::from_bytes(bytes))
         };
         let orchard_fvk = if let Some(bytes) = secret.orchard_extsk.as_ref() {
-            Some(OrchardExtendedSpendingKey::from_bytes(bytes)?.to_extended_fvk())
+            Some(IronwoodExtendedSpendingKey::from_bytes(bytes)?.to_extended_fvk())
         } else {
             secret
                 .orchard_ivk
                 .as_ref()
-                .and_then(|bytes| OrchardExtendedFullViewingKey::from_bytes(bytes).ok())
+                .and_then(|bytes| IronwoodExtendedFullViewingKey::from_bytes(bytes).ok())
         };
         (sapling_fvk, orchard_fvk)
     };
@@ -304,7 +304,7 @@ pub(super) fn list_address_balances(
                 repo: &repo,
                 account_id: secret.account_id,
                 key_id: scan_key_id,
-                address_type: AddressType::Orchard,
+                address_type: AddressType::Ironwood,
                 balances_by_address: &balances_by_address,
                 scanned: &mut scanned_addresses,
                 created_at,
@@ -335,7 +335,7 @@ pub(super) fn list_address_balances(
         if let Some(diversifier_index) = scanned_addresses.get(&address_string).copied() {
             let address_type = match note.note_type {
                 pirate_storage_sqlite::models::NoteType::Sapling => AddressType::Sapling,
-                pirate_storage_sqlite::models::NoteType::Orchard => AddressType::Orchard,
+                pirate_storage_sqlite::models::NoteType::Ironwood => AddressType::Ironwood,
             };
             let address_record = pirate_storage_sqlite::Address {
                 id: None,
@@ -368,7 +368,7 @@ pub(super) fn list_address_balances(
         repo.get_all_addresses(secret.account_id)?
     };
     if !orchard_enabled_for_balance {
-        addresses.retain(|addr| addr.address_type != AddressType::Orchard);
+        addresses.retain(|addr| addr.address_type != AddressType::Ironwood);
     }
     addresses.retain(|addr| {
         address_matches_expected_network_prefix(&addr.address, addr.address_type, network_type)
@@ -441,15 +441,15 @@ fn derive_receive_address(
 ) -> Result<(String, AddressType)> {
     if use_orchard {
         let orchard_extsk_bytes = secret.orchard_extsk.clone().ok_or_else(|| {
-            anyhow!("Orchard key not found - wallet needs to be recreated with Orchard support")
+            anyhow!("Ironwood key not found - wallet needs to be recreated with Ironwood support")
         })?;
-        let orchard_extsk = OrchardExtendedSpendingKey::from_bytes(&orchard_extsk_bytes)
-            .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
+        let orchard_extsk = IronwoodExtendedSpendingKey::from_bytes(&orchard_extsk_bytes)
+            .map_err(|e| anyhow!("Invalid Ironwood spending key bytes: {}", e))?;
         let orchard_fvk = orchard_extsk.to_extended_fvk();
         let orchard_addr = orchard_fvk.address_at(diversifier_index);
         let network_type = address_prefix_network_type(wallet_id)?;
         let addr_string = orchard_addr.encode_for_network(network_type)?;
-        Ok((addr_string, AddressType::Orchard))
+        Ok((addr_string, AddressType::Ironwood))
     } else {
         let extsk = extsk.ok_or_else(|| anyhow!("Invalid spending key bytes"))?;
         let fvk = extsk.to_extended_fvk();
@@ -471,14 +471,14 @@ fn note_address_string(
                 .and_then(|bytes| SaplingPaymentAddress::from_bytes(&bytes))
                 .map(|addr| PaymentAddress { inner: addr }.encode_for_network(network_type))
         }
-        pirate_storage_sqlite::models::NoteType::Orchard => {
+        pirate_storage_sqlite::models::NoteType::Ironwood => {
             if !orchard_enabled_for_balance {
                 None
             } else {
                 decode_orchard_address_bytes_from_note_bytes(note_bytes)
-                    .and_then(|bytes| Option::from(OrchardAddress::from_raw_address_bytes(&bytes)))
+                    .and_then(|bytes| Option::from(IronwoodAddress::from_raw_address_bytes(&bytes)))
                     .and_then(|addr| {
-                        OrchardPaymentAddress { inner: addr }
+                        IronwoodPaymentAddress { inner: addr }
                             .encode_for_network(network_type)
                             .ok()
                     })
@@ -509,7 +509,7 @@ fn address_matches_type(address: &str, address_type: AddressType) -> bool {
                 || address.starts_with("ztestsapling1")
                 || address.starts_with("zregtestsapling1")
         }
-        AddressType::Orchard => {
+        AddressType::Ironwood => {
             address.starts_with("pirate1")
                 || address.starts_with("pirate-test1")
                 || address.starts_with("pirate-regtest1")

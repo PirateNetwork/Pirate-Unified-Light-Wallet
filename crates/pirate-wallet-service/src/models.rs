@@ -132,7 +132,7 @@ pub struct WalletMeta {
 /// Transaction output for send-to-many
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Output {
-    /// Recipient address (Sapling zs1... or Orchard pirate1...)
+    /// Recipient address (Sapling zs1... or Ironwood pirate1...)
     #[serde(alias = "address")]
     pub addr: String,
     /// Amount in arrrtoshis
@@ -421,8 +421,8 @@ pub struct Balance {
 pub struct ShieldedPoolBalances {
     /// Sapling pool balance.
     pub sapling: Balance,
-    /// Orchard pool balance.
-    pub orchard: Balance,
+    /// Ironwood pool balance.
+    pub ironwood: Balance,
 }
 
 /// Transaction info
@@ -526,7 +526,7 @@ pub struct QortalSyncStatus {
 pub struct NoteInfo {
     /// Note row id.
     pub id: Option<i64>,
-    /// Sapling or Orchard.
+    /// Sapling or Ironwood.
     pub note_type: String,
     /// Value in arrrtoshis.
     #[serde(with = "amount_json::i64")]
@@ -552,8 +552,8 @@ pub struct NoteInfo {
 pub enum ShieldedAddressType {
     /// Sapling shielded address (`zs...`)
     Sapling,
-    /// Orchard shielded address (`pirate1...`)
-    Orchard,
+    /// Ironwood shielded address (`pirate1...`)
+    Ironwood,
 }
 
 /// Address validation result for SDK consumers.
@@ -593,7 +593,7 @@ pub struct ConsensusBranchValidation {
 pub struct TransactionRecipient {
     /// Recipient address.
     pub address: String,
-    /// Output pool name (`sapling` or `orchard`).
+    /// Output pool name (`sapling` or `ironwood`).
     pub pool: String,
     /// Output value in arrrtoshis.
     #[serde(with = "amount_json::u64")]
@@ -632,11 +632,11 @@ pub struct TransactionDetails {
 /// Payment disclosure generated for one outgoing shielded output/action.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentDisclosure {
-    /// Disclosure pool (`sapling` or `orchard`).
+    /// Disclosure pool (`sapling` or `ironwood`).
     pub disclosure_type: String,
     /// Transaction id in display byte order.
     pub txid: TxId,
-    /// Sapling output index or Orchard action index.
+    /// Sapling output index or Ironwood action index.
     pub output_index: u32,
     /// Recipient address revealed by the disclosure.
     pub address: String,
@@ -652,11 +652,11 @@ pub struct PaymentDisclosure {
 /// Result of verifying and decrypting a payment disclosure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentDisclosureVerification {
-    /// Disclosure pool (`sapling` or `orchard`).
+    /// Disclosure pool (`sapling` or `ironwood`).
     pub disclosure_type: String,
     /// Transaction id in display byte order.
     pub txid: TxId,
-    /// Sapling output index or Orchard action index.
+    /// Sapling output index or Ironwood action index.
     pub output_index: u32,
     /// Recipient address revealed by the disclosure.
     pub address: String,
@@ -736,8 +736,8 @@ pub struct KeyGroupInfo {
     pub spendable: bool,
     /// Sapling capability
     pub has_sapling: bool,
-    /// Orchard capability
-    pub has_orchard: bool,
+    /// Ironwood capability
+    pub has_ironwood: bool,
     /// Birthday height for this key
     pub birthday_height: i64,
     /// Created timestamp
@@ -768,12 +768,12 @@ pub struct KeyExportInfo {
     pub key_id: i64,
     /// Sapling viewing key (xFVK) if available
     pub sapling_viewing_key: Option<String>,
-    /// Orchard viewing key if available
-    pub orchard_viewing_key: Option<String>,
+    /// Ironwood viewing key if available
+    pub ironwood_viewing_key: Option<String>,
     /// Sapling spending key if available
     pub sapling_spending_key: Option<String>,
-    /// Orchard spending key if available
-    pub orchard_spending_key: Option<String>,
+    /// Ironwood spending key if available
+    pub ironwood_spending_key: Option<String>,
 }
 
 /// Network information
