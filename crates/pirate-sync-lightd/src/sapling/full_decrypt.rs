@@ -8,13 +8,12 @@
 use crate::Error;
 use group::ff::PrimeField;
 use jubjub::Fr;
+use pirate_core::read_pirate_transaction;
 use sapling::{
     keys::PreparedIncomingViewingKey,
     note_encryption::{try_sapling_note_decryption, Zip212Enforcement},
     SaplingIvk,
 };
-use zcash_primitives::transaction::Transaction;
-use zcash_protocol::consensus::BranchId;
 
 /// Decrypted full note with memo
 pub struct DecryptedFullNote {
@@ -49,8 +48,7 @@ pub fn decrypt_memo_from_raw_tx_with_ivk_bytes(
     cmu: Option<&[u8; 32]>,
 ) -> Result<Option<DecryptedFullNote>, Error> {
     // Parse transaction
-    let tx = Transaction::read(raw_tx_bytes, BranchId::Canopy)
-        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Nu5))
+    let tx = read_pirate_transaction(raw_tx_bytes)
         .map_err(|e| Error::Sync(format!("Failed to parse transaction: {}", e)))?;
 
     // Get Sapling bundle

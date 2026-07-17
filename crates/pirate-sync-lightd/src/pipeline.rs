@@ -127,19 +127,19 @@ pub struct PerfSnapshot {
     pub avg_batch_ms: u64,
 }
 
-/// Note type (Sapling or Orchard)
+/// Note type (Sapling or Ironwood)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteType {
     /// Sapling note
     Sapling,
-    /// Orchard note
-    Orchard,
+    /// Ironwood note
+    Ironwood,
 }
 
 /// Decrypted note with lazy memo
 #[derive(Debug, Clone)]
 pub struct DecryptedNote {
-    /// Note type (Sapling or Orchard)
+    /// Note type (Sapling or Ironwood)
     pub note_type: NoteType,
     /// Block height
     pub height: u64,
@@ -238,9 +238,9 @@ impl DecryptedNote {
     }
 
     /// Create new Orchard decrypted note
-    pub fn new_orchard(init: OrchardDecryptedNoteInit) -> Self {
+    pub fn new_ironwood(init: OrchardDecryptedNoteInit) -> Self {
         Self {
-            note_type: NoteType::Orchard,
+            note_type: NoteType::Ironwood,
             height: init.height,
             tx_index: init.tx_index,
             output_index: init.output_index,

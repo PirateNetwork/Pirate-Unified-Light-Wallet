@@ -2,13 +2,13 @@
 //!
 //! References node Orchard trial decryption logic.
 //! - pirate/src/rust/src/orchard_actions.rs (try_orchard_decrypt_action_ivk)
-//! - Uses note decryption with OrchardDomain
+//! - Uses note decryption with IronwoodDomain
 
-use crate::{client::CompactOrchardAction, Error};
+use crate::{client::CompactIronwoodAction, Error};
 use orchard::{
     keys::{IncomingViewingKey, PreparedIncomingViewingKey},
     note::{ExtractedNoteCommitment, Nullifier},
-    note_encryption::{CompactAction, OrchardDomain},
+    note_encryption::{CompactAction, IronwoodDomain},
     primitives::redpallas::{Signature, SpendAuth},
     Action as OrchardAction,
 };
@@ -52,7 +52,7 @@ pub fn try_decrypt_orchard_action(
     let prepared_ivk = PreparedIncomingViewingKey::new(&ivk);
 
     // Create the Orchard domain for this action.
-    let domain = OrchardDomain::for_action(action);
+    let domain = IronwoodDomain::for_action(action);
 
     // Use zcash_note_encryption::try_note_decryption.
     // Full node signature: try_note_decryption(&domain, &prepared_ivk, action)
@@ -117,7 +117,7 @@ pub struct DecryptedCompactOrchardNote {
 ///
 /// Note: Memo is not available from compact decryption - requires fetching full transaction
 pub fn try_decrypt_compact_orchard_action(
-    action: &CompactOrchardAction,
+    action: &CompactIronwoodAction,
     ivk_bytes: &[u8; 64],
 ) -> Result<Option<DecryptedCompactOrchardNote>, Error> {
     // Validate input lengths
@@ -161,7 +161,7 @@ pub fn try_decrypt_compact_orchard_action(
     enc_ciphertext.copy_from_slice(&action.enc_ciphertext[..52]);
 
     let compact_action = CompactAction::from_parts(nullifier, cmx, ephemeral_key, enc_ciphertext);
-    let domain = OrchardDomain::for_compact_action(&compact_action);
+    let domain = IronwoodDomain::for_compact_action(&compact_action);
 
     match try_compact_note_decryption(&domain, &prepared_ivk, &compact_action) {
         Some((note, payment_address)) => {

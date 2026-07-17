@@ -8,14 +8,13 @@ use crate::Error;
 use hex;
 use orchard::{
     keys::{IncomingViewingKey, PreparedIncomingViewingKey},
-    note_encryption::OrchardDomain,
+    note_encryption::IronwoodDomain,
     primitives::redpallas::{Signature, SpendAuth},
     Action as OrchardAction,
 };
+use pirate_core::read_pirate_transaction;
 use tracing;
 use zcash_note_encryption::try_note_decryption;
-use zcash_primitives::transaction::Transaction;
-use zcash_protocol::consensus::BranchId;
 
 /// Decrypted Orchard note with memo
 pub struct DecryptedOrchardFullNote {
@@ -55,7 +54,7 @@ pub fn decrypt_orchard_action_with_ivk_bytes(
     let prepared_ivk = PreparedIncomingViewingKey::new(&ivk);
 
     // Create the Orchard domain for this action.
-    let domain = OrchardDomain::for_action(action);
+    let domain = IronwoodDomain::for_action(action);
 
     // Use zcash_note_encryption::try_note_decryption.
     // Full node signature: try_note_decryption(&domain, &prepared_ivk, action)
@@ -110,14 +109,13 @@ pub fn decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
     cmx: Option<&[u8; 32]>,
 ) -> Result<Option<DecryptedOrchardFullNote>, Error> {
     // Parse transaction
-    let tx = Transaction::read(raw_tx_bytes, BranchId::Nu5)
-        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
+    let tx = read_pirate_transaction(raw_tx_bytes)
         .map_err(|e| Error::Sync(format!("Failed to parse transaction: {}", e)))?;
 
     // Get Orchard bundle
     let orchard_bundle = tx
-        .orchard_bundle()
-        .ok_or_else(|| Error::Sync("Transaction has no Orchard bundle".to_string()))?;
+        .ironwood_bundle()
+        .ok_or_else(|| Error::Sync("Transaction has no Ironwood bundle".to_string()))?;
 
     // Get actions from the bundle
     // The bundle's actions() method returns a slice of actions
