@@ -1,16 +1,13 @@
 use super::*;
 
 fn extract_orchard_anchor_from_raw_tx(raw_tx_bytes: &[u8]) -> Option<[u8; 32]> {
-    let tx = Transaction::read(raw_tx_bytes, BranchId::Nu5)
-        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
-        .ok()?;
-    tx.orchard_bundle().map(|bundle| bundle.anchor().to_bytes())
+    let tx = read_pirate_transaction(raw_tx_bytes).ok()?;
+    tx.ironwood_bundle()
+        .map(|bundle| bundle.anchor().to_bytes())
 }
 
 fn extract_sapling_anchor_from_raw_tx(raw_tx_bytes: &[u8]) -> Option<[u8; 32]> {
-    let tx = Transaction::read(raw_tx_bytes, BranchId::Nu5)
-        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
-        .ok()?;
+    let tx = read_pirate_transaction(raw_tx_bytes).ok()?;
     let bundle = tx.sapling_bundle()?;
     bundle
         .shielded_spends()
@@ -53,7 +50,7 @@ fn parse_sapling_root_from_tree_state(
 pub(super) fn parse_orchard_root_from_tree_state(
     tree_state: &pirate_sync_lightd::client::TreeState,
 ) -> Option<[u8; 32]> {
-    let encoded = tree_state.orchard_tree.trim();
+    let encoded = tree_state.ironwood_tree.trim();
     if encoded.is_empty() {
         return None;
     }
@@ -88,7 +85,7 @@ pub(super) struct SpendSelectionAnchors {
     pub(super) target_height: u64,
     pub(super) conservative_anchor_height: u64,
     pub(super) sapling_anchor_height: u64,
-    pub(super) orchard_anchor_height: u64,
+    pub(super) ironwood_anchor_height: u64,
 }
 
 fn compute_spend_selection_anchors(
@@ -106,7 +103,7 @@ fn compute_spend_selection_anchors(
         target_height: anchors.target_height,
         conservative_anchor_height: anchors.conservative_anchor_height.max(1),
         sapling_anchor_height: anchors.sapling_anchor_height.max(1),
-        orchard_anchor_height: anchors.orchard_anchor_height.max(1),
+        ironwood_anchor_height: anchors.ironwood_anchor_height.max(1),
     })
 }
 
@@ -117,7 +114,7 @@ fn load_selectable_notes_for_send(
     key_ids_filter: Option<Vec<i64>>,
     address_ids_filter: Option<Vec<i64>>,
 ) -> Result<Vec<pirate_core::selection::SelectableNote>> {
-    if anchors.sapling_anchor_height == anchors.orchard_anchor_height {
+    if anchors.sapling_anchor_height == anchors.ironwood_anchor_height {
         return Ok(repo.get_unspent_selectable_notes_at_anchor_filtered(
             account_id,
             anchors.conservative_anchor_height,
@@ -146,12 +143,12 @@ fn load_selectable_notes_for_send(
     }
     for note in repo.get_unspent_selectable_notes_at_anchor_filtered(
         account_id,
-        anchors.orchard_anchor_height,
+        anchors.ironwood_anchor_height,
         SPENDABILITY_MIN_CONFIRMATIONS,
         key_ids_filter,
         address_ids_filter,
     )? {
-        if note.note_type != pirate_core::selection::NoteType::Orchard {
+        if note.note_type != pirate_core::selection::NoteType::Ironwood {
             continue;
         }
         let key = (note.txid.clone(), note.output_index, 1u8);
@@ -668,14 +665,14 @@ fn build_tx_internal(
 
         if !is_orchard && !is_sapling {
             return Err(anyhow!(
-                "Invalid address at output {}: must be Sapling (zs1...) or Orchard (pirate1...) address",
+                "Invalid address at output {}: must be a Sapling (zs1...) or Ironwood (pirate1...) address",
                 i + 1
             ));
         }
 
         if is_orchard {
-            OrchardPaymentAddress::decode_any_network(&output.addr)
-                .map_err(|e| anyhow!("Invalid Orchard address at output {}: {}", i + 1, e))?;
+            IronwoodPaymentAddress::decode_any_network(&output.addr)
+                .map_err(|e| anyhow!("Invalid Ironwood address at output {}: {}", i + 1, e))?;
         } else {
             PaymentAddress::decode_any_network(&output.addr)
                 .map_err(|e| anyhow!("Invalid Sapling address at output {}: {}", i + 1, e))?;
@@ -1147,7 +1144,7 @@ fn sign_tx_internal(
     let spendability = sync_control::require_spendability_ready_with_sync_trigger(&wallet_id)?;
     let anchors = compute_spend_selection_anchors(&_db, secret.account_id)?;
     let anchor_height = anchors.conservative_anchor_height;
-    let orchard_anchor_height = anchors.orchard_anchor_height;
+    let ironwood_anchor_height = anchors.ironwood_anchor_height;
     log_step(
         "spendability_status",
         &format!(
@@ -1220,7 +1217,7 @@ fn sign_tx_internal(
 
     let mut account_keys_by_id: HashMap<i64, AccountKey> = HashMap::new();
     let mut sapling_spend_keys_by_id: HashMap<i64, ExtendedSpendingKey> = HashMap::new();
-    let mut orchard_spend_keys_by_id: HashMap<i64, OrchardExtendedSpendingKey> = HashMap::new();
+    let mut orchard_spend_keys_by_id: HashMap<i64, IronwoodExtendedSpendingKey> = HashMap::new();
     if let Ok(account_keys) = repo.get_account_keys(secret.account_id) {
         for key in account_keys {
             if !key.spendable {
@@ -1236,7 +1233,7 @@ fn sign_tx_internal(
                 }
             }
             if let Some(bytes) = key.orchard_extsk.as_ref() {
-                if let Ok(parsed) = OrchardExtendedSpendingKey::from_bytes(bytes) {
+                if let Ok(parsed) = IronwoodExtendedSpendingKey::from_bytes(bytes) {
                     orchard_spend_keys_by_id.insert(key_id, parsed);
                 }
             }
@@ -1340,16 +1337,16 @@ fn sign_tx_internal(
 
     let orchard_extsk_opt = orchard_extsk_bytes
         .as_ref()
-        .and_then(|bytes| OrchardExtendedSpendingKey::from_bytes(bytes).ok());
+        .and_then(|bytes| IronwoodExtendedSpendingKey::from_bytes(bytes).ok());
 
     if signing_key_id.is_some()
         && orchard_extsk_opt.is_none()
         && selectable_notes
             .iter()
-            .any(|note| note.note_type == pirate_core::selection::NoteType::Orchard)
+            .any(|note| note.note_type == pirate_core::selection::NoteType::Ironwood)
     {
         log_step("orchard_extsk_missing", "");
-        return Err(anyhow!("Orchard spending key missing for this key group"));
+        return Err(anyhow!("Ironwood spending key missing for this key group"));
     }
 
     let eligible_note_count = selectable_notes
@@ -1396,9 +1393,9 @@ fn sign_tx_internal(
 
         if is_orchard {
             has_orchard_output = true;
-            let addr = OrchardPaymentAddress::decode_any_network(&out.addr)
-                .map_err(|e| anyhow!("Invalid Orchard address {}: {}", out.addr, e))?;
-            builder.add_orchard_output(addr.inner, out.amount, memo)?;
+            let addr = IronwoodPaymentAddress::decode_any_network(&out.addr)
+                .map_err(|e| anyhow!("Invalid Ironwood address {}: {}", out.addr, e))?;
+            builder.add_ironwood_output(addr.inner, out.amount, memo)?;
         } else {
             let addr = PaymentAddress::decode_any_network(&out.addr)
                 .map_err(|e| anyhow!("Invalid Sapling address {}: {}", out.addr, e))?;
@@ -1417,7 +1414,7 @@ fn sign_tx_internal(
             total_selected = total_selected
                 .checked_add(note.value)
                 .ok_or_else(|| anyhow!("Value overflow"))?;
-            if note.note_type == pirate_core::selection::NoteType::Orchard {
+            if note.note_type == pirate_core::selection::NoteType::Ironwood {
                 has_orchard_spends = true;
             }
             continue;
@@ -1432,7 +1429,7 @@ fn sign_tx_internal(
                 .checked_add(note.value)
                 .ok_or_else(|| anyhow!("Value overflow"))?;
             extra_selected += 1;
-            if note.note_type == pirate_core::selection::NoteType::Orchard {
+            if note.note_type == pirate_core::selection::NoteType::Ironwood {
                 has_orchard_spends = true;
             }
         }
@@ -1467,18 +1464,18 @@ fn sign_tx_internal(
         log_step("orchard_anchor_fetch_start", "outputs_only");
 
         let anchor_opt = repo
-            .resolve_orchard_anchor_from_db_state(orchard_anchor_height)
-            .map_err(|e| anyhow!("Failed to resolve Orchard anchor from DB state: {}", e))?;
+            .resolve_orchard_anchor_from_db_state(ironwood_anchor_height)
+            .map_err(|e| anyhow!("Failed to resolve Ironwood anchor from DB state: {}", e))?;
 
         if anchor_opt.is_some() {
             log_step(
                 "orchard_anchor_fetch_ok",
-                &format!("anchor_height<={}", orchard_anchor_height),
+                &format!("anchor_height<={}", ironwood_anchor_height),
             );
         } else {
             log_step("orchard_anchor_sync_required", "missing_db_anchor_state");
             return Err(anyhow!(
-                "Sync required: Orchard anchor is not available locally yet. Let wallet sync complete, then retry."
+                "Sync required: Ironwood anchor is not available locally yet. Let wallet sync complete, then retry."
             ));
         }
 
@@ -1489,8 +1486,8 @@ fn sign_tx_internal(
 
     let selected_orchard_anchor_hex = selectable_notes
         .iter()
-        .find(|note| note.note_type == pirate_core::selection::NoteType::Orchard)
-        .and_then(|note| note.orchard_anchor)
+        .find(|note| note.note_type == pirate_core::selection::NoteType::Ironwood)
+        .and_then(|note| note.ironwood_anchor)
         .map(|anchor| anchor.to_bytes());
     log_step(
         "orchard_anchor_selected",
@@ -1520,12 +1517,12 @@ fn sign_tx_internal(
         let (change_addr, address_type) = if use_orchard_change {
             let orchard_extsk = orchard_extsk_opt
                 .as_ref()
-                .ok_or_else(|| anyhow!("Orchard spending key required for Orchard change"))?;
+                .ok_or_else(|| anyhow!("Ironwood spending key required for Ironwood change"))?;
             let orchard_fvk = orchard_extsk.to_extended_fvk();
             let addr = orchard_fvk
                 .address_at_internal(change_diversifier_index)
                 .encode_for_network(network_type)?;
-            (addr, AddressType::Orchard)
+            (addr, AddressType::Ironwood)
         } else {
             let addr = extsk
                 .to_internal_fvk()
@@ -1559,7 +1556,7 @@ fn sign_tx_internal(
                         missing_sapling_key_ids.insert(key_id);
                     }
                 }
-                pirate_core::selection::NoteType::Orchard => {
+                pirate_core::selection::NoteType::Ironwood => {
                     if !orchard_spend_keys_by_id.contains_key(&key_id) {
                         missing_orchard_key_ids.insert(key_id);
                     }
@@ -1597,12 +1594,12 @@ fn sign_tx_internal(
             futures::executor::block_on(builder.build_and_sign_multi(
                 pirate_core::shielded_builder::BuildAndSignMultiInputs {
                     default_sapling_spending_key: &extsk,
-                    default_orchard_spending_key: orchard_extsk_opt.as_ref(),
+                    default_ironwood_spending_key: orchard_extsk_opt.as_ref(),
                     sapling_spending_keys_by_id: sapling_spend_keys_by_id,
-                    orchard_spending_keys_by_id: orchard_spend_keys_by_id,
+                    ironwood_spending_keys_by_id: orchard_spend_keys_by_id,
                     available_notes: selectable_notes,
                     target_height,
-                    orchard_anchor: orchard_anchor_opt,
+                    ironwood_anchor: orchard_anchor_opt,
                     change_diversifier_index,
                 },
             ))

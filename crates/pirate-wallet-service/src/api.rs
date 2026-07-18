@@ -20,14 +20,14 @@
 use crate::models::*;
 use anyhow::{anyhow, Result};
 use hex;
-use orchard::note_encryption::OrchardDomain;
+use orchard::note_encryption::IronwoodDomain;
 use parking_lot::RwLock;
 use pirate_core::keys::{
-    orchard_extsk_hrp_for_network, ExtendedFullViewingKey, ExtendedSpendingKey,
-    OrchardExtendedFullViewingKey, OrchardExtendedSpendingKey, OrchardPaymentAddress,
+    ironwood_extsk_hrp_for_network, ExtendedFullViewingKey, ExtendedSpendingKey,
+    IronwoodExtendedFullViewingKey, IronwoodExtendedSpendingKey, IronwoodPaymentAddress,
     PaymentAddress,
 };
-use pirate_core::transaction::PirateNetwork;
+use pirate_core::transaction::{read_pirate_transaction, PirateNetwork};
 use pirate_core::wallet::Wallet;
 use pirate_core::{
     inspect_mnemonic as inspect_mnemonic_core, mnemonic::canonicalize_mnemonic,
@@ -62,7 +62,6 @@ use std::time::Duration;
 use zcash_note_encryption::try_output_recovery_with_ovk;
 use zcash_primitives::merkle_tree::{read_commitment_tree, read_frontier_v0, read_frontier_v1};
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;
-use zcash_primitives::transaction::Transaction;
 use zcash_protocol::consensus::{BlockHeight, BranchId};
 
 pub(crate) mod address_book;
@@ -89,7 +88,7 @@ pub use self::endpoint::{
 };
 use self::panic_duress::{ensure_not_decoy, is_decoy_mode_active};
 pub use self::payment_disclosure::{
-    export_orchard_payment_disclosure, export_payment_disclosures,
+    export_ironwood_payment_disclosure, export_payment_disclosures,
     export_sapling_payment_disclosure, verify_payment_disclosure,
 };
 pub use self::qortal::{
@@ -158,9 +157,7 @@ fn recover_outgoing_memo_from_raw_tx(
         return None;
     }
 
-    let tx = Transaction::read(raw_tx_bytes, BranchId::Nu5)
-        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
-        .ok()?;
+    let tx = read_pirate_transaction(raw_tx_bytes).ok()?;
     let block_height = BlockHeight::from_u32(tx_height.unwrap_or(0));
     let sapling_zip212 = zip212_enforcement(&PirateNetwork::default(), block_height);
 
@@ -178,10 +175,10 @@ fn recover_outgoing_memo_from_raw_tx(
         }
     }
 
-    if let Some(bundle) = tx.orchard_bundle() {
+    if let Some(bundle) = tx.ironwood_bundle() {
         for ovk in orchard_ovks {
             for action in bundle.actions() {
-                let domain = OrchardDomain::for_action(action);
+                let domain = IronwoodDomain::for_action(action);
                 if let Some((_note, _address, memo)) = try_output_recovery_with_ovk(
                     &domain,
                     ovk,
@@ -255,12 +252,12 @@ fn collect_tx_recovery_context(wallet_id: &WalletId, txid: &str) -> Result<TxRec
     }
 
     if let Some(ref orchard_extsk) = secret.orchard_extsk {
-        if let Ok(extsk) = OrchardExtendedSpendingKey::from_bytes(orchard_extsk) {
+        if let Ok(extsk) = IronwoodExtendedSpendingKey::from_bytes(orchard_extsk) {
             push_orchard_ovk(extsk.to_extended_fvk().to_ovk());
         }
     } else if let Some(ref orchard_ivk) = secret.orchard_ivk {
         if orchard_ivk.len() == 137 {
-            if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(orchard_ivk) {
+            if let Ok(fvk) = IronwoodExtendedFullViewingKey::from_bytes(orchard_ivk) {
                 push_orchard_ovk(fvk.to_ovk());
             }
         }
@@ -278,11 +275,11 @@ fn collect_tx_recovery_context(wallet_id: &WalletId, txid: &str) -> Result<TxRec
         }
 
         if let Some(ref extsk_bytes) = key.orchard_extsk {
-            if let Ok(extsk) = OrchardExtendedSpendingKey::from_bytes(extsk_bytes) {
+            if let Ok(extsk) = IronwoodExtendedSpendingKey::from_bytes(extsk_bytes) {
                 push_orchard_ovk(extsk.to_extended_fvk().to_ovk());
             }
         } else if let Some(ref fvk_bytes) = key.orchard_fvk {
-            if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(fvk_bytes) {
+            if let Ok(fvk) = IronwoodExtendedFullViewingKey::from_bytes(fvk_bytes) {
                 push_orchard_ovk(fvk.to_ovk());
             }
         }
@@ -931,8 +928,8 @@ fn ensure_primary_account_key(
 
     let orchard_fvk_bytes = match secret.orchard_extsk.as_ref() {
         Some(bytes) => {
-            let extsk = OrchardExtendedSpendingKey::from_bytes(bytes)
-                .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))?;
+            let extsk = IronwoodExtendedSpendingKey::from_bytes(bytes)
+                .map_err(|e| anyhow!("Invalid Ironwood spending key bytes: {}", e))?;
             Some(extsk.to_extended_fvk().to_bytes())
         }
         None => None,
@@ -987,10 +984,10 @@ pub fn delete_wallet(wallet_id: WalletId) -> Result<()> {
 // Addresses
 // ============================================================================
 
-/// Helper: Determine if Orchard addresses should be generated based on network and height
-fn orchard_activation_override(wallet_id: &WalletId) -> Result<Option<u32>> {
+/// Determine whether Ironwood addresses should be generated for the network and height.
+fn ironwood_activation_override(wallet_id: &WalletId) -> Result<Option<u32>> {
     let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
-    Ok(endpoint::orchard_activation_override_height(&endpoint))
+    Ok(endpoint::ironwood_activation_override_height(&endpoint))
 }
 
 fn wallet_network_type(wallet_id: &WalletId) -> Result<NetworkType> {
@@ -1012,7 +1009,7 @@ fn address_prefix_network_type(wallet_id: &WalletId) -> Result<NetworkType> {
     ))
 }
 
-fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
+fn should_generate_ironwood(wallet_id: &WalletId) -> Result<bool> {
     let wallet = get_wallet_meta(wallet_id)?;
     let network = Network::from_type(wallet_network_type(wallet_id)?);
 
@@ -1027,12 +1024,12 @@ fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
         current_height
     };
 
-    // Check if Orchard is activated at current height
-    if let Some(override_height) = orchard_activation_override(wallet_id)? {
+    // Check whether Ironwood is active at the current height.
+    if let Some(override_height) = ironwood_activation_override(wallet_id)? {
         return Ok(effective_height >= override_height);
     }
 
-    Ok(network.is_orchard_active(effective_height))
+    Ok(network.is_ironwood_active(effective_height))
 }
 
 /// Get current receive address for wallet
@@ -1047,7 +1044,7 @@ pub fn current_receive_address(wallet_id: WalletId) -> Result<String> {
 /// Generate next receive address (diversifier rotation)
 ///
 /// Increments the diversifier index to generate a fresh, unlinkable address.
-/// Address type (Sapling or Orchard) is determined by network and current block height.
+/// Address type (Sapling or Ironwood) is determined by network and current block height.
 /// Previous addresses remain valid for receiving funds.
 pub fn next_receive_address(wallet_id: WalletId) -> Result<String> {
     addresses::next_receive_address(wallet_id)
@@ -1119,9 +1116,9 @@ fn address_matches_expected_network_prefix(
         (AddressType::Sapling, NetworkType::Mainnet) => address.starts_with("zs1"),
         (AddressType::Sapling, NetworkType::Testnet) => address.starts_with("ztestsapling1"),
         (AddressType::Sapling, NetworkType::Regtest) => address.starts_with("zregtestsapling1"),
-        (AddressType::Orchard, NetworkType::Mainnet) => address.starts_with("pirate1"),
-        (AddressType::Orchard, NetworkType::Testnet) => address.starts_with("pirate-test1"),
-        (AddressType::Orchard, NetworkType::Regtest) => address.starts_with("pirate-regtest1"),
+        (AddressType::Ironwood, NetworkType::Mainnet) => address.starts_with("pirate1"),
+        (AddressType::Ironwood, NetworkType::Testnet) => address.starts_with("pirate-test1"),
+        (AddressType::Ironwood, NetworkType::Regtest) => address.starts_with("pirate-regtest1"),
     }
 }
 
@@ -1261,10 +1258,10 @@ pub fn validate_address(address: String) -> Result<AddressValidation> {
         });
     }
 
-    if OrchardPaymentAddress::decode_any_network(&address).is_ok() {
+    if IronwoodPaymentAddress::decode_any_network(&address).is_ok() {
         return Ok(AddressValidation {
             is_valid: true,
-            address_type: Some(ShieldedAddressType::Orchard),
+            address_type: Some(ShieldedAddressType::Ironwood),
             reason: None,
         });
     }
@@ -1290,26 +1287,26 @@ pub fn export_sapling_viewing_key(wallet_id: WalletId) -> Result<String> {
     key_management::export_sapling_viewing_key(wallet_id)
 }
 
-/// Export Orchard Extended Full Viewing Key as Bech32 (for watch-only wallets)
+/// Export Ironwood Extended Full Viewing Key as Bech32 (for watch-only wallets)
 ///
 /// Returns Bech32-encoded string with the network-specific HRP.
-/// Uses the standard Orchard viewing key export format.
+/// Uses the standard Ironwood viewing key export format.
 /// Use export_sapling_viewing_key() for Sapling viewing keys (zxviews... format).
-pub fn export_orchard_viewing_key(wallet_id: WalletId) -> Result<String> {
-    key_management::export_orchard_viewing_key(wallet_id)
+pub fn export_ironwood_viewing_key(wallet_id: WalletId) -> Result<String> {
+    key_management::export_ironwood_viewing_key(wallet_id)
 }
 
 /// Import viewing keys (watch-only wallet).
 ///
-/// Supports Sapling viewing keys (zxviews...) and Orchard extended viewing keys (bech32).
-/// If both are provided, creates a watch-only wallet that can view both Sapling and Orchard transactions.
+/// Supports Sapling viewing keys (zxviews...) and Ironwood extended viewing keys (bech32).
+/// If both are provided, creates a watch-only wallet that can view both Sapling and Ironwood transactions.
 pub fn import_viewing_wallet(
     name: String,
     sapling_viewing_key: Option<String>,
-    orchard_viewing_key: Option<String>,
+    ironwood_viewing_key: Option<String>,
     birthday: u32,
 ) -> Result<WalletId> {
-    provisioning::import_viewing_wallet(name, sapling_viewing_key, orchard_viewing_key, birthday)
+    provisioning::import_viewing_wallet(name, sapling_viewing_key, ironwood_viewing_key, birthday)
 }
 
 // ============================================================================
@@ -1335,20 +1332,26 @@ pub fn list_addresses_for_key(wallet_id: WalletId, key_id: i64) -> Result<Vec<Ke
 pub fn generate_address_for_key(
     wallet_id: WalletId,
     key_id: i64,
-    use_orchard: bool,
+    use_ironwood: bool,
 ) -> Result<String> {
-    key_management::generate_address_for_key(wallet_id, key_id, use_orchard)
+    key_management::generate_address_for_key(wallet_id, key_id, use_ironwood)
 }
 
 /// Import a spending key into an existing wallet.
 pub fn import_spending_key(
     wallet_id: WalletId,
     sapling_key: Option<String>,
-    orchard_key: Option<String>,
+    ironwood_key: Option<String>,
     label: Option<String>,
     birthday_height: u32,
 ) -> Result<i64> {
-    key_management::import_spending_key(wallet_id, sapling_key, orchard_key, label, birthday_height)
+    key_management::import_spending_key(
+        wallet_id,
+        sapling_key,
+        ironwood_key,
+        label,
+        birthday_height,
+    )
 }
 
 /// Export mnemonic seed through the raw advanced path.
@@ -1840,10 +1843,10 @@ pub struct WitnessRefreshOutcome {
     pub sapling_updated: usize,
     pub sapling_missing: usize,
     pub sapling_errors: usize,
-    pub orchard_requested: usize,
-    pub orchard_updated: usize,
-    pub orchard_missing: usize,
-    pub orchard_errors: usize,
+    pub ironwood_requested: usize,
+    pub ironwood_updated: usize,
+    pub ironwood_missing: usize,
+    pub ironwood_errors: usize,
 }
 
 /// Set lightwalletd endpoint
@@ -1996,7 +1999,7 @@ fn infer_key_network_type_from_addresses(
         mnemonic,
         Some(mnemonic_language),
     )?;
-    let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
+    let orchard_master = IronwoodExtendedSpendingKey::master(&seed_bytes)?;
     let candidates = [
         NetworkType::Mainnet,
         NetworkType::Testnet,
@@ -2024,7 +2027,7 @@ fn infer_key_network_type_from_addresses(
         let mut matches = 0usize;
         for addr in &addresses {
             let derived = match addr.address_type {
-                AddressType::Orchard => {
+                AddressType::Ironwood => {
                     let orchard_addr = orchard_fvk.address_at(addr.diversifier_index);
                     orchard_addr.encode_for_network(prefix_network)?
                 }
@@ -2216,7 +2219,7 @@ fn rederive_wallet_keys_for_network(
         &mnemonic,
         Some(mnemonic_language),
     )?;
-    let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
+    let orchard_master = IronwoodExtendedSpendingKey::master(&seed_bytes)?;
     let orchard_extsk = orchard_master.derive_account(new_network.coin_type, 0)?;
 
     secret.extsk = new_extsk.to_bytes();
@@ -2499,7 +2502,7 @@ pub fn get_balance(wallet_id: WalletId) -> Result<Balance> {
     Ok(balance)
 }
 
-/// Get optional advanced split balances for the Sapling and Orchard pools.
+/// Get optional advanced split balances for the Sapling and Ironwood pools.
 pub fn get_shielded_pool_balances(wallet_id: WalletId) -> Result<ShieldedPoolBalances> {
     if is_decoy_mode_active() {
         let zero = Balance {
@@ -2509,7 +2512,7 @@ pub fn get_shielded_pool_balances(wallet_id: WalletId) -> Result<ShieldedPoolBal
         };
         return Ok(ShieldedPoolBalances {
             sapling: zero.clone(),
-            orchard: zero,
+            ironwood: zero,
         });
     }
 
@@ -2527,7 +2530,7 @@ pub fn get_shielded_pool_balances(wallet_id: WalletId) -> Result<ShieldedPoolBal
         spendable: 0,
         pending: 0,
     };
-    let mut orchard = Balance {
+    let mut ironwood = Balance {
         total: 0,
         spendable: 0,
         pending: 0,
@@ -2542,7 +2545,7 @@ pub fn get_shielded_pool_balances(wallet_id: WalletId) -> Result<ShieldedPoolBal
             note.height > 0 && current_height.saturating_sub(note.height as u64) + 1 >= MIN_DEPTH;
         let target = match note.note_type {
             pirate_storage_sqlite::models::NoteType::Sapling => &mut sapling,
-            pirate_storage_sqlite::models::NoteType::Orchard => &mut orchard,
+            pirate_storage_sqlite::models::NoteType::Ironwood => &mut ironwood,
         };
         target.total = target.total.saturating_add(value);
         if is_spendable {
@@ -2552,7 +2555,7 @@ pub fn get_shielded_pool_balances(wallet_id: WalletId) -> Result<ShieldedPoolBal
         }
     }
 
-    Ok(ShieldedPoolBalances { sapling, orchard })
+    Ok(ShieldedPoolBalances { sapling, ironwood })
 }
 
 /// List transactions
@@ -2660,7 +2663,7 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
             };
 
             // Decode memo from bytes to string (if present).
-            // Use protocol-aware decoder so both Sapling and Orchard memo bytes
+            // Use the protocol-aware decoder so Sapling and Ironwood memos
             // render consistently in the transaction list.
             let memo_str = tx.memo.and_then(|memo_bytes| {
                 pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_bytes)
@@ -2713,7 +2716,11 @@ pub fn list_notes(wallet_id: WalletId, all_notes: bool) -> Result<Vec<crate::mod
         .into_iter()
         .map(|note| crate::models::NoteInfo {
             id: note.id,
-            note_type: format!("{:?}", note.note_type),
+            note_type: match note.note_type {
+                pirate_storage_sqlite::models::NoteType::Sapling => "Sapling",
+                pirate_storage_sqlite::models::NoteType::Ironwood => "Ironwood",
+            }
+            .to_string(),
             value: note.value,
             spent: note.spent,
             height: note.height,
@@ -2923,7 +2930,7 @@ async fn fetch_transaction_memo_inner(
         };
 
         let default_orchard_ivk = if let Some(ref extsk_bytes) = secret.orchard_extsk {
-            OrchardExtendedSpendingKey::from_bytes(extsk_bytes)
+            IronwoodExtendedSpendingKey::from_bytes(extsk_bytes)
                 .map(|extsk| extsk.to_extended_fvk().to_ivk_bytes())
                 .ok()
         } else if let Some(ref orchard_ivk_bytes) = secret.orchard_ivk {
@@ -2932,7 +2939,7 @@ async fn fetch_transaction_memo_inner(
                 ivk.copy_from_slice(&orchard_ivk_bytes[..64]);
                 Some(ivk)
             } else {
-                OrchardExtendedFullViewingKey::from_bytes(orchard_ivk_bytes)
+                IronwoodExtendedFullViewingKey::from_bytes(orchard_ivk_bytes)
                     .ok()
                     .map(|fvk| fvk.to_ivk_bytes())
             }
@@ -2963,12 +2970,12 @@ async fn fetch_transaction_memo_inner(
         }
 
         if let Some(ref orchard_extsk) = secret.orchard_extsk {
-            if let Ok(extsk) = OrchardExtendedSpendingKey::from_bytes(orchard_extsk) {
+            if let Ok(extsk) = IronwoodExtendedSpendingKey::from_bytes(orchard_extsk) {
                 push_orchard_ovk(extsk.to_extended_fvk().to_ovk());
             }
         } else if let Some(ref orchard_ivk) = secret.orchard_ivk {
             if orchard_ivk.len() == 137 {
-                if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(orchard_ivk) {
+                if let Ok(fvk) = IronwoodExtendedFullViewingKey::from_bytes(orchard_ivk) {
                     push_orchard_ovk(fvk.to_ovk());
                 }
             }
@@ -2986,11 +2993,11 @@ async fn fetch_transaction_memo_inner(
             }
 
             if let Some(ref extsk_bytes) = key.orchard_extsk {
-                if let Ok(extsk) = OrchardExtendedSpendingKey::from_bytes(extsk_bytes) {
+                if let Ok(extsk) = IronwoodExtendedSpendingKey::from_bytes(extsk_bytes) {
                     push_orchard_ovk(extsk.to_extended_fvk().to_ovk());
                 }
             } else if let Some(ref fvk_bytes) = key.orchard_fvk {
-                if let Ok(fvk) = OrchardExtendedFullViewingKey::from_bytes(fvk_bytes) {
+                if let Ok(fvk) = IronwoodExtendedFullViewingKey::from_bytes(fvk_bytes) {
                     push_orchard_ovk(fvk.to_ovk());
                 }
             }
@@ -3062,7 +3069,7 @@ async fn fetch_transaction_memo_inner(
                         sapling_candidates.push((note.output_index, ivk, commitment));
                     }
                 }
-                pirate_storage_sqlite::models::NoteType::Orchard => {
+                pirate_storage_sqlite::models::NoteType::Ironwood => {
                     if !seen_orchard_output_indices.insert(note.output_index) {
                         continue;
                     }
@@ -3074,13 +3081,13 @@ async fn fetch_transaction_memo_inner(
                                 .get_account_key_by_id(key_id)?
                                 .ok_or_else(|| anyhow!("Key group not found"))?;
                             let ivk = if let Some(ref bytes) = key.orchard_extsk {
-                                OrchardExtendedSpendingKey::from_bytes(bytes)
+                                IronwoodExtendedSpendingKey::from_bytes(bytes)
                                     .map(|extsk| extsk.to_extended_fvk().to_ivk_bytes())
-                                    .map_err(|e| anyhow!("Invalid Orchard spending key: {}", e))?
+                                    .map_err(|e| anyhow!("Invalid Ironwood spending key: {}", e))?
                             } else if let Some(ref bytes) = key.orchard_fvk {
-                                OrchardExtendedFullViewingKey::from_bytes(bytes)
+                                IronwoodExtendedFullViewingKey::from_bytes(bytes)
                                     .map(|fvk| fvk.to_ivk_bytes())
-                                    .map_err(|e| anyhow!("Invalid Orchard viewing key: {}", e))?
+                                    .map_err(|e| anyhow!("Invalid Ironwood viewing key: {}", e))?
                             } else {
                                 continue;
                             };
@@ -3239,7 +3246,7 @@ async fn fetch_transaction_memo_inner(
         }
     }
 
-    // Decrypt Orchard memo candidates.
+    // Decrypt Ironwood memo candidates.
     for (idx, orchard_ivk, cmx_opt) in &orchard_candidates {
         match pirate_sync_lightd::orchard::full_decrypt::decrypt_orchard_memo_from_raw_tx_with_ivk_bytes(
             &raw_tx_bytes,
@@ -3255,21 +3262,21 @@ async fn fetch_transaction_memo_inner(
                     account_id,
                     &txid_bytes,
                     *idx,
-                    Some(pirate_storage_sqlite::models::NoteType::Orchard),
+                    Some(pirate_storage_sqlite::models::NoteType::Ironwood),
                     Some(&memo_bytes),
                 )?;
 
                 // Decode and return
                 let memo_str =
                     pirate_sync_lightd::sapling::full_decrypt::decode_memo(&memo_bytes);
-                tracing::info!("Fetched and stored Orchard memo for tx {} output {}", txid, idx);
+                tracing::info!("Fetched and stored Ironwood memo for tx {} output {}", txid, idx);
                 if memo_str.is_some() || output_index.is_some() {
                     return Ok(memo_str);
                 }
             }
             Ok(None) => continue,
             Err(e) => {
-                tracing::warn!("Failed to decrypt Orchard memo for output {}: {}", idx, e);
+                tracing::warn!("Failed to decrypt Ironwood memo for output {}: {}", idx, e);
                 continue;
             }
         }

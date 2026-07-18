@@ -52,7 +52,7 @@ fn test_selection_anchors(anchor_height: u64) -> SpendSelectionAnchors {
         target_height: anchor_height.saturating_add(1),
         conservative_anchor_height: anchor_height,
         sapling_anchor_height: anchor_height,
-        orchard_anchor_height: anchor_height,
+        ironwood_anchor_height: anchor_height,
     }
 }
 
@@ -264,7 +264,7 @@ fn test_resolve_spend_key_id_manual_and_address_filters() {
 }
 
 #[test]
-fn test_auto_select_key_group_sapling_orchard_mixed_matrix() {
+fn test_auto_select_key_group_sapling_ironwood_mixed_matrix() {
     let (db, account_id) = setup_repo();
     let repo = Repository::new(&db);
 
