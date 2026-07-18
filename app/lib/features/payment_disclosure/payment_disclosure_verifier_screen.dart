@@ -376,7 +376,7 @@ class _DisclosureInputCard extends StatelessWidget {
           ),
           const SizedBox(height: PSpacing.xs),
           Text(
-            'Single transaction verification for Sapling outputs and Orchard actions.'
+            'Single transaction verification for Sapling outputs and Ironwood actions.'
                 .tr,
             style: PTypography.bodySmall(color: AppColors.textSecondary),
           ),
@@ -386,7 +386,7 @@ class _DisclosureInputCard extends StatelessWidget {
             focusNode: focusNode,
             label: 'Paste disclosure'.tr,
             hint:
-                'pirate-sapling-payment-disclosure1... or pirate-orchard-payment-disclosure1...'
+                'pirate-sapling-payment-disclosure1... or pirate-ironwood-payment-disclosure1...'
                     .tr,
             helperText:
                 'You can paste the raw key or text that contains the key.'.tr,
@@ -610,8 +610,8 @@ class _VerifiedResultCard extends StatelessWidget {
             onCopy: () => onCopy(result.txid, 'Transaction ID'.tr),
           ),
           _ProofField(
-            label: result.disclosureType == 'orchard'
-                ? 'Orchard action'.tr
+            label: result.disclosureType == 'ironwood'
+                ? 'Ironwood action'.tr
                 : 'Sapling output'.tr,
             value: '#${result.outputIndex}',
             compact: true,
@@ -867,7 +867,7 @@ String _extractDisclosure(String raw) {
   }
 
   final match = RegExp(
-    '(?:zpd:)?(?:pirate-sapling-payment-disclosure|pirate-orchard-payment-disclosure|zdisctest|odisctest|zdiscregtest|odiscregtest)1[023456789acdefghjklmnpqrstuvwxyz]+',
+    '(?:zpd:)?(?:pirate-sapling-payment-disclosure|pirate-ironwood-payment-disclosure|zdisctest|idisctest|zdiscregtest|idiscregtest)1[023456789acdefghjklmnpqrstuvwxyz]+',
     caseSensitive: false,
   ).firstMatch(trimmed);
   return match?.group(0)?.trim() ?? trimmed;

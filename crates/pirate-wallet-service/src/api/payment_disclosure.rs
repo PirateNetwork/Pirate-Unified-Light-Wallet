@@ -4,27 +4,27 @@ use sapling::note_encryption::{prf_ock, try_sapling_output_recovery_with_ock};
 use std::convert::TryInto;
 use zcash_note_encryption::{try_output_recovery_with_ock, Domain, EphemeralKeyBytes};
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;
-use zcash_primitives::transaction::TxId as ZcashTxId;
+use zcash_primitives::transaction::{Transaction, TxId as ZcashTxId};
 
 const SAPLING_DISCLOSURE_MAINNET_HRP: &str = "pirate-sapling-payment-disclosure";
-const ORCHARD_DISCLOSURE_MAINNET_HRP: &str = "pirate-orchard-payment-disclosure";
+const IRONWOOD_DISCLOSURE_MAINNET_HRP: &str = "pirate-ironwood-payment-disclosure";
 const SAPLING_DISCLOSURE_TESTNET_HRP: &str = "zdisctest";
-const ORCHARD_DISCLOSURE_TESTNET_HRP: &str = "odisctest";
+const IRONWOOD_DISCLOSURE_TESTNET_HRP: &str = "idisctest";
 const SAPLING_DISCLOSURE_REGTEST_HRP: &str = "zdiscregtest";
-const ORCHARD_DISCLOSURE_REGTEST_HRP: &str = "odiscregtest";
+const IRONWOOD_DISCLOSURE_REGTEST_HRP: &str = "idiscregtest";
 const DISCLOSURE_PAYLOAD_LEN: usize = 32 + 4 + 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DisclosureKind {
     Sapling,
-    Orchard,
+    Ironwood,
 }
 
 impl DisclosureKind {
     fn as_str(self) -> &'static str {
         match self {
             DisclosureKind::Sapling => "sapling",
-            DisclosureKind::Orchard => "orchard",
+            DisclosureKind::Ironwood => "ironwood",
         }
     }
 }
@@ -52,29 +52,29 @@ fn sapling_disclosure_hrp(network_type: NetworkType) -> &'static str {
     }
 }
 
-fn orchard_disclosure_hrp(network_type: NetworkType) -> &'static str {
+fn ironwood_disclosure_hrp(network_type: NetworkType) -> &'static str {
     match network_type {
-        NetworkType::Mainnet => ORCHARD_DISCLOSURE_MAINNET_HRP,
-        NetworkType::Testnet => ORCHARD_DISCLOSURE_TESTNET_HRP,
-        NetworkType::Regtest => ORCHARD_DISCLOSURE_REGTEST_HRP,
+        NetworkType::Mainnet => IRONWOOD_DISCLOSURE_MAINNET_HRP,
+        NetworkType::Testnet => IRONWOOD_DISCLOSURE_TESTNET_HRP,
+        NetworkType::Regtest => IRONWOOD_DISCLOSURE_REGTEST_HRP,
     }
 }
 
 fn disclosure_hrp(kind: DisclosureKind, network_type: NetworkType) -> &'static str {
     match kind {
         DisclosureKind::Sapling => sapling_disclosure_hrp(network_type),
-        DisclosureKind::Orchard => orchard_disclosure_hrp(network_type),
+        DisclosureKind::Ironwood => ironwood_disclosure_hrp(network_type),
     }
 }
 
 fn disclosure_kind_for_hrp(hrp: &str) -> Option<(DisclosureKind, NetworkType)> {
     match hrp {
         SAPLING_DISCLOSURE_MAINNET_HRP => Some((DisclosureKind::Sapling, NetworkType::Mainnet)),
-        ORCHARD_DISCLOSURE_MAINNET_HRP => Some((DisclosureKind::Orchard, NetworkType::Mainnet)),
+        IRONWOOD_DISCLOSURE_MAINNET_HRP => Some((DisclosureKind::Ironwood, NetworkType::Mainnet)),
         SAPLING_DISCLOSURE_TESTNET_HRP => Some((DisclosureKind::Sapling, NetworkType::Testnet)),
-        ORCHARD_DISCLOSURE_TESTNET_HRP => Some((DisclosureKind::Orchard, NetworkType::Testnet)),
+        IRONWOOD_DISCLOSURE_TESTNET_HRP => Some((DisclosureKind::Ironwood, NetworkType::Testnet)),
         SAPLING_DISCLOSURE_REGTEST_HRP => Some((DisclosureKind::Sapling, NetworkType::Regtest)),
-        ORCHARD_DISCLOSURE_REGTEST_HRP => Some((DisclosureKind::Orchard, NetworkType::Regtest)),
+        IRONWOOD_DISCLOSURE_REGTEST_HRP => Some((DisclosureKind::Ironwood, NetworkType::Regtest)),
         _ => None,
     }
 }
@@ -178,7 +178,7 @@ fn ovk_candidate_bytes(
             push_sapling(&mut seen, &mut candidates);
             push_orchard(&mut seen, &mut candidates);
         }
-        DisclosureKind::Orchard => {
+        DisclosureKind::Ironwood => {
             push_orchard(&mut seen, &mut candidates);
             push_sapling(&mut seen, &mut candidates);
         }
@@ -194,9 +194,7 @@ fn recover_payment_disclosures_from_raw_tx(
     orchard_ovks: &[orchard::keys::OutgoingViewingKey],
     network_type: NetworkType,
 ) -> Vec<PaymentDisclosure> {
-    let tx = match Transaction::read(raw_tx_bytes, BranchId::Nu5)
-        .or_else(|_| Transaction::read(raw_tx_bytes, BranchId::Canopy))
-    {
+    let tx = match read_pirate_transaction(raw_tx_bytes) {
         Ok(tx) => tx,
         Err(_) => return Vec::new(),
     };
@@ -266,16 +264,16 @@ fn recover_payment_disclosures_from_tx(
         }
     }
 
-    if let Some(bundle) = tx.orchard_bundle() {
-        let candidates = ovk_candidate_bytes(sapling_ovks, orchard_ovks, DisclosureKind::Orchard);
+    if let Some(bundle) = tx.ironwood_bundle() {
+        let candidates = ovk_candidate_bytes(sapling_ovks, orchard_ovks, DisclosureKind::Ironwood);
         for (idx, action) in bundle.actions().iter().enumerate() {
             for ovk_bytes in &candidates {
                 let ovk = orchard::keys::OutgoingViewingKey::from(*ovk_bytes);
                 let epk = EphemeralKeyBytes(action.encrypted_note().epk_bytes);
                 let cmx_bytes = action.cmx().to_bytes();
                 let ock =
-                    <OrchardDomain as Domain>::derive_ock(&ovk, action.cv_net(), &cmx_bytes, &epk);
-                let domain = OrchardDomain::for_action(action);
+                    <IronwoodDomain as Domain>::derive_ock(&ovk, action.cv_net(), &cmx_bytes, &epk);
+                let domain = IronwoodDomain::for_action(action);
                 if let Some((note, address, memo)) = try_output_recovery_with_ock(
                     &domain,
                     &ock,
@@ -284,7 +282,7 @@ fn recover_payment_disclosures_from_tx(
                 ) {
                     let ock_bytes = ock.0;
                     let disclosure = match encode_payment_disclosure(
-                        DisclosureKind::Orchard,
+                        DisclosureKind::Ironwood,
                         network_type,
                         txid_bytes,
                         idx as u32,
@@ -294,14 +292,14 @@ fn recover_payment_disclosures_from_tx(
                         Err(_) => break,
                     };
                     let memo_vec = memo.to_vec();
-                    let address_string = match (OrchardPaymentAddress { inner: address })
+                    let address_string = match (IronwoodPaymentAddress { inner: address })
                         .encode_for_network(network_type)
                     {
                         Ok(address) => address,
                         Err(_) => continue,
                     };
                     disclosures.push(PaymentDisclosure {
-                        disclosure_type: DisclosureKind::Orchard.as_str().to_string(),
+                        disclosure_type: DisclosureKind::Ironwood.as_str().to_string(),
                         txid: txid.clone(),
                         output_index: idx as u32,
                         address: address_string,
@@ -436,17 +434,17 @@ async fn export_sapling_payment_disclosure_inner(
         })
 }
 
-/// Export an Orchard payment disclosure for a specific action index.
-pub async fn export_orchard_payment_disclosure(
+/// Export an Ironwood payment disclosure for a specific action index.
+pub async fn export_ironwood_payment_disclosure(
     wallet_id: WalletId,
     txid: String,
     action_index: u32,
 ) -> Result<String> {
-    run_on_runtime(move || export_orchard_payment_disclosure_inner(wallet_id, txid, action_index))
+    run_on_runtime(move || export_ironwood_payment_disclosure_inner(wallet_id, txid, action_index))
         .await
 }
 
-async fn export_orchard_payment_disclosure_inner(
+async fn export_ironwood_payment_disclosure_inner(
     wallet_id: WalletId,
     txid: String,
     action_index: u32,
@@ -455,18 +453,18 @@ async fn export_orchard_payment_disclosure_inner(
         .await?
         .into_iter()
         .find(|d| {
-            d.disclosure_type == DisclosureKind::Orchard.as_str() && d.output_index == action_index
+            d.disclosure_type == DisclosureKind::Ironwood.as_str() && d.output_index == action_index
         })
         .map(|d| d.disclosure)
         .ok_or_else(|| {
             anyhow!(
-                "No Orchard payment disclosure found for action index {}",
+                "No Ironwood payment disclosure found for action index {}",
                 action_index
             )
         })
 }
 
-/// Verify and decrypt a Sapling or Orchard payment disclosure.
+/// Verify and decrypt a Sapling or Ironwood payment disclosure.
 pub async fn verify_payment_disclosure(
     wallet_id: WalletId,
     disclosure: String,
@@ -497,8 +495,7 @@ async fn verify_payment_disclosure_inner(
         vec![decoded.txid_bytes, reversed]
     };
     let raw = fetch_raw_transaction(endpoint_config, tx_hash_candidates).await?;
-    let tx = Transaction::read(raw.bytes.as_slice(), BranchId::Nu5)
-        .or_else(|_| Transaction::read(raw.bytes.as_slice(), BranchId::Canopy))
+    let tx = read_pirate_transaction(raw.bytes.as_slice())
         .map_err(|e| anyhow!("Failed to parse transaction: {}", e))?;
     let txid_bytes = *tx.txid().as_ref();
     let ock = zcash_note_encryption::OutgoingCipherKey(decoded.ock);
@@ -531,30 +528,33 @@ async fn verify_payment_disclosure_inner(
                 memo_hex: hex::encode(memo_vec),
             })
         }
-        DisclosureKind::Orchard => {
+        DisclosureKind::Ironwood => {
             let bundle = tx
-                .orchard_bundle()
-                .ok_or_else(|| anyhow!("Transaction has no Orchard actions"))?;
+                .ironwood_bundle()
+                .ok_or_else(|| anyhow!("Transaction has no Ironwood actions"))?;
             let action = bundle
                 .actions()
                 .get(decoded.output_index as usize)
                 .ok_or_else(|| {
-                    anyhow!("Orchard action index {} out of range", decoded.output_index)
+                    anyhow!(
+                        "Ironwood action index {} out of range",
+                        decoded.output_index
+                    )
                 })?;
-            let domain = OrchardDomain::for_action(action);
+            let domain = IronwoodDomain::for_action(action);
             let (note, address, memo) = try_output_recovery_with_ock(
                 &domain,
                 &ock,
                 action,
                 &action.encrypted_note().out_ciphertext,
             )
-            .ok_or_else(|| anyhow!("Failed to decrypt Orchard action with disclosure"))?;
+            .ok_or_else(|| anyhow!("Failed to decrypt Ironwood action with disclosure"))?;
             let memo_vec = memo.to_vec();
-            let address = (OrchardPaymentAddress { inner: address })
+            let address = (IronwoodPaymentAddress { inner: address })
                 .encode_for_network(wallet_network)
-                .map_err(|e| anyhow!("Failed to encode Orchard address: {}", e))?;
+                .map_err(|e| anyhow!("Failed to encode Ironwood address: {}", e))?;
             Ok(PaymentDisclosureVerification {
-                disclosure_type: DisclosureKind::Orchard.as_str().to_string(),
+                disclosure_type: DisclosureKind::Ironwood.as_str().to_string(),
                 txid: txid_string(&txid_bytes),
                 output_index: decoded.output_index,
                 address,
