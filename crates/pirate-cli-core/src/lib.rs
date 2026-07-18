@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use pirate_core::keys::{
     ExtendedFullViewingKey as SaplingExtendedFullViewingKey, ExtendedSpendingKey,
-    OrchardExtendedFullViewingKey, OrchardExtendedSpendingKey,
+    IronwoodExtendedFullViewingKey, IronwoodExtendedSpendingKey,
 };
 use pirate_wallet_service::MnemonicLanguage;
 use pirate_wallet_service::{
@@ -29,7 +29,7 @@ enum SyncModeArg {
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum AddressPoolArg {
     Sapling,
-    Orchard,
+    Ironwood,
     Z,
 }
 
@@ -225,7 +225,7 @@ enum WalletCommand {
         #[arg(long)]
         sapling_viewing_key: Option<String>,
         #[arg(long)]
-        orchard_viewing_key: Option<String>,
+        ironwood_viewing_key: Option<String>,
         #[arg(long)]
         birthday: u32,
     },
@@ -320,7 +320,7 @@ enum PaymentDisclosureCommand {
         txid: String,
         output_index: u32,
     },
-    Orchard {
+    Ironwood {
         #[arg(long)]
         wallet_id: Option<String>,
         txid: String,
@@ -533,14 +533,14 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
             WalletCommand::ImportViewing {
                 name,
                 sapling_viewing_key,
-                orchard_viewing_key,
+                ironwood_viewing_key,
                 birthday,
             } => {
                 service
                     .execute(Req::ImportViewingWallet {
                         name,
                         sapling_viewing_key,
-                        orchard_viewing_key,
+                        ironwood_viewing_key,
                         birthday,
                     })
                     .await
@@ -757,14 +757,14 @@ async fn execute_command(service: &WalletService, command: Command) -> Result<Va
                     })
                     .await
             }
-            PaymentDisclosureCommand::Orchard {
+            PaymentDisclosureCommand::Ironwood {
                 wallet_id,
                 txid,
                 action_index,
             } => {
                 let wallet_id = resolve_wallet_id(service, wallet_id).await?;
                 service
-                    .execute(Req::ExportOrchardPaymentDisclosure {
+                    .execute(Req::ExportIronwoodPaymentDisclosure {
                         wallet_id,
                         txid,
                         action_index,
@@ -961,7 +961,7 @@ async fn legacy_import(
         return Ok(json!({ "key_id": key_id }));
     }
 
-    if OrchardExtendedSpendingKey::from_bech32_any(&key).is_ok() {
+    if IronwoodExtendedSpendingKey::from_bech32_any(&key).is_ok() {
         let wallet_id = resolve_wallet_id(service, wallet_id).await?;
         let key_id = pirate_wallet_service::import_spending_key(
             wallet_id.clone(),
@@ -997,7 +997,7 @@ async fn legacy_import(
         return Ok(json!({ "wallet_id": wallet_id }));
     }
 
-    if OrchardExtendedFullViewingKey::from_bech32_any(&key).is_ok() {
+    if IronwoodExtendedFullViewingKey::from_bech32_any(&key).is_ok() {
         let name =
             name.ok_or_else(|| anyhow!("--name is required when importing a viewing key"))?;
         let wallet_id =
@@ -1014,7 +1014,7 @@ async fn legacy_import(
     }
 
     Err(anyhow!(
-        "Key was not recognized as a Sapling/Orchard spending key or viewing key"
+        "Key was not recognized as a Sapling/Ironwood spending key or viewing key"
     ))
 }
 
@@ -1068,22 +1068,22 @@ async fn legacy_new_address(
     pool: AddressPoolArg,
 ) -> Result<Value> {
     let wallet_id = resolve_wallet_id(service, wallet_id).await?;
-    let use_orchard = matches!(pool, AddressPoolArg::Orchard);
+    let use_ironwood = matches!(pool, AddressPoolArg::Ironwood);
     let pool_label = match pool {
         AddressPoolArg::Sapling | AddressPoolArg::Z => "z",
-        AddressPoolArg::Orchard => "orchard",
+        AddressPoolArg::Ironwood => "ironwood",
     };
 
     let address = if let Some(key_id) = key_id {
-        pirate_wallet_service::generate_address_for_key(wallet_id.clone(), key_id, use_orchard)?
+        pirate_wallet_service::generate_address_for_key(wallet_id.clone(), key_id, use_ironwood)?
     } else if matches!(pool, AddressPoolArg::Sapling | AddressPoolArg::Z) {
         pirate_wallet_service::next_receive_address(wallet_id.clone())?
     } else {
         let key_groups = pirate_wallet_service::list_key_groups(wallet_id.clone())?;
         let group = key_groups
             .into_iter()
-            .find(|group| group.spendable && group.has_orchard)
-            .ok_or_else(|| anyhow!("No Orchard-capable key group found"))?;
+            .find(|group| group.spendable && group.has_ironwood)
+            .ok_or_else(|| anyhow!("No Ironwood-capable key group found"))?;
         pirate_wallet_service::generate_address_for_key(wallet_id.clone(), group.id, true)?
     };
 
