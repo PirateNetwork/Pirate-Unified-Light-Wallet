@@ -85,7 +85,7 @@ pub(super) fn create_wallet(
     let _wallet = Wallet::from_mnemonic(&mnemonic)?;
 
     let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
-    let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
+    let orchard_master = IronwoodExtendedSpendingKey::master(&seed_bytes)?;
 
     let coin_type = network.coin_type;
     let account = 0;
@@ -121,7 +121,7 @@ pub(super) fn create_wallet(
     };
     if persist_wallet_account_secret(&wallet_id, name_for_account, secret)? {
         tracing::info!(
-            "Persisted wallet secret (Sapling + Orchard) for wallet {}",
+            "Persisted wallet secret (Sapling + Ironwood) for wallet {}",
             wallet_id
         );
     }
@@ -142,7 +142,7 @@ pub(super) fn restore_wallet(
     let _wallet = Wallet::from_mnemonic(&mnemonic)?;
 
     let seed_bytes = ExtendedSpendingKey::seed_bytes_from_mnemonic(&mnemonic)?;
-    let orchard_master = OrchardExtendedSpendingKey::master(&seed_bytes)?;
+    let orchard_master = IronwoodExtendedSpendingKey::master(&seed_bytes)?;
 
     let coin_type = network.coin_type;
     let account = 0;
@@ -187,13 +187,13 @@ pub(super) fn restore_wallet(
 pub(super) fn import_viewing_wallet(
     name: String,
     sapling_viewing_key: Option<String>,
-    orchard_viewing_key: Option<String>,
+    ironwood_viewing_key: Option<String>,
     birthday: u32,
 ) -> Result<WalletId> {
     ensure_wallet_registry_loaded()?;
     let _wallet = Wallet::from_viewing_keys(
         sapling_viewing_key.as_deref(),
-        orchard_viewing_key.as_deref(),
+        ironwood_viewing_key.as_deref(),
     )?;
 
     let wallet_id = uuid::Uuid::new_v4().to_string();
@@ -228,9 +228,9 @@ pub(super) fn import_viewing_wallet(
     }
 
     let mut orchard_fvk_bytes: Option<Vec<u8>> = None;
-    if let Some(ref value) = orchard_viewing_key {
-        let fvk = OrchardExtendedFullViewingKey::from_bech32_any(value)
-            .map_err(|_| anyhow!("Invalid Orchard viewing key"))?;
+    if let Some(ref value) = ironwood_viewing_key {
+        let fvk = IronwoodExtendedFullViewingKey::from_bech32_any(value)
+            .map_err(|_| anyhow!("Invalid Ironwood viewing key"))?;
         orchard_fvk_bytes = Some(fvk.to_bytes());
     }
 

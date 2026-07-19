@@ -404,30 +404,30 @@ class KeyExportInfo {
   /// Sapling viewing key (xFVK) if available
   final String? saplingViewingKey;
 
-  /// Orchard viewing key if available
-  final String? orchardViewingKey;
+  /// Ironwood viewing key if available
+  final String? ironwoodViewingKey;
 
   /// Sapling spending key if available
   final String? saplingSpendingKey;
 
-  /// Orchard spending key if available
-  final String? orchardSpendingKey;
+  /// Ironwood spending key if available
+  final String? ironwoodSpendingKey;
 
   const KeyExportInfo({
     required this.keyId,
     this.saplingViewingKey,
-    this.orchardViewingKey,
+    this.ironwoodViewingKey,
     this.saplingSpendingKey,
-    this.orchardSpendingKey,
+    this.ironwoodSpendingKey,
   });
 
   @override
   int get hashCode =>
       keyId.hashCode ^
       saplingViewingKey.hashCode ^
-      orchardViewingKey.hashCode ^
+      ironwoodViewingKey.hashCode ^
       saplingSpendingKey.hashCode ^
-      orchardSpendingKey.hashCode;
+      ironwoodSpendingKey.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -436,9 +436,9 @@ class KeyExportInfo {
           runtimeType == other.runtimeType &&
           keyId == other.keyId &&
           saplingViewingKey == other.saplingViewingKey &&
-          orchardViewingKey == other.orchardViewingKey &&
+          ironwoodViewingKey == other.ironwoodViewingKey &&
           saplingSpendingKey == other.saplingSpendingKey &&
-          orchardSpendingKey == other.orchardSpendingKey;
+          ironwoodSpendingKey == other.ironwoodSpendingKey;
 }
 
 /// Key group info for key management UI
@@ -458,8 +458,8 @@ class KeyGroupInfo {
   /// Sapling capability
   final bool hasSapling;
 
-  /// Orchard capability
-  final bool hasOrchard;
+  /// Ironwood capability
+  final bool hasIronwood;
 
   /// Birthday height for this key
   final PlatformInt64 birthdayHeight;
@@ -473,7 +473,7 @@ class KeyGroupInfo {
     required this.keyType,
     required this.spendable,
     required this.hasSapling,
-    required this.hasOrchard,
+    required this.hasIronwood,
     required this.birthdayHeight,
     required this.createdAt,
   });
@@ -485,7 +485,7 @@ class KeyGroupInfo {
       keyType.hashCode ^
       spendable.hashCode ^
       hasSapling.hashCode ^
-      hasOrchard.hashCode ^
+      hasIronwood.hashCode ^
       birthdayHeight.hashCode ^
       createdAt.hashCode;
 
@@ -499,7 +499,7 @@ class KeyGroupInfo {
           keyType == other.keyType &&
           spendable == other.spendable &&
           hasSapling == other.hasSapling &&
-          hasOrchard == other.hasOrchard &&
+          hasIronwood == other.hasIronwood &&
           birthdayHeight == other.birthdayHeight &&
           createdAt == other.createdAt;
 }
@@ -682,7 +682,7 @@ class NodeTestResult {
 
 /// Transaction output for send-to-many
 class Output {
-  /// Recipient address (Sapling zs1... or Orchard pirate1...)
+  /// Recipient address (Sapling zs1... or Ironwood pirate1...)
   final String addr;
 
   /// Amount in arrrtoshis
@@ -708,13 +708,13 @@ class Output {
 
 /// Payment disclosure generated for one outgoing shielded output/action.
 class PaymentDisclosure {
-  /// Disclosure pool (`sapling` or `orchard`).
+  /// Disclosure pool (`sapling` or `ironwood`).
   final String disclosureType;
 
   /// Transaction id in display byte order.
   final String txid;
 
-  /// Sapling output index or Orchard action index.
+  /// Sapling output index or Ironwood action index.
   final int outputIndex;
 
   /// Recipient address revealed by the disclosure.
@@ -765,13 +765,13 @@ class PaymentDisclosure {
 
 /// Result of verifying and decrypting a payment disclosure.
 class PaymentDisclosureVerification {
-  /// Disclosure pool (`sapling` or `orchard`).
+  /// Disclosure pool (`sapling` or `ironwood`).
   final String disclosureType;
 
   /// Transaction id in display byte order.
   final String txid;
 
-  /// Sapling output index or Orchard action index.
+  /// Sapling output index or Ironwood action index.
   final int outputIndex;
 
   /// Recipient address revealed by the disclosure.

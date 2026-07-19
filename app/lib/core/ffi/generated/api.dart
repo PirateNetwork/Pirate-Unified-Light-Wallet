@@ -10,7 +10,7 @@ import 'frb_generated.dart';
 import 'models.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_matches_expected_network_prefix`, `address_prefix_network_type`, `clear_runtime_marker`, `convert_from_service`, `convert_into_service`, `current_linux_fd_count`, `ensure_primary_account_key`, `escape_json`, `fetch_transaction_memo_inner`, `infer_key_network_type_from_addresses`, `install_debug_panic_hook`, `install_runtime_diagnostics`, `is_service_amount_key`, `log_orchard_address_samples`, `mark_runtime_clean_shutdown`, `normalize_decimal_integer_string`, `normalize_service_amount_strings_for_typed_bridge`, `orchard_activation_override`, `read_runtime_marker`, `recover_outgoing_memo_from_raw_tx`, `rederive_wallet_keys_for_network`, `run_on_runtime_blocking`, `run_on_runtime`, `run_sync_engine_task`, `runtime_marker_path`, `should_generate_orchard`, `truncate_for_log`, `unix_timestamp_millis`, `update_runtime_marker`, `wallet_network_type`, `write_runtime_debug_event`, `write_runtime_marker`
+// These functions are ignored because they are not marked as `pub`: `address_book_color_from_ffi`, `address_book_color_to_ffi`, `address_matches_expected_network_prefix`, `address_prefix_network_type`, `clear_runtime_marker`, `convert_from_service`, `convert_into_service`, `current_linux_fd_count`, `ensure_primary_account_key`, `escape_json`, `fetch_transaction_memo_inner`, `infer_key_network_type_from_addresses`, `install_debug_panic_hook`, `install_runtime_diagnostics`, `ironwood_activation_override`, `is_service_amount_key`, `log_orchard_address_samples`, `mark_runtime_clean_shutdown`, `normalize_decimal_integer_string`, `normalize_service_amount_strings_for_typed_bridge`, `read_runtime_marker`, `recover_outgoing_memo_from_raw_tx`, `rederive_wallet_keys_for_network`, `run_on_runtime_blocking`, `run_on_runtime`, `run_sync_engine_task`, `runtime_marker_path`, `should_generate_orchard`, `truncate_for_log`, `unix_timestamp_millis`, `update_runtime_marker`, `wallet_network_type`, `write_runtime_debug_event`, `write_runtime_marker`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ACTIVE_WALLET`, `PENDING_TUNNEL_MODE`, `TUNNEL_MODE`, `WALLETS`, `WATCH_ONLY`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
 
@@ -172,7 +172,7 @@ Future<String> currentReceiveAddress({required String walletId}) =>
 /// Generate next receive address (diversifier rotation)
 ///
 /// Increments the diversifier index to generate a fresh, unlinkable address.
-/// Address type (Sapling or Orchard) is determined by network and current block height.
+/// Address type (Sapling or Ironwood) is determined by network and current block height.
 /// Previous addresses remain valid for receiving funds.
 Future<String> nextReceiveAddress({required String walletId}) =>
     RustLib.instance.api.crateApiNextReceiveAddress(walletId: walletId);
@@ -344,27 +344,27 @@ Future<List<AddressBookEntryFfi>> getRecentlyUsedAddresses({
 Future<String> exportSaplingViewingKey({required String walletId}) =>
     RustLib.instance.api.crateApiExportSaplingViewingKey(walletId: walletId);
 
-/// Export Orchard Extended Full Viewing Key as Bech32 (for watch-only wallets)
+/// Export Ironwood Extended Full Viewing Key as Bech32 (for watch-only wallets)
 ///
 /// Returns Bech32-encoded string with the network-specific HRP.
-/// Uses the standard Orchard viewing key export format.
+/// Uses the standard Ironwood viewing key export format.
 /// Use export_sapling_viewing_key() for Sapling viewing keys (zxviews... format).
-Future<String> exportOrchardViewingKey({required String walletId}) =>
-    RustLib.instance.api.crateApiExportOrchardViewingKey(walletId: walletId);
+Future<String> exportIronwoodViewingKey({required String walletId}) =>
+    RustLib.instance.api.crateApiExportIronwoodViewingKey(walletId: walletId);
 
 /// Import viewing keys (watch-only wallet).
 ///
-/// Supports Sapling viewing keys (zxviews...) and Orchard extended viewing keys (bech32).
-/// If both are provided, creates a watch-only wallet that can view both Sapling and Orchard transactions.
+/// Supports Sapling viewing keys (zxviews...) and Ironwood extended viewing keys (bech32).
+/// If both are provided, creates a watch-only wallet that can view both Sapling and Ironwood transactions.
 Future<String> importViewingWallet({
   required String name,
   String? saplingViewingKey,
-  String? orchardViewingKey,
+  String? ironwoodViewingKey,
   required int birthday,
 }) => RustLib.instance.api.crateApiImportViewingWallet(
   name: name,
   saplingViewingKey: saplingViewingKey,
-  orchardViewingKey: orchardViewingKey,
+  ironwoodViewingKey: ironwoodViewingKey,
   birthday: birthday,
 );
 
@@ -394,24 +394,24 @@ Future<List<KeyAddressInfo>> listAddressesForKey({
 Future<String> generateAddressForKey({
   required String walletId,
   required PlatformInt64 keyId,
-  required bool useOrchard,
+  required bool useIronwood,
 }) => RustLib.instance.api.crateApiGenerateAddressForKey(
   walletId: walletId,
   keyId: keyId,
-  useOrchard: useOrchard,
+  useIronwood: useIronwood,
 );
 
 /// Import a spending key into an existing wallet.
 Future<PlatformInt64> importSpendingKey({
   required String walletId,
   String? saplingKey,
-  String? orchardKey,
+  String? ironwoodKey,
   String? label,
   required int birthdayHeight,
 }) => RustLib.instance.api.crateApiImportSpendingKey(
   walletId: walletId,
   saplingKey: saplingKey,
-  orchardKey: orchardKey,
+  ironwoodKey: ironwoodKey,
   label: label,
   birthdayHeight: birthdayHeight,
 );
@@ -785,18 +785,18 @@ Future<String> exportSaplingPaymentDisclosure({
   outputIndex: outputIndex,
 );
 
-/// Export an Orchard payment disclosure for a specific action index.
-Future<String> exportOrchardPaymentDisclosure({
+/// Export an Ironwood payment disclosure for a specific action index.
+Future<String> exportIronwoodPaymentDisclosure({
   required String walletId,
   required String txid,
   required int actionIndex,
-}) => RustLib.instance.api.crateApiExportOrchardPaymentDisclosure(
+}) => RustLib.instance.api.crateApiExportIronwoodPaymentDisclosure(
   walletId: walletId,
   txid: txid,
   actionIndex: actionIndex,
 );
 
-/// Verify and decrypt a Sapling or Orchard payment disclosure.
+/// Verify and decrypt a Sapling or Ironwood payment disclosure.
 Future<PaymentDisclosureVerification> verifyPaymentDisclosure({
   required String walletId,
   required String disclosure,
@@ -1149,10 +1149,10 @@ class WitnessRefreshOutcome {
   final BigInt saplingUpdated;
   final BigInt saplingMissing;
   final BigInt saplingErrors;
-  final BigInt orchardRequested;
-  final BigInt orchardUpdated;
-  final BigInt orchardMissing;
-  final BigInt orchardErrors;
+  final BigInt ironwoodRequested;
+  final BigInt ironwoodUpdated;
+  final BigInt ironwoodMissing;
+  final BigInt ironwoodErrors;
 
   const WitnessRefreshOutcome({
     required this.source,
@@ -1160,10 +1160,10 @@ class WitnessRefreshOutcome {
     required this.saplingUpdated,
     required this.saplingMissing,
     required this.saplingErrors,
-    required this.orchardRequested,
-    required this.orchardUpdated,
-    required this.orchardMissing,
-    required this.orchardErrors,
+    required this.ironwoodRequested,
+    required this.ironwoodUpdated,
+    required this.ironwoodMissing,
+    required this.ironwoodErrors,
   });
 
   static Future<WitnessRefreshOutcome> default_() =>
@@ -1176,10 +1176,10 @@ class WitnessRefreshOutcome {
       saplingUpdated.hashCode ^
       saplingMissing.hashCode ^
       saplingErrors.hashCode ^
-      orchardRequested.hashCode ^
-      orchardUpdated.hashCode ^
-      orchardMissing.hashCode ^
-      orchardErrors.hashCode;
+      ironwoodRequested.hashCode ^
+      ironwoodUpdated.hashCode ^
+      ironwoodMissing.hashCode ^
+      ironwoodErrors.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1191,8 +1191,8 @@ class WitnessRefreshOutcome {
           saplingUpdated == other.saplingUpdated &&
           saplingMissing == other.saplingMissing &&
           saplingErrors == other.saplingErrors &&
-          orchardRequested == other.orchardRequested &&
-          orchardUpdated == other.orchardUpdated &&
-          orchardMissing == other.orchardMissing &&
-          orchardErrors == other.orchardErrors;
+          ironwoodRequested == other.ironwoodRequested &&
+          ironwoodUpdated == other.ironwoodUpdated &&
+          ironwoodMissing == other.ironwoodMissing &&
+          ironwoodErrors == other.ironwoodErrors;
 }

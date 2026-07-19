@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -526250162;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 192036636;
 
 // Section: executor
 
@@ -798,6 +798,62 @@ fn wire__crate__api__exit_decoy_mode_impl(
         },
     )
 }
+fn wire__crate__api__export_ironwood_payment_disclosure_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    txid: impl CstDecode<String>,
+    action_index: impl CstDecode<u32>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "export_ironwood_payment_disclosure",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_txid = txid.cst_decode();
+            let api_action_index = action_index.cst_decode();
+            move |context| async move {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::export_ironwood_payment_disclosure(
+                            api_wallet_id,
+                            api_txid,
+                            api_action_index,
+                        )
+                        .await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__export_ironwood_viewing_key_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "export_ironwood_viewing_key",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::export_ironwood_viewing_key(api_wallet_id)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__export_key_group_keys_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
@@ -817,62 +873,6 @@ fn wire__crate__api__export_key_group_keys_impl(
                     (move || {
                         let output_ok =
                             crate::api::export_key_group_keys(api_wallet_id, api_key_id)?;
-                        Ok(output_ok)
-                    })(),
-                )
-            }
-        },
-    )
-}
-fn wire__crate__api__export_orchard_payment_disclosure_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    wallet_id: impl CstDecode<String>,
-    txid: impl CstDecode<String>,
-    action_index: impl CstDecode<u32>,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::DcoCodec, _, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "export_orchard_payment_disclosure",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let api_wallet_id = wallet_id.cst_decode();
-            let api_txid = txid.cst_decode();
-            let api_action_index = action_index.cst_decode();
-            move |context| async move {
-                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
-                    (move || async move {
-                        let output_ok = crate::api::export_orchard_payment_disclosure(
-                            api_wallet_id,
-                            api_txid,
-                            api_action_index,
-                        )
-                        .await?;
-                        Ok(output_ok)
-                    })()
-                    .await,
-                )
-            }
-        },
-    )
-}
-fn wire__crate__api__export_orchard_viewing_key_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    wallet_id: impl CstDecode<String>,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "export_orchard_viewing_key",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let api_wallet_id = wallet_id.cst_decode();
-            move |context| {
-                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
-                    (move || {
-                        let output_ok = crate::api::export_orchard_viewing_key(api_wallet_id)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -1215,7 +1215,7 @@ fn wire__crate__api__generate_address_for_key_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
     key_id: impl CstDecode<i64>,
-    use_orchard: impl CstDecode<bool>,
+    use_ironwood: impl CstDecode<bool>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -1226,14 +1226,14 @@ fn wire__crate__api__generate_address_for_key_impl(
         move || {
             let api_wallet_id = wallet_id.cst_decode();
             let api_key_id = key_id.cst_decode();
-            let api_use_orchard = use_orchard.cst_decode();
+            let api_use_ironwood = use_ironwood.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok = crate::api::generate_address_for_key(
                             api_wallet_id,
                             api_key_id,
-                            api_use_orchard,
+                            api_use_ironwood,
                         )?;
                         Ok(output_ok)
                     })(),
@@ -2136,7 +2136,7 @@ fn wire__crate__api__import_spending_key_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     wallet_id: impl CstDecode<String>,
     sapling_key: impl CstDecode<Option<String>>,
-    orchard_key: impl CstDecode<Option<String>>,
+    ironwood_key: impl CstDecode<Option<String>>,
     label: impl CstDecode<Option<String>>,
     birthday_height: impl CstDecode<u32>,
 ) {
@@ -2149,7 +2149,7 @@ fn wire__crate__api__import_spending_key_impl(
         move || {
             let api_wallet_id = wallet_id.cst_decode();
             let api_sapling_key = sapling_key.cst_decode();
-            let api_orchard_key = orchard_key.cst_decode();
+            let api_ironwood_key = ironwood_key.cst_decode();
             let api_label = label.cst_decode();
             let api_birthday_height = birthday_height.cst_decode();
             move |context| {
@@ -2158,7 +2158,7 @@ fn wire__crate__api__import_spending_key_impl(
                         let output_ok = crate::api::import_spending_key(
                             api_wallet_id,
                             api_sapling_key,
-                            api_orchard_key,
+                            api_ironwood_key,
                             api_label,
                             api_birthday_height,
                         )?;
@@ -2173,7 +2173,7 @@ fn wire__crate__api__import_viewing_wallet_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     name: impl CstDecode<String>,
     sapling_viewing_key: impl CstDecode<Option<String>>,
-    orchard_viewing_key: impl CstDecode<Option<String>>,
+    ironwood_viewing_key: impl CstDecode<Option<String>>,
     birthday: impl CstDecode<u32>,
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
@@ -2185,7 +2185,7 @@ fn wire__crate__api__import_viewing_wallet_impl(
         move || {
             let api_name = name.cst_decode();
             let api_sapling_viewing_key = sapling_viewing_key.cst_decode();
-            let api_orchard_viewing_key = orchard_viewing_key.cst_decode();
+            let api_ironwood_viewing_key = ironwood_viewing_key.cst_decode();
             let api_birthday = birthday.cst_decode();
             move |context| {
                 transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
@@ -2193,7 +2193,7 @@ fn wire__crate__api__import_viewing_wallet_impl(
                         let output_ok = crate::api::import_viewing_wallet(
                             api_name,
                             api_sapling_viewing_key,
-                            api_orchard_viewing_key,
+                            api_ironwood_viewing_key,
                             api_birthday,
                         )?;
                         Ok(output_ok)
@@ -4240,15 +4240,15 @@ impl SseDecode for crate::models::KeyExportInfo {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_keyId = <i64>::sse_decode(deserializer);
         let mut var_saplingViewingKey = <Option<String>>::sse_decode(deserializer);
-        let mut var_orchardViewingKey = <Option<String>>::sse_decode(deserializer);
+        let mut var_ironwoodViewingKey = <Option<String>>::sse_decode(deserializer);
         let mut var_saplingSpendingKey = <Option<String>>::sse_decode(deserializer);
-        let mut var_orchardSpendingKey = <Option<String>>::sse_decode(deserializer);
+        let mut var_ironwoodSpendingKey = <Option<String>>::sse_decode(deserializer);
         return crate::models::KeyExportInfo {
             key_id: var_keyId,
             sapling_viewing_key: var_saplingViewingKey,
-            orchard_viewing_key: var_orchardViewingKey,
+            ironwood_viewing_key: var_ironwoodViewingKey,
             sapling_spending_key: var_saplingSpendingKey,
-            orchard_spending_key: var_orchardSpendingKey,
+            ironwood_spending_key: var_ironwoodSpendingKey,
         };
     }
 }
@@ -4261,7 +4261,7 @@ impl SseDecode for crate::models::KeyGroupInfo {
         let mut var_keyType = <crate::models::KeyTypeInfo>::sse_decode(deserializer);
         let mut var_spendable = <bool>::sse_decode(deserializer);
         let mut var_hasSapling = <bool>::sse_decode(deserializer);
-        let mut var_hasOrchard = <bool>::sse_decode(deserializer);
+        let mut var_hasIronwood = <bool>::sse_decode(deserializer);
         let mut var_birthdayHeight = <i64>::sse_decode(deserializer);
         let mut var_createdAt = <i64>::sse_decode(deserializer);
         return crate::models::KeyGroupInfo {
@@ -4270,7 +4270,7 @@ impl SseDecode for crate::models::KeyGroupInfo {
             key_type: var_keyType,
             spendable: var_spendable,
             has_sapling: var_hasSapling,
-            has_orchard: var_hasOrchard,
+            has_ironwood: var_hasIronwood,
             birthday_height: var_birthdayHeight,
             created_at: var_createdAt,
         };
@@ -5070,20 +5070,20 @@ impl SseDecode for crate::api::WitnessRefreshOutcome {
         let mut var_saplingUpdated = <usize>::sse_decode(deserializer);
         let mut var_saplingMissing = <usize>::sse_decode(deserializer);
         let mut var_saplingErrors = <usize>::sse_decode(deserializer);
-        let mut var_orchardRequested = <usize>::sse_decode(deserializer);
-        let mut var_orchardUpdated = <usize>::sse_decode(deserializer);
-        let mut var_orchardMissing = <usize>::sse_decode(deserializer);
-        let mut var_orchardErrors = <usize>::sse_decode(deserializer);
+        let mut var_ironwoodRequested = <usize>::sse_decode(deserializer);
+        let mut var_ironwoodUpdated = <usize>::sse_decode(deserializer);
+        let mut var_ironwoodMissing = <usize>::sse_decode(deserializer);
+        let mut var_ironwoodErrors = <usize>::sse_decode(deserializer);
         return crate::api::WitnessRefreshOutcome {
             source: var_source,
             sapling_requested: var_saplingRequested,
             sapling_updated: var_saplingUpdated,
             sapling_missing: var_saplingMissing,
             sapling_errors: var_saplingErrors,
-            orchard_requested: var_orchardRequested,
-            orchard_updated: var_orchardUpdated,
-            orchard_missing: var_orchardMissing,
-            orchard_errors: var_orchardErrors,
+            ironwood_requested: var_ironwoodRequested,
+            ironwood_updated: var_ironwoodUpdated,
+            ironwood_missing: var_ironwoodMissing,
+            ironwood_errors: var_ironwoodErrors,
         };
     }
 }
@@ -5352,9 +5352,9 @@ impl flutter_rust_bridge::IntoDart for crate::models::KeyExportInfo {
         [
             self.key_id.into_into_dart().into_dart(),
             self.sapling_viewing_key.into_into_dart().into_dart(),
-            self.orchard_viewing_key.into_into_dart().into_dart(),
+            self.ironwood_viewing_key.into_into_dart().into_dart(),
             self.sapling_spending_key.into_into_dart().into_dart(),
-            self.orchard_spending_key.into_into_dart().into_dart(),
+            self.ironwood_spending_key.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5376,7 +5376,7 @@ impl flutter_rust_bridge::IntoDart for crate::models::KeyGroupInfo {
             self.key_type.into_into_dart().into_dart(),
             self.spendable.into_into_dart().into_dart(),
             self.has_sapling.into_into_dart().into_dart(),
-            self.has_orchard.into_into_dart().into_dart(),
+            self.has_ironwood.into_into_dart().into_dart(),
             self.birthday_height.into_into_dart().into_dart(),
             self.created_at.into_into_dart().into_dart(),
         ]
@@ -5913,10 +5913,10 @@ impl flutter_rust_bridge::IntoDart for crate::api::WitnessRefreshOutcome {
             self.sapling_updated.into_into_dart().into_dart(),
             self.sapling_missing.into_into_dart().into_dart(),
             self.sapling_errors.into_into_dart().into_dart(),
-            self.orchard_requested.into_into_dart().into_dart(),
-            self.orchard_updated.into_into_dart().into_dart(),
-            self.orchard_missing.into_into_dart().into_dart(),
-            self.orchard_errors.into_into_dart().into_dart(),
+            self.ironwood_requested.into_into_dart().into_dart(),
+            self.ironwood_updated.into_into_dart().into_dart(),
+            self.ironwood_missing.into_into_dart().into_dart(),
+            self.ironwood_errors.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -6112,9 +6112,9 @@ impl SseEncode for crate::models::KeyExportInfo {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i64>::sse_encode(self.key_id, serializer);
         <Option<String>>::sse_encode(self.sapling_viewing_key, serializer);
-        <Option<String>>::sse_encode(self.orchard_viewing_key, serializer);
+        <Option<String>>::sse_encode(self.ironwood_viewing_key, serializer);
         <Option<String>>::sse_encode(self.sapling_spending_key, serializer);
-        <Option<String>>::sse_encode(self.orchard_spending_key, serializer);
+        <Option<String>>::sse_encode(self.ironwood_spending_key, serializer);
     }
 }
 
@@ -6126,7 +6126,7 @@ impl SseEncode for crate::models::KeyGroupInfo {
         <crate::models::KeyTypeInfo>::sse_encode(self.key_type, serializer);
         <bool>::sse_encode(self.spendable, serializer);
         <bool>::sse_encode(self.has_sapling, serializer);
-        <bool>::sse_encode(self.has_orchard, serializer);
+        <bool>::sse_encode(self.has_ironwood, serializer);
         <i64>::sse_encode(self.birthday_height, serializer);
         <i64>::sse_encode(self.created_at, serializer);
     }
@@ -6747,10 +6747,10 @@ impl SseEncode for crate::api::WitnessRefreshOutcome {
         <usize>::sse_encode(self.sapling_updated, serializer);
         <usize>::sse_encode(self.sapling_missing, serializer);
         <usize>::sse_encode(self.sapling_errors, serializer);
-        <usize>::sse_encode(self.orchard_requested, serializer);
-        <usize>::sse_encode(self.orchard_updated, serializer);
-        <usize>::sse_encode(self.orchard_missing, serializer);
-        <usize>::sse_encode(self.orchard_errors, serializer);
+        <usize>::sse_encode(self.ironwood_requested, serializer);
+        <usize>::sse_encode(self.ironwood_updated, serializer);
+        <usize>::sse_encode(self.ironwood_missing, serializer);
+        <usize>::sse_encode(self.ironwood_errors, serializer);
     }
 }
 
@@ -7000,9 +7000,9 @@ mod io {
             crate::models::KeyExportInfo {
                 key_id: self.key_id.cst_decode(),
                 sapling_viewing_key: self.sapling_viewing_key.cst_decode(),
-                orchard_viewing_key: self.orchard_viewing_key.cst_decode(),
+                ironwood_viewing_key: self.ironwood_viewing_key.cst_decode(),
                 sapling_spending_key: self.sapling_spending_key.cst_decode(),
-                orchard_spending_key: self.orchard_spending_key.cst_decode(),
+                ironwood_spending_key: self.ironwood_spending_key.cst_decode(),
             }
         }
     }
@@ -7015,7 +7015,7 @@ mod io {
                 key_type: self.key_type.cst_decode(),
                 spendable: self.spendable.cst_decode(),
                 has_sapling: self.has_sapling.cst_decode(),
-                has_orchard: self.has_orchard.cst_decode(),
+                has_ironwood: self.has_ironwood.cst_decode(),
                 birthday_height: self.birthday_height.cst_decode(),
                 created_at: self.created_at.cst_decode(),
             }
@@ -7426,10 +7426,10 @@ mod io {
                 sapling_updated: self.sapling_updated.cst_decode(),
                 sapling_missing: self.sapling_missing.cst_decode(),
                 sapling_errors: self.sapling_errors.cst_decode(),
-                orchard_requested: self.orchard_requested.cst_decode(),
-                orchard_updated: self.orchard_updated.cst_decode(),
-                orchard_missing: self.orchard_missing.cst_decode(),
-                orchard_errors: self.orchard_errors.cst_decode(),
+                ironwood_requested: self.ironwood_requested.cst_decode(),
+                ironwood_updated: self.ironwood_updated.cst_decode(),
+                ironwood_missing: self.ironwood_missing.cst_decode(),
+                ironwood_errors: self.ironwood_errors.cst_decode(),
             }
         }
     }
@@ -7592,9 +7592,9 @@ mod io {
             Self {
                 key_id: Default::default(),
                 sapling_viewing_key: core::ptr::null_mut(),
-                orchard_viewing_key: core::ptr::null_mut(),
+                ironwood_viewing_key: core::ptr::null_mut(),
                 sapling_spending_key: core::ptr::null_mut(),
-                orchard_spending_key: core::ptr::null_mut(),
+                ironwood_spending_key: core::ptr::null_mut(),
             }
         }
     }
@@ -7611,7 +7611,7 @@ mod io {
                 key_type: Default::default(),
                 spendable: Default::default(),
                 has_sapling: Default::default(),
-                has_orchard: Default::default(),
+                has_ironwood: Default::default(),
                 birthday_height: Default::default(),
                 created_at: Default::default(),
             }
@@ -7950,10 +7950,10 @@ mod io {
                 sapling_updated: Default::default(),
                 sapling_missing: Default::default(),
                 sapling_errors: Default::default(),
-                orchard_requested: Default::default(),
-                orchard_updated: Default::default(),
-                orchard_missing: Default::default(),
-                orchard_errors: Default::default(),
+                ironwood_requested: Default::default(),
+                ironwood_updated: Default::default(),
+                ironwood_missing: Default::default(),
+                ironwood_errors: Default::default(),
             }
         }
     }
@@ -8244,22 +8244,13 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_key_group_keys(
-        port_: i64,
-        wallet_id: *mut wire_cst_list_prim_u_8_strict,
-        key_id: i64,
-    ) {
-        wire__crate__api__export_key_group_keys_impl(port_, wallet_id, key_id)
-    }
-
-    #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_orchard_payment_disclosure(
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_ironwood_payment_disclosure(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
         txid: *mut wire_cst_list_prim_u_8_strict,
         action_index: u32,
     ) {
-        wire__crate__api__export_orchard_payment_disclosure_impl(
+        wire__crate__api__export_ironwood_payment_disclosure_impl(
             port_,
             wallet_id,
             txid,
@@ -8268,11 +8259,20 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_orchard_viewing_key(
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_ironwood_viewing_key(
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
     ) {
-        wire__crate__api__export_orchard_viewing_key_impl(port_, wallet_id)
+        wire__crate__api__export_ironwood_viewing_key_impl(port_, wallet_id)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__export_key_group_keys(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        key_id: i64,
+    ) {
+        wire__crate__api__export_key_group_keys_impl(port_, wallet_id, key_id)
     }
 
     #[unsafe(no_mangle)]
@@ -8403,9 +8403,9 @@ mod io {
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
         key_id: i64,
-        use_orchard: bool,
+        use_ironwood: bool,
     ) {
-        wire__crate__api__generate_address_for_key_impl(port_, wallet_id, key_id, use_orchard)
+        wire__crate__api__generate_address_for_key_impl(port_, wallet_id, key_id, use_ironwood)
     }
 
     #[unsafe(no_mangle)]
@@ -8701,7 +8701,7 @@ mod io {
         port_: i64,
         wallet_id: *mut wire_cst_list_prim_u_8_strict,
         sapling_key: *mut wire_cst_list_prim_u_8_strict,
-        orchard_key: *mut wire_cst_list_prim_u_8_strict,
+        ironwood_key: *mut wire_cst_list_prim_u_8_strict,
         label: *mut wire_cst_list_prim_u_8_strict,
         birthday_height: u32,
     ) {
@@ -8709,7 +8709,7 @@ mod io {
             port_,
             wallet_id,
             sapling_key,
-            orchard_key,
+            ironwood_key,
             label,
             birthday_height,
         )
@@ -8720,14 +8720,14 @@ mod io {
         port_: i64,
         name: *mut wire_cst_list_prim_u_8_strict,
         sapling_viewing_key: *mut wire_cst_list_prim_u_8_strict,
-        orchard_viewing_key: *mut wire_cst_list_prim_u_8_strict,
+        ironwood_viewing_key: *mut wire_cst_list_prim_u_8_strict,
         birthday: u32,
     ) {
         wire__crate__api__import_viewing_wallet_impl(
             port_,
             name,
             sapling_viewing_key,
-            orchard_viewing_key,
+            ironwood_viewing_key,
             birthday,
         )
     }
@@ -9707,9 +9707,9 @@ mod io {
     pub struct wire_cst_key_export_info {
         key_id: i64,
         sapling_viewing_key: *mut wire_cst_list_prim_u_8_strict,
-        orchard_viewing_key: *mut wire_cst_list_prim_u_8_strict,
+        ironwood_viewing_key: *mut wire_cst_list_prim_u_8_strict,
         sapling_spending_key: *mut wire_cst_list_prim_u_8_strict,
-        orchard_spending_key: *mut wire_cst_list_prim_u_8_strict,
+        ironwood_spending_key: *mut wire_cst_list_prim_u_8_strict,
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -9719,7 +9719,7 @@ mod io {
         key_type: i32,
         spendable: bool,
         has_sapling: bool,
-        has_orchard: bool,
+        has_ironwood: bool,
         birthday_height: i64,
         created_at: i64,
     }
@@ -10013,10 +10013,10 @@ mod io {
         sapling_updated: usize,
         sapling_missing: usize,
         sapling_errors: usize,
-        orchard_requested: usize,
-        orchard_updated: usize,
-        orchard_missing: usize,
-        orchard_errors: usize,
+        ironwood_requested: usize,
+        ironwood_updated: usize,
+        ironwood_missing: usize,
+        ironwood_errors: usize,
     }
 }
 #[cfg(not(target_family = "wasm"))]
@@ -10289,9 +10289,9 @@ mod web {
             crate::models::KeyExportInfo {
                 key_id: self_.get(0).cst_decode(),
                 sapling_viewing_key: self_.get(1).cst_decode(),
-                orchard_viewing_key: self_.get(2).cst_decode(),
+                ironwood_viewing_key: self_.get(2).cst_decode(),
                 sapling_spending_key: self_.get(3).cst_decode(),
-                orchard_spending_key: self_.get(4).cst_decode(),
+                ironwood_spending_key: self_.get(4).cst_decode(),
             }
         }
     }
@@ -10315,7 +10315,7 @@ mod web {
                 key_type: self_.get(2).cst_decode(),
                 spendable: self_.get(3).cst_decode(),
                 has_sapling: self_.get(4).cst_decode(),
-                has_orchard: self_.get(5).cst_decode(),
+                has_ironwood: self_.get(5).cst_decode(),
                 birthday_height: self_.get(6).cst_decode(),
                 created_at: self_.get(7).cst_decode(),
             }
@@ -10957,10 +10957,10 @@ mod web {
                 sapling_updated: self_.get(2).cst_decode(),
                 sapling_missing: self_.get(3).cst_decode(),
                 sapling_errors: self_.get(4).cst_decode(),
-                orchard_requested: self_.get(5).cst_decode(),
-                orchard_updated: self_.get(6).cst_decode(),
-                orchard_missing: self_.get(7).cst_decode(),
-                orchard_errors: self_.get(8).cst_decode(),
+                ironwood_requested: self_.get(5).cst_decode(),
+                ironwood_updated: self_.get(6).cst_decode(),
+                ironwood_missing: self_.get(7).cst_decode(),
+                ironwood_errors: self_.get(8).cst_decode(),
             }
         }
     }
@@ -11382,22 +11382,13 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn wire__crate__api__export_key_group_keys(
-        port_: flutter_rust_bridge::for_generated::MessagePort,
-        wallet_id: String,
-        key_id: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
-    ) {
-        wire__crate__api__export_key_group_keys_impl(port_, wallet_id, key_id)
-    }
-
-    #[wasm_bindgen]
-    pub fn wire__crate__api__export_orchard_payment_disclosure(
+    pub fn wire__crate__api__export_ironwood_payment_disclosure(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
         txid: String,
         action_index: u32,
     ) {
-        wire__crate__api__export_orchard_payment_disclosure_impl(
+        wire__crate__api__export_ironwood_payment_disclosure_impl(
             port_,
             wallet_id,
             txid,
@@ -11406,11 +11397,20 @@ mod web {
     }
 
     #[wasm_bindgen]
-    pub fn wire__crate__api__export_orchard_viewing_key(
+    pub fn wire__crate__api__export_ironwood_viewing_key(
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
     ) {
-        wire__crate__api__export_orchard_viewing_key_impl(port_, wallet_id)
+        wire__crate__api__export_ironwood_viewing_key_impl(port_, wallet_id)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__export_key_group_keys(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        key_id: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+    ) {
+        wire__crate__api__export_key_group_keys_impl(port_, wallet_id, key_id)
     }
 
     #[wasm_bindgen]
@@ -11541,9 +11541,9 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
         key_id: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
-        use_orchard: bool,
+        use_ironwood: bool,
     ) {
-        wire__crate__api__generate_address_for_key_impl(port_, wallet_id, key_id, use_orchard)
+        wire__crate__api__generate_address_for_key_impl(port_, wallet_id, key_id, use_ironwood)
     }
 
     #[wasm_bindgen]
@@ -11863,7 +11863,7 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
         wallet_id: String,
         sapling_key: Option<String>,
-        orchard_key: Option<String>,
+        ironwood_key: Option<String>,
         label: Option<String>,
         birthday_height: u32,
     ) {
@@ -11871,7 +11871,7 @@ mod web {
             port_,
             wallet_id,
             sapling_key,
-            orchard_key,
+            ironwood_key,
             label,
             birthday_height,
         )
@@ -11882,14 +11882,14 @@ mod web {
         port_: flutter_rust_bridge::for_generated::MessagePort,
         name: String,
         sapling_viewing_key: Option<String>,
-        orchard_viewing_key: Option<String>,
+        ironwood_viewing_key: Option<String>,
         birthday: u32,
     ) {
         wire__crate__api__import_viewing_wallet_impl(
             port_,
             name,
             sapling_viewing_key,
-            orchard_viewing_key,
+            ironwood_viewing_key,
             birthday,
         )
     }

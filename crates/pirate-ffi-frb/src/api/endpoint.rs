@@ -173,7 +173,7 @@ pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<Netw
     None
 }
 
-pub(super) fn orchard_activation_override_height(endpoint: &LightdEndpoint) -> Option<u32> {
+pub(super) fn ironwood_activation_override_height(endpoint: &LightdEndpoint) -> Option<u32> {
     if endpoint.host == DEFAULT_LIGHTD_HOST && endpoint.port == 8067 {
         Some(61)
     } else {

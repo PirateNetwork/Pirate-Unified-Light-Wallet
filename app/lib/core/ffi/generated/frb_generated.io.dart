@@ -1181,14 +1181,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     wireObj.sapling_viewing_key = cst_encode_opt_String(
       apiObj.saplingViewingKey,
     );
-    wireObj.orchard_viewing_key = cst_encode_opt_String(
-      apiObj.orchardViewingKey,
+    wireObj.ironwood_viewing_key = cst_encode_opt_String(
+      apiObj.ironwoodViewingKey,
     );
     wireObj.sapling_spending_key = cst_encode_opt_String(
       apiObj.saplingSpendingKey,
     );
-    wireObj.orchard_spending_key = cst_encode_opt_String(
-      apiObj.orchardSpendingKey,
+    wireObj.ironwood_spending_key = cst_encode_opt_String(
+      apiObj.ironwoodSpendingKey,
     );
   }
 
@@ -1202,7 +1202,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     wireObj.key_type = cst_encode_key_type_info(apiObj.keyType);
     wireObj.spendable = cst_encode_bool(apiObj.spendable);
     wireObj.has_sapling = cst_encode_bool(apiObj.hasSapling);
-    wireObj.has_orchard = cst_encode_bool(apiObj.hasOrchard);
+    wireObj.has_ironwood = cst_encode_bool(apiObj.hasIronwood);
     wireObj.birthday_height = cst_encode_i_64(apiObj.birthdayHeight);
     wireObj.created_at = cst_encode_i_64(apiObj.createdAt);
   }
@@ -1485,10 +1485,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     wireObj.sapling_updated = cst_encode_usize(apiObj.saplingUpdated);
     wireObj.sapling_missing = cst_encode_usize(apiObj.saplingMissing);
     wireObj.sapling_errors = cst_encode_usize(apiObj.saplingErrors);
-    wireObj.orchard_requested = cst_encode_usize(apiObj.orchardRequested);
-    wireObj.orchard_updated = cst_encode_usize(apiObj.orchardUpdated);
-    wireObj.orchard_missing = cst_encode_usize(apiObj.orchardMissing);
-    wireObj.orchard_errors = cst_encode_usize(apiObj.orchardErrors);
+    wireObj.ironwood_requested = cst_encode_usize(apiObj.ironwoodRequested);
+    wireObj.ironwood_updated = cst_encode_usize(apiObj.ironwoodUpdated);
+    wireObj.ironwood_missing = cst_encode_usize(apiObj.ironwoodMissing);
+    wireObj.ironwood_errors = cst_encode_usize(apiObj.ironwoodErrors);
   }
 
   @protected
@@ -2724,6 +2724,66 @@ class RustLibWire implements BaseWire {
             void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
           >();
 
+  void wire__crate__api__export_ironwood_payment_disclosure(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> txid,
+    int action_index,
+  ) {
+    return _wire__crate__api__export_ironwood_payment_disclosure(
+      port_,
+      wallet_id,
+      txid,
+      action_index,
+    );
+  }
+
+  late final _wire__crate__api__export_ironwood_payment_disclosurePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Uint32,
+          )
+        >
+      >(
+        'frbgen_pirate_wallet_wire__crate__api__export_ironwood_payment_disclosure',
+      );
+  late final _wire__crate__api__export_ironwood_payment_disclosure =
+      _wire__crate__api__export_ironwood_payment_disclosurePtr
+          .asFunction<
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              int,
+            )
+          >();
+
+  void wire__crate__api__export_ironwood_viewing_key(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+  ) {
+    return _wire__crate__api__export_ironwood_viewing_key(port_, wallet_id);
+  }
+
+  late final _wire__crate__api__export_ironwood_viewing_keyPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+          )
+        >
+      >('frbgen_pirate_wallet_wire__crate__api__export_ironwood_viewing_key');
+  late final _wire__crate__api__export_ironwood_viewing_key =
+      _wire__crate__api__export_ironwood_viewing_keyPtr
+          .asFunction<
+            void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
+          >();
+
   void wire__crate__api__export_key_group_keys(
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
@@ -2746,66 +2806,6 @@ class RustLibWire implements BaseWire {
       _wire__crate__api__export_key_group_keysPtr
           .asFunction<
             void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>, int)
-          >();
-
-  void wire__crate__api__export_orchard_payment_disclosure(
-    int port_,
-    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
-    ffi.Pointer<wire_cst_list_prim_u_8_strict> txid,
-    int action_index,
-  ) {
-    return _wire__crate__api__export_orchard_payment_disclosure(
-      port_,
-      wallet_id,
-      txid,
-      action_index,
-    );
-  }
-
-  late final _wire__crate__api__export_orchard_payment_disclosurePtr =
-      _lookup<
-        ffi.NativeFunction<
-          ffi.Void Function(
-            ffi.Int64,
-            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
-            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
-            ffi.Uint32,
-          )
-        >
-      >(
-        'frbgen_pirate_wallet_wire__crate__api__export_orchard_payment_disclosure',
-      );
-  late final _wire__crate__api__export_orchard_payment_disclosure =
-      _wire__crate__api__export_orchard_payment_disclosurePtr
-          .asFunction<
-            void Function(
-              int,
-              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
-              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
-              int,
-            )
-          >();
-
-  void wire__crate__api__export_orchard_viewing_key(
-    int port_,
-    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
-  ) {
-    return _wire__crate__api__export_orchard_viewing_key(port_, wallet_id);
-  }
-
-  late final _wire__crate__api__export_orchard_viewing_keyPtr =
-      _lookup<
-        ffi.NativeFunction<
-          ffi.Void Function(
-            ffi.Int64,
-            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
-          )
-        >
-      >('frbgen_pirate_wallet_wire__crate__api__export_orchard_viewing_key');
-  late final _wire__crate__api__export_orchard_viewing_key =
-      _wire__crate__api__export_orchard_viewing_keyPtr
-          .asFunction<
-            void Function(int, ffi.Pointer<wire_cst_list_prim_u_8_strict>)
           >();
 
   void wire__crate__api__export_payment_disclosures(
@@ -3174,13 +3174,13 @@ class RustLibWire implements BaseWire {
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
     int key_id,
-    bool use_orchard,
+    bool use_ironwood,
   ) {
     return _wire__crate__api__generate_address_for_key(
       port_,
       wallet_id,
       key_id,
-      use_orchard,
+      use_ironwood,
     );
   }
 
@@ -3956,7 +3956,7 @@ class RustLibWire implements BaseWire {
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> sapling_key,
-    ffi.Pointer<wire_cst_list_prim_u_8_strict> orchard_key,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> ironwood_key,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> label,
     int birthday_height,
   ) {
@@ -3964,7 +3964,7 @@ class RustLibWire implements BaseWire {
       port_,
       wallet_id,
       sapling_key,
-      orchard_key,
+      ironwood_key,
       label,
       birthday_height,
     );
@@ -4000,14 +4000,14 @@ class RustLibWire implements BaseWire {
     int port_,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> name,
     ffi.Pointer<wire_cst_list_prim_u_8_strict> sapling_viewing_key,
-    ffi.Pointer<wire_cst_list_prim_u_8_strict> orchard_viewing_key,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> ironwood_viewing_key,
     int birthday,
   ) {
     return _wire__crate__api__import_viewing_wallet(
       port_,
       name,
       sapling_viewing_key,
-      orchard_viewing_key,
+      ironwood_viewing_key,
       birthday,
     );
   }
@@ -6303,7 +6303,7 @@ final class wire_cst_key_group_info extends ffi.Struct {
   external bool has_sapling;
 
   @ffi.Bool()
-  external bool has_orchard;
+  external bool has_ironwood;
 
   @ffi.Int64()
   external int birthday_height;
@@ -6489,11 +6489,11 @@ final class wire_cst_key_export_info extends ffi.Struct {
 
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> sapling_viewing_key;
 
-  external ffi.Pointer<wire_cst_list_prim_u_8_strict> orchard_viewing_key;
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> ironwood_viewing_key;
 
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> sapling_spending_key;
 
-  external ffi.Pointer<wire_cst_list_prim_u_8_strict> orchard_spending_key;
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> ironwood_spending_key;
 }
 
 final class wire_cst_mnemonic_inspection extends ffi.Struct {
@@ -6686,16 +6686,16 @@ final class wire_cst_witness_refresh_outcome extends ffi.Struct {
   external int sapling_errors;
 
   @ffi.UintPtr()
-  external int orchard_requested;
+  external int ironwood_requested;
 
   @ffi.UintPtr()
-  external int orchard_updated;
+  external int ironwood_updated;
 
   @ffi.UintPtr()
-  external int orchard_missing;
+  external int ironwood_missing;
 
   @ffi.UintPtr()
-  external int orchard_errors;
+  external int ironwood_errors;
 }
 
 const int MAX_OUTPUTS_PER_TX = 50;

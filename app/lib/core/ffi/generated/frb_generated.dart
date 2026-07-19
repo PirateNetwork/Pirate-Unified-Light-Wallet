@@ -70,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -526250162;
+  int get rustContentHash => 192036636;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -198,18 +198,18 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiExitDecoyMode({required String passphrase});
 
-  Future<KeyExportInfo> crateApiExportKeyGroupKeys({
-    required String walletId,
-    required PlatformInt64 keyId,
-  });
-
-  Future<String> crateApiExportOrchardPaymentDisclosure({
+  Future<String> crateApiExportIronwoodPaymentDisclosure({
     required String walletId,
     required String txid,
     required int actionIndex,
   });
 
-  Future<String> crateApiExportOrchardViewingKey({required String walletId});
+  Future<String> crateApiExportIronwoodViewingKey({required String walletId});
+
+  Future<KeyExportInfo> crateApiExportKeyGroupKeys({
+    required String walletId,
+    required PlatformInt64 keyId,
+  });
 
   Future<List<PaymentDisclosure>> crateApiExportPaymentDisclosures({
     required String walletId,
@@ -269,7 +269,7 @@ abstract class RustLibApi extends BaseApi {
   Future<String> crateApiGenerateAddressForKey({
     required String walletId,
     required PlatformInt64 keyId,
-    required bool useOrchard,
+    required bool useIronwood,
   });
 
   Future<String> crateApiGenerateMnemonic({
@@ -396,7 +396,7 @@ abstract class RustLibApi extends BaseApi {
   Future<PlatformInt64> crateApiImportSpendingKey({
     required String walletId,
     String? saplingKey,
-    String? orchardKey,
+    String? ironwoodKey,
     String? label,
     required int birthdayHeight,
   });
@@ -404,7 +404,7 @@ abstract class RustLibApi extends BaseApi {
   Future<String> crateApiImportViewingWallet({
     required String name,
     String? saplingViewingKey,
-    String? orchardViewingKey,
+    String? ironwoodViewingKey,
     required int birthday,
   });
 
@@ -1508,6 +1508,70 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<String> crateApiExportIronwoodPaymentDisclosure({
+    required String walletId,
+    required String txid,
+    required int actionIndex,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_String(txid);
+          var arg2 = cst_encode_u_32(actionIndex);
+          return wire.wire__crate__api__export_ironwood_payment_disclosure(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportIronwoodPaymentDisclosureConstMeta,
+        argValues: [walletId, txid, actionIndex],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiExportIronwoodPaymentDisclosureConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_ironwood_payment_disclosure",
+        argNames: ["walletId", "txid", "actionIndex"],
+      );
+
+  @override
+  Future<String> crateApiExportIronwoodViewingKey({required String walletId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          return wire.wire__crate__api__export_ironwood_viewing_key(
+            port_,
+            arg0,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_String,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiExportIronwoodViewingKeyConstMeta,
+        argValues: [walletId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiExportIronwoodViewingKeyConstMeta =>
+      const TaskConstMeta(
+        debugName: "export_ironwood_viewing_key",
+        argNames: ["walletId"],
+      );
+
+  @override
   Future<KeyExportInfo> crateApiExportKeyGroupKeys({
     required String walletId,
     required PlatformInt64 keyId,
@@ -1538,67 +1602,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     debugName: "export_key_group_keys",
     argNames: ["walletId", "keyId"],
   );
-
-  @override
-  Future<String> crateApiExportOrchardPaymentDisclosure({
-    required String walletId,
-    required String txid,
-    required int actionIndex,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          var arg0 = cst_encode_String(walletId);
-          var arg1 = cst_encode_String(txid);
-          var arg2 = cst_encode_u_32(actionIndex);
-          return wire.wire__crate__api__export_orchard_payment_disclosure(
-            port_,
-            arg0,
-            arg1,
-            arg2,
-          );
-        },
-        codec: DcoCodec(
-          decodeSuccessData: dco_decode_String,
-          decodeErrorData: dco_decode_AnyhowException,
-        ),
-        constMeta: kCrateApiExportOrchardPaymentDisclosureConstMeta,
-        argValues: [walletId, txid, actionIndex],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiExportOrchardPaymentDisclosureConstMeta =>
-      const TaskConstMeta(
-        debugName: "export_orchard_payment_disclosure",
-        argNames: ["walletId", "txid", "actionIndex"],
-      );
-
-  @override
-  Future<String> crateApiExportOrchardViewingKey({required String walletId}) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          var arg0 = cst_encode_String(walletId);
-          return wire.wire__crate__api__export_orchard_viewing_key(port_, arg0);
-        },
-        codec: DcoCodec(
-          decodeSuccessData: dco_decode_String,
-          decodeErrorData: dco_decode_AnyhowException,
-        ),
-        constMeta: kCrateApiExportOrchardViewingKeyConstMeta,
-        argValues: [walletId],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiExportOrchardViewingKeyConstMeta =>
-      const TaskConstMeta(
-        debugName: "export_orchard_viewing_key",
-        argNames: ["walletId"],
-      );
 
   @override
   Future<List<PaymentDisclosure>> crateApiExportPaymentDisclosures({
@@ -1983,14 +1986,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<String> crateApiGenerateAddressForKey({
     required String walletId,
     required PlatformInt64 keyId,
-    required bool useOrchard,
+    required bool useIronwood,
   }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           var arg0 = cst_encode_String(walletId);
           var arg1 = cst_encode_i_64(keyId);
-          var arg2 = cst_encode_bool(useOrchard);
+          var arg2 = cst_encode_bool(useIronwood);
           return wire.wire__crate__api__generate_address_for_key(
             port_,
             arg0,
@@ -2003,7 +2006,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiGenerateAddressForKeyConstMeta,
-        argValues: [walletId, keyId, useOrchard],
+        argValues: [walletId, keyId, useIronwood],
         apiImpl: this,
       ),
     );
@@ -2012,7 +2015,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiGenerateAddressForKeyConstMeta =>
       const TaskConstMeta(
         debugName: "generate_address_for_key",
-        argNames: ["walletId", "keyId", "useOrchard"],
+        argNames: ["walletId", "keyId", "useIronwood"],
       );
 
   @override
@@ -3026,7 +3029,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<PlatformInt64> crateApiImportSpendingKey({
     required String walletId,
     String? saplingKey,
-    String? orchardKey,
+    String? ironwoodKey,
     String? label,
     required int birthdayHeight,
   }) {
@@ -3035,7 +3038,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: (port_) {
           var arg0 = cst_encode_String(walletId);
           var arg1 = cst_encode_opt_String(saplingKey);
-          var arg2 = cst_encode_opt_String(orchardKey);
+          var arg2 = cst_encode_opt_String(ironwoodKey);
           var arg3 = cst_encode_opt_String(label);
           var arg4 = cst_encode_u_32(birthdayHeight);
           return wire.wire__crate__api__import_spending_key(
@@ -3052,7 +3055,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiImportSpendingKeyConstMeta,
-        argValues: [walletId, saplingKey, orchardKey, label, birthdayHeight],
+        argValues: [walletId, saplingKey, ironwoodKey, label, birthdayHeight],
         apiImpl: this,
       ),
     );
@@ -3063,7 +3066,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     argNames: [
       "walletId",
       "saplingKey",
-      "orchardKey",
+      "ironwoodKey",
       "label",
       "birthdayHeight",
     ],
@@ -3073,7 +3076,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<String> crateApiImportViewingWallet({
     required String name,
     String? saplingViewingKey,
-    String? orchardViewingKey,
+    String? ironwoodViewingKey,
     required int birthday,
   }) {
     return handler.executeNormal(
@@ -3081,7 +3084,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: (port_) {
           var arg0 = cst_encode_String(name);
           var arg1 = cst_encode_opt_String(saplingViewingKey);
-          var arg2 = cst_encode_opt_String(orchardViewingKey);
+          var arg2 = cst_encode_opt_String(ironwoodViewingKey);
           var arg3 = cst_encode_u_32(birthday);
           return wire.wire__crate__api__import_viewing_wallet(
             port_,
@@ -3096,7 +3099,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: dco_decode_AnyhowException,
         ),
         constMeta: kCrateApiImportViewingWalletConstMeta,
-        argValues: [name, saplingViewingKey, orchardViewingKey, birthday],
+        argValues: [name, saplingViewingKey, ironwoodViewingKey, birthday],
         apiImpl: this,
       ),
     );
@@ -3108,7 +3111,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         argNames: [
           "name",
           "saplingViewingKey",
-          "orchardViewingKey",
+          "ironwoodViewingKey",
           "birthday",
         ],
       );
@@ -5241,9 +5244,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return KeyExportInfo(
       keyId: dco_decode_i_64(arr[0]),
       saplingViewingKey: dco_decode_opt_String(arr[1]),
-      orchardViewingKey: dco_decode_opt_String(arr[2]),
+      ironwoodViewingKey: dco_decode_opt_String(arr[2]),
       saplingSpendingKey: dco_decode_opt_String(arr[3]),
-      orchardSpendingKey: dco_decode_opt_String(arr[4]),
+      ironwoodSpendingKey: dco_decode_opt_String(arr[4]),
     );
   }
 
@@ -5259,7 +5262,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       keyType: dco_decode_key_type_info(arr[2]),
       spendable: dco_decode_bool(arr[3]),
       hasSapling: dco_decode_bool(arr[4]),
-      hasOrchard: dco_decode_bool(arr[5]),
+      hasIronwood: dco_decode_bool(arr[5]),
       birthdayHeight: dco_decode_i_64(arr[6]),
       createdAt: dco_decode_i_64(arr[7]),
     );
@@ -5815,10 +5818,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       saplingUpdated: dco_decode_usize(arr[2]),
       saplingMissing: dco_decode_usize(arr[3]),
       saplingErrors: dco_decode_usize(arr[4]),
-      orchardRequested: dco_decode_usize(arr[5]),
-      orchardUpdated: dco_decode_usize(arr[6]),
-      orchardMissing: dco_decode_usize(arr[7]),
-      orchardErrors: dco_decode_usize(arr[8]),
+      ironwoodRequested: dco_decode_usize(arr[5]),
+      ironwoodUpdated: dco_decode_usize(arr[6]),
+      ironwoodMissing: dco_decode_usize(arr[7]),
+      ironwoodErrors: dco_decode_usize(arr[8]),
     );
   }
 
@@ -6140,15 +6143,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_keyId = sse_decode_i_64(deserializer);
     var var_saplingViewingKey = sse_decode_opt_String(deserializer);
-    var var_orchardViewingKey = sse_decode_opt_String(deserializer);
+    var var_ironwoodViewingKey = sse_decode_opt_String(deserializer);
     var var_saplingSpendingKey = sse_decode_opt_String(deserializer);
-    var var_orchardSpendingKey = sse_decode_opt_String(deserializer);
+    var var_ironwoodSpendingKey = sse_decode_opt_String(deserializer);
     return KeyExportInfo(
       keyId: var_keyId,
       saplingViewingKey: var_saplingViewingKey,
-      orchardViewingKey: var_orchardViewingKey,
+      ironwoodViewingKey: var_ironwoodViewingKey,
       saplingSpendingKey: var_saplingSpendingKey,
-      orchardSpendingKey: var_orchardSpendingKey,
+      ironwoodSpendingKey: var_ironwoodSpendingKey,
     );
   }
 
@@ -6160,7 +6163,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_keyType = sse_decode_key_type_info(deserializer);
     var var_spendable = sse_decode_bool(deserializer);
     var var_hasSapling = sse_decode_bool(deserializer);
-    var var_hasOrchard = sse_decode_bool(deserializer);
+    var var_hasIronwood = sse_decode_bool(deserializer);
     var var_birthdayHeight = sse_decode_i_64(deserializer);
     var var_createdAt = sse_decode_i_64(deserializer);
     return KeyGroupInfo(
@@ -6169,7 +6172,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       keyType: var_keyType,
       spendable: var_spendable,
       hasSapling: var_hasSapling,
-      hasOrchard: var_hasOrchard,
+      hasIronwood: var_hasIronwood,
       birthdayHeight: var_birthdayHeight,
       createdAt: var_createdAt,
     );
@@ -6929,20 +6932,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_saplingUpdated = sse_decode_usize(deserializer);
     var var_saplingMissing = sse_decode_usize(deserializer);
     var var_saplingErrors = sse_decode_usize(deserializer);
-    var var_orchardRequested = sse_decode_usize(deserializer);
-    var var_orchardUpdated = sse_decode_usize(deserializer);
-    var var_orchardMissing = sse_decode_usize(deserializer);
-    var var_orchardErrors = sse_decode_usize(deserializer);
+    var var_ironwoodRequested = sse_decode_usize(deserializer);
+    var var_ironwoodUpdated = sse_decode_usize(deserializer);
+    var var_ironwoodMissing = sse_decode_usize(deserializer);
+    var var_ironwoodErrors = sse_decode_usize(deserializer);
     return WitnessRefreshOutcome(
       source: var_source,
       saplingRequested: var_saplingRequested,
       saplingUpdated: var_saplingUpdated,
       saplingMissing: var_saplingMissing,
       saplingErrors: var_saplingErrors,
-      orchardRequested: var_orchardRequested,
-      orchardUpdated: var_orchardUpdated,
-      orchardMissing: var_orchardMissing,
-      orchardErrors: var_orchardErrors,
+      ironwoodRequested: var_ironwoodRequested,
+      ironwoodUpdated: var_ironwoodUpdated,
+      ironwoodMissing: var_ironwoodMissing,
+      ironwoodErrors: var_ironwoodErrors,
     );
   }
 
@@ -7297,9 +7300,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_64(self.keyId, serializer);
     sse_encode_opt_String(self.saplingViewingKey, serializer);
-    sse_encode_opt_String(self.orchardViewingKey, serializer);
+    sse_encode_opt_String(self.ironwoodViewingKey, serializer);
     sse_encode_opt_String(self.saplingSpendingKey, serializer);
-    sse_encode_opt_String(self.orchardSpendingKey, serializer);
+    sse_encode_opt_String(self.ironwoodSpendingKey, serializer);
   }
 
   @protected
@@ -7310,7 +7313,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_key_type_info(self.keyType, serializer);
     sse_encode_bool(self.spendable, serializer);
     sse_encode_bool(self.hasSapling, serializer);
-    sse_encode_bool(self.hasOrchard, serializer);
+    sse_encode_bool(self.hasIronwood, serializer);
     sse_encode_i_64(self.birthdayHeight, serializer);
     sse_encode_i_64(self.createdAt, serializer);
   }
@@ -7925,9 +7928,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_usize(self.saplingUpdated, serializer);
     sse_encode_usize(self.saplingMissing, serializer);
     sse_encode_usize(self.saplingErrors, serializer);
-    sse_encode_usize(self.orchardRequested, serializer);
-    sse_encode_usize(self.orchardUpdated, serializer);
-    sse_encode_usize(self.orchardMissing, serializer);
-    sse_encode_usize(self.orchardErrors, serializer);
+    sse_encode_usize(self.ironwoodRequested, serializer);
+    sse_encode_usize(self.ironwoodUpdated, serializer);
+    sse_encode_usize(self.ironwoodMissing, serializer);
+    sse_encode_usize(self.ironwoodErrors, serializer);
   }
 }

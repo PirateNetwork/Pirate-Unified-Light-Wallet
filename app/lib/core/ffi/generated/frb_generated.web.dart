@@ -840,9 +840,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     return [
       cst_encode_i_64(raw.keyId),
       cst_encode_opt_String(raw.saplingViewingKey),
-      cst_encode_opt_String(raw.orchardViewingKey),
+      cst_encode_opt_String(raw.ironwoodViewingKey),
       cst_encode_opt_String(raw.saplingSpendingKey),
-      cst_encode_opt_String(raw.orchardSpendingKey),
+      cst_encode_opt_String(raw.ironwoodSpendingKey),
     ].jsify()!;
   }
 
@@ -855,7 +855,7 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_key_type_info(raw.keyType),
       cst_encode_bool(raw.spendable),
       cst_encode_bool(raw.hasSapling),
-      cst_encode_bool(raw.hasOrchard),
+      cst_encode_bool(raw.hasIronwood),
       cst_encode_i_64(raw.birthdayHeight),
       cst_encode_i_64(raw.createdAt),
     ].jsify()!;
@@ -1302,10 +1302,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_usize(raw.saplingUpdated),
       cst_encode_usize(raw.saplingMissing),
       cst_encode_usize(raw.saplingErrors),
-      cst_encode_usize(raw.orchardRequested),
-      cst_encode_usize(raw.orchardUpdated),
-      cst_encode_usize(raw.orchardMissing),
-      cst_encode_usize(raw.orchardErrors),
+      cst_encode_usize(raw.ironwoodRequested),
+      cst_encode_usize(raw.ironwoodUpdated),
+      cst_encode_usize(raw.ironwoodMissing),
+      cst_encode_usize(raw.ironwoodErrors),
     ].jsify()!;
   }
 
@@ -1979,6 +1979,26 @@ class RustLibWire implements BaseWire {
     String passphrase,
   ) => wasmModule.wire__crate__api__exit_decoy_mode(port_, passphrase);
 
+  void wire__crate__api__export_ironwood_payment_disclosure(
+    NativePortType port_,
+    String wallet_id,
+    String txid,
+    int action_index,
+  ) => wasmModule.wire__crate__api__export_ironwood_payment_disclosure(
+    port_,
+    wallet_id,
+    txid,
+    action_index,
+  );
+
+  void wire__crate__api__export_ironwood_viewing_key(
+    NativePortType port_,
+    String wallet_id,
+  ) => wasmModule.wire__crate__api__export_ironwood_viewing_key(
+    port_,
+    wallet_id,
+  );
+
   void wire__crate__api__export_key_group_keys(
     NativePortType port_,
     String wallet_id,
@@ -1988,24 +2008,6 @@ class RustLibWire implements BaseWire {
     wallet_id,
     key_id,
   );
-
-  void wire__crate__api__export_orchard_payment_disclosure(
-    NativePortType port_,
-    String wallet_id,
-    String txid,
-    int action_index,
-  ) => wasmModule.wire__crate__api__export_orchard_payment_disclosure(
-    port_,
-    wallet_id,
-    txid,
-    action_index,
-  );
-
-  void wire__crate__api__export_orchard_viewing_key(
-    NativePortType port_,
-    String wallet_id,
-  ) =>
-      wasmModule.wire__crate__api__export_orchard_viewing_key(port_, wallet_id);
 
   void wire__crate__api__export_payment_disclosures(
     NativePortType port_,
@@ -2125,12 +2127,12 @@ class RustLibWire implements BaseWire {
     NativePortType port_,
     String wallet_id,
     JSAny key_id,
-    bool use_orchard,
+    bool use_ironwood,
   ) => wasmModule.wire__crate__api__generate_address_for_key(
     port_,
     wallet_id,
     key_id,
-    use_orchard,
+    use_ironwood,
   );
 
   void wire__crate__api__generate_mnemonic(
@@ -2352,14 +2354,14 @@ class RustLibWire implements BaseWire {
     NativePortType port_,
     String wallet_id,
     String? sapling_key,
-    String? orchard_key,
+    String? ironwood_key,
     String? label,
     int birthday_height,
   ) => wasmModule.wire__crate__api__import_spending_key(
     port_,
     wallet_id,
     sapling_key,
-    orchard_key,
+    ironwood_key,
     label,
     birthday_height,
   );
@@ -2368,13 +2370,13 @@ class RustLibWire implements BaseWire {
     NativePortType port_,
     String name,
     String? sapling_viewing_key,
-    String? orchard_viewing_key,
+    String? ironwood_viewing_key,
     int birthday,
   ) => wasmModule.wire__crate__api__import_viewing_wallet(
     port_,
     name,
     sapling_viewing_key,
-    orchard_viewing_key,
+    ironwood_viewing_key,
     birthday,
   );
 
@@ -3000,22 +3002,22 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     String passphrase,
   );
 
-  external void wire__crate__api__export_key_group_keys(
-    NativePortType port_,
-    String wallet_id,
-    JSAny key_id,
-  );
-
-  external void wire__crate__api__export_orchard_payment_disclosure(
+  external void wire__crate__api__export_ironwood_payment_disclosure(
     NativePortType port_,
     String wallet_id,
     String txid,
     int action_index,
   );
 
-  external void wire__crate__api__export_orchard_viewing_key(
+  external void wire__crate__api__export_ironwood_viewing_key(
     NativePortType port_,
     String wallet_id,
+  );
+
+  external void wire__crate__api__export_key_group_keys(
+    NativePortType port_,
+    String wallet_id,
+    JSAny key_id,
   );
 
   external void wire__crate__api__export_payment_disclosures(
@@ -3095,7 +3097,7 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     NativePortType port_,
     String wallet_id,
     JSAny key_id,
-    bool use_orchard,
+    bool use_ironwood,
   );
 
   external void wire__crate__api__generate_mnemonic(
@@ -3265,7 +3267,7 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     NativePortType port_,
     String wallet_id,
     String? sapling_key,
-    String? orchard_key,
+    String? ironwood_key,
     String? label,
     int birthday_height,
   );
@@ -3274,7 +3276,7 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     NativePortType port_,
     String name,
     String? sapling_viewing_key,
-    String? orchard_viewing_key,
+    String? ironwood_viewing_key,
     int birthday,
   );
 

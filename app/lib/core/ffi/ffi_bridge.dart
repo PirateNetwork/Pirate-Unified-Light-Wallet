@@ -513,13 +513,13 @@ class FfiBridge {
   static Future<String> generateAddressForKey({
     required WalletId walletId,
     required int keyId,
-    required bool useOrchard,
+    required bool useIronwood,
   }) async {
     if (kUseFrbBindings) {
       return await api.generateAddressForKey(
         walletId: walletId,
         keyId: keyId,
-        useOrchard: useOrchard,
+        useIronwood: useIronwood,
       );
     }
     throw UnimplementedError('FRB bindings not available');
@@ -528,7 +528,7 @@ class FfiBridge {
   static Future<int> importSpendingKey({
     required WalletId walletId,
     String? saplingKey,
-    String? orchardKey,
+    String? ironwoodKey,
     String? label,
     required int birthdayHeight,
   }) async {
@@ -536,7 +536,7 @@ class FfiBridge {
       return await api.importSpendingKey(
         walletId: walletId,
         saplingKey: saplingKey,
-        orchardKey: orchardKey,
+        ironwoodKey: ironwoodKey,
         label: label,
         birthdayHeight: birthdayHeight,
       );
@@ -567,10 +567,10 @@ class FfiBridge {
     throw UnimplementedError('FRB bindings not available');
   }
 
-  /// Export Orchard viewing key from full wallet
-  static Future<String> exportOrchardViewingKey(WalletId id) async {
+  /// Export Ironwood viewing key from full wallet
+  static Future<String> exportIronwoodViewingKey(WalletId id) async {
     if (kUseFrbBindings) {
-      return await api.exportOrchardViewingKey(walletId: id);
+      return await api.exportIronwoodViewingKey(walletId: id);
     }
     throw UnimplementedError('FRB bindings not available');
   }
@@ -591,17 +591,17 @@ class FfiBridge {
   static Future<WalletId> importViewingWallet({
     required String name,
     String? saplingViewingKey,
-    String? orchardViewingKey,
+    String? ironwoodViewingKey,
     required int birthday,
   }) async {
-    if (saplingViewingKey == null && orchardViewingKey == null) {
-      throw ArgumentError('Provide a Sapling or Orchard viewing key.'.tr);
+    if (saplingViewingKey == null && ironwoodViewingKey == null) {
+      throw ArgumentError('Provide a Sapling or Ironwood viewing key.'.tr);
     }
     if (kUseFrbBindings) {
       final walletId = await api.importViewingWallet(
         name: name,
         saplingViewingKey: saplingViewingKey,
-        orchardViewingKey: orchardViewingKey,
+        ironwoodViewingKey: ironwoodViewingKey,
         birthday: birthday,
       );
       _activeWalletId = walletId;
@@ -1736,14 +1736,14 @@ class FfiBridge {
   static Future<WalletId> importSaplingViewingKeyAsWatchOnly({
     required String name,
     required String saplingViewingKey,
-    String? orchardViewingKey,
+    String? ironwoodViewingKey,
     required int birthdayHeight,
   }) async {
     // Delegate to main importViewingWallet method
     return importViewingWallet(
       name: name,
       saplingViewingKey: saplingViewingKey,
-      orchardViewingKey: orchardViewingKey,
+      ironwoodViewingKey: ironwoodViewingKey,
       birthday: birthdayHeight,
     );
   }
