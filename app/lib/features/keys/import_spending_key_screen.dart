@@ -28,7 +28,7 @@ class _ImportSpendingKeyScreenState
   final _labelController = TextEditingController();
   final _birthdayController = TextEditingController();
   final _saplingKeyController = TextEditingController();
-  final _orchardKeyController = TextEditingController();
+  final _ironwoodKeyController = TextEditingController();
 
   bool _isSubmitting = false;
   String? _error;
@@ -38,7 +38,7 @@ class _ImportSpendingKeyScreenState
     _labelController.dispose();
     _birthdayController.dispose();
     _saplingKeyController.dispose();
-    _orchardKeyController.dispose();
+    _ironwoodKeyController.dispose();
     super.dispose();
   }
 
@@ -50,9 +50,9 @@ class _ImportSpendingKeyScreenState
     }
 
     final sapling = _saplingKeyController.text.trim();
-    final orchard = _orchardKeyController.text.trim();
-    if (sapling.isEmpty && orchard.isEmpty) {
-      setState(() => _error = 'Enter a Sapling or Orchard spending key'.tr);
+    final ironwood = _ironwoodKeyController.text.trim();
+    if (sapling.isEmpty && ironwood.isEmpty) {
+      setState(() => _error = 'Enter a Sapling or Ironwood spending key'.tr);
       return;
     }
 
@@ -72,7 +72,7 @@ class _ImportSpendingKeyScreenState
       final keyId = await FfiBridge.importSpendingKey(
         walletId: walletId,
         saplingKey: sapling.isEmpty ? null : sapling,
-        orchardKey: orchard.isEmpty ? null : orchard,
+        ironwoodKey: ironwood.isEmpty ? null : ironwood,
         label: _labelController.text.trim().isEmpty
             ? null
             : _labelController.text.trim(),
@@ -141,9 +141,9 @@ class _ImportSpendingKeyScreenState
             ),
             SizedBox(height: PSpacing.md),
             PInput(
-              controller: _orchardKeyController,
-              label: 'Orchard spending key (optional)'.tr,
-              hint: 'Paste your Orchard spending key'.tr,
+              controller: _ironwoodKeyController,
+              label: 'Ironwood spending key (optional)'.tr,
+              hint: 'Paste your Ironwood spending key'.tr,
               maxLines: 2,
             ),
             SizedBox(height: PSpacing.md),

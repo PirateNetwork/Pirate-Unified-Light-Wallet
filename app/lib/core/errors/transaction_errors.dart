@@ -373,8 +373,8 @@ class TransactionErrorMapper {
 
     final lower = address.toLowerCase();
     final isSapling = lower.startsWith('zs1');
-    final isOrchard = lower.startsWith('pirate1');
-    if (!isSapling && !isOrchard) {
+    final isIronwood = lower.startsWith('pirate1');
+    if (!isSapling && !isIronwood) {
       return TransactionError(
         type: TransactionErrorType.invalidAddress,
         message: 'Invalid address format'.tr,
@@ -382,9 +382,9 @@ class TransactionErrorMapper {
       );
     }
 
-    // Basic length check (Sapling ~78 chars, Orchard typically longer)
+    // Basic length check (Sapling ~78 chars, Ironwood typically longer)
     const minLen = 70;
-    final maxLen = isOrchard ? 120 : 90;
+    final maxLen = isIronwood ? 120 : 90;
     if (address.length < minLen || address.length > maxLen) {
       return TransactionError(
         type: TransactionErrorType.invalidAddress,

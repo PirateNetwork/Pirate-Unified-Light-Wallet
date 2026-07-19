@@ -29,7 +29,7 @@ class _ViewingKeysImportScreenState
     extends ConsumerState<ViewingKeysImportScreen> {
   final _nameController = TextEditingController(text: 'View only wallet'.tr);
   final _saplingIvkController = TextEditingController();
-  final _orchardIvkController = TextEditingController();
+  final _ironwoodIvkController = TextEditingController();
   final _birthdayController = TextEditingController();
 
   bool _isImporting = false;
@@ -41,7 +41,7 @@ class _ViewingKeysImportScreenState
     unawaited(_loadDefaultBirthday());
     _nameController.addListener(_onFieldChanged);
     _saplingIvkController.addListener(_onFieldChanged);
-    _orchardIvkController.addListener(_onFieldChanged);
+    _ironwoodIvkController.addListener(_onFieldChanged);
     _birthdayController.addListener(_onFieldChanged);
   }
 
@@ -49,11 +49,11 @@ class _ViewingKeysImportScreenState
   void dispose() {
     _nameController.removeListener(_onFieldChanged);
     _saplingIvkController.removeListener(_onFieldChanged);
-    _orchardIvkController.removeListener(_onFieldChanged);
+    _ironwoodIvkController.removeListener(_onFieldChanged);
     _birthdayController.removeListener(_onFieldChanged);
     _nameController.dispose();
     _saplingIvkController.dispose();
-    _orchardIvkController.dispose();
+    _ironwoodIvkController.dispose();
     _birthdayController.dispose();
     super.dispose();
   }
@@ -61,7 +61,7 @@ class _ViewingKeysImportScreenState
   bool get _isValid {
     final hasKey =
         _saplingIvkController.text.trim().isNotEmpty ||
-        _orchardIvkController.text.trim().isNotEmpty;
+        _ironwoodIvkController.text.trim().isNotEmpty;
     return _nameController.text.trim().isNotEmpty &&
         hasKey &&
         _birthdayController.text.trim().isNotEmpty;
@@ -114,16 +114,16 @@ class _ViewingKeysImportScreenState
       }
 
       final saplingKey = _saplingIvkController.text.trim();
-      final orchardKey = _orchardIvkController.text.trim();
-      if (saplingKey.isEmpty && orchardKey.isEmpty) {
-        throw ArgumentError('Enter a Sapling or Orchard viewing key'.tr);
+      final ironwoodKey = _ironwoodIvkController.text.trim();
+      if (saplingKey.isEmpty && ironwoodKey.isEmpty) {
+        throw ArgumentError('Enter a Sapling or Ironwood viewing key'.tr);
       }
 
       // Import viewing key via FFI
       final walletId = await FfiBridge.importViewingWallet(
         name: _nameController.text.trim(),
         saplingViewingKey: saplingKey.isEmpty ? null : saplingKey,
-        orchardViewingKey: orchardKey.isEmpty ? null : orchardKey,
+        ironwoodViewingKey: ironwoodKey.isEmpty ? null : ironwoodKey,
         birthday: birthday,
       );
 
@@ -295,13 +295,13 @@ class _ViewingKeysImportScreenState
             const SizedBox(height: AppSpacing.md),
 
             PInput(
-              controller: _orchardIvkController,
-              label: 'Orchard viewing key (optional)'.tr,
+              controller: _ironwoodIvkController,
+              label: 'Ironwood viewing key (optional)'.tr,
               hint: 'Starts with pirate-extended-viewing-key1…'.tr,
               maxLines: 3,
               suffixIcon: IconButton(
                 icon: const Icon(Icons.content_paste),
-                onPressed: () => _pasteIvk(_orchardIvkController),
+                onPressed: () => _pasteIvk(_ironwoodIvkController),
                 tooltip: 'Paste from clipboard'.tr,
               ),
             ),

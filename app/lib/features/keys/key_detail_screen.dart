@@ -108,7 +108,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
     });
   }
 
-  Future<void> _generateAddress({required bool useOrchard}) async {
+  Future<void> _generateAddress({required bool useIronwood}) async {
     final walletId = _walletId;
     if (walletId == null) return;
     final isDecoy = ref.read(decoyModeProvider);
@@ -125,7 +125,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
       await FfiBridge.generateAddressForKey(
         walletId: walletId,
         keyId: widget.keyId,
-        useOrchard: useOrchard,
+        useIronwood: useIronwood,
       );
       await _refresh();
     } catch (e) {
@@ -305,8 +305,8 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
           ClipboardDataType.viewingKey,
         ),
         _buildKeyExportSection(
-          'Orchard viewing key'.tr,
-          export.orchardViewingKey,
+          'Ironwood viewing key'.tr,
+          export.ironwoodViewingKey,
           ClipboardDataType.viewingKey,
         ),
         _buildKeyExportSection(
@@ -315,8 +315,8 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
           ClipboardDataType.spendingKey,
         ),
         _buildKeyExportSection(
-          'Orchard spending key'.tr,
-          export.orchardSpendingKey,
+          'Ironwood spending key'.tr,
+          export.ironwoodSpendingKey,
           ClipboardDataType.spendingKey,
         ),
       ].whereType<Widget>().toList();
@@ -528,7 +528,7 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
 
   Widget _buildActions(BuildContext context, KeyGroupInfo key) {
     final canGenerateSapling = key.hasSapling;
-    final canGenerateOrchard = key.hasOrchard;
+    final canGenerateIronwood = key.hasIronwood;
 
     final actions = <_ActionItem>[
       if (canGenerateSapling)
@@ -537,15 +537,15 @@ class _KeyDetailScreenState extends ConsumerState<KeyDetailScreen> {
           variant: PButtonVariant.secondary,
           onPressed: _isGenerating
               ? null
-              : () => _generateAddress(useOrchard: false),
+              : () => _generateAddress(useIronwood: false),
         ),
-      if (canGenerateOrchard)
+      if (canGenerateIronwood)
         _ActionItem(
-          label: 'New Orchard address'.tr,
+          label: 'New Ironwood address'.tr,
           variant: PButtonVariant.secondary,
           onPressed: _isGenerating
               ? null
-              : () => _generateAddress(useOrchard: true),
+              : () => _generateAddress(useIronwood: true),
         ),
       if (key.spendable)
         _ActionItem(
@@ -710,9 +710,9 @@ class _KeySummaryCard extends StatelessWidget {
             children: [
               if (keyInfo.hasSapling)
                 _chip('Sapling', AppColors.infoBackground, AppColors.info),
-              if (keyInfo.hasOrchard)
+              if (keyInfo.hasIronwood)
                 _chip(
-                  'Orchard',
+                  'Ironwood',
                   AppColors.successBackground,
                   AppColors.success,
                 ),

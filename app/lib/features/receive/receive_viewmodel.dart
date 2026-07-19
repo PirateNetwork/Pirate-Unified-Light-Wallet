@@ -629,14 +629,14 @@ class ReceiveViewModel extends Notifier<ReceiveState> {
         if (addresses.isNotEmpty) {
           continue;
         }
-        final useOrchard = key.hasOrchard;
-        if (!useOrchard && !key.hasSapling) {
+        final useIronwood = key.hasIronwood;
+        if (!useIronwood && !key.hasSapling) {
           continue;
         }
         await FfiBridge.generateAddressForKey(
           walletId: walletId,
           keyId: key.id,
-          useOrchard: useOrchard,
+          useIronwood: useIronwood,
         );
       } catch (e) {
         debugPrint('Failed to prepare imported address: $e');

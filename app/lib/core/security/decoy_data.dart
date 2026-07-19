@@ -344,9 +344,9 @@ class DecoyData {
 
   static String? _mnemonic;
   static String? _saplingViewingKey;
-  static String? _orchardViewingKey;
+  static String? _ironwoodViewingKey;
   static String? _saplingSpendingKey;
-  static String? _orchardSpendingKey;
+  static String? _ironwoodSpendingKey;
   static int _diversifierIndex = 0;
   static DecoyAddressEntry? _currentAddress;
   static final List<DecoyAddressEntry> _addressHistory = [];
@@ -359,16 +359,16 @@ class DecoyData {
     return _saplingViewingKey ??= _generateBech32Like('zxviews1', 96);
   }
 
-  static String orchardViewingKey() {
-    return _orchardViewingKey ??= _generateBech32Like('uview1', 96);
+  static String ironwoodViewingKey() {
+    return _ironwoodViewingKey ??= _generateBech32Like('uview1', 96);
   }
 
   static String saplingSpendingKey() {
     return _saplingSpendingKey ??= _generateBech32Like('secret1', 96);
   }
 
-  static String orchardSpendingKey() {
-    return _orchardSpendingKey ??= _generateBech32Like('secret1', 96);
+  static String ironwoodSpendingKey() {
+    return _ironwoodSpendingKey ??= _generateBech32Like('secret1', 96);
   }
 
   static DecoyAddressEntry currentAddress() {
@@ -396,7 +396,7 @@ class DecoyData {
         keyType: KeyTypeInfo.seed,
         spendable: true,
         hasSapling: true,
-        hasOrchard: true,
+        hasIronwood: true,
         birthdayHeight: 3700000,
         createdAt: DateTime.now().millisecondsSinceEpoch ~/ 1000,
       ),
@@ -407,9 +407,9 @@ class DecoyData {
     return KeyExportInfo(
       keyId: keyId,
       saplingViewingKey: saplingViewingKey(),
-      orchardViewingKey: orchardViewingKey(),
+      ironwoodViewingKey: ironwoodViewingKey(),
       saplingSpendingKey: saplingSpendingKey(),
-      orchardSpendingKey: orchardSpendingKey(),
+      ironwoodSpendingKey: ironwoodSpendingKey(),
     );
   }
 

@@ -29,7 +29,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
   KeyGroupInfo? _key;
   List<AddressBalanceInfo> _addresses = [];
   AddressBalanceInfo? _selectedTargetAddress;
-  bool _useOrchard = false;
+  bool _useIronwood = false;
   bool _isLoading = true;
   bool _isBuilding = false;
   bool _isSending = false;
@@ -65,7 +65,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       final keys = await FfiBridge.listKeyGroups(walletId);
       final key = keys.firstWhere((k) => k.id == widget.keyId);
       _key = key;
-      _useOrchard = key.hasOrchard && !key.hasSapling;
+      _useIronwood = key.hasIronwood && !key.hasSapling;
       await _loadAddresses();
     } catch (e) {
       setState(() => _error = e.toString());
@@ -83,7 +83,7 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       final address = await FfiBridge.generateAddressForKey(
         walletId: walletId,
         keyId: widget.keyId,
-        useOrchard: _useOrchard,
+        useIronwood: _useIronwood,
       );
       _addressController.text = address;
       await _loadAddresses(selectAddress: address);
@@ -231,9 +231,9 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
                 children: [
                   if (_key != null) _buildKeySummary(_key!),
                   SizedBox(height: PSpacing.md),
-                  if (_key != null && _key!.hasSapling && _key!.hasOrchard)
+                  if (_key != null && _key!.hasSapling && _key!.hasIronwood)
                     _buildPoolToggle(),
-                  if (_key != null && _key!.hasSapling && _key!.hasOrchard)
+                  if (_key != null && _key!.hasSapling && _key!.hasIronwood)
                     SizedBox(height: PSpacing.md),
                   _buildTargetAddressSelector(),
                   SizedBox(height: PSpacing.sm),
@@ -297,18 +297,18 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
       children: [
         Expanded(
           child: PButton(
-            onPressed: _useOrchard ? null : () => _setPool(true),
-            variant: _useOrchard
+            onPressed: _useIronwood ? null : () => _setPool(true),
+            variant: _useIronwood
                 ? PButtonVariant.primary
                 : PButtonVariant.secondary,
-            child: Text('Orchard'.tr),
+            child: Text('Ironwood'.tr),
           ),
         ),
         SizedBox(width: PSpacing.sm),
         Expanded(
           child: PButton(
-            onPressed: _useOrchard ? () => _setPool(false) : null,
-            variant: _useOrchard
+            onPressed: _useIronwood ? () => _setPool(false) : null,
+            variant: _useIronwood
                 ? PButtonVariant.secondary
                 : PButtonVariant.primary,
             child: Text('Sapling'.tr),
@@ -318,9 +318,9 @@ class _ConsolidateKeyScreenState extends ConsumerState<ConsolidateKeyScreen> {
     );
   }
 
-  void _setPool(bool useOrchard) {
+  void _setPool(bool useIronwood) {
     setState(() {
-      _useOrchard = useOrchard;
+      _useIronwood = useIronwood;
       _pending = null;
     });
     _generateAddress();

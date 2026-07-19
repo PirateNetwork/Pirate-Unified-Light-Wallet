@@ -239,20 +239,20 @@ final importViewingWalletProvider =
       Future<WalletId> Function({
         required String name,
         String? saplingViewingKey,
-        String? orchardViewingKey,
+        String? ironwoodViewingKey,
         required int birthday,
       })
     >((ref) {
       return ({
         required String name,
         String? saplingViewingKey,
-        String? orchardViewingKey,
+        String? ironwoodViewingKey,
         required int birthday,
       }) async {
         final walletId = await FfiBridge.importViewingWallet(
           name: name,
           saplingViewingKey: saplingViewingKey,
-          orchardViewingKey: orchardViewingKey,
+          ironwoodViewingKey: ironwoodViewingKey,
           birthday: birthday,
         );
 

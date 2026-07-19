@@ -86,7 +86,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
     if (!mounted) return;
     final nameController = TextEditingController(text: 'View only wallet'.tr);
     final saplingController = TextEditingController();
-    final orchardController = TextEditingController();
+    final ironwoodController = TextEditingController();
     final birthdayController = TextEditingController(
       text: defaultBirthday?.toString() ?? '',
     );
@@ -103,7 +103,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
             Future<void> handleImport() async {
               final name = nameController.text.trim();
               final saplingKey = saplingController.text.trim();
-              final orchardKey = orchardController.text.trim();
+              final ironwoodKey = ironwoodController.text.trim();
               final birthdayText = birthdayController.text.trim();
               final birthday = int.tryParse(birthdayText);
 
@@ -111,7 +111,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 setDialogState(() => error = 'Enter a wallet name'.tr);
                 return;
               }
-              if (saplingKey.isEmpty && orchardKey.isEmpty) {
+              if (saplingKey.isEmpty && ironwoodKey.isEmpty) {
                 setDialogState(() => error = 'Provide a viewing key'.tr);
                 return;
               }
@@ -131,7 +131,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                 await FfiBridge.importViewingWallet(
                   name: name,
                   saplingViewingKey: saplingKey.isEmpty ? null : saplingKey,
-                  orchardViewingKey: orchardKey.isEmpty ? null : orchardKey,
+                  ironwoodViewingKey: ironwoodKey.isEmpty ? null : ironwoodKey,
                   birthday: birthday,
                 );
                 ref.read(refreshWalletsProvider)();
@@ -188,9 +188,9 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
                             ),
                             SizedBox(height: PSpacing.md),
                             PInput(
-                              controller: orchardController,
-                              label: 'Orchard viewing key (optional)'.tr,
-                              hint: 'Paste your Orchard viewing key'.tr,
+                              controller: ironwoodController,
+                              label: 'Ironwood viewing key (optional)'.tr,
+                              hint: 'Paste your Ironwood viewing key'.tr,
                               maxLines: 4,
                             ),
                             SizedBox(height: PSpacing.md),
@@ -244,7 +244,7 @@ class _KeyManagementScreenState extends ConsumerState<KeyManagementScreen> {
 
     nameController.dispose();
     saplingController.dispose();
-    orchardController.dispose();
+    ironwoodController.dispose();
     birthdayController.dispose();
 
     if (imported ?? false) {
@@ -460,9 +460,9 @@ class _KeyCard extends StatelessWidget {
             children: [
               if (keyInfo.hasSapling)
                 _chip('Sapling', AppColors.infoBackground, AppColors.info),
-              if (keyInfo.hasOrchard)
+              if (keyInfo.hasIronwood)
                 _chip(
-                  'Orchard',
+                  'Ironwood',
                   AppColors.successBackground,
                   AppColors.success,
                 ),

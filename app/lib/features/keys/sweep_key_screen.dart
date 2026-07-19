@@ -31,7 +31,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
   KeyGroupInfo? _key;
   List<AddressBalanceInfo> _addresses = [];
   Set<int> _selectedAddressIds = {};
-  bool _useOrchard = false;
+  bool _useIronwood = false;
   bool _isLoading = true;
   bool _isBuilding = false;
   bool _isSending = false;
@@ -75,7 +75,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
       addresses.sort((a, b) => b.spendable.compareTo(a.spendable));
       _key = key;
       _addresses = addresses;
-      _useOrchard = key.hasOrchard && !key.hasSapling;
+      _useIronwood = key.hasIronwood && !key.hasSapling;
       final addressIds = _addresses.map((addr) => addr.addressId).toSet();
       _selectedAddressIds.removeWhere((id) => !addressIds.contains(id));
       if (_addressController.text.trim().isEmpty) {
@@ -103,7 +103,7 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
       final address = await FfiBridge.generateAddressForKey(
         walletId: walletId,
         keyId: widget.keyId,
-        useOrchard: _useOrchard,
+        useIronwood: _useIronwood,
       );
       _addressController.text = address;
     } catch (e) {
@@ -235,9 +235,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
                 children: [
                   if (_key != null) _buildKeySummary(_key!),
                   SizedBox(height: PSpacing.md),
-                  if (_key != null && _key!.hasSapling && _key!.hasOrchard)
+                  if (_key != null && _key!.hasSapling && _key!.hasIronwood)
                     _buildPoolToggle(),
-                  if (_key != null && _key!.hasSapling && _key!.hasOrchard)
+                  if (_key != null && _key!.hasSapling && _key!.hasIronwood)
                     SizedBox(height: PSpacing.md),
                   _buildSweepSourceSelector(),
                   SizedBox(height: PSpacing.md),
@@ -334,18 +334,18 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
       children: [
         Expanded(
           child: PButton(
-            onPressed: _useOrchard ? null : () => _setPool(true),
-            variant: _useOrchard
+            onPressed: _useIronwood ? null : () => _setPool(true),
+            variant: _useIronwood
                 ? PButtonVariant.primary
                 : PButtonVariant.secondary,
-            child: Text('Orchard'.tr),
+            child: Text('Ironwood'.tr),
           ),
         ),
         SizedBox(width: PSpacing.sm),
         Expanded(
           child: PButton(
-            onPressed: _useOrchard ? () => _setPool(false) : null,
-            variant: _useOrchard
+            onPressed: _useIronwood ? () => _setPool(false) : null,
+            variant: _useIronwood
                 ? PButtonVariant.secondary
                 : PButtonVariant.primary,
             child: Text('Sapling'.tr),
@@ -355,9 +355,9 @@ class _SweepKeyScreenState extends ConsumerState<SweepKeyScreen> {
     );
   }
 
-  void _setPool(bool useOrchard) {
+  void _setPool(bool useIronwood) {
     setState(() {
-      _useOrchard = useOrchard;
+      _useIronwood = useIronwood;
       _pending = null;
     });
     _generateAddress();
