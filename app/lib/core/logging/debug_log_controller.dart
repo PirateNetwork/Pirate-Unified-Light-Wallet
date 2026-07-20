@@ -57,7 +57,7 @@ class DebugLogController {
     var text = value;
     text = text.replaceAllMapped(
       RegExp(
-        r'("?(?:mnemonic|seed|passphrase|password|pin|panic_pin|duress_passphrase|spending_key|sapling_key|orchard_key|sapling_viewing_key|orchard_viewing_key|viewing_key|extsk|ovk|ivk|fvk|private_key|secret|panic|panic_location|backtrace|stack)"?\s*[:=]\s*)("[^"]*"|[^,}\n]+)',
+        r'("?(?:mnemonic|seed|passphrase|password|pin|panic_pin|duress_passphrase|spending_key|sapling_key|orchard_key|ironwood_key|sapling_viewing_key|orchard_viewing_key|ironwood_viewing_key|viewing_key|extsk|ovk|ivk|fvk|private_key|secret|panic|panic_location|backtrace|stack)"?\s*[:=]\s*)("[^"]*"|[^,}\n]+)',
         caseSensitive: false,
       ),
       (match) => '${match[1]}"[REDACTED_SECRET]"',

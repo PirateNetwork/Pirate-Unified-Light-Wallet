@@ -27,7 +27,7 @@ static DEBUG_LOG_ENABLED: AtomicBool = AtomicBool::new(false);
 
 static PRIVATE_JSON_FIELD: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"(?i)("(?:mnemonic|seed|passphrase|password|pin|panic_pin|duress_passphrase|spending_key|sapling_key|orchard_key|sapling_viewing_key|orchard_viewing_key|viewing_key|extsk|ovk|ivk|fvk|private_key|secret|panic|panic_location|backtrace|stack)"\s*:\s*)("[^"\\]*(?:\\.[^"\\]*)*"|[^,}\n]+)"#,
+        r#"(?i)("(?:mnemonic|seed|passphrase|password|pin|panic_pin|duress_passphrase|spending_key|sapling_key|orchard_key|ironwood_key|sapling_viewing_key|orchard_viewing_key|ironwood_viewing_key|viewing_key|extsk|ovk|ivk|fvk|private_key|secret|panic|panic_location|backtrace|stack)"\s*:\s*)("[^"\\]*(?:\\.[^"\\]*)*"|[^,}\n]+)"#,
     )
     .expect("valid private-field redaction regex")
 });
@@ -41,7 +41,7 @@ static CORRELATING_JSON_FIELD: Lazy<Regex> = Lazy::new(|| {
 
 static RAW_SECRET_ASSIGNMENT: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"(?i)\b(mnemonic|seed|passphrase|password|pin|spending[_ -]?key|viewing[_ -]?key|private[_ -]?key|sapling[_ -]?key|orchard[_ -]?key)\b\s*[:=]\s*("[^"]*"|'[^']*'|\S+)"#,
+        r#"(?i)\b(mnemonic|seed|passphrase|password|pin|spending[_ -]?key|viewing[_ -]?key|private[_ -]?key|sapling[_ -]?key|orchard[_ -]?key|ironwood[_ -]?key)\b\s*[:=]\s*("[^"]*"|'[^']*'|\S+)"#,
     )
     .expect("valid secret assignment redaction regex")
 });
@@ -345,10 +345,12 @@ mod tests {
 
     #[test]
     fn redacts_private_and_correlating_fields() {
-        let raw = r#"{"mnemonic":"abandon abandon","wallet_id":"wallet-1","key_id":42,"address":"zs1qqqqqqqqqqqqqqqqqqqqqqqqqqqq","txid":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","panic":"seed leaked","path":"C:\\Users\\alice\\wallet.db"}"#;
+        let raw = r#"{"mnemonic":"abandon abandon","ironwood_key":"secret-ironwood-key","orchard_viewing_key":"legacy-viewing-key","wallet_id":"wallet-1","key_id":42,"address":"zs1qqqqqqqqqqqqqqqqqqqqqqqqqqqq","txid":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","panic":"seed leaked","path":"C:\\Users\\alice\\wallet.db"}"#;
         let redacted = redact_log_text(raw);
 
         assert!(!redacted.contains("abandon abandon"));
+        assert!(!redacted.contains("secret-ironwood-key"));
+        assert!(!redacted.contains("legacy-viewing-key"));
         assert!(!redacted.contains("wallet-1"));
         assert!(!redacted.contains("\"key_id\":42"));
         assert!(!redacted.contains("zs1qqqq"));
