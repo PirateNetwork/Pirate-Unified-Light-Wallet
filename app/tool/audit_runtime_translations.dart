@@ -277,7 +277,7 @@ bool shouldTranslateUiLiteral(String path, String value) {
         'ARRR',
         'label',
         'monospace',
-        'orchard',
+        'ironwood',
       }.contains(value)) {
     return false;
   }
@@ -381,7 +381,7 @@ const protectedRuntimeTerms = <String>{
   'LTC',
   'Linux',
   'Litecoin',
-  'Orchard',
+  'Ironwood',
   'Pirate',
   'Pirate Chain',
   'Rust',
@@ -398,7 +398,7 @@ const protectedRuntimeTerms = <String>{
   'obfs4',
   'pirate1',
   'pirate-extended-viewing-key1',
-  'pirate-orchard-payment-disclosure1',
+  'pirate-ironwood-payment-disclosure1',
   'pirate-sapling-payment-disclosure1',
   'txid',
   'vARRR',
