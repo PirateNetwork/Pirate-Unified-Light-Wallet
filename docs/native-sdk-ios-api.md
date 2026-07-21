@@ -38,7 +38,7 @@ Wallet lifecycle:
 - `restoreWallet(request:)`
 - `restoreWallet(name:mnemonic:birthdayHeight:mnemonicLanguage:)`
 - `importViewingWallet(request:)`
-- `importViewingWallet(name:saplingViewingKey:orchardViewingKey:birthdayHeight:)`
+- `importViewingWallet(name:saplingViewingKey:ironwoodViewingKey:birthdayHeight:)`
 - `switchWallet(walletId:)`
 - `renameWallet(walletId:newName:)`
 - `deleteWallet(walletId:)`
@@ -54,7 +54,7 @@ Wallet lifecycle:
 - `restoreWalletAsync(request:)`
 - `restoreWalletAsync(name:mnemonic:birthdayHeight:mnemonicLanguage:)`
 - `importViewingWalletAsync(request:)`
-- `importViewingWalletAsync(name:saplingViewingKey:orchardViewingKey:birthdayHeight:)`
+- `importViewingWalletAsync(name:saplingViewingKey:ironwoodViewingKey:birthdayHeight:)`
 - `switchWalletAsync(walletId:)`
 - `renameWalletAsync(walletId:newName:)`
 - `deleteWalletAsync(walletId:)`
@@ -111,7 +111,7 @@ Address access is split into explicit shielded receive-address APIs.
 `getNextAddress` rotates to and returns the next external receive address,
 `listAddresses` returns generated external receive addresses, and
 `listAddressBalances` returns per-address balance entries. Newly generated
-addresses use Sapling before Orchard activation and Orchard after activation;
+addresses use Sapling before Ironwood activation and Ironwood after activation;
 the current address can remain an older Sapling address until the wallet
 rotates.
 
@@ -125,7 +125,7 @@ Balances and transaction inspection:
 - `getTransactionDetails(walletId:txId:)`
 - `exportPaymentDisclosures(walletId:txId:)`
 - `exportSaplingPaymentDisclosure(walletId:txId:outputIndex:)`
-- `exportOrchardPaymentDisclosure(walletId:txId:actionIndex:)`
+- `exportIronwoodPaymentDisclosure(walletId:txId:actionIndex:)`
 - `verifyPaymentDisclosure(walletId:disclosure:)`
 - `getFeeInfo()`
 - `getBalanceAsync(walletId:)`
@@ -136,7 +136,7 @@ Balances and transaction inspection:
 - `getTransactionDetailsAsync(walletId:txId:)`
 - `exportPaymentDisclosuresAsync(walletId:txId:)`
 - `exportSaplingPaymentDisclosureAsync(walletId:txId:outputIndex:)`
-- `exportOrchardPaymentDisclosureAsync(walletId:txId:actionIndex:)`
+- `exportIronwoodPaymentDisclosureAsync(walletId:txId:actionIndex:)`
 - `verifyPaymentDisclosureAsync(walletId:disclosure:)`
 - `getFeeInfoAsync()`
 
@@ -183,18 +183,18 @@ Send flow:
 wallet ID; endpoint selection currently follows the active wallet.
 
 Change-address selection is automatic. Sapling-only change uses legacy
-same-address change before Orchard activation and Sapling internal change after
-activation; Orchard spends or outputs use Orchard internal change.
+same-address change before Ironwood activation and Sapling internal change after
+activation; Ironwood spends or outputs use Ironwood internal change.
 
 Viewing key and watch-only:
 
 - `exportSaplingViewingKey(walletId:)`
-- `exportOrchardViewingKey(walletId:)`
+- `exportIronwoodViewingKey(walletId:)`
 - `importSaplingViewingKeyAsWatchOnly(request:)`
 - `importSaplingViewingKeyAsWatchOnly(name:saplingViewingKey:birthdayHeight:)`
 - `getWatchOnlyCapabilities(walletId:)`
 - `exportSaplingViewingKeyAsync(walletId:)`
-- `exportOrchardViewingKeyAsync(walletId:)`
+- `exportIronwoodViewingKeyAsync(walletId:)`
 - `importSaplingViewingKeyAsWatchOnlyAsync(request:)`
 - `importSaplingViewingKeyAsWatchOnlyAsync(name:saplingViewingKey:birthdayHeight:)`
 - `getWatchOnlyCapabilitiesAsync(walletId:)`
@@ -204,12 +204,12 @@ Advanced key management:
 - `advancedKeyManagement.listKeyGroups(walletId:)`
 - `advancedKeyManagement.exportKeyGroupKeys(walletId:keyId:)`
 - `advancedKeyManagement.importSpendingKey(request:)`
-- `advancedKeyManagement.importSpendingKey(walletId:birthdayHeight:saplingSpendingKey:orchardSpendingKey:)`
+- `advancedKeyManagement.importSpendingKey(walletId:birthdayHeight:saplingSpendingKey:ironwoodSpendingKey:)`
 - `advancedKeyManagement.exportSeed(walletId:mnemonicLanguage:)`
 - `advancedKeyManagement.listKeyGroupsAsync(walletId:)`
 - `advancedKeyManagement.exportKeyGroupKeysAsync(walletId:keyId:)`
 - `advancedKeyManagement.importSpendingKeyAsync(request:)`
-- `advancedKeyManagement.importSpendingKeyAsync(walletId:birthdayHeight:saplingSpendingKey:orchardSpendingKey:)`
+- `advancedKeyManagement.importSpendingKeyAsync(walletId:birthdayHeight:saplingSpendingKey:ironwoodSpendingKey:)`
 - `advancedKeyManagement.exportSeedAsync(walletId:mnemonicLanguage:)`
 
 ## PirateWalletSynchronizer

@@ -62,7 +62,7 @@ public enum SyncStage: String, Codable {
 
 public enum ShieldedAddressType: String, Codable {
     case sapling = "Sapling"
-    case orchard = "Orchard"
+    case ironwood = "Ironwood"
 }
 
 public enum KeyTypeInfo: String, Codable {
@@ -144,18 +144,18 @@ public struct RestoreWalletRequest: Codable, Equatable {
 public struct ImportViewingWalletRequest: Codable, Equatable {
     public let name: String
     public let saplingViewingKey: String?
-    public let orchardViewingKey: String?
+    public let ironwoodViewingKey: String?
     public let birthdayHeight: Int
 
     public init(
         name: String,
         saplingViewingKey: String? = nil,
-        orchardViewingKey: String? = nil,
+        ironwoodViewingKey: String? = nil,
         birthdayHeight: Int
     ) {
         self.name = name
         self.saplingViewingKey = saplingViewingKey
-        self.orchardViewingKey = orchardViewingKey
+        self.ironwoodViewingKey = ironwoodViewingKey
         self.birthdayHeight = birthdayHeight
     }
 }
@@ -175,18 +175,18 @@ public struct ImportWatchOnlyWalletRequest: Codable, Equatable {
 public struct ImportSpendingKeyRequest: Codable, Equatable {
     public let walletId: String
     public let saplingSpendingKey: String?
-    public let orchardSpendingKey: String?
+    public let ironwoodSpendingKey: String?
     public let birthdayHeight: Int
 
     public init(
         walletId: String,
         saplingSpendingKey: String? = nil,
-        orchardSpendingKey: String? = nil,
+        ironwoodSpendingKey: String? = nil,
         birthdayHeight: Int
     ) {
         self.walletId = walletId
         self.saplingSpendingKey = saplingSpendingKey
-        self.orchardSpendingKey = orchardSpendingKey
+        self.ironwoodSpendingKey = ironwoodSpendingKey
         self.birthdayHeight = birthdayHeight
     }
 }
@@ -268,7 +268,7 @@ public struct Balance: Codable, Equatable {
 
 public struct ShieldedPoolBalances: Codable, Equatable {
     public let sapling: Balance
-    public let orchard: Balance
+    public let ironwood: Balance
 }
 
 public struct TransactionInfo: Codable, Equatable {
@@ -436,7 +436,7 @@ public struct KeyGroupInfo: Codable, Equatable {
     public let keyType: KeyTypeInfo
     public let spendable: Bool
     public let hasSapling: Bool
-    public let hasOrchard: Bool
+    public let hasIronwood: Bool
     public let birthdayHeight: Int64
     public let createdAt: Int64
 }
@@ -444,9 +444,9 @@ public struct KeyGroupInfo: Codable, Equatable {
 public struct KeyExportInfo: Codable, Equatable {
     public let keyId: Int64
     public let saplingViewingKey: String?
-    public let orchardViewingKey: String?
+    public let ironwoodViewingKey: String?
     public let saplingSpendingKey: String?
-    public let orchardSpendingKey: String?
+    public let ironwoodSpendingKey: String?
 }
 
 public struct AddressValidation: Codable, Equatable {

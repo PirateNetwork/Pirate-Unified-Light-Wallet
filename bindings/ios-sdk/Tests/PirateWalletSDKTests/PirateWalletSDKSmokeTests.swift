@@ -42,6 +42,27 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
         invoker.assertFinished()
     }
 
+    func testIronwoodDisclosureUsesIronwoodServiceCommand() throws {
+        let invoker = ScriptedInvoker(expectedCalls: [
+            expected("export_ironwood_payment_disclosure") { request in
+                XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
+                XCTAssertEqual(request["txid"] as? String, "ironwood-tx")
+                XCTAssertEqual(request["action_index"] as? Int, 2)
+                return try ok("idisctest1ironwoodproof")
+            },
+        ])
+
+        let sdk = PirateWalletSDK(invoker: invoker)
+        let disclosure = try sdk.exportIronwoodPaymentDisclosure(
+            walletId: "wallet-1",
+            txId: "ironwood-tx",
+            actionIndex: 2
+        )
+
+        XCTAssertEqual(disclosure, "idisctest1ironwoodproof")
+        invoker.assertFinished()
+    }
+
     func testAdvancedKeyManagementSurface() throws {
         let invoker = ScriptedInvoker(expectedCalls: [
             expected("list_key_groups") { request in
@@ -53,7 +74,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
                         "key_type": "ImportedSpending",
                         "spendable": true,
                         "has_sapling": true,
-                        "has_orchard": true,
+                        "has_ironwood": true,
                         "birthday_height": 2_345_678,
                         "created_at": 1_710_000_999,
                     ],
@@ -65,15 +86,15 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
                 return try ok([
                     "key_id": 7,
                     "sapling_viewing_key": "zxviewsapling",
-                    "orchard_viewing_key": "uvieworchard",
+                    "ironwood_viewing_key": "uviewironwood",
                     "sapling_spending_key": "secret-sapling",
-                    "orchard_spending_key": "secret-orchard",
+                    "ironwood_spending_key": "secret-ironwood",
                 ])
             },
             expected("import_spending_key") { request in
                 XCTAssertEqual(request["wallet_id"] as? String, "wallet-1")
                 XCTAssertEqual(request["sapling_key"] as? String, "secret-sapling")
-                XCTAssertEqual(request["orchard_key"] as? String, "secret-orchard")
+                XCTAssertEqual(request["ironwood_key"] as? String, "secret-ironwood")
                 XCTAssertEqual(request["birthday_height"] as? Int, 2_345_678)
                 return try ok(11)
             },
@@ -90,7 +111,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
             walletId: "wallet-1",
             birthdayHeight: 2_345_678,
             saplingSpendingKey: "secret-sapling",
-            orchardSpendingKey: "secret-orchard"
+            ironwoodSpendingKey: "secret-ironwood"
         )
         let seedWords = try sdk.advancedKeyManagement.exportSeed(walletId: "wallet-1")
 
@@ -98,9 +119,9 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
         XCTAssertEqual(groups.first?.id, 7)
         XCTAssertEqual(groups.first?.keyType, .importedSpending)
         XCTAssertEqual(exportInfo.saplingViewingKey, "zxviewsapling")
-        XCTAssertEqual(exportInfo.orchardViewingKey, "uvieworchard")
+        XCTAssertEqual(exportInfo.ironwoodViewingKey, "uviewironwood")
         XCTAssertEqual(exportInfo.saplingSpendingKey, "secret-sapling")
-        XCTAssertEqual(exportInfo.orchardSpendingKey, "secret-orchard")
+        XCTAssertEqual(exportInfo.ironwoodSpendingKey, "secret-ironwood")
         XCTAssertEqual(importedKeyId, 11)
         XCTAssertEqual(seedWords, "alpha beta gamma")
         invoker.assertFinished()
@@ -201,7 +222,7 @@ final class PirateWalletSDKSmokeTests: XCTestCase {
                         "key_type": "ImportedSpending",
                         "spendable": true,
                         "has_sapling": true,
-                        "has_orchard": true,
+                        "has_ironwood": true,
                         "birthday_height": 4_567_890,
                         "created_at": 1_710_000_222,
                     ],

@@ -156,7 +156,7 @@ public final class PirateWalletSDK {
             params: [
                 "name": request.name,
                 "sapling_viewing_key": request.saplingViewingKey,
-                "orchard_viewing_key": request.orchardViewingKey,
+                "ironwood_viewing_key": request.ironwoodViewingKey,
                 "birthday": request.birthdayHeight,
             ]
         )
@@ -165,14 +165,14 @@ public final class PirateWalletSDK {
     public func importViewingWallet(
         name: String,
         saplingViewingKey: String? = nil,
-        orchardViewingKey: String? = nil,
+        ironwoodViewingKey: String? = nil,
         birthdayHeight: Int
     ) throws -> String {
         try importViewingWallet(
             request: ImportViewingWalletRequest(
                 name: name,
                 saplingViewingKey: saplingViewingKey,
-                orchardViewingKey: orchardViewingKey,
+                ironwoodViewingKey: ironwoodViewingKey,
                 birthdayHeight: birthdayHeight
             )
         )
@@ -361,13 +361,13 @@ public final class PirateWalletSDK {
         )
     }
 
-    public func exportOrchardPaymentDisclosure(
+    public func exportIronwoodPaymentDisclosure(
         walletId: String,
         txId: String,
         actionIndex: Int
     ) throws -> String {
         try stringResult(
-            "export_orchard_payment_disclosure",
+            "export_ironwood_payment_disclosure",
             params: ["wallet_id": walletId, "txid": txId, "action_index": actionIndex]
         )
     }
@@ -483,8 +483,8 @@ public final class PirateWalletSDK {
         try stringResult("export_sapling_viewing_key", params: ["wallet_id": walletId])
     }
 
-    public func exportOrchardViewingKey(walletId: String) throws -> String {
-        try stringResult("export_orchard_viewing_key", params: ["wallet_id": walletId])
+    public func exportIronwoodViewingKey(walletId: String) throws -> String {
+        try stringResult("export_ironwood_viewing_key", params: ["wallet_id": walletId])
     }
 
     public func importSaplingViewingKeyAsWatchOnly(
@@ -586,7 +586,7 @@ public final class PirateWalletAdvancedKeyManagement {
             params: [
                 "wallet_id": request.walletId,
                 "sapling_key": request.saplingSpendingKey,
-                "orchard_key": request.orchardSpendingKey,
+                "ironwood_key": request.ironwoodSpendingKey,
                 "birthday_height": request.birthdayHeight,
             ]
         )
@@ -596,13 +596,13 @@ public final class PirateWalletAdvancedKeyManagement {
         walletId: String,
         birthdayHeight: Int,
         saplingSpendingKey: String? = nil,
-        orchardSpendingKey: String? = nil
+        ironwoodSpendingKey: String? = nil
     ) throws -> Int64 {
         try importSpendingKey(
             request: ImportSpendingKeyRequest(
                 walletId: walletId,
                 saplingSpendingKey: saplingSpendingKey,
-                orchardSpendingKey: orchardSpendingKey,
+                ironwoodSpendingKey: ironwoodSpendingKey,
                 birthdayHeight: birthdayHeight
             )
         )
@@ -866,7 +866,7 @@ extension PirateWalletSDK {
             params: [
                 "name": request.name,
                 "sapling_viewing_key": request.saplingViewingKey,
-                "orchard_viewing_key": request.orchardViewingKey,
+                "ironwood_viewing_key": request.ironwoodViewingKey,
                 "birthday": request.birthdayHeight,
             ]
         )
@@ -875,14 +875,14 @@ extension PirateWalletSDK {
     public func importViewingWalletAsync(
         name: String,
         saplingViewingKey: String? = nil,
-        orchardViewingKey: String? = nil,
+        ironwoodViewingKey: String? = nil,
         birthdayHeight: Int
     ) async throws -> String {
         try await importViewingWalletAsync(
             request: ImportViewingWalletRequest(
                 name: name,
                 saplingViewingKey: saplingViewingKey,
-                orchardViewingKey: orchardViewingKey,
+                ironwoodViewingKey: ironwoodViewingKey,
                 birthdayHeight: birthdayHeight
             )
         )
@@ -1087,13 +1087,13 @@ extension PirateWalletSDK {
         )
     }
 
-    public func exportOrchardPaymentDisclosureAsync(
+    public func exportIronwoodPaymentDisclosureAsync(
         walletId: String,
         txId: String,
         actionIndex: Int
     ) async throws -> String {
         try await stringResultAsync(
-            "export_orchard_payment_disclosure",
+            "export_ironwood_payment_disclosure",
             params: ["wallet_id": walletId, "txid": txId, "action_index": actionIndex]
         )
     }
@@ -1217,8 +1217,8 @@ extension PirateWalletSDK {
         try await stringResultAsync("export_sapling_viewing_key", params: ["wallet_id": walletId])
     }
 
-    public func exportOrchardViewingKeyAsync(walletId: String) async throws -> String {
-        try await stringResultAsync("export_orchard_viewing_key", params: ["wallet_id": walletId])
+    public func exportIronwoodViewingKeyAsync(walletId: String) async throws -> String {
+        try await stringResultAsync("export_ironwood_viewing_key", params: ["wallet_id": walletId])
     }
 
     public func importSaplingViewingKeyAsWatchOnlyAsync(
@@ -1280,7 +1280,7 @@ extension PirateWalletAdvancedKeyManagement {
             params: [
                 "wallet_id": request.walletId,
                 "sapling_key": request.saplingSpendingKey,
-                "orchard_key": request.orchardSpendingKey,
+                "ironwood_key": request.ironwoodSpendingKey,
                 "birthday_height": request.birthdayHeight,
             ]
         )
@@ -1290,13 +1290,13 @@ extension PirateWalletAdvancedKeyManagement {
         walletId: String,
         birthdayHeight: Int,
         saplingSpendingKey: String? = nil,
-        orchardSpendingKey: String? = nil
+        ironwoodSpendingKey: String? = nil
     ) async throws -> Int64 {
         try await importSpendingKeyAsync(
             request: ImportSpendingKeyRequest(
                 walletId: walletId,
                 saplingSpendingKey: saplingSpendingKey,
-                orchardSpendingKey: orchardSpendingKey,
+                ironwoodSpendingKey: ironwoodSpendingKey,
                 birthdayHeight: birthdayHeight
             )
         )
