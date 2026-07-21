@@ -58,7 +58,7 @@ public data class RestoreWalletRequest(
 public data class ImportViewingWalletRequest(
     val name: String,
     val saplingViewingKey: String? = null,
-    val orchardViewingKey: String? = null,
+    val ironwoodViewingKey: String? = null,
     val birthdayHeight: Int,
 )
 
@@ -92,7 +92,7 @@ public data class Balance(
 
 public data class ShieldedPoolBalances(
     val sapling: Balance,
-    val orchard: Balance,
+    val ironwood: Balance,
 )
 
 public data class TransactionInfo(
@@ -318,7 +318,7 @@ public class PirateWalletSdk(
                 "import_viewing_wallet",
                 "name" to request.name,
                 "sapling_viewing_key" to request.saplingViewingKey,
-                "orchard_viewing_key" to request.orchardViewingKey,
+                "ironwood_viewing_key" to request.ironwoodViewingKey,
                 "birthday" to request.birthdayHeight,
             ),
         )
@@ -326,13 +326,13 @@ public class PirateWalletSdk(
     public fun importViewingWallet(
         name: String,
         saplingViewingKey: String? = null,
-        orchardViewingKey: String? = null,
+        ironwoodViewingKey: String? = null,
         birthdayHeight: Int,
     ): String = importViewingWallet(
         ImportViewingWalletRequest(
             name = name,
             saplingViewingKey = saplingViewingKey,
-            orchardViewingKey = orchardViewingKey,
+            ironwoodViewingKey = ironwoodViewingKey,
             birthdayHeight = birthdayHeight,
         ),
     )
@@ -481,10 +481,10 @@ public class PirateWalletSdk(
             ),
         )
 
-    public fun exportOrchardPaymentDisclosure(walletId: String, txId: String, actionIndex: Int): String =
+    public fun exportIronwoodPaymentDisclosure(walletId: String, txId: String, actionIndex: Int): String =
         parseString(
             invokeResult(
-                "export_orchard_payment_disclosure",
+                "export_ironwood_payment_disclosure",
                 "wallet_id" to walletId,
                 "txid" to txId,
                 "action_index" to actionIndex,
@@ -582,8 +582,8 @@ public class PirateWalletSdk(
             invokeResult("export_sapling_viewing_key", "wallet_id" to walletId),
         )
 
-    public fun exportOrchardViewingKey(walletId: String): String =
-        parseString(invokeResult("export_orchard_viewing_key", "wallet_id" to walletId))
+    public fun exportIronwoodViewingKey(walletId: String): String =
+        parseString(invokeResult("export_ironwood_viewing_key", "wallet_id" to walletId))
 
     public fun importSaplingViewingKeyAsWatchOnly(
         request: ImportWatchOnlyWalletRequest,
@@ -649,7 +649,7 @@ public class PirateWalletAdvancedKeyManagement internal constructor(
                 "import_spending_key",
                 "wallet_id" to request.walletId,
                 "sapling_key" to request.saplingSpendingKey,
-                "orchard_key" to request.orchardSpendingKey,
+                "ironwood_key" to request.ironwoodSpendingKey,
                 "birthday_height" to request.birthdayHeight,
             ),
         )
@@ -658,12 +658,12 @@ public class PirateWalletAdvancedKeyManagement internal constructor(
         walletId: String,
         birthdayHeight: Int,
         saplingSpendingKey: String? = null,
-        orchardSpendingKey: String? = null,
+        ironwoodSpendingKey: String? = null,
     ): Long = importSpendingKey(
         ImportSpendingKeyRequest(
             walletId = walletId,
             saplingSpendingKey = saplingSpendingKey,
-            orchardSpendingKey = orchardSpendingKey,
+            ironwoodSpendingKey = ironwoodSpendingKey,
             birthdayHeight = birthdayHeight,
         ),
     )
@@ -752,7 +752,7 @@ private fun parseShieldedPoolBalances(value: Any?): ShieldedPoolBalances {
     val json = value.requireObject("shielded pool balances")
     return ShieldedPoolBalances(
         sapling = parseBalance(json.requireObject("sapling")),
-        orchard = parseBalance(json.requireObject("orchard")),
+        ironwood = parseBalance(json.requireObject("ironwood")),
     )
 }
 
@@ -893,7 +893,7 @@ private fun parseAddressValidation(value: Any?): AddressValidation {
         isValid = json.requireBoolean("is_valid"),
         addressType = when (json.nullableString("address_type")) {
             "Sapling" -> ShieldedAddressType.Sapling
-            "Orchard" -> ShieldedAddressType.Orchard
+            "Ironwood" -> ShieldedAddressType.Ironwood
             null -> null
             else -> throw PirateWalletSdkException(
                 "Unknown shielded address type: ${json.optString("address_type")}",
@@ -1029,7 +1029,7 @@ private fun parseKeyGroupInfo(value: Any?): KeyGroupInfo {
         keyType = parseKeyTypeInfo(json.opt("key_type")),
         spendable = json.requireBoolean("spendable"),
         hasSapling = json.requireBoolean("has_sapling"),
-        hasOrchard = json.requireBoolean("has_orchard"),
+        hasIronwood = json.requireBoolean("has_ironwood"),
         birthdayHeight = json.requireLong("birthday_height"),
         createdAt = json.requireLong("created_at"),
     )
@@ -1040,9 +1040,9 @@ private fun parseKeyExportInfo(value: Any?): KeyExportInfo {
     return KeyExportInfo(
         keyId = json.requireLong("key_id"),
         saplingViewingKey = json.nullableString("sapling_viewing_key"),
-        orchardViewingKey = json.nullableString("orchard_viewing_key"),
+        ironwoodViewingKey = json.nullableString("ironwood_viewing_key"),
         saplingSpendingKey = json.nullableString("sapling_spending_key"),
-        orchardSpendingKey = json.nullableString("orchard_spending_key"),
+        ironwoodSpendingKey = json.nullableString("ironwood_spending_key"),
     )
 }
 
@@ -1281,7 +1281,7 @@ private fun ImportViewingWalletRequest.toJson(): JSONObject =
         .put("name", name)
         .apply {
             saplingViewingKey?.let { put("sapling_viewing_key", it) }
-            orchardViewingKey?.let { put("orchard_viewing_key", it) }
+            ironwoodViewingKey?.let { put("ironwood_viewing_key", it) }
             put("birthday", birthdayHeight)
         }
 

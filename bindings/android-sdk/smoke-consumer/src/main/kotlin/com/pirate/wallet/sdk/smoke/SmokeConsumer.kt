@@ -43,7 +43,7 @@ class SmokeConsumer(
             ImportSpendingKeyRequest(
                 walletId = walletId,
                 saplingSpendingKey = null,
-                orchardSpendingKey = null,
+                ironwoodSpendingKey = null,
                 birthdayHeight = 1,
             ),
         )

@@ -36,6 +36,24 @@ class PirateWalletSdkTest {
     }
 
     @Test
+    fun `Ironwood disclosure uses the Ironwood service command`() {
+        val invoker = ScriptedInvoker(
+            expect("export_ironwood_payment_disclosure") { request ->
+                assertEquals("wallet-1", request.getString("wallet_id"))
+                assertEquals("ironwood-tx", request.getString("txid"))
+                assertEquals(2, request.getInt("action_index"))
+                ok("idisctest1ironwoodproof")
+            },
+        )
+
+        val sdk = PirateWalletSdk(invoker)
+        val disclosure = sdk.exportIronwoodPaymentDisclosure("wallet-1", "ironwood-tx", 2)
+
+        assertEquals("idisctest1ironwoodproof", disclosure)
+        invoker.assertFinished()
+    }
+
+    @Test
     fun `wallet listing and active wallet resolve through the typed facade`() {
         val walletsJson = JSONArray()
             .put(walletJson(id = "wallet-1", name = "Primary", networkType = "mainnet"))
@@ -150,7 +168,7 @@ class PirateWalletSdkTest {
                                 .put("pending", 2_000L),
                         )
                         .put(
-                            "orchard",
+                            "ironwood",
                             JSONObject()
                                 .put("total", 25_000L)
                                 .put("spendable", 20_000L)
@@ -166,9 +184,9 @@ class PirateWalletSdkTest {
         assertEquals(10_000L, balances.sapling.total)
         assertEquals(8_000L, balances.sapling.spendable)
         assertEquals(2_000L, balances.sapling.pending)
-        assertEquals(25_000L, balances.orchard.total)
-        assertEquals(20_000L, balances.orchard.spendable)
-        assertEquals(5_000L, balances.orchard.pending)
+        assertEquals(25_000L, balances.ironwood.total)
+        assertEquals(20_000L, balances.ironwood.spendable)
+        assertEquals(5_000L, balances.ironwood.pending)
         invoker.assertFinished()
     }
 
@@ -309,7 +327,7 @@ class PirateWalletSdkTest {
     }
 
     @Test
-    fun `advanced key management exposes typed sapling and orchard key operations`() {
+    fun `advanced key management exposes typed sapling and ironwood key operations`() {
         val invoker = ScriptedInvoker(
             expect("list_key_groups") { request ->
                 assertEquals("wallet-1", request.getString("wallet_id"))
@@ -321,7 +339,7 @@ class PirateWalletSdkTest {
                             .put("key_type", "ImportedSpending")
                             .put("spendable", true)
                             .put("has_sapling", true)
-                            .put("has_orchard", true)
+                            .put("has_ironwood", true)
                             .put("birthday_height", 2_345_678L)
                             .put("created_at", 1_710_000_999L),
                     ),
@@ -334,15 +352,15 @@ class PirateWalletSdkTest {
                     JSONObject()
                         .put("key_id", 7L)
                         .put("sapling_viewing_key", "zxviewsapling")
-                        .put("orchard_viewing_key", "uvieworchard")
+                        .put("ironwood_viewing_key", "uviewironwood")
                         .put("sapling_spending_key", "secret-sapling")
-                        .put("orchard_spending_key", "secret-orchard"),
+                        .put("ironwood_spending_key", "secret-ironwood"),
                 )
             },
             expect("import_spending_key") { request ->
                 assertEquals("wallet-1", request.getString("wallet_id"))
                 assertEquals("secret-sapling", request.getString("sapling_key"))
-                assertEquals("secret-orchard", request.getString("orchard_key"))
+                assertEquals("secret-ironwood", request.getString("ironwood_key"))
                 assertEquals(2_345_678, request.getInt("birthday_height"))
                 ok(11L)
             },
@@ -359,7 +377,7 @@ class PirateWalletSdkTest {
             walletId = "wallet-1",
             birthdayHeight = 2_345_678,
             saplingSpendingKey = "secret-sapling",
-            orchardSpendingKey = "secret-orchard",
+            ironwoodSpendingKey = "secret-ironwood",
         )
         val seedWords = sdk.advancedKeyManagement.exportSeed("wallet-1")
 
@@ -367,11 +385,11 @@ class PirateWalletSdkTest {
         assertEquals(7L, groups.first().id)
         assertEquals(KeyTypeInfo.ImportedSpending, groups.first().keyType)
         assertTrue(groups.first().hasSapling)
-        assertTrue(groups.first().hasOrchard)
+        assertTrue(groups.first().hasIronwood)
         assertEquals("zxviewsapling", exportInfo.saplingViewingKey)
-        assertEquals("uvieworchard", exportInfo.orchardViewingKey)
+        assertEquals("uviewironwood", exportInfo.ironwoodViewingKey)
         assertEquals("secret-sapling", exportInfo.saplingSpendingKey)
-        assertEquals("secret-orchard", exportInfo.orchardSpendingKey)
+        assertEquals("secret-ironwood", exportInfo.ironwoodSpendingKey)
         assertEquals(11L, importedKeyId)
         assertEquals("alpha beta gamma", seedWords)
         invoker.assertFinished()

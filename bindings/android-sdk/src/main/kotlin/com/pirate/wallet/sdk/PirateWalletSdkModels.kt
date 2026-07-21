@@ -56,7 +56,7 @@ public data class KeyGroupInfo(
     val keyType: KeyTypeInfo,
     val spendable: Boolean,
     val hasSapling: Boolean,
-    val hasOrchard: Boolean,
+    val hasIronwood: Boolean,
     val birthdayHeight: Long,
     val createdAt: Long,
 )
@@ -64,15 +64,15 @@ public data class KeyGroupInfo(
 public data class KeyExportInfo(
     val keyId: Long,
     val saplingViewingKey: String?,
-    val orchardViewingKey: String?,
+    val ironwoodViewingKey: String?,
     val saplingSpendingKey: String?,
-    val orchardSpendingKey: String?,
+    val ironwoodSpendingKey: String?,
 )
 
 public data class ImportSpendingKeyRequest(
     val walletId: String,
     val saplingSpendingKey: String? = null,
-    val orchardSpendingKey: String? = null,
+    val ironwoodSpendingKey: String? = null,
     val birthdayHeight: Int,
 )
 
@@ -84,7 +84,7 @@ public data class ImportWatchOnlyWalletRequest(
 
 public enum class ShieldedAddressType {
     Sapling,
-    Orchard,
+    Ironwood,
 }
 
 public data class AddressValidation(

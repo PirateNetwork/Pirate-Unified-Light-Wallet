@@ -33,7 +33,7 @@ Wallet lifecycle:
 - `restoreWallet(request)`
 - `restoreWallet(name, mnemonic, birthdayHeight = null, mnemonicLanguage = null)`
 - `importViewingWallet(request)`
-- `importViewingWallet(name, saplingViewingKey = null, orchardViewingKey = null, birthdayHeight)`
+- `importViewingWallet(name, saplingViewingKey = null, ironwoodViewingKey = null, birthdayHeight)`
 - `switchWallet(walletId)`
 - `renameWallet(walletId, newName)`
 - `deleteWallet(walletId)`
@@ -75,7 +75,7 @@ Address access is split into explicit shielded receive-address APIs.
 `getNextAddress` rotates to and returns the next external receive address,
 `listAddresses` returns generated external receive addresses, and
 `listAddressBalances` returns per-address balance entries. Newly generated
-addresses use Sapling before Orchard activation and Orchard after activation;
+addresses use Sapling before Ironwood activation and Ironwood after activation;
 the current address can remain an older Sapling address until the wallet
 rotates.
 
@@ -89,7 +89,7 @@ Balances and transaction inspection:
 - `getTransactionDetails(walletId, txId)`
 - `exportPaymentDisclosures(walletId, txId)`
 - `exportSaplingPaymentDisclosure(walletId, txId, outputIndex)`
-- `exportOrchardPaymentDisclosure(walletId, txId, actionIndex)`
+- `exportIronwoodPaymentDisclosure(walletId, txId, actionIndex)`
 - `verifyPaymentDisclosure(walletId, disclosure)`
 - `getFeeInfo()`
 
@@ -123,13 +123,13 @@ Send flow:
 wallet ID; endpoint selection currently follows the active wallet.
 
 Change-address selection is automatic. Sapling-only change uses legacy
-same-address change before Orchard activation and Sapling internal change after
-activation; Orchard spends or outputs use Orchard internal change.
+same-address change before Ironwood activation and Sapling internal change after
+activation; Ironwood spends or outputs use Ironwood internal change.
 
 Viewing key and watch-only:
 
 - `exportSaplingViewingKey(walletId)`
-- `exportOrchardViewingKey(walletId)`
+- `exportIronwoodViewingKey(walletId)`
 - `importSaplingViewingKeyAsWatchOnly(request)`
 - `importSaplingViewingKeyAsWatchOnly(name, saplingViewingKey, birthdayHeight)`
 - `getWatchOnlyCapabilities(walletId)`
@@ -139,7 +139,7 @@ Advanced key management:
 - `advancedKeyManagement.listKeyGroups(walletId)`
 - `advancedKeyManagement.exportKeyGroupKeys(walletId, keyId)`
 - `advancedKeyManagement.importSpendingKey(request)`
-- `advancedKeyManagement.importSpendingKey(walletId, birthdayHeight, saplingSpendingKey = null, orchardSpendingKey = null)`
+- `advancedKeyManagement.importSpendingKey(walletId, birthdayHeight, saplingSpendingKey = null, ironwoodSpendingKey = null)`
 - `advancedKeyManagement.exportSeed(walletId, mnemonicLanguage = null)`
 
 ## PirateWalletSynchronizer

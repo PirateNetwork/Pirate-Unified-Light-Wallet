@@ -20,7 +20,7 @@ That includes:
 - watch-only wallet import
 - receive addresses
 - balances
-- optional Sapling and Orchard split balances
+- optional Sapling and Ironwood split balances
 - sync control
 - a polling synchronizer surface
 - send, build, sign, and broadcast
@@ -33,9 +33,9 @@ That includes:
 There is also a separate advanced key-management surface for higher-risk operations:
 
 - list key groups
-- export Sapling and Orchard viewing keys
-- export Sapling and Orchard spending keys
-- import Sapling and Orchard spending keys
+- export Sapling and Ironwood viewing keys
+- export Sapling and Ironwood spending keys
+- import Sapling and Ironwood spending keys
 - raw seed export
 
 Those live under `sdk.advancedKeyManagement`.
