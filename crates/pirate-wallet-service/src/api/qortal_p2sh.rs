@@ -1,14 +1,13 @@
 use super::*;
 use crate::models::{Output, SignedTx};
 use pirate_core::keys::{
-    ExtendedSpendingKey, OrchardExtendedSpendingKey, OrchardPaymentAddress, PaymentAddress,
+    ExtendedSpendingKey, IronwoodExtendedSpendingKey, IronwoodPaymentAddress, PaymentAddress,
 };
 use pirate_core::{
     build_qortal_p2sh_funding_transaction, build_qortal_p2sh_redeem_transaction, Memo,
     QortalP2shFundingPlan, QortalP2shRedeemPlan, QortalRecipient,
 };
 use zcash_keys::address::Address as RecipientAddress;
-use zcash_primitives::transaction::Transaction;
 use zcash_transparent::address::TransparentAddress;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -84,7 +83,7 @@ fn validate_script_bytes(name: &str, bytes: &[u8]) -> Result<()> {
 fn decode_pirate_orchard_address(
     network_type: NetworkType,
     address: &str,
-) -> Result<Option<OrchardPaymentAddress>> {
+) -> Result<Option<IronwoodPaymentAddress>> {
     let expected_prefix = match network_type {
         NetworkType::Mainnet => "pirate1",
         NetworkType::Testnet => "pirate-test1",
@@ -95,9 +94,9 @@ fn decode_pirate_orchard_address(
         return Ok(None);
     }
 
-    OrchardPaymentAddress::decode_any_network(address)
+    IronwoodPaymentAddress::decode_any_network(address)
         .map(Some)
-        .map_err(|e| anyhow!("Invalid Orchard address: {}", e))
+        .map_err(|e| anyhow!("Invalid Ironwood address: {}", e))
 }
 
 fn validate_qortal_funding_input_address(network_type: NetworkType, input: &str) -> Result<()> {
@@ -237,7 +236,7 @@ fn parse_qortal_recipient(
         .map(|s| Memo::from_text_truncated(s.clone()));
 
     if let Some(address) = decode_pirate_orchard_address(network_type, &output.addr)? {
-        return Ok(QortalRecipient::Orchard {
+        return Ok(QortalRecipient::Ironwood {
             address: address.inner,
             amount: output.amount,
             memo,
@@ -267,7 +266,7 @@ fn parse_qortal_recipient(
             if let Some(orchard) = orchard.filter(|_| {
                 !address.has_sapling() && !address.has_transparent() && address.unknown().is_empty()
             }) {
-                Ok(QortalRecipient::Orchard {
+                Ok(QortalRecipient::Ironwood {
                     address: orchard,
                     amount: output.amount,
                     memo,
@@ -303,7 +302,7 @@ fn signed_tx_from_core(tx: pirate_core::shielded_builder::SignedShieldedTransact
 
 fn current_orchard_anchor(repo: &Repository, height: u64) -> Result<Option<orchard::tree::Anchor>> {
     repo.resolve_orchard_anchor_from_db_state(height)
-        .map_err(|e| anyhow!("Failed to resolve Orchard anchor: {}", e))
+        .map_err(|e| anyhow!("Failed to resolve Ironwood anchor: {}", e))
 }
 
 fn resolve_fixed_internal_change_index(
@@ -368,8 +367,8 @@ pub async fn qortal_send_p2sh(
         .as_ref()
         .or(secret.orchard_extsk.as_ref())
         .map(|bytes| {
-            OrchardExtendedSpendingKey::from_bytes(bytes)
-                .map_err(|e| anyhow!("Invalid Orchard spending key bytes: {}", e))
+            IronwoodExtendedSpendingKey::from_bytes(bytes)
+                .map_err(|e| anyhow!("Invalid Ironwood spending key bytes: {}", e))
         })
         .transpose()?;
 
@@ -388,7 +387,7 @@ pub async fn qortal_send_p2sh(
             }
         }
         if let Some(bytes) = account_key.orchard_extsk.as_ref() {
-            if let Ok(parsed) = OrchardExtendedSpendingKey::from_bytes(bytes) {
+            if let Ok(parsed) = IronwoodExtendedSpendingKey::from_bytes(bytes) {
                 orchard_keys_by_id.insert(key_id, parsed);
             }
         }
@@ -411,7 +410,7 @@ pub async fn qortal_send_p2sh(
     let spendability = sync_control::require_spendability_ready_with_sync_trigger(&wallet_id)?;
     let orchard_anchor = if notes
         .iter()
-        .any(|note| note.note_type == pirate_core::selection::NoteType::Orchard)
+        .any(|note| note.note_type == pirate_core::selection::NoteType::Ironwood)
         || request.output.iter().any(|output| {
             output.addr.starts_with("pirate1")
                 || output.addr.starts_with("pirate-test1")
@@ -426,7 +425,7 @@ pub async fn qortal_send_p2sh(
 
     let has_orchard_spends = notes
         .iter()
-        .any(|note| note.note_type == pirate_core::selection::NoteType::Orchard);
+        .any(|note| note.note_type == pirate_core::selection::NoteType::Ironwood);
     let has_orchard_outputs = request.output.iter().any(|output| {
         output.addr.starts_with("pirate1")
             || output.addr.starts_with("pirate-test1")
@@ -444,12 +443,12 @@ pub async fn qortal_send_p2sh(
         let (change_addr, address_type) = if use_orchard_change {
             let orchard_key = default_orchard_key
                 .as_ref()
-                .ok_or_else(|| anyhow!("Orchard spending key required for Orchard change"))?;
+                .ok_or_else(|| anyhow!("Ironwood spending key required for Ironwood change"))?;
             let address = orchard_key
                 .to_extended_fvk()
                 .address_at_internal(change_index)
                 .encode_for_network(network_type)?;
-            (address, pirate_storage_sqlite::AddressType::Orchard)
+            (address, pirate_storage_sqlite::AddressType::Ironwood)
         } else {
             let address = default_sapling_key
                 .to_internal_fvk()
@@ -476,12 +475,12 @@ pub async fn qortal_send_p2sh(
     let signed = build_qortal_p2sh_funding_transaction(QortalP2shFundingPlan {
         network_type,
         default_sapling_spending_key: &default_sapling_key,
-        default_orchard_spending_key: default_orchard_key.as_ref(),
+        default_ironwood_spending_key: default_orchard_key.as_ref(),
         sapling_spending_keys_by_id: sapling_keys_by_id,
-        orchard_spending_keys_by_id: orchard_keys_by_id,
+        ironwood_spending_keys_by_id: orchard_keys_by_id,
         available_notes: notes,
         target_height,
-        orchard_anchor,
+        ironwood_anchor: orchard_anchor,
         change_diversifier_index: change_index,
         recipients,
         fee: request.fee,
@@ -516,8 +515,7 @@ pub async fn qortal_redeem_p2sh(
         u32::try_from(latest_height).map_err(|_| anyhow!("Latest block height exceeds u32"))?;
 
     let funding_raw = client.get_transaction(&txid).await?;
-    let funding_tx = Transaction::read(&funding_raw[..], BranchId::Nu5)
-        .or_else(|_| Transaction::read(&funding_raw[..], BranchId::Canopy))
+    let funding_tx = read_pirate_transaction(&funding_raw)
         .map_err(|e| anyhow!("Failed to parse funding transaction: {}", e))?;
     let funding_output = funding_tx
         .transparent_bundle()
@@ -539,10 +537,10 @@ pub async fn qortal_redeem_p2sh(
     }) {
         let tree_state = client.get_tree_state(latest_height).await?;
         let anchor_bytes = tx_flow::parse_orchard_root_from_tree_state(&tree_state)
-            .ok_or_else(|| anyhow!("Lightwalletd did not return a valid Orchard tree root"))?;
+            .ok_or_else(|| anyhow!("Lightwalletd did not return a valid Ironwood tree root"))?;
         let anchor =
             Option::<orchard::tree::Anchor>::from(orchard::tree::Anchor::from_bytes(anchor_bytes))
-                .ok_or_else(|| anyhow!("Lightwalletd returned an invalid Orchard anchor"))?;
+                .ok_or_else(|| anyhow!("Lightwalletd returned an invalid Ironwood anchor"))?;
         Some(anchor)
     } else {
         None
@@ -558,7 +556,7 @@ pub async fn qortal_redeem_p2sh(
     let signed = build_qortal_p2sh_redeem_transaction(QortalP2shRedeemPlan {
         network_type,
         target_height,
-        orchard_anchor,
+        ironwood_anchor: orchard_anchor,
         funding_txid: txid,
         funding_coin: funding_output,
         recipients,
@@ -586,7 +584,7 @@ mod tests {
     };
     use crate::api::NetworkType;
     use crate::models::Output;
-    use pirate_core::keys::OrchardExtendedSpendingKey;
+    use pirate_core::keys::IronwoodExtendedSpendingKey;
     use pirate_core::transaction::PirateNetwork;
     use zcash_keys::address::Address as RecipientAddress;
     use zcash_transparent::address::TransparentAddress;
@@ -603,7 +601,7 @@ mod tests {
     }
 
     fn sample_output() -> Output {
-        let orchard_key = OrchardExtendedSpendingKey::master(&[7u8; 32]).unwrap();
+        let orchard_key = IronwoodExtendedSpendingKey::master(&[7u8; 32]).unwrap();
         let orchard_address = orchard_key
             .to_extended_fvk()
             .address_at(0)
@@ -780,8 +778,8 @@ mod tests {
     }
 
     #[test]
-    fn orchard_recipients_are_accepted_when_valid() {
-        let orchard_key = OrchardExtendedSpendingKey::master(&[7u8; 32]).unwrap();
+    fn ironwood_recipients_are_accepted_when_valid() {
+        let orchard_key = IronwoodExtendedSpendingKey::master(&[7u8; 32]).unwrap();
         let orchard_address = orchard_key
             .to_extended_fvk()
             .address_at(0)
@@ -797,7 +795,7 @@ mod tests {
         assert_eq!(recipients.len(), 1);
         assert!(matches!(
             recipients[0],
-            pirate_core::QortalRecipient::Orchard { .. }
+            pirate_core::QortalRecipient::Ironwood { .. }
         ));
     }
 }

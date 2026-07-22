@@ -1,18 +1,18 @@
 #![allow(missing_docs, unexpected_cfgs)]
 
 use crate::fees::{apply_dust_policy_add_to_fee, CHANGE_DUST_THRESHOLD};
-use crate::keys::{ExtendedSpendingKey, OrchardExtendedSpendingKey, PaymentAddress};
+use crate::keys::{ExtendedSpendingKey, IronwoodExtendedSpendingKey, PaymentAddress};
 use crate::memo::Memo;
-use crate::params::{orchard_params, sapling_prover};
+use crate::params::{ironwood_params, sapling_prover};
 use crate::selection::{NoteType, SelectableNote};
 use crate::shielded_builder::SelectedSpendNoteRef;
 use crate::transaction::PirateNetwork;
 use crate::{Error, Result};
-use orchard::builder::{Builder as OrchardBuilder, BundleType as OrchardBundleType};
-use orchard::bundle::BundleVersion as OrchardBundleVersion;
-use orchard::keys::FullViewingKey as OrchardFullViewingKey;
-use orchard::tree::Anchor as OrchardAnchor;
-use orchard::value::NoteValue as OrchardNoteValue;
+use orchard::builder::{Builder as IronwoodBuilder, BundleType as IronwoodBundleType};
+use orchard::bundle::BundleVersion as IronwoodBundleVersion;
+use orchard::keys::FullViewingKey as IronwoodFullViewingKey;
+use orchard::tree::Anchor as IronwoodAnchor;
+use orchard::value::NoteValue as IronwoodNoteValue;
 use sapling::{
     builder::{
         Builder as SaplingBuilder, BundleType as SaplingBundleType, Proven as SaplingProven,
@@ -81,7 +81,7 @@ pub enum QortalRecipient {
         amount: u64,
         memo: Option<Memo>,
     },
-    Orchard {
+    Ironwood {
         address: orchard::Address,
         amount: u64,
         memo: Option<Memo>,
@@ -95,12 +95,12 @@ pub enum QortalRecipient {
 pub struct QortalP2shFundingPlan<'a> {
     pub network_type: pirate_params::NetworkType,
     pub default_sapling_spending_key: &'a ExtendedSpendingKey,
-    pub default_orchard_spending_key: Option<&'a OrchardExtendedSpendingKey>,
+    pub default_ironwood_spending_key: Option<&'a IronwoodExtendedSpendingKey>,
     pub sapling_spending_keys_by_id: HashMap<i64, ExtendedSpendingKey>,
-    pub orchard_spending_keys_by_id: HashMap<i64, OrchardExtendedSpendingKey>,
+    pub ironwood_spending_keys_by_id: HashMap<i64, IronwoodExtendedSpendingKey>,
     pub available_notes: Vec<SelectableNote>,
     pub target_height: u32,
-    pub orchard_anchor: Option<OrchardAnchor>,
+    pub ironwood_anchor: Option<IronwoodAnchor>,
     pub change_diversifier_index: u32,
     pub recipients: Vec<QortalRecipient>,
     pub fee: u64,
@@ -111,7 +111,7 @@ pub struct QortalP2shFundingPlan<'a> {
 pub struct QortalP2shRedeemPlan {
     pub network_type: pirate_params::NetworkType,
     pub target_height: u32,
-    pub orchard_anchor: Option<OrchardAnchor>,
+    pub ironwood_anchor: Option<IronwoodAnchor>,
     pub funding_txid: [u8; 32],
     pub funding_coin: TxOut,
     pub recipients: Vec<QortalRecipient>,
@@ -227,15 +227,15 @@ fn memo_bytes_array(memo: &Option<Memo>) -> Result<[u8; 512]> {
     }
 }
 
-fn new_orchard_builder(anchor: OrchardAnchor) -> Result<OrchardBuilder> {
-    let bundle_version = OrchardBundleVersion::orchard_v2();
-    OrchardBuilder::new(
-        OrchardBundleType::DEFAULT,
+fn new_ironwood_builder(anchor: IronwoodAnchor) -> Result<IronwoodBuilder> {
+    let bundle_version = IronwoodBundleVersion::ironwood_v3();
+    IronwoodBuilder::new(
+        IronwoodBundleType::DEFAULT,
         bundle_version,
         bundle_version.default_flags(),
         anchor,
     )
-    .map_err(|e| Error::TransactionBuild(format!("Failed to create Orchard builder: {:?}", e)))
+    .map_err(|e| Error::TransactionBuild(format!("Failed to create Ironwood builder: {:?}", e)))
 }
 
 struct OutputBuildOptions<'a> {
@@ -247,7 +247,7 @@ struct OutputBuildOptions<'a> {
 
 fn add_outputs_and_script(
     sapling_builder: &mut SaplingBuilder,
-    orchard_builder: &mut Option<OrchardBuilder>,
+    ironwood_builder: &mut Option<IronwoodBuilder>,
     transparent_vout: &mut Vec<TxOut>,
     recipients: &[QortalRecipient],
     options: OutputBuildOptions<'_>,
@@ -278,24 +278,24 @@ fn add_outputs_and_script(
                         Error::TransactionBuild(format!("Failed to add Sapling output: {:?}", e))
                     })?;
             }
-            QortalRecipient::Orchard {
+            QortalRecipient::Ironwood {
                 address,
                 amount,
                 memo,
             } => {
                 has_orchard = true;
-                let builder = orchard_builder.as_mut().ok_or_else(|| {
-                    Error::TransactionBuild("Orchard builder not initialized".to_string())
+                let builder = ironwood_builder.as_mut().ok_or_else(|| {
+                    Error::TransactionBuild("Ironwood builder not initialized".to_string())
                 })?;
                 builder
                     .add_output(
                         options.orchard_ovk.clone(),
                         *address,
-                        OrchardNoteValue::from_raw(*amount),
+                        IronwoodNoteValue::from_raw(*amount),
                         memo_bytes_array(memo)?,
                     )
                     .map_err(|e| {
-                        Error::TransactionBuild(format!("Failed to add Orchard output: {:?}", e))
+                        Error::TransactionBuild(format!("Failed to add Ironwood output: {:?}", e))
                     })?;
             }
             QortalRecipient::Transparent { address, amount } => {
@@ -334,7 +334,7 @@ pub fn build_qortal_p2sh_funding_transaction(
         .iter()
         .map(|recipient| match recipient {
             QortalRecipient::Sapling { amount, .. }
-            | QortalRecipient::Orchard { amount, .. }
+            | QortalRecipient::Ironwood { amount, .. }
             | QortalRecipient::Transparent { amount, .. } => *amount,
         })
         .sum::<u64>();
@@ -361,13 +361,13 @@ pub fn build_qortal_p2sh_funding_transaction(
         .to_extended_fvk()
         .outgoing_viewing_key();
     let orchard_ovk = plan
-        .default_orchard_spending_key
+        .default_ironwood_spending_key
         .map(|sk| sk.to_extended_fvk().to_ovk());
 
     let has_orchard_spends = selection
         .notes
         .iter()
-        .any(|note| note.note_type == NoteType::Orchard);
+        .any(|note| note.note_type == NoteType::Ironwood);
     let has_sapling_spends = selection
         .notes
         .iter()
@@ -375,10 +375,17 @@ pub fn build_qortal_p2sh_funding_transaction(
     let has_orchard_outputs = plan
         .recipients
         .iter()
-        .any(|recipient| matches!(recipient, QortalRecipient::Orchard { .. }));
+        .any(|recipient| matches!(recipient, QortalRecipient::Ironwood { .. }));
     let use_orchard_change = has_orchard_spends || has_orchard_outputs;
     let use_sapling_internal_change =
         crate::sapling_internal_change_active(plan.network_type, u64::from(plan.target_height));
+    let branch_id = zcash_protocol::consensus::BranchId::for_height(&network, target_height);
+    let tx_version = TxVersion::suggested_for_branch(branch_id);
+    if (has_orchard_spends || has_orchard_outputs) && !matches!(tx_version, TxVersion::V6) {
+        return Err(Error::TransactionBuild(
+            "Ironwood is not active at the target height".to_string(),
+        ));
+    }
 
     let sapling_anchor = if has_sapling_spends {
         selected_sapling_anchor(&selection.notes)?.ok_or_else(|| {
@@ -388,9 +395,9 @@ pub fn build_qortal_p2sh_funding_transaction(
         SaplingAnchor::empty_tree()
     };
     let mut sapling_builder = new_sapling_builder(&network, target_height, sapling_anchor);
-    let mut orchard_builder = if has_orchard_spends || has_orchard_outputs || use_orchard_change {
-        Some(new_orchard_builder(plan.orchard_anchor.ok_or_else(
-            || Error::TransactionBuild("Missing Orchard anchor".to_string()),
+    let mut ironwood_builder = if has_orchard_spends || has_orchard_outputs || use_orchard_change {
+        Some(new_ironwood_builder(plan.ironwood_anchor.ok_or_else(
+            || Error::TransactionBuild("Missing Ironwood anchor".to_string()),
         )?)?)
     } else {
         None
@@ -458,28 +465,28 @@ pub fn build_qortal_p2sh_funding_transaction(
                     })?;
                 sapling_extsks.push(spend_key.inner().clone());
             }
-            NoteType::Orchard => {
-                let orchard_note = note
-                    .orchard_note
-                    .ok_or_else(|| Error::TransactionBuild("Missing Orchard note".to_string()))?;
-                let merkle_path = note.orchard_merkle_path.ok_or_else(|| {
-                    Error::TransactionBuild("Missing Orchard merkle path".to_string())
+            NoteType::Ironwood => {
+                let ironwood_note = note
+                    .ironwood_note
+                    .ok_or_else(|| Error::TransactionBuild("Missing Ironwood note".to_string()))?;
+                let merkle_path = note.ironwood_merkle_path.ok_or_else(|| {
+                    Error::TransactionBuild("Missing Ironwood merkle path".to_string())
                 })?;
                 let orchard_key = note
                     .key_id
-                    .and_then(|key_id| plan.orchard_spending_keys_by_id.get(&key_id))
-                    .or(plan.default_orchard_spending_key)
+                    .and_then(|key_id| plan.ironwood_spending_keys_by_id.get(&key_id))
+                    .or(plan.default_ironwood_spending_key)
                     .ok_or_else(|| {
-                        Error::TransactionBuild("Missing Orchard spending key".to_string())
+                        Error::TransactionBuild("Missing Ironwood spending key".to_string())
                     })?;
-                let fvk: OrchardFullViewingKey = orchard_key.full_viewing_key();
+                let fvk: IronwoodFullViewingKey = orchard_key.full_viewing_key();
                 orchard_spend_auth_keys.push(orchard_key.spend_authorizing_key());
-                orchard_builder
+                ironwood_builder
                     .as_mut()
-                    .expect("orchard builder")
-                    .add_spend(fvk, orchard_note, merkle_path)
+                    .expect("ironwood builder")
+                    .add_spend(fvk, ironwood_note, merkle_path)
                     .map_err(|e| {
-                        Error::TransactionBuild(format!("Failed to add Orchard spend: {:?}", e))
+                        Error::TransactionBuild(format!("Failed to add Ironwood spend: {:?}", e))
                     })?;
             }
         }
@@ -487,7 +494,7 @@ pub fn build_qortal_p2sh_funding_transaction(
 
     add_outputs_and_script(
         &mut sapling_builder,
-        &mut orchard_builder,
+        &mut ironwood_builder,
         &mut transparent_vout,
         &plan.recipients,
         OutputBuildOptions {
@@ -500,23 +507,23 @@ pub fn build_qortal_p2sh_funding_transaction(
 
     if change >= CHANGE_DUST_THRESHOLD {
         if use_orchard_change {
-            let orchard_key = plan.default_orchard_spending_key.ok_or_else(|| {
-                Error::TransactionBuild("Missing Orchard spending key for change".to_string())
+            let orchard_key = plan.default_ironwood_spending_key.ok_or_else(|| {
+                Error::TransactionBuild("Missing Ironwood spending key for change".to_string())
             })?;
             let address = orchard_key
                 .to_extended_fvk()
                 .address_at_internal(plan.change_diversifier_index);
-            orchard_builder
+            ironwood_builder
                 .as_mut()
-                .expect("orchard builder")
+                .expect("ironwood builder")
                 .add_output(
                     orchard_ovk,
                     address.inner,
-                    OrchardNoteValue::from_raw(change),
+                    IronwoodNoteValue::from_raw(change),
                     *MemoBytes::empty().as_array(),
                 )
                 .map_err(|e| {
-                    Error::TransactionBuild(format!("Failed to add Orchard change: {:?}", e))
+                    Error::TransactionBuild(format!("Failed to add Ironwood change: {:?}", e))
                 })?;
         } else if use_sapling_internal_change {
             let address = plan
@@ -561,11 +568,11 @@ pub fn build_qortal_p2sh_funding_transaction(
         .map_err(|e| Error::TransactionBuild(format!("Failed to build Sapling bundle: {:?}", e)))?
         .map(|(bundle, _meta)| bundle.create_proofs(&prover, &prover, &mut rng, ()));
 
-    let orchard_bundle = if let Some(builder) = orchard_builder {
+    let ironwood_bundle = if let Some(builder) = ironwood_builder {
         builder
             .build::<ZatBalance>(&mut rng)
             .map_err(|e| {
-                Error::TransactionBuild(format!("Failed to build Orchard bundle: {:?}", e))
+                Error::TransactionBuild(format!("Failed to build Ironwood bundle: {:?}", e))
             })?
             .map(|(bundle, _meta)| bundle)
     } else {
@@ -585,22 +592,32 @@ pub fn build_qortal_p2sh_funding_transaction(
         })
     };
 
-    let branch_id = zcash_protocol::consensus::BranchId::for_height(&network, target_height);
-    let tx_version = TxVersion::suggested_for_branch(branch_id);
     let expiry_height = target_height + 20;
 
-    let unauth_tx = TransactionData::<CustomUnauthorized>::from_parts(
-        tx_version,
-        branch_id,
-        0,
-        expiry_height,
-        transparent_bundle,
-        None,
-        sapling_bundle,
-        orchard_bundle,
-        #[cfg(feature = "zfuture")]
-        None,
-    );
+    let unauth_tx = if matches!(tx_version, TxVersion::V6) {
+        TransactionData::<CustomUnauthorized>::from_parts_v6(
+            branch_id,
+            0,
+            expiry_height,
+            transparent_bundle,
+            sapling_bundle,
+            None,
+            ironwood_bundle,
+        )
+    } else {
+        TransactionData::<CustomUnauthorized>::from_parts(
+            tx_version,
+            branch_id,
+            0,
+            expiry_height,
+            transparent_bundle,
+            None,
+            sapling_bundle,
+            None,
+            #[cfg(feature = "zfuture")]
+            None,
+        )
+    };
 
     let txid_parts = unauth_tx.digest(TxIdDigester);
     let shielded_sighash = signature_hash(&unauth_tx, &TxSignableInput::Shielded, &txid_parts);
@@ -630,34 +647,46 @@ pub fn build_qortal_p2sh_funding_transaction(
         None => None,
     };
 
-    let orchard_proving_key = &orchard_params().proving_key;
-    let signed_orchard_bundle = match unauth_tx.orchard_bundle().cloned() {
+    let ironwood_proving_key = &ironwood_params().proving_key;
+    let signed_ironwood_bundle = match unauth_tx.ironwood_bundle().cloned() {
         Some(bundle) => Some(
             bundle
-                .create_proof(orchard_proving_key, &mut rng)
+                .create_proof(ironwood_proving_key, &mut rng)
                 .map_err(|e| {
-                    Error::TransactionBuild(format!("Failed to prove Orchard bundle: {:?}", e))
+                    Error::TransactionBuild(format!("Failed to prove Ironwood bundle: {:?}", e))
                 })?
                 .apply_signatures(rng, *shielded_sighash.as_ref(), &orchard_spend_auth_keys)
                 .map_err(|e| {
-                    Error::TransactionBuild(format!("Failed to sign Orchard bundle: {:?}", e))
+                    Error::TransactionBuild(format!("Failed to sign Ironwood bundle: {:?}", e))
                 })?,
         ),
         None => None,
     };
 
-    let authorized_tx = TransactionData::from_parts(
-        tx_version,
-        branch_id,
-        0,
-        expiry_height,
-        signed_transparent_bundle,
-        None,
-        signed_sapling_bundle,
-        signed_orchard_bundle,
-        #[cfg(feature = "zfuture")]
-        None,
-    );
+    let authorized_tx = if matches!(tx_version, TxVersion::V6) {
+        TransactionData::from_parts_v6(
+            branch_id,
+            0,
+            expiry_height,
+            signed_transparent_bundle,
+            signed_sapling_bundle,
+            None,
+            signed_ironwood_bundle,
+        )
+    } else {
+        TransactionData::from_parts(
+            tx_version,
+            branch_id,
+            0,
+            expiry_height,
+            signed_transparent_bundle,
+            None,
+            signed_sapling_bundle,
+            None,
+            #[cfg(feature = "zfuture")]
+            None,
+        )
+    };
 
     let tx = authorized_tx
         .freeze()
@@ -692,12 +721,17 @@ pub fn build_qortal_p2sh_redeem_transaction(
     let has_orchard_outputs = plan
         .recipients
         .iter()
-        .any(|recipient| matches!(recipient, QortalRecipient::Orchard { .. }));
+        .any(|recipient| matches!(recipient, QortalRecipient::Ironwood { .. }));
     let mut sapling_builder =
         new_sapling_builder(&network, target_height, SaplingAnchor::empty_tree());
-    let mut orchard_builder = if has_orchard_outputs {
-        Some(new_orchard_builder(plan.orchard_anchor.ok_or_else(
-            || Error::TransactionBuild("Missing Orchard anchor".to_string()),
+    if has_orchard_outputs && !matches!(tx_version, TxVersion::V6) {
+        return Err(Error::TransactionBuild(
+            "Ironwood is not active at the target height".to_string(),
+        ));
+    }
+    let mut ironwood_builder = if has_orchard_outputs {
+        Some(new_ironwood_builder(plan.ironwood_anchor.ok_or_else(
+            || Error::TransactionBuild("Missing Ironwood anchor".to_string()),
         )?)?)
     } else {
         None
@@ -707,7 +741,7 @@ pub fn build_qortal_p2sh_redeem_transaction(
 
     add_outputs_and_script(
         &mut sapling_builder,
-        &mut orchard_builder,
+        &mut ironwood_builder,
         &mut transparent_vout,
         &plan.recipients,
         OutputBuildOptions {
@@ -748,11 +782,11 @@ pub fn build_qortal_p2sh_redeem_transaction(
         )
         .map_err(|e| Error::TransactionBuild(format!("Failed to build Sapling bundle: {:?}", e)))?
         .map(|(bundle, _meta)| bundle.create_proofs(&prover, &prover, &mut rng, ()));
-    let orchard_bundle = if let Some(builder) = orchard_builder {
+    let ironwood_bundle = if let Some(builder) = ironwood_builder {
         builder
             .build::<ZatBalance>(&mut rng)
             .map_err(|e| {
-                Error::TransactionBuild(format!("Failed to build Orchard bundle: {:?}", e))
+                Error::TransactionBuild(format!("Failed to build Ironwood bundle: {:?}", e))
             })?
             .map(|(bundle, _meta)| bundle)
     } else {
@@ -772,18 +806,30 @@ pub fn build_qortal_p2sh_redeem_transaction(
         },
     });
 
-    let unauth_tx = TransactionData::<CustomUnauthorized>::from_parts(
-        tx_version,
-        branch_id,
-        plan.lock_time,
-        expiry_height,
-        transparent_bundle,
-        None,
-        sapling_bundle,
-        orchard_bundle,
-        #[cfg(feature = "zfuture")]
-        None,
-    );
+    let unauth_tx = if matches!(tx_version, TxVersion::V6) {
+        TransactionData::<CustomUnauthorized>::from_parts_v6(
+            branch_id,
+            plan.lock_time,
+            expiry_height,
+            transparent_bundle,
+            sapling_bundle,
+            None,
+            ironwood_bundle,
+        )
+    } else {
+        TransactionData::<CustomUnauthorized>::from_parts(
+            tx_version,
+            branch_id,
+            plan.lock_time,
+            expiry_height,
+            transparent_bundle,
+            None,
+            sapling_bundle,
+            None,
+            #[cfg(feature = "zfuture")]
+            None,
+        )
+    };
 
     let txid_parts = unauth_tx.digest(TxIdDigester);
     let transparent_signable = TransparentSignableInput::from_parts(
@@ -824,17 +870,17 @@ pub fn build_qortal_p2sh_redeem_transaction(
         None => None,
     };
 
-    let orchard_proving_key = &orchard_params().proving_key;
-    let signed_orchard_bundle = match unauth_tx.orchard_bundle().cloned() {
+    let ironwood_proving_key = &ironwood_params().proving_key;
+    let signed_ironwood_bundle = match unauth_tx.ironwood_bundle().cloned() {
         Some(bundle) => Some(
             bundle
-                .create_proof(orchard_proving_key, &mut rng)
+                .create_proof(ironwood_proving_key, &mut rng)
                 .map_err(|e| {
-                    Error::TransactionBuild(format!("Failed to prove Orchard bundle: {:?}", e))
+                    Error::TransactionBuild(format!("Failed to prove Ironwood bundle: {:?}", e))
                 })?
                 .apply_signatures(rng, *shielded_sighash.as_ref(), &[])
                 .map_err(|e| {
-                    Error::TransactionBuild(format!("Failed to sign Orchard bundle: {:?}", e))
+                    Error::TransactionBuild(format!("Failed to sign Ironwood bundle: {:?}", e))
                 })?,
         ),
         None => None,
@@ -850,18 +896,30 @@ pub fn build_qortal_p2sh_redeem_transaction(
         authorization: TransparentAuthorized,
     });
 
-    let authorized_tx = TransactionData::from_parts(
-        tx_version,
-        branch_id,
-        plan.lock_time,
-        expiry_height,
-        signed_transparent_bundle,
-        None,
-        signed_sapling_bundle,
-        signed_orchard_bundle,
-        #[cfg(feature = "zfuture")]
-        None,
-    );
+    let authorized_tx = if matches!(tx_version, TxVersion::V6) {
+        TransactionData::from_parts_v6(
+            branch_id,
+            plan.lock_time,
+            expiry_height,
+            signed_transparent_bundle,
+            signed_sapling_bundle,
+            None,
+            signed_ironwood_bundle,
+        )
+    } else {
+        TransactionData::from_parts(
+            tx_version,
+            branch_id,
+            plan.lock_time,
+            expiry_height,
+            signed_transparent_bundle,
+            None,
+            signed_sapling_bundle,
+            None,
+            #[cfg(feature = "zfuture")]
+            None,
+        )
+    };
     let tx = authorized_tx
         .freeze()
         .map_err(|e| Error::TransactionBuild(format!("Failed to finalize transaction: {:?}", e)))?;
@@ -880,8 +938,7 @@ pub fn build_qortal_p2sh_redeem_transaction(
 mod tests {
     use super::*;
     use crate::selection::SelectableNote;
-    use zcash_primitives::transaction::Transaction;
-    use zcash_protocol::consensus::BranchId;
+    use orchard::note::NoteVersion;
     use zcash_transparent::address::TransparentAddress;
     use zcash_transparent::bundle::TxOut;
 
@@ -908,7 +965,7 @@ mod tests {
         QortalP2shRedeemPlan {
             network_type: pirate_params::NetworkType::Mainnet,
             target_height: 200_000,
-            orchard_anchor: None,
+            ironwood_anchor: None,
             funding_txid: [4u8; 32],
             funding_coin: funding_coin(50_000),
             recipients: vec![transparent_recipient(7, 40_000)],
@@ -926,9 +983,9 @@ mod tests {
         let result = build_qortal_p2sh_funding_transaction(QortalP2shFundingPlan {
             network_type: pirate_params::NetworkType::Mainnet,
             default_sapling_spending_key: &sapling_key,
-            default_orchard_spending_key: None,
+            default_ironwood_spending_key: None,
             sapling_spending_keys_by_id: HashMap::new(),
-            orchard_spending_keys_by_id: HashMap::new(),
+            ironwood_spending_keys_by_id: HashMap::new(),
             available_notes: vec![SelectableNote::new(
                 10_000,
                 vec![0u8; 32],
@@ -937,7 +994,7 @@ mod tests {
                 0,
             )],
             target_height: 200_000,
-            orchard_anchor: None,
+            ironwood_anchor: None,
             change_diversifier_index: 0,
             recipients: vec![transparent_recipient(5, 20_000)],
             fee: 10_000,
@@ -947,6 +1004,32 @@ mod tests {
 
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Insufficient funds"));
+    }
+
+    #[test]
+    fn qortal_ironwood_builder_uses_v3_notes() {
+        let key = IronwoodExtendedSpendingKey::master(&[7u8; 32]).unwrap();
+        let address = key.to_extended_fvk().address_at(0);
+        let mut builder = new_ironwood_builder(IronwoodAnchor::empty_tree()).unwrap();
+        builder
+            .add_output(
+                None,
+                address.inner,
+                IronwoodNoteValue::from_raw(10_000),
+                [0u8; 512],
+            )
+            .unwrap();
+
+        let (bundle, _) = builder
+            .build::<ZatBalance>(&mut rand::rngs::OsRng)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            bundle.bundle_version(),
+            IronwoodBundleVersion::ironwood_v3()
+        );
+        assert_eq!(bundle.bundle_version().note_version(), NoteVersion::V3);
     }
 
     #[test]
@@ -1000,7 +1083,7 @@ mod tests {
     fn redeem_build_includes_secret_in_script_sig() {
         let secret = vec![8u8, 9u8, 10u8];
         let signed = build_qortal_p2sh_redeem_transaction(redeem_plan(0, secret.clone())).unwrap();
-        let tx = Transaction::read(&signed.raw_tx[..], BranchId::Nu5).unwrap();
+        let tx = crate::read_pirate_transaction(&signed.raw_tx).unwrap();
         let script_sig = &tx.transparent_bundle().unwrap().vin[0].script_sig().0 .0;
 
         assert!(script_sig
@@ -1012,7 +1095,7 @@ mod tests {
     #[test]
     fn refund_build_uses_refund_branch_without_secret() {
         let signed = build_qortal_p2sh_redeem_transaction(redeem_plan(10, Vec::new())).unwrap();
-        let tx = Transaction::read(&signed.raw_tx[..], BranchId::Nu5).unwrap();
+        let tx = crate::read_pirate_transaction(&signed.raw_tx).unwrap();
         let script_sig = &tx.transparent_bundle().unwrap().vin[0].script_sig().0 .0;
 
         assert!(script_sig.contains(&0x51));

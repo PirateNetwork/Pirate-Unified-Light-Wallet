@@ -275,8 +275,8 @@ fn export_primary_key(wallet_id: String) -> Result<Value> {
 
     Ok(json!([{
         "address": address,
-        "private_key": keys.sapling_spending_key.or(keys.orchard_spending_key),
-        "viewing_key": keys.sapling_viewing_key.or(keys.orchard_viewing_key),
+        "private_key": keys.sapling_spending_key.or(keys.ironwood_spending_key),
+        "viewing_key": keys.sapling_viewing_key.or(keys.ironwood_viewing_key),
     }]))
 }
 

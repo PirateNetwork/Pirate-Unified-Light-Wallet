@@ -64,7 +64,7 @@ Android SDK:
 - typed Kotlin SDK surface exists, JVM tests exist, and release AAR packaging works
 - release artifacts: AAR plus module package zip
 - intentional scope: shielded-first unified-wallet SDK, not a full transparent-wallet compatibility clone
-- advanced APIs: the mobile SDK surfaces keep passphrase-gated seed export plus Sapling and Orchard spending-key import/export under advanced key management
+- advanced APIs: the mobile SDK surfaces keep passphrase-gated seed export plus Sapling and Ironwood spending-key import/export under advanced key management
 
 - CLI keeps the legacy raw `seed` export command for operator and integration use, while the Flutter wallet uses the separate gated `seed-export` flow
 

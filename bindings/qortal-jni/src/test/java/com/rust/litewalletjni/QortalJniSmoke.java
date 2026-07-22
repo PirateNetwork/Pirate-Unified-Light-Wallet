@@ -89,8 +89,8 @@ public final class QortalJniSmoke {
         }
         String balance = LiteWalletJni.execute("balance", "");
         int saplingPosition = balance.indexOf(legacySaplingAddress);
-        int orchardPosition = balance.indexOf("pirate1");
-        if (saplingPosition < 0 || (orchardPosition >= 0 && orchardPosition < saplingPosition)) {
+        int ironwoodPosition = balance.indexOf("pirate1");
+        if (saplingPosition < 0 || (ironwoodPosition >= 0 && ironwoodPosition < saplingPosition)) {
             throw new AssertionError("Qortal balance is not Sapling-first: " + balance);
         }
         String encryption = LiteWalletJni.execute("encryptionstatus", "");

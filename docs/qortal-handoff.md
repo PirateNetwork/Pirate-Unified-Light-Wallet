@@ -65,7 +65,7 @@ entropy. Migration is therefore:
 5. Archive or remove the old `.dat` file after the unified wallet has synced.
 
 The JNI tests pin the legacy Sapling derivation path
-`m/32'/141'/0'` against a known entropy/address vector. Orchard account zero is
+`m/32'/141'/0'` against a known entropy/address vector. Ironwood account zero is
 derived from the same BIP39 seed in addition to that unchanged Sapling account.
 
 Subsequent starts call `configurestorage()` and `initfromseed()` again. The JNI
@@ -113,7 +113,7 @@ as one logical batch (`batch_num: 0`, `batch_total: 1`).
 | `list` | Returns incoming, outgoing, and change metadata |
 | `export` | Returns the primary spendable key group |
 | `send` | Restricts note selection to the supplied wallet-owned input address |
-| `sendp2sh` | Funds the supplied P2SH script from Sapling or Orchard notes |
+| `sendp2sh` | Funds the supplied P2SH script from Sapling or Ironwood notes |
 | `redeemp2sh` | Redeems or refunds funding output zero |
 | `encryptionstatus` | Always reports encrypted storage |
 | `encrypt`, `decrypt`, `unlock` | Transition-compatible success responses; storage is unlocked by `configurestorage()` |
@@ -128,7 +128,7 @@ still sees the wallet as behind. The JNI adapter uses direct transport to match
 the legacy embedded wallet's network behavior.
 
 `list` constructs incoming metadata from the encrypted note database and
-recovers outgoing Sapling and Orchard recipients from the raw transaction. If a
+recovers outgoing Sapling and Ironwood recipients from the raw transaction. If a
 historical raw transaction is temporarily unavailable, the response emits one
 `[UNKNOWN]` recipient with the correct external value so Qortal does not turn an
 outgoing transaction into a zero-value transaction.
@@ -136,7 +136,7 @@ outgoing transaction into a zero-value transaction.
 P2SH redemption verifies that the input is P2SH, the redeem script hashes to
 that address, and funding output zero pays the same address. It rejects a
 request when outputs plus the declared fee do not consume the exact funding
-value, preventing an accidental remainder from becoming miner fee. Orchard
+value, preventing an accidental remainder from becoming miner fee. Ironwood
 redemption outputs obtain their anchor from lightwalletd, so Qortal's temporary
 null-seed wallet does not need a separate sync first.
 
