@@ -177,12 +177,12 @@ Amount request fields accept decimal strings, safe integer numbers, or
     - optional `birthdayHeight`
     - optional `mnemonicLanguage`
   - returns wallet id string
-- `importViewingWallet(requestOrName, saplingViewingKey?, orchardViewingKey?, birthdayHeight)`
+- `importViewingWallet(requestOrName, saplingViewingKey?, ironwoodViewingKey?, birthdayHeight)`
   - RPC: `import_viewing_wallet`
   - request fields:
     - `name`
     - optional `saplingViewingKey`
-    - optional `orchardViewingKey`
+    - optional `ironwoodViewingKey`
     - `birthdayHeight`
   - returns wallet id string
 - `switchWallet(walletId)`
@@ -287,9 +287,9 @@ Receive-address APIs are shielded and wallet-scoped:
   - returns per-address balance entries
 
 These APIs return shielded receive addresses. Newly generated addresses use
-Sapling before Orchard activation and Orchard after activation. The current
+Sapling before Ironwood activation and Ironwood after activation. The current
 address can still be an older Sapling address until the wallet rotates, and
-`listAddresses(walletId)` can contain both Sapling and Orchard receive
+`listAddresses(walletId)` can contain both Sapling and Ironwood receive
 addresses over time.
 
 - `getBalance(walletId)`
@@ -302,7 +302,7 @@ addresses over time.
   - RPC: `get_shielded_pool_balances`
   - returns:
     - `sapling`
-    - `orchard`
+    - `ironwood`
 - `getSpendabilityStatus(walletId)`
   - RPC: `get_spendability_status`
   - returns:
@@ -331,12 +331,12 @@ addresses over time.
 - `exportSaplingPaymentDisclosure(walletId, txId, outputIndex)`
   - RPC: `export_sapling_payment_disclosure`
   - returns one Sapling output disclosure string
-- `exportOrchardPaymentDisclosure(walletId, txId, actionIndex)`
-  - RPC: `export_orchard_payment_disclosure`
-  - returns one Orchard action disclosure string
+- `exportIronwoodPaymentDisclosure(walletId, txId, actionIndex)`
+  - RPC: `export_ironwood_payment_disclosure`
+  - returns one Ironwood action disclosure string
 - `verifyPaymentDisclosure(walletId, disclosure)`
   - RPC: `verify_payment_disclosure`
-  - decrypts one Sapling or Orchard disclosure using the wallet's configured lightwalletd endpoint
+  - decrypts one Sapling or Ironwood disclosure using the wallet's configured lightwalletd endpoint
 
 `PaymentDisclosure` includes `disclosureType`, `txid`, `outputIndex`, `address`,
 `amount`, optional `memo`, and the shareable `disclosure` string.
@@ -416,17 +416,17 @@ endpoint configuration is needed during broadcast, the service uses the active
 wallet.
 
 Change-address selection is automatic. Sapling-only change uses legacy
-same-address change before Orchard activation and Sapling internal change after
-activation; Orchard spends or outputs use Orchard internal change.
+same-address change before Ironwood activation and Sapling internal change after
+activation; Ironwood spends or outputs use Ironwood internal change.
 
 ### Viewing keys and watch-only
 
 - `exportSaplingViewingKey(walletId)`
   - RPC: `export_sapling_viewing_key`
   - returns Sapling viewing key string
-- `exportOrchardViewingKey(walletId)`
-  - RPC: `export_orchard_viewing_key`
-  - returns Orchard viewing key string
+- `exportIronwoodViewingKey(walletId)`
+  - RPC: `export_ironwood_viewing_key`
+  - returns Ironwood viewing key string
 - `importSaplingViewingKeyAsWatchOnly(requestOrName, saplingViewingKey?, birthdayHeight?)`
   - RPC: `import_sapling_viewing_key_as_watch_only`
   - returns wallet id string
@@ -446,10 +446,10 @@ These methods live under `sdk.advancedKeyManagement`.
   - returns:
     - `keyId`
     - `saplingViewingKey`
-    - `orchardViewingKey`
+    - `ironwoodViewingKey`
     - `saplingSpendingKey`
-    - `orchardSpendingKey`
-- `importSpendingKey(requestOrWalletId, birthdayHeight?, saplingSpendingKey?, orchardSpendingKey?)`
+    - `ironwoodSpendingKey`
+- `importSpendingKey(requestOrWalletId, birthdayHeight?, saplingSpendingKey?, ironwoodSpendingKey?)`
   - RPC: `import_spending_key`
   - returns key id number
 - `exportSeed(walletId, mnemonicLanguage?)`

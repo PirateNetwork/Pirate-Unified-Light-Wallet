@@ -62,7 +62,7 @@ export interface SynchronizerCallbacks {
 }
 
 export interface PaymentDisclosure {
-  disclosureType: 'sapling' | 'orchard' | string
+  disclosureType: 'sapling' | 'ironwood' | string
   txid: string
   outputIndex: number
   address: string
@@ -72,7 +72,7 @@ export interface PaymentDisclosure {
 }
 
 export interface PaymentDisclosureVerification {
-  disclosureType: 'sapling' | 'orchard' | string
+  disclosureType: 'sapling' | 'ironwood' | string
   txid: string
   outputIndex: number
   address: string
@@ -95,7 +95,7 @@ export interface Balance {
 
 export interface ShieldedPoolBalances {
   sapling: Balance
-  orchard: Balance
+  ironwood: Balance
 }
 
 export interface TransactionInfo {
@@ -155,7 +155,7 @@ export class PirateWalletAdvancedKeyManagement {
     requestOrWalletId: any,
     birthdayHeight?: number | null,
     saplingSpendingKey?: string | null,
-    orchardSpendingKey?: string | null
+    ironwoodSpendingKey?: string | null
   ): Promise<number>
   exportSeed(walletId: string, mnemonicLanguage?: MnemonicLanguage | null): Promise<string>
 }
@@ -196,7 +196,7 @@ export class PirateWalletSdk {
   getWallet(walletId: string): Promise<WalletMeta | null>
   createWallet(requestOrName: any, birthdayHeight?: number | null, mnemonicLanguage?: MnemonicLanguage | null): Promise<string>
   restoreWallet(requestOrName: any, mnemonic?: string, birthdayHeight?: number | null, mnemonicLanguage?: MnemonicLanguage | null): Promise<string>
-  importViewingWallet(requestOrName: any, saplingViewingKey?: string | null, orchardViewingKey?: string | null, birthdayHeight?: number): Promise<string>
+  importViewingWallet(requestOrName: any, saplingViewingKey?: string | null, ironwoodViewingKey?: string | null, birthdayHeight?: number): Promise<string>
   switchWallet(walletId: string): Promise<any>
   renameWallet(walletId: string, newName: string): Promise<any>
   deleteWallet(walletId: string): Promise<any>
@@ -225,7 +225,7 @@ export class PirateWalletSdk {
   getTransactionDetails(walletId: string, txId: string): Promise<TransactionDetails | null>
   exportPaymentDisclosures(walletId: string, txId: string): Promise<PaymentDisclosure[]>
   exportSaplingPaymentDisclosure(walletId: string, txId: string, outputIndex: number): Promise<string>
-  exportOrchardPaymentDisclosure(walletId: string, txId: string, actionIndex: number): Promise<string>
+  exportIronwoodPaymentDisclosure(walletId: string, txId: string, actionIndex: number): Promise<string>
   verifyPaymentDisclosure(walletId: string, disclosure: string): Promise<PaymentDisclosureVerification>
   getFeeInfo(): Promise<FeeInfo>
   startSync(walletIdOrRequest: any, mode?: SyncMode): Promise<any>
@@ -237,7 +237,7 @@ export class PirateWalletSdk {
   broadcastTransaction(signed: any): Promise<string>
   send(walletId: string, outputsOrOutput: TransactionOutput | TransactionOutput[], fee?: AmountInput | null): Promise<string>
   exportSaplingViewingKey(walletId: string): Promise<string>
-  exportOrchardViewingKey(walletId: string): Promise<string>
+  exportIronwoodViewingKey(walletId: string): Promise<string>
   importSaplingViewingKeyAsWatchOnly(requestOrName: any, saplingViewingKey?: string | null, birthdayHeight?: number | null): Promise<string>
   getWatchOnlyCapabilities(walletId: string): Promise<any>
 }

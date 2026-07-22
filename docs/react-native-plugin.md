@@ -73,8 +73,8 @@ and lightwalletd resources.
 Receive-address access is split into `getCurrentAddress(walletId)`,
 `getNextAddress(walletId)`, `listAddresses(walletId)`, and
 `listAddressBalances(walletId, keyId?)`. These APIs return shielded receive
-addresses. Newly generated addresses use Sapling before Orchard activation and
-Orchard after activation; the current address can remain an older Sapling
+addresses. Newly generated addresses use Sapling before Ironwood activation and
+Ironwood after activation; the current address can remain an older Sapling
 address until the wallet rotates.
 
 Most transaction helpers are wallet-scoped. `broadcastTransaction(signed)` only
@@ -83,7 +83,7 @@ during broadcast, the service uses the active wallet.
 
 Payment disclosure helpers are also wallet-scoped. `exportPaymentDisclosures`
 returns the Bech32 disclosure keys the wallet can derive for a sent transaction.
-Each disclosure is scoped to one Sapling output or Orchard action, so sharing it
+Each disclosure is scoped to one Sapling output or Ironwood action, so sharing it
 lets a third party verify that specific payment without exposing the wallet's
 other transactions. `verifyPaymentDisclosure` uses the selected wallet's
 lightwalletd endpoint to fetch the transaction and decrypt the disclosed output.
@@ -180,8 +180,8 @@ wallet operations.
 
 The React Native bridge does not expose a change-address override. Send helpers
 inherit the shared backend policy automatically: Sapling-only change uses legacy
-same-address change before Orchard activation and Sapling internal change after
-activation; Orchard spends or outputs use Orchard internal change.
+same-address change before Ironwood activation and Sapling internal change after
+activation; Ironwood spends or outputs use Ironwood internal change.
 
 ## Build checks in this repo
 

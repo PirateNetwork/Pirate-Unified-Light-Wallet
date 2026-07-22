@@ -236,7 +236,7 @@ class PirateWalletAdvancedKeyManagement {
     })
   }
 
-  async importSpendingKey(requestOrWalletId, birthdayHeight, saplingSpendingKey, orchardSpendingKey) {
+  async importSpendingKey(requestOrWalletId, birthdayHeight, saplingSpendingKey, ironwoodSpendingKey) {
     const request =
       typeof requestOrWalletId === 'object' && requestOrWalletId !== null
         ? requestOrWalletId
@@ -244,13 +244,13 @@ class PirateWalletAdvancedKeyManagement {
             walletId: requestOrWalletId,
             birthdayHeight,
             saplingSpendingKey,
-            orchardSpendingKey
+            ironwoodSpendingKey
           }
 
     return this.sdk._call('import_spending_key', {
       wallet_id: request.walletId,
       sapling_key: request.saplingSpendingKey,
-      orchard_key: request.orchardSpendingKey,
+      ironwood_key: request.ironwoodSpendingKey,
       birthday_height: request.birthdayHeight
     })
   }
@@ -595,16 +595,16 @@ class PirateWalletSdk {
     })
   }
 
-  importViewingWallet(requestOrName, saplingViewingKey = null, orchardViewingKey = null, birthdayHeight) {
+  importViewingWallet(requestOrName, saplingViewingKey = null, ironwoodViewingKey = null, birthdayHeight) {
     const request =
       typeof requestOrName === 'object' && requestOrName !== null
         ? requestOrName
-        : { name: requestOrName, saplingViewingKey, orchardViewingKey, birthdayHeight }
+        : { name: requestOrName, saplingViewingKey, ironwoodViewingKey, birthdayHeight }
 
     return this._call('import_viewing_wallet', {
       name: request.name,
       sapling_viewing_key: request.saplingViewingKey,
-      orchard_viewing_key: request.orchardViewingKey,
+      ironwood_viewing_key: request.ironwoodViewingKey,
       birthday: request.birthdayHeight
     })
   }
@@ -750,8 +750,8 @@ class PirateWalletSdk {
     })
   }
 
-  exportOrchardPaymentDisclosure(walletId, txId, actionIndex) {
-    return this._call('export_orchard_payment_disclosure', {
+  exportIronwoodPaymentDisclosure(walletId, txId, actionIndex) {
+    return this._call('export_ironwood_payment_disclosure', {
       wallet_id: walletId,
       txid: txId,
       action_index: actionIndex
@@ -842,8 +842,8 @@ class PirateWalletSdk {
     return this._call('export_sapling_viewing_key', { wallet_id: walletId })
   }
 
-  exportOrchardViewingKey(walletId) {
-    return this._call('export_orchard_viewing_key', { wallet_id: walletId })
+  exportIronwoodViewingKey(walletId) {
+    return this._call('export_ironwood_viewing_key', { wallet_id: walletId })
   }
 
   importSaplingViewingKeyAsWatchOnly(requestOrName, saplingViewingKey = null, birthdayHeight = null) {

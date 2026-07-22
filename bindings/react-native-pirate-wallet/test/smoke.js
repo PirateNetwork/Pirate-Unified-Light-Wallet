@@ -106,7 +106,7 @@ function createMockNativeModule() {
               key_type: 'ImportedSpending',
               spendable: true,
               has_sapling: true,
-              has_orchard: true,
+              has_ironwood: true,
               birthday_height: 2345678,
               created_at: 1710000999
             }
@@ -115,14 +115,19 @@ function createMockNativeModule() {
           return ok({
             key_id: 7,
             sapling_viewing_key: 'zxviewsapling',
-            orchard_viewing_key: 'uvieworchard',
+            ironwood_viewing_key: 'uviewironwood',
             sapling_spending_key: 'secret-sapling',
-            orchard_spending_key: 'secret-orchard'
+            ironwood_spending_key: 'secret-ironwood'
           })
         case 'import_spending_key':
           return ok(11)
         case 'export_seed_raw':
           return ok('alpha beta gamma')
+        case 'export_ironwood_payment_disclosure':
+          assert.strictEqual(request.wallet_id, 'wallet-1')
+          assert.strictEqual(request.txid, 'ironwood-tx')
+          assert.strictEqual(request.action_index, 2)
+          return ok('idisctest1ironwoodproof')
         default:
           throw new Error(`Unexpected method in smoke test: ${request.method}`)
       }
@@ -163,12 +168,19 @@ async function main() {
     'wallet-1',
     2345678,
     'secret-sapling',
-    'secret-orchard'
+    'secret-ironwood'
   )
   assert.strictEqual(importedKeyId, 11)
 
   const seedWords = await sdk.advancedKeyManagement.exportSeed('wallet-1')
   assert.strictEqual(seedWords, 'alpha beta gamma')
+
+  const disclosure = await sdk.exportIronwoodPaymentDisclosure(
+    'wallet-1',
+    'ironwood-tx',
+    2
+  )
+  assert.strictEqual(disclosure, 'idisctest1ironwoodproof')
 
   const formatted = await sdk.formatAmount(9007199254740993n)
   assert.strictEqual(formatted, '90071992.54740993')
