@@ -502,7 +502,7 @@ jobs:
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92
 
       - name: Install CocoaPods
-        if: matrix.platform == 'iOS'
+        if: matrix.platform == 'iOS' || matrix.platform == 'macOS'
         run: gem install cocoapods -v ${{ env.COCOAPODS_VERSION }}
 
       - name: Install Linux dependencies
@@ -1208,6 +1208,9 @@ jobs:
           cd bindings/react-native-pirate-wallet/example
           npm install
 
+      - name: Install CocoaPods
+        run: gem install cocoapods -v ${{ env.COCOAPODS_VERSION }}
+
       - name: Verify CocoaPods
         run: |
           pod --version
@@ -1658,6 +1661,9 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install CocoaPods
+        run: gem install cocoapods -v ${{ env.COCOAPODS_VERSION }}
 
       - name: Set SOURCE_DATE_EPOCH
         run: |
@@ -2186,6 +2192,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
+
+      - name: Install CocoaPods
+        if: steps.signing.outputs.enabled == 'true'
+        run: gem install cocoapods -v ${{ env.COCOAPODS_VERSION }}
 
       - name: Import macOS signing certificate
         if: steps.signing.outputs.enabled == 'true'
