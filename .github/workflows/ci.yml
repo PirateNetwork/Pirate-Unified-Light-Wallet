@@ -14,7 +14,7 @@ env:
   FRB_CODEGEN_VERSION: "2.11.1"
   GO_VERSION: "1.21.13"
   JAVA_VERSION: "25"
-  COCOAPODS_VERSION: "1.16.2"
+  COCOAPODS_VERSION: "1.17.0"
   APPIMAGETOOL_URL: "https://github.com/AppImage/AppImageKit/releases/download/13/obsolete-appimagetool-x86_64.AppImage"
   APPIMAGETOOL_SHA256: "df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb"
   ANDROID_BUILD_TOOLS_VERSION: "35.0.0"
