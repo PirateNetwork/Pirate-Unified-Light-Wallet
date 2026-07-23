@@ -92,6 +92,19 @@ pub enum QortalRecipient {
     },
 }
 
+fn recipient_total(recipients: &[QortalRecipient]) -> Result<u64> {
+    recipients.iter().try_fold(0u64, |total, recipient| {
+        let amount = match recipient {
+            QortalRecipient::Sapling { amount, .. }
+            | QortalRecipient::Ironwood { amount, .. }
+            | QortalRecipient::Transparent { amount, .. } => *amount,
+        };
+        total
+            .checked_add(amount)
+            .ok_or_else(|| Error::AmountOverflow("Output amount overflow".to_string()))
+    })
+}
+
 pub struct QortalP2shFundingPlan<'a> {
     pub network_type: pirate_params::NetworkType,
     pub default_sapling_spending_key: &'a ExtendedSpendingKey,
@@ -329,15 +342,7 @@ pub fn build_qortal_p2sh_funding_transaction(
     plan: QortalP2shFundingPlan<'_>,
 ) -> Result<crate::shielded_builder::SignedShieldedTransaction> {
     let script_pubkey = build_script_pubkey(&plan.script_pubkey)?;
-    let total_value = plan
-        .recipients
-        .iter()
-        .map(|recipient| match recipient {
-            QortalRecipient::Sapling { amount, .. }
-            | QortalRecipient::Ironwood { amount, .. }
-            | QortalRecipient::Transparent { amount, .. } => *amount,
-        })
-        .sum::<u64>();
+    let total_value = recipient_total(&plan.recipients)?;
 
     let target_total = total_value
         .checked_add(plan.fee)
@@ -754,11 +759,8 @@ pub fn build_qortal_p2sh_redeem_transaction(
 
     let fee_amount =
         Amount::from_u64(plan.fee).map_err(|_| Error::InvalidAmount("Invalid fee".to_string()))?;
-    let outputs_total = transparent_vout.iter().try_fold(Amount::ZERO, |acc, out| {
-        (acc + out.value()).ok_or(Error::AmountOverflow(
-            "Transparent output overflow".to_string(),
-        ))
-    })?;
+    let outputs_total = Amount::from_u64(recipient_total(&plan.recipients)?)
+        .map_err(|_| Error::InvalidAmount("Invalid output amount".to_string()))?;
     let required_total = (outputs_total + fee_amount)
         .ok_or_else(|| Error::AmountOverflow("Transparent output + fee overflow".to_string()))?;
 
@@ -1025,6 +1027,38 @@ mod tests {
             .unwrap()
             .unwrap();
 
+        assert_eq!(
+            bundle.bundle_version(),
+            IronwoodBundleVersion::ironwood_v3()
+        );
+        assert_eq!(bundle.bundle_version().note_version(), NoteVersion::V3);
+    }
+
+    #[test]
+    fn qortal_redeem_serializes_v6_ironwood_bundle() {
+        let key = IronwoodExtendedSpendingKey::master(&[8u8; 32]).unwrap();
+        let recipient = key.to_extended_fvk().address_at(0);
+        let mut plan = redeem_plan(0, vec![8u8, 9u8, 10u8]);
+        plan.network_type = pirate_params::NetworkType::Testnet;
+        plan.target_height = 61;
+        plan.ironwood_anchor = Some(IronwoodAnchor::empty_tree());
+        plan.recipients = vec![QortalRecipient::Ironwood {
+            address: recipient.inner,
+            amount: 40_000,
+            memo: None,
+        }];
+
+        let signed = build_qortal_p2sh_redeem_transaction(plan).unwrap();
+        let tx = crate::read_pirate_transaction(&signed.raw_tx)
+            .unwrap()
+            .into_data();
+
+        assert_eq!(tx.version(), TxVersion::V6);
+        assert_eq!(
+            tx.consensus_branch_id(),
+            zcash_protocol::consensus::BranchId::Nu6_3
+        );
+        let bundle = tx.ironwood_bundle().expect("Ironwood bundle");
         assert_eq!(
             bundle.bundle_version(),
             IronwoodBundleVersion::ironwood_v3()
