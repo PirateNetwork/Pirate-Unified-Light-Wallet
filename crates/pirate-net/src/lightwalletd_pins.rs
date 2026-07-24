@@ -31,7 +31,7 @@ impl LightwalletdPins {
     fn load_primary(_pinning: &mut TlsPinning) -> Result<()> {
         // Known servers:
         // - lightd1.pirate.black:443 (official mainnet TLS endpoint)
-        // - 64.23.167.130:8067 (testnet, Sapling + Ironwood)
+        // - 64.23.167.130:8067 (testnet)
 
         Ok(())
     }

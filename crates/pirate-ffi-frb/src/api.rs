@@ -833,12 +833,6 @@ pub fn delete_wallet(wallet_id: WalletId) -> Result<()> {
 // Addresses
 // ============================================================================
 
-/// Determine whether Ironwood addresses should be generated for the network and height.
-fn ironwood_activation_override(wallet_id: &WalletId) -> Result<Option<u32>> {
-    let endpoint = get_lightd_endpoint_config(wallet_id.clone())?;
-    Ok(endpoint::ironwood_activation_override_height(&endpoint))
-}
-
 fn wallet_network_type(wallet_id: &WalletId) -> Result<NetworkType> {
     let wallet = get_wallet_meta(wallet_id)?;
     let network_type = match wallet.network_type.as_deref().unwrap_or("mainnet") {
@@ -872,11 +866,6 @@ fn should_generate_orchard(wallet_id: &WalletId) -> Result<bool> {
     } else {
         current_height
     };
-
-    // Check whether Ironwood is active at the current height.
-    if let Some(override_height) = ironwood_activation_override(wallet_id)? {
-        return Ok(effective_height >= override_height);
-    }
 
     Ok(network.is_ironwood_active(effective_height))
 }

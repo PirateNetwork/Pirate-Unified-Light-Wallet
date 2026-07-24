@@ -173,14 +173,6 @@ pub(super) fn detect_network_from_endpoint(host: &str, port: u16) -> Option<Netw
     None
 }
 
-pub(super) fn ironwood_activation_override_height(endpoint: &LightdEndpoint) -> Option<u32> {
-    if endpoint.host == DEFAULT_LIGHTD_HOST && endpoint.port == 8067 {
-        Some(61)
-    } else {
-        None
-    }
-}
-
 pub(super) fn address_prefix_network_type_for_endpoint(
     endpoint: &LightdEndpoint,
     default_network: NetworkType,
