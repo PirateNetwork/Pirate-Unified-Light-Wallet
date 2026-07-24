@@ -1998,7 +1998,17 @@ impl LightClient {
 
             let mut stream = client.get_subtree_roots(request).await?.into_inner();
             let mut roots = Vec::new();
+            let mut previous_height = None;
             while let Some(root) = stream.message().await? {
+                let expected_index = u64::from(start_index) + roots.len() as u64;
+                validate_received_subtree_root(
+                    &root,
+                    expected_index,
+                    previous_height,
+                    max_entries,
+                    roots.len(),
+                )?;
+                previous_height = Some(root.completing_block_height);
                 roots.push(root);
             }
             Ok(roots)
@@ -2119,6 +2129,44 @@ fn compute_txid(raw_tx: &[u8]) -> String {
     hex::encode(txid_bytes)
 }
 
+fn validate_received_subtree_root(
+    root: &SubtreeRoot,
+    expected_index: u64,
+    previous_height: Option<u64>,
+    max_entries: u32,
+    received_count: usize,
+) -> Result<()> {
+    if max_entries != 0 && received_count >= max_entries as usize {
+        return Err(Error::Network(format!(
+            "Lightwalletd returned more than the requested {} subtree roots",
+            max_entries
+        )));
+    }
+    if root.root_hash.len() != 32 {
+        return Err(Error::Network(format!(
+            "Subtree root at expected index {} is {} bytes, expected 32",
+            expected_index,
+            root.root_hash.len()
+        )));
+    }
+    if root.completing_block_hash.len() != 32 {
+        return Err(Error::Network(format!(
+            "Completing block hash at expected subtree index {} is {} bytes, expected 32",
+            expected_index,
+            root.completing_block_hash.len()
+        )));
+    }
+    if let Some(previous_height) = previous_height {
+        if root.completing_block_height <= previous_height {
+            return Err(Error::Network(format!(
+                "Subtree completion height {} at expected index {} is not greater than previous height {}",
+                root.completing_block_height, expected_index, previous_height
+            )));
+        }
+    }
+    Ok(())
+}
+
 // ============================================================================
 // Legacy types for compatibility
 // ============================================================================
@@ -2143,6 +2191,71 @@ pub struct TransactionStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn valid_subtree_root(height: u64) -> SubtreeRoot {
+        SubtreeRoot {
+            root_hash: vec![1; 32],
+            completing_block_hash: vec![2; 32],
+            completing_block_height: height,
+        }
+    }
+
+    #[test]
+    fn validates_received_subtree_roots() {
+        validate_received_subtree_root(&valid_subtree_root(100), 5, None, 0, 0)
+            .expect("valid first subtree root");
+        validate_received_subtree_root(&valid_subtree_root(200), 6, Some(100), 2, 1)
+            .expect("valid second subtree root");
+    }
+
+    #[test]
+    fn rejects_malformed_received_subtree_roots() {
+        let mut short_root = valid_subtree_root(100);
+        short_root.root_hash.pop();
+        let mut short_block_hash = valid_subtree_root(100);
+        short_block_hash.completing_block_hash.pop();
+
+        let cases = [
+            (short_root, None, 0, 0, "is 31 bytes, expected 32"),
+            (short_block_hash, None, 0, 0, "is 31 bytes, expected 32"),
+            (
+                valid_subtree_root(100),
+                Some(100),
+                0,
+                1,
+                "is not greater than previous height",
+            ),
+            (
+                valid_subtree_root(99),
+                Some(100),
+                0,
+                1,
+                "is not greater than previous height",
+            ),
+            (
+                valid_subtree_root(200),
+                Some(100),
+                1,
+                1,
+                "more than the requested 1 subtree roots",
+            ),
+        ];
+
+        for (root, previous_height, max_entries, received_count, expected_error) in cases {
+            let err = validate_received_subtree_root(
+                &root,
+                5 + received_count as u64,
+                previous_height,
+                max_entries,
+                received_count,
+            )
+            .expect_err("malformed subtree root was accepted");
+            assert!(
+                err.to_string().contains(expected_error),
+                "unexpected error: {err}"
+            );
+        }
+    }
 
     #[test]
     fn test_default_config() {
