@@ -319,6 +319,8 @@ impl TransactionBuilder {
                 sapling_anchor: Some(sapling_anchor),
                 orchard_anchor: None,
                 ironwood_anchor: None,
+                orchard_bundle_type: orchard::builder::BundleType::DEFAULT,
+                ironwood_bundle_type: orchard::builder::BundleType::DEFAULT,
             },
         );
 

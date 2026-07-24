@@ -465,6 +465,8 @@ impl ShieldedBuilder {
                 sapling_anchor: effective_sapling_anchor,
                 orchard_anchor: None,
                 ironwood_anchor: effective_ironwood_anchor,
+                orchard_bundle_type: orchard::builder::BundleType::DEFAULT,
+                ironwood_bundle_type: orchard::builder::BundleType::DEFAULT,
             },
         );
 
