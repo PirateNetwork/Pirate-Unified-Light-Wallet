@@ -214,12 +214,15 @@ pub struct TreeState {
     pub ironwood_tree: String,
 }
 
-/// Shielded pool selector for subtree-root RPCs.
+/// Shielded pool selector using the standard wire values.
+///
+/// Pirate does not use the Orchard pool, but its value remains reserved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Enumeration)]
 #[repr(i32)]
 pub enum ShieldedProtocol {
     Sapling = 0,
-    Ironwood = 1,
+    Orchard = 1,
+    Ironwood = 2,
 }
 
 /// Request subtree roots starting from a given subtree index.
@@ -534,6 +537,20 @@ pub mod compact_tx_streamer_client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shielded_protocol_uses_official_wire_values() {
+        assert_eq!(ShieldedProtocol::Sapling as i32, 0);
+        assert_eq!(ShieldedProtocol::Orchard as i32, 1);
+        assert_eq!(ShieldedProtocol::Ironwood as i32, 2);
+
+        let request = GetSubtreeRootsArg {
+            start_index: 0,
+            shielded_protocol: ShieldedProtocol::Ironwood as i32,
+            max_entries: 0,
+        };
+        assert_eq!(request.encode_to_vec(), [0x10, 0x02]);
+    }
 
     #[test]
     fn test_compact_block_encoding() {
