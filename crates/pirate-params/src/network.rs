@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Ironwood activation height configured by the full node's testnet parameters.
+pub const TESTNET_IRONWOOD_ACTIVATION_HEIGHT: u32 = 280_500;
+
 /// Network type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NetworkType {
@@ -62,7 +65,7 @@ impl Network {
             p2p_port: 45461,
             overwinter_activation_height: 1,
             sapling_activation_height: 1,
-            ironwood_activation_height: Some(61),
+            ironwood_activation_height: Some(TESTNET_IRONWOOD_ACTIVATION_HEIGHT),
             default_birthday_height: 61,
         }
     }
@@ -124,5 +127,11 @@ mod tests {
     fn test_network_from_type() {
         let net = Network::from_type(NetworkType::Testnet);
         assert_eq!(net.network_type, NetworkType::Testnet);
+        assert_eq!(
+            net.ironwood_activation_height,
+            Some(TESTNET_IRONWOOD_ACTIVATION_HEIGHT)
+        );
+        assert!(!net.is_ironwood_active(TESTNET_IRONWOOD_ACTIVATION_HEIGHT - 1));
+        assert!(net.is_ironwood_active(TESTNET_IRONWOOD_ACTIVATION_HEIGHT));
     }
 }
