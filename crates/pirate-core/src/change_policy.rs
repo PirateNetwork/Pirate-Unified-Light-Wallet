@@ -18,6 +18,7 @@ pub fn sapling_internal_change_active(network_type: NetworkType, target_height: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pirate_params::network::TESTNET_IRONWOOD_ACTIVATION_HEIGHT;
 
     #[test]
     fn mainnet_keeps_legacy_sapling_change_until_activation_is_configured() {
@@ -29,8 +30,14 @@ mod tests {
 
     #[test]
     fn testnet_activates_sapling_internal_change_at_ironwood_height() {
-        assert!(!sapling_internal_change_active(NetworkType::Testnet, 60));
-        assert!(sapling_internal_change_active(NetworkType::Testnet, 61));
+        assert!(!sapling_internal_change_active(
+            NetworkType::Testnet,
+            u64::from(TESTNET_IRONWOOD_ACTIVATION_HEIGHT - 1)
+        ));
+        assert!(sapling_internal_change_active(
+            NetworkType::Testnet,
+            u64::from(TESTNET_IRONWOOD_ACTIVATION_HEIGHT)
+        ));
     }
 
     #[test]

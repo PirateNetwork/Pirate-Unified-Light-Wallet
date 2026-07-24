@@ -452,6 +452,7 @@ impl Default for TransactionBuilder {
 mod tests {
     use super::*;
     use crate::selection::SelectableNote;
+    use pirate_params::network::TESTNET_IRONWOOD_ACTIVATION_HEIGHT;
     use zcash_primitives::transaction::{Authorized, TransactionData, TxVersion};
 
     #[test]
@@ -465,11 +466,17 @@ mod tests {
         let network = PirateNetwork::new(NetworkType::Testnet);
 
         assert_eq!(
-            BranchId::for_height(&network, BlockHeight::from_u32(60)),
+            BranchId::for_height(
+                &network,
+                BlockHeight::from_u32(TESTNET_IRONWOOD_ACTIVATION_HEIGHT - 1)
+            ),
             BranchId::Sapling
         );
         assert_eq!(
-            BranchId::for_height(&network, BlockHeight::from_u32(61)),
+            BranchId::for_height(
+                &network,
+                BlockHeight::from_u32(TESTNET_IRONWOOD_ACTIVATION_HEIGHT)
+            ),
             BranchId::Nu6_3
         );
         assert_eq!(

@@ -941,6 +941,7 @@ mod tests {
     use super::*;
     use crate::selection::SelectableNote;
     use orchard::note::NoteVersion;
+    use pirate_params::network::TESTNET_IRONWOOD_ACTIVATION_HEIGHT;
     use zcash_transparent::address::TransparentAddress;
     use zcash_transparent::bundle::TxOut;
 
@@ -1040,7 +1041,7 @@ mod tests {
         let recipient = key.to_extended_fvk().address_at(0);
         let mut plan = redeem_plan(0, vec![8u8, 9u8, 10u8]);
         plan.network_type = pirate_params::NetworkType::Testnet;
-        plan.target_height = 61;
+        plan.target_height = TESTNET_IRONWOOD_ACTIVATION_HEIGHT;
         plan.ironwood_anchor = Some(IronwoodAnchor::empty_tree());
         plan.recipients = vec![QortalRecipient::Ironwood {
             address: recipient.inner,
