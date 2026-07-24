@@ -142,7 +142,6 @@ service CompactTxStreamer {
 
     // Get tree state (Sapling and Ironwood anchors) at a specific block height
     // If BlockID.height is 0, returns latest tree state
-    // Uses legacy z_gettreestatelegacy RPC for backward compatibility
     rpc GetTreeState(BlockID) returns (TreeState);
 
     // Get tree state with bridge tree support

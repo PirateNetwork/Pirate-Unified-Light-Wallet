@@ -1844,7 +1844,7 @@ impl LightClient {
             let tree_state = response.into_inner();
 
             debug!(
-                "Tree state at height {}: network={}, hash={}, saplingTree={}, orchardTree={}",
+                "Tree state at height {}: network={}, hash={}, saplingTree={}, ironwoodTree={}",
                 tree_state.height,
                 tree_state.network,
                 tree_state.hash,
@@ -1868,14 +1868,13 @@ impl LightClient {
     /// Get tree state (Sapling and Ironwood anchors) at a specific block height
     ///
     /// If `height` is 0, returns the latest tree state.
-    /// Returns TreeState with saplingTree and orchardTree (hex-encoded strings).
-    /// Uses legacy z_gettreestatelegacy RPC for backward compatibility.
+    /// Returns TreeState with saplingTree and ironwoodTree (hex-encoded strings).
     ///
     /// # Arguments
     /// * `height` - Block height (0 for latest)
     ///
     /// # Returns
-    /// TreeState containing network, height, hash, time, saplingTree, saplingFrontier, and orchardTree
+    /// TreeState containing network, height, hash, time, saplingTree, saplingFrontier, and ironwoodTree
     pub async fn get_tree_state(&self, height: u64) -> Result<TreeState> {
         self.get_tree_state_by_block_id(BlockId {
             height,
@@ -1884,7 +1883,7 @@ impl LightClient {
         .await
     }
 
-    /// Get legacy tree state by block hash.
+    /// Get tree state by block hash.
     pub async fn get_tree_state_by_hash(&self, hash: Vec<u8>) -> Result<TreeState> {
         self.get_tree_state_by_block_id(BlockId { height: 0, hash })
             .await
@@ -1894,13 +1893,13 @@ impl LightClient {
     ///
     /// Uses updated z_gettreestate RPC with bridge trees format.
     /// The block can be specified by either height or hash.
-    /// Returns TreeState with saplingTree and orchardTree in bridge tree format.
+    /// Returns TreeState with saplingTree and ironwoodTree in bridge tree format.
     ///
     /// # Arguments
     /// * `height` - Block height (0 for latest)
     ///
     /// # Returns
-    /// TreeState containing network, height, hash, time, saplingTree, saplingFrontier, and orchardTree
+    /// TreeState containing network, height, hash, time, saplingTree, saplingFrontier, and ironwoodTree
     /// in bridge tree format for improved long-range sync performance
     async fn get_bridge_tree_state_by_block_id(&self, block_id: BlockId) -> Result<TreeState> {
         self.with_retry(|| async {
@@ -1913,7 +1912,7 @@ impl LightClient {
             let tree_state = response.into_inner();
 
             debug!(
-                "Bridge tree state at height {}: network={}, hash={}, saplingTree={}, orchardTree={}",
+                "Bridge tree state at height {}: network={}, hash={}, saplingTree={}, ironwoodTree={}",
                 tree_state.height,
                 tree_state.network,
                 tree_state.hash,

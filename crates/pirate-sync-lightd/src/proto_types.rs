@@ -440,8 +440,7 @@ pub mod compact_tx_streamer_client {
         /// Get tree state (Sapling and Ironwood anchors) at a specific block height.
         ///
         /// If BlockID.height is 0, returns latest tree state.
-        /// Returns TreeState with saplingTree and orchardTree (hex-encoded strings).
-        /// Uses legacy z_gettreestatelegacy RPC for backward compatibility.
+        /// Returns TreeState with saplingTree and ironwoodTree (hex-encoded strings).
         pub async fn get_tree_state(
             &mut self,
             request: impl tonic::IntoRequest<BlockId>,
@@ -465,7 +464,7 @@ pub mod compact_tx_streamer_client {
         ///
         /// Uses updated z_gettreestate RPC with bridge trees format.
         /// The block can be specified by either height or hash.
-        /// Returns TreeState with saplingTree and orchardTree in bridge tree format.
+        /// Returns TreeState with saplingTree and ironwoodTree in bridge tree format.
         pub async fn get_bridge_tree_state(
             &mut self,
             request: impl tonic::IntoRequest<BlockId>,
