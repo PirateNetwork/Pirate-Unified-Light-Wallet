@@ -252,6 +252,7 @@ bool shouldTranslateUiLiteral(String path, String value) {
     'i2p_first_use_ack',
     'ltc1... or L...',
     'obfs4',
+    'Pirate Chain Unified Wallet',
     'Pirate Unified Wallet',
     'Pirate Wallet',
     'Snowflake',

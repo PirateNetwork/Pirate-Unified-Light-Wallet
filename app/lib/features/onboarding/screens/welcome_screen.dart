@@ -17,7 +17,7 @@ class WelcomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return PScaffold(
-      title: 'Pirate Unified Wallet',
+      title: 'Pirate Chain Unified Wallet',
       body: LayoutBuilder(
         builder: (context, constraints) {
           final screenWidth = MediaQuery.of(context).size.width;
@@ -82,7 +82,7 @@ class WelcomeScreen extends ConsumerWidget {
                         height: isCompactHeight ? AppSpacing.md : AppSpacing.xl,
                       ),
                       Text(
-                        'Pirate Unified Wallet',
+                        'Pirate Chain Unified Wallet',
                         style: titleStyle.copyWith(
                           color: AppColors.textPrimary,
                           height: isMobile ? 1.3 : null,
