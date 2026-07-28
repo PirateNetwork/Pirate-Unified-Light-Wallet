@@ -93,8 +93,7 @@ class WelcomeScreen extends ConsumerWidget {
                         height: isCompactHeight ? AppSpacing.xs : AppSpacing.md,
                       ),
                       Text(
-                        'Privacy made convenient.\nKeys stay on your device.'
-                            .tr,
+                        'Privacy made convenient'.tr,
                         style: AppTypography.body.copyWith(
                           color: AppColors.textSecondary,
                           height: isMobile ? 1.6 : 1.5,
