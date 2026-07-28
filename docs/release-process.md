@@ -158,15 +158,22 @@ Signing behavior
 
 Signing behavior depends on platform and environment:
 
+- Apple release signing is opt-in:
+  - set the repository variable `MACOS_SIGNING_ENABLED` to exactly `true` to enable macOS signing and notarization
+  - set the repository variable `IOS_SIGNING_ENABLED` to exactly `true` to enable iOS signing and TestFlight upload
+  - leaving either variable unset or setting it to any other value keeps that platform's signing disabled even when old secrets still exist
+  - enabling signing without all required platform secrets fails the signing job instead of silently falling back
 - Windows
   - signing is controlled by the variables consumed by `scripts/build-windows.sh`
   - unsigned artifacts are produced when signing inputs are not present
 - macOS
   - `scripts/build-macos.sh` supports Developer ID signing and optional notarization
+  - when release signing is disabled, the release publishes `pirate-unified-wallet-macos-unsigned.dmg`
 - Android
   - `scripts/build-android.sh` signs only when keystore inputs are provided
 - iOS
   - `scripts/build-ios.sh true` requires a valid Xcode signing configuration
+  - when release signing is disabled, the unsigned IPA is kept in `pirate-unified-wallet-mobile-store-test-builds.zip`; it is not a normal-user installable
 
 Artifact naming
 ---------------

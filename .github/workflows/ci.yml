@@ -2156,15 +2156,29 @@ jobs:
     needs:
       - package-macos
     steps:
-      - name: Check signing secrets
+      - name: Check macOS signing configuration
         id: signing
+        env:
+          SIGNING_ENABLED: ${{ vars.MACOS_SIGNING_ENABLED }}
+          SIGN_CERT_P12_B64: ${{ secrets.MACOS_SIGN_CERT_P12_B64 }}
+          SIGN_CERT_PASSWORD: ${{ secrets.MACOS_SIGN_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+          APP_PASSWORD: ${{ secrets.MACOS_APP_PASSWORD }}
         run: |
-          if [ -n "${{ secrets.MACOS_SIGN_CERT_P12_B64 }}" ] && [ -n "${{ secrets.MACOS_SIGN_CERT_PASSWORD }}" ] && [ -n "${{ secrets.MACOS_APPLE_ID }}" ] && [ -n "${{ secrets.MACOS_TEAM_ID }}" ] && [ -n "${{ secrets.MACOS_APP_PASSWORD }}" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
+          if [ "$SIGNING_ENABLED" != "true" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Missing macOS signing/notarization secrets. Skipping signed+notarized macOS DMG." >&2
+            echo "::notice::macOS signing is disabled. The release will use the unsigned macOS DMG."
+            exit 0
           fi
+
+          if [ -z "$SIGN_CERT_P12_B64" ] || [ -z "$SIGN_CERT_PASSWORD" ] || [ -z "$APPLE_ID" ] || [ -z "$TEAM_ID" ] || [ -z "$APP_PASSWORD" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::error::MACOS_SIGNING_ENABLED is true, but one or more macOS signing/notarization secrets are missing."
+            exit 1
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         if: steps.signing.outputs.enabled == 'true'
         with:
@@ -2325,17 +2339,32 @@ jobs:
     needs:
       - package-ios
     steps:
-      - name: Check signing secrets
+      - name: Check iOS signing configuration
         id: signing
+        env:
+          SIGNING_ENABLED: ${{ vars.IOS_SIGNING_ENABLED }}
+          SIGN_CERT_P12_B64: ${{ secrets.IOS_SIGNING_CERT_P12_B64 }}
+          SIGN_CERT_PASSWORD: ${{ secrets.IOS_SIGNING_CERT_PASSWORD }}
+          PROVISIONING_PROFILE_B64: ${{ secrets.IOS_PROVISIONING_PROFILE_B64 }}
+          EXPORT_OPTIONS_PLIST_B64: ${{ secrets.IOS_EXPORT_OPTIONS_PLIST_B64 }}
         run: |
-          if [ -n "${{ secrets.IOS_SIGNING_CERT_P12_B64 }}" ] && [ -n "${{ secrets.IOS_SIGNING_CERT_PASSWORD }}" ] && [ -n "${{ secrets.IOS_PROVISIONING_PROFILE_B64 }}" ] && [ -n "${{ secrets.IOS_EXPORT_OPTIONS_PLIST_B64 }}" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
+          if [ "$SIGNING_ENABLED" != "true" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::iOS signing is disabled. The unsigned IPA will remain in the mobile store/test-build bundle."
+            exit 0
           fi
+
+          if [ -z "$SIGN_CERT_P12_B64" ] || [ -z "$SIGN_CERT_PASSWORD" ] || [ -z "$PROVISIONING_PROFILE_B64" ] || [ -z "$EXPORT_OPTIONS_PLIST_B64" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::error::IOS_SIGNING_ENABLED is true, but one or more iOS signing secrets are missing."
+            exit 1
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
 
       - name: Check TestFlight upload secrets
         id: testflight
+        if: steps.signing.outputs.enabled == 'true'
         run: |
           if [ -n "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" ] && [ -n "${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}" ] && [ -n "${{ secrets.APP_STORE_CONNECT_API_KEY_P8_B64 }}" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
