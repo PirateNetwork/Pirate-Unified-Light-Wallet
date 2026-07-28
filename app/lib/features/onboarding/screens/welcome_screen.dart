@@ -112,7 +112,7 @@ class WelcomeScreen extends ConsumerWidget {
                       SizedBox(height: mediumGap),
                       _FeatureItem(
                         icon: Icons.visibility_off,
-                        title: 'Private by default'.tr,
+                        title: 'Always private'.tr,
                         subtitle: 'Shielded transactions'.tr,
                         compact: isCompactHeight,
                         hideSubtitle: isVeryCompactHeight,
