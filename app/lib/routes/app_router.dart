@@ -55,6 +55,7 @@ import '../features/unlock/unlock_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../core/i18n/arb_text_localizer.dart';
 import '../core/providers/wallet_providers.dart';
+import '../core/swaps/swap_availability.dart';
 import '../ui/motion/durations.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -64,6 +65,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: '/splash',
     debugLogDiagnostics: false,
     redirect: (context, state) {
+      if (!kAtomicSwapsEnabled && state.uri.path == '/swap') {
+        return '/pay';
+      }
+
       final walletsExistAsync = ref.read(walletsExistProvider);
       final walletsAsync = ref.read(walletsProvider);
       final hasPassphraseAsync = ref.read(hasAppPassphraseProvider);

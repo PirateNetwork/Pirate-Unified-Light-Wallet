@@ -16,6 +16,7 @@ import '../pay/pay_screen.dart';
 import '../../core/providers/wallet_providers.dart';
 import '../../core/services/address_rotation_service.dart';
 import '../../core/i18n/arb_text_localizer.dart';
+import '../../core/swaps/swap_availability.dart';
 import '../settings/providers/preferences_providers.dart';
 
 /// App shell with persistent navigation.
@@ -151,8 +152,10 @@ class AppShell extends ConsumerWidget {
       ..watch(autoRotationWatcherProvider)
       ..watch(syncCompletionRotationWatcherProvider)
       ..watch(walletInitRotationWatcherProvider)
-      ..watch(kdfSwapWarmupProvider)
       ..watch(localePreferenceProvider);
+    if (kAtomicSwapsEnabled) {
+      ref.watch(kdfSwapWarmupProvider);
+    }
     final currentIndex = _locationToIndex(location);
     final nav = PNav(
       currentIndex: currentIndex,

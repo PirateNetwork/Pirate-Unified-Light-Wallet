@@ -10,6 +10,7 @@ import '../../ui/molecules/wallet_switcher.dart';
 import '../../ui/organisms/p_app_bar.dart';
 import '../../ui/organisms/p_scaffold.dart';
 import '../../core/i18n/arb_text_localizer.dart';
+import '../../core/swaps/swap_availability.dart';
 
 bool _isDesktopPlatform() {
   if (kIsWeb) return false;
@@ -160,7 +161,7 @@ class PaySheet extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                onTap: onSwap,
+                onTap: kAtomicSwapsEnabled ? onSwap : null,
                 compact: true,
               ),
             ];
@@ -282,7 +283,7 @@ class _PayContent extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        onTap: onSwap,
+        onTap: kAtomicSwapsEnabled ? onSwap : null,
       ),
     ];
 
@@ -382,12 +383,13 @@ class _PayActionTile extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final Gradient gradient;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool compact;
   final bool isDesktop;
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
     final padding = isDesktop
         ? PSpacing.xl
         : compact
@@ -400,85 +402,110 @@ class _PayActionTile extends StatelessWidget {
         : 28.0;
     final iconContainerSize = isDesktop ? 56.0 : (compact ? 40.0 : 48.0);
     final titleStyle = isDesktop
-        ? PTypography.heading5(color: AppColors.textOnAccent)
+        ? PTypography.heading5(
+            color: enabled ? AppColors.textOnAccent : AppColors.textDisabled,
+          )
         : compact
-        ? PTypography.titleMedium(color: AppColors.textOnAccent)
-        : PTypography.heading6(color: AppColors.textOnAccent);
+        ? PTypography.titleMedium(
+            color: enabled ? AppColors.textOnAccent : AppColors.textDisabled,
+          )
+        : PTypography.heading6(
+            color: enabled ? AppColors.textOnAccent : AppColors.textDisabled,
+          );
+    final subtitleColor = enabled
+        ? AppColors.textOnAccent
+        : AppColors.textDisabled;
     final subtitleStyle = isDesktop
         ? PTypography.bodyMedium(
-            color: AppColors.textOnAccent.withValues(alpha: 0.9),
+            color: subtitleColor.withValues(alpha: enabled ? 0.9 : 1),
           )
         : compact
         ? PTypography.bodySmall(
-            color: AppColors.textOnAccent.withValues(alpha: 0.8),
+            color: subtitleColor.withValues(alpha: enabled ? 0.8 : 1),
           )
         : PTypography.bodyMedium(
-            color: AppColors.textOnAccent.withValues(alpha: 0.85),
+            color: subtitleColor.withValues(alpha: enabled ? 0.85 : 1),
           );
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(PSpacing.radiusLG),
-        child: Ink(
-          decoration: BoxDecoration(
-            gradient: gradient,
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: MouseRegion(
+        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
             borderRadius: BorderRadius.circular(PSpacing.radiusLG),
-            border: Border.all(
-              color: AppColors.borderStrong,
-              width: isDesktop ? 1.5 : 1.0,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.shadowStrong,
-                blurRadius: isDesktop ? 20 : 16,
-                offset: Offset(0, isDesktop ? 10 : 8),
+            child: Ink(
+              decoration: BoxDecoration(
+                gradient: enabled ? gradient : null,
+                color: enabled ? null : AppColors.backgroundSurface,
+                borderRadius: BorderRadius.circular(PSpacing.radiusLG),
+                border: Border.all(
+                  color: enabled
+                      ? AppColors.borderStrong
+                      : AppColors.borderSubtle,
+                  width: isDesktop ? 1.5 : 1.0,
+                ),
+                boxShadow: enabled
+                    ? [
+                        BoxShadow(
+                          color: AppColors.shadowStrong,
+                          blurRadius: isDesktop ? 20 : 16,
+                          offset: Offset(0, isDesktop ? 10 : 8),
+                        ),
+                      ]
+                    : null,
               ),
-            ],
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(padding),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: iconContainerSize,
-                  height: iconContainerSize,
-                  decoration: BoxDecoration(
-                    color: AppColors.textOnAccent.withValues(
-                      alpha: isDesktop ? 0.16 : 0.14,
+              child: Padding(
+                padding: EdgeInsets.all(padding),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: iconContainerSize,
+                      height: iconContainerSize,
+                      decoration: BoxDecoration(
+                        color: enabled
+                            ? AppColors.textOnAccent.withValues(
+                                alpha: isDesktop ? 0.16 : 0.14,
+                              )
+                            : AppColors.backgroundElevated,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        icon,
+                        color: enabled
+                            ? AppColors.textOnAccent
+                            : AppColors.textDisabled,
+                        size: iconSize,
+                        semanticLabel: title,
+                      ),
                     ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    icon,
-                    color: AppColors.textOnAccent,
-                    size: iconSize,
-                    semanticLabel: title,
-                  ),
+                    SizedBox(
+                      height: isDesktop
+                          ? PSpacing.lg
+                          : (compact ? PSpacing.sm : PSpacing.md),
+                    ),
+                    const Spacer(),
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: titleStyle,
+                    ),
+                    SizedBox(height: isDesktop ? PSpacing.sm : PSpacing.xs),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: subtitleStyle,
+                    ),
+                  ],
                 ),
-                SizedBox(
-                  height: isDesktop
-                      ? PSpacing.lg
-                      : (compact ? PSpacing.sm : PSpacing.md),
-                ),
-                const Spacer(),
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: titleStyle,
-                ),
-                SizedBox(height: isDesktop ? PSpacing.sm : PSpacing.xs),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: subtitleStyle,
-                ),
-              ],
+              ),
             ),
           ),
         ),

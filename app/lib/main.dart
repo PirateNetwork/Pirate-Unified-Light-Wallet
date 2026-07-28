@@ -20,6 +20,7 @@ import 'core/i18n/arb_text_localizer.dart';
 import 'core/logging/debug_log_controller.dart';
 import 'core/logging/debug_log_writer.dart';
 import 'core/security/clipboard_manager.dart';
+import 'core/swaps/swap_availability.dart';
 import 'core/swaps/swap_providers.dart';
 import 'design/theme.dart';
 import 'design/tokens/colors.dart';
@@ -319,7 +320,9 @@ class _PirateWalletAppState extends ConsumerState<PirateWalletApp>
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(kdfSwapWarmupProvider);
+    if (kAtomicSwapsEnabled) {
+      ref.watch(kdfSwapWarmupProvider);
+    }
     final router = ref.watch(appRouterProvider);
     final themeModeSetting = ref.watch(appThemeModeProvider);
     final locale = ref.watch(localeProvider);
