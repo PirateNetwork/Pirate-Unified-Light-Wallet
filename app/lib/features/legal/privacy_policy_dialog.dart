@@ -90,7 +90,13 @@ class PrivacyPolicyAgreement extends StatelessWidget {
     final agreement =
         'By continuing, you agree to the Terms and Privacy Policy'.tr;
     final policyLabel = 'Privacy Policy'.tr;
-    final policyStart = agreement.lastIndexOf(policyLabel);
+    final exactPolicyStart = agreement.lastIndexOf(policyLabel);
+    final policyStart = exactPolicyStart >= 0
+        ? exactPolicyStart
+        : agreement.toLowerCase().lastIndexOf(policyLabel.toLowerCase());
+    final linkedPolicyLabel = policyStart < 0
+        ? policyLabel
+        : agreement.substring(policyStart, policyStart + policyLabel.length);
     final prefix = policyStart < 0
         ? '$agreement '
         : agreement.substring(0, policyStart);
@@ -115,7 +121,7 @@ class PrivacyPolicyAgreement extends StatelessWidget {
                 key: privacyPolicyLinkKey,
                 onTap: () => showPrivacyPolicyDialog(context),
                 child: Text(
-                  policyLabel,
+                  linkedPolicyLabel,
                   style: baseStyle.copyWith(
                     color: AppColors.accentPrimary,
                     decoration: TextDecoration.underline,
