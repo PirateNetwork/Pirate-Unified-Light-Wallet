@@ -9,6 +9,7 @@ import '../../../ui/atoms/p_button.dart';
 import '../../../ui/organisms/p_scaffold.dart';
 import '../onboarding_flow.dart';
 import '../../../core/i18n/arb_text_localizer.dart';
+import '../../legal/privacy_policy_dialog.dart';
 
 /// Welcome screen
 class WelcomeScreen extends ConsumerWidget {
@@ -140,14 +141,7 @@ class WelcomeScreen extends ConsumerWidget {
                       SizedBox(
                         height: isCompactHeight ? AppSpacing.xs : AppSpacing.md,
                       ),
-                      Text(
-                        'By continuing, you agree to the Terms and Privacy Policy'
-                            .tr,
-                        style: AppTypography.caption.copyWith(
-                          color: AppColors.textTertiary,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
+                      const PrivacyPolicyAgreement(),
                     ],
                   ),
                 ),
