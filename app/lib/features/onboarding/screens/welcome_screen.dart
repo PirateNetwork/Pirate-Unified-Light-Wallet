@@ -132,7 +132,7 @@ class WelcomeScreen extends ConsumerWidget {
                           ref.read(onboardingControllerProvider.notifier)
                             ..reset(startAt: OnboardingStep.welcome)
                             ..nextStep();
-                          context.push('/onboarding/create-or-import');
+                          context.go('/onboarding/create-or-import');
                         },
                         variant: PButtonVariant.primary,
                         size: PButtonSize.large,
