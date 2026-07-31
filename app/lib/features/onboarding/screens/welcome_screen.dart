@@ -12,11 +12,28 @@ import '../../../core/i18n/arb_text_localizer.dart';
 import '../../legal/privacy_policy_dialog.dart';
 
 /// Welcome screen
-class WelcomeScreen extends ConsumerWidget {
+class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
+  bool _isContinuing = false;
+
+  void _continueToOnboarding() {
+    if (_isContinuing) return;
+
+    setState(() => _isContinuing = true);
+    ref.read(onboardingControllerProvider.notifier)
+      ..reset(startAt: OnboardingStep.welcome)
+      ..nextStep();
+    context.go('/onboarding/create-or-import');
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return PScaffold(
       title: 'Pirate Chain Unified Wallet',
       body: LayoutBuilder(
@@ -128,12 +145,8 @@ class WelcomeScreen extends ConsumerWidget {
                       SizedBox(height: largeGap),
                       PButton(
                         text: 'Get Started'.tr,
-                        onPressed: () {
-                          ref.read(onboardingControllerProvider.notifier)
-                            ..reset(startAt: OnboardingStep.welcome)
-                            ..nextStep();
-                          context.go('/onboarding/create-or-import');
-                        },
+                        onPressed: _continueToOnboarding,
+                        loading: _isContinuing,
                         variant: PButtonVariant.primary,
                         size: PButtonSize.large,
                         fullWidth: true,
