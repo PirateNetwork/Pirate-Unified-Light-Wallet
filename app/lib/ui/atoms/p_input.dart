@@ -22,6 +22,7 @@ class PInput extends StatefulWidget {
     this.maxLength,
     this.autocorrect = true,
     this.enableSuggestions = true,
+    this.enableInteractiveSelection = true,
     this.keyboardType,
     this.textInputAction,
     this.onChanged,
@@ -53,6 +54,7 @@ class PInput extends StatefulWidget {
   final int? maxLength;
   final bool autocorrect;
   final bool enableSuggestions;
+  final bool enableInteractiveSelection;
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onChanged;
@@ -103,7 +105,9 @@ class _PInputState extends State<PInput> {
         if (selection.isValid && selection.baseOffset <= newValue.length) {
           _internalController.selection = selection;
         } else {
-          _internalController.selection = TextSelection.collapsed(offset: newValue.length);
+          _internalController.selection = TextSelection.collapsed(
+            offset: newValue.length,
+          );
         }
       }
     }
@@ -152,6 +156,7 @@ class _PInputState extends State<PInput> {
       maxLength: widget.maxLength,
       autocorrect: autocorrect,
       enableSuggestions: enableSuggestions,
+      enableInteractiveSelection: widget.enableInteractiveSelection,
       enableIMEPersonalizedLearning: !widget.obscureText,
       smartDashesType: widget.obscureText
           ? SmartDashesType.disabled

@@ -287,6 +287,7 @@ class _PassphraseSetupScreenState extends ConsumerState<PassphraseSetupScreen> {
               obscureText: _obscureConfirm,
               autocorrect: false,
               enableSuggestions: false,
+              enableInteractiveSelection: false,
               errorText: _confirmController.text.isNotEmpty && !_passwordsMatch
                   ? 'Passphrases do not match'.tr
                   : null,
