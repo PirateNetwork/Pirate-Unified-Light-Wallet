@@ -317,7 +317,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     PButton(
-                      text: "I've Written It Down".tr,
+                      text: "I've backed it up".tr,
                       onPressed: _proceed,
                       variant: PButtonVariant.primary,
                       size: PButtonSize.large,

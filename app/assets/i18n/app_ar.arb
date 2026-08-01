@@ -531,7 +531,7 @@
   "Host": "المضيف",
   "How it works": "كيف يعمل",
   "I understand that losing my seed phrase means losing access to my wallet forever": "أدرك أن فقدان عبارة الاسترداد الخاصة بي يعني فقدان الوصول إلى محفظتي إلى الأبد",
-  "I've Written It Down": "لقد كتبتها",
+  "I've backed it up": "لقد احتفظت بنسخة احتياطية منها",
   "I2P (Desktop Only)": "I2P (سطح المكتب فقط)",
   "I2P Endpoint": "نقطة النهاية I2P",
   "I2P First Startup": "I2P أول بدء تشغيل",
