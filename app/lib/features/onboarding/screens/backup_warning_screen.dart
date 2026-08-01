@@ -109,29 +109,35 @@ class _BackupWarningScreenState extends ConsumerState<BackupWarningScreen> {
             const SizedBox(height: AppSpacing.xxl),
 
             // Acknowledgment checkbox
-            InkWell(
-              onTap: () => setState(() => _acknowledged = !_acknowledged),
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                child: Row(
-                  children: [
-                    Checkbox(
-                      value: _acknowledged,
-                      onChanged: (value) =>
-                          setState(() => _acknowledged = value ?? false),
-                      activeColor: AppColors.accentPrimary,
-                    ),
-                    Expanded(
-                      child: Text(
-                        'I understand that losing my seed phrase means losing access to my wallet forever'
-                            .tr,
-                        style: AppTypography.body.copyWith(
-                          color: AppColors.textPrimary,
+            Center(
+              child: ConstrainedBox(
+                key: const Key('seed-backup-acknowledgment'),
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: InkWell(
+                  onTap: () => setState(() => _acknowledged = !_acknowledged),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: _acknowledged,
+                          onChanged: (value) =>
+                              setState(() => _acknowledged = value ?? false),
+                          activeColor: AppColors.accentPrimary,
                         ),
-                      ),
+                        Expanded(
+                          child: Text(
+                            'I understand that losing my seed phrase means losing access to my wallet forever'
+                                .tr,
+                            style: AppTypography.body.copyWith(
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
