@@ -89,7 +89,7 @@ class _PButtonState extends State<PButton> {
                           mainAxisSize: MainAxisSize.min,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            if (widget.loading)
+                            if (widget.loading) ...[
                               SizedBox(
                                 width: widget.size.iconSize,
                                 height: widget.size.iconSize,
@@ -101,8 +101,9 @@ class _PButtonState extends State<PButton> {
                                     ),
                                   ),
                                 ),
-                              )
-                            else if (widget.icon != null) ...[
+                              ),
+                              SizedBox(width: PSpacing.iconTextGap),
+                            ] else if (widget.icon != null) ...[
                               IconTheme(
                                 data: IconThemeData(
                                   color: widget.variant.textColor(
