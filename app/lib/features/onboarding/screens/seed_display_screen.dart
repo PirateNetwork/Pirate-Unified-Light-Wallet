@@ -253,7 +253,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                           ),
                           const SizedBox(height: AppSpacing.lg),
                           PButton(
-                            text: 'Reveal Seed Phrase'.tr,
+                            text: 'Reveal seed phrase'.tr,
                             onPressed: _revealSeed,
                             variant: PButtonVariant.primary,
                             size: PButtonSize.medium,
@@ -276,7 +276,7 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
                     PButton(
-                      text: 'Copy to Clipboard'.tr,
+                      text: 'Copy to clipboard'.tr,
                       onPressed: _copyToClipboard,
                       variant: PButtonVariant.secondary,
                       size: PButtonSize.medium,

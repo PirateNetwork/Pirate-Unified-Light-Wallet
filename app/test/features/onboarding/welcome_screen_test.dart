@@ -6,7 +6,7 @@ import 'package:pirate_wallet/features/onboarding/screens/welcome_screen.dart';
 import 'package:pirate_wallet/ui/atoms/p_button.dart';
 
 void main() {
-  testWidgets('Get Started ignores repeated activation', (tester) async {
+  testWidgets('Get started ignores repeated activation', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1180, 760);
     addTearDown(tester.view.resetDevicePixelRatio);

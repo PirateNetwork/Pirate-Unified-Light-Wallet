@@ -133,7 +133,7 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Create New Wallet'.tr,
+                                    'Create new wallet'.tr,
                                     style: AppTypography.h4.copyWith(
                                       color: AppColors.textPrimary,
                                     ),
@@ -212,7 +212,7 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Import Existing Wallet'.tr,
+                                    'Import existing wallet'.tr,
                                     style: AppTypography.h4.copyWith(
                                       color: AppColors.textPrimary,
                                     ),

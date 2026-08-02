@@ -144,7 +144,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                       ),
                       SizedBox(height: largeGap),
                       PButton(
-                        text: 'Get Started'.tr,
+                        text: 'Get started'.tr,
                         onPressed: _continueToOnboarding,
                         loading: _isContinuing,
                         variant: PButtonVariant.primary,

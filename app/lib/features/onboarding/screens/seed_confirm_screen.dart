@@ -317,7 +317,7 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
             const SizedBox(height: AppSpacing.xl),
 
             PButton(
-              text: 'Verify & Create Wallet'.tr,
+              text: 'Verify and create wallet'.tr,
               onPressed: _isComplete && !_isVerifying
                   ? _verifyAndProceed
                   : null,
