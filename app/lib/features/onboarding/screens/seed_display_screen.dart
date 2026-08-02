@@ -147,9 +147,9 @@ class _SeedDisplayScreenState extends ConsumerState<SeedDisplayScreen> {
   @override
   Widget build(BuildContext context) {
     return PScaffold(
-      title: 'Your Seed Phrase'.tr,
+      title: 'Your seed phrase'.tr,
       appBar: PAppBar(
-        title: 'Backup Your Seed'.tr,
+        title: 'Back up your seed'.tr,
         subtitle: 'Write this down securely'.tr,
         showBackButton: true,
       ),

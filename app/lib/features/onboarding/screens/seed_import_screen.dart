@@ -276,9 +276,9 @@ class _SeedImportScreenState extends ConsumerState<SeedImportScreen> {
     );
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     return PScaffold(
-      title: 'Import Seed'.tr,
+      title: 'Import seed'.tr,
       appBar: PAppBar(
-        title: 'Import Seed Phrase'.tr,
+        title: 'Import seed phrase'.tr,
         subtitle: 'Restore a wallet with your seed phrase'.tr,
         onBack: () => context.pop(),
         actions: [

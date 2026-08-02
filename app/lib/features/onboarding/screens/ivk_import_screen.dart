@@ -182,9 +182,9 @@ class _ViewingKeysImportScreenState
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
     return PScaffold(
-      title: 'Import Viewing Keys'.tr,
+      title: 'Import viewing keys'.tr,
       appBar: PAppBar(
-        title: 'Import Viewing Keys'.tr,
+        title: 'Import viewing keys'.tr,
         subtitle: 'Create a view only wallet'.tr,
         onBack: () => context.pop(),
       ),

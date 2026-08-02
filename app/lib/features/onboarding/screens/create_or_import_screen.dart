@@ -42,9 +42,9 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
     final totalSteps = onboardingState.mode == OnboardingMode.import ? 5 : 6;
 
     return PScaffold(
-      title: 'New Wallet'.tr,
+      title: 'New wallet'.tr,
       appBar: PAppBar(
-        title: 'New Wallet'.tr,
+        title: 'New wallet'.tr,
         subtitle: 'Create or import a wallet'.tr,
         onBack: () {
           ref.read(onboardingControllerProvider.notifier).previousStep();
@@ -66,7 +66,7 @@ class _CreateOrImportScreenState extends ConsumerState<CreateOrImportScreen> {
               ),
               const SizedBox(height: AppSpacing.xxl),
               Text(
-                'Create or Import Wallet'.tr,
+                'Create or import wallet'.tr,
                 style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
               ),
               const SizedBox(height: AppSpacing.md),

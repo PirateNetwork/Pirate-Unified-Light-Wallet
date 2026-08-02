@@ -227,9 +227,9 @@ class _SeedConfirmScreenState extends ConsumerState<SeedConfirmScreen> {
       bottom: basePadding.bottom + MediaQuery.of(context).viewInsets.bottom,
     );
     return PScaffold(
-      title: 'Confirm Seed'.tr,
+      title: 'Confirm seed'.tr,
       appBar: PAppBar(
-        title: 'Verify Your Backup'.tr,
+        title: 'Verify your backup'.tr,
         subtitle: 'Confirm you wrote it down'.tr,
         showBackButton: true,
       ),
