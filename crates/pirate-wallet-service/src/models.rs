@@ -580,9 +580,9 @@ pub struct ConsensusBranchValidation {
     pub has_server_branch: bool,
     /// Whether the SDK could derive a branch id.
     pub has_sdk_branch: bool,
-    /// Whether the server appears newer than the SDK.
+    /// Legacy compatibility field; always false because branch ids are opaque.
     pub is_server_newer: bool,
-    /// Whether the SDK appears newer than the server.
+    /// Legacy compatibility field; always false because branch ids are opaque.
     pub is_sdk_newer: bool,
     /// Human-readable mismatch message.
     pub error_message: Option<String>,

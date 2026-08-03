@@ -43,7 +43,7 @@ use pirate_storage_sqlite::{
     Repository, ScanQueueStorage, SpendabilityStateStorage, WalletSecret,
 };
 use pirate_sync_lightd::client::{LightClient, RetryConfig};
-use pirate_sync_lightd::SyncEngine;
+use pirate_sync_lightd::{check_consensus_branch, SyncEngine};
 use rusqlite::params;
 use sapling::keys::OutgoingViewingKey as SaplingOutgoingViewingKey;
 use sapling::note_encryption::try_sapling_output_recovery;
@@ -62,7 +62,7 @@ use std::time::Duration;
 use zcash_note_encryption::try_output_recovery_with_ovk;
 use zcash_primitives::merkle_tree::{read_commitment_tree, read_frontier_v0, read_frontier_v1};
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;
-use zcash_protocol::consensus::{BlockHeight, BranchId};
+use zcash_protocol::consensus::BlockHeight;
 
 pub(crate) mod address_book;
 pub(crate) mod addresses;
@@ -330,18 +330,6 @@ type TxRecoveryContext = (
     Vec<orchard::keys::OutgoingViewingKey>,
     Option<u32>,
 );
-
-fn format_branch_id_hex(branch_id: BranchId) -> String {
-    format!("{:08x}", u32::from(branch_id))
-}
-
-fn parse_branch_id_hex(hex_value: &str) -> Option<BranchId> {
-    let trimmed = hex_value.trim();
-    let normalized = trimmed.strip_prefix("0x").unwrap_or(trimmed);
-    u32::from_str_radix(normalized, 16)
-        .ok()
-        .and_then(|value| BranchId::try_from(value).ok())
-}
 
 fn unix_timestamp_millis() -> u64 {
     std::time::SystemTime::now()
@@ -3729,21 +3717,16 @@ pub async fn validate_consensus_branch(wallet_id: WalletId) -> Result<ConsensusB
         .await
         .map_err(|e| anyhow!("Failed to fetch lightwalletd info: {}", e))?;
 
-    let network = PirateNetwork::new(wallet_network_type(&wallet_id)?);
-    let server_height_u32 = u32::try_from(info.block_height)
-        .map_err(|_| anyhow!("Server height out of range: {}", info.block_height))?;
-    let sdk_branch = BranchId::for_height(&network, BlockHeight::from_u32(server_height_u32));
-    let server_branch = parse_branch_id_hex(&info.consensus_branch_id);
-
-    let sdk_branch_hex = Some(format_branch_id_hex(sdk_branch));
-    let server_branch_hex = server_branch.map(format_branch_id_hex);
-    let has_server_branch = server_branch.is_some();
+    let check = check_consensus_branch(
+        wallet_network_type(&wallet_id)?,
+        info.block_height,
+        &info.consensus_branch_id,
+    )?;
+    let is_valid = check.is_valid();
+    let sdk_branch_hex = Some(check.sdk_branch_id);
+    let server_branch_hex = check.server_branch_id;
+    let has_server_branch = server_branch_hex.is_some();
     let has_sdk_branch = true;
-    let is_valid = server_branch == Some(sdk_branch);
-    let server_u32 = server_branch.map(u32::from);
-    let sdk_u32 = u32::from(sdk_branch);
-    let is_server_newer = server_u32.map(|value| value > sdk_u32).unwrap_or(false);
-    let is_sdk_newer = server_u32.map(|value| sdk_u32 > value).unwrap_or(false);
     let error_message = if is_valid {
         None
     } else if let Some(server_branch_hex) = server_branch_hex.clone() {
@@ -3764,8 +3747,8 @@ pub async fn validate_consensus_branch(wallet_id: WalletId) -> Result<ConsensusB
         is_valid,
         has_server_branch,
         has_sdk_branch,
-        is_server_newer,
-        is_sdk_newer,
+        is_server_newer: false,
+        is_sdk_newer: false,
         error_message,
     })
 }
