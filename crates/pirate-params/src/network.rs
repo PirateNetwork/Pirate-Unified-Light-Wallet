@@ -2,8 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Ironwood activation height configured by the full node's testnet parameters.
-pub const TESTNET_IRONWOOD_ACTIVATION_HEIGHT: u32 = 280_500;
+/// Sapling activation height for the deployed Pirate Chain testnet.
+pub const TESTNET_SAPLING_ACTIVATION_HEIGHT: u32 = 61;
+/// Ironwood activation height for the deployed Pirate Chain testnet.
+pub const TESTNET_IRONWOOD_ACTIVATION_HEIGHT: u32 = 297;
 
 /// Network type enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -63,10 +65,10 @@ impl Network {
             coin_type: 1, // Testnet coin type
             rpc_port: 45462,
             p2p_port: 45461,
-            overwinter_activation_height: 1,
-            sapling_activation_height: 1,
+            overwinter_activation_height: TESTNET_SAPLING_ACTIVATION_HEIGHT,
+            sapling_activation_height: TESTNET_SAPLING_ACTIVATION_HEIGHT,
             ironwood_activation_height: Some(TESTNET_IRONWOOD_ACTIVATION_HEIGHT),
-            default_birthday_height: 61,
+            default_birthday_height: TESTNET_SAPLING_ACTIVATION_HEIGHT,
         }
     }
 
@@ -127,6 +129,16 @@ mod tests {
     fn test_network_from_type() {
         let net = Network::from_type(NetworkType::Testnet);
         assert_eq!(net.network_type, NetworkType::Testnet);
+        assert_eq!(
+            net.overwinter_activation_height,
+            TESTNET_SAPLING_ACTIVATION_HEIGHT
+        );
+        assert_eq!(
+            net.sapling_activation_height,
+            TESTNET_SAPLING_ACTIVATION_HEIGHT
+        );
+        assert!(!net.is_sapling_active(TESTNET_SAPLING_ACTIVATION_HEIGHT - 1));
+        assert!(net.is_sapling_active(TESTNET_SAPLING_ACTIVATION_HEIGHT));
         assert_eq!(
             net.ironwood_activation_height,
             Some(TESTNET_IRONWOOD_ACTIVATION_HEIGHT)
