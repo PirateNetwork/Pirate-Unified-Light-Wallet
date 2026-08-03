@@ -459,6 +459,10 @@ public struct AddressValidation: Codable, Equatable {
     }
 }
 
+/// Exact consensus branch compatibility at the server-reported height.
+///
+/// Branch IDs are opaque. `isServerNewer` and `isSdkNewer` remain for wire
+/// compatibility and are always false; use `isValid` to determine compatibility.
 public struct ConsensusBranchValidation: Codable, Equatable {
     public let sdkBranchId: String?
     public let serverBranchId: String?

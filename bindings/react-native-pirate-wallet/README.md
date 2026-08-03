@@ -265,6 +265,9 @@ active wallet between running wallets.
     - `isSdkNewer`
     - `errorMessage`
 
+  Consensus branch IDs are opaque. Use `isValid` for compatibility; the two
+  `*Newer` fields remain for wire compatibility and are always `false`.
+
 ### Addresses and balances
 
 Receive-address APIs are shielded and wallet-scoped:

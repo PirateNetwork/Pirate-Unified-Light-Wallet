@@ -95,6 +95,11 @@ public data class AddressValidation(
     public fun isInvalid(): Boolean = !isValid
 }
 
+/**
+ * Exact consensus branch compatibility at the server-reported height.
+ * Branch IDs are opaque; [isServerNewer] and [isSdkNewer] are retained for wire compatibility
+ * and are always false. Use [isValid] to determine compatibility.
+ */
 public data class ConsensusBranchValidation(
     val sdkBranchId: String?,
     val serverBranchId: String?,
