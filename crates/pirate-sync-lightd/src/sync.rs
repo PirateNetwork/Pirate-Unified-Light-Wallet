@@ -453,6 +453,22 @@ impl SyncEngine {
         }
     }
 
+    async fn require_server_consensus_branch(&self) -> Result<()> {
+        let info = self.client.get_lightd_info().await?;
+        let check = crate::consensus::check_consensus_branch(
+            self.network_type,
+            info.block_height,
+            &info.consensus_branch_id,
+        )?;
+        check.require_match()?;
+        tracing::debug!(
+            "Validated consensus branch {} at server height {}",
+            check.sdk_branch_id,
+            check.height
+        );
+        Ok(())
+    }
+
     /// Create new sync engine
     pub fn new(endpoint: String, birthday_height: u32) -> Self {
         let config = SyncConfig::default();
@@ -787,6 +803,7 @@ impl SyncEngine {
             progress.set_stage(SyncStage::Headers);
         }
         self.update_target_height().await?;
+        self.require_server_consensus_branch().await?;
         let target_height = self.progress.read().await.target_height();
         Ok((start_height, target_height))
     }
@@ -1082,6 +1099,7 @@ impl SyncEngine {
             e
         })?;
         tracing::debug!("Connected to lightwalletd");
+        self.require_server_consensus_branch().await?;
 
         let follow_tip = end_height.is_none();
 
@@ -3690,6 +3708,7 @@ impl SyncEngine {
                     }
 
                     if latest_height > current {
+                        self.require_server_consensus_branch().await?;
                         tracing::info!(
                         "Found {} new blocks after sync completion, continuing sync from {} to {}",
                         latest_height - current,
@@ -3750,8 +3769,9 @@ impl SyncEngine {
                         e
                     );
                     self.client.disconnect().await;
-                    if let Err(conn_err) = self.client.connect().await {
-                        tracing::warn!("Reconnect failed: {}", conn_err);
+                    match self.client.connect().await {
+                        Ok(()) => self.require_server_consensus_branch().await?,
+                        Err(conn_err) => tracing::warn!("Reconnect failed: {}", conn_err),
                     }
                     tokio::select! {
                         _ = tokio::time::sleep(Duration::from_secs(5)) => {}
