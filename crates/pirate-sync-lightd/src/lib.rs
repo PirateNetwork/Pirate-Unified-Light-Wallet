@@ -12,6 +12,7 @@ pub mod background_logger;
 mod block_cache;
 pub mod cancel;
 pub mod client;
+pub mod consensus;
 pub mod error;
 pub mod orchard;
 pub mod pipeline;
@@ -35,6 +36,7 @@ pub use client::{
     TreeState, DEFAULT_LIGHTD_HOST, DEFAULT_LIGHTD_PORT, DEFAULT_LIGHTD_SPKI_PIN,
     DEFAULT_LIGHTD_URL,
 };
+pub use consensus::{check_consensus_branch, ConsensusBranchCheck};
 pub use error::{Error, Result};
 pub use pipeline::{
     DecryptedNote, PerfCounters, PerfSnapshot, PipelineConfig, PipelineResult, SyncPipeline,
