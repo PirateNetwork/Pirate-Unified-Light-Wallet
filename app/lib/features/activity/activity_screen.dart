@@ -49,15 +49,47 @@ class ActivityScreen extends ConsumerStatefulWidget {
 
 class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   ActivityFilter _filter = ActivityFilter.all;
   String _query = '';
   Timer? _searchDebounce;
 
   @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_loadMoreNearListEnd);
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
+    _scrollController
+      ..removeListener(_loadMoreNearListEnd)
+      ..dispose();
     _searchDebounce?.cancel();
     super.dispose();
+  }
+
+  void _loadMoreNearListEnd() {
+    if (!_scrollController.hasClients ||
+        _scrollController.position.extentAfter > 600) {
+      return;
+    }
+    unawaited(ref.read(activityHistoryProvider.notifier).loadMore());
+  }
+
+  void _fillViewportIfNeeded(ActivityHistoryState history) {
+    if (!history.hasMore ||
+        history.isLoadingMore ||
+        history.loadMoreError != null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) {
+        return;
+      }
+      _loadMoreNearListEnd();
+    });
   }
 
   int _confirmationsForTx(TxInfo tx, int? currentHeight) {
@@ -125,7 +157,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final transactionsAsync = ref.watch(transactionsProvider);
+    final historyAsync = ref.watch(activityHistoryProvider);
     final syncProgressStatus = ref
         .watch(syncProgressStreamProvider)
         .asData
@@ -140,14 +172,17 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     final screenWidth = size.width;
     final gutter = PSpacing.responsiveGutter(screenWidth);
 
-    final content = transactionsAsync.when(
-      data: (txs) {
-        final filtered = _applyFilters(txs, currentHeight);
+    final content = historyAsync.when(
+      data: (history) {
+        final filtered = _applyFilters(history.transactions, currentHeight);
+        _fillViewportIfNeeded(history);
         const headerCount = 4;
         final bodyCount = filtered.isEmpty ? 1 : filtered.length;
-        final itemCount = headerCount + bodyCount;
+        final showFooter = filtered.isNotEmpty && history.hasMore;
+        final itemCount = headerCount + bodyCount + (showFooter ? 1 : 0);
 
         return ListView.builder(
+          controller: _scrollController,
           padding: EdgeInsets.fromLTRB(
             gutter,
             PSpacing.lg,
@@ -179,12 +214,25 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
               return const SizedBox(height: PSpacing.lg);
             }
             if (filtered.isEmpty) {
+              if (history.hasMore) {
+                return _ActivityLoadMoreState(
+                  error: history.loadMoreError,
+                  onRetry: () => unawaited(
+                    ref.read(activityHistoryProvider.notifier).retryLoadMore(),
+                  ),
+                );
+              }
               return const _ActivityEmptyState();
             }
 
             final txIndex = index - headerCount;
-            if (txIndex < 0 || txIndex >= filtered.length) {
-              return const SizedBox.shrink();
+            if (txIndex >= filtered.length) {
+              return _ActivityLoadMoreState(
+                error: history.loadMoreError,
+                onRetry: () => unawaited(
+                  ref.read(activityHistoryProvider.notifier).retryLoadMore(),
+                ),
+              );
             }
             final tx = filtered[txIndex];
             return Padding(
@@ -336,6 +384,40 @@ class _ActivityEmptyState extends StatelessWidget {
               style: PTypography.titleMedium(color: AppColors.textPrimary),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityLoadMoreState extends StatelessWidget {
+  const _ActivityLoadMoreState({required this.error, required this.onRetry});
+
+  final Object? error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (error != null) {
+      return Center(
+        child: Padding(
+          key: const ValueKey('activity-load-more-error'),
+          padding: const EdgeInsets.symmetric(vertical: PSpacing.md),
+          child: IconButton(
+            tooltip: 'Retry'.tr,
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+          ),
+        ),
+      );
+    }
+    return const Center(
+      child: Padding(
+        key: ValueKey('activity-loading-more'),
+        padding: EdgeInsets.symmetric(vertical: PSpacing.lg),
+        child: SizedBox.square(
+          dimension: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
     );

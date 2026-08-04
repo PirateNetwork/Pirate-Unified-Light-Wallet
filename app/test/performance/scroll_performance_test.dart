@@ -112,6 +112,15 @@ Widget _buildTestApp({required Widget child, List<TxInfo>? transactions}) {
       }),
       isSyncRunningProvider.overrideWith((ref) async => true),
       transactionsProvider.overrideWith((ref) async => txs),
+      transactionPageLoaderProvider.overrideWith((ref) {
+        return (
+          WalletId walletId, {
+          TransactionCursor? cursor,
+          required int pageSize,
+        }) async {
+          return TransactionPage(transactions: txs);
+        };
+      }),
       tunnelModeProvider.overrideWith(_TestTunnelModeNotifier.new),
       lightdEndpointConfigProvider.overrideWith(
         (ref) async => const LightdEndpointConfig(

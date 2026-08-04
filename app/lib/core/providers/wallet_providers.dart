@@ -146,6 +146,7 @@ final refreshWalletRuntimeProvider = Provider<void Function()>((ref) {
       ..invalidate(balanceProvider)
       ..invalidate(balanceStreamProvider)
       ..invalidate(transactionsProvider)
+      ..invalidate(activityHistoryProvider)
       ..invalidate(transactionStreamProvider)
       ..invalidate(syncStatusProvider)
       ..invalidate(syncProgressStreamProvider)
@@ -464,12 +465,138 @@ final refreshSyncLogsProvider = Provider<void Function()>((ref) {
 // Transactions
 // ============================================================================
 
-/// Transaction history
+const int _recentTransactionLimit = 100;
+const int activityTransactionPageSize = 50;
+
+typedef TransactionPageLoader =
+    Future<TransactionPage> Function(
+      WalletId walletId, {
+      TransactionCursor? cursor,
+      required int pageSize,
+    });
+
+final transactionPageLoaderProvider = Provider<TransactionPageLoader>((ref) {
+  return FfiBridge.listTransactionsPage;
+});
+
+class ActivityHistoryState {
+  const ActivityHistoryState({
+    required this.transactions,
+    required this.nextCursor,
+    this.isLoadingMore = false,
+    this.loadMoreError,
+  });
+
+  const ActivityHistoryState.empty()
+    : transactions = const [],
+      nextCursor = null,
+      isLoadingMore = false,
+      loadMoreError = null;
+
+  final List<TxInfo> transactions;
+  final TransactionCursor? nextCursor;
+  final bool isLoadingMore;
+  final Object? loadMoreError;
+
+  bool get hasMore => nextCursor != null;
+}
+
+final activityHistoryProvider =
+    AsyncNotifierProvider<ActivityHistoryNotifier, ActivityHistoryState>(
+      ActivityHistoryNotifier.new,
+    );
+
+class ActivityHistoryNotifier extends AsyncNotifier<ActivityHistoryState> {
+  @override
+  Future<ActivityHistoryState> build() async {
+    final walletId = ref.watch(activeWalletProvider);
+    if (walletId == null) {
+      return const ActivityHistoryState.empty();
+    }
+
+    final page = await ref.watch(transactionPageLoaderProvider)(
+      walletId,
+      pageSize: activityTransactionPageSize,
+    );
+    return ActivityHistoryState(
+      transactions: List.unmodifiable(page.transactions),
+      nextCursor: page.nextCursor,
+    );
+  }
+
+  Future<void> loadMore() => _loadMore(retry: false);
+
+  Future<void> retryLoadMore() => _loadMore(retry: true);
+
+  Future<void> _loadMore({required bool retry}) async {
+    final current = state.asData?.value;
+    final walletId = ref.read(activeWalletProvider);
+    if (current == null ||
+        walletId == null ||
+        current.isLoadingMore ||
+        current.nextCursor == null ||
+        (!retry && current.loadMoreError != null)) {
+      return;
+    }
+
+    state = AsyncData(
+      ActivityHistoryState(
+        transactions: current.transactions,
+        nextCursor: current.nextCursor,
+        isLoadingMore: true,
+      ),
+    );
+
+    try {
+      final page = await ref.read(transactionPageLoaderProvider)(
+        walletId,
+        cursor: current.nextCursor,
+        pageSize: activityTransactionPageSize,
+      );
+      if (!ref.mounted || ref.read(activeWalletProvider) != walletId) {
+        return;
+      }
+
+      final merged = current.transactions.toList(growable: true);
+      final seen = merged
+          .map((tx) => '${tx.height}:${tx.txid}:${tx.amount}')
+          .toSet();
+      for (final tx in page.transactions) {
+        final key = '${tx.height}:${tx.txid}:${tx.amount}';
+        if (seen.add(key)) {
+          merged.add(tx);
+        }
+      }
+      state = AsyncData(
+        ActivityHistoryState(
+          transactions: List.unmodifiable(merged),
+          nextCursor: page.nextCursor,
+        ),
+      );
+    } catch (error) {
+      if (!ref.mounted || ref.read(activeWalletProvider) != walletId) {
+        return;
+      }
+      state = AsyncData(
+        ActivityHistoryState(
+          transactions: current.transactions,
+          nextCursor: current.nextCursor,
+          loadMoreError: error,
+        ),
+      );
+    }
+  }
+}
+
+/// Recent transactions used by compact surfaces such as Home.
 final transactionsProvider = FutureProvider<List<TxInfo>>((ref) async {
   final walletId = ref.watch(activeWalletProvider);
   if (walletId == null) return [];
 
-  final transactions = await FfiBridge.listTransactions(walletId);
+  final transactions = await FfiBridge.listTransactions(
+    walletId,
+    limit: _recentTransactionLimit,
+  );
   _prefetchRecentMemos(ref, walletId, transactions);
   return transactions;
 });
@@ -571,6 +698,7 @@ final transactionWatcherProvider = Provider<void>((ref) {
     if (tx != null) {
       ref
         ..invalidate(transactionsProvider)
+        ..invalidate(activityHistoryProvider)
         ..invalidate(balanceProvider);
     }
   });
@@ -586,6 +714,7 @@ final syncCompletionWatcherProvider = Provider<void>((ref) {
       if (wasSyncing && !isSyncing) {
         ref
           ..invalidate(transactionsProvider)
+          ..invalidate(activityHistoryProvider)
           ..invalidate(balanceProvider);
       }
       wasSyncing = isSyncing;
@@ -624,6 +753,7 @@ final sendTransactionProvider = Provider<Future<String> Function(PendingTx)>((
     // Refresh transactions and balance
     ref
       ..invalidate(transactionsProvider)
+      ..invalidate(activityHistoryProvider)
       ..invalidate(balanceProvider);
 
     return txid;

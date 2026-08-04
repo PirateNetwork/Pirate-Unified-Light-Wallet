@@ -1974,7 +1974,8 @@ class _SendScreenState extends ConsumerState<SendScreen> {
       // Refresh balance and transaction history
       ref
         ..invalidate(balanceProvider)
-        ..invalidate(transactionsProvider);
+        ..invalidate(transactionsProvider)
+        ..invalidate(activityHistoryProvider);
 
       // Show success dialog
       if (mounted) {
