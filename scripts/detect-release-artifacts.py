@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 MANIFEST_PATH = Path("release-artifacts.toml")
+REACT_NATIVE_PACKAGE_PATH = Path("bindings/react-native-pirate-wallet/package.json")
 TRACKED = (
     "cli",
     "qortal_cli",
@@ -82,6 +83,17 @@ def changed_artifacts(current: dict, previous: dict | None) -> dict:
     return result
 
 
+def validate_source_versions(current: dict) -> None:
+    package = json.loads(REACT_NATIVE_PACKAGE_PATH.read_text(encoding="utf-8"))
+    package_version = package.get("version")
+    release_version = current.get("react_native_plugin", {}).get("version")
+    if package_version != release_version:
+        raise ValueError(
+            "React Native package version does not match release-artifacts.toml "
+            f"({package_version!r} != {release_version!r})"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-ref", default=None)
@@ -89,6 +101,7 @@ def main() -> int:
     args = parser.parse_args()
 
     current = load_manifest(None)
+    validate_source_versions(current)
     base_ref = args.base_ref or previous_tag()
     previous = load_manifest(base_ref) if base_ref else None
     result = changed_artifacts(current, previous)
