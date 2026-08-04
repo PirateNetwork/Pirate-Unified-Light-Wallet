@@ -2,6 +2,24 @@
   "name": "react-native-pirate-wallet",
   "version": "0.2.1",
   "description": "React Native wrapper for the Pirate Unified Wallet native SDK surfaces",
+  "keywords": [
+    "react-native",
+    "pirate-chain",
+    "cryptocurrency",
+    "wallet",
+    "privacy",
+    "shielded"
+  ],
+  "homepage": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/tree/main/bindings/react-native-pirate-wallet#readme",
+  "bugs": {
+    "url": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet.git",
+    "directory": "bindings/react-native-pirate-wallet"
+  },
+  "author": "Pirate Chain Contributors",
   "license": "MIT",
   "main": "src/index.js",
   "types": "src/index.d.ts",
@@ -17,7 +35,13 @@
   "scripts": {
     "prepare-native": "bash ../../scripts/prepare-react-native-plugin.sh"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "peerDependencies": {
     "react-native": ">=0.71.0 <1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
