@@ -14,9 +14,11 @@ Before building release artifacts:
 - update `release-artifacts.toml` for any backend deliverable that should publish on the next tag:
   - `cli`
   - `qortal_cli`
+  - `qortal_jni`
   - `native_ffi`
   - `ios_sdk`
   - `android_sdk`
+  - `react_native_plugin`
 
 Versioning from tags
 --------------------
@@ -55,9 +57,11 @@ Publication is gated by the backend artifact versions in that file:
 
 - `cli`
 - `qortal_cli`
+- `qortal_jni`
 - `native_ffi`
 - `ios_sdk`
 - `android_sdk`
+- `react_native_plugin`
 
 Practical effect:
 
