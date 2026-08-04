@@ -2679,7 +2679,7 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
 const MAX_TRANSACTION_PAGE_SIZE: u32 = 200;
 
 fn transaction_matches_cursor(tx: &TxInfo, cursor: &TransactionCursor) -> bool {
-    tx.height == cursor.height && tx.txid == cursor.txid && tx.amount == cursor.amount
+    tx.txid == cursor.txid && tx.amount == cursor.amount
 }
 
 fn transaction_is_after_cursor(tx: &TxInfo, cursor: &TransactionCursor) -> bool {

@@ -540,3 +540,21 @@ fn missing_transaction_cursor_resumes_at_the_next_ordered_entry() {
     assert_eq!(page.transactions, vec![history[1].clone()]);
     assert_eq!(page.next_cursor, None);
 }
+
+#[test]
+fn transaction_cursor_follows_an_entry_when_its_height_changes() {
+    let cursor = TransactionCursor {
+        height: Some(40),
+        txid: "d".to_string(),
+        amount: 4,
+    };
+    let updated = vec![
+        history_tx("e", 50, 5),
+        history_tx("d", 35, 4),
+        history_tx("c", 30, 3),
+    ];
+
+    let page = paginate_transaction_snapshot(&updated, Some(&cursor), 1);
+
+    assert_eq!(page.transactions, vec![updated[2].clone()]);
+}
