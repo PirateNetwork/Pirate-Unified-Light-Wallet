@@ -488,8 +488,10 @@ class _HomeTransactionsSection extends ConsumerWidget {
             key: ValueKey(tx.txid),
             tx: tx,
             isConfirmed: _isConfirmedTx(tx, currentHeight),
-            onTap: () =>
-                context.push('/transaction/${tx.txid}?amount=${tx.amount}'),
+            onTap: () => context.push(
+              '/transaction/${tx.txid}?amount=${tx.amount}',
+              extra: tx,
+            ),
           );
         }, childCount: itemCount),
       ),

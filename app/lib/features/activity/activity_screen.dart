@@ -246,6 +246,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                 memo: tx.memo,
                 onTap: () => context.push(
                   '/transaction/${tx.txid}?amount=${tx.amount.toInt()}',
+                  extra: tx,
                 ),
               ),
             );

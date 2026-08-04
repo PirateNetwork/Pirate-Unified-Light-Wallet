@@ -21,35 +21,51 @@ import '../../core/i18n/arb_text_localizer.dart';
 
 /// Transaction detail screen.
 class TransactionDetailScreen extends ConsumerWidget {
-  const TransactionDetailScreen({super.key, required this.txid, this.amount});
+  const TransactionDetailScreen({
+    super.key,
+    required this.txid,
+    this.amount,
+    this.transaction,
+  });
 
   final String txid;
   final int? amount;
+  final TxInfo? transaction;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final transactionsAsync = ref.watch(transactionsProvider);
-
-    final content = transactionsAsync.when(
-      data: (txs) {
-        TxInfo? tx;
-        if (amount != null) {
-          for (final item in txs) {
-            if (item.txid == txid && item.amount.toInt() == amount) {
-              tx = item;
-              break;
-            }
+    TxInfo? findTransaction(Iterable<TxInfo> transactions) {
+      if (amount != null) {
+        for (final item in transactions) {
+          if (item.txid == txid && item.amount.toInt() == amount) {
+            return item;
           }
         }
-        tx ??= txs.where((item) => item.txid == txid).firstOrNull;
-        if (tx == null) {
-          return _TransactionMissing(txid: txid);
-        }
-        return _TransactionDetails(tx: tx);
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _TransactionError(message: error.toString()),
-    );
+      }
+      return transactions.where((item) => item.txid == txid).firstOrNull;
+    }
+
+    final routedTransaction = transaction != null
+        ? findTransaction([transaction!])
+        : null;
+    final Widget content;
+    if (routedTransaction != null) {
+      content = _TransactionDetails(tx: routedTransaction);
+    } else {
+      content = ref
+          .watch(transactionsProvider)
+          .when(
+            data: (txs) {
+              final tx = findTransaction(txs);
+              if (tx == null) {
+                return _TransactionMissing(txid: txid);
+              }
+              return _TransactionDetails(tx: tx);
+            },
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => _TransactionError(message: error.toString()),
+          );
+    }
 
     return PScaffold(
       title: 'Transaction'.tr,

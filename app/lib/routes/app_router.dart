@@ -54,6 +54,7 @@ import '../features/settings/screens/privacy_shield_screen.dart';
 import '../features/unlock/unlock_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../core/i18n/arb_text_localizer.dart';
+import '../core/ffi/generated/models.dart';
 import '../core/providers/wallet_providers.dart';
 import '../core/swaps/swap_availability.dart';
 import '../ui/motion/durations.dart';
@@ -389,6 +390,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           child: TransactionDetailScreen(
             txid: state.pathParameters['txid'] ?? '',
             amount: int.tryParse(state.uri.queryParameters['amount'] ?? ''),
+            transaction: state.extra is TxInfo ? state.extra! as TxInfo : null,
           ),
         ),
       ),
