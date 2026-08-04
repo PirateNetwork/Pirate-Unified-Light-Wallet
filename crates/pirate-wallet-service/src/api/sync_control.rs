@@ -45,7 +45,13 @@ struct SyncRuntimeHandles {
     perf: Arc<PerfCounters>,
 }
 
-type TxListCacheMap = HashMap<WalletId, Vec<TxInfo>>;
+#[derive(Clone)]
+struct TxListCacheEntry {
+    transactions: Arc<[TxInfo]>,
+    complete: bool,
+}
+
+type TxListCacheMap = HashMap<WalletId, TxListCacheEntry>;
 
 fn map_stage(stage: pirate_sync_lightd::SyncStage) -> crate::models::SyncStage {
     match stage {
@@ -62,38 +68,135 @@ pub(super) fn get_cached_transactions(
     limit: Option<u32>,
 ) -> Option<Vec<TxInfo>> {
     let cached = TX_LIST_CACHE.read().get(wallet_id).cloned()?;
+    if limit.is_none() && !cached.complete {
+        return None;
+    }
     if let Some(limit) = limit {
         let limit = limit as usize;
-        if cached.len() > limit {
-            return Some(cached.into_iter().take(limit).collect());
-        }
+        return Some(cached.transactions.iter().take(limit).cloned().collect());
     }
-    Some(cached)
+    Some(cached.transactions.to_vec())
+}
+
+pub(super) fn get_complete_transaction_snapshot(wallet_id: &WalletId) -> Option<Arc<[TxInfo]>> {
+    let cache = TX_LIST_CACHE.read();
+    let cached = cache.get(wallet_id)?;
+    cached.complete.then(|| Arc::clone(&cached.transactions))
 }
 
 pub(super) fn put_cached_transactions(wallet_id: &WalletId, limit: Option<u32>, txs: &[TxInfo]) {
+    // A limited query that fills its requested page may have omitted older
+    // transactions. Treat it as incomplete unless it returned fewer entries
+    // than requested.
+    let complete = match limit {
+        None => true,
+        Some(limit) => txs.len() < limit as usize,
+    };
+    let transactions: Arc<[TxInfo]> = Arc::from(txs.to_vec());
     let mut cache = TX_LIST_CACHE.write();
-    match cache.get_mut(wallet_id) {
-        Some(existing) => {
-            let limit_usize = limit.map(|v| v as usize);
-            let likely_truncated = limit_usize.is_some_and(|v| txs.len() >= v);
-            if likely_truncated {
-                let mut merged = txs.to_vec();
-                let mut seen_txids: HashSet<String> =
-                    merged.iter().map(|tx| tx.txid.clone()).collect();
-                for tx in existing.iter() {
-                    if seen_txids.insert(tx.txid.clone()) {
-                        merged.push(tx.clone());
-                    }
-                }
-                *existing = merged;
-            } else {
-                *existing = txs.to_vec();
+    if !complete {
+        if let Some(existing) = cache.get(wallet_id) {
+            // Polling the same recent prefix must not downgrade an existing
+            // complete snapshot. Any changed prefix invalidates it so the next
+            // full-history read reloads a coherent snapshot from storage.
+            if existing.complete
+                && existing.transactions.len() >= transactions.len()
+                && existing.transactions[..transactions.len()] == transactions[..]
+            {
+                return;
             }
         }
-        None => {
-            cache.insert(wallet_id.clone(), txs.to_vec());
+    }
+    cache.insert(
+        wallet_id.clone(),
+        TxListCacheEntry {
+            transactions,
+            complete,
+        },
+    );
+}
+
+#[cfg(test)]
+mod transaction_cache_tests {
+    use super::*;
+
+    fn tx(txid: &str, height: u32, amount: i64) -> TxInfo {
+        TxInfo {
+            txid: txid.to_string(),
+            height: Some(height),
+            timestamp: height as i64,
+            amount,
+            fee: 1_000,
+            memo: None,
+            confirmed: true,
         }
+    }
+
+    fn wallet_id(label: &str) -> WalletId {
+        format!("transaction-cache-test-{label}-{}", uuid::Uuid::new_v4())
+    }
+
+    #[test]
+    fn full_history_read_rejects_an_exact_limit_snapshot() {
+        let wallet_id = wallet_id("partial");
+        let recent = vec![tx("new", 20, 2), tx("old", 10, 1)];
+
+        put_cached_transactions(&wallet_id, Some(2), &recent);
+
+        assert_eq!(get_cached_transactions(&wallet_id, None), None);
+        assert_eq!(
+            get_cached_transactions(&wallet_id, Some(1)),
+            Some(vec![recent[0].clone()])
+        );
+        clear_wallet_data_caches(&wallet_id);
+    }
+
+    #[test]
+    fn short_limited_result_is_known_to_be_complete() {
+        let wallet_id = wallet_id("short");
+        let history = vec![tx("new", 20, 2), tx("old", 10, 1)];
+
+        put_cached_transactions(&wallet_id, Some(3), &history);
+
+        assert_eq!(get_cached_transactions(&wallet_id, None), Some(history));
+        clear_wallet_data_caches(&wallet_id);
+    }
+
+    #[test]
+    fn unchanged_polling_prefix_preserves_a_complete_snapshot() {
+        let wallet_id = wallet_id("unchanged");
+        let history = vec![tx("new", 30, 3), tx("middle", 20, 2), tx("old", 10, 1)];
+
+        put_cached_transactions(&wallet_id, None, &history);
+        put_cached_transactions(&wallet_id, Some(2), &history[..2]);
+
+        assert_eq!(get_cached_transactions(&wallet_id, None), Some(history));
+        clear_wallet_data_caches(&wallet_id);
+    }
+
+    #[test]
+    fn changed_polling_prefix_invalidates_a_complete_snapshot() {
+        let wallet_id = wallet_id("changed");
+        let history = vec![tx("new", 30, 3), tx("middle", 20, 2), tx("old", 10, 1)];
+        let changed = vec![tx("newer", 40, 4), history[0].clone()];
+
+        put_cached_transactions(&wallet_id, None, &history);
+        put_cached_transactions(&wallet_id, Some(2), &changed);
+
+        assert_eq!(get_cached_transactions(&wallet_id, None), None);
+        assert_eq!(get_cached_transactions(&wallet_id, Some(2)), Some(changed));
+        clear_wallet_data_caches(&wallet_id);
+    }
+
+    #[test]
+    fn complete_snapshot_preserves_split_entries_for_one_txid() {
+        let wallet_id = wallet_id("split");
+        let history = vec![tx("split", 20, 5), tx("split", 20, -7)];
+
+        put_cached_transactions(&wallet_id, None, &history);
+
+        assert_eq!(get_cached_transactions(&wallet_id, None), Some(history));
+        clear_wallet_data_caches(&wallet_id);
     }
 }
 

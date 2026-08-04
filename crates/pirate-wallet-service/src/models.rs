@@ -426,7 +426,7 @@ pub struct ShieldedPoolBalances {
 }
 
 /// Transaction info
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TxInfo {
     /// Transaction ID
     pub txid: TxId,
