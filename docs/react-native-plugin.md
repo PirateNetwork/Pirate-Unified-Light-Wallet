@@ -138,6 +138,10 @@ The example app is the minimal real consumer used by CI:
 
 - `bindings/react-native-pirate-wallet/example/`
 
+Release CI also creates the installable npm tarball and tests that tarball in a
+clean temporary project. The package is published only when the
+`react_native_plugin` version in `release-artifacts.toml` changes.
+
 ## Installing in a React Native app
 
 Typical install flow:

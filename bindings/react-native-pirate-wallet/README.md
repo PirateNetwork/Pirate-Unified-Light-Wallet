@@ -520,8 +520,6 @@ Callback hooks:
 
 ## Install in a React Native app
 
-## Install in a React Native app
-
 Install the package in the app and run CocoaPods as usual:
 
 ```bash
