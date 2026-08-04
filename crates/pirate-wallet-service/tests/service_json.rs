@@ -1,4 +1,4 @@
-use pirate_wallet_service::WalletService;
+use pirate_wallet_service::{TransactionCursor, WalletService, WalletServiceRequest};
 use serde_json::Value;
 
 #[test]
@@ -57,4 +57,32 @@ fn execute_json_accepts_string_amount_request_fields() {
 
     assert_eq!(parsed["ok"], Value::Bool(true));
     assert_eq!(parsed["result"], Value::String("1.25000000".to_string()));
+}
+
+#[test]
+fn transaction_page_request_accepts_a_string_cursor_amount() {
+    let request: WalletServiceRequest = serde_json::from_str(
+        r#"{"method":"list_transactions_page","wallet_id":"wallet-1","cursor":{"height":42,"txid":"tx-1","amount":"-9007199254740993"},"page_size":50}"#,
+    )
+    .expect("transaction page request is valid");
+
+    match request {
+        WalletServiceRequest::ListTransactionsPage {
+            wallet_id,
+            cursor:
+                Some(TransactionCursor {
+                    height,
+                    txid,
+                    amount,
+                }),
+            page_size,
+        } => {
+            assert_eq!(wallet_id, "wallet-1");
+            assert_eq!(height, Some(42));
+            assert_eq!(txid, "tx-1");
+            assert_eq!(amount, -9_007_199_254_740_993);
+            assert_eq!(page_size, 50);
+        }
+        other => panic!("unexpected request: {other:?}"),
+    }
 }

@@ -446,6 +446,27 @@ pub struct TxInfo {
     pub confirmed: bool,
 }
 
+/// Stable position in transaction history.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TransactionCursor {
+    /// Block height (None if unconfirmed).
+    pub height: Option<u32>,
+    /// Transaction ID.
+    pub txid: TxId,
+    /// Entry amount, which distinguishes split send/receive entries.
+    #[serde(with = "amount_json::i64")]
+    pub amount: i64,
+}
+
+/// One cursor-paginated transaction-history response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TransactionPage {
+    /// Transactions in newest-first order.
+    pub transactions: Vec<TxInfo>,
+    /// Cursor for the next page, or None when the history is exhausted.
+    pub next_cursor: Option<TransactionCursor>,
+}
+
 /// One recipient entry in Qortal's transaction-history schema.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct QortalTxMetadata {

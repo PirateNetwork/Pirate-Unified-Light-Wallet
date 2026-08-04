@@ -8,8 +8,9 @@ pub use crate::{
     KeyGroupInfo, KeyTypeInfo, LightdEndpoint, NodeTestResult, NoteInfo, Output, PaymentDisclosure,
     PaymentDisclosureVerification, PendingTx, QortalP2shRedeemRequest, QortalP2shSendRequest,
     QortalSendRequest, SeedExportWarnings, ShieldedPoolBalances, SignedTx, SpendabilityStatus,
-    SyncLogEntryFfi, SyncMode, SyncStatus, TransactionDetails, TransactionRecipient, TunnelMode,
-    TxInfo, WalletId, WalletMeta, WatchOnlyBannerInfo, WatchOnlyCapabilitiesInfo,
+    SyncLogEntryFfi, SyncMode, SyncStatus, TransactionCursor, TransactionDetails, TransactionPage,
+    TransactionRecipient, TunnelMode, TxInfo, WalletId, WalletMeta, WatchOnlyBannerInfo,
+    WatchOnlyCapabilitiesInfo,
 };
 pub use pirate_core::{MnemonicInspection, MnemonicLanguage};
 
@@ -130,6 +131,11 @@ pub enum WalletServiceRequest {
     ListTransactions {
         wallet_id: WalletId,
         limit: Option<u32>,
+    },
+    ListTransactionsPage {
+        wallet_id: WalletId,
+        cursor: Option<TransactionCursor>,
+        page_size: u32,
     },
     QortalSyncStatus {
         wallet_id: WalletId,
@@ -609,6 +615,11 @@ impl WalletService {
             WalletServiceRequest::ListTransactions { wallet_id, limit } => {
                 serialize(ffi::list_transactions(wallet_id, limit)?)
             }
+            WalletServiceRequest::ListTransactionsPage {
+                wallet_id,
+                cursor,
+                page_size,
+            } => serialize(ffi::list_transactions_page(wallet_id, cursor, page_size)?),
             WalletServiceRequest::QortalSyncStatus { wallet_id } => {
                 serialize(ffi::qortal_sync_status(wallet_id)?)
             }

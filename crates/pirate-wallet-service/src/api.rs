@@ -2676,6 +2676,96 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     Ok(transactions)
 }
 
+const MAX_TRANSACTION_PAGE_SIZE: u32 = 200;
+
+fn transaction_matches_cursor(tx: &TxInfo, cursor: &TransactionCursor) -> bool {
+    tx.height == cursor.height && tx.txid == cursor.txid && tx.amount == cursor.amount
+}
+
+fn transaction_is_after_cursor(tx: &TxInfo, cursor: &TransactionCursor) -> bool {
+    cursor
+        .height
+        .cmp(&tx.height)
+        .then_with(|| cursor.txid.cmp(&tx.txid))
+        .then_with(|| cursor.amount.cmp(&tx.amount))
+        .is_gt()
+}
+
+fn paginate_transaction_snapshot(
+    transactions: &[TxInfo],
+    cursor: Option<&TransactionCursor>,
+    page_size: usize,
+) -> TransactionPage {
+    let start = cursor
+        .map(|cursor| {
+            transactions
+                .iter()
+                .position(|tx| transaction_matches_cursor(tx, cursor))
+                .map(|index| index + 1)
+                .or_else(|| {
+                    transactions
+                        .iter()
+                        .position(|tx| transaction_is_after_cursor(tx, cursor))
+                })
+                .unwrap_or(transactions.len())
+        })
+        .unwrap_or(0);
+    let end = start.saturating_add(page_size).min(transactions.len());
+    let page_transactions = transactions[start..end].to_vec();
+    let next_cursor = if end < transactions.len() {
+        page_transactions.last().map(|tx| TransactionCursor {
+            height: tx.height,
+            txid: tx.txid.clone(),
+            amount: tx.amount,
+        })
+    } else {
+        None
+    };
+
+    TransactionPage {
+        transactions: page_transactions,
+        next_cursor,
+    }
+}
+
+/// List one stable page of transaction history.
+///
+/// A cursor identifies the last entry returned by the previous page. This
+/// avoids offset drift when newly discovered transactions are inserted at the
+/// front of history while a caller is paging through older entries.
+pub fn list_transactions_page(
+    wallet_id: WalletId,
+    cursor: Option<TransactionCursor>,
+    page_size: u32,
+) -> Result<TransactionPage> {
+    if page_size == 0 || page_size > MAX_TRANSACTION_PAGE_SIZE {
+        return Err(anyhow!(
+            "Transaction page size must be between 1 and {}",
+            MAX_TRANSACTION_PAGE_SIZE
+        ));
+    }
+
+    let snapshot = if cursor.is_some() {
+        sync_control::get_complete_transaction_snapshot(&wallet_id)
+    } else {
+        None
+    };
+    let snapshot = match snapshot {
+        Some(snapshot) => snapshot,
+        None => {
+            let transactions = list_transactions(wallet_id.clone(), None)?;
+            sync_control::get_complete_transaction_snapshot(&wallet_id)
+                .unwrap_or_else(|| Arc::from(transactions))
+        }
+    };
+
+    Ok(paginate_transaction_snapshot(
+        &snapshot,
+        cursor.as_ref(),
+        page_size as usize,
+    ))
+}
+
 /// List wallet notes for inspection.
 pub fn list_notes(wallet_id: WalletId, all_notes: bool) -> Result<Vec<crate::models::NoteInfo>> {
     let (_db, repo) = open_wallet_db_for(&wallet_id)?;

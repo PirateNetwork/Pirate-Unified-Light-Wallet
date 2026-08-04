@@ -465,3 +465,78 @@ fn test_choose_multi_key_change_sink_uses_largest_contributor_without_seed() {
         Some(import_high)
     );
 }
+
+fn history_tx(txid: &str, height: u32, amount: i64) -> TxInfo {
+    TxInfo {
+        txid: txid.to_string(),
+        height: Some(height),
+        timestamp: height as i64,
+        amount,
+        fee: 1_000,
+        memo: None,
+        confirmed: true,
+    }
+}
+
+#[test]
+fn transaction_cursor_remains_stable_when_new_history_is_prepended() {
+    let original = vec![
+        history_tx("e", 50, 5),
+        history_tx("d", 40, 4),
+        history_tx("c", 30, 3),
+        history_tx("b", 20, 2),
+        history_tx("a", 10, 1),
+    ];
+    let first = paginate_transaction_snapshot(&original, None, 2);
+    assert_eq!(
+        first
+            .transactions
+            .iter()
+            .map(|tx| tx.txid.as_str())
+            .collect::<Vec<_>>(),
+        vec!["e", "d"]
+    );
+
+    let mut updated = vec![history_tx("f", 60, 6)];
+    updated.extend(original);
+    let second = paginate_transaction_snapshot(&updated, first.next_cursor.as_ref(), 2);
+
+    assert_eq!(
+        second
+            .transactions
+            .iter()
+            .map(|tx| tx.txid.as_str())
+            .collect::<Vec<_>>(),
+        vec!["c", "b"]
+    );
+    assert_eq!(second.next_cursor.unwrap().txid, "b");
+}
+
+#[test]
+fn transaction_cursor_distinguishes_split_entries_by_amount() {
+    let history = vec![
+        history_tx("split", 20, 5),
+        history_tx("split", 20, -7),
+        history_tx("older", 10, 1),
+    ];
+    let first = paginate_transaction_snapshot(&history, None, 1);
+    let second = paginate_transaction_snapshot(&history, first.next_cursor.as_ref(), 1);
+
+    assert_eq!(first.transactions[0].amount, 5);
+    assert_eq!(second.transactions[0].amount, -7);
+}
+
+#[test]
+fn missing_transaction_cursor_resumes_at_the_next_ordered_entry() {
+    let history = vec![history_tx("e", 50, 5), history_tx("c", 30, 3)];
+    let removed_cursor = TransactionCursor {
+        height: Some(40),
+        txid: "d".to_string(),
+        amount: 4,
+    };
+
+    let page = paginate_transaction_snapshot(&history, Some(&removed_cursor), 2);
+
+    assert_eq!(page.transactions, vec![history[1].clone()]);
+    assert_eq!(page.next_cursor, None);
+}
