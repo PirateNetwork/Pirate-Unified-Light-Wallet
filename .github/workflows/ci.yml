@@ -731,6 +731,7 @@ jobs:
       ios_sdk_changed: ${{ steps.diff.outputs.ios_sdk_changed }}
       android_sdk_changed: ${{ steps.diff.outputs.android_sdk_changed }}
       react_native_plugin_changed: ${{ steps.diff.outputs.react_native_plugin_changed }}
+      react_native_plugin_version: ${{ steps.diff.outputs.react_native_plugin_version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -2760,6 +2761,109 @@ jobs:
             gh release create "$TAG" --notes-file release-notes/RELEASE_NOTES.md
           fi
           gh release upload "$TAG" release/* --clobber
+
+  publish-react-native-npm:
+    name: Publish - React Native Plugin (npm)
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.backend-release-plan.outputs.react_native_plugin_changed == 'true' &&
+      vars.NPM_PUBLISH_ENABLED == 'true'
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    needs:
+      - release
+      - backend-release-plan
+    steps:
+      - name: Download React Native npm package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: react-native-pirate-wallet
+          path: npm-artifact
+
+      - name: Setup Node for trusted publishing
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install pinned npm
+        run: |
+          npm install --global --ignore-scripts npm@${{ env.NPM_VERSION }}
+          test "$(npm --version)" = "${{ env.NPM_VERSION }}"
+
+      - name: Verify npm package
+        env:
+          EXPECTED_VERSION: ${{ needs.backend-release-plan.outputs.react_native_plugin_version }}
+        run: |
+          set -euo pipefail
+          mapfile -t npm_tarballs < <(find npm-artifact -type f -name '*.tgz' -print)
+          if [ "${#npm_tarballs[@]}" -ne 1 ]; then
+            echo "Expected one npm tarball, found ${#npm_tarballs[@]}" >&2
+            exit 1
+          fi
+
+          npm_tarball="${npm_tarballs[0]}"
+          checksum_file="$npm_tarball.sha256"
+          if [ ! -f "$checksum_file" ]; then
+            echo "Missing npm tarball checksum: $checksum_file" >&2
+            exit 1
+          fi
+          (
+            cd "$(dirname "$npm_tarball")"
+            sha256sum --check "$(basename "$checksum_file")"
+          )
+
+          metadata_dir="$(mktemp -d)"
+          trap 'rm -rf "$metadata_dir"' EXIT
+          tar -xzf "$npm_tarball" -C "$metadata_dir" package/package.json
+          package_json="$metadata_dir/package/package.json"
+          package_name="$(node -e 'process.stdout.write(require(process.argv[1]).name)' "$package_json")"
+          package_version="$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$package_json")"
+          if [ "$package_name" != "react-native-pirate-wallet" ]; then
+            echo "Unexpected npm package name: $package_name" >&2
+            exit 1
+          fi
+          if [ "$package_version" != "$EXPECTED_VERSION" ]; then
+            echo "npm package version mismatch: expected $EXPECTED_VERSION, got $package_version" >&2
+            exit 1
+          fi
+
+          local_integrity="$(node -e '
+            const crypto = require("crypto");
+            const fs = require("fs");
+            const digest = crypto.createHash("sha512").update(fs.readFileSync(process.argv[1])).digest("base64");
+            process.stdout.write(`sha512-${digest}`);
+          ' "$npm_tarball")"
+          if npm view "$package_name@$package_version" dist.integrity --json \
+              >/tmp/npm-view.json 2>/tmp/npm-view.err; then
+            registry_integrity="$(node -e '
+              const fs = require("fs");
+              process.stdout.write(JSON.parse(fs.readFileSync(process.argv[1], "utf8")));
+            ' /tmp/npm-view.json)"
+            if [ "$registry_integrity" != "$local_integrity" ]; then
+              echo "$package_name@$package_version already exists with different contents" >&2
+              exit 1
+            fi
+            echo "$package_name@$package_version is already published with the expected contents"
+            echo "NPM_ALREADY_PUBLISHED=true" >> "$GITHUB_ENV"
+          elif grep -q 'E404' /tmp/npm-view.json /tmp/npm-view.err; then
+            echo "NPM_ALREADY_PUBLISHED=false" >> "$GITHUB_ENV"
+          else
+            cat /tmp/npm-view.json /tmp/npm-view.err >&2
+            echo "Could not confirm that $package_name@$package_version is unpublished" >&2
+            exit 1
+          fi
+
+          echo "NPM_TARBALL=$npm_tarball" >> "$GITHUB_ENV"
+
+      - name: Publish npm package with provenance
+        if: env.NPM_ALREADY_PUBLISHED != 'true'
+        run: npm publish "$NPM_TARBALL" --access public
 
   ci-success:
     name: CI - All Checks Passed
