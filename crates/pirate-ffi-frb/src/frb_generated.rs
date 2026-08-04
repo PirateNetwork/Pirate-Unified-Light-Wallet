@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueNom,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 192036636;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 329445840;
 
 // Section: executor
 
@@ -2558,6 +2558,37 @@ fn wire__crate__api__list_transactions_impl(
         },
     )
 }
+fn wire__crate__api__list_transactions_page_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    wallet_id: impl CstDecode<String>,
+    cursor: impl CstDecode<Option<crate::models::TransactionCursor>>,
+    page_size: impl CstDecode<u32>,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "list_transactions_page",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let api_wallet_id = wallet_id.cst_decode();
+            let api_cursor = cursor.cst_decode();
+            let api_page_size = page_size.cst_decode();
+            move |context| {
+                transform_result_dco::<_, _, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::list_transactions_page(
+                            api_wallet_id,
+                            api_cursor,
+                            api_page_size,
+                        )?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__list_wallets_impl(port_: flutter_rust_bridge::for_generated::MessagePort) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::DcoCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
@@ -4645,6 +4676,17 @@ impl SseDecode for Option<crate::models::MnemonicLanguage> {
     }
 }
 
+impl SseDecode for Option<crate::models::TransactionCursor> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::models::TransactionCursor>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<u32> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4889,6 +4931,33 @@ impl SseDecode for crate::models::SyncStatus {
             blocks_per_second: var_blocksPerSecond,
             notes_decrypted: var_notesDecrypted,
             last_batch_ms: var_lastBatchMs,
+        };
+    }
+}
+
+impl SseDecode for crate::models::TransactionCursor {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_height = <Option<u32>>::sse_decode(deserializer);
+        let mut var_txid = <String>::sse_decode(deserializer);
+        let mut var_amount = <i64>::sse_decode(deserializer);
+        return crate::models::TransactionCursor {
+            height: var_height,
+            txid: var_txid,
+            amount: var_amount,
+        };
+    }
+}
+
+impl SseDecode for crate::models::TransactionPage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_transactions = <Vec<crate::models::TxInfo>>::sse_decode(deserializer);
+        let mut var_nextCursor =
+            <Option<crate::models::TransactionCursor>>::sse_decode(deserializer);
+        return crate::models::TransactionPage {
+            transactions: var_transactions,
+            next_cursor: var_nextCursor,
         };
     }
 }
@@ -5766,6 +5835,49 @@ impl flutter_rust_bridge::IntoIntoDart<crate::models::SyncStatus> for crate::mod
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::models::TransactionCursor {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.height.into_into_dart().into_dart(),
+            self.txid.into_into_dart().into_dart(),
+            self.amount.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::models::TransactionCursor
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::models::TransactionCursor>
+    for crate::models::TransactionCursor
+{
+    fn into_into_dart(self) -> crate::models::TransactionCursor {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::models::TransactionPage {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.transactions.into_into_dart().into_dart(),
+            self.next_cursor.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::models::TransactionPage
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::models::TransactionPage>
+    for crate::models::TransactionPage
+{
+    fn into_into_dart(self) -> crate::models::TransactionPage {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::models::TunnelMode {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
@@ -6429,6 +6541,16 @@ impl SseEncode for Option<crate::models::MnemonicLanguage> {
     }
 }
 
+impl SseEncode for Option<crate::models::TransactionCursor> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::models::TransactionCursor>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<u32> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6607,6 +6729,23 @@ impl SseEncode for crate::models::SyncStatus {
         <f64>::sse_encode(self.blocks_per_second, serializer);
         <u64>::sse_encode(self.notes_decrypted, serializer);
         <u64>::sse_encode(self.last_batch_ms, serializer);
+    }
+}
+
+impl SseEncode for crate::models::TransactionCursor {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Option<u32>>::sse_encode(self.height, serializer);
+        <String>::sse_encode(self.txid, serializer);
+        <i64>::sse_encode(self.amount, serializer);
+    }
+}
+
+impl SseEncode for crate::models::TransactionPage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <Vec<crate::models::TxInfo>>::sse_encode(self.transactions, serializer);
+        <Option<crate::models::TransactionCursor>>::sse_encode(self.next_cursor, serializer);
     }
 }
 
@@ -6920,6 +7059,13 @@ mod io {
         fn cst_decode(self) -> crate::models::SignedTx {
             let wrap = unsafe { flutter_rust_bridge::for_generated::box_from_leak_ptr(self) };
             CstDecode::<crate::models::SignedTx>::cst_decode(*wrap).into()
+        }
+    }
+    impl CstDecode<crate::models::TransactionCursor> for *mut wire_cst_transaction_cursor {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::TransactionCursor {
+            let wrap = unsafe { flutter_rust_bridge::for_generated::box_from_leak_ptr(self) };
+            CstDecode::<crate::models::TransactionCursor>::cst_decode(*wrap).into()
         }
     }
     impl CstDecode<crate::models::TunnelMode> for *mut wire_cst_tunnel_mode {
@@ -7328,6 +7474,25 @@ mod io {
                 blocks_per_second: self.blocks_per_second.cst_decode(),
                 notes_decrypted: self.notes_decrypted.cst_decode(),
                 last_batch_ms: self.last_batch_ms.cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::models::TransactionCursor> for wire_cst_transaction_cursor {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::TransactionCursor {
+            crate::models::TransactionCursor {
+                height: self.height.cst_decode(),
+                txid: self.txid.cst_decode(),
+                amount: self.amount.cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::models::TransactionPage> for wire_cst_transaction_page {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::TransactionPage {
+            crate::models::TransactionPage {
+                transactions: self.transactions.cst_decode(),
+                next_cursor: self.next_cursor.cst_decode(),
             }
         }
     }
@@ -7838,6 +8003,33 @@ mod io {
         }
     }
     impl Default for wire_cst_sync_status {
+        fn default() -> Self {
+            Self::new_with_null_ptr()
+        }
+    }
+    impl NewWithNullPtr for wire_cst_transaction_cursor {
+        fn new_with_null_ptr() -> Self {
+            Self {
+                height: core::ptr::null_mut(),
+                txid: core::ptr::null_mut(),
+                amount: Default::default(),
+            }
+        }
+    }
+    impl Default for wire_cst_transaction_cursor {
+        fn default() -> Self {
+            Self::new_with_null_ptr()
+        }
+    }
+    impl NewWithNullPtr for wire_cst_transaction_page {
+        fn new_with_null_ptr() -> Self {
+            Self {
+                transactions: core::ptr::null_mut(),
+                next_cursor: core::ptr::null_mut(),
+            }
+        }
+    }
+    impl Default for wire_cst_transaction_page {
         fn default() -> Self {
             Self::new_with_null_ptr()
         }
@@ -8854,6 +9046,16 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__list_transactions_page(
+        port_: i64,
+        wallet_id: *mut wire_cst_list_prim_u_8_strict,
+        cursor: *mut wire_cst_transaction_cursor,
+        page_size: u32,
+    ) {
+        wire__crate__api__list_transactions_page_impl(port_, wallet_id, cursor, page_size)
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_wire__crate__api__list_wallets(port_: i64) {
         wire__crate__api__list_wallets_impl(port_)
     }
@@ -9399,6 +9601,14 @@ mod io {
     }
 
     #[unsafe(no_mangle)]
+    pub extern "C" fn frbgen_pirate_wallet_cst_new_box_autoadd_transaction_cursor(
+    ) -> *mut wire_cst_transaction_cursor {
+        flutter_rust_bridge::for_generated::new_leak_box_ptr(
+            wire_cst_transaction_cursor::new_with_null_ptr(),
+        )
+    }
+
+    #[unsafe(no_mangle)]
     pub extern "C" fn frbgen_pirate_wallet_cst_new_box_autoadd_tunnel_mode(
     ) -> *mut wire_cst_tunnel_mode {
         flutter_rust_bridge::for_generated::new_leak_box_ptr(
@@ -9935,6 +10145,19 @@ mod io {
         blocks_per_second: f64,
         notes_decrypted: u64,
         last_batch_ms: u64,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct wire_cst_transaction_cursor {
+        height: *mut u32,
+        txid: *mut wire_cst_list_prim_u_8_strict,
+        amount: i64,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct wire_cst_transaction_page {
+        transactions: *mut wire_cst_list_tx_info,
+        next_cursor: *mut wire_cst_transaction_cursor,
     }
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -10795,6 +11018,47 @@ mod web {
                 blocks_per_second: self_.get(6).cst_decode(),
                 notes_decrypted: self_.get(7).cst_decode(),
                 last_batch_ms: self_.get(8).cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::models::TransactionCursor>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::TransactionCursor {
+            let self_ = self
+                .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap();
+            assert_eq!(
+                self_.length(),
+                3,
+                "Expected 3 elements, got {}",
+                self_.length()
+            );
+            crate::models::TransactionCursor {
+                height: self_.get(0).cst_decode(),
+                txid: self_.get(1).cst_decode(),
+                amount: self_.get(2).cst_decode(),
+            }
+        }
+    }
+    impl CstDecode<crate::models::TransactionPage>
+        for flutter_rust_bridge::for_generated::wasm_bindgen::JsValue
+    {
+        // Codec=Cst (C-struct based), see doc to use other codecs
+        fn cst_decode(self) -> crate::models::TransactionPage {
+            let self_ = self
+                .dyn_into::<flutter_rust_bridge::for_generated::js_sys::Array>()
+                .unwrap();
+            assert_eq!(
+                self_.length(),
+                2,
+                "Expected 2 elements, got {}",
+                self_.length()
+            );
+            crate::models::TransactionPage {
+                transactions: self_.get(0).cst_decode(),
+                next_cursor: self_.get(1).cst_decode(),
             }
         }
     }
@@ -12013,6 +12277,16 @@ mod web {
         limit: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
     ) {
         wire__crate__api__list_transactions_impl(port_, wallet_id, limit)
+    }
+
+    #[wasm_bindgen]
+    pub fn wire__crate__api__list_transactions_page(
+        port_: flutter_rust_bridge::for_generated::MessagePort,
+        wallet_id: String,
+        cursor: flutter_rust_bridge::for_generated::wasm_bindgen::JsValue,
+        page_size: u32,
+    ) {
+        wire__crate__api__list_transactions_page_impl(port_, wallet_id, cursor, page_size)
     }
 
     #[wasm_bindgen]

@@ -85,6 +85,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw);
 
   @protected
+  TransactionCursor dco_decode_box_autoadd_transaction_cursor(dynamic raw);
+
+  @protected
   TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw);
 
   @protected
@@ -211,6 +214,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   MnemonicLanguage? dco_decode_opt_box_autoadd_mnemonic_language(dynamic raw);
 
   @protected
+  TransactionCursor? dco_decode_opt_box_autoadd_transaction_cursor(dynamic raw);
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
@@ -258,6 +264,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SyncStatus dco_decode_sync_status(dynamic raw);
+
+  @protected
+  TransactionCursor dco_decode_transaction_cursor(dynamic raw);
+
+  @protected
+  TransactionPage dco_decode_transaction_page(dynamic raw);
 
   @protected
   TunnelMode dco_decode_tunnel_mode(dynamic raw);
@@ -373,6 +385,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer);
+
+  @protected
+  TransactionCursor sse_decode_box_autoadd_transaction_cursor(
+    SseDeserializer deserializer,
+  );
 
   @protected
   TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer);
@@ -521,6 +538,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  TransactionCursor? sse_decode_opt_box_autoadd_transaction_cursor(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
@@ -572,6 +594,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SyncStatus sse_decode_sync_status(SseDeserializer deserializer);
+
+  @protected
+  TransactionCursor sse_decode_transaction_cursor(SseDeserializer deserializer);
+
+  @protected
+  TransactionPage sse_decode_transaction_page(SseDeserializer deserializer);
 
   @protected
   TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer);
@@ -756,6 +784,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   JSAny cst_encode_box_autoadd_signed_tx(SignedTx raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return cst_encode_signed_tx(raw);
+  }
+
+  @protected
+  JSAny cst_encode_box_autoadd_transaction_cursor(TransactionCursor raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return cst_encode_transaction_cursor(raw);
   }
 
   @protected
@@ -1048,6 +1082,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  JSAny? cst_encode_opt_box_autoadd_transaction_cursor(TransactionCursor? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null ? null : cst_encode_box_autoadd_transaction_cursor(raw);
+  }
+
+  @protected
   int? cst_encode_opt_box_autoadd_u_32(int? raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw == null ? null : cst_encode_box_autoadd_u_32(raw);
@@ -1190,6 +1230,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
       cst_encode_f_64(raw.blocksPerSecond),
       cst_encode_u_64(raw.notesDecrypted),
       cst_encode_u_64(raw.lastBatchMs),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_transaction_cursor(TransactionCursor raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_opt_box_autoadd_u_32(raw.height),
+      cst_encode_String(raw.txid),
+      cst_encode_i_64(raw.amount),
+    ].jsify()!;
+  }
+
+  @protected
+  JSAny cst_encode_transaction_page(TransactionPage raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return [
+      cst_encode_list_tx_info(raw.transactions),
+      cst_encode_opt_box_autoadd_transaction_cursor(raw.nextCursor),
     ].jsify()!;
   }
 
@@ -1439,6 +1498,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_transaction_cursor(
+    TransactionCursor self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_tunnel_mode(
     TunnelMode self,
     SseSerializer serializer,
@@ -1631,6 +1696,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_transaction_cursor(
+    TransactionCursor? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
@@ -1695,6 +1766,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_sync_status(SyncStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_transaction_cursor(
+    TransactionCursor self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_transaction_page(
+    TransactionPage self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer);
@@ -2471,6 +2554,18 @@ class RustLibWire implements BaseWire {
     String wallet_id,
     int? limit,
   ) => wasmModule.wire__crate__api__list_transactions(port_, wallet_id, limit);
+
+  void wire__crate__api__list_transactions_page(
+    NativePortType port_,
+    String wallet_id,
+    JSAny? cursor,
+    int page_size,
+  ) => wasmModule.wire__crate__api__list_transactions_page(
+    port_,
+    wallet_id,
+    cursor,
+    page_size,
+  );
 
   void wire__crate__api__list_wallets(NativePortType port_) =>
       wasmModule.wire__crate__api__list_wallets(port_);
@@ -3354,6 +3449,13 @@ extension type RustLibWasmModule._(JSObject _) implements JSObject {
     NativePortType port_,
     String wallet_id,
     int? limit,
+  );
+
+  external void wire__crate__api__list_transactions_page(
+    NativePortType port_,
+    String wallet_id,
+    JSAny? cursor,
+    int page_size,
   );
 
   external void wire__crate__api__list_wallets(NativePortType port_);

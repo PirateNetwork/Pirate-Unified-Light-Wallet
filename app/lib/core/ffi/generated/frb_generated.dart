@@ -70,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 192036636;
+  int get rustContentHash => 329445840;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -459,6 +459,12 @@ abstract class RustLibApi extends BaseApi {
   Future<List<TxInfo>> crateApiListTransactions({
     required String walletId,
     int? limit,
+  });
+
+  Future<TransactionPage> crateApiListTransactionsPage({
+    required String walletId,
+    TransactionCursor? cursor,
+    required int pageSize,
   });
 
   Future<List<WalletMeta>> crateApiListWallets();
@@ -3517,6 +3523,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<TransactionPage> crateApiListTransactionsPage({
+    required String walletId,
+    TransactionCursor? cursor,
+    required int pageSize,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          var arg0 = cst_encode_String(walletId);
+          var arg1 = cst_encode_opt_box_autoadd_transaction_cursor(cursor);
+          var arg2 = cst_encode_u_32(pageSize);
+          return wire.wire__crate__api__list_transactions_page(
+            port_,
+            arg0,
+            arg1,
+            arg2,
+          );
+        },
+        codec: DcoCodec(
+          decodeSuccessData: dco_decode_transaction_page,
+          decodeErrorData: dco_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiListTransactionsPageConstMeta,
+        argValues: [walletId, cursor, pageSize],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiListTransactionsPageConstMeta =>
+      const TaskConstMeta(
+        debugName: "list_transactions_page",
+        argNames: ["walletId", "cursor", "pageSize"],
+      );
+
+  @override
   Future<List<WalletMeta>> crateApiListWallets() {
     return handler.executeNormal(
       NormalTask(
@@ -5134,6 +5176,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransactionCursor dco_decode_box_autoadd_transaction_cursor(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_transaction_cursor(raw);
+  }
+
+  @protected
   TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_tunnel_mode(raw);
@@ -5483,6 +5531,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransactionCursor? dco_decode_opt_box_autoadd_transaction_cursor(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_transaction_cursor(raw);
+  }
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
@@ -5664,6 +5720,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       blocksPerSecond: dco_decode_f_64(arr[6]),
       notesDecrypted: dco_decode_u_64(arr[7]),
       lastBatchMs: dco_decode_u_64(arr[8]),
+    );
+  }
+
+  @protected
+  TransactionCursor dco_decode_transaction_cursor(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return TransactionCursor(
+      height: dco_decode_opt_box_autoadd_u_32(arr[0]),
+      txid: dco_decode_String(arr[1]),
+      amount: dco_decode_i_64(arr[2]),
+    );
+  }
+
+  @protected
+  TransactionPage dco_decode_transaction_page(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return TransactionPage(
+      transactions: dco_decode_list_tx_info(arr[0]),
+      nextCursor: dco_decode_opt_box_autoadd_transaction_cursor(arr[1]),
     );
   }
 
@@ -6031,6 +6112,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_signed_tx(deserializer));
+  }
+
+  @protected
+  TransactionCursor sse_decode_box_autoadd_transaction_cursor(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_transaction_cursor(deserializer));
   }
 
   @protected
@@ -6532,6 +6621,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  TransactionCursor? sse_decode_opt_box_autoadd_transaction_cursor(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_transaction_cursor(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -6759,6 +6861,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       blocksPerSecond: var_blocksPerSecond,
       notesDecrypted: var_notesDecrypted,
       lastBatchMs: var_lastBatchMs,
+    );
+  }
+
+  @protected
+  TransactionCursor sse_decode_transaction_cursor(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_height = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_txid = sse_decode_String(deserializer);
+    var var_amount = sse_decode_i_64(deserializer);
+    return TransactionCursor(
+      height: var_height,
+      txid: var_txid,
+      amount: var_amount,
+    );
+  }
+
+  @protected
+  TransactionPage sse_decode_transaction_page(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_transactions = sse_decode_list_tx_info(deserializer);
+    var var_nextCursor = sse_decode_opt_box_autoadd_transaction_cursor(
+      deserializer,
+    );
+    return TransactionPage(
+      transactions: var_transactions,
+      nextCursor: var_nextCursor,
     );
   }
 
@@ -7201,6 +7331,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_transaction_cursor(
+    TransactionCursor self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_transaction_cursor(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_tunnel_mode(
     TunnelMode self,
     SseSerializer serializer,
@@ -7630,6 +7769,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_transaction_cursor(
+    TransactionCursor? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_transaction_cursor(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -7798,6 +7950,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_f_64(self.blocksPerSecond, serializer);
     sse_encode_u_64(self.notesDecrypted, serializer);
     sse_encode_u_64(self.lastBatchMs, serializer);
+  }
+
+  @protected
+  void sse_encode_transaction_cursor(
+    TransactionCursor self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_opt_box_autoadd_u_32(self.height, serializer);
+    sse_encode_String(self.txid, serializer);
+    sse_encode_i_64(self.amount, serializer);
+  }
+
+  @protected
+  void sse_encode_transaction_page(
+    TransactionPage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_tx_info(self.transactions, serializer);
+    sse_encode_opt_box_autoadd_transaction_cursor(self.nextCursor, serializer);
   }
 
   @protected

@@ -342,6 +342,26 @@ pub struct TxInfo {
     pub confirmed: bool,
 }
 
+/// Stable position in transaction history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionCursor {
+    /// Block height (None if unconfirmed).
+    pub height: Option<u32>,
+    /// Transaction ID.
+    pub txid: TxId,
+    /// Entry amount, which distinguishes split send/receive entries.
+    pub amount: i64,
+}
+
+/// One cursor-paginated transaction-history response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionPage {
+    /// Transactions in newest-first order.
+    pub transactions: Vec<TxInfo>,
+    /// Cursor for the next page, or None when the history is exhausted.
+    pub next_cursor: Option<TransactionCursor>,
+}
+
 /// Payment disclosure generated for one outgoing shielded output/action.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentDisclosure {

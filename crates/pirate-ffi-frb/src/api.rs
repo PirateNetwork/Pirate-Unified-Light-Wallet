@@ -1793,6 +1793,19 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     convert_from_service(service::list_transactions(wallet_id, limit)?)
 }
 
+/// List one stable page of transaction history.
+pub fn list_transactions_page(
+    wallet_id: WalletId,
+    cursor: Option<TransactionCursor>,
+    page_size: u32,
+) -> Result<TransactionPage> {
+    convert_from_service(service::list_transactions_page(
+        wallet_id,
+        convert_into_service(cursor)?,
+        page_size,
+    )?)
+}
+
 /// Fetch and decrypt memo for a specific transaction (lazy memo decoding)
 ///
 /// This function implements lazy memo decoding:

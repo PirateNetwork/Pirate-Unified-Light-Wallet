@@ -1195,12 +1195,27 @@ class FfiBridge {
 
   static Future<List<TxInfo>> listTransactions(
     WalletId id, {
-    int limit = 50,
+    int? limit,
   }) async {
     if (kUseFrbBindings) {
       return await api.listTransactions(walletId: id, limit: limit);
     }
     // Fallback stub (should not be reached if kUseFrbBindings is true)
+    throw UnimplementedError('FRB bindings not available');
+  }
+
+  static Future<TransactionPage> listTransactionsPage(
+    WalletId id, {
+    TransactionCursor? cursor,
+    required int pageSize,
+  }) async {
+    if (kUseFrbBindings) {
+      return await api.listTransactionsPage(
+        walletId: id,
+        cursor: cursor,
+        pageSize: pageSize,
+      );
+    }
     throw UnimplementedError('FRB bindings not available');
   }
 

@@ -223,6 +223,33 @@ fn test_convert_from_service_accepts_stringified_activity_amounts() {
 }
 
 #[test]
+fn test_convert_from_service_accepts_stringified_transaction_page_cursor() {
+    let service_page = pirate_wallet_service::TransactionPage {
+        transactions: vec![pirate_wallet_service::TxInfo {
+            txid: "activity-tx".to_string(),
+            height: Some(2_345_678),
+            timestamp: 1_710_000_000,
+            amount: -94_293_752,
+            fee: 1_000,
+            memo: None,
+            confirmed: true,
+        }],
+        next_cursor: Some(pirate_wallet_service::TransactionCursor {
+            height: Some(2_345_678),
+            txid: "activity-tx".to_string(),
+            amount: -94_293_752,
+        }),
+    };
+
+    let service_json = serde_json::to_value(&service_page).unwrap();
+    assert_eq!(service_json["next_cursor"]["amount"], "-94293752");
+
+    let converted: TransactionPage = convert_from_service(service_page).unwrap();
+    assert_eq!(converted.transactions[0].amount, -94_293_752);
+    assert_eq!(converted.next_cursor.unwrap().amount, -94_293_752);
+}
+
+#[test]
 fn test_convert_from_service_accepts_large_stringified_pending_amounts() {
     const LARGE_AMOUNT: u64 = 9_007_199_254_740_993;
     let service_pending = pirate_wallet_service::PendingTx {

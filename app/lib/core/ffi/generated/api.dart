@@ -740,6 +740,17 @@ Future<List<TxInfo>> listTransactions({required String walletId, int? limit}) =>
       limit: limit,
     );
 
+/// List one stable page of transaction history.
+Future<TransactionPage> listTransactionsPage({
+  required String walletId,
+  TransactionCursor? cursor,
+  required int pageSize,
+}) => RustLib.instance.api.crateApiListTransactionsPage(
+  walletId: walletId,
+  cursor: cursor,
+  pageSize: pageSize,
+);
+
 /// Fetch and decrypt memo for a specific transaction (lazy memo decoding)
 ///
 /// This function implements lazy memo decoding:

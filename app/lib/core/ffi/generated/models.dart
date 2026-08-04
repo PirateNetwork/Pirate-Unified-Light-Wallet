@@ -1101,6 +1101,58 @@ class SyncStatus {
           lastBatchMs == other.lastBatchMs;
 }
 
+/// Stable position in transaction history.
+class TransactionCursor {
+  /// Block height (None if unconfirmed).
+  final int? height;
+
+  /// Transaction ID.
+  final String txid;
+
+  /// Entry amount, which distinguishes split send/receive entries.
+  final PlatformInt64 amount;
+
+  const TransactionCursor({
+    this.height,
+    required this.txid,
+    required this.amount,
+  });
+
+  @override
+  int get hashCode => height.hashCode ^ txid.hashCode ^ amount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransactionCursor &&
+          runtimeType == other.runtimeType &&
+          height == other.height &&
+          txid == other.txid &&
+          amount == other.amount;
+}
+
+/// One cursor-paginated transaction-history response.
+class TransactionPage {
+  /// Transactions in newest-first order.
+  final List<TxInfo> transactions;
+
+  /// Cursor for the next page, or None when the history is exhausted.
+  final TransactionCursor? nextCursor;
+
+  const TransactionPage({required this.transactions, this.nextCursor});
+
+  @override
+  int get hashCode => transactions.hashCode ^ nextCursor.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransactionPage &&
+          runtimeType == other.runtimeType &&
+          transactions == other.transactions &&
+          nextCursor == other.nextCursor;
+}
+
 @freezed
 sealed class TunnelMode with _$TunnelMode {
   const TunnelMode._();

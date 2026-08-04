@@ -83,6 +83,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   SignedTx dco_decode_box_autoadd_signed_tx(dynamic raw);
 
   @protected
+  TransactionCursor dco_decode_box_autoadd_transaction_cursor(dynamic raw);
+
+  @protected
   TunnelMode dco_decode_box_autoadd_tunnel_mode(dynamic raw);
 
   @protected
@@ -209,6 +212,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   MnemonicLanguage? dco_decode_opt_box_autoadd_mnemonic_language(dynamic raw);
 
   @protected
+  TransactionCursor? dco_decode_opt_box_autoadd_transaction_cursor(dynamic raw);
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
@@ -256,6 +262,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SyncStatus dco_decode_sync_status(dynamic raw);
+
+  @protected
+  TransactionCursor dco_decode_transaction_cursor(dynamic raw);
+
+  @protected
+  TransactionPage dco_decode_transaction_page(dynamic raw);
 
   @protected
   TunnelMode dco_decode_tunnel_mode(dynamic raw);
@@ -371,6 +383,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SignedTx sse_decode_box_autoadd_signed_tx(SseDeserializer deserializer);
+
+  @protected
+  TransactionCursor sse_decode_box_autoadd_transaction_cursor(
+    SseDeserializer deserializer,
+  );
 
   @protected
   TunnelMode sse_decode_box_autoadd_tunnel_mode(SseDeserializer deserializer);
@@ -519,6 +536,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  TransactionCursor? sse_decode_opt_box_autoadd_transaction_cursor(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
@@ -570,6 +592,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   SyncStatus sse_decode_sync_status(SseDeserializer deserializer);
+
+  @protected
+  TransactionCursor sse_decode_transaction_cursor(SseDeserializer deserializer);
+
+  @protected
+  TransactionPage sse_decode_transaction_page(SseDeserializer deserializer);
 
   @protected
   TunnelMode sse_decode_tunnel_mode(SseDeserializer deserializer);
@@ -710,6 +738,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     // Codec=Cst (C-struct based), see doc to use other codecs
     final ptr = wire.cst_new_box_autoadd_signed_tx();
     cst_api_fill_to_wire_signed_tx(raw, ptr.ref);
+    return ptr;
+  }
+
+  @protected
+  ffi.Pointer<wire_cst_transaction_cursor>
+  cst_encode_box_autoadd_transaction_cursor(TransactionCursor raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    final ptr = wire.cst_new_box_autoadd_transaction_cursor();
+    cst_api_fill_to_wire_transaction_cursor(raw, ptr.ref);
     return ptr;
   }
 
@@ -962,6 +999,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  ffi.Pointer<wire_cst_transaction_cursor>
+  cst_encode_opt_box_autoadd_transaction_cursor(TransactionCursor? raw) {
+    // Codec=Cst (C-struct based), see doc to use other codecs
+    return raw == null
+        ? ffi.nullptr
+        : cst_encode_box_autoadd_transaction_cursor(raw);
+  }
+
+  @protected
   ffi.Pointer<ffi.Uint32> cst_encode_opt_box_autoadd_u_32(int? raw) {
     // Codec=Cst (C-struct based), see doc to use other codecs
     return raw == null ? ffi.nullptr : cst_encode_box_autoadd_u_32(raw);
@@ -1108,6 +1154,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     ffi.Pointer<wire_cst_signed_tx> wireObj,
   ) {
     cst_api_fill_to_wire_signed_tx(apiObj, wireObj.ref);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_box_autoadd_transaction_cursor(
+    TransactionCursor apiObj,
+    ffi.Pointer<wire_cst_transaction_cursor> wireObj,
+  ) {
+    cst_api_fill_to_wire_transaction_cursor(apiObj, wireObj.ref);
   }
 
   @protected
@@ -1385,6 +1439,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   }
 
   @protected
+  void cst_api_fill_to_wire_transaction_cursor(
+    TransactionCursor apiObj,
+    wire_cst_transaction_cursor wireObj,
+  ) {
+    wireObj.height = cst_encode_opt_box_autoadd_u_32(apiObj.height);
+    wireObj.txid = cst_encode_String(apiObj.txid);
+    wireObj.amount = cst_encode_i_64(apiObj.amount);
+  }
+
+  @protected
+  void cst_api_fill_to_wire_transaction_page(
+    TransactionPage apiObj,
+    wire_cst_transaction_page wireObj,
+  ) {
+    wireObj.transactions = cst_encode_list_tx_info(apiObj.transactions);
+    wireObj.next_cursor = cst_encode_opt_box_autoadd_transaction_cursor(
+      apiObj.nextCursor,
+    );
+  }
+
+  @protected
   void cst_api_fill_to_wire_tunnel_mode(
     TunnelMode apiObj,
     wire_cst_tunnel_mode wireObj,
@@ -1621,6 +1696,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_transaction_cursor(
+    TransactionCursor self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_tunnel_mode(
     TunnelMode self,
     SseSerializer serializer,
@@ -1813,6 +1894,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_transaction_cursor(
+    TransactionCursor? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
@@ -1877,6 +1964,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_sync_status(SyncStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_transaction_cursor(
+    TransactionCursor self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_transaction_page(
+    TransactionPage self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_tunnel_mode(TunnelMode self, SseSerializer serializer);
@@ -4372,6 +4471,42 @@ class RustLibWire implements BaseWire {
             )
           >();
 
+  void wire__crate__api__list_transactions_page(
+    int port_,
+    ffi.Pointer<wire_cst_list_prim_u_8_strict> wallet_id,
+    ffi.Pointer<wire_cst_transaction_cursor> cursor,
+    int page_size,
+  ) {
+    return _wire__crate__api__list_transactions_page(
+      port_,
+      wallet_id,
+      cursor,
+      page_size,
+    );
+  }
+
+  late final _wire__crate__api__list_transactions_pagePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(
+            ffi.Int64,
+            ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+            ffi.Pointer<wire_cst_transaction_cursor>,
+            ffi.Uint32,
+          )
+        >
+      >('frbgen_pirate_wallet_wire__crate__api__list_transactions_page');
+  late final _wire__crate__api__list_transactions_page =
+      _wire__crate__api__list_transactions_pagePtr
+          .asFunction<
+            void Function(
+              int,
+              ffi.Pointer<wire_cst_list_prim_u_8_strict>,
+              ffi.Pointer<wire_cst_transaction_cursor>,
+              int,
+            )
+          >();
+
   void wire__crate__api__list_wallets(int port_) {
     return _wire__crate__api__list_wallets(port_);
   }
@@ -5762,6 +5897,19 @@ class RustLibWire implements BaseWire {
   late final _cst_new_box_autoadd_signed_tx = _cst_new_box_autoadd_signed_txPtr
       .asFunction<ffi.Pointer<wire_cst_signed_tx> Function()>();
 
+  ffi.Pointer<wire_cst_transaction_cursor>
+  cst_new_box_autoadd_transaction_cursor() {
+    return _cst_new_box_autoadd_transaction_cursor();
+  }
+
+  late final _cst_new_box_autoadd_transaction_cursorPtr =
+      _lookup<
+        ffi.NativeFunction<ffi.Pointer<wire_cst_transaction_cursor> Function()>
+      >('frbgen_pirate_wallet_cst_new_box_autoadd_transaction_cursor');
+  late final _cst_new_box_autoadd_transaction_cursor =
+      _cst_new_box_autoadd_transaction_cursorPtr
+          .asFunction<ffi.Pointer<wire_cst_transaction_cursor> Function()>();
+
   ffi.Pointer<wire_cst_tunnel_mode> cst_new_box_autoadd_tunnel_mode() {
     return _cst_new_box_autoadd_tunnel_mode();
   }
@@ -6113,6 +6261,15 @@ final class wire_cst_lightd_endpoint extends ffi.Struct {
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> tls_pin;
 
   external ffi.Pointer<wire_cst_list_prim_u_8_strict> label;
+}
+
+final class wire_cst_transaction_cursor extends ffi.Struct {
+  external ffi.Pointer<ffi.Uint32> height;
+
+  external ffi.Pointer<wire_cst_list_prim_u_8_strict> txid;
+
+  @ffi.Int64()
+  external int amount;
 }
 
 final class wire_cst_list_String extends ffi.Struct {
@@ -6623,6 +6780,12 @@ final class wire_cst_sync_status extends ffi.Struct {
 
   @ffi.Uint64()
   external int last_batch_ms;
+}
+
+final class wire_cst_transaction_page extends ffi.Struct {
+  external ffi.Pointer<wire_cst_list_tx_info> transactions;
+
+  external ffi.Pointer<wire_cst_transaction_cursor> next_cursor;
 }
 
 final class wire_cst_wallet_background_sync_result extends ffi.Struct {
