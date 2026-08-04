@@ -355,6 +355,8 @@ fi
 if is_true "${REACT_NATIVE_PLUGIN_CHANGED:-false}"; then
   copy_matching "$DEV_DIR/sdk/react-native" \( \
     -name 'react-native-pirate-wallet-package.zip' \
+    -o -name 'react-native-pirate-wallet-*.tgz' \
+    -o -name 'react-native-pirate-wallet-*.tgz.sha256' \
   \)
 fi
 

@@ -14,6 +14,8 @@ env:
   FRB_CODEGEN_VERSION: "2.11.1"
   GO_VERSION: "1.21.13"
   JAVA_VERSION: "25"
+  NODE_VERSION: "24"
+  NPM_VERSION: "12.0.2"
   COCOAPODS_VERSION: "1.17.0"
   APPIMAGETOOL_URL: "https://github.com/AppImage/AppImageKit/releases/download/13/obsolete-appimagetool-x86_64.AppImage"
   APPIMAGETOOL_SHA256: "df3baf5ca5facbecfc2f3fa6713c29ab9cefa8fd8c1eac5d283b79cab33e4acb"
@@ -1084,12 +1086,18 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install pinned npm
+        run: |
+          npm install --global --ignore-scripts npm@${{ env.NPM_VERSION }}
+          test "$(npm --version)" = "${{ env.NPM_VERSION }}"
 
       - name: Install React Native example app dependencies
         run: |
           cd bindings/react-native-pirate-wallet/example
-          npm install
+          npm ci
 
       - name: Setup Java
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95
@@ -1129,6 +1137,7 @@ jobs:
       - name: Package React Native plugin
         run: |
           set -euo pipefail
+          rm -rf dist/react-native-plugin
           mkdir -p dist/react-native-plugin/package
           rsync -a \
             --delete \
@@ -1140,10 +1149,38 @@ jobs:
             dist/react-native-plugin/package/
           (
             cd dist/react-native-plugin/package
+            npm pack --json --pack-destination .. > ../npm-pack.json
             zip -qr ../react-native-pirate-wallet-package.zip .
           )
-          sha256sum dist/react-native-plugin/react-native-pirate-wallet-package.zip \
-            > dist/react-native-plugin/react-native-pirate-wallet-package.zip.sha256
+
+          mapfile -t npm_tarballs < <(find dist/react-native-plugin -maxdepth 1 -type f -name '*.tgz' -print)
+          if [ "${#npm_tarballs[@]}" -ne 1 ]; then
+            echo "Expected one npm tarball, found ${#npm_tarballs[@]}" >&2
+            exit 1
+          fi
+          npm_tarball="${npm_tarballs[0]}"
+          npm_tarball_name="$(basename "$npm_tarball")"
+          (
+            cd dist/react-native-plugin
+            sha256sum "$npm_tarball_name" > "$npm_tarball_name.sha256"
+            sha256sum react-native-pirate-wallet-package.zip \
+              > react-native-pirate-wallet-package.zip.sha256
+          )
+
+          consumer_dir="$(mktemp -d)"
+          trap 'rm -rf "$consumer_dir"' EXIT
+          (
+            cd "$consumer_dir"
+            npm init --yes >/dev/null
+            npm install \
+              --ignore-scripts \
+              --legacy-peer-deps \
+              --no-audit \
+              --no-fund \
+              "$GITHUB_WORKSPACE/$npm_tarball"
+            node node_modules/react-native-pirate-wallet/scripts/verify-package.js --publish-layout
+            npm --prefix node_modules/react-native-pirate-wallet test
+          )
 
       - name: Upload React Native plugin package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1201,12 +1238,18 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install pinned npm
+        run: |
+          npm install --global --ignore-scripts npm@${{ env.NPM_VERSION }}
+          test "$(npm --version)" = "${{ env.NPM_VERSION }}"
 
       - name: Install React Native example app dependencies
         run: |
           cd bindings/react-native-pirate-wallet/example
-          npm install
+          npm ci
 
       - name: Install CocoaPods
         run: gem install cocoapods -v ${{ env.COCOAPODS_VERSION }}
