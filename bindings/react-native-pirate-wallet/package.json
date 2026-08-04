@@ -24,16 +24,27 @@
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "files": [
-    "android/",
-    "ios/",
+    "android/build.gradle",
+    "android/consumer-rules.pro",
+    "android/src/main/AndroidManifest.xml",
+    "android/src/main/java/",
+    "android/src/main/jniLibs/",
+    "ios/Frameworks/PirateWalletNative.xcframework/",
+    "ios/PirateWalletReactNative.m",
+    "ios/PirateWalletReactNative.swift",
     "src/",
+    "scripts/",
+    "test/",
+    "LICENSE-MIT",
     "README.md",
     "package.json",
     "react-native.config.js",
     "react-native-pirate-wallet.podspec"
   ],
   "scripts": {
-    "prepare-native": "bash ../../scripts/prepare-react-native-plugin.sh"
+    "test": "node test/smoke.js",
+    "verify:package": "node scripts/verify-package.js",
+    "prepack": "npm run verify:package"
   },
   "engines": {
     "node": ">=18"
