@@ -28,7 +28,6 @@
     "android/consumer-rules.pro",
     "android/src/main/AndroidManifest.xml",
     "android/src/main/java/",
-    "android/src/main/jniLibs/",
     "ios/Frameworks/PirateWalletNative.xcframework/",
     "ios/PirateWalletReactNative.m",
     "ios/PirateWalletReactNative.swift",
@@ -51,6 +50,9 @@
   },
   "peerDependencies": {
     "react-native": ">=0.71.0 <1.0.0"
+  },
+  "optionalDependencies": {
+    "react-native-pirate-wallet-android": "0.2.1"
   },
   "publishConfig": {
     "access": "public"

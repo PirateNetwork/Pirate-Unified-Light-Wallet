@@ -21,6 +21,17 @@ def safeExtGet(prop, fallback) {
   rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
 }
 
+def androidJniLibsCandidates = [
+  file('../node_modules/react-native-pirate-wallet-android/android/src/main/jniLibs'),
+  file('../../react-native-pirate-wallet-android/android/src/main/jniLibs'),
+]
+def androidJniLibsDir = androidJniLibsCandidates.find { it.isDirectory() }
+if (androidJniLibsDir == null) {
+  throw new GradleException(
+    'react-native-pirate-wallet-android must be installed before building Android'
+  )
+}
+
 android {
   namespace "com.pirate.wallet.reactnative"
   compileSdkVersion safeExtGet('compileSdkVersion', 36)
@@ -42,7 +53,7 @@ android {
 
   sourceSets {
     main {
-      jniLibs.srcDir 'src/main/jniLibs'
+      jniLibs.srcDir androidJniLibsDir
     }
   }
 

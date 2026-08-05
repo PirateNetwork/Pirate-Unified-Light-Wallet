@@ -1100,6 +1100,13 @@ jobs:
           cd bindings/react-native-pirate-wallet/example
           npm ci
 
+      - name: Verify React Native package layout
+        run: |
+          cd bindings/react-native-pirate-wallet/example
+          node ../scripts/verify-package.js
+          node ../../react-native-pirate-wallet-android/scripts/verify-package.js
+          node -e 'require("../react-native.config.js")'
+
       - name: Setup Java
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95
         with:
@@ -1138,57 +1145,19 @@ jobs:
       - name: Package React Native plugin
         run: |
           set -euo pipefail
-          rm -rf dist/react-native-plugin
-          mkdir -p dist/react-native-plugin/package
-          rsync -a \
-            --delete \
-            --exclude '.git' \
-            --exclude '.gradle' \
-            --exclude 'build' \
-            --exclude 'node_modules' \
-            bindings/react-native-pirate-wallet/ \
-            dist/react-native-plugin/package/
-          (
-            cd dist/react-native-plugin/package
-            npm pack --json --pack-destination .. > ../npm-pack.json
-            zip -qr ../react-native-pirate-wallet-package.zip .
-          )
-
-          mapfile -t npm_tarballs < <(find dist/react-native-plugin -maxdepth 1 -type f -name '*.tgz' -print)
-          if [ "${#npm_tarballs[@]}" -ne 1 ]; then
-            echo "Expected one npm tarball, found ${#npm_tarballs[@]}" >&2
-            exit 1
-          fi
-          npm_tarball="${npm_tarballs[0]}"
-          npm_tarball_name="$(basename "$npm_tarball")"
-          (
-            cd dist/react-native-plugin
-            sha256sum "$npm_tarball_name" > "$npm_tarball_name.sha256"
-            sha256sum react-native-pirate-wallet-package.zip \
-              > react-native-pirate-wallet-package.zip.sha256
-          )
-
-          consumer_dir="$(mktemp -d)"
-          trap 'rm -rf "$consumer_dir"' EXIT
-          (
-            cd "$consumer_dir"
-            npm init --yes >/dev/null
-            npm install \
-              --ignore-scripts \
-              --legacy-peer-deps \
-              --no-audit \
-              --no-fund \
-              "$GITHUB_WORKSPACE/$npm_tarball"
-            node node_modules/react-native-pirate-wallet/scripts/verify-package.js --publish-layout
-            npm --prefix node_modules/react-native-pirate-wallet test
-          )
+          chmod +x scripts/package-react-native-plugin.sh
+          scripts/package-react-native-plugin.sh
 
       - name: Upload React Native plugin package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: react-native-pirate-wallet
           path: |
-            dist/react-native-plugin/**/*
+            dist/react-native-plugin/*.tgz
+            dist/react-native-plugin/*.tgz.sha256
+            dist/react-native-plugin/*.zip
+            dist/react-native-plugin/*.zip.sha256
+            dist/react-native-plugin/*-npm-pack.json
 
   verify-react-native-plugin-ios-example:
     name: Verify - React Native Plugin iOS Example
