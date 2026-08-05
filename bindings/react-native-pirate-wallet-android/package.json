@@ -1,0 +1,41 @@
+{
+  "name": "react-native-pirate-wallet-android",
+  "version": "0.2.1",
+  "description": "Android native libraries for react-native-pirate-wallet",
+  "keywords": [
+    "react-native",
+    "pirate-chain",
+    "android",
+    "wallet",
+    "privacy",
+    "shielded"
+  ],
+  "homepage": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/tree/main/bindings/react-native-pirate-wallet-android#readme",
+  "bugs": {
+    "url": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet.git",
+    "directory": "bindings/react-native-pirate-wallet-android"
+  },
+  "author": "Pirate Chain Contributors",
+  "license": "MIT",
+  "files": [
+    "android/src/main/jniLibs/",
+    "scripts/",
+    "LICENSE-MIT",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "verify:package": "node scripts/verify-package.js",
+    "prepack": "npm run verify:package"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
