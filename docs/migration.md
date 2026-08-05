@@ -76,12 +76,13 @@ Edge currently depends on the older split native SDK repos and combines them ins
 The replacement path from this repo is now:
 
 1. use `pirate-ffi-native` as the shared native Rust layer
-2. stage the repo-owned Android JNI libraries and iOS XCFramework into `bindings/react-native-pirate-wallet`
+2. stage the Android JNI libraries into `bindings/react-native-pirate-wallet-android` and the iOS XCFramework into `bindings/react-native-pirate-wallet`
 3. consume the repo-owned React Native package
 
 React Native package:
 
 - repo-owned package path: `bindings/react-native-pirate-wallet`
+- Android binary package path: `bindings/react-native-pirate-wallet-android`
 - JS wrapper: mirrors the shielded-first SDK surface
 - Android native bridge: JNI-based bridge over `libpirate_ffi_native.so`
 - iOS native bridge: Swift bridge over `PirateWalletNative.xcframework`

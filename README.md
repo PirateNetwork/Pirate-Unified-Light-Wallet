@@ -42,7 +42,7 @@ Additional backend deliverables are built from the Rust workspace:
 - `pirate-ffi-native` under `crates/pirate-ffi-native/`
 - iOS SDK XCFramework inputs under `bindings/ios-sdk/`
 - Android SDK module and AAR packaging inputs under `bindings/android-sdk/`
-- React Native plugin under `bindings/react-native-pirate-wallet/`
+- React Native wrapper under `bindings/react-native-pirate-wallet/` with its Android binary package under `bindings/react-native-pirate-wallet-android/`
 
 Backend architecture
 --------------------

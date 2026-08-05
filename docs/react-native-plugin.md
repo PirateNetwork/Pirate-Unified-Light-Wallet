@@ -1,10 +1,12 @@
 # React Native Plugin
 
-The React Native package in this repo lives in:
+The React Native packages in this repo live in:
 
 - `bindings/react-native-pirate-wallet/`
+- `bindings/react-native-pirate-wallet-android/`
 
-It wraps the same native backend used by the Android SDK and iOS SDK.
+The public package contains the JavaScript API, platform bridges, and iOS
+XCFramework. Its companion contains the Android JNI libraries.
 
 Related paths:
 
@@ -113,8 +115,8 @@ That script copies:
 
 into:
 
-- `bindings/react-native-pirate-wallet/android/`
-- `bindings/react-native-pirate-wallet/ios/`
+- `bindings/react-native-pirate-wallet-android/android/src/main/jniLibs/`
+- `bindings/react-native-pirate-wallet/ios/Frameworks/PirateWalletNative.xcframework/`
 
 If those native artifacts are missing, the React Native package will not build correctly.
 
@@ -129,6 +131,7 @@ Important files:
 - `bindings/react-native-pirate-wallet/src/index.d.ts`
 - `bindings/react-native-pirate-wallet/README.md`
 - `bindings/react-native-pirate-wallet/example/`
+- `bindings/react-native-pirate-wallet-android/package.json`
 
 The package README carries the JavaScript API and RPC reference:
 
@@ -138,9 +141,10 @@ The example app is the minimal real consumer used by CI:
 
 - `bindings/react-native-pirate-wallet/example/`
 
-Release CI also creates the installable npm tarball and tests that tarball in a
-clean temporary project. The package is published only when the
-`react_native_plugin` version in `release-artifacts.toml` changes.
+Release CI creates and tests separate npm tarballs for the public wrapper and
+the Android companion. Both use the `react_native_plugin` version from
+`release-artifacts.toml`; publication sends the Android package first and then
+the wrapper.
 
 ## Installing in a React Native app
 
@@ -153,6 +157,7 @@ cd ios && pod install
 
 Android:
 
+- npm installs the exact-version Android companion automatically
 - the module autolinks like a normal React Native native module
 - `configureAccountStorage()` derives account directories under
   `Context.filesDir/pirate_wallet/accounts/<sanitized-account-id>` unless the
