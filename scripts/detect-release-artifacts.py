@@ -9,6 +9,9 @@ from pathlib import Path
 
 MANIFEST_PATH = Path("release-artifacts.toml")
 REACT_NATIVE_PACKAGE_PATH = Path("bindings/react-native-pirate-wallet/package.json")
+REACT_NATIVE_ANDROID_PACKAGE_PATH = Path(
+    "bindings/react-native-pirate-wallet-android/package.json"
+)
 TRACKED = (
     "cli",
     "qortal_cli",
@@ -85,12 +88,29 @@ def changed_artifacts(current: dict, previous: dict | None) -> dict:
 
 def validate_source_versions(current: dict) -> None:
     package = json.loads(REACT_NATIVE_PACKAGE_PATH.read_text(encoding="utf-8"))
+    android_package = json.loads(
+        REACT_NATIVE_ANDROID_PACKAGE_PATH.read_text(encoding="utf-8")
+    )
     package_version = package.get("version")
+    android_package_version = android_package.get("version")
     release_version = current.get("react_native_plugin", {}).get("version")
     if package_version != release_version:
         raise ValueError(
             "React Native package version does not match release-artifacts.toml "
             f"({package_version!r} != {release_version!r})"
+        )
+    if android_package_version != release_version:
+        raise ValueError(
+            "React Native Android package version does not match release-artifacts.toml "
+            f"({android_package_version!r} != {release_version!r})"
+        )
+    android_dependency_version = package.get("optionalDependencies", {}).get(
+        "react-native-pirate-wallet-android"
+    )
+    if android_dependency_version != release_version:
+        raise ValueError(
+            "React Native Android dependency must use the exact release version "
+            f"({android_dependency_version!r} != {release_version!r})"
         )
 
 
