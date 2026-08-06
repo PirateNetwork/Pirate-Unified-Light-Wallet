@@ -22,6 +22,8 @@ type TypedNullifier = (NoteType, NullifierBytes);
 type TypedUnlinkedSpend = (NoteType, NullifierBytes, SpendingTxidBytes);
 type TypedUnlinkedSpendMap = HashMap<TypedNullifier, SpendingTxidBytes>;
 const NOTE_SHARD_INDEX_BITS: u32 = 16;
+// Keep dynamic `IN` queries below SQLite's historical 999-variable default.
+const TRANSACTION_QUERY_CHUNK_SIZE: usize = 900;
 
 /// Repository for database operations
 pub struct Repository<'a> {
@@ -920,112 +922,90 @@ impl<'a> Repository<'a> {
     }
 
     fn get_transaction_timestamps(&self, txids: &[String]) -> Result<HashMap<String, i64>> {
-        if txids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        // Build a `WHERE txid IN (?, ?, ...)` query dynamically.
-        let placeholders = std::iter::repeat_n("?", txids.len())
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT txid, timestamp FROM transactions WHERE txid IN ({})",
-            placeholders
-        );
-
-        let mut stmt = self.db.conn().prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(txids.iter()), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })?;
-
         let mut map = HashMap::new();
-        for r in rows {
-            let (txid, ts) = r?;
-            map.insert(txid, ts);
+        for txid_chunk in txids.chunks(TRANSACTION_QUERY_CHUNK_SIZE) {
+            let placeholders = std::iter::repeat_n("?", txid_chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "SELECT txid, timestamp FROM transactions WHERE txid IN ({})",
+                placeholders
+            );
+            let mut stmt = self.db.conn().prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(txid_chunk.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            for row in rows {
+                let (txid, timestamp) = row?;
+                map.insert(txid, timestamp);
+            }
         }
         Ok(map)
     }
 
     fn get_transaction_heights(&self, txids: &[String]) -> Result<HashMap<String, i64>> {
-        if txids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let placeholders = std::iter::repeat_n("?", txids.len())
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT txid, height FROM transactions WHERE txid IN ({})",
-            placeholders
-        );
-
-        let mut stmt = self.db.conn().prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(txids.iter()), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })?;
-
         let mut map = HashMap::new();
-        for r in rows {
-            let (txid, height) = r?;
-            map.insert(txid, height);
+        for txid_chunk in txids.chunks(TRANSACTION_QUERY_CHUNK_SIZE) {
+            let placeholders = std::iter::repeat_n("?", txid_chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "SELECT txid, height FROM transactions WHERE txid IN ({})",
+                placeholders
+            );
+            let mut stmt = self.db.conn().prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(txid_chunk.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            for row in rows {
+                let (txid, height) = row?;
+                map.insert(txid, height);
+            }
         }
-
         Ok(map)
     }
 
     fn get_transaction_fees(&self, txids: &[String]) -> Result<HashMap<String, u64>> {
-        if txids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let placeholders = std::iter::repeat_n("?", txids.len())
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT txid, fee FROM transactions WHERE txid IN ({})",
-            placeholders
-        );
-
-        let mut stmt = self.db.conn().prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(txids.iter()), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })?;
-
         let mut map = HashMap::new();
-        for r in rows {
-            let (txid, fee) = r?;
-            let fee = if fee < 0 { 0 } else { fee as u64 };
-            map.insert(txid, fee);
+        for txid_chunk in txids.chunks(TRANSACTION_QUERY_CHUNK_SIZE) {
+            let placeholders = std::iter::repeat_n("?", txid_chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "SELECT txid, fee FROM transactions WHERE txid IN ({})",
+                placeholders
+            );
+            let mut stmt = self.db.conn().prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(txid_chunk.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            for row in rows {
+                let (txid, fee) = row?;
+                map.insert(txid, u64::try_from(fee).unwrap_or(0));
+            }
         }
-
         Ok(map)
     }
 
     fn get_transaction_memos(&self, txids: &[String]) -> Result<HashMap<String, Vec<u8>>> {
-        if txids.is_empty() {
-            return Ok(HashMap::new());
-        }
-
-        let placeholders = std::iter::repeat_n("?", txids.len())
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT t.txid, m.memo FROM memos m INNER JOIN transactions t ON m.tx_id = t.id WHERE t.txid IN ({})",
-            placeholders
-        );
-
-        let mut stmt = self.db.conn().prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(txids.iter()), |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
-        })?;
-
         let mut map = HashMap::new();
-        for r in rows {
-            let (txid, encrypted_memo) = r?;
-            let memo = self.decrypt_blob(&encrypted_memo)?;
-            map.insert(txid, memo);
+        for txid_chunk in txids.chunks(TRANSACTION_QUERY_CHUNK_SIZE) {
+            let placeholders = std::iter::repeat_n("?", txid_chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "SELECT t.txid, m.memo FROM memos m INNER JOIN transactions t ON m.tx_id = t.id WHERE t.txid IN ({})",
+                placeholders
+            );
+            let mut stmt = self.db.conn().prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(txid_chunk.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })?;
+            for row in rows {
+                let (txid, encrypted_memo) = row?;
+                map.insert(txid, self.decrypt_blob(&encrypted_memo)?);
+            }
         }
-
         Ok(map)
     }
 
@@ -4406,10 +4386,7 @@ impl<'a> Repository<'a> {
         }
     }
 
-    /// Get all notes for a transaction (by txid) with decrypted fields
-    /// Note: Since all fields are encrypted, we decrypt all notes and filter in memory for privacy
-    pub fn get_notes_by_txid(&self, account_id: i64, txid: &[u8]) -> Result<Vec<NoteRecord>> {
-        // Since fields are encrypted, we need to decrypt all and filter
+    fn get_account_notes(&self, account_id: i64) -> Result<Vec<NoteRecord>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, note, position, memo, address_id, key_id FROM notes",
         )?;
@@ -4444,7 +4421,7 @@ impl<'a> Repository<'a> {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
-        // Decrypt all notes and filter by account_id and txid
+        // Account IDs are encrypted, so account filtering happens after decryption.
         let mut decrypted_notes = Vec::new();
         for (
             id,
@@ -4469,8 +4446,7 @@ impl<'a> Repository<'a> {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
             let decrypted_txid = self.decrypt_blob(&enc_txid)?;
 
-            // Filter by search criteria
-            if decrypted_account_id == account_id && decrypted_txid == txid {
+            if decrypted_account_id == account_id {
                 decrypted_notes.push(NoteRecord {
                     id: Some(id),
                     account_id: decrypted_account_id,
@@ -4492,6 +4468,135 @@ impl<'a> Repository<'a> {
                 });
             }
         }
+
+        Ok(decrypted_notes)
+    }
+
+    /// Return one canonical historical record for every received shielded output.
+    ///
+    /// Duplicate database rows produced by interrupted or repeated scans are folded by
+    /// `(txid, pool, output_index)`. The encrypted notes table is decrypted exactly once.
+    pub fn get_canonical_received_notes(&self, account_id: i64) -> Result<Vec<ReceivedNoteRecord>> {
+        let notes = self.get_account_notes(account_id)?;
+        let mut txid_lookup_keys = HashSet::new();
+        for note in &notes {
+            if note.txid.is_empty() {
+                continue;
+            }
+            txid_lookup_keys.insert(hex::encode(&note.txid));
+            txid_lookup_keys.insert(txid_hex_from_bytes(&note.txid));
+        }
+        let mut txid_lookup_keys = txid_lookup_keys.into_iter().collect::<Vec<_>>();
+        txid_lookup_keys.sort_unstable();
+
+        let heights = self.get_transaction_heights(&txid_lookup_keys)?;
+        let timestamps = self.get_transaction_timestamps(&txid_lookup_keys)?;
+        let mut canonical = HashMap::<(String, NoteType, i64), ReceivedNoteRecord>::new();
+
+        for note in notes {
+            if note.txid.is_empty() || !note_value_is_valid(note.value) {
+                continue;
+            }
+
+            let raw_txid = hex::encode(&note.txid);
+            let reversed_txid = txid_hex_from_bytes(&note.txid);
+            let raw_height = heights.get(&raw_txid).copied().unwrap_or(0);
+            let reversed_height = heights.get(&reversed_txid).copied().unwrap_or(0);
+            let raw_timestamp = timestamps.get(&raw_txid).copied();
+            let reversed_timestamp = timestamps.get(&reversed_txid).copied();
+            let raw_known = heights.contains_key(&raw_txid) || raw_timestamp.is_some();
+            let reversed_known =
+                heights.contains_key(&reversed_txid) || reversed_timestamp.is_some();
+
+            // Notes normally store txids in internal byte order while transaction metadata
+            // uses the unreversed hex. Legacy databases may contain the opposite orientation.
+            let metadata_uses_raw = match (raw_known, reversed_known) {
+                (true, false) => true,
+                (false, true) => false,
+                (true, true) => {
+                    (raw_height, raw_timestamp.is_some())
+                        >= (reversed_height, reversed_timestamp.is_some())
+                }
+                (false, false) => true,
+            };
+            let (txid, timestamp) = if metadata_uses_raw {
+                (reversed_txid, raw_timestamp.or(reversed_timestamp))
+            } else {
+                (raw_txid, reversed_timestamp.or(raw_timestamp))
+            };
+            let key = (txid.clone(), note.note_type, note.output_index);
+            let candidate = ReceivedNoteRecord {
+                txid,
+                note_type: note.note_type,
+                output_index: note.output_index,
+                value: note.value,
+                height: note.height.max(raw_height).max(reversed_height),
+                timestamp,
+                address_id: note.address_id,
+                note: note.note,
+            };
+
+            if let Some(existing) = canonical.get_mut(&key) {
+                if existing.value != candidate.value {
+                    return Err(crate::Error::Validation(format!(
+                        "Conflicting values for received output {} {:?} {}",
+                        existing.txid, existing.note_type, existing.output_index
+                    )));
+                }
+                if let (Some(existing_id), Some(candidate_id)) =
+                    (existing.address_id, candidate.address_id)
+                {
+                    if existing_id != candidate_id {
+                        return Err(crate::Error::Validation(format!(
+                            "Conflicting addresses for received output {} {:?} {}",
+                            existing.txid, existing.note_type, existing.output_index
+                        )));
+                    }
+                }
+                existing.height = existing.height.max(candidate.height);
+                if existing.timestamp.is_none() {
+                    existing.timestamp = candidate.timestamp;
+                }
+                if existing.address_id.is_none() {
+                    existing.address_id = candidate.address_id;
+                }
+                if existing.note.is_none() {
+                    existing.note = candidate.note;
+                }
+            } else {
+                canonical.insert(key, candidate);
+            }
+        }
+
+        let mut received = canonical.into_values().collect::<Vec<_>>();
+        received.sort_by(|a, b| {
+            let a_unconfirmed = a.height <= 0;
+            let b_unconfirmed = b.height <= 0;
+            let a_pool = match a.note_type {
+                NoteType::Sapling => 0u8,
+                NoteType::Ironwood => 1u8,
+            };
+            let b_pool = match b.note_type {
+                NoteType::Sapling => 0u8,
+                NoteType::Ironwood => 1u8,
+            };
+            b_unconfirmed
+                .cmp(&a_unconfirmed)
+                .then_with(|| b.height.cmp(&a.height))
+                .then_with(|| b.timestamp.cmp(&a.timestamp))
+                .then_with(|| b.txid.cmp(&a.txid))
+                .then_with(|| a_pool.cmp(&b_pool))
+                .then_with(|| a.output_index.cmp(&b.output_index))
+        });
+        Ok(received)
+    }
+
+    /// Get all notes for a transaction (by txid) with decrypted fields.
+    ///
+    /// Since fields are encrypted, all account notes are decrypted before filtering.
+    pub fn get_notes_by_txid(&self, account_id: i64, txid: &[u8]) -> Result<Vec<NoteRecord>> {
+        let mut decrypted_notes = self.get_account_notes(account_id)?;
+        decrypted_notes.retain(|note| note.txid == txid);
 
         // Sort by output_index
         decrypted_notes.sort_by_key(|n| n.output_index);
@@ -4569,6 +4674,42 @@ mod tests {
         let salt = crate::security::generate_salt();
         let key = EncryptionKey::from_passphrase("test", &salt).unwrap();
         Database::open(file.path(), &key, master_key).unwrap()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn insert_received_note(
+        repo: &Repository<'_>,
+        account_id: i64,
+        txid: Vec<u8>,
+        note_type: NoteType,
+        output_index: i64,
+        value: i64,
+        height: i64,
+        address_id: Option<i64>,
+        note_bytes: Option<Vec<u8>>,
+        spent: bool,
+        tag: u8,
+    ) {
+        repo.insert_note(&NoteRecord {
+            id: None,
+            account_id,
+            key_id: None,
+            note_type,
+            value,
+            nullifier: vec![tag; 32],
+            commitment: vec![tag.wrapping_add(1); 32],
+            spent,
+            height,
+            txid,
+            output_index,
+            address_id,
+            spent_txid: spent.then(|| vec![tag.wrapping_add(2); 32]),
+            diversifier: None,
+            note: note_bytes,
+            position: None,
+            memo: None,
+        })
+        .unwrap();
     }
 
     fn insert_spendable_account_key(
@@ -4675,6 +4816,39 @@ mod tests {
         let raw = hex::decode(txid).expect("hex decode");
         let display = txid_hex_from_bytes(&raw.iter().rev().copied().collect::<Vec<u8>>());
         assert_eq!(display, txid);
+    }
+
+    #[test]
+    fn transaction_metadata_queries_support_large_histories() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let txids = (0..=TRANSACTION_QUERY_CHUNK_SIZE)
+            .map(|index| format!("{index:064x}"))
+            .collect::<Vec<_>>();
+        let first = txids.first().unwrap();
+        let last = txids.last().unwrap();
+
+        repo.upsert_transaction(first, 100, 1_000, 10).unwrap();
+        repo.upsert_transaction(last, 200, 2_000, 20).unwrap();
+        repo.upsert_tx_memo(first, b"first").unwrap();
+        repo.upsert_tx_memo(last, b"last").unwrap();
+
+        let heights = repo.get_transaction_heights(&txids).unwrap();
+        let timestamps = repo.get_transaction_timestamps(&txids).unwrap();
+        let fees = repo.get_transaction_fees(&txids).unwrap();
+        let memos = repo.get_transaction_memos(&txids).unwrap();
+
+        assert_eq!(heights.get(first), Some(&100));
+        assert_eq!(heights.get(last), Some(&200));
+        assert_eq!(timestamps.get(first), Some(&1_000));
+        assert_eq!(timestamps.get(last), Some(&2_000));
+        assert_eq!(fees.get(first), Some(&10));
+        assert_eq!(fees.get(last), Some(&20));
+        assert_eq!(
+            memos.get(first).map(Vec::as_slice),
+            Some(b"first".as_slice())
+        );
+        assert_eq!(memos.get(last).map(Vec::as_slice), Some(b"last".as_slice()));
     }
 
     #[test]
@@ -5112,6 +5286,253 @@ mod tests {
             .expect("expected transaction entry");
 
         assert_eq!(tx.memo, Some(b"real memo text".to_vec()));
+    }
+
+    #[test]
+    fn canonical_received_notes_fold_rescan_duplicates_and_txid_orientations() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Deposit history".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let address = Address {
+            id: None,
+            key_id: None,
+            account_id,
+            diversifier_index: 0,
+            address: "zs1deposit-history".to_string(),
+            address_type: AddressType::Sapling,
+            label: None,
+            created_at: 1,
+            color_tag: ColorTag::None,
+            address_scope: AddressScope::External,
+        };
+        repo.upsert_address(&address).unwrap();
+        let address_id = repo
+            .get_address_by_string(account_id, &address.address)
+            .unwrap()
+            .and_then(|entry| entry.id)
+            .unwrap();
+
+        let txid = (0u8..32).collect::<Vec<_>>();
+        let mut reversed_txid = txid.clone();
+        reversed_txid.reverse();
+        repo.upsert_transaction(&hex::encode(&txid), 500, 1_234_567, 0)
+            .unwrap();
+        insert_received_note(
+            &repo,
+            account_id,
+            txid.clone(),
+            NoteType::Sapling,
+            2,
+            75_000,
+            500,
+            None,
+            Some(vec![1, 2, 3]),
+            true,
+            1,
+        );
+        insert_received_note(
+            &repo,
+            account_id,
+            txid.clone(),
+            NoteType::Sapling,
+            2,
+            75_000,
+            0,
+            Some(address_id),
+            None,
+            false,
+            2,
+        );
+        insert_received_note(
+            &repo,
+            account_id,
+            reversed_txid,
+            NoteType::Sapling,
+            2,
+            75_000,
+            500,
+            Some(address_id),
+            None,
+            false,
+            3,
+        );
+
+        let received = repo.get_canonical_received_notes(account_id).unwrap();
+        assert_eq!(received.len(), 1);
+        assert_eq!(received[0].txid, txid_hex_from_bytes(&txid));
+        assert_eq!(received[0].note_type, NoteType::Sapling);
+        assert_eq!(received[0].output_index, 2);
+        assert_eq!(received[0].value, 75_000);
+        assert_eq!(received[0].height, 500);
+        assert_eq!(received[0].timestamp, Some(1_234_567));
+        assert_eq!(received[0].address_id, Some(address_id));
+        assert_eq!(received[0].note, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn canonical_received_notes_keep_pool_and_output_identity() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Deposit identity".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let txid = vec![0x42; 32];
+
+        insert_received_note(
+            &repo,
+            account_id,
+            txid.clone(),
+            NoteType::Sapling,
+            0,
+            10,
+            100,
+            None,
+            None,
+            false,
+            10,
+        );
+        insert_received_note(
+            &repo,
+            account_id,
+            txid.clone(),
+            NoteType::Ironwood,
+            0,
+            20,
+            100,
+            None,
+            None,
+            false,
+            11,
+        );
+        insert_received_note(
+            &repo,
+            account_id,
+            txid,
+            NoteType::Sapling,
+            1,
+            30,
+            100,
+            None,
+            None,
+            false,
+            12,
+        );
+
+        let received = repo.get_canonical_received_notes(account_id).unwrap();
+        assert_eq!(received.len(), 3);
+        assert!(received
+            .iter()
+            .any(|note| note.note_type == NoteType::Sapling && note.output_index == 0));
+        assert!(received
+            .iter()
+            .any(|note| note.note_type == NoteType::Ironwood && note.output_index == 0));
+        assert!(received
+            .iter()
+            .any(|note| note.note_type == NoteType::Sapling && note.output_index == 1));
+    }
+
+    #[test]
+    fn canonical_received_notes_prioritize_unconfirmed_outputs() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Deposit ordering".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let confirmed_txid = vec![0x61; 32];
+        let unconfirmed_txid = vec![0x62; 32];
+        repo.upsert_transaction(&hex::encode(&confirmed_txid), 100, 1_000, 0)
+            .unwrap();
+        repo.upsert_transaction(&hex::encode(&unconfirmed_txid), 0, 2_000, 0)
+            .unwrap();
+        insert_received_note(
+            &repo,
+            account_id,
+            confirmed_txid,
+            NoteType::Sapling,
+            0,
+            100,
+            100,
+            None,
+            None,
+            false,
+            30,
+        );
+        insert_received_note(
+            &repo,
+            account_id,
+            unconfirmed_txid,
+            NoteType::Sapling,
+            0,
+            200,
+            0,
+            None,
+            None,
+            false,
+            31,
+        );
+
+        let received = repo.get_canonical_received_notes(account_id).unwrap();
+        assert_eq!(received.len(), 2);
+        assert_eq!(received[0].height, 0);
+        assert_eq!(received[0].timestamp, Some(2_000));
+        assert_eq!(received[1].height, 100);
+    }
+
+    #[test]
+    fn canonical_received_notes_reject_conflicting_duplicate_values() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Conflicting deposit".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let txid = vec![0x33; 32];
+        insert_received_note(
+            &repo,
+            account_id,
+            txid.clone(),
+            NoteType::Sapling,
+            0,
+            100,
+            10,
+            None,
+            None,
+            false,
+            20,
+        );
+        insert_received_note(
+            &repo,
+            account_id,
+            txid,
+            NoteType::Sapling,
+            0,
+            200,
+            10,
+            None,
+            None,
+            false,
+            21,
+        );
+
+        let error = repo.get_canonical_received_notes(account_id).unwrap_err();
+        assert!(error.to_string().contains("Conflicting values"));
     }
 
     #[test]
