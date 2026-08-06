@@ -176,9 +176,9 @@ Android:
 
 iOS:
 
-- npm assembles the device and simulator packages into
-  `PirateWalletNative.xcframework`
-- CocoaPods links the assembled XCFramework
+- npm installs the exact-version device and simulator companion packages
+- CocoaPods assembles and links `PirateWalletNative.xcframework` during
+  `pod install`
 - `configureAccountStorage()` derives account directories under
   `Application Support/PirateWallet/accounts/<sanitized-account-id>` unless the
   caller provides `storagePath`

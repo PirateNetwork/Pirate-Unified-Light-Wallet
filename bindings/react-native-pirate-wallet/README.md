@@ -539,5 +539,6 @@ On Android, npm installs the exact-version ARM and x86_64 companions
 automatically. The wrapper autolinks as a standard React Native native module
 and adds their JNI libraries to the build.
 
-On macOS, npm installs the exact-version device and simulator companions and
-assembles `PirateWalletNative.xcframework`. The podspec links that framework.
+On macOS, npm installs the exact-version device and simulator companions.
+During `pod install`, the podspec assembles and links
+`PirateWalletNative.xcframework` from those packages.
