@@ -539,7 +539,7 @@ class _NodeSettingsScreenState extends ConsumerState<NodeSettingsScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: PButton(
-                    onPressed: _hasChanges && !_isLoading
+                    onPressed: _hasChanges && !_isLoading && !_isFetchingSpkiPin
                         ? _saveEndpoint
                         : null,
                     isLoading: _isLoading,
