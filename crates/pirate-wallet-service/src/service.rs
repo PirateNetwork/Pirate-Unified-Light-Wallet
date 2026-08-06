@@ -4,7 +4,8 @@ use serde_json::{json, to_value, Value};
 
 pub use crate::{
     AddressBalanceInfo, AddressBookColorTag, AddressBookEntryFfi, AddressInfo, AddressValidation,
-    Balance, BuildInfo, CheckpointInfo, ConsensusBranchValidation, FeeInfo, KeyExportInfo,
+    AddressedDeposit, Balance, BuildInfo, CheckpointInfo, ConsensusBranchValidation, FeeInfo,
+    KeyExportInfo,
     KeyGroupInfo, KeyTypeInfo, LightdEndpoint, NodeTestResult, NoteInfo, Output, PaymentDisclosure,
     PaymentDisclosureVerification, PendingTx, QortalP2shRedeemRequest, QortalP2shSendRequest,
     QortalSendRequest, SeedExportWarnings, ShieldedPoolBalances, SignedTx, SpendabilityStatus,
@@ -129,6 +130,10 @@ pub enum WalletServiceRequest {
         mnemonic_language: Option<MnemonicLanguage>,
     },
     ListTransactions {
+        wallet_id: WalletId,
+        limit: Option<u32>,
+    },
+    ListIncomingDeposits {
         wallet_id: WalletId,
         limit: Option<u32>,
     },
@@ -614,6 +619,9 @@ impl WalletService {
             } => serialize(ffi::export_seed_raw(wallet_id, mnemonic_language)?),
             WalletServiceRequest::ListTransactions { wallet_id, limit } => {
                 serialize(ffi::list_transactions(wallet_id, limit)?)
+            }
+            WalletServiceRequest::ListIncomingDeposits { wallet_id, limit } => {
+                serialize(ffi::list_incoming_deposits(wallet_id, limit)?)
             }
             WalletServiceRequest::ListTransactionsPage {
                 wallet_id,
