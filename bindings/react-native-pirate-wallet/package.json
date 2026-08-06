@@ -43,7 +43,6 @@
     "test": "node test/smoke.js",
     "verify:package": "node scripts/verify-package.js",
     "prepare:native": "node scripts/assemble-ios-framework.js",
-    "postinstall": "npm run prepare:native",
     "prepack": "node scripts/verify-package.js --publish-layout"
   },
   "engines": {
