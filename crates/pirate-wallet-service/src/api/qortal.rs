@@ -7,7 +7,7 @@ use std::collections::HashMap;
 /// Standard Qortal shielded send request.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct QortalSendRequest {
-    /// Wallet-owned shielded address whose notes may be selected.
+    /// Wallet-owned shielded address whose key group may be selected.
     pub input: String,
     /// Shielded recipients.
     pub output: Vec<Output>,
@@ -126,36 +126,48 @@ pub fn qortal_balance(wallet_id: WalletId) -> Result<Value> {
     }))
 }
 
-/// Send using notes owned by the exact source address supplied by Qortal.
+pub(super) fn resolve_qortal_source_key_id(
+    repo: &Repository,
+    account_id: i64,
+    wallet_id: &WalletId,
+    input: &str,
+) -> Result<i64> {
+    let source = repo
+        .get_address_by_string(account_id, input)?
+        .ok_or_else(|| {
+            anyhow!(
+                "Input address {} is not owned by wallet {}",
+                input,
+                wallet_id
+            )
+        })?;
+    let address_id = source
+        .id
+        .ok_or_else(|| anyhow!("Input address row id is missing"))?;
+
+    tx_flow::resolve_spend_key_id(repo, account_id, None, Some(&[address_id]))?
+        .ok_or_else(|| anyhow!("Input address {} is missing key metadata", input))
+}
+
+/// Send using notes owned by the key group selected by Qortal's source address.
 pub async fn qortal_send(wallet_id: WalletId, request: QortalSendRequest) -> Result<String> {
-    let address_id = {
+    let source_key_id = {
         let (_db, repo) = open_wallet_db_for(&wallet_id)?;
         let secret = repo
             .get_wallet_secret(&wallet_id)?
             .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
-        let source = repo
-            .get_address_by_string(secret.account_id, &request.input)?
-            .ok_or_else(|| {
-                anyhow!(
-                    "Input address {} is not owned by wallet {}",
-                    request.input,
-                    wallet_id
-                )
-            })?;
-        source
-            .id
-            .ok_or_else(|| anyhow!("Input address row id is missing"))?
+        resolve_qortal_source_key_id(&repo, secret.account_id, &wallet_id, &request.input)?
     };
 
-    let address_filter = Some(vec![address_id]);
+    let key_filter = Some(vec![source_key_id]);
     let pending = build_tx_filtered(
         wallet_id.clone(),
         request.output,
         request.fee,
+        key_filter.clone(),
         None,
-        address_filter.clone(),
     )?;
-    let signed = sign_tx_filtered(wallet_id, pending, None, address_filter)?;
+    let signed = sign_tx_filtered(wallet_id, pending, key_filter, None)?;
     tx_flow::broadcast_tx(signed).await
 }
 
