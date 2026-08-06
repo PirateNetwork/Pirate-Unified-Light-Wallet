@@ -1,3 +1,4 @@
+use super::qortal::resolve_qortal_source_key_id;
 use super::tx_flow::{
     add_pending_change, auto_select_spend_key_id_for_amount, choose_multi_key_change_sink_key_id,
     clear_pending_changes, has_pending_changes, infer_contributing_key_ids_for_amount,
@@ -85,6 +86,16 @@ fn insert_account_key(
 }
 
 fn insert_address(repo: &Repository, account_id: i64, key_id: i64, tag: &str) -> i64 {
+    insert_address_with_scope(repo, account_id, key_id, tag, AddressScope::External)
+}
+
+fn insert_address_with_scope(
+    repo: &Repository,
+    account_id: i64,
+    key_id: i64,
+    tag: &str,
+    address_scope: AddressScope,
+) -> i64 {
     let address = Address {
         id: None,
         key_id: Some(key_id),
@@ -95,7 +106,7 @@ fn insert_address(repo: &Repository, account_id: i64, key_id: i64, tag: &str) ->
         label: None,
         created_at: chrono::Utc::now().timestamp(),
         color_tag: ColorTag::None,
-        address_scope: AddressScope::External,
+        address_scope,
     };
     repo.upsert_address(&address).unwrap();
     repo.get_all_addresses(account_id)
@@ -113,6 +124,18 @@ fn insert_sapling_note(
     value_zat: u64,
     tx_tag: u8,
     position: i64,
+) -> [u8; 32] {
+    insert_sapling_note_for_address(repo, account_id, key_id, value_zat, tx_tag, position, None)
+}
+
+fn insert_sapling_note_for_address(
+    repo: &Repository,
+    account_id: i64,
+    key_id: i64,
+    value_zat: u64,
+    tx_tag: u8,
+    position: i64,
+    address_id: Option<i64>,
 ) -> [u8; 32] {
     let seed = [tx_tag.max(1); 32];
     let extsk = SaplingExtendedSpendingKey::master(&seed);
@@ -138,7 +161,7 @@ fn insert_sapling_note(
         height: 1_000,
         txid: vec![tx_tag; 32],
         output_index: tx_tag as i64,
-        address_id: None,
+        address_id,
         spent_txid: None,
         diversifier: None,
         note: Some(note_blob),
@@ -261,6 +284,99 @@ fn test_resolve_spend_key_id_manual_and_address_filters() {
 
     let err = resolve_spend_key_id(&repo, account_id, Some(&[key_a]), Some(&[addr_b])).unwrap_err();
     assert!(err.to_string().contains("does not match"));
+}
+
+#[test]
+fn test_qortal_source_address_selects_internal_change_in_owning_key_group() {
+    let (db, account_id) = setup_repo();
+    let repo = Repository::new(&db);
+
+    let selected_key = insert_account_key(
+        &repo,
+        account_id,
+        KeyType::Seed,
+        true,
+        true,
+        true,
+        "selected",
+    );
+    let other_key = insert_account_key(
+        &repo,
+        account_id,
+        KeyType::ImportSpend,
+        true,
+        true,
+        true,
+        "other",
+    );
+    let external_address = insert_address(&repo, account_id, selected_key, "external");
+    let internal_address = insert_address_with_scope(
+        &repo,
+        account_id,
+        selected_key,
+        "internal",
+        AddressScope::Internal,
+    );
+    let other_address = insert_address(&repo, account_id, other_key, "other");
+    let external_address_string = repo
+        .get_all_addresses(account_id)
+        .unwrap()
+        .into_iter()
+        .find(|address| address.id == Some(external_address))
+        .unwrap()
+        .address;
+    let wallet_id = "test-wallet".to_string();
+
+    assert_eq!(
+        resolve_qortal_source_key_id(&repo, account_id, &wallet_id, &external_address_string)
+            .unwrap(),
+        selected_key
+    );
+
+    insert_sapling_note_for_address(
+        &repo,
+        account_id,
+        selected_key,
+        20,
+        0x20,
+        0,
+        Some(external_address),
+    );
+    insert_sapling_note_for_address(
+        &repo,
+        account_id,
+        selected_key,
+        30,
+        0x30,
+        1,
+        Some(internal_address),
+    );
+    insert_sapling_note_for_address(
+        &repo,
+        account_id,
+        other_key,
+        40,
+        0x40,
+        2,
+        Some(other_address),
+    );
+
+    let mut key_group_values = repo
+        .get_unspent_selectable_notes_filtered(account_id, Some(vec![selected_key]), None)
+        .unwrap()
+        .into_iter()
+        .map(|note| note.value)
+        .collect::<Vec<_>>();
+    key_group_values.sort_unstable();
+    assert_eq!(key_group_values, vec![20, 30]);
+
+    let exact_address_values = repo
+        .get_unspent_selectable_notes_filtered(account_id, None, Some(vec![external_address]))
+        .unwrap()
+        .into_iter()
+        .map(|note| note.value)
+        .collect::<Vec<_>>();
+    assert_eq!(exact_address_values, vec![20]);
 }
 
 #[test]
