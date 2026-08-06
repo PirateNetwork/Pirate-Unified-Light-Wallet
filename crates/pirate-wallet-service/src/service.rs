@@ -4,14 +4,13 @@ use serde_json::{json, to_value, Value};
 
 pub use crate::{
     AddressBalanceInfo, AddressBookColorTag, AddressBookEntryFfi, AddressInfo, AddressValidation,
-    AddressedDeposit, Balance, BuildInfo, CheckpointInfo, ConsensusBranchValidation, FeeInfo,
-    KeyExportInfo,
-    KeyGroupInfo, KeyTypeInfo, LightdEndpoint, NodeTestResult, NoteInfo, Output, PaymentDisclosure,
-    PaymentDisclosureVerification, PendingTx, QortalP2shRedeemRequest, QortalP2shSendRequest,
-    QortalSendRequest, SeedExportWarnings, ShieldedPoolBalances, SignedTx, SpendabilityStatus,
-    SyncLogEntryFfi, SyncMode, SyncStatus, TransactionCursor, TransactionDetails, TransactionPage,
-    TransactionRecipient, TunnelMode, TxInfo, WalletId, WalletMeta, WatchOnlyBannerInfo,
-    WatchOnlyCapabilitiesInfo,
+    AddressedDeposit, Balance, BuildInfo, CheckpointInfo, ConsensusBranchValidation,
+    DepositAddressScope, FeeInfo, KeyExportInfo, KeyGroupInfo, KeyTypeInfo, LightdEndpoint,
+    NodeTestResult, NoteInfo, Output, PaymentDisclosure, PaymentDisclosureVerification, PendingTx,
+    QortalP2shRedeemRequest, QortalP2shSendRequest, QortalSendRequest, SeedExportWarnings,
+    ShieldedPoolBalances, SignedTx, SpendabilityStatus, SyncLogEntryFfi, SyncMode, SyncStatus,
+    TransactionCursor, TransactionDetails, TransactionPage, TransactionRecipient, TunnelMode,
+    TxInfo, WalletId, WalletMeta, WatchOnlyBannerInfo, WatchOnlyCapabilitiesInfo,
 };
 pub use pirate_core::{MnemonicInspection, MnemonicLanguage};
 
@@ -1047,4 +1046,50 @@ fn serialize<T: Serialize>(value: T) -> Result<Value> {
 
 fn serialize_amount(value: u64) -> Result<Value> {
     Ok(Value::String(value.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn incoming_deposit_request_uses_the_public_json_method() {
+        let request = serde_json::from_value::<WalletServiceRequest>(json!({
+            "method": "list_incoming_deposits",
+            "wallet_id": "merchant-wallet",
+            "limit": 25
+        }))
+        .unwrap();
+
+        assert!(matches!(
+            request,
+            WalletServiceRequest::ListIncomingDeposits {
+                wallet_id,
+                limit: Some(25)
+            } if wallet_id == "merchant-wallet"
+        ));
+    }
+
+    #[test]
+    fn incoming_deposit_json_preserves_stable_identity_and_amount_precision() {
+        let value = serialize(AddressedDeposit {
+            txid: "ab".repeat(32),
+            pool: crate::ShieldedAddressType::Ironwood,
+            output_index: 4,
+            address: "pirate1merchant".to_string(),
+            address_scope: DepositAddressScope::External,
+            height: Some(123),
+            timestamp: Some(456),
+            value: 9_007_199_254_740_993,
+            confirmations: 7,
+            confirmed: true,
+        })
+        .unwrap();
+
+        assert_eq!(value["pool"], "Ironwood");
+        assert_eq!(value["output_index"], 4);
+        assert_eq!(value["address_scope"], "external");
+        assert_eq!(value["value"], "9007199254740993");
+        assert_eq!(value["confirmations"], 7);
+    }
 }
