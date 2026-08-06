@@ -300,6 +300,9 @@ vendor/
 # ===================================
 # Build & CI
 # ===================================
+# Generated release artifacts
+/dist/
+
 # Nix
 result
 result-*
