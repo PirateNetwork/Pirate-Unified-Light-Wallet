@@ -461,7 +461,7 @@ fn derive_receive_address(
     }
 }
 
-fn note_address_string(
+pub(super) fn note_address_string(
     note_type: pirate_storage_sqlite::models::NoteType,
     note_bytes: &[u8],
     network_type: NetworkType,

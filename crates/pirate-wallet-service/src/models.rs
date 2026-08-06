@@ -446,22 +446,41 @@ pub struct TxInfo {
     pub confirmed: bool,
 }
 
-/// One incoming shielded deposit, attributed to the specific wallet address
-/// that received it (see `list_incoming_deposits`).
+/// Address role associated with an incoming deposit.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DepositAddressScope {
+    /// Address issued for external receives.
+    External,
+    /// Address reserved for wallet-internal change.
+    Internal,
+    /// The historical note could not be matched to address metadata.
+    Unknown,
+}
+
+/// One canonical incoming shielded output attributed to its receiving address.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AddressedDeposit {
     /// Transaction ID.
     pub txid: TxId,
+    /// Shielded pool containing this output.
+    pub pool: ShieldedAddressType,
+    /// Output or action index within the shielded pool.
+    pub output_index: u32,
     /// The wallet address this deposit was sent to.
     pub address: String,
+    /// Whether the address is external, internal change, or unknown historically.
+    pub address_scope: DepositAddressScope,
     /// Block height (None if unconfirmed).
     pub height: Option<u32>,
-    /// Timestamp.
-    pub timestamp: i64,
+    /// Stored block timestamp when available.
+    pub timestamp: Option<i64>,
     /// Deposit value.
     #[serde(with = "amount_json::u64")]
     pub value: u64,
-    /// Whether the transaction is confirmed.
+    /// Confirmations at the wallet's locally validated height.
+    pub confirmations: u32,
+    /// Whether the output has at least one local confirmation.
     pub confirmed: bool,
 }
 
