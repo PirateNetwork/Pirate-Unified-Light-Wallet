@@ -446,6 +446,25 @@ pub struct TxInfo {
     pub confirmed: bool,
 }
 
+/// One incoming shielded deposit, attributed to the specific wallet address
+/// that received it (see `list_incoming_deposits`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AddressedDeposit {
+    /// Transaction ID.
+    pub txid: TxId,
+    /// The wallet address this deposit was sent to.
+    pub address: String,
+    /// Block height (None if unconfirmed).
+    pub height: Option<u32>,
+    /// Timestamp.
+    pub timestamp: i64,
+    /// Deposit value.
+    #[serde(with = "amount_json::u64")]
+    pub value: u64,
+    /// Whether the transaction is confirmed.
+    pub confirmed: bool,
+}
+
 /// Stable position in transaction history.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TransactionCursor {

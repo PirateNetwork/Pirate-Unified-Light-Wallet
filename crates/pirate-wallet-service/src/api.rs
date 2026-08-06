@@ -2680,6 +2680,86 @@ pub fn list_transactions(wallet_id: WalletId, limit: Option<u32>) -> Result<Vec<
     Ok(transactions)
 }
 
+/// List incoming shielded deposits attributed to the specific wallet address
+/// that received each one.
+///
+/// `list_transactions` only reports a wallet-level net amount per txid, which
+/// is not enough for callers that manage their own per-address deposit pools
+/// (e.g. a payment processor matching a payment to an invoice by address).
+/// This walks notes the same way `qortal::load_qortal_transactions` does
+/// internally, but returns a plain public shape with no Qortal-specific
+/// fields and only reports incoming value (this wallet never holds a
+/// spending key, so there is nothing outgoing to attribute).
+pub fn list_incoming_deposits(
+    wallet_id: WalletId,
+    limit: Option<u32>,
+) -> Result<Vec<AddressedDeposit>> {
+    if is_decoy_mode_active() {
+        return Ok(Vec::new());
+    }
+
+    let (db, repo) = open_wallet_db_for(&wallet_id)?;
+    let secret = repo
+        .get_wallet_secret(&wallet_id)?
+        .ok_or_else(|| anyhow!("No wallet secret found for {}", wallet_id))?;
+    let sync_state = pirate_storage_sqlite::SyncStateStorage::new(&db).load_sync_state()?;
+    let current_height = sync_state.local_height.max(sync_state.target_height);
+
+    let addresses_by_id = repo
+        .get_all_addresses(secret.account_id)?
+        .into_iter()
+        .filter_map(|address| address.id.map(|id| (id, address.address)))
+        .collect::<HashMap<_, _>>();
+
+    let records =
+        repo.get_transactions_with_options(secret.account_id, limit, current_height, 1, false)?;
+    let mut deposits = Vec::new();
+
+    for record in records {
+        if record.amount <= 0 {
+            continue;
+        }
+
+        let txid_bytes = hex::decode(&record.txid)
+            .map_err(|err| anyhow!("Invalid stored transaction id: {}", err))?;
+        let mut reversed_txid = txid_bytes.clone();
+        reversed_txid.reverse();
+        let mut notes = repo.get_notes_by_txid(secret.account_id, &txid_bytes)?;
+        if notes.is_empty() {
+            notes = repo.get_notes_by_txid(secret.account_id, &reversed_txid)?;
+        }
+
+        let confirmed = record.height > 0 && current_height >= record.height as u64;
+        let height = u32::try_from(record.height.max(0)).ok();
+
+        for note in notes {
+            if note.value <= 0 {
+                continue;
+            }
+            let Some(address) = note
+                .address_id
+                .and_then(|id| addresses_by_id.get(&id))
+                .cloned()
+            else {
+                continue;
+            };
+            let Ok(value) = u64::try_from(note.value) else {
+                continue;
+            };
+            deposits.push(AddressedDeposit {
+                txid: record.txid.clone(),
+                address,
+                height,
+                timestamp: record.timestamp,
+                value,
+                confirmed,
+            });
+        }
+    }
+
+    Ok(deposits)
+}
+
 const MAX_TRANSACTION_PAGE_SIZE: u32 = 200;
 
 fn transaction_matches_cursor(tx: &TxInfo, cursor: &TransactionCursor) -> bool {
