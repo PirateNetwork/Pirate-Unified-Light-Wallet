@@ -28,7 +28,6 @@
     "android/consumer-rules.pro",
     "android/src/main/AndroidManifest.xml",
     "android/src/main/java/",
-    "ios/Frameworks/PirateWalletNative.xcframework/",
     "ios/PirateWalletReactNative.m",
     "ios/PirateWalletReactNative.swift",
     "src/",
@@ -43,7 +42,9 @@
   "scripts": {
     "test": "node test/smoke.js",
     "verify:package": "node scripts/verify-package.js",
-    "prepack": "npm run verify:package"
+    "prepare:native": "node scripts/assemble-ios-framework.js",
+    "postinstall": "npm run prepare:native",
+    "prepack": "node scripts/verify-package.js --publish-layout"
   },
   "engines": {
     "node": ">=18"
@@ -52,7 +53,10 @@
     "react-native": ">=0.71.0 <1.0.0"
   },
   "optionalDependencies": {
-    "react-native-pirate-wallet-android": "0.2.1"
+    "react-native-pirate-wallet-android": "0.2.1",
+    "react-native-pirate-wallet-android-x86_64": "0.2.1",
+    "react-native-pirate-wallet-ios-device": "0.2.1",
+    "react-native-pirate-wallet-ios-simulator": "0.2.1"
   },
   "publishConfig": {
     "access": "public"

@@ -63,7 +63,8 @@ if (packageJson.publishConfig?.access !== 'public') {
   'README.md',
   'react-native.config.js',
   'react-native-pirate-wallet.podspec',
-  'scripts/resolve-android-package.js',
+  'scripts/assemble-ios-framework.js',
+  'scripts/resolve-android-packages.js',
   'test/smoke.js',
   'src/index.js',
   'src/index.d.ts',
@@ -71,7 +72,6 @@ if (packageJson.publishConfig?.access !== 'public') {
   'android/src/main/java/com/pirate/wallet/reactnative/PirateWalletReactNativeModule.kt',
   'ios/PirateWalletReactNative.m',
   'ios/PirateWalletReactNative.swift',
-  'ios/Frameworks/PirateWalletNative.xcframework/Info.plist',
 ].forEach(requireFile);
 
 if (process.argv.includes('--publish-layout')) {
@@ -79,31 +79,46 @@ if (process.argv.includes('--publish-layout')) {
     'android/.gradle',
     'android/build',
     'android/src/main/jniLibs',
+    'ios/Frameworks/PirateWalletNative.xcframework',
   ].forEach(rejectPath);
 }
 
-const androidPackageName = 'react-native-pirate-wallet-android';
-if (
-  packageJson.optionalDependencies?.[androidPackageName] !== packageJson.version
-) {
-  fail(`${androidPackageName} must use the same exact version as the wrapper`);
+const binaryPackageNames = [
+  'react-native-pirate-wallet-android',
+  'react-native-pirate-wallet-android-x86_64',
+  'react-native-pirate-wallet-ios-device',
+  'react-native-pirate-wallet-ios-simulator',
+];
+for (const binaryPackageName of binaryPackageNames) {
+  if (
+    packageJson.optionalDependencies?.[binaryPackageName] !== packageJson.version
+  ) {
+    fail(`${binaryPackageName} must use the same exact version as the wrapper`);
+  }
 }
 
-const staticLibraries = collectFiles(
-  path.join(packageRoot, 'ios', 'Frameworks', 'PirateWalletNative.xcframework'),
-).filter(file => file.endsWith('.a'));
-if (staticLibraries.length < 2) {
-  fail('The iOS XCFramework must contain device and simulator static libraries');
-}
-for (const library of staticLibraries) {
-  if (fs.statSync(library).size === 0) {
-    fail(`The iOS static library is empty: ${path.relative(packageRoot, library)}`);
+if (
+  !process.argv.includes('--publish-layout') &&
+  (process.platform === 'darwin' || process.argv.includes('--all-platforms'))
+) {
+  const staticLibraries = collectFiles(
+    path.join(packageRoot, 'ios', 'Frameworks', 'PirateWalletNative.xcframework'),
+  ).filter(file => file.endsWith('.a'));
+  if (staticLibraries.length !== 2) {
+    fail('The iOS XCFramework must contain device and simulator static libraries');
+  }
+  for (const library of staticLibraries) {
+    if (fs.statSync(library).size === 0) {
+      fail(`The iOS static library is empty: ${path.relative(packageRoot, library)}`);
+    }
   }
 }
 
 try {
-  const {resolveAndroidJniLibsPath} = require('./resolve-android-package');
-  resolveAndroidJniLibsPath();
+  const {resolveAndroidJniLibsPaths} = require('./resolve-android-packages');
+  if (resolveAndroidJniLibsPaths().length !== 2) {
+    fail('Both Android binary packages must resolve');
+  }
 } catch (error) {
   fail(error.message);
 }
