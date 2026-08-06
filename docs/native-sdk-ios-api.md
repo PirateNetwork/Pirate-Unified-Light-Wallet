@@ -110,7 +110,10 @@ Address access is split into explicit shielded receive-address APIs.
 `getCurrentAddress` returns the current external receive address without rotating it,
 `getNextAddress` rotates to and returns the next external receive address,
 `listAddresses` returns generated external receive addresses, and
-`listAddressBalances` returns per-address balance entries. Newly generated
+`listAddressBalances` returns per-address balance entries. Without a key ID it
+returns external receive-address rows only; with a key ID it also includes
+internal change-address rows for that key group. Internal change is always
+included in `getBalance`, which should be used for wallet totals. Newly generated
 addresses use Sapling before Ironwood activation and Ironwood after activation;
 the current address can remain an older Sapling address until the wallet
 rotates.
