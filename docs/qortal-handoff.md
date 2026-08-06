@@ -109,17 +109,23 @@ as one logical batch (`batch_num: 0`, `batch_total: 1`).
 | `syncstatus` / `syncStatus` | Returns the Qortal progress schema |
 | `height` | Returns the local scanned height |
 | `info` | Returns `latest_block_height`, querying the configured server before the first sync |
-| `balance` | Returns shielded totals and per-address balances |
+| `balance` | Returns shielded wallet totals and external receive-address balances |
 | `list` | Returns incoming, outgoing, and change metadata |
 | `export` | Returns the primary spendable key group |
-| `send` | Restricts note selection to the supplied wallet-owned input address |
-| `sendp2sh` | Funds the supplied P2SH script from Sapling or Ironwood notes |
+| `send` | Selects the key group identified by the supplied wallet-owned input address |
+| `sendp2sh` | Funds the supplied P2SH script from that key group's Sapling or Ironwood notes |
 | `redeemp2sh` | Redeems or refunds funding output zero |
 | `encryptionstatus` | Always reports encrypted storage |
 | `encrypt`, `decrypt`, `unlock` | Transition-compatible success responses; storage is unlocked by `configurestorage()` |
 
 Qortal request objects may use the legacy output field `address`; the unified
 service also accepts its native field name `addr`.
+
+The top-level `balance` totals include internal change. Its `z_addresses` array
+contains external receive-address rows only, matching Qortal's address-picker
+contract, and must not be summed to reconstruct the wallet total. For sends, the
+supplied external address identifies its owning key group; note selection also
+includes that group's internal change so post-Ironwood funds remain spendable.
 
 Before the first sync, `height` reports the restore birthday rather than zero.
 This preserves Qortal's initialization check without claiming the wallet is

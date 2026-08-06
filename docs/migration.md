@@ -45,7 +45,7 @@ Qortal integration:
 - new repo-owned adapter: `crates/pirate-qortal-cli`
 - embeddable desktop JNI library: `crates/pirate-qortal-jni`
 - shared Qortal behavior lives in `crates/pirate-wallet-service`
-- `send` and `sendp2sh` select notes from Qortal's supplied wallet-owned shielded address
+- `send` and `sendp2sh` use Qortal's supplied wallet-owned shielded address to select its full key group, including internal change
 - `list` supplies the incoming, outgoing, and change metadata consumed by Qortal Core
 - existing Qortal `wallet-<hash>.dat` blobs require one deterministic entropy-seed restore into encrypted SQLite; see `docs/qortal-handoff.md`
 
