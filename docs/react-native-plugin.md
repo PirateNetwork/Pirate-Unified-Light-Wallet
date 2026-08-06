@@ -82,6 +82,11 @@ addresses. Newly generated addresses use Sapling before Ironwood activation and
 Ironwood after activation; the current address can remain an older Sapling
 address until the wallet rotates.
 
+Without `keyId`, `listAddressBalances` lists external receive-address rows and
+omits internal change-address rows. Supplying a key ID includes both scopes for
+that key group. Internal change remains part of `getBalance(walletId)`, which is
+the wallet-total API.
+
 Most transaction helpers are wallet-scoped. `broadcastTransaction(signed)` only
 receives the signed transaction payload; if endpoint configuration is needed
 during broadcast, the service uses the active wallet.
