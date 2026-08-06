@@ -1237,6 +1237,7 @@ jobs:
         run: |
           cd bindings/react-native-pirate-wallet/example/ios
           pod install
+          node ../../scripts/verify-package.js
 
       - name: Build iOS example app for React Native plugin
         run: |
