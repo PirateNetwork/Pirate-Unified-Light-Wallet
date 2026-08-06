@@ -1831,6 +1831,94 @@ pub struct WitnessRefreshOutcome {
     pub ironwood_errors: usize,
 }
 
+fn update_wallet_endpoint_metadata<F>(
+    wallets: &RwLock<Vec<WalletMeta>>,
+    wallet_id: &str,
+    detected_network_type: Option<NetworkType>,
+    persist: F,
+) -> Result<(NetworkType, NetworkType)>
+where
+    F: FnOnce(&WalletMeta) -> Result<()>,
+{
+    let mut wallets = wallets.write();
+    let wallet = wallets
+        .iter_mut()
+        .find(|wallet| wallet.id == wallet_id)
+        .ok_or_else(|| anyhow!("Wallet not found: {}", wallet_id))?;
+    let old_network_type = match wallet.network_type.as_deref().unwrap_or("mainnet") {
+        "testnet" => NetworkType::Testnet,
+        "regtest" => NetworkType::Regtest,
+        _ => NetworkType::Mainnet,
+    };
+    let new_network_type = detected_network_type.unwrap_or(old_network_type);
+    let mut updated_wallet = wallet.clone();
+    updated_wallet.network_type = Some(format!("{:?}", new_network_type).to_lowercase());
+
+    persist(&updated_wallet)?;
+    *wallet = updated_wallet;
+
+    Ok((old_network_type, new_network_type))
+}
+
+#[cfg(test)]
+mod endpoint_update_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    fn wallet_meta(network_type: &str) -> WalletMeta {
+        WalletMeta {
+            id: "endpoint-wallet".to_string(),
+            name: "Endpoint Wallet".to_string(),
+            created_at: 1,
+            watch_only: false,
+            birthday_height: 1,
+            network_type: Some(network_type.to_string()),
+        }
+    }
+
+    #[test]
+    fn endpoint_metadata_update_releases_the_wallet_registry_lock() {
+        let wallets = RwLock::new(vec![wallet_meta("mainnet")]);
+        let persisted = Cell::new(false);
+
+        let (old_network, new_network) = update_wallet_endpoint_metadata(
+            &wallets,
+            "endpoint-wallet",
+            Some(NetworkType::Testnet),
+            |updated| {
+                assert_eq!(updated.network_type.as_deref(), Some("testnet"));
+                persisted.set(true);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(old_network, NetworkType::Mainnet);
+        assert_eq!(new_network, NetworkType::Testnet);
+        assert!(persisted.get());
+        let wallets = wallets
+            .try_read()
+            .expect("endpoint follow-up work must be able to read the registry");
+        assert_eq!(wallets[0].network_type.as_deref(), Some("testnet"));
+    }
+
+    #[test]
+    fn endpoint_metadata_update_does_not_publish_failed_persistence() {
+        let wallets = RwLock::new(vec![wallet_meta("mainnet")]);
+
+        let error = update_wallet_endpoint_metadata(
+            &wallets,
+            "endpoint-wallet",
+            Some(NetworkType::Testnet),
+            |_| Err(anyhow!("persistence failed")),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("persistence failed"));
+        assert_eq!(wallets.read()[0].network_type.as_deref(), Some("mainnet"));
+    }
+}
+
 /// Set lightwalletd endpoint
 pub fn set_lightd_endpoint(
     wallet_id: WalletId,
@@ -1851,81 +1939,41 @@ pub fn set_lightd_endpoint(
     tracing::info!(
         "Set lightd endpoint for wallet {}: {} (detected network: {:?})",
         wallet_id,
-        endpoint.url(),
+        endpoint_url,
         detected_network_type
     );
 
-    endpoint::cache_lightd_endpoint(wallet_id.clone(), endpoint.clone());
+    let registry_db = open_wallet_registry()?;
+    let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
+    let pin_key = format!("lightd_tls_pin_{}", wallet_id);
+    let (old_network_type, new_network_type) =
+        update_wallet_endpoint_metadata(&WALLETS, &wallet_id, detected_network_type, |wallet| {
+            persist_wallet_meta(&registry_db, wallet)?;
+            set_registry_setting(&registry_db, &endpoint_key, Some(&endpoint_url))?;
+            set_registry_setting(&registry_db, &pin_key, tls_pin_opt.as_deref())?;
+            Ok(())
+        })?;
+    endpoint::cache_lightd_endpoint(wallet_id.clone(), endpoint);
 
-    // Update wallet network type
-    let mut wallets = WALLETS.write();
-    if let Some(wallet) = wallets.iter_mut().find(|w| w.id == wallet_id) {
-        let old_network_type = match wallet.network_type.as_deref().unwrap_or("mainnet") {
-            "testnet" => NetworkType::Testnet,
-            "regtest" => NetworkType::Regtest,
-            _ => NetworkType::Mainnet,
-        };
-        let new_network_type = detected_network_type.unwrap_or(old_network_type);
-        wallet.network_type = Some(format!("{:?}", new_network_type).to_lowercase());
-        let registry_db = open_wallet_registry()?;
-        persist_wallet_meta(&registry_db, wallet)?;
-        tracing::info!(
-            "Updated wallet {} network type to {:?}",
-            wallet_id,
-            new_network_type
-        );
+    tracing::info!(
+        "Updated wallet {} network type to {:?}",
+        wallet_id,
+        new_network_type
+    );
 
-        {
-            let ts = chrono::Utc::now().timestamp_millis();
-            pirate_core::debug_log::with_locked_file(|file| {
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_set_lightd_endpoint","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"set_lightd_endpoint","data":{{"wallet_id":"{}","endpoint":"{}","old_network":"{:?}","new_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                    ts, wallet_id, endpoint_url, old_network_type, new_network_type
-                );
-            });
-        }
-
-        if old_network_type != new_network_type {
-            if let Ok((_db, repo)) = open_wallet_db_for(&wallet_id) {
-                if let Err(err) = repo.clear_chain_state() {
-                    tracing::warn!(
-                        "Failed to clear chain state for wallet {} after network change: {:?}",
-                        wallet_id,
-                        err
-                    );
-                }
-            }
-        }
-
-        if old_network_type != new_network_type {
-            if let Err(err) =
-                rederive_wallet_keys_for_network(&wallet_id, old_network_type, new_network_type)
-            {
-                tracing::warn!(
-                    "Failed to re-derive keys for wallet {}: {:?}",
-                    wallet_id,
-                    err
-                );
-            }
-        } else {
-            let ts = chrono::Utc::now().timestamp_millis();
-            pirate_core::debug_log::with_locked_file(|file| {
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_rederive_skip","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"rederive skipped (same network)","data":{{"wallet_id":"{}","network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
-                    ts, wallet_id, new_network_type
-                );
-            });
-        }
-
-        // Persist endpoint per wallet so it survives restarts.
-        let endpoint_key = format!("lightd_endpoint_{}", wallet_id);
-        let pin_key = format!("lightd_tls_pin_{}", wallet_id);
-        set_registry_setting(&registry_db, &endpoint_key, Some(&endpoint_url))?;
-        set_registry_setting(&registry_db, &pin_key, tls_pin_opt.as_deref())?;
+    {
+        let ts = chrono::Utc::now().timestamp_millis();
+        pirate_core::debug_log::with_locked_file(|file| {
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_set_lightd_endpoint","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"set_lightd_endpoint","data":{{"wallet_id":"{}","endpoint":"{}","old_network":"{:?}","new_network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+                ts, wallet_id, endpoint_url, old_network_type, new_network_type
+            );
+        });
     }
 
+    // Sync cancellation reopens the wallet database and reads `WALLETS`, so it
+    // must run after `update_wallet_endpoint_metadata` releases the write lock.
     if let Err(err) = run_on_runtime_blocking({
         let wallet_id = wallet_id.clone();
         move || async move { sync_control::cancel_sync_internal(wallet_id, true).await }
@@ -1935,6 +1983,37 @@ pub fn set_lightd_endpoint(
             wallet_id,
             err
         );
+    }
+
+    if old_network_type != new_network_type {
+        if let Ok((_db, repo)) = open_wallet_db_for(&wallet_id) {
+            if let Err(err) = repo.clear_chain_state() {
+                tracing::warn!(
+                    "Failed to clear chain state for wallet {} after network change: {:?}",
+                    wallet_id,
+                    err
+                );
+            }
+        }
+
+        if let Err(err) =
+            rederive_wallet_keys_for_network(&wallet_id, old_network_type, new_network_type)
+        {
+            tracing::warn!(
+                "Failed to re-derive keys for wallet {}: {:?}",
+                wallet_id,
+                err
+            );
+        }
+    } else {
+        let ts = chrono::Utc::now().timestamp_millis();
+        pirate_core::debug_log::with_locked_file(|file| {
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_rederive_skip","timestamp":{},"location":"api.rs:set_lightd_endpoint","message":"rederive skipped (same network)","data":{{"wallet_id":"{}","network":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"N"}}"#,
+                ts, wallet_id, new_network_type
+            );
+        });
     }
 
     sync_control::clear_wallet_sync_state(&wallet_id);
