@@ -225,6 +225,139 @@ fn test_txid_hex_variants_cover_both_byte_orders() {
 }
 
 #[test]
+fn addressed_deposit_preserves_output_identity_and_local_confirmations() {
+    let address = Address {
+        id: Some(7),
+        key_id: Some(3),
+        account_id: 1,
+        diversifier_index: 4,
+        address: "pirate1-test-deposit".to_string(),
+        address_type: AddressType::Ironwood,
+        label: None,
+        created_at: 1,
+        color_tag: ColorTag::None,
+        address_scope: AddressScope::Internal,
+    };
+    let addresses_by_id = HashMap::from([(7, address.clone())]);
+    let addresses_by_string = HashMap::from([(address.address.clone(), address.clone())]);
+    let deposit = addressed_deposit_from_record(
+        ReceivedNoteRecord {
+            txid: "ab".repeat(32),
+            note_type: DbNoteType::Ironwood,
+            output_index: 9,
+            value: 9_007_199_254_740_993,
+            height: 100,
+            timestamp: Some(1_234),
+            address_id: Some(7),
+            note: None,
+        },
+        &addresses_by_id,
+        &addresses_by_string,
+        NetworkType::Mainnet,
+        105,
+    )
+    .unwrap();
+
+    assert_eq!(deposit.pool, ShieldedAddressType::Ironwood);
+    assert_eq!(deposit.output_index, 9);
+    assert_eq!(deposit.address, address.address);
+    assert_eq!(deposit.address_scope, DepositAddressScope::Internal);
+    assert_eq!(deposit.height, Some(100));
+    assert_eq!(deposit.confirmations, 6);
+    assert!(deposit.confirmed);
+}
+
+#[test]
+fn addressed_deposit_represents_unconfirmed_height_as_none() {
+    let address = Address {
+        id: Some(8),
+        key_id: None,
+        account_id: 1,
+        diversifier_index: 0,
+        address: "zs1-unconfirmed-deposit".to_string(),
+        address_type: AddressType::Sapling,
+        label: None,
+        created_at: 1,
+        color_tag: ColorTag::None,
+        address_scope: AddressScope::External,
+    };
+    let addresses_by_id = HashMap::from([(8, address.clone())]);
+    let addresses_by_string = HashMap::from([(address.address.clone(), address)]);
+    let deposit = addressed_deposit_from_record(
+        ReceivedNoteRecord {
+            txid: "cd".repeat(32),
+            note_type: DbNoteType::Sapling,
+            output_index: 0,
+            value: 10_000,
+            height: 0,
+            timestamp: None,
+            address_id: Some(8),
+            note: None,
+        },
+        &addresses_by_id,
+        &addresses_by_string,
+        NetworkType::Mainnet,
+        500,
+    )
+    .unwrap();
+
+    assert_eq!(deposit.height, None);
+    assert_eq!(deposit.timestamp, None);
+    assert_eq!(deposit.confirmations, 0);
+    assert!(!deposit.confirmed);
+}
+
+#[test]
+fn addressed_deposit_recovers_a_missing_legacy_address_link() {
+    let seed = [0x51; 32];
+    let extsk = SaplingExtendedSpendingKey::master(&seed);
+    let (_, payment_address) = extsk.default_address();
+    let rseed = [0x52; 32];
+    let mut note_blob = Vec::with_capacity(1 + 43 + 1 + 32);
+    note_blob.push(1);
+    note_blob.extend_from_slice(&payment_address.to_bytes());
+    note_blob.push(0x02);
+    note_blob.extend_from_slice(&rseed);
+    let address_string = PaymentAddress {
+        inner: payment_address,
+    }
+    .encode_for_network(NetworkType::Mainnet);
+    let address = Address {
+        id: Some(9),
+        key_id: None,
+        account_id: 1,
+        diversifier_index: 0,
+        address: address_string.clone(),
+        address_type: AddressType::Sapling,
+        label: None,
+        created_at: 1,
+        color_tag: ColorTag::None,
+        address_scope: AddressScope::External,
+    };
+    let addresses_by_string = HashMap::from([(address_string.clone(), address)]);
+    let deposit = addressed_deposit_from_record(
+        ReceivedNoteRecord {
+            txid: "ef".repeat(32),
+            note_type: DbNoteType::Sapling,
+            output_index: 2,
+            value: 42_000,
+            height: 200,
+            timestamp: Some(2_000),
+            address_id: None,
+            note: Some(note_blob),
+        },
+        &HashMap::new(),
+        &addresses_by_string,
+        NetworkType::Mainnet,
+        200,
+    )
+    .unwrap();
+
+    assert_eq!(deposit.address, address_string);
+    assert_eq!(deposit.address_scope, DepositAddressScope::External);
+}
+
+#[test]
 fn test_pending_change_clears_when_matching_txid_is_detected() {
     let wallet_id = format!("wallet-{}", uuid::Uuid::new_v4());
     clear_pending_changes(&wallet_id);
