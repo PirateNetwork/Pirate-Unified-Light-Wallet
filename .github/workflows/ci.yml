@@ -1105,6 +1105,11 @@ jobs:
           cd bindings/react-native-pirate-wallet/example
           node ../scripts/verify-package.js
           node ../../react-native-pirate-wallet-android/scripts/verify-package.js
+          node ../../react-native-pirate-wallet-android-x86_64/scripts/verify-package.js
+          if [ "$(uname -s)" = "Darwin" ]; then
+            node ../../react-native-pirate-wallet-ios-device/scripts/verify-package.js
+            node ../../react-native-pirate-wallet-ios-simulator/scripts/verify-package.js
+          fi
           node -e 'require("../react-native.config.js")'
 
       - name: Setup Java
@@ -2768,12 +2773,12 @@ jobs:
       - name: Verify npm packages
         env:
           EXPECTED_VERSION: ${{ needs.backend-release-plan.outputs.react_native_plugin_version }}
-          MAX_NPM_TARBALL_BYTES: "390000000"
+          MAX_NPM_TARBALL_BYTES: "195000000"
         run: |
           set -euo pipefail
           mapfile -t npm_tarballs < <(find npm-artifact -type f -name '*.tgz' -print)
-          if [ "${#npm_tarballs[@]}" -ne 2 ]; then
-            echo "Expected two npm tarballs, found ${#npm_tarballs[@]}" >&2
+          if [ "${#npm_tarballs[@]}" -ne 5 ]; then
+            echo "Expected five npm tarballs, found ${#npm_tarballs[@]}" >&2
             exit 1
           fi
 
@@ -2860,11 +2865,26 @@ jobs:
           }
 
           verify_package react-native-pirate-wallet-android NPM_ANDROID
+          verify_package react-native-pirate-wallet-android-x86_64 NPM_ANDROID_X86_64
+          verify_package react-native-pirate-wallet-ios-device NPM_IOS_DEVICE
+          verify_package react-native-pirate-wallet-ios-simulator NPM_IOS_SIMULATOR
           verify_package react-native-pirate-wallet NPM_MAIN
 
-      - name: Publish Android npm package with provenance
+      - name: Publish Android ARM npm package with provenance
         if: env.NPM_ANDROID_ALREADY_PUBLISHED != 'true'
         run: npm publish "$NPM_ANDROID_TARBALL" --access public
+
+      - name: Publish Android x86_64 npm package with provenance
+        if: env.NPM_ANDROID_X86_64_ALREADY_PUBLISHED != 'true'
+        run: npm publish "$NPM_ANDROID_X86_64_TARBALL" --access public
+
+      - name: Publish iOS device npm package with provenance
+        if: env.NPM_IOS_DEVICE_ALREADY_PUBLISHED != 'true'
+        run: npm publish "$NPM_IOS_DEVICE_TARBALL" --access public
+
+      - name: Publish iOS simulator npm package with provenance
+        if: env.NPM_IOS_SIMULATOR_ALREADY_PUBLISHED != 'true'
+        run: npm publish "$NPM_IOS_SIMULATOR_TARBALL" --access public
 
       - name: Publish React Native npm package with provenance
         if: env.NPM_MAIN_ALREADY_PUBLISHED != 'true'
