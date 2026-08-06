@@ -106,6 +106,27 @@ pub struct NoteRecord {
     pub memo: Option<Vec<u8>>,
 }
 
+/// Canonical historical receive output for an account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReceivedNoteRecord {
+    /// Canonical display transaction ID.
+    pub txid: String,
+    /// Shielded pool containing the output.
+    pub note_type: NoteType,
+    /// Output or action index within the pool.
+    pub output_index: i64,
+    /// Value in arrrtoshis.
+    pub value: i64,
+    /// Block height, or zero when unconfirmed.
+    pub height: i64,
+    /// Stored block timestamp when available.
+    pub timestamp: Option<i64>,
+    /// Linked address row ID when available.
+    pub address_id: Option<i64>,
+    /// Serialized note material used to recover legacy address links.
+    pub note: Option<Vec<u8>>,
+}
+
 /// Key source type for an account
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyType {
