@@ -1,7 +1,7 @@
 {
-  "name": "react-native-pirate-wallet-android",
+  "name": "react-native-pirate-wallet-android-x86_64",
   "version": "0.2.1",
-  "description": "Android ARM native libraries for react-native-pirate-wallet",
+  "description": "Android x86_64 native library for react-native-pirate-wallet",
   "keywords": [
     "react-native",
     "pirate-chain",
@@ -10,14 +10,14 @@
     "privacy",
     "shielded"
   ],
-  "homepage": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/tree/main/bindings/react-native-pirate-wallet-android#readme",
+  "homepage": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/tree/main/bindings/react-native-pirate-wallet-android-x86_64#readme",
   "bugs": {
     "url": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet/issues"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/PirateNetwork/Pirate-Unified-Light-Wallet.git",
-    "directory": "bindings/react-native-pirate-wallet-android"
+    "directory": "bindings/react-native-pirate-wallet-android-x86_64"
   },
   "author": "Pirate Chain Contributors",
   "license": "MIT",
