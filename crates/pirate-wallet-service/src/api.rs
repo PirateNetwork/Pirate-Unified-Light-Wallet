@@ -1077,6 +1077,10 @@ pub fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
 }
 
 /// Get per-address balances for a wallet (optionally filtered by key group).
+///
+/// Without `key_id`, this returns external receive-address rows only. Supplying
+/// a key ID also includes internal change addresses owned by that key group.
+/// Use [`get_balance`] for wallet totals, including internal change.
 pub fn list_address_balances(
     wallet_id: WalletId,
     key_id: Option<i64>,

@@ -151,6 +151,8 @@ pub(super) fn list_addresses(wallet_id: WalletId) -> Result<Vec<AddressInfo>> {
         .collect())
 }
 
+/// Lists external receive-address balances by default. A key-group query also
+/// exposes that group's internal change-address rows for account inspection.
 pub(super) fn list_address_balances(
     wallet_id: WalletId,
     key_id: Option<i64>,
