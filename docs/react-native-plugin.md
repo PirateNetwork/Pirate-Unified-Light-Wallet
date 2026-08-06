@@ -4,9 +4,12 @@ The React Native packages in this repo live in:
 
 - `bindings/react-native-pirate-wallet/`
 - `bindings/react-native-pirate-wallet-android/`
+- `bindings/react-native-pirate-wallet-android-x86_64/`
+- `bindings/react-native-pirate-wallet-ios-device/`
+- `bindings/react-native-pirate-wallet-ios-simulator/`
 
-The public package contains the JavaScript API, platform bridges, and iOS
-XCFramework. Its companion contains the Android JNI libraries.
+The public package contains the JavaScript API and platform bridges. The four
+companion packages contain the native Android and iOS binaries.
 
 Related paths:
 
@@ -115,8 +118,8 @@ That script copies:
 
 into:
 
-- `bindings/react-native-pirate-wallet-android/android/src/main/jniLibs/`
-- `bindings/react-native-pirate-wallet/ios/Frameworks/PirateWalletNative.xcframework/`
+- the Android ARM and x86_64 companion packages
+- the iOS device and simulator companion packages
 
 If those native artifacts are missing, the React Native package will not build correctly.
 
@@ -132,6 +135,9 @@ Important files:
 - `bindings/react-native-pirate-wallet/README.md`
 - `bindings/react-native-pirate-wallet/example/`
 - `bindings/react-native-pirate-wallet-android/package.json`
+- `bindings/react-native-pirate-wallet-android-x86_64/package.json`
+- `bindings/react-native-pirate-wallet-ios-device/package.json`
+- `bindings/react-native-pirate-wallet-ios-simulator/package.json`
 
 The package README carries the JavaScript API and RPC reference:
 
@@ -141,10 +147,10 @@ The example app is the minimal real consumer used by CI:
 
 - `bindings/react-native-pirate-wallet/example/`
 
-Release CI creates and tests separate npm tarballs for the public wrapper and
-the Android companion. Both use the `react_native_plugin` version from
-`release-artifacts.toml`; publication sends the Android package first and then
-the wrapper.
+Release CI creates and tests npm tarballs for the public wrapper and four
+native companions. They use the `react_native_plugin` version from
+`release-artifacts.toml`; publication sends the native packages before the
+wrapper.
 
 ## Installing in a React Native app
 
@@ -157,7 +163,7 @@ cd ios && pod install
 
 Android:
 
-- npm installs the exact-version Android companion automatically
+- npm installs the exact-version ARM and x86_64 companions automatically
 - the module autolinks like a normal React Native native module
 - `configureAccountStorage()` derives account directories under
   `Context.filesDir/pirate_wallet/accounts/<sanitized-account-id>` unless the
@@ -165,7 +171,9 @@ Android:
 
 iOS:
 
-- CocoaPods links the vendored `PirateWalletNative.xcframework`
+- npm assembles the device and simulator packages into
+  `PirateWalletNative.xcframework`
+- CocoaPods links the assembled XCFramework
 - `configureAccountStorage()` derives account directories under
   `Application Support/PirateWallet/accounts/<sanitized-account-id>` unless the
   caller provides `storagePath`

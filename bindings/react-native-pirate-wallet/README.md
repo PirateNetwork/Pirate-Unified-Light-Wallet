@@ -76,8 +76,8 @@ await sdk.configureAccountStorage({
 - `scripts/`
 - `src/`
 
-The Android native libraries are distributed in the exact-version
-`react-native-pirate-wallet-android` companion package.
+Native libraries are distributed in exact-version Android ARM, Android x86_64,
+iOS device, and iOS simulator companion packages.
 
 ## Preparing native artifacts in this repo
 
@@ -89,8 +89,8 @@ bash scripts/prepare-react-native-plugin.sh
 
 That copies:
 
-- Android JNI libraries into `bindings/react-native-pirate-wallet-android/`
-- the iOS XCFramework into this package
+- Android JNI libraries into the two Android companion packages
+- iOS XCFramework slices into the two iOS companion packages
 
 There is also a minimal consumer app in:
 
@@ -529,9 +529,9 @@ npm install react-native-pirate-wallet
 cd ios && pod install
 ```
 
-On Android, npm installs the exact-version
-`react-native-pirate-wallet-android` companion automatically. The wrapper
-autolinks as a standard React Native native module and adds the companion's JNI
-libraries to the build.
+On Android, npm installs the exact-version ARM and x86_64 companions
+automatically. The wrapper autolinks as a standard React Native native module
+and adds their JNI libraries to the build.
 
-On iOS, the podspec links the vendored `PirateWalletNative.xcframework`.
+On macOS, npm installs the exact-version device and simulator companions and
+assembles `PirateWalletNative.xcframework`. The podspec links that framework.
