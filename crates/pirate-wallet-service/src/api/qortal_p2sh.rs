@@ -332,27 +332,12 @@ pub async fn qortal_send_p2sh(
         .get_wallet_secret(&wallet_id)?
         .ok_or_else(|| anyhow!("Wallet secret not found for {}", wallet_id))?;
 
-    let source_address = repo
-        .get_address_by_string(secret.account_id, &request.input)?
-        .ok_or_else(|| {
-            anyhow!(
-                "Input address {} is not owned by wallet {}",
-                request.input,
-                wallet_id
-            )
-        })?;
-    let source_key_id = source_address
-        .key_id
-        .ok_or_else(|| anyhow!("Input address is missing key metadata"))?;
+    let source_key_id =
+        qortal::resolve_qortal_source_key_id(&repo, secret.account_id, &wallet_id, &request.input)?;
 
     let key = repo
         .get_account_key_by_id(source_key_id)?
         .ok_or_else(|| anyhow!("Key group not found"))?;
-    if !key.spendable {
-        return Err(anyhow!(
-            "Input address belongs to a non-spendable key group"
-        ));
-    }
 
     let sapling_extsk_bytes = key
         .sapling_extsk
@@ -395,14 +380,12 @@ pub async fn qortal_send_p2sh(
 
     let notes = repo.get_unspent_selectable_notes_filtered(
         secret.account_id,
+        Some(vec![source_key_id]),
         None,
-        Some(vec![source_address
-            .id
-            .ok_or_else(|| anyhow!("Input address row id missing"))?]),
     )?;
     if notes.is_empty() {
         return Err(anyhow!(
-            "Input address {} has no spendable shielded notes",
+            "Input address {} belongs to a key group with no spendable shielded notes",
             request.input
         ));
     }
