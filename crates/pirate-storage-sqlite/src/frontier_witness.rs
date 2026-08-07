@@ -252,11 +252,14 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
 
     let mut ready_notes = Vec::with_capacity(notes.len());
     let mut missing_notes = Vec::new();
+    let mut sapling_failures = [0usize; 4];
+    let mut orchard_failures = [0usize; 3];
 
     for mut note in notes {
         let hydrated = match note.note_type {
             SelectableNoteType::Sapling => {
                 if note.diversifier.is_none() || note.note.is_none() {
+                    sapling_failures[0] = sapling_failures[0].saturating_add(1);
                     false
                 } else if note.merkle_path.is_some() {
                     true
@@ -282,18 +285,24 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
                             (Some(leaf), Some(root)) => {
                                 let path_root = witness.root(leaf);
                                 if path_root.to_bytes() != root.to_bytes() {
+                                    sapling_failures[3] = sapling_failures[3].saturating_add(1);
                                     false
                                 } else {
                                     note.merkle_path = Some(witness);
                                     true
                                 }
                             }
-                            _ => false,
+                            _ => {
+                                sapling_failures[2] = sapling_failures[2].saturating_add(1);
+                                false
+                            }
                         }
                     } else {
+                        sapling_failures[1] = sapling_failures[1].saturating_add(1);
                         false
                     }
                 } else {
+                    sapling_failures[0] = sapling_failures[0].saturating_add(1);
                     false
                 }
             }
@@ -313,6 +322,7 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
                                     OrchardExtractedNoteCommitment::from(orchard_note.commitment());
                                 let path_root = merkle_path.root(leaf);
                                 if path_root.to_bytes() != anchor.to_bytes() {
+                                    orchard_failures[2] = orchard_failures[2].saturating_add(1);
                                     false
                                 } else {
                                     note.ironwood_merkle_path = Some(merkle_path);
@@ -320,13 +330,18 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
                                     true
                                 }
                             } else {
+                                orchard_failures[1] = orchard_failures[1].saturating_add(1);
                                 false
                             }
                         } else {
+                            orchard_failures[0] = orchard_failures[0].saturating_add(1);
                             false
                         }
                     }
-                    _ => false,
+                    _ => {
+                        orchard_failures[0] = orchard_failures[0].saturating_add(1);
+                        false
+                    }
                 }
             }
         };
@@ -355,6 +370,27 @@ pub(crate) fn construct_anchor_witnesses_from_db_state(
             missing_sapling,
             missing_orchard
         );
+        pirate_core::debug_log::with_locked_file(|file| {
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let _ = writeln!(
+                file,
+                r#"{{"id":"log_anchor_witness_failure_reasons","timestamp":{},"location":"frontier_witness.rs:construct_anchor_witnesses_from_db_state","message":"anchor witness hydration failure reasons","data":{{"anchor_height":{},"sapling_checkpoint":{},"orchard_checkpoint":{},"sapling_state_or_material":{},"sapling_path_unavailable":{},"sapling_commitment_or_anchor":{},"sapling_root_mismatch":{},"orchard_state_or_material":{},"orchard_path_unavailable":{},"orchard_root_mismatch":{}}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
+                timestamp,
+                anchor_height,
+                sapling_checkpoint_id,
+                orchard_checkpoint_id,
+                sapling_failures[0],
+                sapling_failures[1],
+                sapling_failures[2],
+                sapling_failures[3],
+                orchard_failures[0],
+                orchard_failures[1],
+                orchard_failures[2]
+            );
+        });
     }
 
     Ok(ready_notes)
