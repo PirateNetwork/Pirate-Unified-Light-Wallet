@@ -772,3 +772,114 @@ impl AdaptiveScanBatcher {
         self.current_blocks
     }
 }
+
+/// High/low-water admission control for already durable prefetched blocks.
+///
+/// A producer pauses after the high-water boundary and resumes only after the
+/// scanner drains to the low-water boundary. Each reservation is released on
+/// drop, including cancellation and error paths.
+#[derive(Debug)]
+pub(crate) struct PrefetchWatermarks {
+    high_bytes: u64,
+    low_bytes: u64,
+    queued_bytes: AtomicU64,
+    throttled: AtomicBool,
+    changed: Notify,
+}
+
+impl PrefetchWatermarks {
+    pub(crate) fn new(high_bytes: u64, low_bytes: u64) -> Arc<Self> {
+        let high_bytes = high_bytes.max(1);
+        Arc::new(Self {
+            high_bytes,
+            low_bytes: low_bytes.min(high_bytes.saturating_sub(1)),
+            queued_bytes: AtomicU64::new(0),
+            throttled: AtomicBool::new(false),
+            changed: Notify::new(),
+        })
+    }
+
+    pub(crate) fn queued_bytes(&self) -> u64 {
+        self.queued_bytes.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn high_bytes(&self) -> u64 {
+        self.high_bytes
+    }
+
+    pub(crate) async fn reserve(
+        self: &Arc<Self>,
+        encoded_bytes: u64,
+        cancel: &CancelToken,
+    ) -> Result<PrefetchReservation> {
+        let charged_bytes = encoded_bytes.max(1).min(self.high_bytes);
+        loop {
+            let notified = self.changed.notified();
+            let queued = self.queued_bytes.load(Ordering::Acquire);
+
+            if self.throttled.load(Ordering::Acquire) && queued > self.low_bytes {
+                tokio::select! {
+                    _ = notified => continue,
+                    _ = cancel.cancelled() => return Err(Error::Cancelled),
+                }
+            }
+
+            if queued <= self.low_bytes {
+                self.throttled.store(false, Ordering::Release);
+            }
+
+            if queued.saturating_add(charged_bytes) <= self.high_bytes
+                && self
+                    .queued_bytes
+                    .compare_exchange_weak(
+                        queued,
+                        queued.saturating_add(charged_bytes),
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    )
+                    .is_ok()
+            {
+                return Ok(PrefetchReservation {
+                    _inner: Arc::new(PrefetchReservationInner {
+                        owner: Arc::clone(self),
+                        charged_bytes,
+                    }),
+                });
+            }
+
+            self.throttled.store(true, Ordering::Release);
+            tokio::select! {
+                _ = notified => {}
+                _ = cancel.cancelled() => return Err(Error::Cancelled),
+            }
+        }
+    }
+}
+
+/// RAII reservation for one durable prefetched batch.
+#[derive(Clone, Debug)]
+pub(crate) struct PrefetchReservation {
+    _inner: Arc<PrefetchReservationInner>,
+}
+
+#[derive(Debug)]
+struct PrefetchReservationInner {
+    owner: Arc<PrefetchWatermarks>,
+    charged_bytes: u64,
+}
+
+impl Drop for PrefetchReservationInner {
+    fn drop(&mut self) {
+        let previous = self
+            .owner
+            .queued_bytes
+            .fetch_sub(self.charged_bytes, Ordering::AcqRel);
+        let remaining = previous.saturating_sub(self.charged_bytes);
+        if remaining <= self.owner.low_bytes {
+            self.owner.throttled.store(false, Ordering::Release);
+            self.owner.changed.notify_waiters();
+        } else {
+            self.owner.changed.notify_one();
+        }
+    }
+}
