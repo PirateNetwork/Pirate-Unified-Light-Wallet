@@ -1,8 +1,8 @@
 //! Database connection and initialization
 
 use crate::{encryption::EncryptionKey, migrations, security::MasterKey, Result};
-use rusqlite::{Connection, OpenFlags};
-use std::path::Path;
+use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
+use std::{path::Path, time::Duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OpenMode {
@@ -76,7 +76,13 @@ impl Database {
             }
         }
 
-        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+        // WAL still permits only one writer at a time. Sync, UI maintenance,
+        // and background enrichment use separate connections, so wait for a
+        // short in-flight transaction instead of surfacing SQLITE_BUSY.
+        conn.busy_timeout(Duration::from_secs(5))?;
+        if mode == OpenMode::Full {
+            conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+        }
         conn.execute_batch("PRAGMA foreign_keys=OFF;")?;
 
         let cipher_version: std::result::Result<String, rusqlite::Error> =
@@ -156,6 +162,23 @@ impl Database {
     pub fn transaction(&mut self) -> Result<rusqlite::Transaction<'_>> {
         Ok(self.conn.transaction()?)
     }
+
+    /// Begin a write transaction before taking any database read snapshots.
+    pub fn immediate_transaction(&mut self) -> Result<Transaction<'_>> {
+        Ok(self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?)
+    }
+
+    /// Begin an immediate transaction through a shared connection reference.
+    ///
+    /// Callers must ensure that the connection has no active transaction.
+    pub fn unchecked_immediate_transaction(&self) -> Result<Transaction<'_>> {
+        Ok(Transaction::new_unchecked(
+            &self.conn,
+            TransactionBehavior::Immediate,
+        )?)
+    }
 }
 
 #[cfg(test)]
@@ -172,6 +195,80 @@ mod tests {
         let master_key = MasterKey::generate(EncryptionAlgorithm::ChaCha20Poly1305);
         let result = Database::open(file.path(), &key, master_key);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn database_connections_wait_for_short_writer_contention() {
+        let file = NamedTempFile::new().unwrap();
+        let salt = crate::security::generate_salt();
+        let key = EncryptionKey::from_passphrase("test", &salt).unwrap();
+        let master_key = MasterKey::generate(EncryptionAlgorithm::ChaCha20Poly1305);
+        let db = Database::open(file.path(), &key, master_key).unwrap();
+
+        let timeout_ms: i64 = db
+            .conn()
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(timeout_ms, 5_000);
+    }
+
+    #[test]
+    fn immediate_transaction_prevents_wal_snapshot_upgrade_conflicts() {
+        use rusqlite::ErrorCode;
+        use std::sync::mpsc;
+        use std::thread;
+
+        let file = NamedTempFile::new().unwrap();
+        let salt = crate::security::generate_salt();
+        let key = EncryptionKey::from_passphrase("snapshot-test", &salt).unwrap();
+        let master_key = MasterKey::generate(EncryptionAlgorithm::ChaCha20Poly1305);
+        let mut first = Database::open(file.path(), &key, master_key.clone()).unwrap();
+        first
+            .conn()
+            .execute("CREATE TABLE snapshot_test (value INTEGER NOT NULL)", [])
+            .unwrap();
+        let second = Database::open_existing(file.path(), &key, master_key.clone()).unwrap();
+
+        let deferred = first.transaction().unwrap();
+        let _: i64 = deferred
+            .query_row("SELECT COUNT(*) FROM snapshot_test", [], |row| row.get(0))
+            .unwrap();
+        second
+            .conn()
+            .execute("INSERT INTO snapshot_test (value) VALUES (1)", [])
+            .unwrap();
+        let upgrade_error = deferred
+            .execute("INSERT INTO snapshot_test (value) VALUES (2)", [])
+            .unwrap_err();
+        assert_eq!(
+            upgrade_error.sqlite_error_code(),
+            Some(ErrorCode::DatabaseBusy)
+        );
+        drop(deferred);
+
+        let immediate = first.immediate_transaction().unwrap();
+        let _: i64 = immediate
+            .query_row("SELECT COUNT(*) FROM snapshot_test", [], |row| row.get(0))
+            .unwrap();
+        let (attempted_tx, attempted_rx) = mpsc::sync_channel(1);
+        let writer = thread::spawn(move || {
+            attempted_tx.send(()).unwrap();
+            second
+                .conn()
+                .execute("INSERT INTO snapshot_test (value) VALUES (3)", [])
+        });
+        attempted_rx.recv().unwrap();
+        immediate
+            .execute("INSERT INTO snapshot_test (value) VALUES (2)", [])
+            .unwrap();
+        immediate.commit().unwrap();
+        writer.join().unwrap().unwrap();
+
+        let count: i64 = first
+            .conn()
+            .query_row("SELECT COUNT(*) FROM snapshot_test", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 3);
     }
 
     #[test]
