@@ -22,39 +22,59 @@ struct RangeKey {
     end: u64,
 }
 
-static INFLIGHT_RANGES: Lazy<Mutex<HashMap<RangeKey, std::sync::Arc<Notify>>>> =
+static INFLIGHT_RANGES: Lazy<Mutex<HashMap<RangeKey, std::sync::Arc<InflightState>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+static INITIALIZED_CACHE_PATHS: Lazy<Mutex<HashSet<PathBuf>>> =
+    Lazy::new(|| Mutex::new(HashSet::new()));
 
 pub enum InflightLease {
     Leader(InflightToken),
-    Follower(std::sync::Arc<Notify>),
+    Follower(InflightWaiter),
+}
+
+struct InflightState {
+    completed: watch::Sender<bool>,
+}
+
+pub struct InflightWaiter {
+    completed: watch::Receiver<bool>,
+}
+
+impl InflightWaiter {
+    pub async fn wait(mut self) {
+        while !*self.completed.borrow() {
+            if self.completed.changed().await.is_err() {
+                return;
+            }
+        }
+    }
 }
 
 pub struct InflightToken {
     key: RangeKey,
-    notify: std::sync::Arc<Notify>,
+    state: std::sync::Arc<InflightState>,
     completed: bool,
 }
 
 impl InflightToken {
     pub fn complete(mut self) {
         self.completed = true;
-        finish_inflight(&self.key, &self.notify);
+        finish_inflight(&self.key, &self.state);
     }
 }
 
 impl Drop for InflightToken {
     fn drop(&mut self) {
         if !self.completed {
-            finish_inflight(&self.key, &self.notify);
+            finish_inflight(&self.key, &self.state);
         }
     }
 }
 
-fn finish_inflight(key: &RangeKey, notify: &std::sync::Arc<Notify>) {
+fn finish_inflight(key: &RangeKey, state: &std::sync::Arc<InflightState>) {
     let mut map = INFLIGHT_RANGES.lock();
     map.remove(key);
-    notify.notify_waiters();
+    state.completed.send_replace(true);
 }
 
 pub fn acquire_inflight(endpoint: &str, start: u64, end: u64) -> InflightLease {
@@ -65,26 +85,29 @@ pub fn acquire_inflight(endpoint: &str, start: u64, end: u64) -> InflightLease {
     };
     let mut map = INFLIGHT_RANGES.lock();
     if let Some(existing) = find_overlap_locked(&map, endpoint, start, end) {
-        return InflightLease::Follower(existing);
+        return InflightLease::Follower(InflightWaiter {
+            completed: existing.completed.subscribe(),
+        });
     }
-    let notify = std::sync::Arc::new(Notify::new());
-    map.insert(key.clone(), notify.clone());
+    let (completed, _receiver) = watch::channel(false);
+    let state = std::sync::Arc::new(InflightState { completed });
+    map.insert(key.clone(), state.clone());
     InflightLease::Leader(InflightToken {
         key,
-        notify,
+        state,
         completed: false,
     })
 }
 
 fn find_overlap_locked(
-    map: &HashMap<RangeKey, std::sync::Arc<Notify>>,
+    map: &HashMap<RangeKey, std::sync::Arc<InflightState>>,
     endpoint: &str,
     start: u64,
     end: u64,
-) -> Option<std::sync::Arc<Notify>> {
-    for (key, notify) in map.iter() {
+) -> Option<std::sync::Arc<InflightState>> {
+    for (key, state) in map.iter() {
         if key.endpoint == endpoint && start <= key.end && end >= key.start {
-            return Some(notify.clone());
+            return Some(state.clone());
         }
     }
     None
