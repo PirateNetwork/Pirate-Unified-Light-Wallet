@@ -37,6 +37,8 @@ pub mod screenshot_guard;
 pub mod secure_clipboard;
 pub mod security;
 pub mod seed_export;
+/// Semantic snapshots used to prove sync implementations produce equivalent wallet state.
+pub mod semantic_oracle;
 mod shardtree_serialization;
 /// SQLite shardtree store implementation used for canonical witness/anchor state.
 pub mod shardtree_store;
@@ -83,6 +85,7 @@ pub use seed_export::{
     warnings as seed_warnings, ExportAuditEntry, ExportFlowState, SeedExportManager,
     SeedExportRequest, SeedExportResult,
 };
+pub use semantic_oracle::{SemanticOracleDifference, SemanticOracleSnapshot, SemanticOracleValue};
 pub use spendability_state::{
     PerPoolAnchorHeights, SpendabilityStateRow, SpendabilityStateStorage,
 };
