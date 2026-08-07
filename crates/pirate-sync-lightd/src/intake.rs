@@ -255,3 +255,520 @@ pub(crate) fn local_batch_prefix_len(
         selected
     }
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ScanBatchSource {
+    Cache,
+    Network,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ScanBatchDecision {
+    CacheAtCeiling,
+    CacheCollecting,
+    CacheCooldown,
+    CacheProbeLarger,
+    CacheProbeSmaller,
+    CachePlateau,
+    CacheRegression,
+    CacheStaleSample,
+    IgnoredTail,
+    NetworkLatency,
+}
+
+impl ScanBatchDecision {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::CacheAtCeiling => "cache_at_ceiling",
+            Self::CacheCollecting => "cache_collecting",
+            Self::CacheCooldown => "cache_cooldown",
+            Self::CacheProbeLarger => "cache_probe_larger",
+            Self::CacheProbeSmaller => "cache_probe_smaller",
+            Self::CachePlateau => "cache_plateau",
+            Self::CacheRegression => "cache_regression",
+            Self::CacheStaleSample => "cache_stale_sample",
+            Self::IgnoredTail => "ignored_tail",
+            Self::NetworkLatency => "network_latency",
+        }
+    }
+}
+
+/// Measurements from one committed local scan batch.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScanBatchObservation {
+    /// Block target used when this batch was assembled.
+    pub(crate) requested_blocks: u64,
+    /// Exact byte target used when this batch was assembled.
+    pub(crate) requested_bytes: u64,
+    /// Number of compact blocks committed by the batch.
+    pub(crate) blocks: u64,
+    /// Exact encoded bytes represented by the batch.
+    pub(crate) encoded_bytes: u64,
+    /// Local work excluding time waiting for the intake queue.
+    pub(crate) processing_time: Duration,
+    /// Time the scan loop waited for its next durable batch.
+    pub(crate) intake_wait: Duration,
+    /// Encoded bytes currently admitted ahead of the scanner.
+    pub(crate) queued_bytes: u64,
+    /// Source of the already durable compact blocks.
+    pub(crate) source: ScanBatchSource,
+    /// Wall time spent constructing immutable ShardTree insertions.
+    pub(crate) tree_parallel_wall: Duration,
+    /// Worker-active time accumulated during parallel ShardTree construction.
+    pub(crate) tree_parallel_worker_active: Duration,
+    /// Whether this was the shortened final batch of a bounded sync.
+    pub(crate) stream_tail: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct CachedOperatingPoint {
+    target_blocks: u64,
+    blocks_per_second: u64,
+    parallel_saturation_ppm: u64,
+    has_parallel_sample: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct CachedSampleAccumulator {
+    target_blocks: u64,
+    samples: u8,
+    blocks: u128,
+    processing_nanos: u128,
+    parallel_wall_nanos: u128,
+    parallel_worker_nanos: u128,
+}
+
+impl CachedSampleAccumulator {
+    fn clear_for(&mut self, target_blocks: u64) {
+        *self = Self {
+            target_blocks,
+            ..Self::default()
+        };
+    }
+
+    fn push(&mut self, observation: ScanBatchObservation) {
+        if self.target_blocks != observation.requested_blocks {
+            self.clear_for(observation.requested_blocks);
+        }
+        self.samples = self.samples.saturating_add(1);
+        self.blocks = self.blocks.saturating_add(u128::from(observation.blocks));
+        self.processing_nanos = self
+            .processing_nanos
+            .saturating_add(observation.processing_time.as_nanos().max(1));
+        self.parallel_wall_nanos = self
+            .parallel_wall_nanos
+            .saturating_add(observation.tree_parallel_wall.as_nanos());
+        self.parallel_worker_nanos = self
+            .parallel_worker_nanos
+            .saturating_add(observation.tree_parallel_worker_active.as_nanos());
+    }
+
+    fn operating_point(&self, parallel_workers: u64) -> CachedOperatingPoint {
+        let blocks_per_second = self
+            .blocks
+            .saturating_mul(1_000_000_000)
+            .checked_div(self.processing_nanos.max(1))
+            .unwrap_or(u128::from(u64::MAX))
+            .min(u128::from(u64::MAX)) as u64;
+        let has_parallel_sample = self.parallel_wall_nanos > 0;
+        let parallel_capacity_nanos = self
+            .parallel_wall_nanos
+            .saturating_mul(u128::from(parallel_workers.max(1)));
+        let parallel_saturation_ppm = if has_parallel_sample {
+            self.parallel_worker_nanos
+                .saturating_mul(RATE_SCALE_PPM)
+                .checked_div(parallel_capacity_nanos.max(1))
+                .unwrap_or(RATE_SCALE_PPM)
+                .min(RATE_SCALE_PPM) as u64
+        } else {
+            0
+        };
+        CachedOperatingPoint {
+            target_blocks: self.target_blocks,
+            blocks_per_second,
+            parallel_saturation_ppm,
+            has_parallel_sample,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CachedScanThroughputController {
+    parallel_workers: u64,
+    samples: CachedSampleAccumulator,
+    baseline: Option<CachedOperatingPoint>,
+    probe_direction: i8,
+    next_probe_direction: i8,
+    cooldown: u8,
+    last_blocks_per_second: u64,
+    last_parallel_saturation_ppm: u64,
+}
+
+impl CachedScanThroughputController {
+    fn new(parallel_workers: usize) -> Self {
+        Self {
+            parallel_workers: parallel_workers.max(1) as u64,
+            samples: CachedSampleAccumulator::default(),
+            baseline: None,
+            probe_direction: 0,
+            next_probe_direction: 0,
+            cooldown: 0,
+            last_blocks_per_second: 0,
+            last_parallel_saturation_ppm: 0,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.samples = CachedSampleAccumulator::default();
+        self.baseline = None;
+        self.probe_direction = 0;
+        self.next_probe_direction = 0;
+        self.cooldown = 0;
+        self.last_blocks_per_second = 0;
+        self.last_parallel_saturation_ppm = 0;
+    }
+
+    fn observe(
+        &mut self,
+        current_blocks: u64,
+        min_blocks: u64,
+        max_blocks: u64,
+        observation: ScanBatchObservation,
+    ) -> (u64, ScanBatchDecision) {
+        if observation.blocks == 0 || observation.stream_tail {
+            return (current_blocks, ScanBatchDecision::IgnoredTail);
+        }
+        if observation.requested_blocks != current_blocks {
+            return (current_blocks, ScanBatchDecision::CacheStaleSample);
+        }
+
+        // Exact byte limits in the decoder and queue watermarks remain the
+        // memory boundary. A short byte-limited batch is therefore valid, but
+        // it must not teach the block controller that fewer blocks are faster.
+        let byte_limited = observation.blocks < observation.requested_blocks
+            && observation.encoded_bytes
+                >= observation
+                    .requested_bytes
+                    .max(1)
+                    .saturating_sub(observation.requested_bytes.max(1) / 4);
+        if observation.blocks < observation.requested_blocks.div_ceil(2) && !byte_limited {
+            return (current_blocks, ScanBatchDecision::CacheStaleSample);
+        }
+
+        self.samples.push(observation);
+        if self.samples.samples < CACHED_SCAN_CONFIRMATIONS {
+            return (current_blocks, ScanBatchDecision::CacheCollecting);
+        }
+
+        let point = self.samples.operating_point(self.parallel_workers);
+        self.last_blocks_per_second = point.blocks_per_second;
+        self.last_parallel_saturation_ppm = point.parallel_saturation_ppm;
+        self.samples.clear_for(current_blocks);
+
+        if self.cooldown > 0 {
+            self.baseline = Some(point);
+            self.cooldown -= 1;
+            return (current_blocks, ScanBatchDecision::CacheCooldown);
+        }
+
+        if self.probe_direction != 0 {
+            let baseline = self
+                .baseline
+                .expect("an active cached-batch probe has a baseline");
+            let throughput_improved = rate_improved(
+                point.blocks_per_second,
+                baseline.blocks_per_second,
+                CACHED_SCAN_THROUGHPUT_GAIN_PPM,
+            );
+            let throughput_ok = rate_within_regression(
+                point.blocks_per_second,
+                baseline.blocks_per_second,
+                CACHED_SCAN_REGRESSION_TOLERANCE_PPM,
+            );
+            let parallel_comparable = point.has_parallel_sample && baseline.has_parallel_sample;
+            let parallel_improved = parallel_comparable
+                && point.parallel_saturation_ppm
+                    >= baseline
+                        .parallel_saturation_ppm
+                        .saturating_add(CACHED_SCAN_PARALLEL_GAIN_PPM);
+            let candidate_better = throughput_improved || (throughput_ok && parallel_improved);
+
+            if candidate_better {
+                self.baseline = Some(point);
+                let (next, direction) =
+                    probe_scan_target(current_blocks, min_blocks, max_blocks, self.probe_direction);
+                if direction != 0 {
+                    self.probe_direction = direction;
+                    return (next, probe_decision(direction));
+                }
+
+                self.next_probe_direction = -self.probe_direction;
+                self.probe_direction = 0;
+                self.cooldown = CACHED_SCAN_COOLDOWN;
+                return (current_blocks, ScanBatchDecision::CacheAtCeiling);
+            } else {
+                self.cooldown = CACHED_SCAN_COOLDOWN;
+                let decision = if throughput_ok {
+                    ScanBatchDecision::CachePlateau
+                } else {
+                    ScanBatchDecision::CacheRegression
+                };
+                self.next_probe_direction = -self.probe_direction;
+                self.probe_direction = 0;
+                self.baseline = Some(baseline);
+                return (
+                    baseline.target_blocks.clamp(min_blocks, max_blocks),
+                    decision,
+                );
+            }
+        }
+
+        self.baseline = Some(point);
+        let preferred_direction = if self.next_probe_direction != 0 {
+            std::mem::take(&mut self.next_probe_direction)
+        } else if current_blocks < max_blocks {
+            1
+        } else {
+            -1
+        };
+        let (next, direction) =
+            probe_scan_target(current_blocks, min_blocks, max_blocks, preferred_direction);
+        self.probe_direction = direction;
+        if direction == 0 {
+            (current_blocks, ScanBatchDecision::CacheAtCeiling)
+        } else {
+            (next, probe_decision(direction))
+        }
+    }
+}
+
+fn probe_decision(direction: i8) -> ScanBatchDecision {
+    if direction < 0 {
+        ScanBatchDecision::CacheProbeSmaller
+    } else {
+        ScanBatchDecision::CacheProbeLarger
+    }
+}
+
+fn probe_scan_target(
+    current: u64,
+    min_blocks: u64,
+    max_blocks: u64,
+    preferred_direction: i8,
+) -> (u64, i8) {
+    let preferred = if preferred_direction < 0 { -1 } else { 1 };
+    for direction in [preferred, -preferred] {
+        let candidate = if direction < 0 {
+            shrink_scan_target(current, min_blocks, max_blocks)
+        } else {
+            grow_scan_target(current, min_blocks, max_blocks)
+        };
+        if candidate != current {
+            return (candidate, direction);
+        }
+    }
+    (current, 0)
+}
+
+fn rate_improved(candidate: u64, baseline: u64, improvement_ppm: u64) -> bool {
+    u128::from(candidate).saturating_mul(RATE_SCALE_PPM)
+        >= u128::from(baseline)
+            .saturating_mul(RATE_SCALE_PPM.saturating_add(u128::from(improvement_ppm)))
+}
+
+fn rate_within_regression(candidate: u64, baseline: u64, tolerance_ppm: u64) -> bool {
+    u128::from(candidate).saturating_mul(RATE_SCALE_PPM)
+        >= u128::from(baseline)
+            .saturating_mul(RATE_SCALE_PPM.saturating_sub(u128::from(tolerance_ppm.min(1_000_000))))
+}
+
+fn grow_scan_target(current: u64, min_blocks: u64, max_blocks: u64) -> u64 {
+    let mut next = current
+        .saturating_mul(5)
+        .div_ceil(4)
+        .max(current.saturating_add(1));
+    if max_blocks.saturating_sub(min_blocks) >= 64 {
+        next = next.saturating_add(32) / 64 * 64;
+    }
+    next.clamp(min_blocks, max_blocks)
+}
+
+fn shrink_scan_target(current: u64, min_blocks: u64, max_blocks: u64) -> u64 {
+    let mut next = current.saturating_mul(4) / 5;
+    if max_blocks.saturating_sub(min_blocks) >= 64 {
+        next = next.saturating_add(32) / 64 * 64;
+    }
+    if next >= current {
+        next = current.saturating_sub(1);
+    }
+    next.clamp(min_blocks, max_blocks)
+}
+
+/// Device-local controller with separate network-latency and cached-throughput
+/// feedback. Profile limits and exact byte admission remain the safety envelope.
+#[derive(Clone, Debug)]
+pub(crate) struct AdaptiveScanBatcher {
+    min_blocks: u64,
+    max_blocks: u64,
+    current_blocks: u64,
+    network_target_time: Duration,
+    max_batch_bytes: u64,
+    network_ewma_nanos_per_block: Option<u128>,
+    network_samples: u32,
+    cached: CachedScanThroughputController,
+    last_source: Option<ScanBatchSource>,
+    last_decision: ScanBatchDecision,
+}
+
+impl AdaptiveScanBatcher {
+    /// Creates a controller bounded by local profile safety limits.
+    #[cfg(test)]
+    pub(crate) fn new(
+        initial_blocks: u64,
+        min_blocks: u64,
+        max_blocks: u64,
+        network_target_time: Duration,
+        max_batch_bytes: u64,
+    ) -> Self {
+        Self::with_parallelism(
+            initial_blocks,
+            min_blocks,
+            max_blocks,
+            network_target_time,
+            max_batch_bytes,
+            1,
+        )
+    }
+
+    pub(crate) fn with_parallelism(
+        initial_blocks: u64,
+        min_blocks: u64,
+        max_blocks: u64,
+        network_target_time: Duration,
+        max_batch_bytes: u64,
+        parallel_workers: usize,
+    ) -> Self {
+        let max_blocks = max_blocks.max(1);
+        let min_blocks = min_blocks.max(1).min(max_blocks);
+        Self {
+            min_blocks,
+            max_blocks,
+            current_blocks: initial_blocks.clamp(min_blocks, max_blocks),
+            network_target_time: network_target_time.max(Duration::from_millis(1)),
+            max_batch_bytes: max_batch_bytes.max(1),
+            network_ewma_nanos_per_block: None,
+            network_samples: 0,
+            cached: CachedScanThroughputController::new(parallel_workers),
+            last_source: None,
+            last_decision: ScanBatchDecision::NetworkLatency,
+        }
+    }
+
+    /// Returns the current local scan-batch target.
+    pub(crate) fn target_blocks(&self) -> u64 {
+        self.current_blocks
+    }
+
+    pub(crate) fn last_decision(&self) -> ScanBatchDecision {
+        self.last_decision
+    }
+
+    pub(crate) fn cached_blocks_per_second(&self) -> u64 {
+        self.cached.last_blocks_per_second
+    }
+
+    pub(crate) fn cached_parallel_saturation_ppm(&self) -> u64 {
+        self.cached.last_parallel_saturation_ppm
+    }
+
+    /// Records one completed batch and returns the next local target.
+    pub(crate) fn observe(&mut self, observation: ScanBatchObservation) -> u64 {
+        if self.last_source != Some(observation.source) {
+            self.cached.reset();
+            self.network_ewma_nanos_per_block = None;
+            self.network_samples = 0;
+            self.last_source = Some(observation.source);
+        }
+
+        if observation.source == ScanBatchSource::Cache {
+            let (next, decision) = self.cached.observe(
+                self.current_blocks,
+                self.min_blocks,
+                self.max_blocks,
+                observation,
+            );
+            self.current_blocks = next;
+            self.last_decision = decision;
+            return self.current_blocks;
+        }
+
+        self.last_decision = ScanBatchDecision::NetworkLatency;
+        if observation.blocks == 0 || observation.stream_tail {
+            self.last_decision = ScanBatchDecision::IgnoredTail;
+            return self.current_blocks;
+        }
+
+        let sample_nanos = observation
+            .processing_time
+            .as_nanos()
+            .max(1)
+            .checked_div(u128::from(observation.blocks))
+            .unwrap_or(1)
+            .max(1);
+        let ewma = match self.network_ewma_nanos_per_block {
+            Some(previous) => previous.saturating_mul(7).saturating_add(sample_nanos) / 8,
+            None => sample_nanos,
+        };
+        self.network_ewma_nanos_per_block = Some(ewma);
+        self.network_samples = self.network_samples.saturating_add(1);
+
+        // Keep the first two observations stable. They frequently include tree
+        // initialization and do not represent sustained scan cost.
+        if self.network_samples < 3 {
+            return self.current_blocks;
+        }
+
+        let target_nanos = self.network_target_time.as_nanos().max(1);
+        let mut ideal = target_nanos
+            .checked_div(ewma)
+            .unwrap_or(u128::from(self.max_blocks))
+            .min(u128::from(self.max_blocks)) as u64;
+
+        let avg_encoded_bytes = observation
+            .encoded_bytes
+            .max(1)
+            .div_ceil(observation.blocks.max(1));
+        let byte_safe_blocks = (self.max_batch_bytes / avg_encoded_bytes).max(1);
+        ideal = ideal.min(byte_safe_blocks);
+
+        // Slow network intake benefits from exposing more producer/consumer
+        // overlap. Cached reads deliberately skip this latency heuristic.
+        if observation.queued_bytes < self.max_batch_bytes / 4
+            && observation.intake_wait > observation.processing_time / 3
+        {
+            ideal = ideal.min(self.current_blocks.saturating_mul(3) / 4);
+        }
+
+        // Damp every adjustment to avoid oscillating under bursty compact-block
+        // density, storage latency, or mobile thermal throttling.
+        let lower = self
+            .current_blocks
+            .saturating_mul(3)
+            .div_ceil(4)
+            .max(self.min_blocks);
+        let upper = self
+            .current_blocks
+            .saturating_mul(5)
+            .div_ceil(4)
+            .min(self.max_blocks);
+        let mut next = ideal.clamp(lower, upper);
+
+        // Quantization reduces allocator churn without making this value
+        // observable to the server; network stream segmentation is independent.
+        if self.max_blocks.saturating_sub(self.min_blocks) >= 64 {
+            next = next.saturating_add(32) / 64 * 64;
+        }
+        self.current_blocks = next.clamp(self.min_blocks, self.max_blocks);
+        self.current_blocks
+    }
+}
