@@ -21,6 +21,7 @@ type SpendingTxidBytes = [u8; 32];
 type TypedNullifier = (NoteType, NullifierBytes);
 type TypedUnlinkedSpend = (NoteType, NullifierBytes, SpendingTxidBytes);
 type TypedUnlinkedSpendMap = HashMap<TypedNullifier, SpendingTxidBytes>;
+type NoteOutputGroups = HashMap<(Vec<u8>, i64, NoteType), Vec<NoteRecord>>;
 const NOTE_SHARD_INDEX_BITS: u32 = 16;
 // Keep dynamic `IN` queries below SQLite's historical 999-variable default.
 const TRANSACTION_QUERY_CHUNK_SIZE: usize = 900;
@@ -91,6 +92,105 @@ fn note_value_is_valid(value: i64) -> bool {
 
 fn memo_bytes_are_effectively_empty(memo: &[u8]) -> bool {
     memo.is_empty() || memo.iter().all(|b| *b == 0)
+}
+
+fn merge_duplicate_note_records(mut notes: Vec<NoteRecord>) -> (NoteRecord, Vec<i64>) {
+    debug_assert!(!notes.is_empty());
+    notes.sort_by_key(|note| note.id.unwrap_or(i64::MAX));
+
+    // Keep the oldest row identity stable, but prefer the newest persisted scan
+    // material and fill any gaps from older rows.
+    let survivor_id = notes.iter().filter_map(|note| note.id).min();
+    let mut merged = notes.last().cloned().expect("note group is not empty");
+    merged.id = survivor_id;
+
+    if !note_value_is_valid(merged.value) {
+        if let Some(value) = notes
+            .iter()
+            .rev()
+            .map(|note| note.value)
+            .find(|value| note_value_is_valid(*value))
+        {
+            merged.value = value;
+        }
+    }
+    if merged.nullifier.iter().all(|byte| *byte == 0) {
+        if let Some(nullifier) = notes
+            .iter()
+            .rev()
+            .map(|note| &note.nullifier)
+            .find(|nullifier| !nullifier.is_empty() && !nullifier.iter().all(|byte| *byte == 0))
+        {
+            merged.nullifier.clone_from(nullifier);
+        }
+    }
+    if merged.commitment.is_empty() {
+        if let Some(commitment) = notes
+            .iter()
+            .rev()
+            .map(|note| &note.commitment)
+            .find(|commitment| !commitment.is_empty())
+        {
+            merged.commitment.clone_from(commitment);
+        }
+    }
+    if merged.height <= 0 {
+        if let Some(height) = notes
+            .iter()
+            .rev()
+            .map(|note| note.height)
+            .find(|height| *height > 0)
+        {
+            merged.height = height;
+        }
+    }
+
+    for note in notes.iter().rev() {
+        if merged.key_id.is_none() {
+            merged.key_id = note.key_id;
+        }
+        if merged.address_id.is_none() {
+            merged.address_id = note.address_id;
+        }
+        if merged.diversifier.as_ref().is_none_or(Vec::is_empty)
+            && note
+                .diversifier
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+        {
+            merged.diversifier.clone_from(&note.diversifier);
+        }
+        if merged.note.as_ref().is_none_or(Vec::is_empty)
+            && note.note.as_ref().is_some_and(|value| !value.is_empty())
+        {
+            merged.note.clone_from(&note.note);
+        }
+        if merged.position.is_none() {
+            merged.position = note.position;
+        }
+        if merged
+            .memo
+            .as_deref()
+            .is_none_or(memo_bytes_are_effectively_empty)
+            && note
+                .memo
+                .as_deref()
+                .is_some_and(|memo| !memo_bytes_are_effectively_empty(memo))
+        {
+            merged.memo.clone_from(&note.memo);
+        }
+        if merged.spent_txid.is_none() {
+            merged.spent_txid.clone_from(&note.spent_txid);
+        }
+    }
+    merged.spent = notes.iter().any(|note| note.spent);
+
+    let duplicate_ids = notes
+        .iter()
+        .filter_map(|note| note.id)
+        .filter(|id| Some(*id) != survivor_id)
+        .collect();
+    (merged, duplicate_ids)
 }
 
 /// Convert raw txid bytes (internal/little-endian) into canonical display hex.
@@ -792,6 +892,79 @@ impl<'a> Repository<'a> {
     /// Update an existing note without updating shard metadata. Intended for batch sync persistence.
     pub fn update_note_by_id_without_shard_metadata(&self, note: &NoteRecord) -> Result<()> {
         self.update_note_by_id_with_options(note, false)
+    }
+
+    /// Load existing rows for logical note outputs before a sync upsert.
+    ///
+    /// Spent rows participate in output identity. Legacy duplicate rows are folded
+    /// transactionally so rescanning an already-spent output cannot grow the raw table.
+    pub fn prepare_note_upserts(
+        &self,
+        account_id: i64,
+        outputs: &HashSet<(Vec<u8>, i64, NoteType)>,
+    ) -> Result<Vec<NoteRecord>> {
+        if outputs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let load_grouped = || -> Result<NoteOutputGroups> {
+            let mut grouped = HashMap::new();
+            for note in self.get_account_notes_matching_outputs(account_id, Some(outputs))? {
+                let key = (note.txid.clone(), note.output_index, note.note_type);
+                grouped.entry(key).or_insert_with(Vec::new).push(note);
+            }
+            Ok(grouped)
+        };
+        let grouped = load_grouped()?;
+        if grouped.values().all(|rows| rows.len() == 1) {
+            let mut canonical = grouped.into_values().flatten().collect::<Vec<_>>();
+            canonical.sort_by_key(|note| note.id.unwrap_or(i64::MAX));
+            return Ok(canonical);
+        }
+
+        // Duplicate repair is rare. Re-read under the write transaction so a
+        // concurrent spend update cannot be overwritten by stale merged state.
+        let conn = self.db.conn();
+        conn.execute_batch("BEGIN IMMEDIATE;")?;
+        let result = (|| -> Result<Vec<NoteRecord>> {
+            let grouped = load_grouped()?;
+            let mut canonical = Vec::with_capacity(grouped.len());
+            for (_, rows) in grouped {
+                if rows.len() == 1 {
+                    canonical.extend(rows);
+                    continue;
+                }
+
+                let (merged, duplicate_ids) = merge_duplicate_note_records(rows);
+                self.update_note_by_id_without_shard_metadata(&merged)?;
+                for duplicate_id in &duplicate_ids {
+                    conn.execute("DELETE FROM notes WHERE id = ?1", params![duplicate_id])?;
+                }
+                tracing::info!(
+                    account_id,
+                    survivor_id = merged.id,
+                    removed_rows = duplicate_ids.len(),
+                    "Consolidated duplicate encrypted note rows"
+                );
+                canonical.push(merged);
+            }
+            canonical.sort_by_key(|note| note.id.unwrap_or(i64::MAX));
+            Ok(canonical)
+        })();
+
+        match result {
+            Ok(canonical) => {
+                if let Err(error) = conn.execute_batch("COMMIT;") {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    return Err(error.into());
+                }
+                Ok(canonical)
+            }
+            Err(error) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                Err(error)
+            }
+        }
     }
 
     /// Batch-update note shard metadata for a sync batch.
@@ -4453,7 +4626,11 @@ impl<'a> Repository<'a> {
         }
     }
 
-    fn get_account_notes(&self, account_id: i64) -> Result<Vec<NoteRecord>> {
+    fn get_account_notes_matching_outputs(
+        &self,
+        account_id: i64,
+        outputs: Option<&HashSet<(Vec<u8>, i64, NoteType)>>,
+    ) -> Result<Vec<NoteRecord>> {
         let mut stmt = self.db.conn().prepare(
             "SELECT id, account_id, note_type, value, nullifier, commitment, spent, height, txid, output_index, spent_txid, diversifier, note, position, memo, address_id, key_id FROM notes",
         )?;
@@ -4512,31 +4689,80 @@ impl<'a> Repository<'a> {
         {
             let decrypted_account_id = self.decrypt_int64(&enc_account_id)?;
             let decrypted_txid = self.decrypt_blob(&enc_txid)?;
+            let decrypted_output_index = self.decrypt_int64(&enc_output_index)?;
 
-            if decrypted_account_id == account_id {
-                decrypted_notes.push(NoteRecord {
-                    id: Some(id),
-                    account_id: decrypted_account_id,
-                    key_id: self.decrypt_optional_int64(enc_key_id)?,
-                    note_type,
-                    value: self.decrypt_int64(&enc_value)?,
-                    nullifier: self.decrypt_blob(&enc_nullifier)?,
-                    commitment: self.decrypt_blob(&enc_commitment)?,
-                    spent: self.decrypt_bool(&enc_spent)?,
-                    height: self.decrypt_int64(&enc_height)?,
-                    txid: decrypted_txid,
-                    output_index: self.decrypt_int64(&enc_output_index)?,
-                    address_id: self.decrypt_optional_int64(enc_address_id)?,
-                    spent_txid: self.decrypt_optional_blob(enc_spent_txid)?,
-                    diversifier: self.decrypt_optional_blob(enc_diversifier)?,
-                    note: self.decrypt_optional_blob(enc_note)?,
-                    position: self.decrypt_optional_int64(enc_position)?,
-                    memo: self.decrypt_optional_blob(enc_memo)?,
-                });
+            if decrypted_account_id != account_id
+                || outputs.is_some_and(|outputs| {
+                    !outputs.contains(&(decrypted_txid.clone(), decrypted_output_index, note_type))
+                })
+            {
+                continue;
             }
+
+            decrypted_notes.push(NoteRecord {
+                id: Some(id),
+                account_id: decrypted_account_id,
+                key_id: self.decrypt_optional_int64(enc_key_id)?,
+                note_type,
+                value: self.decrypt_int64(&enc_value)?,
+                nullifier: self.decrypt_blob(&enc_nullifier)?,
+                commitment: self.decrypt_blob(&enc_commitment)?,
+                spent: self.decrypt_bool(&enc_spent)?,
+                height: self.decrypt_int64(&enc_height)?,
+                txid: decrypted_txid,
+                output_index: decrypted_output_index,
+                address_id: self.decrypt_optional_int64(enc_address_id)?,
+                spent_txid: self.decrypt_optional_blob(enc_spent_txid)?,
+                diversifier: self.decrypt_optional_blob(enc_diversifier)?,
+                note: self.decrypt_optional_blob(enc_note)?,
+                position: self.decrypt_optional_int64(enc_position)?,
+                memo: self.decrypt_optional_blob(enc_memo)?,
+            });
         }
 
         Ok(decrypted_notes)
+    }
+
+    pub(crate) fn get_account_notes(&self, account_id: i64) -> Result<Vec<NoteRecord>> {
+        self.get_account_notes_matching_outputs(account_id, None)
+    }
+
+    /// Return prior marked-note positions that may be used as conservative
+    /// optimization hints during a rescan.
+    ///
+    /// Callers must not treat these positions as chain truth. Their only safe
+    /// use is to choose leaf-backed processing instead of subtree-root grafting.
+    pub fn get_historical_note_positions(&self, account_id: i64) -> Result<Vec<(NoteType, u64)>> {
+        let mut stmt = self.db.conn().prepare(
+            "SELECT account_id, note_type, position FROM notes WHERE position IS NOT NULL",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, Vec<u8>>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Vec<u8>>(2)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let mut positions = Vec::new();
+        for (encrypted_account_id, note_type, encrypted_position) in rows {
+            if self.decrypt_int64(&encrypted_account_id)? != account_id {
+                continue;
+            }
+            let Ok(position) = u64::try_from(self.decrypt_int64(&encrypted_position)?) else {
+                continue;
+            };
+            positions.push((
+                if note_type == "Orchard" {
+                    NoteType::Ironwood
+                } else {
+                    NoteType::Sapling
+                },
+                position,
+            ));
+        }
+        Ok(positions)
     }
 
     /// Return one canonical historical record for every received shielded output.
@@ -5213,6 +5439,55 @@ mod tests {
     }
 
     #[test]
+    fn historical_note_positions_keep_only_valid_positioned_notes() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Hint Account".to_string(),
+                created_at: chrono::Utc::now().timestamp(),
+            })
+            .unwrap();
+
+        let make_note = |note_type, output_index, position| NoteRecord {
+            id: None,
+            account_id,
+            key_id: None,
+            note_type,
+            value: 1,
+            nullifier: vec![output_index as u8; 32],
+            commitment: vec![output_index as u8 + 1; 32],
+            spent: output_index % 2 == 0,
+            height: 100 + output_index,
+            txid: vec![output_index as u8 + 2; 32],
+            output_index,
+            address_id: None,
+            spent_txid: None,
+            diversifier: None,
+            note: None,
+            position,
+            memo: None,
+        };
+
+        repo.insert_note(&make_note(NoteType::Sapling, 1, Some(65_543)))
+            .unwrap();
+        repo.insert_note(&make_note(NoteType::Ironwood, 2, Some(131_081)))
+            .unwrap();
+        repo.insert_note(&make_note(NoteType::Sapling, 3, None))
+            .unwrap();
+        repo.insert_note(&make_note(NoteType::Ironwood, 4, Some(-1)))
+            .unwrap();
+
+        let mut positions = repo.get_historical_note_positions(account_id).unwrap();
+        positions.sort_by_key(|(_, position)| *position);
+
+        assert_eq!(positions.len(), 2);
+        assert_eq!(positions[0], (NoteType::Sapling, 65_543));
+        assert_eq!(positions[1], (NoteType::Ironwood, 131_081));
+    }
+
+    #[test]
     fn test_note_encryption_stored_as_encrypted() {
         let db = test_db();
         let repo = Repository::new(&db);
@@ -5440,6 +5715,99 @@ mod tests {
         assert_eq!(received[0].timestamp, Some(1_234_567));
         assert_eq!(received[0].address_id, Some(address_id));
         assert_eq!(received[0].note, Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn prepare_note_upserts_coalesces_spent_rescan_rows_by_pool() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        let account_id = repo
+            .insert_account(&Account {
+                id: None,
+                name: "Note upsert repair".to_string(),
+                created_at: 1,
+            })
+            .unwrap();
+        let txid = vec![0x44; 32];
+        let spending_txid = [0x99; 32];
+
+        insert_received_note(
+            &repo,
+            account_id,
+            txid.clone(),
+            NoteType::Sapling,
+            3,
+            75_000,
+            500,
+            None,
+            None,
+            false,
+            7,
+        );
+        let survivor_id: i64 = db
+            .conn()
+            .query_row("SELECT MIN(id) FROM notes", [], |row| row.get(0))
+            .unwrap();
+        assert!(repo
+            .mark_note_spent_by_nullifier_with_txid(account_id, &[7; 32], &spending_txid)
+            .unwrap());
+        insert_received_note(
+            &repo,
+            account_id,
+            txid.clone(),
+            NoteType::Sapling,
+            3,
+            75_000,
+            500,
+            None,
+            Some(vec![1, 2, 3]),
+            false,
+            7,
+        );
+        insert_received_note(
+            &repo,
+            account_id,
+            txid.clone(),
+            NoteType::Ironwood,
+            3,
+            75_000,
+            500,
+            None,
+            Some(vec![4, 5, 6]),
+            false,
+            8,
+        );
+
+        let candidates = HashSet::from([(txid, 3, NoteType::Sapling)]);
+        let prepared = repo.prepare_note_upserts(account_id, &candidates).unwrap();
+
+        assert_eq!(prepared.len(), 1);
+        assert_eq!(prepared[0].id, Some(survivor_id));
+        assert!(prepared[0].spent);
+        assert_eq!(prepared[0].spent_txid, Some(spending_txid.to_vec()));
+        assert_eq!(prepared[0].note, Some(vec![1, 2, 3]));
+        let sapling_rows: i64 = db
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM notes WHERE note_type = 'Sapling'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let ironwood_rows: i64 = db
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM notes WHERE note_type = 'Orchard'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sapling_rows, 1);
+        assert_eq!(ironwood_rows, 1);
+
+        let prepared_again = repo.prepare_note_upserts(account_id, &candidates).unwrap();
+        assert_eq!(prepared_again.len(), 1);
+        assert_eq!(prepared_again[0].id, Some(survivor_id));
     }
 
     #[test]
