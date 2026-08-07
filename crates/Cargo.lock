@@ -4019,7 +4019,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "shardtree 0.6.2",
+ "shardtree",
  "tokio",
  "tracing",
  "uuid",
@@ -4132,7 +4132,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "shardtree 0.6.2",
+ "shardtree",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
@@ -4178,7 +4178,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "shardtree 0.6.2",
+ "shardtree",
  "subtle",
  "sysinfo 0.30.13",
  "tempfile",
@@ -4231,7 +4231,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "shardtree 0.6.2",
+ "shardtree",
  "tempfile",
  "tokio",
  "tracing",
@@ -5484,18 +5484,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
-]
-
-[[package]]
-name = "shardtree"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "359e552886ae54d1642091645980d83f7db465fd9b5b0248e3680713c1773388"
-dependencies = [
- "bitflags",
- "either",
- "incrementalmerkletree",
- "tracing",
 ]
 
 [[package]]
@@ -8510,7 +8498,7 @@ dependencies = [
  "rayon",
  "sapling-crypto",
  "secrecy",
- "shardtree 0.7.1",
+ "shardtree",
  "subtle",
  "time",
  "tonic-prost-build",

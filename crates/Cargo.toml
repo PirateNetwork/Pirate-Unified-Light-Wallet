@@ -43,7 +43,7 @@ sapling-crypto = { git = "https://github.com/piratenetwork/sapling-crypto.git", 
 orchard = { git = "https://github.com/PirateNetwork/orchard.git", rev = "c0545158b15259805e31ea1953867d6a507c08e4" }
 wagyu-zcash-parameters = "0.2"
 incrementalmerkletree = { version = "0.8.2", features = ["legacy-api"] }
-shardtree = { version = "0.6.2", features = ["legacy-api"] }
+shardtree = { version = "0.7.1", features = ["legacy-api"] }
 zip32 = "0.2.1"
 base64ct = "1.5.3"
 password-hash = "0.5.0"
