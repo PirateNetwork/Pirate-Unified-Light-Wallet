@@ -457,6 +457,57 @@ impl<'a> Repository<'a> {
         Ok(Some((start_u64, end_u64)))
     }
 
+    fn witness_repair_replay_start(
+        &self,
+        requested_start: u64,
+        wallet_birthday: u64,
+        sapling_position: Option<i64>,
+        orchard_position: Option<i64>,
+    ) -> Result<u64> {
+        if sapling_position.is_none() && orchard_position.is_none() {
+            return Ok(requested_start.max(wallet_birthday).max(1));
+        }
+
+        let shard_start = |position: i64| {
+            let position = u64::try_from(position).ok()?;
+            i64::try_from((position >> NOTE_SHARD_INDEX_BITS) << NOTE_SHARD_INDEX_BITS).ok()
+        };
+        let sapling_shard_start = sapling_position.and_then(shard_start);
+        let orchard_shard_start = orchard_position.and_then(shard_start);
+        let checkpoint_ceiling =
+            i64::try_from(requested_start.saturating_sub(1)).map_err(|_| {
+                crate::Error::Storage(format!(
+                    "witness repair start {} exceeds i64::MAX",
+                    requested_start
+                ))
+            })?;
+
+        // A checkpoint inside a root-backed shard cannot be used to reconstruct a
+        // newly discovered mark in that shard. Rewind both pools to the newest
+        // common checkpoint strictly before every affected shard instead.
+        let checkpoint: Option<u32> = self.db.conn().query_row(
+            r#"
+            SELECT MAX(s.checkpoint_id)
+            FROM sapling_tree_checkpoints s
+            INNER JOIN orchard_tree_checkpoints o
+                ON o.checkpoint_id = s.checkpoint_id
+            WHERE s.checkpoint_id <= ?1
+              AND (?2 IS NULL OR s.position IS NULL OR s.position < ?2)
+              AND (?3 IS NULL OR o.position IS NULL OR o.position < ?3)
+            "#,
+            params![checkpoint_ceiling, sapling_shard_start, orchard_shard_start],
+            |row| row.get(0),
+        )?;
+
+        Ok(checkpoint
+            .map(u64::from)
+            .map(|height| height.saturating_add(1))
+            .unwrap_or(wallet_birthday)
+            .max(wallet_birthday)
+            .max(1)
+            .min(requested_start.max(wallet_birthday).max(1)))
+    }
+
     fn upsert_note_shard_metadata(
         &self,
         note_type: crate::models::NoteType,
@@ -2485,6 +2536,8 @@ impl<'a> Repository<'a> {
                 let mut earliest_missing_height = anchor_height;
                 let mut derived_range_start: Option<u64> = None;
                 let mut derived_range_end: Option<u64> = None;
+                let mut earliest_missing_sapling_position: Option<i64> = None;
+                let mut earliest_missing_orchard_position: Option<i64> = None;
                 for (txid, output_index, note_pool, note_height, note_position_i64) in
                     &anchor_candidates
                 {
@@ -2500,6 +2553,14 @@ impl<'a> Repository<'a> {
                             }
                         }
                         if let Some(position_i64) = note_position_i64 {
+                            let earliest_position = match *note_pool {
+                                0 => &mut earliest_missing_sapling_position,
+                                _ => &mut earliest_missing_orchard_position,
+                            };
+                            *earliest_position = Some(
+                                earliest_position
+                                    .map_or(*position_i64, |current| current.min(*position_i64)),
+                            );
                             let note_type = match *note_pool {
                                 0 => crate::models::NoteType::Sapling,
                                 _ => crate::models::NoteType::Ironwood,
@@ -2524,10 +2585,16 @@ impl<'a> Repository<'a> {
                 if missing_sapling + missing_orchard > 0 {
                     result.sapling_missing = result.sapling_missing.saturating_add(missing_sapling);
                     result.orchard_missing = result.orchard_missing.saturating_add(missing_orchard);
-                    let range_start = derived_range_start
+                    let requested_range_start = derived_range_start
                         .unwrap_or(earliest_missing_height)
                         .max(birthday)
                         .max(1);
+                    let range_start = self.witness_repair_replay_start(
+                        requested_range_start,
+                        birthday,
+                        earliest_missing_sapling_position,
+                        earliest_missing_orchard_position,
+                    )?;
                     let range_end = derived_range_end
                         .unwrap_or_else(|| anchor_height.saturating_add(1))
                         .min(anchor_height.saturating_add(1))
@@ -5879,8 +5946,59 @@ mod tests {
         assert_eq!(result.orchard_missing, 0);
         assert_eq!(
             result.repair_ranges,
-            vec![(120, 901)],
-            "anchor hydration gaps must queue replay from earliest missing note to anchor+1"
+            vec![(1, 901)],
+            "without a safe tree checkpoint, anchor repair must replay from the wallet birthday"
+        );
+    }
+
+    #[test]
+    fn witness_repair_rewinds_before_the_affected_shard() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        for (checkpoint_id, sapling_position, orchard_position) in
+            [(200u32, 65_535i64, 4i64), (300u32, 65_550i64, 8i64)]
+        {
+            db.conn()
+                .execute(
+                    "INSERT INTO sapling_tree_checkpoints (checkpoint_id, position) VALUES (?1, ?2)",
+                    params![checkpoint_id, sapling_position],
+                )
+                .unwrap();
+            db.conn()
+                .execute(
+                    "INSERT INTO orchard_tree_checkpoints (checkpoint_id, position) VALUES (?1, ?2)",
+                    params![checkpoint_id, orchard_position],
+                )
+                .unwrap();
+        }
+
+        let replay_start = repo
+            .witness_repair_replay_start(350, 100, Some(65_570), None)
+            .unwrap();
+
+        assert_eq!(replay_start, 201);
+    }
+
+    #[test]
+    fn witness_repair_falls_back_to_birthday_without_a_safe_checkpoint() {
+        let db = test_db();
+        let repo = Repository::new(&db);
+        for table in ["sapling_tree_checkpoints", "orchard_tree_checkpoints"] {
+            db.conn()
+                .execute(
+                    &format!(
+                        "INSERT INTO {} (checkpoint_id, position) VALUES (300, 65550)",
+                        table
+                    ),
+                    [],
+                )
+                .unwrap();
+        }
+
+        assert_eq!(
+            repo.witness_repair_replay_start(350, 120, Some(65_570), None)
+                .unwrap(),
+            120
         );
     }
 }
