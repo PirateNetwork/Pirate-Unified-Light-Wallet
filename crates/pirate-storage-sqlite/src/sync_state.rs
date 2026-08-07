@@ -4,10 +4,14 @@
 //! automatic retry logic for database contention.
 
 use crate::{Database, Error, Result};
-use rusqlite::{params, types::ValueRef, ErrorCode, OptionalExtension, Transaction};
+use rusqlite::{
+    params, params_from_iter,
+    types::{Value, ValueRef},
+    ErrorCode, OptionalExtension, Transaction,
+};
 use std::collections::HashSet;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Maximum retry attempts for SQLITE_BUSY
 pub const MAX_BUSY_RETRIES: u32 = 5;
@@ -17,6 +21,8 @@ pub const BASE_BACKOFF_MS: u64 = 50;
 
 /// Maximum backoff duration in milliseconds
 pub const MAX_BACKOFF_MS: u64 = 1000;
+
+const CHAIN_BLOCK_UPSERT_ROWS: usize = 200;
 
 /// Sync state record
 #[derive(Debug, Clone)]
@@ -245,6 +251,33 @@ impl<'a> SyncStateStorage<'a> {
         })
     }
 
+    /// Atomically advance the durable sync cursor and its canonical reorg window.
+    ///
+    /// Keeping these writes in one transaction prevents a crash from leaving the
+    /// cursor ahead of the hashes needed to validate or rewind that cursor.
+    pub fn save_sync_progress(
+        &self,
+        blocks: &[ChainBlockRow],
+        local_height: u64,
+        target_height: u64,
+        last_checkpoint_height: u64,
+        reorg_window: u64,
+    ) -> Result<()> {
+        self.execute_with_retry(|| {
+            let tx = self.db.conn().unchecked_transaction()?;
+            Self::save_chain_blocks_tx(&tx, blocks)?;
+            Self::save_sync_state_tx(&tx, local_height, target_height, last_checkpoint_height)?;
+
+            if let Some(tip_height) = blocks.last().map(|block| block.height) {
+                let retain_from = to_sql_i64(tip_height.saturating_sub(reorg_window))?;
+                tx.execute("DELETE FROM chain_blocks WHERE height < ?1", [retain_from])?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
     /// Save canonical block metadata inside an existing transaction.
     pub fn save_chain_blocks_tx(tx: &Transaction<'_>, blocks: &[ChainBlockRow]) -> Result<()> {
         if blocks.is_empty() {
@@ -252,26 +285,35 @@ impl<'a> SyncStateStorage<'a> {
         }
 
         let updated_at = chrono::Utc::now().to_rfc3339();
-        let mut stmt = tx.prepare(
-            r#"
-            INSERT INTO chain_blocks (height, hash, prev_hash, time, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5)
-            ON CONFLICT(height) DO UPDATE SET
-                hash = excluded.hash,
-                prev_hash = excluded.prev_hash,
-                time = excluded.time,
-                updated_at = excluded.updated_at
-            "#,
-        )?;
+        for chunk in blocks.chunks(CHAIN_BLOCK_UPSERT_ROWS) {
+            let placeholders = std::iter::repeat_n("(?, ?, ?, ?, ?)", chunk.len())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sql = format!(
+                r#"
+                INSERT INTO chain_blocks (height, hash, prev_hash, time, updated_at)
+                VALUES {placeholders}
+                ON CONFLICT(height) DO UPDATE SET
+                    hash = excluded.hash,
+                    prev_hash = excluded.prev_hash,
+                    time = excluded.time,
+                    updated_at = excluded.updated_at
+                WHERE chain_blocks.hash != excluded.hash
+                   OR chain_blocks.prev_hash != excluded.prev_hash
+                   OR chain_blocks.time != excluded.time
+                "#
+            );
+            let mut values = Vec::with_capacity(chunk.len() * 5);
+            for block in chunk {
+                values.push(Value::Integer(to_sql_i64(block.height)?));
+                values.push(Value::Blob(block.hash.clone()));
+                values.push(Value::Blob(block.prev_hash.clone()));
+                values.push(Value::Integer(i64::from(block.time)));
+                values.push(Value::Text(updated_at.clone()));
+            }
 
-        for block in blocks {
-            stmt.execute(params![
-                to_sql_i64(block.height)?,
-                &block.hash,
-                &block.prev_hash,
-                i64::from(block.time),
-                &updated_at
-            ])?;
+            tx.prepare_cached(&sql)?
+                .execute(params_from_iter(values.iter()))?;
         }
 
         Ok(())
@@ -1127,8 +1169,111 @@ mod tests {
     }
 
     #[test]
+    fn sync_progress_keeps_cursor_and_reorg_window_together() {
+        let db = test_db();
+        let storage = SyncStateStorage::new(&db);
+        let blocks = (100..=110)
+            .map(|height| ChainBlockRow {
+                height,
+                hash: height.to_le_bytes().repeat(4),
+                prev_hash: height.saturating_sub(1).to_le_bytes().repeat(4),
+                time: u32::try_from(height).unwrap(),
+            })
+            .collect::<Vec<_>>();
+
+        storage
+            .save_sync_progress(&blocks, 110, 200, 109, 3)
+            .unwrap();
+
+        let state = storage.load_sync_state().unwrap();
+        assert_eq!(state.local_height, 110);
+        assert_eq!(state.target_height, 200);
+        assert_eq!(state.last_checkpoint_height, 109);
+        assert!(storage.load_chain_block(106).unwrap().is_none());
+        for height in 107..=110 {
+            assert!(storage.load_chain_block(height).unwrap().is_some());
+        }
+    }
+
+    #[test]
+    fn sync_progress_rolls_back_chain_rows_when_cursor_update_fails() {
+        let db = test_db();
+        let storage = SyncStateStorage::new(&db);
+        let block = ChainBlockRow {
+            height: 123,
+            hash: vec![1u8; 32],
+            prev_hash: vec![2u8; 32],
+            time: 456,
+        };
+
+        assert!(storage
+            .save_sync_progress(&[block], u64::MAX, 200, 100, 2_000)
+            .is_err());
+        assert!(storage.load_chain_block(123).unwrap().is_none());
+        assert_eq!(storage.load_sync_state().unwrap().local_height, 0);
+    }
+
+    #[test]
+    fn chain_block_batches_upsert_atomically_without_rewriting_matches() {
+        let db = test_db();
+        let storage = SyncStateStorage::new(&db);
+        let mut blocks = (1_000..1_450)
+            .map(|height| ChainBlockRow {
+                height,
+                hash: height.to_le_bytes().repeat(4),
+                prev_hash: height.saturating_sub(1).to_le_bytes().repeat(4),
+                time: u32::try_from(height).unwrap(),
+            })
+            .collect::<Vec<_>>();
+
+        storage.save_chain_blocks(&blocks).unwrap();
+        let count: i64 = db
+            .conn()
+            .query_row("SELECT COUNT(*) FROM chain_blocks", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 450);
+
+        let original_updated_at: String = db
+            .conn()
+            .query_row(
+                "SELECT updated_at FROM chain_blocks WHERE height = 1213",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(2));
+        storage.save_chain_blocks(&blocks).unwrap();
+        let unchanged_updated_at: String = db
+            .conn()
+            .query_row(
+                "SELECT updated_at FROM chain_blocks WHERE height = 1213",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(unchanged_updated_at, original_updated_at);
+
+        std::thread::sleep(Duration::from_millis(2));
+        blocks[213].hash = vec![9; 32];
+        storage.save_chain_blocks(&blocks).unwrap();
+        assert_eq!(
+            storage.load_chain_block(1_213).unwrap().unwrap().hash,
+            vec![9; 32]
+        );
+        let changed_updated_at: String = db
+            .conn()
+            .query_row(
+                "SELECT updated_at FROM chain_blocks WHERE height = 1213",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_ne!(changed_updated_at, original_updated_at);
+    }
+
+    #[test]
     fn test_truncate_above_height_unspends_rolled_back_spend() {
-        let mut db = test_db();
+        let db = test_db();
         let spend_txid = [7u8; 32];
         let note_txid = [3u8; 32];
 
