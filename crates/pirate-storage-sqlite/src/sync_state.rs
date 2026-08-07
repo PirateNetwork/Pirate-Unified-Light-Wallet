@@ -474,17 +474,38 @@ pub fn atomic_sync_update(
     Ok(())
 }
 
-/// Truncate data above a specific height (for rollback)
-pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
-    let height_u64 = height;
-    let height = to_sql_i64(height_u64)?;
-    let queue_end_exclusive = to_sql_i64(height_u64.saturating_add(1))?;
+/// Truncate wallet data above `height` and rewind both commitment trees to their
+/// newest common checkpoint at or below it.
+///
+/// The returned height is the commitment-tree replay point. It can be lower
+/// than `height` because ShardTree intentionally prunes old checkpoints. Callers
+/// must resume compact-block processing at `returned_height + 1` so that tree
+/// state and the persisted sync cursor cannot diverge.
+pub fn truncate_above_height(db: &Database, height: u64) -> Result<u64> {
+    let total_start = Instant::now();
+    let requested_height = height;
+    let height = to_sql_i64(requested_height)?;
+    let queue_end_exclusive = to_sql_i64(requested_height.saturating_add(1))?;
     let master_key = db.master_key().clone();
-    let tx = db.transaction()?;
+    let tx = db.unchecked_immediate_transaction()?;
+    let common_tree_checkpoint: Option<u32> = tx.query_row(
+        r#"
+        SELECT MAX(s.checkpoint_id)
+        FROM sapling_tree_checkpoints s
+        INNER JOIN orchard_tree_checkpoints o
+            ON o.checkpoint_id = s.checkpoint_id
+        WHERE s.checkpoint_id <= ?1
+        "#,
+        [height],
+        |row| row.get(0),
+    )?;
+    let tree_replay_height = common_tree_checkpoint.map(u64::from).unwrap_or(0);
+    let tree_replay_height_sql = to_sql_i64(tree_replay_height)?;
     let orphaned_spend_txids = collect_transaction_txids_above_height(&tx, height)?;
     let reset_spent_notes = reset_notes_spent_by_txids(&tx, &master_key, &orphaned_spend_txids)?;
     let deleted_unlinked_spends =
         delete_unlinked_spends_by_txids(&tx, &master_key, &orphaned_spend_txids)?;
+    let lookup_ms = total_start.elapsed().as_millis();
 
     // Delete notes above height.
     //
@@ -492,6 +513,7 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
     // SQL comparison (`WHERE height > ?`) on encrypted bytes can behave
     // non-deterministically and wipe unrelated rows. We must decrypt each
     // height before deciding whether to prune.
+    let note_scan_start = Instant::now();
     let mut note_ids_to_delete: Vec<i64> = Vec::new();
     let mut remaining_notes_for_shards: Vec<(crate::models::NoteType, Option<i64>, i64)> =
         Vec::new();
@@ -589,11 +611,13 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
             delete_stmt.execute([note_id])?;
         }
     }
+    let note_scan_ms = note_scan_start.elapsed().as_millis();
 
     // Delete memos and transactions above height.
     //
     // Foreign keys are intentionally disabled for SQLCipher hot paths, so memos
     // need explicit cleanup before their transaction rows are removed.
+    let relational_delete_start = Instant::now();
     tx.execute(
         "DELETE FROM memos WHERE tx_id IN (SELECT id FROM transactions WHERE height > ?1)",
         [height],
@@ -615,9 +639,11 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
         "DELETE FROM scan_queue WHERE range_end > ?1",
         [queue_end_exclusive],
     )?;
+    let relational_delete_ms = relational_delete_start.elapsed().as_millis();
 
     // Rewind commitment trees (Sapling + Orchard) using shardtree truncation.
     // This prevents stale/invalid anchors after rollback.
+    let tree_rewind_start = Instant::now();
     {
         use crate::shardtree_store::SqliteShardStore;
         use orchard::tree::MerkleHashOrchard;
@@ -646,18 +672,6 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
             ORCHARD_SHARD_HEIGHT,
         >;
 
-        let checkpoint_at_or_below = |table_prefix: &'static str| -> Result<Option<BlockHeight>> {
-            let checkpoint_id: Option<u32> = tx.query_row(
-                &format!(
-                    "SELECT MAX(checkpoint_id) FROM {}_tree_checkpoints WHERE checkpoint_id <= ?1",
-                    table_prefix
-                ),
-                [height],
-                |row| row.get::<_, Option<u32>>(0),
-            )?;
-            Ok(checkpoint_id.map(BlockHeight::from))
-        };
-
         let clear_shardtree = |table_prefix: &'static str| -> Result<()> {
             tx.execute(
                 &format!("DELETE FROM {}_tree_checkpoint_marks_removed", table_prefix),
@@ -669,10 +683,14 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
             )?;
             tx.execute(&format!("DELETE FROM {}_tree_shards", table_prefix), [])?;
             tx.execute(&format!("DELETE FROM {}_tree_cap", table_prefix), [])?;
+            tx.execute(
+                &format!("DELETE FROM {}_tree_retained_checkpoints", table_prefix),
+                [],
+            )?;
             Ok(())
         };
 
-        if let Some(checkpoint_id) = checkpoint_at_or_below(SAPLING_TABLE_PREFIX)? {
+        if let Some(checkpoint_id) = common_tree_checkpoint.map(BlockHeight::from) {
             let store = SqliteShardStore::<_, SaplingNode, SAPLING_SHARD_HEIGHT>::from_connection(
                 &tx,
                 SAPLING_TABLE_PREFIX,
@@ -685,7 +703,7 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
             clear_shardtree(SAPLING_TABLE_PREFIX)?;
         }
 
-        if let Some(checkpoint_id) = checkpoint_at_or_below(ORCHARD_TABLE_PREFIX)? {
+        if let Some(checkpoint_id) = common_tree_checkpoint.map(BlockHeight::from) {
             let store =
                 SqliteShardStore::<_, MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>::from_connection(
                     &tx,
@@ -699,9 +717,11 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
             clear_shardtree(ORCHARD_TABLE_PREFIX)?;
         }
     }
+    let tree_rewind_ms = tree_rewind_start.elapsed().as_millis();
 
     // Rebuild derived shard metadata from remaining notes (used for deterministic
     // scannability gating and subtree-derived repair ranges).
+    let derived_state_start = Instant::now();
     tx.execute("DELETE FROM sapling_note_shards", [])?;
     tx.execute("DELETE FROM orchard_note_shards", [])?;
     for (note_type, position_opt, note_height) in remaining_notes_for_shards {
@@ -787,13 +807,11 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
         r#"
         UPDATE sync_state SET
             local_height = ?1,
-            last_checkpoint_height = (
-                SELECT COALESCE(MAX(height), 0) FROM frontier_snapshots WHERE height <= ?1
-            ),
+            last_checkpoint_height = ?1,
             updated_at = ?2
         WHERE id = 1
         "#,
-        params![height, updated_at],
+        params![tree_replay_height_sql, updated_at],
     )?;
 
     tx.execute(
@@ -817,17 +835,40 @@ pub fn truncate_above_height(db: &mut Database, height: u64) -> Result<()> {
         "#,
         params![height, updated_at],
     )?;
+    let derived_state_ms = derived_state_start.elapsed().as_millis();
 
+    let commit_start = Instant::now();
     tx.commit()?;
+    let commit_ms = commit_start.elapsed().as_millis();
+    let total_ms = total_start.elapsed().as_millis();
+
+    pirate_core::debug_log::append_line(&format!(
+        r#"{{"timestamp":{},"location":"sync_state.rs:truncate_above_height","message":"truncate stage timing","data":{{"requested_height":{},"tree_replay_height":{},"lookup_ms":{},"note_scan_ms":{},"relational_delete_ms":{},"tree_rewind_ms":{},"derived_state_ms":{},"commit_ms":{},"total_ms":{},"notes_deleted":{}}}}}"#,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+        requested_height,
+        tree_replay_height,
+        lookup_ms,
+        note_scan_ms,
+        relational_delete_ms,
+        tree_rewind_ms,
+        derived_state_ms,
+        commit_ms,
+        total_ms,
+        note_ids_to_delete.len()
+    ));
 
     tracing::info!(
-        "Truncated data above height {} (notes_deleted={}, spent_reset={}, unlinked_spends_deleted={})",
-        height,
+        "Truncated data above height {} and rewound commitment trees to {} (notes_deleted={}, spent_reset={}, unlinked_spends_deleted={})",
+        requested_height,
+        tree_replay_height,
         note_ids_to_delete.len(),
         reset_spent_notes,
         deleted_unlinked_spends
     );
-    Ok(())
+    Ok(tree_replay_height)
 }
 
 fn collect_transaction_txids_above_height(
@@ -1029,19 +1070,20 @@ mod tests {
 
     #[test]
     fn test_truncate_above_height() {
-        let mut db = test_db();
+        let db = test_db();
 
         // The function should succeed even with empty tables
-        truncate_above_height(&mut db, 1000).unwrap();
+        let replay_height = truncate_above_height(&db, 1000).unwrap();
 
         let storage = SyncStateStorage::new(&db);
         let state = storage.load_sync_state().unwrap();
-        assert_eq!(state.local_height, 1000);
+        assert_eq!(replay_height, 0);
+        assert_eq!(state.local_height, 0);
     }
 
     #[test]
     fn test_truncate_above_height_preserves_checkpoint_at_height() {
-        let mut db = test_db();
+        let db = test_db();
 
         for checkpoint_id in [100u32, 101u32, 105u32] {
             db.conn()
@@ -1059,7 +1101,7 @@ mod tests {
         }
 
         // Roll back to exactly 100. Checkpoint 100 must remain available.
-        truncate_above_height(&mut db, 100).unwrap();
+        assert_eq!(truncate_above_height(&db, 100).unwrap(), 100);
 
         let mut sapling_stmt = db
             .conn()
@@ -1085,8 +1127,36 @@ mod tests {
     }
 
     #[test]
+    fn test_truncate_replays_from_latest_common_tree_checkpoint() {
+        let db = test_db();
+        for checkpoint_id in [90u32, 100u32] {
+            db.conn()
+                .execute(
+                    "INSERT INTO sapling_tree_checkpoints (checkpoint_id, position) VALUES (?1, NULL)",
+                    [checkpoint_id],
+                )
+                .unwrap();
+        }
+        for checkpoint_id in [90u32, 95u32] {
+            db.conn()
+                .execute(
+                    "INSERT INTO orchard_tree_checkpoints (checkpoint_id, position) VALUES (?1, NULL)",
+                    [checkpoint_id],
+                )
+                .unwrap();
+        }
+
+        let replay_height = truncate_above_height(&db, 100).unwrap();
+
+        assert_eq!(replay_height, 90);
+        let state = SyncStateStorage::new(&db).load_sync_state().unwrap();
+        assert_eq!(state.local_height, 90);
+        assert_eq!(state.last_checkpoint_height, 90);
+    }
+
+    #[test]
     fn test_truncate_above_height_clears_trees_without_retained_checkpoint() {
-        let mut db = test_db();
+        let db = test_db();
 
         for prefix in ["sapling", "orchard"] {
             db.conn()
@@ -1125,19 +1195,30 @@ mod tests {
                     [],
                 )
                 .unwrap();
+            db.conn()
+                .execute(
+                    &format!(
+                        "INSERT INTO {}_tree_retained_checkpoints (checkpoint_id) VALUES (105)",
+                        prefix
+                    ),
+                    [],
+                )
+                .unwrap();
         }
 
-        truncate_above_height(&mut db, 100).unwrap();
+        assert_eq!(truncate_above_height(&db, 100).unwrap(), 0);
 
         for table in [
             "sapling_tree_cap",
             "sapling_tree_checkpoints",
             "sapling_tree_checkpoint_marks_removed",
             "sapling_tree_shards",
+            "sapling_tree_retained_checkpoints",
             "orchard_tree_cap",
             "orchard_tree_checkpoints",
             "orchard_tree_checkpoint_marks_removed",
             "orchard_tree_shards",
+            "orchard_tree_retained_checkpoints",
         ] {
             let count: i64 = db
                 .conn()
@@ -1308,7 +1389,7 @@ mod tests {
             .unwrap();
         }
 
-        truncate_above_height(&mut db, 100).unwrap();
+        truncate_above_height(&db, 100).unwrap();
 
         let repo = Repository::new(&db);
         let unspent = repo.get_unspent_notes(1).unwrap();
