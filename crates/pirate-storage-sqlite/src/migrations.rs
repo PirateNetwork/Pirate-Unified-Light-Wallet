@@ -3,7 +3,7 @@
 use crate::{Error, Result};
 use rusqlite::Connection;
 
-const SCHEMA_VERSION: i32 = 31;
+const SCHEMA_VERSION: i32 = 32;
 
 /// Run all migrations
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -122,6 +122,9 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     }
     if current_version < 31 {
         migrate_v31(conn)?;
+    }
+    if current_version < 32 {
+        migrate_v32(conn)?;
     }
 
     // Only set schema version if it changed (to avoid UNIQUE constraint errors)
@@ -595,6 +598,32 @@ fn migrate_v31(conn: &Connection) -> Result<()> {
         let _ = conn.execute_batch("ROLLBACK;");
         return Err(Error::Migration(e.to_string()));
     }
+
+    Ok(())
+}
+
+fn migrate_v32(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        BEGIN IMMEDIATE;
+
+        CREATE TABLE IF NOT EXISTS sapling_tree_retained_checkpoints (
+            checkpoint_id INTEGER PRIMARY KEY
+        );
+        CREATE TABLE IF NOT EXISTS orchard_tree_retained_checkpoints (
+            checkpoint_id INTEGER PRIMARY KEY
+        );
+
+        INSERT INTO migration_state (key, value, updated_at)
+        VALUES ('v32_shardtree_retained_checkpoints', 'completed', datetime('now'))
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at;
+
+        COMMIT;
+        "#,
+    )
+    .map_err(|e| Error::Migration(e.to_string()))?;
 
     Ok(())
 }

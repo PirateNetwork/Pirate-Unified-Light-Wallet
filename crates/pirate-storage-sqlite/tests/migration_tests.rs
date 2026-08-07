@@ -51,6 +51,64 @@ fn test_schema_version_tracking() {
 }
 
 #[test]
+fn test_v32_adds_retained_checkpoint_tables_without_resetting_trees() {
+    let file = NamedTempFile::new().unwrap();
+    let conn = Connection::open(file.path()).unwrap();
+    migrations::run_migrations(&conn).unwrap();
+
+    conn.execute_batch(
+        "DROP TABLE sapling_tree_retained_checkpoints;
+         DROP TABLE orchard_tree_retained_checkpoints;
+         DELETE FROM schema_version;
+         INSERT INTO schema_version (version) VALUES (31);
+         INSERT INTO sapling_tree_checkpoints (checkpoint_id, position)
+         VALUES (4078000, 12345);
+         INSERT INTO orchard_tree_checkpoints (checkpoint_id, position)
+         VALUES (4078000, 67890);",
+    )
+    .unwrap();
+
+    migrations::run_migrations(&conn).unwrap();
+
+    let version: i32 = conn
+        .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let sapling_checkpoint: i64 = conn
+        .query_row(
+            "SELECT position FROM sapling_tree_checkpoints WHERE checkpoint_id = 4078000",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let orchard_checkpoint: i64 = conn
+        .query_row(
+            "SELECT position FROM orchard_tree_checkpoints WHERE checkpoint_id = 4078000",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let retained_tables: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'table'
+               AND name IN (
+                   'sapling_tree_retained_checkpoints',
+                   'orchard_tree_retained_checkpoints'
+               )",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(version, 32);
+    assert_eq!(sapling_checkpoint, 12345);
+    assert_eq!(orchard_checkpoint, 67890);
+    assert_eq!(retained_tables, 2);
+}
+
+#[test]
 fn test_accounts_table_structure() {
     let file = NamedTempFile::new().unwrap();
     let conn = Connection::open(file.path()).unwrap();
