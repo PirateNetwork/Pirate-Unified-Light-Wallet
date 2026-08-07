@@ -244,6 +244,24 @@ impl<'conn, 'a: 'conn, H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         remove_checkpoint(self.conn, self.table_prefix, *checkpoint_id)
     }
 
+    fn add_retained_checkpoint(
+        &mut self,
+        checkpoint_id: Self::CheckpointId,
+    ) -> Result<(), Self::Error> {
+        add_retained_checkpoint(self.conn, self.table_prefix, checkpoint_id)
+    }
+
+    fn remove_retained_checkpoint(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> Result<(), Self::Error> {
+        remove_retained_checkpoint(self.conn, self.table_prefix, *checkpoint_id)
+    }
+
+    fn retained_checkpoints(&self) -> Result<BTreeSet<Self::CheckpointId>, Self::Error> {
+        retained_checkpoints(self.conn, self.table_prefix)
+    }
+
     fn truncate_checkpoints_retaining(
         &mut self,
         checkpoint_id: &Self::CheckpointId,
@@ -369,6 +387,28 @@ impl<H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         let tx = self.conn.transaction().map_err(Error::Query)?;
         remove_checkpoint(&tx, self.table_prefix, *checkpoint_id)?;
         tx.commit().map_err(Error::Query)
+    }
+
+    fn add_retained_checkpoint(
+        &mut self,
+        checkpoint_id: Self::CheckpointId,
+    ) -> Result<(), Self::Error> {
+        let tx = self.conn.transaction().map_err(Error::Query)?;
+        add_retained_checkpoint(&tx, self.table_prefix, checkpoint_id)?;
+        tx.commit().map_err(Error::Query)
+    }
+
+    fn remove_retained_checkpoint(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> Result<(), Self::Error> {
+        let tx = self.conn.transaction().map_err(Error::Query)?;
+        remove_retained_checkpoint(&tx, self.table_prefix, *checkpoint_id)?;
+        tx.commit().map_err(Error::Query)
+    }
+
+    fn retained_checkpoints(&self) -> Result<BTreeSet<Self::CheckpointId>, Self::Error> {
+        retained_checkpoints(&self.conn, self.table_prefix)
     }
 
     fn truncate_checkpoints_retaining(
@@ -501,6 +541,30 @@ impl<H: HashSer, const SHARD_HEIGHT: u8> ShardStore
         remove_checkpoint(&tx, self.table_prefix, *checkpoint_id)?;
         tx.commit().map_err(Error::Query)?;
         Ok(())
+    }
+
+    fn add_retained_checkpoint(
+        &mut self,
+        checkpoint_id: Self::CheckpointId,
+    ) -> Result<(), Self::Error> {
+        let tx = self.conn.unchecked_transaction().map_err(Error::Query)?;
+        add_retained_checkpoint(&tx, self.table_prefix, checkpoint_id)?;
+        tx.commit().map_err(Error::Query)?;
+        Ok(())
+    }
+
+    fn remove_retained_checkpoint(
+        &mut self,
+        checkpoint_id: &Self::CheckpointId,
+    ) -> Result<(), Self::Error> {
+        let tx = self.conn.unchecked_transaction().map_err(Error::Query)?;
+        remove_retained_checkpoint(&tx, self.table_prefix, *checkpoint_id)?;
+        tx.commit().map_err(Error::Query)?;
+        Ok(())
+    }
+
+    fn retained_checkpoints(&self) -> Result<BTreeSet<Self::CheckpointId>, Self::Error> {
+        retained_checkpoints(self.conn, self.table_prefix)
     }
 
     fn truncate_checkpoints_retaining(
@@ -1136,6 +1200,68 @@ pub(crate) fn remove_checkpoint(
     Ok(())
 }
 
+pub(crate) fn add_retained_checkpoint(
+    conn: &rusqlite::Transaction<'_>,
+    table_prefix: &'static str,
+    checkpoint_id: BlockHeight,
+) -> Result<(), Error> {
+    conn.prepare_cached(&format!(
+        "INSERT OR IGNORE INTO {}_tree_retained_checkpoints (checkpoint_id)
+         VALUES (:checkpoint_id)",
+        table_prefix
+    ))
+    .map_err(Error::Query)?
+    .execute(named_params![":checkpoint_id": u32::from(checkpoint_id)])
+    .map_err(Error::Query)?;
+
+    Ok(())
+}
+
+pub(crate) fn remove_retained_checkpoint(
+    conn: &rusqlite::Transaction<'_>,
+    table_prefix: &'static str,
+    checkpoint_id: BlockHeight,
+) -> Result<(), Error> {
+    conn.prepare_cached(&format!(
+        "DELETE FROM {}_tree_retained_checkpoints
+         WHERE checkpoint_id = :checkpoint_id",
+        table_prefix
+    ))
+    .map_err(Error::Query)?
+    .execute(named_params![":checkpoint_id": u32::from(checkpoint_id)])
+    .map_err(Error::Query)?;
+
+    Ok(())
+}
+
+pub(crate) fn retained_checkpoints(
+    conn: &rusqlite::Connection,
+    table_prefix: &'static str,
+) -> Result<BTreeSet<BlockHeight>, Error> {
+    let table_name = format!("{}_tree_retained_checkpoints", table_prefix);
+    let table_exists = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table_name",
+            named_params![":table_name": table_name],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(Error::Query)?
+        .is_some();
+    if !table_exists {
+        return Ok(BTreeSet::new());
+    }
+
+    let mut stmt = conn
+        .prepare_cached(&format!("SELECT checkpoint_id FROM {}", table_name))
+        .map_err(Error::Query)?;
+    let rows = stmt.query([]).map_err(Error::Query)?;
+
+    rows.mapped(|row| row.get::<_, u32>(0).map(BlockHeight::from))
+        .collect::<Result<BTreeSet<_>, _>>()
+        .map_err(Error::Query)
+}
+
 pub(crate) fn truncate_checkpoints_retaining(
     conn: &rusqlite::Transaction<'_>,
     table_prefix: &'static str,
@@ -1273,4 +1399,44 @@ pub fn put_shard_roots<
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retained_checkpoints_round_trip_durably() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE sapling_tree_retained_checkpoints (
+                checkpoint_id INTEGER PRIMARY KEY
+            );",
+        )
+        .unwrap();
+
+        let first = BlockHeight::from(100u32);
+        let second = BlockHeight::from(200u32);
+        let tx = conn.transaction().unwrap();
+        add_retained_checkpoint(&tx, SAPLING_TEST_PREFIX, first).unwrap();
+        add_retained_checkpoint(&tx, SAPLING_TEST_PREFIX, first).unwrap();
+        add_retained_checkpoint(&tx, SAPLING_TEST_PREFIX, second).unwrap();
+        remove_retained_checkpoint(&tx, SAPLING_TEST_PREFIX, first).unwrap();
+        tx.commit().unwrap();
+
+        assert_eq!(
+            retained_checkpoints(&conn, SAPLING_TEST_PREFIX).unwrap(),
+            BTreeSet::from([second])
+        );
+    }
+
+    #[test]
+    fn pre_migration_store_has_no_retained_checkpoints() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        assert!(retained_checkpoints(&conn, SAPLING_TEST_PREFIX)
+            .unwrap()
+            .is_empty());
+    }
+
+    const SAPLING_TEST_PREFIX: &str = "sapling";
 }
