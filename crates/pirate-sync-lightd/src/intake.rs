@@ -210,3 +210,48 @@ fn nearest_durable_bucket(ideal: u64, byte_safe_blocks: u64) -> usize {
         .unwrap_or(0)
 }
 
+/// Chooses how many blocks from a durable network segment fit in the current
+/// device-local scan batch.
+///
+/// A return value of zero means the existing batch should be emitted first. A
+/// single block larger than the byte target is admitted by itself so the
+/// pipeline always makes progress while preserving its strict block ordering.
+pub(crate) fn local_batch_prefix_len(
+    encoded_block_bytes: &[u64],
+    current_blocks: u64,
+    current_bytes: u64,
+    target_blocks: u64,
+    target_bytes: u64,
+) -> usize {
+    if encoded_block_bytes.is_empty() {
+        return 0;
+    }
+
+    let target_blocks = target_blocks.max(1);
+    let target_bytes = target_bytes.max(1);
+    if current_blocks >= target_blocks || current_bytes >= target_bytes {
+        return 0;
+    }
+
+    let block_slots = target_blocks.saturating_sub(current_blocks) as usize;
+    let mut selected = 0usize;
+    let mut added_bytes = 0u64;
+    for encoded_bytes in encoded_block_bytes.iter().copied().take(block_slots) {
+        let encoded_bytes = encoded_bytes.max(1);
+        if current_bytes
+            .saturating_add(added_bytes)
+            .saturating_add(encoded_bytes)
+            > target_bytes
+        {
+            break;
+        }
+        added_bytes = added_bytes.saturating_add(encoded_bytes);
+        selected += 1;
+    }
+
+    if selected == 0 && current_blocks == 0 {
+        1
+    } else {
+        selected
+    }
+}
