@@ -227,6 +227,50 @@ impl Default for TlsConfig {
     }
 }
 
+/// One explicitly configured failover endpoint and its TLS identity.
+#[derive(Debug, Clone)]
+pub struct LightClientEndpoint {
+    /// Full HTTP(S) endpoint URL.
+    pub endpoint: String,
+    /// TLS, server-name, and SPKI pin configuration for this endpoint.
+    pub tls: TlsConfig,
+}
+
+impl LightClientEndpoint {
+    /// Create an endpoint with TLS inferred from its URL.
+    pub fn new(endpoint: impl Into<String>) -> Self {
+        let endpoint = endpoint.into();
+        let tls_enabled = LightClientConfig::infer_tls_enabled(&endpoint);
+        Self {
+            endpoint,
+            tls: TlsConfig {
+                enabled: tls_enabled,
+                ..TlsConfig::default()
+            },
+        }
+    }
+
+    /// Attach an SPKI pin to this endpoint.
+    pub fn with_spki_pin(mut self, pin: impl Into<String>) -> Self {
+        self.tls.enabled = true;
+        self.tls.spki_pin = Some(normalize_spki_pin(&pin.into()).to_string());
+        self
+    }
+}
+
+/// Result of a transport-preserving lightwalletd health probe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EndpointHealth {
+    /// Endpoint URL that was probed.
+    pub endpoint: String,
+    /// Whether the endpoint passed connectivity and same-chain checks.
+    pub healthy: bool,
+    /// Latest reported block height when available.
+    pub tip_height: Option<u64>,
+    /// Diagnostic reason when the endpoint is unavailable or rejected.
+    pub reason: Option<String>,
+}
+
 /// Client configuration
 #[derive(Debug, Clone)]
 pub struct LightClientConfig {
@@ -246,6 +290,11 @@ pub struct LightClientConfig {
     pub request_timeout: Duration,
     /// Legacy flag kept for compatibility (direct fallback is disabled).
     pub allow_direct_fallback: bool,
+    /// Explicit same-network endpoints eligible for bounded failover.
+    ///
+    /// Each endpoint retains its own TLS server name and SPKI pin. The selected
+    /// Tor/I2P/SOCKS5/direct transport is inherited from this configuration.
+    pub failover_endpoints: Vec<LightClientEndpoint>,
 }
 
 impl Default for LightClientConfig {
@@ -272,8 +321,9 @@ impl Default for LightClientConfig {
             },
             retry: RetryConfig::default(),
             connect_timeout: Duration::from_secs(30),
-            request_timeout: Duration::from_secs(120),
+            request_timeout: Duration::from_secs(180),
             allow_direct_fallback: false,
+            failover_endpoints: Vec::new(),
         }
     }
 }
@@ -346,6 +396,12 @@ impl LightClientConfig {
     pub fn with_spki_pin(mut self, pin: &str) -> Self {
         self.tls.spki_pin = Some(normalize_spki_pin(pin).to_string());
         self.tls.enabled = true;
+        self
+    }
+
+    /// Add a same-network endpoint eligible for health-checked failover.
+    pub fn with_failover_endpoint(mut self, endpoint: LightClientEndpoint) -> Self {
+        self.failover_endpoints.push(endpoint);
         self
     }
 }
@@ -1073,16 +1129,36 @@ pub struct TreeState {
     pub ironwood_tree: String,
 }
 
-/// Lightwalletd gRPC client
+#[derive(Default)]
+struct EndpointPoolState {
+    probed: bool,
+    active_index: usize,
+    healthy_indices: Vec<usize>,
+    failures: HashMap<usize, u32>,
+    tips: HashMap<usize, u64>,
+    channels: HashMap<usize, Channel>,
+}
+
+/// Lightwalletd gRPC client.
 ///
-/// Provides methods to:
-/// - Query latest block height
-/// - Stream compact blocks in ranges
-/// - Broadcast transactions
+/// Provides tip queries, bounded compact-block streams, endpoint failover, and
+/// transaction broadcast through the configured privacy transport.
 pub struct LightClient {
     config: LightClientConfig,
     channel: Arc<Mutex<Option<Channel>>>,
+    endpoint_pool: Arc<RwLock<EndpointPoolState>>,
+    subtree_root_capabilities: Arc<StdRwLock<HashMap<(String, i32), SubtreeRootCapability>>>,
 }
+
+#[derive(Clone, Copy)]
+enum SubtreeRootCapability {
+    Available,
+    RetryAfter(Instant),
+}
+
+const SUBTREE_ROOT_TRANSIENT_RETRY: Duration = Duration::from_secs(60);
+const SUBTREE_ROOT_TIMEOUT_RETRY: Duration = Duration::from_secs(10 * 60);
+const SUBTREE_ROOT_UNSUPPORTED_RETRY: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Full transaction payload returned by lightwalletd.
 #[derive(Debug, Clone)]
@@ -1124,6 +1200,8 @@ impl LightClient {
                 ..Default::default()
             },
             channel: Arc::new(Mutex::new(None)),
+            endpoint_pool: Arc::new(RwLock::new(EndpointPoolState::default())),
+            subtree_root_capabilities: Arc::new(StdRwLock::new(HashMap::new())),
         }
     }
 
@@ -1132,6 +1210,8 @@ impl LightClient {
         Self {
             config,
             channel: Arc::new(Mutex::new(None)),
+            endpoint_pool: Arc::new(RwLock::new(EndpointPoolState::default())),
+            subtree_root_capabilities: Arc::new(StdRwLock::new(HashMap::new())),
         }
     }
 
@@ -1144,6 +1224,8 @@ impl LightClient {
                 ..Default::default()
             },
             channel: Arc::new(Mutex::new(None)),
+            endpoint_pool: Arc::new(RwLock::new(EndpointPoolState::default())),
+            subtree_root_capabilities: Arc::new(StdRwLock::new(HashMap::new())),
         }
     }
 
@@ -1155,6 +1237,261 @@ impl LightClient {
     /// Get current transport mode.
     pub fn transport_mode(&self) -> TransportMode {
         self.config.transport
+    }
+
+    /// Whether this client has explicitly configured failover endpoints.
+    pub fn has_failover_endpoints(&self) -> bool {
+        !self.config.failover_endpoints.is_empty()
+    }
+
+    fn endpoint_candidate(&self, index: usize) -> Option<LightClientEndpoint> {
+        if index == 0 {
+            return Some(LightClientEndpoint {
+                endpoint: self.config.endpoint.clone(),
+                tls: self.config.tls.clone(),
+            });
+        }
+        self.config.failover_endpoints.get(index - 1).cloned()
+    }
+
+    fn candidate_client(&self, index: usize) -> Option<Self> {
+        let candidate = self.endpoint_candidate(index)?;
+        let mut config = self.config.clone();
+        config.endpoint = candidate.endpoint;
+        config.tls = candidate.tls;
+        config.failover_endpoints.clear();
+        config.retry.max_attempts = 1;
+        Some(Self {
+            config,
+            channel: Arc::new(Mutex::new(None)),
+            endpoint_pool: Arc::clone(&self.endpoint_pool),
+            subtree_root_capabilities: Arc::clone(&self.subtree_root_capabilities),
+        })
+    }
+
+    async fn connected_candidate_client(&self, index: usize) -> Option<Self> {
+        let candidate = self.endpoint_candidate(index)?;
+        let channel = if index == 0 {
+            self.channel.lock().await.clone()
+        } else {
+            self.endpoint_pool
+                .read()
+                .await
+                .channels
+                .get(&index)
+                .cloned()
+        }?;
+        let mut config = self.config.clone();
+        config.endpoint = candidate.endpoint;
+        config.tls = candidate.tls;
+        config.failover_endpoints.clear();
+        config.retry.max_attempts = 1;
+        Some(Self {
+            config,
+            channel: Arc::new(Mutex::new(Some(channel))),
+            endpoint_pool: Arc::clone(&self.endpoint_pool),
+            subtree_root_capabilities: Arc::clone(&self.subtree_root_capabilities),
+        })
+    }
+
+    fn endpoint_count(&self) -> usize {
+        1usize.saturating_add(self.config.failover_endpoints.len())
+    }
+
+    /// Probe configured endpoints through the selected transport and retain only
+    /// candidates that match the primary endpoint at a common chain anchor.
+    pub async fn probe_endpoints(&self) -> Vec<EndpointHealth> {
+        let endpoint_count = self.endpoint_count();
+        let probe_timeout = match self.config.transport {
+            TransportMode::Direct => Duration::from_secs(12),
+            TransportMode::Tor | TransportMode::I2p | TransportMode::Socks5 => {
+                Duration::from_secs(35)
+            }
+        };
+        let mut probes: Vec<Option<(LightdInfo, u64, Channel)>> =
+            Vec::with_capacity(endpoint_count);
+        let mut health = Vec::with_capacity(endpoint_count);
+
+        for index in 0..endpoint_count {
+            let Some(candidate) = self.candidate_client(index) else {
+                continue;
+            };
+            let endpoint = candidate.endpoint().to_string();
+            let result = tokio::time::timeout(probe_timeout, async {
+                candidate.connect().await?;
+                let info = candidate.get_lightd_info().await?;
+                let tip = candidate.get_latest_block().await?;
+                Ok::<_, Error>((info, tip))
+            })
+            .await;
+
+            match result {
+                Ok(Ok((info, tip))) => {
+                    let channel = candidate.channel.lock().await.clone();
+                    probes.push(channel.map(|channel| (info, tip, channel)));
+                    health.push(EndpointHealth {
+                        endpoint,
+                        healthy: true,
+                        tip_height: Some(tip),
+                        reason: None,
+                    });
+                }
+                Ok(Err(error)) => {
+                    probes.push(None);
+                    health.push(EndpointHealth {
+                        endpoint,
+                        healthy: false,
+                        tip_height: None,
+                        reason: Some(error.to_string()),
+                    });
+                }
+                Err(_) => {
+                    probes.push(None);
+                    health.push(EndpointHealth {
+                        endpoint,
+                        healthy: false,
+                        tip_height: None,
+                        reason: Some(format!("health probe timed out after {:?}", probe_timeout)),
+                    });
+                }
+            }
+        }
+
+        let Some((primary_info, primary_tip, primary_channel)) =
+            probes.first().and_then(Option::as_ref)
+        else {
+            for entry in health.iter_mut().skip(1) {
+                entry.healthy = false;
+                entry.reason = Some(
+                    "primary endpoint unavailable; same-chain failover anchor could not be established"
+                        .to_string(),
+                );
+            }
+            let mut state = self.endpoint_pool.write().await;
+            state.probed = true;
+            state.active_index = 0;
+            state.healthy_indices.clear();
+            state.tips.clear();
+            state.channels.clear();
+            return health;
+        };
+        *self.channel.lock().await = Some(primary_channel.clone());
+
+        let common_anchor = probes
+            .iter()
+            .filter_map(|probe| probe.as_ref().map(|(_, tip, _)| *tip))
+            .min()
+            .unwrap_or(*primary_tip)
+            .saturating_sub(10);
+        let common_anchor_u32 = u32::try_from(common_anchor).unwrap_or(u32::MAX);
+        let primary_anchor = match self.candidate_client(0) {
+            Some(mut primary) => {
+                primary.channel = Arc::new(Mutex::new(Some(primary_channel.clone())));
+                tokio::time::timeout(probe_timeout, primary.get_block(common_anchor_u32))
+                    .await
+                    .ok()
+                    .and_then(std::result::Result::ok)
+                    .map(|block| block.hash)
+            }
+            None => None,
+        };
+
+        for index in 1..endpoint_count {
+            let Some((info, tip, channel)) = probes.get(index).and_then(Option::as_ref) else {
+                continue;
+            };
+            let metadata_matches = info
+                .chain_name
+                .eq_ignore_ascii_case(&primary_info.chain_name)
+                && info.sapling_activation_height == primary_info.sapling_activation_height
+                && (*tip != *primary_tip
+                    || info.consensus_branch_id == primary_info.consensus_branch_id);
+            if !metadata_matches {
+                if let Some(entry) = health.get_mut(index) {
+                    entry.healthy = false;
+                    entry.reason = Some("server chain metadata differs from primary".to_string());
+                }
+                continue;
+            }
+
+            let alternate_anchor = match self.candidate_client(index) {
+                Some(mut candidate) => {
+                    candidate.channel = Arc::new(Mutex::new(Some(channel.clone())));
+                    tokio::time::timeout(probe_timeout, candidate.get_block(common_anchor_u32))
+                        .await
+                        .ok()
+                        .and_then(std::result::Result::ok)
+                        .map(|block| block.hash)
+                }
+                None => None,
+            };
+            if primary_anchor.is_none() || alternate_anchor != primary_anchor {
+                if let Some(entry) = health.get_mut(index) {
+                    entry.healthy = false;
+                    entry.reason = Some(format!(
+                        "server block hash differs from primary at height {}",
+                        common_anchor
+                    ));
+                }
+            }
+        }
+
+        let healthy_indices = health
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| entry.healthy.then_some(index))
+            .collect::<Vec<_>>();
+        let mut state = self.endpoint_pool.write().await;
+        state.probed = true;
+        state.active_index = healthy_indices.first().copied().unwrap_or(0);
+        state.healthy_indices = healthy_indices;
+        state.failures.clear();
+        state.tips = probes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, probe)| probe.as_ref().map(|(_, tip, _)| (index, *tip)))
+            .collect();
+        state.channels = probes
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, probe)| {
+                health
+                    .get(index)
+                    .is_some_and(|entry| entry.healthy)
+                    .then(|| probe.map(|(_, _, channel)| (index, channel)))
+                    .flatten()
+            })
+            .collect();
+        health
+    }
+
+    async fn candidate_order(&self, minimum_tip: u64) -> Vec<usize> {
+        let state = self.endpoint_pool.read().await;
+        let mut candidates = if state.probed && !state.healthy_indices.is_empty() {
+            state.healthy_indices.clone()
+        } else {
+            vec![0]
+        };
+        if let Some(active_position) = candidates
+            .iter()
+            .position(|index| *index == state.active_index)
+        {
+            candidates.rotate_left(active_position);
+        }
+        candidates.retain(|index| state.tips.get(index).is_none_or(|tip| *tip >= minimum_tip));
+        candidates
+    }
+
+    async fn record_candidate_success(&self, index: usize) {
+        let mut state = self.endpoint_pool.write().await;
+        state.active_index = index;
+        state.failures.remove(&index);
+    }
+
+    async fn record_candidate_failure(&self, index: usize) {
+        let mut state = self.endpoint_pool.write().await;
+        let failures = state.failures.entry(index).or_insert(0);
+        *failures = failures.saturating_add(1);
     }
 
     /// Check if client is connected
@@ -2086,6 +2423,8 @@ impl Clone for LightClient {
         Self {
             config: self.config.clone(),
             channel: Arc::clone(&self.channel),
+            endpoint_pool: Arc::clone(&self.endpoint_pool),
+            subtree_root_capabilities: Arc::clone(&self.subtree_root_capabilities),
         }
     }
 }
@@ -2329,6 +2668,57 @@ mod tests {
             config.tls.spki_pin,
             Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string())
         );
+    }
+
+    #[test]
+    fn failover_inherits_transport_and_keeps_its_own_spki_pin() {
+        let primary_pin = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        let alternate_pin = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+        let config = LightClientConfig::with_socks5(
+            "https://primary.example:443",
+            "socks5://127.0.0.1:9050",
+        )
+        .with_spki_pin(primary_pin)
+        .with_failover_endpoint(
+            LightClientEndpoint::new("https://alternate.example:443").with_spki_pin(alternate_pin),
+        );
+        let client = LightClient::with_config(config);
+        let alternate = client.candidate_client(1).expect("alternate client");
+
+        assert_eq!(alternate.config.transport, TransportMode::Socks5);
+        assert_eq!(
+            alternate.config.socks5_url.as_deref(),
+            Some("socks5://127.0.0.1:9050")
+        );
+        assert_eq!(
+            alternate.config.tls.spki_pin.as_deref(),
+            Some(alternate_pin)
+        );
+        assert!(alternate.config.failover_endpoints.is_empty());
+    }
+
+    #[test]
+    fn failover_candidates_retain_private_transport_selection() {
+        for transport in [
+            TransportMode::Tor,
+            TransportMode::I2p,
+            TransportMode::Socks5,
+        ] {
+            let config = LightClientConfig {
+                transport,
+                socks5_url: (transport == TransportMode::Socks5)
+                    .then(|| "socks5://127.0.0.1:9050".to_string()),
+                allow_direct_fallback: false,
+                ..LightClientConfig::default()
+            }
+            .with_failover_endpoint(LightClientEndpoint::new("https://alternate.example:443"));
+            let client = LightClient::with_config(config);
+            let alternate = client.candidate_client(1).expect("alternate client");
+
+            assert_eq!(alternate.config.transport, transport);
+            assert_eq!(alternate.config.socks5_url, client.config.socks5_url);
+            assert!(!alternate.config.allow_direct_fallback);
+        }
     }
 
     #[test]
