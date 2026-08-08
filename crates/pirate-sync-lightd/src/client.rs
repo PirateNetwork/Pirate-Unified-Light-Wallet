@@ -6,6 +6,7 @@
 //! - Retry logic with exponential backoff
 //! - Compact block streaming
 
+use crate::ordered_stream::{OrderedBlockAssembler, OrderedBlockChunk};
 use crate::proto_types as proto;
 use crate::{Error, Result};
 use once_cell::sync::Lazy;
@@ -16,14 +17,17 @@ use pirate_net::{
     TransportConfig as NetTransportConfig, TransportManager as NetTransportManager,
     TransportMode as NetTransportMode,
 };
+use prost::Message;
 use rand::Rng;
+use std::collections::HashMap;
 use std::env;
 use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock as StdRwLock;
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tracing::{debug, error, info, warn};
 
@@ -2471,6 +2475,47 @@ impl LightClient {
         .await
     }
 
+    /// Return whether the endpoint's cached capability permits an optional probe.
+    pub(crate) fn subtree_root_probe_allowed(&self, protocol: ShieldedProtocol) -> bool {
+        let key = (self.config.endpoint.clone(), protocol as i32);
+        self.subtree_root_capabilities
+            .read()
+            .ok()
+            .and_then(|capabilities| capabilities.get(&key).copied())
+            .is_none_or(|capability| match capability {
+                SubtreeRootCapability::Available => true,
+                SubtreeRootCapability::RetryAfter(retry_after) => Instant::now() >= retry_after,
+            })
+    }
+
+    fn record_subtree_root_result(
+        &self,
+        protocol: ShieldedProtocol,
+        result: &Result<Vec<SubtreeRoot>>,
+    ) {
+        let capability = match result {
+            Ok(_) => SubtreeRootCapability::Available,
+            Err(Error::Status(status)) if status.code() == tonic::Code::Unimplemented => {
+                SubtreeRootCapability::RetryAfter(Instant::now() + SUBTREE_ROOT_UNSUPPORTED_RETRY)
+            }
+            Err(_) => {
+                SubtreeRootCapability::RetryAfter(Instant::now() + SUBTREE_ROOT_TRANSIENT_RETRY)
+            }
+        };
+        if let Ok(mut capabilities) = self.subtree_root_capabilities.write() {
+            capabilities.insert((self.config.endpoint.clone(), protocol as i32), capability);
+        }
+    }
+
+    pub(crate) fn record_subtree_root_timeout(&self, protocol: ShieldedProtocol) {
+        if let Ok(mut capabilities) = self.subtree_root_capabilities.write() {
+            capabilities.insert(
+                (self.config.endpoint.clone(), protocol as i32),
+                SubtreeRootCapability::RetryAfter(Instant::now() + SUBTREE_ROOT_TIMEOUT_RETRY),
+            );
+        }
+    }
+
     /// Fetch historical subtree roots for a shielded pool.
     pub async fn get_subtree_roots(
         &self,
@@ -2478,33 +2523,36 @@ impl LightClient {
         shielded_protocol: ShieldedProtocol,
         max_entries: u32,
     ) -> Result<Vec<SubtreeRoot>> {
-        self.with_retry(|| async {
-            let mut client = self.get_client().await?;
-            let mut request = tonic::Request::new(GetSubtreeRootsArg {
-                start_index,
-                shielded_protocol: shielded_protocol as i32,
-                max_entries,
-            });
-            request.set_timeout(self.config.request_timeout);
-
-            let mut stream = client.get_subtree_roots(request).await?.into_inner();
-            let mut roots = Vec::new();
-            let mut previous_height = None;
-            while let Some(root) = stream.message().await? {
-                let expected_index = u64::from(start_index) + roots.len() as u64;
-                validate_received_subtree_root(
-                    &root,
-                    expected_index,
-                    previous_height,
+        let result = self
+            .with_retry(|| async {
+                let mut client = self.get_client().await?;
+                let mut request = tonic::Request::new(GetSubtreeRootsArg {
+                    start_index,
+                    shielded_protocol: shielded_protocol as i32,
                     max_entries,
-                    roots.len(),
-                )?;
-                previous_height = Some(root.completing_block_height);
-                roots.push(root);
-            }
-            Ok(roots)
-        })
-        .await
+                });
+                request.set_timeout(self.config.request_timeout);
+
+                let mut stream = client.get_subtree_roots(request).await?.into_inner();
+                let mut roots = Vec::new();
+                let mut previous_height = None;
+                while let Some(root) = stream.message().await? {
+                    let expected_index = u64::from(start_index) + roots.len() as u64;
+                    validate_received_subtree_root(
+                        &root,
+                        expected_index,
+                        previous_height,
+                        max_entries,
+                        roots.len(),
+                    )?;
+                    previous_height = Some(root.completing_block_height);
+                    roots.push(root);
+                }
+                Ok(roots)
+            })
+            .await;
+        self.record_subtree_root_result(shielded_protocol, &result);
+        result
     }
 
     /// Get a single block by height
@@ -2699,6 +2747,21 @@ mod tests {
             .expect("valid first subtree root");
         validate_received_subtree_root(&valid_subtree_root(200), 6, Some(100), 2, 1)
             .expect("valid second subtree root");
+    }
+
+    #[test]
+    fn subtree_root_capability_cache_is_per_pool_and_recovers_on_success() {
+        let client = LightClient::new("https://roots.example:443".to_string());
+        assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Sapling));
+        assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Ironwood));
+
+        client.record_subtree_root_timeout(ShieldedProtocol::Sapling);
+        assert!(!client.subtree_root_probe_allowed(ShieldedProtocol::Sapling));
+        assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Ironwood));
+
+        let success = Ok(Vec::new());
+        client.record_subtree_root_result(ShieldedProtocol::Sapling, &success);
+        assert!(client.subtree_root_probe_allowed(ShieldedProtocol::Sapling));
     }
 
     #[test]
