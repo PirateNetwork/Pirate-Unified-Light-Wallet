@@ -333,6 +333,26 @@ pub(super) fn warm_shardtree_cache_with_subtrees_enabled() -> bool {
 pub(super) struct ShardtreePersistResult {
     pub(super) max_checkpointed_height: Option<u64>,
     pub(super) batch_end_checkpointed: bool,
+    pub(super) sapling_work: ShardtreePoolWork,
+    pub(super) ironwood_work: ShardtreePoolWork,
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+pub(super) struct CommittedCheckpointHeights {
+    pub(super) sapling: Option<u32>,
+    pub(super) ironwood: Option<u32>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct ShardtreePoolWork {
+    pub(super) commitment_count: u64,
+    pub(super) commitment_insert: Duration,
+    pub(super) parallel_construction: Duration,
+    pub(super) parallel_worker_active: Duration,
+    pub(super) prepared_tree_insert: Duration,
+    pub(super) prepared_tree_count: u64,
+    pub(super) checkpoint_count: u64,
+    pub(super) checkpoint_processing: Duration,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -360,6 +380,536 @@ impl ShardtreeBatch {
             orchard: Vec::new(),
         }
     }
+}
+
+struct OwnedPoolBatch<H> {
+    height: u64,
+    empty_checkpoint: bool,
+    start_position: Option<Position>,
+    leaves: Vec<(H, Retention<BlockHeight>)>,
+}
+
+struct PreparedTreeInsertion<H> {
+    start_position: Position,
+    subtree: LocatedPrunableTree<H>,
+    checkpoints: BTreeMap<BlockHeight, Position>,
+    worker_active: Duration,
+}
+
+enum PreparedPoolOperation<H> {
+    Insert {
+        trees: Vec<PreparedTreeInsertion<H>>,
+        commitment_count: u64,
+        construction: Duration,
+    },
+    VerifiedRoot(VerifiedSubtreeRoot<H>),
+    EmptyCheckpoint(BlockHeight),
+}
+
+struct PreparedPoolInsertions<H> {
+    operations: Vec<PreparedPoolOperation<H>>,
+}
+
+pub(super) struct PreparedShardtreeInsertions {
+    result: ShardtreePersistResult,
+    sapling: PreparedPoolInsertions<SaplingNode>,
+    ironwood: PreparedPoolInsertions<MerkleHashOrchard>,
+}
+
+fn insert_verified_pool_root<S, H, const DEPTH: u8, const SHARD_HEIGHT: u8>(
+    tree: &mut ShardTree<S, DEPTH, SHARD_HEIGHT>,
+    root: &VerifiedSubtreeRoot<H>,
+    pool_name: &str,
+) -> Result<()>
+where
+    S: ShardStore<H = H, CheckpointId = BlockHeight>,
+    H: Hashable + Clone + PartialEq,
+    S::Error: std::fmt::Display,
+{
+    tree.insert(
+        Address::from_parts(SHARD_HEIGHT.into(), root.index),
+        root.root.clone(),
+    )
+    .map_err(|error| {
+        Error::Sync(format!(
+            "Failed to stage verified {} subtree root {}: {}",
+            pool_name, root.index, error
+        ))
+    })
+}
+
+fn pool_batch_has_checkpoint<H>(
+    leaves: &[(H, Retention<BlockHeight>)],
+    empty_checkpoint: bool,
+    checkpoint_id: BlockHeight,
+) -> bool {
+    empty_checkpoint
+        || leaves.last().is_some_and(|(_, retention)| {
+            matches!(
+                retention,
+                Retention::Checkpoint { id, .. } if *id == checkpoint_id
+            )
+        })
+}
+
+fn summarize_shardtree_batches(
+    batches: &[ShardtreeBatch],
+    batch_end_height: Option<u64>,
+    max_committed_heights: CommittedCheckpointHeights,
+) -> Result<ShardtreePersistResult> {
+    let mut result = ShardtreePersistResult::default();
+    for batch in batches {
+        let checkpoint_height = u32::try_from(batch.height).map_err(|_| {
+            Error::Sync(format!(
+                "Checkpoint height {} exceeds u32::MAX",
+                batch.height
+            ))
+        })?;
+        let sapling_committed = max_committed_heights
+            .sapling
+            .is_some_and(|height| checkpoint_height <= height);
+        let ironwood_committed = max_committed_heights
+            .ironwood
+            .is_some_and(|height| checkpoint_height <= height);
+        if sapling_committed && ironwood_committed {
+            continue;
+        }
+        if let Some(checkpoint_id) = batch.checkpoint_id {
+            result.max_checkpointed_height = Some(
+                result
+                    .max_checkpointed_height
+                    .map_or(batch.height, |current| current.max(batch.height)),
+            );
+            if batch_end_height == Some(batch.height) {
+                result.batch_end_checkpointed = pool_batch_has_checkpoint(
+                    &batch.sapling,
+                    batch.sapling_empty_checkpoint,
+                    checkpoint_id,
+                ) && pool_batch_has_checkpoint(
+                    &batch.orchard,
+                    batch.orchard_empty_checkpoint,
+                    checkpoint_id,
+                );
+            }
+        }
+    }
+    Ok(result)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ConstructionRange {
+    start: u64,
+    len: usize,
+}
+
+fn adaptive_tree_chunk_limit(total_leaves: usize, parallelism: usize) -> usize {
+    if total_leaves == 0 {
+        return 0;
+    }
+
+    let useful_tasks = total_leaves.div_ceil(MIN_PARALLEL_TREE_CHUNK_LEAVES).max(1);
+    let target_tasks = parallelism
+        .max(1)
+        .saturating_mul(TARGET_TREE_CHUNKS_PER_THREAD)
+        .min(useful_tasks)
+        .max(1);
+    total_leaves
+        .div_ceil(target_tasks)
+        .max(1)
+        .checked_next_power_of_two()
+        .unwrap_or(MAX_PARALLEL_TREE_CHUNK_LEAVES)
+        .clamp(
+            MIN_PARALLEL_TREE_CHUNK_LEAVES,
+            MAX_PARALLEL_TREE_CHUNK_LEAVES,
+        )
+}
+
+fn balanced_construction_ranges<const SHARD_HEIGHT: u8>(
+    start_position: Position,
+    total_leaves: usize,
+    parallelism: usize,
+    pool_name: &'static str,
+) -> Result<Vec<ConstructionRange>> {
+    if total_leaves == 0 {
+        return Ok(Vec::new());
+    }
+
+    let shard_leaf_count = 1u64 << SHARD_HEIGHT;
+    let chunk_limit = adaptive_tree_chunk_limit(total_leaves, parallelism);
+    let mut ranges = Vec::with_capacity(total_leaves.div_ceil(chunk_limit).saturating_add(2));
+    let mut next_position = u64::from(start_position);
+    let mut remaining = total_leaves;
+
+    while remaining > 0 {
+        let shard_end = next_position
+            .checked_div(shard_leaf_count)
+            .and_then(|index| index.checked_add(1))
+            .and_then(|index| index.checked_mul(shard_leaf_count))
+            .ok_or_else(|| {
+                Error::Sync(format!(
+                    "{} commitment position overflow while planning ShardTree construction",
+                    pool_name
+                ))
+            })?;
+        let max_take = remaining
+            .min(chunk_limit)
+            .min((shard_end - next_position) as usize);
+        let mut take = 1usize;
+        while take <= max_take / 2 && next_position % (take.saturating_mul(2) as u64) == 0 {
+            take = take.saturating_mul(2);
+        }
+        ranges.push(ConstructionRange {
+            start: next_position,
+            len: take,
+        });
+        next_position = next_position.checked_add(take as u64).ok_or_else(|| {
+            Error::Sync(format!(
+                "{} commitment position overflow while planning ShardTree construction",
+                pool_name
+            ))
+        })?;
+        remaining -= take;
+    }
+
+    Ok(ranges)
+}
+
+fn push_prepared_run<H, const SHARD_HEIGHT: u8>(
+    operations: &mut Vec<PreparedPoolOperation<H>>,
+    run_start: &mut Option<Position>,
+    run_leaves: &mut Vec<(H, Retention<BlockHeight>)>,
+    parallelism: usize,
+    pool_name: &'static str,
+) -> Result<()>
+where
+    H: Hashable + Clone + PartialEq + Send + Sync,
+{
+    let Some(start_position) = run_start.take() else {
+        return Ok(());
+    };
+    let leaves = std::mem::take(run_leaves);
+    if leaves.is_empty() {
+        return Ok(());
+    }
+
+    let commitment_count = leaves.len() as u64;
+    let ranges = balanced_construction_ranges::<SHARD_HEIGHT>(
+        start_position,
+        leaves.len(),
+        parallelism,
+        pool_name,
+    )?;
+    let mut chunks = Vec::with_capacity(ranges.len());
+    let mut remaining = leaves.into_iter();
+    for range in ranges {
+        let chunk_leaves = remaining.by_ref().take(range.len).collect::<Vec<_>>();
+        if chunk_leaves.len() != range.len {
+            return Err(Error::Sync(format!(
+                "{} adaptive ShardTree plan did not consume its complete commitment range",
+                pool_name
+            )));
+        }
+        chunks.push((Position::from(range.start), chunk_leaves));
+    }
+    debug_assert_eq!(remaining.len(), 0);
+
+    let construction_start = Instant::now();
+    let prepared = chunks
+        .into_par_iter()
+        .map(|(chunk_start, chunk_leaves)| {
+            let worker_started = Instant::now();
+            let chunk_len = chunk_leaves.len() as u64;
+            let chunk_end = u64::from(chunk_start)
+                .checked_add(chunk_len)
+                .ok_or_else(|| {
+                    Error::Sync(format!(
+                        "{} commitment range overflow while constructing ShardTree fragment",
+                        pool_name
+                    ))
+                })?;
+            let result = LocatedPrunableTree::<H>::from_iter(
+                chunk_start..Position::from(chunk_end),
+                Level::from(SHARD_HEIGHT),
+                chunk_leaves.into_iter(),
+            )
+            .ok_or_else(|| {
+                Error::Sync(format!(
+                    "{} parallel ShardTree construction produced no fragment",
+                    pool_name
+                ))
+            })?;
+            if result.remainder.len() != 0
+                || u64::from(result.max_insert_position).saturating_add(1) != chunk_end
+            {
+                return Err(Error::Sync(format!(
+                    "{} parallel ShardTree construction did not consume its complete range",
+                    pool_name
+                )));
+            }
+            Ok(PreparedTreeInsertion {
+                start_position: chunk_start,
+                subtree: result.subtree,
+                checkpoints: result.checkpoints,
+                worker_active: worker_started.elapsed(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let construction = construction_start.elapsed();
+    operations.push(PreparedPoolOperation::Insert {
+        trees: prepared,
+        commitment_count,
+        construction,
+    });
+    Ok(())
+}
+
+fn prepare_pool_insertions<H, const SHARD_HEIGHT: u8>(
+    batches: Vec<OwnedPoolBatch<H>>,
+    max_committed_height: Option<u32>,
+    mut verified_roots: Vec<VerifiedSubtreeRoot<H>>,
+    parallelism: usize,
+    pool_name: &'static str,
+) -> Result<PreparedPoolInsertions<H>>
+where
+    H: Hashable + Clone + PartialEq + Send + Sync,
+{
+    verified_roots.sort_by_key(|root| (root.end_height, root.index));
+    let mut verified_roots = VecDeque::from(verified_roots);
+    let mut operations = Vec::new();
+    let mut run_start = None;
+    let mut run_leaves = Vec::new();
+
+    for batch in batches {
+        let checkpoint_height = u32::try_from(batch.height).map_err(|_| {
+            Error::Sync(format!(
+                "Checkpoint height {} exceeds u32::MAX",
+                batch.height
+            ))
+        })?;
+        if max_committed_height.is_some_and(|height| checkpoint_height <= height) {
+            push_prepared_run::<H, SHARD_HEIGHT>(
+                &mut operations,
+                &mut run_start,
+                &mut run_leaves,
+                parallelism,
+                pool_name,
+            )?;
+            while verified_roots
+                .front()
+                .is_some_and(|root| root.end_height <= batch.height)
+            {
+                verified_roots.pop_front();
+            }
+            continue;
+        }
+
+        while verified_roots
+            .front()
+            .is_some_and(|root| root.end_height <= batch.height)
+        {
+            push_prepared_run::<H, SHARD_HEIGHT>(
+                &mut operations,
+                &mut run_start,
+                &mut run_leaves,
+                parallelism,
+                pool_name,
+            )?;
+            operations.push(PreparedPoolOperation::VerifiedRoot(
+                verified_roots
+                    .pop_front()
+                    .expect("verified root was present"),
+            ));
+        }
+
+        if !batch.leaves.is_empty() {
+            let start_position = batch.start_position.ok_or_else(|| {
+                Error::Sync(format!(
+                    "Missing {} start position for shardtree batch at height {}",
+                    pool_name, batch.height
+                ))
+            })?;
+            let expected_start = run_start.map(|start| {
+                Position::from(u64::from(start).saturating_add(run_leaves.len() as u64))
+            });
+            if expected_start.is_some_and(|expected| expected != start_position) {
+                push_prepared_run::<H, SHARD_HEIGHT>(
+                    &mut operations,
+                    &mut run_start,
+                    &mut run_leaves,
+                    parallelism,
+                    pool_name,
+                )?;
+            }
+            if run_start.is_none() {
+                run_start = Some(start_position);
+            }
+            run_leaves.extend(batch.leaves);
+        }
+
+        if batch.empty_checkpoint {
+            push_prepared_run::<H, SHARD_HEIGHT>(
+                &mut operations,
+                &mut run_start,
+                &mut run_leaves,
+                parallelism,
+                pool_name,
+            )?;
+            operations.push(PreparedPoolOperation::EmptyCheckpoint(BlockHeight::from(
+                checkpoint_height,
+            )));
+        }
+    }
+
+    push_prepared_run::<H, SHARD_HEIGHT>(
+        &mut operations,
+        &mut run_start,
+        &mut run_leaves,
+        parallelism,
+        pool_name,
+    )?;
+    if let Some(root) = verified_roots.front() {
+        return Err(Error::Sync(format!(
+            "Verified {} subtree root {} completed at height {} outside the persisted block batch",
+            pool_name, root.index, root.end_height
+        )));
+    }
+    Ok(PreparedPoolInsertions { operations })
+}
+
+pub(super) fn prepare_parallel_shardtree_insertions(
+    construction_pool: &rayon::ThreadPool,
+    batches: Vec<ShardtreeBatch>,
+    batch_end_height: Option<u64>,
+    max_committed_heights: CommittedCheckpointHeights,
+    verified_roots: &VerifiedSubtreeRoots,
+) -> Result<PreparedShardtreeInsertions> {
+    let result = summarize_shardtree_batches(&batches, batch_end_height, max_committed_heights)?;
+    let mut sapling_batches = Vec::with_capacity(batches.len());
+    let mut ironwood_batches = Vec::with_capacity(batches.len());
+    for batch in batches {
+        sapling_batches.push(OwnedPoolBatch {
+            height: batch.height,
+            empty_checkpoint: batch.sapling_empty_checkpoint,
+            start_position: batch.sapling_start_position,
+            leaves: batch.sapling,
+        });
+        ironwood_batches.push(OwnedPoolBatch {
+            height: batch.height,
+            empty_checkpoint: batch.orchard_empty_checkpoint,
+            start_position: batch.orchard_start_position,
+            leaves: batch.orchard,
+        });
+    }
+    let sapling_roots = verified_roots.sapling.clone();
+    let ironwood_roots = verified_roots.ironwood.clone();
+    let parallelism = construction_pool.current_num_threads().max(1);
+    let (sapling, ironwood) = construction_pool.install(|| {
+        rayon::join(
+            || {
+                prepare_pool_insertions::<SaplingNode, SAPLING_SHARD_HEIGHT>(
+                    sapling_batches,
+                    max_committed_heights.sapling,
+                    sapling_roots,
+                    parallelism,
+                    "Sapling",
+                )
+            },
+            || {
+                prepare_pool_insertions::<MerkleHashOrchard, ORCHARD_SHARD_HEIGHT>(
+                    ironwood_batches,
+                    max_committed_heights.ironwood,
+                    ironwood_roots,
+                    parallelism,
+                    "Ironwood",
+                )
+            },
+        )
+    });
+    Ok(PreparedShardtreeInsertions {
+        result,
+        sapling: sapling?,
+        ironwood: ironwood?,
+    })
+}
+
+fn apply_prepared_pool_insertions<S, H, const DEPTH: u8, const SHARD_HEIGHT: u8>(
+    tree: &mut ShardTree<S, DEPTH, SHARD_HEIGHT>,
+    prepared: PreparedPoolInsertions<H>,
+    pool_name: &str,
+) -> Result<ShardtreePoolWork>
+where
+    S: ShardStore<H = H, CheckpointId = BlockHeight>,
+    S::Error: std::fmt::Display,
+    H: Hashable + Clone + PartialEq,
+{
+    let mut telemetry = ShardtreePoolWork::default();
+    for operation in prepared.operations {
+        match operation {
+            PreparedPoolOperation::Insert {
+                mut trees,
+                commitment_count,
+                construction,
+            } => {
+                trees.sort_by_key(|tree| u64::from(tree.start_position));
+                let worker_active = trees
+                    .iter()
+                    .map(|tree| tree.worker_active)
+                    .sum::<Duration>();
+                let insert_start = Instant::now();
+                for prepared_tree in trees {
+                    tree.insert_tree(prepared_tree.subtree, prepared_tree.checkpoints)
+                        .map_err(|error| {
+                            Error::Sync(format!(
+                                "Failed to insert prepared {} ShardTree fragment: {}",
+                                pool_name, error
+                            ))
+                        })?;
+                    telemetry.prepared_tree_count = telemetry.prepared_tree_count.saturating_add(1);
+                }
+                let insert_elapsed = insert_start.elapsed();
+                telemetry.parallel_construction += construction;
+                telemetry.parallel_worker_active += worker_active;
+                telemetry.prepared_tree_insert += insert_elapsed;
+                telemetry.commitment_insert += construction + insert_elapsed;
+                telemetry.commitment_count =
+                    telemetry.commitment_count.saturating_add(commitment_count);
+            }
+            PreparedPoolOperation::VerifiedRoot(root) => {
+                insert_verified_pool_root(tree, &root, pool_name)?;
+            }
+            PreparedPoolOperation::EmptyCheckpoint(checkpoint_id) => {
+                let checkpoint_start = Instant::now();
+                tree.checkpoint(checkpoint_id).map_err(|error| {
+                    Error::Sync(format!(
+                        "Failed to checkpoint {} shardtree: {}",
+                        pool_name, error
+                    ))
+                })?;
+                telemetry.checkpoint_processing += checkpoint_start.elapsed();
+                telemetry.checkpoint_count = telemetry.checkpoint_count.saturating_add(1);
+            }
+        }
+    }
+    Ok(telemetry)
+}
+
+pub(super) fn apply_prepared_shardtree_insertions_to_trees<SS, OS>(
+    sapling_tree: &mut ShardTree<SS, { NOTE_COMMITMENT_TREE_DEPTH }, SAPLING_SHARD_HEIGHT>,
+    ironwood_tree: &mut ShardTree<OS, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT>,
+    prepared: PreparedShardtreeInsertions,
+) -> Result<ShardtreePersistResult>
+where
+    SS: ShardStore<H = SaplingNode, CheckpointId = BlockHeight>,
+    OS: ShardStore<H = MerkleHashOrchard, CheckpointId = BlockHeight>,
+    SS::Error: std::fmt::Display,
+    OS::Error: std::fmt::Display,
+{
+    let mut result = prepared.result;
+    result.sapling_work =
+        apply_prepared_pool_insertions(&mut *sapling_tree, prepared.sapling, "Sapling")?;
+    result.ironwood_work =
+        apply_prepared_pool_insertions(&mut *ironwood_tree, prepared.ironwood, "Ironwood")?;
+    Ok(result)
 }
 
 pub(super) fn apply_shardtree_batches_to_trees<SS, OS>(
