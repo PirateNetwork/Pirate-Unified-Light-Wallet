@@ -883,3 +883,713 @@ impl Drop for PrefetchReservationInner {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, Copy)]
+    struct SimulatedDevice {
+        initial_blocks: u64,
+        min_blocks: u64,
+        max_blocks: u64,
+        high_bytes: u64,
+        low_bytes: u64,
+        cpu_blocks_per_second: u64,
+        storage_bytes_per_second: u64,
+        network_bits_per_second: u64,
+        network_latency_ms: u64,
+        jitter_ms: &'static [u64],
+    }
+
+    struct SimulationOutcome {
+        scanned_blocks: u64,
+        peak_queued_bytes: u64,
+        local_batches: Vec<u64>,
+        network_segments: Vec<u64>,
+    }
+
+    fn encoded_block_bytes(height: u64) -> u64 {
+        let ordinary = 160 + height.wrapping_mul(1_103_515_245).wrapping_add(12_345) % 640;
+        if height != 0 && height.is_multiple_of(8_191) {
+            ordinary + 512 * 1024
+        } else {
+            ordinary
+        }
+    }
+
+    fn nanos_for_ratio(units: u64, units_per_second: u64) -> u128 {
+        u128::from(units)
+            .saturating_mul(1_000_000_000)
+            .div_ceil(u128::from(units_per_second.max(1)))
+    }
+
+    fn simulation_duration(nanos: u128) -> Duration {
+        Duration::from_nanos(nanos.min(u128::from(u64::MAX)) as u64)
+    }
+
+    fn simulate_device(profile: SimulatedDevice, total_blocks: u64) -> SimulationOutcome {
+        let mut batcher = AdaptiveScanBatcher::new(
+            profile.initial_blocks,
+            profile.min_blocks,
+            profile.max_blocks,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            profile.high_bytes / 2,
+        );
+        let network_segments = (0..total_blocks)
+            .step_by(DEFAULT_DURABLE_SEGMENT_BLOCKS as usize)
+            .map(|start| DEFAULT_DURABLE_SEGMENT_BLOCKS.min(total_blocks - start))
+            .collect::<Vec<_>>();
+        let mut local_batches = Vec::new();
+        let mut scanned_blocks = 0u64;
+        let mut queued_bytes = 0u64;
+        let mut peak_queued_bytes = 0u64;
+        let mut throttled = false;
+        let mut previous_processing_nanos = 0u128;
+        let mut sample = 0usize;
+
+        while scanned_blocks < total_blocks {
+            if queued_bytes <= profile.low_bytes {
+                throttled = false;
+            }
+            if !throttled {
+                let produced = previous_processing_nanos
+                    .saturating_mul(u128::from(profile.network_bits_per_second))
+                    / 8
+                    / 1_000_000_000;
+                queued_bytes = queued_bytes
+                    .saturating_add(produced.min(u128::from(u64::MAX)) as u64)
+                    .min(profile.high_bytes);
+                if queued_bytes >= profile.high_bytes {
+                    throttled = true;
+                }
+            }
+
+            let blocks = batcher
+                .target_blocks()
+                .min(total_blocks.saturating_sub(scanned_blocks));
+            let encoded_bytes = (scanned_blocks..scanned_blocks + blocks)
+                .map(encoded_block_bytes)
+                .sum::<u64>();
+            let missing_bytes = encoded_bytes.saturating_sub(queued_bytes);
+            let jitter_ms = profile
+                .jitter_ms
+                .get(sample % profile.jitter_ms.len().max(1))
+                .copied()
+                .unwrap_or(0);
+            let intake_wait_nanos = if missing_bytes == 0 {
+                0
+            } else {
+                u128::from(profile.network_latency_ms.saturating_add(jitter_ms))
+                    .saturating_mul(1_000_000)
+                    .saturating_add(nanos_for_ratio(
+                        missing_bytes.saturating_mul(8),
+                        profile.network_bits_per_second,
+                    ))
+            };
+            queued_bytes = queued_bytes.saturating_add(missing_bytes);
+            peak_queued_bytes = peak_queued_bytes.max(queued_bytes);
+            queued_bytes = queued_bytes.saturating_sub(encoded_bytes);
+
+            let processing_nanos =
+                nanos_for_ratio(blocks, profile.cpu_blocks_per_second).saturating_add(
+                    nanos_for_ratio(encoded_bytes, profile.storage_bytes_per_second),
+                );
+            local_batches.push(blocks);
+            scanned_blocks = scanned_blocks.saturating_add(blocks);
+            batcher.observe(ScanBatchObservation {
+                requested_blocks: blocks,
+                requested_bytes: profile.high_bytes / 2,
+                blocks,
+                encoded_bytes,
+                processing_time: simulation_duration(processing_nanos),
+                intake_wait: simulation_duration(intake_wait_nanos),
+                queued_bytes,
+                source: ScanBatchSource::Network,
+                tree_parallel_wall: Duration::ZERO,
+                tree_parallel_worker_active: Duration::ZERO,
+                stream_tail: scanned_blocks == total_blocks,
+            });
+            previous_processing_nanos = processing_nanos;
+            sample += 1;
+        }
+
+        SimulationOutcome {
+            scanned_blocks,
+            peak_queued_bytes,
+            local_batches,
+            network_segments,
+        }
+    }
+
+    fn observation(
+        blocks: u64,
+        processing_ms: u64,
+        wait_ms: u64,
+        queued_bytes: u64,
+    ) -> ScanBatchObservation {
+        ScanBatchObservation {
+            requested_blocks: blocks,
+            requested_bytes: 64 * 1024 * 1024,
+            blocks,
+            encoded_bytes: blocks.saturating_mul(256),
+            processing_time: Duration::from_millis(processing_ms),
+            intake_wait: Duration::from_millis(wait_ms),
+            queued_bytes,
+            source: ScanBatchSource::Network,
+            tree_parallel_wall: Duration::ZERO,
+            tree_parallel_worker_active: Duration::ZERO,
+            stream_tail: false,
+        }
+    }
+
+    fn cached_observation(
+        requested_blocks: u64,
+        blocks: u64,
+        processing_ms: u64,
+        wait_ms: u64,
+        tree_wall_ms: u64,
+        tree_worker_active_ms: u64,
+    ) -> ScanBatchObservation {
+        ScanBatchObservation {
+            requested_blocks,
+            requested_bytes: 64 * 1024 * 1024,
+            blocks,
+            encoded_bytes: blocks.saturating_mul(256),
+            processing_time: Duration::from_millis(processing_ms),
+            intake_wait: Duration::from_millis(wait_ms),
+            queued_bytes: 0,
+            source: ScanBatchSource::Cache,
+            tree_parallel_wall: Duration::from_millis(tree_wall_ms),
+            tree_parallel_worker_active: Duration::from_millis(tree_worker_active_ms),
+            stream_tail: false,
+        }
+    }
+
+    fn durable_observation(
+        blocks: u64,
+        network_blocks_per_second: u64,
+        cache_blocks_per_second: u64,
+        cache_fixed_micros: u64,
+    ) -> DurableSegmentObservation {
+        let encoded_bytes = blocks.saturating_mul(200);
+        let network_nanos = nanos_for_ratio(blocks, network_blocks_per_second);
+        let cache_nanos = nanos_for_ratio(blocks, cache_blocks_per_second)
+            .saturating_add(u128::from(cache_fixed_micros) * 1_000);
+        DurableSegmentObservation {
+            blocks,
+            encoded_bytes,
+            network_wait: simulation_duration(network_nanos),
+            cache_write: simulation_duration(cache_nanos),
+            queued_bytes: 0,
+            high_water_bytes: 64 * 1024 * 1024,
+            stream_tail: false,
+        }
+    }
+
+    fn drive_durable_controller(
+        controller: &mut AdaptiveDurableSegmentController,
+        samples: usize,
+        network_blocks_per_second: u64,
+        cache_blocks_per_second: u64,
+        cache_fixed_micros: u64,
+    ) -> usize {
+        let mut changes = 0;
+        for _ in 0..samples {
+            let before = controller.target_blocks();
+            let observation = durable_observation(
+                before,
+                network_blocks_per_second,
+                cache_blocks_per_second,
+                cache_fixed_micros,
+            );
+            let after = controller.observe(observation);
+            changes += usize::from(before != after);
+        }
+        changes
+    }
+
+    #[test]
+    fn durable_segment_controller_has_small_bounded_state() {
+        assert!(std::mem::size_of::<AdaptiveDurableSegmentController>() <= 64);
+    }
+
+    #[test]
+    fn durable_segment_controller_converges_for_slow_and_fast_streams() {
+        let mut slow = AdaptiveDurableSegmentController::new(64 * 1024 * 1024);
+        let slow_changes = drive_durable_controller(&mut slow, 30, 600, 40_000, 20_000);
+        assert_eq!(slow.target_blocks(), 512);
+        assert!(slow_changes <= 2);
+
+        let mut measured = AdaptiveDurableSegmentController::new(64 * 1024 * 1024);
+        let measured_changes = drive_durable_controller(&mut measured, 30, 915, 40_000, 20_000);
+        assert_eq!(measured.target_blocks(), 1_024);
+        assert_eq!(measured_changes, 0);
+
+        let mut fast = AdaptiveDurableSegmentController::new(64 * 1024 * 1024);
+        let fast_changes = drive_durable_controller(&mut fast, 60, 100_000, 100_000, 20_000);
+        assert!(matches!(fast.target_blocks(), 4_096 | 8_192));
+        assert!(fast_changes <= 4);
+    }
+
+    #[test]
+    fn durable_segment_controller_resists_alternating_bandwidth() {
+        let mut controller = AdaptiveDurableSegmentController::new(64 * 1024 * 1024);
+        let mut changes = 0;
+        for sample in 0..120 {
+            let before = controller.target_blocks();
+            let network_rate = if sample % 2 == 0 { 600 } else { 100_000 };
+            let after =
+                controller.observe(durable_observation(before, network_rate, 80_000, 20_000));
+            changes += usize::from(before != after);
+        }
+        assert!(
+            changes <= 3,
+            "alternating bandwidth caused {changes} changes"
+        );
+        assert!(matches!(controller.target_blocks(), 512 | 1_024 | 2_048));
+    }
+
+    #[test]
+    fn durable_segment_controller_changes_one_bucket_at_a_time() {
+        let mut controller = AdaptiveDurableSegmentController::new(64 * 1024 * 1024);
+        let mut previous = controller.current_index;
+        for _ in 0..80 {
+            let blocks = controller.target_blocks();
+            controller.observe(durable_observation(blocks, 1_000_000, 1_000_000, 100));
+            assert!(controller.current_index.abs_diff(previous) <= 1);
+            previous = controller.current_index;
+        }
+    }
+
+    #[test]
+    fn durable_segment_controller_does_not_grow_under_queue_pressure() {
+        let mut controller = AdaptiveDurableSegmentController::new(64 * 1024 * 1024);
+        for _ in 0..30 {
+            let blocks = controller.target_blocks();
+            let mut observation = durable_observation(blocks, 1_000_000, 1_000_000, 100);
+            observation.queued_bytes = 60 * 1024 * 1024;
+            controller.observe(observation);
+        }
+        assert_eq!(controller.target_blocks(), DEFAULT_DURABLE_SEGMENT_BLOCKS);
+    }
+
+    #[test]
+    fn durable_segment_controller_ignores_short_retry_and_tail_fragments() {
+        let mut controller = AdaptiveDurableSegmentController::new(64 * 1024 * 1024);
+        let mut retry = durable_observation(100, 10, 10, 1_000_000);
+        assert_eq!(controller.observe(retry), DEFAULT_DURABLE_SEGMENT_BLOCKS);
+        retry.stream_tail = true;
+        for _ in 0..10 {
+            assert_eq!(controller.observe(retry), DEFAULT_DURABLE_SEGMENT_BLOCKS);
+        }
+    }
+
+    #[test]
+    #[ignore = "manual adaptive durable-segment controller benchmark"]
+    fn benchmark_adaptive_durable_segment_controller() {
+        const OBSERVATIONS: u64 = 10_000_000;
+        let mut controller = AdaptiveDurableSegmentController::new(64 * 1024 * 1024);
+        let started = std::time::Instant::now();
+        for sample in 0..OBSERVATIONS {
+            let blocks = std::hint::black_box(controller.target_blocks());
+            let network_rate = if sample.is_multiple_of(17) {
+                600
+            } else {
+                100_000
+            };
+            std::hint::black_box(controller.observe(durable_observation(
+                blocks,
+                network_rate,
+                80_000,
+                20_000,
+            )));
+        }
+        let elapsed = started.elapsed();
+        println!(
+            "adaptive durable segment controller: state={} bytes, observations={OBSERVATIONS}, elapsed={:.3}s, {:.1} ns/observation",
+            std::mem::size_of::<AdaptiveDurableSegmentController>(),
+            elapsed.as_secs_f64(),
+            elapsed.as_nanos() as f64 / OBSERVATIONS as f64
+        );
+    }
+
+    #[test]
+    fn adaptive_batcher_converges_without_leaving_profile_bounds() {
+        let mut batcher = AdaptiveScanBatcher::new(
+            6_000,
+            100,
+            16_000,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            64 * 1024 * 1024,
+        );
+        for _ in 0..12 {
+            batcher.observe(observation(batcher.target_blocks(), 900, 400, 0));
+        }
+        assert!(batcher.target_blocks() < 6_000);
+        assert!(batcher.target_blocks() >= 100);
+
+        for _ in 0..20 {
+            batcher.observe(observation(
+                batcher.target_blocks(),
+                40,
+                0,
+                32 * 1024 * 1024,
+            ));
+        }
+        assert!(batcher.target_blocks() > 100);
+        assert!(batcher.target_blocks() <= 16_000);
+    }
+
+    #[test]
+    fn final_short_batch_does_not_distort_the_controller() {
+        let mut batcher = AdaptiveScanBatcher::new(
+            4_000,
+            100,
+            16_000,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            64 * 1024 * 1024,
+        );
+        let mut tail = observation(10, 2_000, 1_000, 0);
+        tail.stream_tail = true;
+        assert_eq!(batcher.observe(tail), 4_000);
+    }
+
+    #[test]
+    fn cache_wait_does_not_collapse_the_local_scan_target() {
+        let mut batcher = AdaptiveScanBatcher::new(
+            8_000,
+            128,
+            16_000,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            64 * 1024 * 1024,
+        );
+
+        for _ in 0..24 {
+            let target = batcher.target_blocks();
+            batcher.observe(cached_observation(target, target, 200, 700, 100, 400));
+        }
+
+        assert!(batcher.target_blocks() >= 8_000);
+    }
+
+    #[test]
+    fn cached_latency_does_not_shrink_a_saturated_profile_ceiling() {
+        let mut batcher = AdaptiveScanBatcher::with_parallelism(
+            16_000,
+            128,
+            16_000,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            64 * 1024 * 1024,
+            16,
+        );
+
+        let mut minimum_target = batcher.target_blocks();
+        let mut rejected_smaller_probe = false;
+        for _ in 0..12 {
+            let target = batcher.target_blocks();
+            minimum_target = minimum_target.min(target);
+            batcher.observe(cached_observation(target, target, 900, 700, 600, 7_200));
+            rejected_smaller_probe |= batcher.last_decision() == ScanBatchDecision::CacheRegression;
+        }
+
+        assert_eq!(minimum_target, 12_800);
+        assert_eq!(batcher.target_blocks(), 16_000);
+        assert!(rejected_smaller_probe);
+        assert!(batcher.cached_blocks_per_second() > 0);
+        assert_eq!(batcher.cached_parallel_saturation_ppm(), 750_000);
+    }
+
+    #[test]
+    fn cached_controller_accepts_parallel_saturation_then_rejects_a_plateau() {
+        let mut batcher = AdaptiveScanBatcher::with_parallelism(
+            1_024,
+            128,
+            8_192,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            64 * 1024 * 1024,
+            8,
+        );
+
+        for _ in 0..CACHED_SCAN_CONFIRMATIONS {
+            batcher.observe(cached_observation(1_024, 1_024, 100, 0, 100, 200));
+        }
+        assert_eq!(batcher.target_blocks(), 1_280);
+        assert_eq!(batcher.last_decision(), ScanBatchDecision::CacheProbeLarger);
+
+        // Throughput is unchanged, but the larger range keeps more tree workers
+        // occupied, so retaining the larger target improves parallel efficiency.
+        for _ in 0..CACHED_SCAN_CONFIRMATIONS {
+            batcher.observe(cached_observation(1_280, 1_280, 125, 0, 100, 300));
+        }
+        assert_eq!(batcher.target_blocks(), 1_600);
+        assert_eq!(batcher.last_decision(), ScanBatchDecision::CacheProbeLarger);
+
+        // A further probe improves neither throughput nor worker occupancy and
+        // therefore returns to the last proven operating point.
+        for _ in 0..CACHED_SCAN_CONFIRMATIONS {
+            batcher.observe(cached_observation(1_600, 1_600, 157, 0, 100, 300));
+        }
+        assert_eq!(batcher.target_blocks(), 1_280);
+        assert_eq!(batcher.last_decision(), ScanBatchDecision::CachePlateau);
+    }
+
+    #[test]
+    fn exact_byte_limited_cache_batches_do_not_reduce_the_block_target() {
+        let mut batcher = AdaptiveScanBatcher::with_parallelism(
+            8_000,
+            128,
+            16_000,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            8 * 1024 * 1024,
+            8,
+        );
+
+        for _ in 0..12 {
+            let target = batcher.target_blocks();
+            let mut sample = cached_observation(target, 1_000, 100, 0, 80, 320);
+            sample.requested_bytes = 8 * 1024 * 1024;
+            sample.encoded_bytes = sample.requested_bytes;
+            batcher.observe(sample);
+        }
+
+        assert!(batcher.target_blocks() >= 8_000);
+    }
+
+    #[test]
+    fn stale_prefetched_cache_batch_does_not_change_the_controller() {
+        let mut batcher = AdaptiveScanBatcher::with_parallelism(
+            8_000,
+            128,
+            16_000,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            64 * 1024 * 1024,
+            8,
+        );
+        let sample = cached_observation(6_000, 6_000, 200, 0, 100, 400);
+
+        assert_eq!(batcher.observe(sample), 8_000);
+        assert_eq!(batcher.last_decision(), ScanBatchDecision::CacheStaleSample);
+    }
+
+    #[test]
+    fn changing_sources_resets_cached_probe_history() {
+        let mut batcher = AdaptiveScanBatcher::with_parallelism(
+            1_024,
+            128,
+            8_192,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            64 * 1024 * 1024,
+            8,
+        );
+        for _ in 0..CACHED_SCAN_CONFIRMATIONS {
+            batcher.observe(cached_observation(1_024, 1_024, 100, 0, 100, 200));
+        }
+        assert_eq!(batcher.target_blocks(), 1_280);
+
+        batcher.observe(observation(1_280, 125, 0, 0));
+        batcher.observe(cached_observation(1_280, 1_280, 125, 0, 100, 300));
+
+        assert_eq!(batcher.target_blocks(), 1_280);
+        assert_eq!(batcher.last_decision(), ScanBatchDecision::CacheCollecting);
+    }
+
+    #[test]
+    fn cached_throughput_controller_has_small_bounded_state() {
+        assert!(std::mem::size_of::<CachedScanThroughputController>() <= 192);
+    }
+
+    #[test]
+    #[ignore = "manual cached-throughput controller benchmark"]
+    fn benchmark_cached_throughput_controller() {
+        const OBSERVATIONS: u64 = 10_000_000;
+        let mut batcher = AdaptiveScanBatcher::with_parallelism(
+            16_000,
+            128,
+            16_000,
+            DEFAULT_NETWORK_SCAN_BATCH_TARGET,
+            64 * 1024 * 1024,
+            16,
+        );
+        let started = std::time::Instant::now();
+        for _ in 0..OBSERVATIONS {
+            let target = std::hint::black_box(batcher.target_blocks());
+            std::hint::black_box(
+                batcher.observe(cached_observation(target, target, 600, 0, 400, 4_800)),
+            );
+        }
+        let elapsed = started.elapsed();
+        println!(
+            "cached throughput controller: state={} bytes, observations={OBSERVATIONS}, elapsed={:.3}s, {:.1} ns/observation",
+            std::mem::size_of::<CachedScanThroughputController>(),
+            elapsed.as_secs_f64(),
+            elapsed.as_nanos() as f64 / OBSERVATIONS as f64
+        );
+    }
+
+    #[test]
+    fn local_batches_split_and_merge_standard_segments_without_overshoot() {
+        assert_eq!(
+            local_batch_prefix_len(&[10; 1_024], 0, 0, 1_000, 20_000),
+            1_000
+        );
+        assert_eq!(
+            local_batch_prefix_len(&[10; 24], 1_000, 10_000, 1_000, 20_000),
+            0
+        );
+        assert_eq!(
+            local_batch_prefix_len(&[10; 1_024], 0, 0, 4_000, 20_000),
+            1_024
+        );
+        assert_eq!(
+            local_batch_prefix_len(&[10; 1_024], 1_024, 10_240, 4_000, 20_000),
+            976
+        );
+    }
+
+    #[test]
+    fn local_byte_limit_allows_only_an_oversized_block_to_exceed_it() {
+        assert_eq!(local_batch_prefix_len(&[60, 60], 0, 0, 10, 100), 1);
+        assert_eq!(local_batch_prefix_len(&[150, 10], 0, 0, 10, 100), 1);
+        assert_eq!(local_batch_prefix_len(&[10], 1, 150, 10, 100), 0);
+    }
+
+    #[test]
+    fn device_and_transport_profiles_keep_network_segments_standardized() {
+        const MB: u64 = 1024 * 1024;
+        let profiles = [
+            SimulatedDevice {
+                initial_blocks: 500,
+                min_blocks: 10,
+                max_blocks: 1_000,
+                high_bytes: 8 * MB,
+                low_bytes: 4 * MB,
+                cpu_blocks_per_second: 2_000,
+                storage_bytes_per_second: 12 * MB,
+                network_bits_per_second: 12_000_000,
+                network_latency_ms: 80,
+                jitter_ms: &[0],
+            },
+            SimulatedDevice {
+                initial_blocks: 6_000,
+                min_blocks: 100,
+                max_blocks: 16_000,
+                high_bytes: 256 * MB,
+                low_bytes: 128 * MB,
+                cpu_blocks_per_second: 45_000,
+                storage_bytes_per_second: 800 * MB,
+                network_bits_per_second: 1_000_000_000,
+                network_latency_ms: 8,
+                jitter_ms: &[0],
+            },
+            SimulatedDevice {
+                initial_blocks: 4_000,
+                min_blocks: 50,
+                max_blocks: 4_000,
+                high_bytes: 32 * MB,
+                low_bytes: 16 * MB,
+                cpu_blocks_per_second: 12_000,
+                storage_bytes_per_second: 80 * MB,
+                network_bits_per_second: 6_000_000,
+                network_latency_ms: 45,
+                jitter_ms: &[0],
+            },
+            SimulatedDevice {
+                initial_blocks: 2_000,
+                min_blocks: 25,
+                max_blocks: 2_000,
+                high_bytes: 16 * MB,
+                low_bytes: 8 * MB,
+                cpu_blocks_per_second: 7_500,
+                storage_bytes_per_second: 35 * MB,
+                network_bits_per_second: 20_000_000,
+                network_latency_ms: 280,
+                jitter_ms: &[0, 40, 0, 350, 20, 700, 0, 90],
+            },
+        ];
+
+        let outcomes = profiles
+            .into_iter()
+            .map(|profile| simulate_device(profile, 65_536))
+            .collect::<Vec<_>>();
+        let expected_segments = outcomes[0].network_segments.clone();
+        for (profile, outcome) in profiles.into_iter().zip(&outcomes) {
+            assert_eq!(outcome.scanned_blocks, 65_536);
+            assert_eq!(outcome.network_segments, expected_segments);
+            assert!(outcome.peak_queued_bytes <= profile.high_bytes);
+            assert!(outcome
+                .local_batches
+                .iter()
+                .all(|blocks| *blocks > 0 && *blocks <= profile.max_blocks));
+        }
+        assert_ne!(outcomes[0].local_batches, outcomes[1].local_batches);
+        assert_ne!(outcomes[1].local_batches, outcomes[3].local_batches);
+    }
+
+    #[tokio::test]
+    async fn rollback_discards_admitted_prefetch_before_canonical_restart() {
+        let watermarks = PrefetchWatermarks::new(128, 48);
+        let cancel = CancelToken::new();
+        let orphan_a = watermarks.reserve(40, &cancel).await.unwrap();
+        let orphan_b = watermarks.reserve(40, &cancel).await.unwrap();
+        assert_eq!(watermarks.queued_bytes(), 80);
+
+        drop((orphan_a, orphan_b));
+        assert_eq!(watermarks.queued_bytes(), 0);
+
+        let canonical = watermarks.reserve(96, &cancel).await.unwrap();
+        assert_eq!(watermarks.queued_bytes(), 96);
+        drop(canonical);
+        assert_eq!(watermarks.queued_bytes(), 0);
+    }
+
+    #[tokio::test]
+    async fn split_segment_reservation_is_released_after_its_last_batch() {
+        let watermarks = PrefetchWatermarks::new(128, 48);
+        let reservation = watermarks.reserve(80, &CancelToken::new()).await.unwrap();
+        let first_batch = reservation.clone();
+        let second_batch = reservation.clone();
+        drop(reservation);
+        drop(first_batch);
+        assert_eq!(watermarks.queued_bytes(), 80);
+        drop(second_batch);
+        assert_eq!(watermarks.queued_bytes(), 0);
+    }
+
+    #[tokio::test]
+    async fn watermarks_pause_at_high_and_resume_below_low() {
+        let watermarks = PrefetchWatermarks::new(100, 40);
+        let cancel = CancelToken::new();
+        let first = watermarks.reserve(70, &cancel).await.unwrap();
+        assert_eq!(watermarks.queued_bytes(), 70);
+
+        let waiting = {
+            let watermarks = Arc::clone(&watermarks);
+            let cancel = cancel.clone();
+            tokio::spawn(async move { watermarks.reserve(50, &cancel).await })
+        };
+        tokio::task::yield_now().await;
+        assert!(!waiting.is_finished());
+        drop(first);
+        let second = waiting.await.unwrap().unwrap();
+        assert_eq!(watermarks.queued_bytes(), 50);
+        drop(second);
+        assert_eq!(watermarks.queued_bytes(), 0);
+    }
+
+    #[tokio::test]
+    async fn cancelled_watermark_wait_does_not_leak_capacity() {
+        let watermarks = PrefetchWatermarks::new(64, 32);
+        let held = watermarks.reserve(64, &CancelToken::new()).await.unwrap();
+        let cancel = CancelToken::new();
+        let waiting = {
+            let watermarks = Arc::clone(&watermarks);
+            let cancel = cancel.clone();
+            tokio::spawn(async move { watermarks.reserve(1, &cancel).await })
+        };
+        cancel.cancel();
+        assert!(matches!(waiting.await.unwrap(), Err(Error::Cancelled)));
+        drop(held);
+        assert_eq!(watermarks.queued_bytes(), 0);
+    }
+}
