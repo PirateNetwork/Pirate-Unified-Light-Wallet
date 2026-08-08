@@ -5,14 +5,19 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use sysinfo::{Disks, System};
+use tokio::sync::RwLock as TokioRwLock;
+
+use crate::progress::{SyncProgress, SyncStage};
 
 const MB: u64 = 1_000_000;
 const PROFILE_CALIBRATION_BUDGET: Duration = Duration::from_millis(180);
 const MAX_CRASH_DOWNGRADE_STEPS: u8 = 2;
 const SUCCESSFUL_SYNCS_TO_RECOVER: u8 = 2;
+const SYNC_PROFILE_STATE_VERSION: u8 = 2;
 const SYNC_PROFILE_STATE_FILE: &str = "sync_profile_state.json";
 const SYNC_PROFILE_STATE_PATH_ENV: &str = "PIRATE_SYNC_PROFILE_STATE_PATH";
 
@@ -99,11 +104,66 @@ struct SyncProfileSpec {
     sync_state_flush_interval_ms: u64,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct SyncProfileState {
+    #[serde(default)]
+    version: u8,
     in_progress: bool,
     downgrade_steps: u8,
     successful_syncs_after_downgrade: u8,
+}
+
+impl Default for SyncProfileState {
+    fn default() -> Self {
+        Self {
+            version: SYNC_PROFILE_STATE_VERSION,
+            in_progress: false,
+            downgrade_steps: 0,
+            successful_syncs_after_downgrade: 0,
+        }
+    }
+}
+
+/// Idempotent handle for one crash-guarded sync profile session.
+///
+/// Clones refer to the same session, allowing a tip monitor and the owning task
+/// to race safely when reporting completion.
+#[derive(Clone, Debug)]
+pub struct SyncProfileSession {
+    finished: Arc<AtomicBool>,
+}
+
+impl SyncProfileSession {
+    fn new() -> Self {
+        Self {
+            finished: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Records successful initial catch-up exactly once.
+    pub fn record_success(&self) {
+        self.finish(true);
+    }
+
+    /// Records a clean cancellation or failure exactly once.
+    pub fn record_failure(&self) {
+        self.finish(false);
+    }
+
+    /// Returns whether this session has already been recorded.
+    pub fn is_finished(&self) -> bool {
+        self.finished.load(Ordering::Acquire)
+    }
+
+    fn finish(&self, success: bool) {
+        if self
+            .finished
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            finish_sync_profile_session(success);
+        }
+    }
 }
 
 impl SyncDeviceClass {
@@ -300,6 +360,46 @@ pub fn begin_sync_profile_session(workload: SyncWorkload) -> SyncProfileSelectio
         config: sync_config_for_profile(profile, workload),
         crash_downgraded,
         downgrade_steps: state.downgrade_steps,
+    }
+}
+
+/// Starts a sync profile session with an idempotent completion handle.
+pub fn begin_guarded_sync_profile_session(
+    workload: SyncWorkload,
+) -> (SyncProfileSelection, SyncProfileSession) {
+    (
+        begin_sync_profile_session(workload),
+        SyncProfileSession::new(),
+    )
+}
+
+/// Clears a guarded session once its initial catch-up is fully verified.
+///
+/// Follow-tip synchronization can remain alive indefinitely after this point;
+/// it must not leave a crash marker that penalizes the next app launch.
+pub async fn monitor_sync_profile_initial_tip(
+    session: SyncProfileSession,
+    progress: Arc<TokioRwLock<SyncProgress>>,
+) {
+    const POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+    loop {
+        if session.is_finished() {
+            return;
+        }
+
+        let reached_verified_tip = {
+            let progress = progress.read().await;
+            progress.target_height() > 0
+                && progress.current_height() >= progress.target_height()
+                && matches!(progress.stage(), SyncStage::Verify | SyncStage::Complete)
+        };
+        if reached_verified_tip {
+            session.record_success();
+            return;
+        }
+
+        tokio::time::sleep(POLL_INTERVAL).await;
     }
 }
 
@@ -514,6 +614,12 @@ fn save_sync_profile_state(path: &Path, state: &SyncProfileState) {
 
 impl SyncProfileState {
     fn normalized(mut self) -> Self {
+        // Version 1 could leave `in_progress` set forever after the wallet had
+        // reached tip because follow-tip sync intentionally does not return.
+        // Reset that stale penalty once when upgrading to the guarded lifecycle.
+        if self.version < SYNC_PROFILE_STATE_VERSION {
+            return Self::default();
+        }
         self.downgrade_steps = self.downgrade_steps.min(MAX_CRASH_DOWNGRADE_STEPS);
         self.successful_syncs_after_downgrade = self
             .successful_syncs_after_downgrade
@@ -644,13 +750,14 @@ mod tests {
     fn high_desktop_gets_larger_coarse_bucket() {
         let config = sync_config_for_profile(SyncDeviceClass::DesktopHigh, SyncWorkload::Compact);
 
-        assert_eq!(config.batch_size, 8_000);
-        assert_eq!(config.max_batch_size, 8_000);
+        assert_eq!(config.batch_size, 16_000);
+        assert_eq!(config.max_batch_size, 16_000);
         assert_eq!(config.target_batch_bytes, 192 * MB);
+        assert_eq!(config.prefetch_queue_depth, 3);
     }
 
-    #[test]
-    fn crash_guard_downgrades_then_recovers_after_successes() {
+    #[tokio::test]
+    async fn crash_guard_downgrades_then_recovers_after_verified_tips() {
         let dir = tempfile::tempdir().unwrap();
         let state_path = dir.path().join("sync_profile_state.json");
         let _guard = EnvGuard::set("mobile-high", &state_path);
@@ -661,22 +768,56 @@ mod tests {
         assert_eq!(first.downgrade_steps, 0);
 
         ACTIVE_SYNC_PROFILE_SESSIONS.store(0, Ordering::SeqCst);
-        let second = begin_sync_profile_session(SyncWorkload::Compact);
+        let (second, second_session) = begin_guarded_sync_profile_session(SyncWorkload::Compact);
         assert_eq!(second.profile, SyncDeviceClass::MobileBalanced);
         assert!(second.crash_downgraded);
         assert_eq!(second.downgrade_steps, 1);
-        record_sync_profile_success();
+        second_session.record_success();
+        second_session.record_success();
+        assert!(second_session.is_finished());
+        let state = load_sync_profile_state(&state_path);
+        assert!(!state.in_progress);
+        assert_eq!(state.successful_syncs_after_downgrade, 1);
 
-        let third = begin_sync_profile_session(SyncWorkload::Compact);
+        let (third, third_session) = begin_guarded_sync_profile_session(SyncWorkload::Compact);
         assert_eq!(third.profile, SyncDeviceClass::MobileBalanced);
         assert!(!third.crash_downgraded);
         assert_eq!(third.downgrade_steps, 1);
-        record_sync_profile_success();
+        let progress = Arc::new(TokioRwLock::new(SyncProgress::new()));
+        {
+            let progress = progress.read().await;
+            progress.set_target(1_000);
+            progress.set_current(1_000);
+            progress.set_stage(SyncStage::Verify);
+        }
+        monitor_sync_profile_initial_tip(third_session.clone(), progress).await;
+        assert!(third_session.is_finished());
 
         let recovered = begin_sync_profile_session(SyncWorkload::Compact);
         assert_eq!(recovered.profile, SyncDeviceClass::MobileHigh);
         assert!(!recovered.crash_downgraded);
         assert_eq!(recovered.downgrade_steps, 0);
         record_sync_profile_failure();
+    }
+
+    #[test]
+    fn legacy_follow_tip_state_does_not_preserve_a_false_downgrade() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_path = dir.path().join("sync_profile_state.json");
+        fs::write(
+            &state_path,
+            br#"{
+                "in_progress": true,
+                "downgrade_steps": 2,
+                "successful_syncs_after_downgrade": 1
+            }"#,
+        )
+        .unwrap();
+
+        let state = load_sync_profile_state(&state_path);
+        assert_eq!(state.version, SYNC_PROFILE_STATE_VERSION);
+        assert!(!state.in_progress);
+        assert_eq!(state.downgrade_steps, 0);
+        assert_eq!(state.successful_syncs_after_downgrade, 0);
     }
 }
