@@ -4390,40 +4390,420 @@ mod tests {
         }
     }
 
-    let sapling_roots_by_index =
-        load_root_backed_subtree_index(conn, SAPLING_TABLE_PREFIX, historical_ceiling)?;
-    let orchard_roots_by_index =
-        load_root_backed_subtree_index(conn, ORCHARD_TABLE_PREFIX, historical_ceiling)?;
+    #[test]
+    fn parallel_insertion_preserves_verified_root_ordering() {
+        let subtree_root = SaplingNode::empty_root(SAPLING_SHARD_HEIGHT.into());
+        let mut before_root = ShardtreeBatch::new(100);
+        before_root.checkpoint_id = Some(BlockHeight::from(100));
+        before_root.sapling_empty_checkpoint = true;
+        before_root.orchard_empty_checkpoint = true;
+        let mut completing_block = ShardtreeBatch::new(101);
+        completing_block.checkpoint_id = Some(BlockHeight::from(101));
+        append_sapling_leaf(
+            &mut completing_block,
+            SHARD_LEAF_COUNT,
+            SaplingNode::empty_leaf(),
+            checkpoint(101, Marking::None),
+        );
+        completing_block.orchard_empty_checkpoint = true;
+        let batches = vec![before_root, completing_block];
+        let roots = VerifiedSubtreeRoots {
+            sapling: vec![VerifiedSubtreeRoot {
+                index: 0,
+                end_height: 101,
+                root: subtree_root,
+            }],
+            ironwood: Vec::new(),
+        };
+        let (mut expected_sapling, mut expected_orchard) = empty_trees();
+        let (mut actual_sapling, mut actual_orchard) = empty_trees();
+        apply_shardtree_batches_to_trees(
+            &mut expected_sapling,
+            &mut expected_orchard,
+            &batches,
+            Some(101),
+            CommittedCheckpointHeights::default(),
+            &roots,
+        )
+        .unwrap();
+        apply_parallel_test_batches(
+            &mut actual_sapling,
+            &mut actual_orchard,
+            batches,
+            Some(101),
+            CommittedCheckpointHeights::default(),
+            &roots,
+        );
 
-    tracing::info!(
-        "Historical subtree-root prefill: sapling_prefetched={}, orchard_prefetched={}, sapling_available={}, orchard_available={}, sapling_start_index={}, orchard_start_index={}, historical_ceiling={}",
-        sapling_prefetched,
-        orchard_prefetched,
-        sapling_roots_by_index.len(),
-        orchard_roots_by_index.len(),
-        start_sapling_index,
-        start_orchard_index,
-        historical_ceiling
-    );
-    append_sync_decision_log(
-        "sync.rs:prefill_historical_subtree_roots",
-        "subtree-root prefill summary",
-        format!(
-            "\"sapling_prefetched\":{},\"orchard_prefetched\":{},\"sapling_available\":{},\"orchard_available\":{},\"sapling_start_index\":{},\"orchard_start_index\":{},\"historical_ceiling\":{}",
-            sapling_prefetched,
-            orchard_prefetched,
-            sapling_roots_by_index.len(),
-            orchard_roots_by_index.len(),
-            start_sapling_index,
-            start_orchard_index,
-            historical_ceiling
-        ),
-    );
+        for height in [100u32, 101u32] {
+            let checkpoint_id = BlockHeight::from(height);
+            assert_eq!(
+                actual_sapling
+                    .root_at_checkpoint_id(&checkpoint_id)
+                    .unwrap(),
+                expected_sapling
+                    .root_at_checkpoint_id(&checkpoint_id)
+                    .unwrap()
+            );
+            assert_eq!(
+                actual_orchard
+                    .root_at_checkpoint_id(&checkpoint_id)
+                    .unwrap(),
+                expected_orchard
+                    .root_at_checkpoint_id(&checkpoint_id)
+                    .unwrap()
+            );
+        }
+    }
 
-    Ok(HistoricalPrefillState {
-        sapling: HistoricalSubtreeSkipState::new(sapling_roots_by_index),
-        orchard: HistoricalSubtreeSkipState::new(orchard_roots_by_index),
-        sapling_prefetched,
-        orchard_prefetched,
-    })
+    #[test]
+    fn sparse_preloads_cover_checkpoint_and_removed_mark_shards() {
+        let mut store = MemoryShardStore::<SaplingNode, BlockHeight>::empty();
+        store
+            .add_checkpoint(
+                BlockHeight::from(100u32),
+                Checkpoint::at_position(Position::from(0)),
+            )
+            .unwrap();
+        store
+            .add_checkpoint(
+                BlockHeight::from(101u32),
+                Checkpoint::from_parts(
+                    TreeState::AtPosition(Position::from(SHARD_LEAF_COUNT)),
+                    std::collections::BTreeSet::from([Position::from(2 * SHARD_LEAF_COUNT)]),
+                ),
+            )
+            .unwrap();
+
+        let addresses =
+            sparse_preload_addresses::<_, SAPLING_SHARD_HEIGHT>(&store, "Sapling").unwrap();
+        assert_eq!(
+            addresses,
+            vec![
+                Address::from_parts(SAPLING_SHARD_HEIGHT.into(), 0),
+                Address::from_parts(SAPLING_SHARD_HEIGHT.into(), 1),
+                Address::from_parts(SAPLING_SHARD_HEIGHT.into(), 2),
+            ]
+        );
+    }
+
+    fn exercise_sample(expected_root: SaplingNode) -> HistoricalSubtreeSkipState<SaplingNode> {
+        let mut state = HistoricalSubtreeSkipState::new(HashMap::from([(
+            0,
+            HistoricalSubtreeRoot {
+                expected_end_height: 100,
+                expected_root: Some(expected_root),
+                sample_anchor: Some(0),
+                trusted: false,
+            },
+        )]));
+        let mut current = ShardtreeBatch::new(100);
+        let mut emitted = Vec::new();
+        for position in 0..SHARD_LEAF_COUNT {
+            process_historical_leaf(
+                Some(&mut state),
+                position,
+                100,
+                SaplingNode::empty_leaf(),
+                Retention::Ephemeral,
+                HistoricalLeafSink {
+                    current_batch: &mut current,
+                    shardtree_batches: &mut emitted,
+                },
+                append_sapling_leaf,
+            )
+            .unwrap();
+        }
+        assert!(emitted.is_empty());
+        assert_eq!(current.sapling.len() as u64, SHARD_LEAF_COUNT);
+        state
+    }
+
+    #[test]
+    fn sampled_subtree_root_is_rebuilt_without_skipping_its_leaves() {
+        let leaves = vec![SaplingNode::empty_leaf(); SHARD_LEAF_COUNT as usize];
+        let expected = calculate_subtree_root::<_, SAPLING_SHARD_HEIGHT>(&leaves).unwrap();
+
+        let state = exercise_sample(expected);
+
+        assert!(state.verified_samples.contains(&0));
+        assert!(!state.grafting_disabled);
+    }
+
+    #[test]
+    fn subtree_sample_mismatch_disables_grafting_and_keeps_local_leaves() {
+        let wrong_root = SaplingNode::empty_root((SAPLING_SHARD_HEIGHT - 1).into());
+
+        let state = exercise_sample(wrong_root);
+
+        assert!(state.verified_samples.is_empty());
+        assert!(state.grafting_disabled);
+    }
+
+    fn scan_verified_sapling_subtree(
+        state: &mut HistoricalSubtreeSkipState<SaplingNode>,
+        subtree_index: u64,
+        marked_offset: Option<u64>,
+    ) -> (ShardtreeBatch, Vec<ShardtreeBatch>) {
+        let mut current = ShardtreeBatch::new(101);
+        let mut emitted = Vec::new();
+        let start = subtree_index * SHARD_LEAF_COUNT;
+        for offset in 0..SHARD_LEAF_COUNT {
+            process_historical_leaf(
+                Some(state),
+                start + offset,
+                101,
+                SaplingNode::empty_leaf(),
+                if marked_offset == Some(offset) {
+                    Retention::Marked
+                } else {
+                    Retention::Ephemeral
+                },
+                HistoricalLeafSink {
+                    current_batch: &mut current,
+                    shardtree_batches: &mut emitted,
+                },
+                append_sapling_leaf,
+            )
+            .unwrap();
+        }
+        (current, emitted)
+    }
+
+    #[test]
+    fn verified_root_is_grafted_only_after_scanning_a_note_free_subtree() {
+        let leaves = vec![SaplingNode::empty_leaf(); SHARD_LEAF_COUNT as usize];
+        let expected = calculate_subtree_root::<_, SAPLING_SHARD_HEIGHT>(&leaves).unwrap();
+        let mut state = HistoricalSubtreeSkipState::new(HashMap::from([(
+            1,
+            HistoricalSubtreeRoot {
+                expected_end_height: 101,
+                expected_root: Some(expected),
+                sample_anchor: Some(0),
+                trusted: false,
+            },
+        )]));
+        state.verified_samples.insert(0);
+
+        let (current, emitted) = scan_verified_sapling_subtree(&mut state, 1, None);
+
+        assert!(current.sapling.is_empty());
+        assert!(emitted.is_empty());
+        assert_eq!(state.pending_roots.len(), 1);
+        assert_eq!(state.pending_roots[0].0, 1);
+    }
+
+    #[test]
+    fn owned_note_keeps_verified_subtree_leaf_backed() {
+        let leaves = vec![SaplingNode::empty_leaf(); SHARD_LEAF_COUNT as usize];
+        let expected = calculate_subtree_root::<_, SAPLING_SHARD_HEIGHT>(&leaves).unwrap();
+        let mut state = HistoricalSubtreeSkipState::new(HashMap::from([(
+            1,
+            HistoricalSubtreeRoot {
+                expected_end_height: 101,
+                expected_root: Some(expected),
+                sample_anchor: Some(0),
+                trusted: false,
+            },
+        )]));
+        state.verified_samples.insert(0);
+
+        let (current, emitted) = scan_verified_sapling_subtree(&mut state, 1, Some(17));
+
+        assert_eq!(current.sapling.len() as u64, SHARD_LEAF_COUNT);
+        assert!(emitted.is_empty());
+        assert!(state.pending_roots.is_empty());
+        assert!(current
+            .sapling
+            .iter()
+            .any(|(_, retention)| retention.is_marked()));
+    }
+
+    #[test]
+    fn historical_mark_hint_avoids_late_subtree_materialization() {
+        let expected = SaplingNode::empty_root(SAPLING_SHARD_HEIGHT.into());
+        let mut state = HistoricalSubtreeSkipState::new(HashMap::from([(
+            1,
+            HistoricalSubtreeRoot {
+                expected_end_height: 101,
+                expected_root: Some(expected),
+                sample_anchor: Some(0),
+                trusted: false,
+            },
+        )]))
+        .with_leaf_backed_hints("sapling", &HashSet::from([1]));
+        state.verified_samples.insert(0);
+        let mut current = ShardtreeBatch::new(100);
+        let mut emitted = Vec::new();
+
+        process_historical_leaf(
+            Some(&mut state),
+            SHARD_LEAF_COUNT,
+            100,
+            SaplingNode::empty_leaf(),
+            Retention::Ephemeral,
+            HistoricalLeafSink {
+                current_batch: &mut current,
+                shardtree_batches: &mut emitted,
+            },
+            append_sapling_leaf,
+        )
+        .unwrap();
+
+        assert_eq!(current.sapling.len(), 1);
+        assert!(emitted.is_empty());
+        assert!(state.current_buffer.is_none());
+        assert_eq!(state.passthrough_subtree, Some(1));
+        assert!(state.pending_roots.is_empty());
+    }
+
+    #[test]
+    fn historical_mark_hint_cannot_bypass_sample_verification() {
+        let mut state = HistoricalSubtreeSkipState::new(HashMap::from([(
+            0,
+            HistoricalSubtreeRoot {
+                expected_end_height: 100,
+                expected_root: Some(SaplingNode::empty_root(SAPLING_SHARD_HEIGHT.into())),
+                sample_anchor: Some(0),
+                trusted: false,
+            },
+        )]))
+        .with_leaf_backed_hints("sapling", &HashSet::from([0]));
+        let mut current = ShardtreeBatch::new(100);
+        let mut emitted = Vec::new();
+
+        process_historical_leaf(
+            Some(&mut state),
+            0,
+            100,
+            SaplingNode::empty_leaf(),
+            Retention::Ephemeral,
+            HistoricalLeafSink {
+                current_batch: &mut current,
+                shardtree_batches: &mut emitted,
+            },
+            append_sapling_leaf,
+        )
+        .unwrap();
+
+        assert_eq!(current.sapling.len(), 1);
+        assert!(emitted.is_empty());
+        assert!(state
+            .current_buffer
+            .as_ref()
+            .is_some_and(|buffer| buffer.verify_sample));
+        assert!(state.passthrough_subtree.is_none());
+    }
+
+    #[test]
+    fn checkpoints_wait_for_deferred_subtree_leaves() {
+        let mut sapling = HistoricalSubtreeSkipState::new(HashMap::from([(
+            1,
+            HistoricalSubtreeRoot {
+                expected_end_height: 101,
+                expected_root: Some(SaplingNode::empty_leaf()),
+                sample_anchor: Some(0),
+                trusted: false,
+            },
+        )]));
+        sapling.verified_samples.insert(0);
+        let mut prefill = HistoricalPrefillState {
+            sapling,
+            orchard: HistoricalSubtreeSkipState::new(HashMap::new()),
+            sapling_prefetched: 1,
+            orchard_prefetched: 0,
+        };
+        let mut current = ShardtreeBatch::new(100);
+        let mut emitted = Vec::new();
+
+        process_historical_leaf(
+            Some(&mut prefill.sapling),
+            SHARD_LEAF_COUNT,
+            100,
+            SaplingNode::empty_leaf(),
+            Retention::Ephemeral,
+            HistoricalLeafSink {
+                current_batch: &mut current,
+                shardtree_batches: &mut emitted,
+            },
+            append_sapling_leaf,
+        )
+        .unwrap();
+
+        assert!(!prefill.sapling_checkpoint_safe());
+        assert!(!prefill.common_checkpoint_safe());
+
+        process_historical_leaf(
+            Some(&mut prefill.sapling),
+            SHARD_LEAF_COUNT + 1,
+            100,
+            SaplingNode::empty_leaf(),
+            Retention::Marked,
+            HistoricalLeafSink {
+                current_batch: &mut current,
+                shardtree_batches: &mut emitted,
+            },
+            append_sapling_leaf,
+        )
+        .unwrap();
+
+        assert!(prefill.common_checkpoint_safe());
+        assert_eq!(current.sapling.len(), 2);
+        assert!(current.sapling[1].1.is_marked());
+    }
+
+    #[test]
+    fn owned_ironwood_action_keeps_verified_subtree_leaf_backed() {
+        let mut state = HistoricalSubtreeSkipState::new(HashMap::from([(
+            1,
+            HistoricalSubtreeRoot {
+                expected_end_height: 101,
+                expected_root: Some(MerkleHashOrchard::empty_leaf()),
+                sample_anchor: Some(0),
+                trusted: false,
+            },
+        )]));
+        state.verified_samples.insert(0);
+        let mut current = ShardtreeBatch::new(101);
+        let mut emitted = Vec::new();
+
+        process_historical_leaf(
+            Some(&mut state),
+            SHARD_LEAF_COUNT,
+            101,
+            MerkleHashOrchard::empty_leaf(),
+            Retention::Marked,
+            HistoricalLeafSink {
+                current_batch: &mut current,
+                shardtree_batches: &mut emitted,
+            },
+            append_orchard_leaf,
+        )
+        .unwrap();
+
+        assert_eq!(current.orchard.len(), 1);
+        assert!(current.orchard[0].1.is_marked());
+        assert_eq!(state.passthrough_subtree, Some(1));
+        assert!(state.pending_roots.is_empty());
+        assert!(emitted.is_empty());
+    }
+
+    #[test]
+    fn owned_note_in_persisted_root_defers_to_leaf_repair_without_duplicates() {
+        let mut state = HistoricalSubtreeSkipState::new(HashMap::from([(
+            1,
+            HistoricalSubtreeRoot {
+                expected_end_height: 101,
+                expected_root: None,
+                sample_anchor: None,
+                trusted: true,
+            },
+        )]));
+
+        let (current, emitted) = scan_verified_sapling_subtree(&mut state, 1, Some(17));
+
+        assert!(current.sapling.is_empty());
+        assert!(emitted.is_empty());
+        assert!(state.pending_roots.is_empty());
+    }
 }
