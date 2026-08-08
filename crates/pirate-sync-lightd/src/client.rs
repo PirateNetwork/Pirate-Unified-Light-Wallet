@@ -890,6 +890,31 @@ impl From<CompactBlock> for proto::CompactBlock {
     }
 }
 
+/// A contiguous compact-block stream chunk bounded by protobuf wire bytes.
+#[derive(Debug)]
+pub struct CompactBlockChunk {
+    /// Ordered compact blocks in this chunk.
+    pub blocks: Vec<CompactBlock>,
+    /// Exact encoded wire bytes for each corresponding block.
+    pub encoded_block_bytes: Vec<u64>,
+    /// Exact sum of protobuf `encoded_len()` values received from lightwalletd.
+    pub encoded_bytes: u64,
+    /// Endpoint that supplied this chunk.
+    pub endpoint: String,
+}
+
+impl CompactBlockChunk {
+    /// First block height in the chunk.
+    pub fn start_height(&self) -> Option<u64> {
+        self.blocks.first().map(|block| block.height)
+    }
+
+    /// Last block height in the chunk.
+    pub fn end_height(&self) -> Option<u64> {
+        self.blocks.last().map(|block| block.height)
+    }
+}
+
 /// Compact transaction
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CompactTx {
@@ -1048,22 +1073,21 @@ impl From<CompactIronwoodAction> for proto::CompactIronwoodAction {
     }
 }
 
-fn estimate_compact_block_bytes(block: &CompactBlock) -> u64 {
-    let mut total = 0u64;
-    for tx in &block.transactions {
-        // Rough tx overhead (hash/index/etc.)
-        total += 100;
-        for output in &tx.outputs {
-            let ct_len = output.ciphertext.len().max(52) as u64;
-            total += 32 + 32 + ct_len;
-        }
-        for action in &tx.actions {
-            let enc_len = action.enc_ciphertext.len().max(52) as u64;
-            let out_len = action.out_ciphertext.len().max(52) as u64;
-            total += 32 + 32 + 32 + enc_len + out_len;
-        }
-    }
-    total
+async fn send_ordered_chunk(
+    sender: &mpsc::Sender<Result<CompactBlockChunk>>,
+    chunk: OrderedBlockChunk,
+    endpoint: String,
+) -> Result<()> {
+    debug_assert_eq!(chunk.blocks.len(), chunk.encoded_block_bytes.len());
+    sender
+        .send(Ok(CompactBlockChunk {
+            blocks: chunk.blocks,
+            encoded_block_bytes: chunk.encoded_block_bytes,
+            encoded_bytes: chunk.encoded_bytes,
+            endpoint,
+        }))
+        .await
+        .map_err(|_| Error::Cancelled)
 }
 
 /// Transaction broadcast result
@@ -1843,149 +1867,279 @@ impl LightClient {
         range: Range<u32>,
         wallet_id: Option<&str>,
     ) -> Result<Vec<CompactBlock>> {
+        let max_chunk_bytes = self
+            .config
+            .request_timeout
+            .as_secs()
+            .clamp(1, 256)
+            .saturating_mul(1024 * 1024);
+        let mut receiver =
+            self.compact_block_chunk_stream(range, max_chunk_bytes, wallet_id.map(str::to_string));
+        let mut blocks = Vec::new();
+        while let Some(chunk) = receiver.recv().await {
+            blocks.extend(chunk?.blocks);
+        }
+        Ok(blocks)
+    }
+
+    /// Start an exact-byte bounded compact-block stream.
+    ///
+    /// The returned channel has capacity one. This applies backpressure to the
+    /// gRPC stream, validates strict height/hash ordering, emits a validated
+    /// partial chunk before retry, and resumes from its next height.
+    pub fn compact_block_chunk_stream(
+        &self,
+        range: Range<u32>,
+        max_chunk_bytes: u64,
+        wallet_id: Option<String>,
+    ) -> mpsc::Receiver<Result<CompactBlockChunk>> {
+        self.compact_block_segment_stream(range, max_chunk_bytes, u64::MAX, 1, wallet_id)
+    }
+
+    /// Starts a compact-block stream with device-independent segment boundaries.
+    ///
+    /// `max_segment_blocks` controls only the local stream handoff. The server
+    /// still sees one long-lived range request, independent of scan-batch size.
+    pub fn compact_block_segment_stream(
+        &self,
+        range: Range<u32>,
+        max_segment_bytes: u64,
+        max_segment_blocks: u64,
+        channel_capacity: usize,
+        wallet_id: Option<String>,
+    ) -> mpsc::Receiver<Result<CompactBlockChunk>> {
+        self.compact_block_adaptive_segment_stream(
+            range,
+            max_segment_bytes,
+            Arc::new(AtomicU64::new(max_segment_blocks.max(1))),
+            channel_capacity,
+            wallet_id,
+        )
+    }
+
+    pub(crate) fn compact_block_adaptive_segment_stream(
+        &self,
+        range: Range<u32>,
+        max_segment_bytes: u64,
+        segment_block_target: Arc<AtomicU64>,
+        channel_capacity: usize,
+        wallet_id: Option<String>,
+    ) -> mpsc::Receiver<Result<CompactBlockChunk>> {
+        let (sender, receiver) = mpsc::channel(channel_capacity.max(1));
+        let client = self.clone();
+        let error_sender = sender.clone();
+        tokio::spawn(async move {
+            if let Err(error) = client
+                .produce_compact_block_chunks(
+                    range,
+                    max_segment_bytes,
+                    segment_block_target,
+                    wallet_id,
+                    sender,
+                )
+                .await
+            {
+                let _ = error_sender.send(Err(error)).await;
+            }
+        });
+        receiver
+    }
+
+    async fn produce_compact_block_chunks(
+        self,
+        range: Range<u32>,
+        max_chunk_bytes: u64,
+        segment_block_target: Arc<AtomicU64>,
+        wallet_id: Option<String>,
+        sender: mpsc::Sender<Result<CompactBlockChunk>>,
+    ) -> Result<()> {
         if range.is_empty() {
-            return Ok(Vec::new());
+            return Ok(());
         }
 
-        let range = range.clone();
-        let wallet_id_owned = wallet_id.map(str::to_string);
+        let start = u64::from(range.start);
+        let end_exclusive = u64::from(range.end);
+        let mut assembler = OrderedBlockAssembler::with_limits(
+            start,
+            end_exclusive,
+            max_chunk_bytes,
+            segment_block_target.load(Ordering::Acquire),
+        )?;
+        let max_rounds = self.config.retry.max_attempts.max(1);
+        let mut round = 0u32;
+        let mut backoff = self.config.retry.initial_backoff;
+        let mut last_error = None;
 
-        self.with_retry(move || {
-            let range = range.clone();
-            let wallet_id_owned = wallet_id_owned.clone();
-            async move {
-            let mut client = self.get_client().await?;
-            let start_instant = Instant::now();
-            let range_blocks = range.end.saturating_sub(range.start).max(1);
-            let (first_msg_timeout, next_msg_timeout, request_timeout) =
-                compact_block_range_timeouts(
-                    self.config.transport,
-                    range_blocks as u64,
-                    self.config.request_timeout,
+        while !assembler.is_complete() && round < max_rounds {
+            let candidates = self.candidate_order(end_exclusive.saturating_sub(1)).await;
+            if candidates.is_empty() {
+                return Err(Error::Connection(format!(
+                    "no healthy lightwalletd endpoint reaches height {}",
+                    end_exclusive.saturating_sub(1)
+                )));
+            }
+
+            for index in candidates {
+                let Some(candidate) = self.connected_candidate_client(index).await else {
+                    last_error = Some(Error::Connection(format!(
+                        "lightwalletd endpoint {} has no validated channel",
+                        index
+                    )));
+                    continue;
+                };
+                let endpoint = candidate.endpoint().to_string();
+
+                let attempt_start = assembler.next_height();
+                match candidate
+                    .stream_compact_blocks_once(
+                        attempt_start,
+                        end_exclusive,
+                        wallet_id.clone(),
+                        &mut assembler,
+                        &segment_block_target,
+                        &sender,
+                    )
+                    .await
+                {
+                    Ok(()) => {
+                        self.record_candidate_success(index).await;
+                        if assembler.is_complete() {
+                            if let Some(chunk) = assembler.take_partial() {
+                                send_ordered_chunk(&sender, chunk, endpoint).await?;
+                            }
+                            return Ok(());
+                        }
+                    }
+                    Err(error) if Self::is_non_retryable_error(&error) => return Err(error),
+                    Err(error) => {
+                        if let Some(chunk) = assembler.take_partial() {
+                            send_ordered_chunk(&sender, chunk, endpoint).await?;
+                        }
+                        self.record_candidate_failure(index).await;
+                        last_error = Some(error);
+                    }
+                }
+            }
+
+            round = round.saturating_add(1);
+            if !assembler.is_complete() && round < max_rounds {
+                tokio::time::sleep(jitter_duration(backoff)).await;
+                backoff = std::cmp::min(
+                    Duration::from_millis(
+                        (backoff.as_millis() as f64 * self.config.retry.backoff_multiplier) as u64,
+                    ),
+                    self.config.retry.max_backoff,
                 );
+            }
+        }
 
-            let mut request = tonic::Request::new(BlockRange {
-                start: Some(BlockId {
-                    height: range.start as u64,
-                    hash: Vec::new(),
-                }),
-                end: Some(BlockId {
-                    height: (range.end - 1) as u64, // end is inclusive in proto
-                    hash: Vec::new(),
-                }),
-            });
-            let open_timeout = first_msg_timeout.saturating_add(Duration::from_secs(10));
-            request.set_timeout(request_timeout);
+        if assembler.is_complete() {
+            if let Some(chunk) = assembler.finish()? {
+                send_ordered_chunk(&sender, chunk, self.endpoint().to_string()).await?;
+            }
+            return Ok(());
+        }
 
-            debug!("Requesting blocks {}..{}", range.start, range.end);
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let id = format!("{:08x}", ts);
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:block_range_request","message":"block range request","data":{{"wallet_id":"{}","start":{},"end":{},"range_blocks":{},"first_timeout_secs":{},"next_timeout_secs":{},"open_timeout_secs":{},"request_timeout_secs":{},"endpoint":"{}","transport":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                    id,
-                    ts,
-                    wallet_id_owned.as_deref().unwrap_or("unknown"),
-                    range.start,
-                    range.end.saturating_sub(1),
-                    range_blocks,
-                    first_msg_timeout.as_secs(),
-                    next_msg_timeout.as_secs(),
-                    open_timeout.as_secs(),
-                    request_timeout.as_secs(),
-                    self.config.endpoint,
-                    self.config.transport
-                );
-            });
+        Err(last_error.unwrap_or_else(|| {
+            Error::Network(format!(
+                "compact block stream ended at {}, expected {}",
+                assembler.next_height(),
+                end_exclusive
+            ))
+        }))
+    }
 
-            let stream_response = tokio::time::timeout(open_timeout, client.get_block_range(request))
+    async fn stream_compact_blocks_once(
+        &self,
+        start: u64,
+        end_exclusive: u64,
+        wallet_id: Option<String>,
+        assembler: &mut OrderedBlockAssembler,
+        segment_block_target: &AtomicU64,
+        sender: &mpsc::Sender<Result<CompactBlockChunk>>,
+    ) -> Result<()> {
+        if start >= end_exclusive {
+            return Ok(());
+        }
+        let start_u32 = u32::try_from(start)
+            .map_err(|_| Error::Sync(format!("compact block height {} exceeds u32", start)))?;
+        let end_u32 = u32::try_from(end_exclusive).map_err(|_| {
+            Error::Sync(format!(
+                "compact block end height {} exceeds u32",
+                end_exclusive
+            ))
+        })?;
+        let mut client = self.get_client().await?;
+        let range_blocks = end_exclusive.saturating_sub(start).max(1);
+        let (first_msg_timeout, next_msg_timeout, request_timeout) = compact_block_range_timeouts(
+            self.config.transport,
+            range_blocks,
+            self.config.request_timeout,
+        );
+        let open_timeout = first_msg_timeout.saturating_add(Duration::from_secs(10));
+        let mut request = tonic::Request::new(BlockRange {
+            start: Some(BlockId {
+                height: u64::from(start_u32),
+                hash: Vec::new(),
+            }),
+            end: Some(BlockId {
+                height: u64::from(end_u32 - 1),
+                hash: Vec::new(),
+            }),
+        });
+        request.set_timeout(request_timeout);
+
+        let response = tokio::time::timeout(open_timeout, client.get_block_range(request))
+            .await
+            .map_err(|_| {
+                Error::Network(format!(
+                    "timed out opening compact block stream {}..{} via {}",
+                    start,
+                    end_exclusive,
+                    self.endpoint()
+                ))
+            })??;
+        let mut stream = response.into_inner();
+        let mut received = 0u64;
+        loop {
+            let idle_timeout = if received == 0 {
+                first_msg_timeout
+            } else {
+                next_msg_timeout
+            };
+            let message = tokio::time::timeout(idle_timeout, stream.message())
                 .await
                 .map_err(|_| {
                     Error::Network(format!(
-                        "Timed out opening compact block stream ({}..{}; timeout {:?})",
-                        range.start,
-                        range.end,
-                        open_timeout
+                        "compact block stream stalled at height {} via {} after {:?}",
+                        assembler.next_height(),
+                        self.endpoint(),
+                        idle_timeout
                     ))
                 })??;
-            let mut stream = stream_response.into_inner();
-            let mut blocks = Vec::with_capacity((range.end - range.start) as usize);
-            let mut first_block_ms: Option<u128> = None;
-            let mut estimated_bytes = 0u64;
-
-            loop {
-                let idle_timeout = if blocks.is_empty() {
-                    first_msg_timeout
-                } else {
-                    next_msg_timeout
-                };
-
-                let msg = tokio::time::timeout(idle_timeout, stream.message())
-                    .await
-                    .map_err(|_| {
-                        Error::Network(format!(
-                            "Timed out waiting for compact block stream ({}..{}, received {} blocks; idle {:?})",
-                            range.start,
-                            range.end,
-                            blocks.len(),
-                            idle_timeout
-                        ))
-                    })??;
-
-                let Some(block) = msg else {
-                    break;
-                };
-
-                if first_block_ms.is_none() {
-                    first_block_ms = Some(start_instant.elapsed().as_millis());
-                }
-                let compact = CompactBlock::from(block);
-                estimated_bytes = estimated_bytes
-                    .saturating_add(estimate_compact_block_bytes(&compact));
-                blocks.push(compact);
-            }
-
-            let total_ms = start_instant.elapsed().as_millis();
-            let ttfb_ms = first_block_ms.unwrap_or(total_ms);
-            let kbps = if total_ms > 0 {
-                (estimated_bytes as f64 / 1024.0) / (total_ms as f64 / 1000.0)
-            } else {
-                0.0
+            let Some(proto_block) = message else {
+                break;
             };
-
-            pirate_core::debug_log::with_locked_file(|file| {
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                let id = format!("{:08x}", ts);
-                let _ = writeln!(
-                    file,
-                    r#"{{"id":"log_{}","timestamp":{},"location":"client.rs:block_range_stats","message":"block range stats","data":{{"wallet_id":"{}","start":{},"end":{},"blocks":{},"ttfb_ms":{},"total_ms":{},"est_bytes":{},"est_kbps":{:.2},"endpoint":"{}","transport":"{:?}"}},"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}}"#,
-                    id,
-                    ts,
-                    wallet_id_owned.as_deref().unwrap_or("unknown"),
-                    range.start,
-                    range.end.saturating_sub(1),
-                    blocks.len(),
-                    ttfb_ms,
-                    total_ms,
-                    estimated_bytes,
-                    kbps,
-                    self.config.endpoint,
-                    self.config.transport
-                );
-            });
-
-            debug!("Received {} blocks", blocks.len());
-            Ok(blocks)
+            let encoded_bytes = proto_block.encoded_len() as u64;
+            assembler.set_next_chunk_max_blocks(segment_block_target.load(Ordering::Acquire));
+            if let Some(chunk) = assembler.push(CompactBlock::from(proto_block), encoded_bytes)? {
+                send_ordered_chunk(sender, chunk, self.endpoint().to_string()).await?;
             }
-        })
-        .await
+            received = received.saturating_add(1);
+        }
+
+        if assembler.is_complete() {
+            Ok(())
+        } else {
+            Err(Error::Network(format!(
+                "compact block stream via {} ended early at height {} for requested range {}..{} (wallet={})",
+                self.endpoint(),
+                assembler.next_height(),
+                start,
+                end_exclusive,
+                wallet_id.as_deref().unwrap_or("unknown")
+            )))
+        }
     }
 
     /// Stream compact blocks in batches
@@ -2808,6 +2962,150 @@ mod tests {
 #[cfg(all(test, feature = "live_lightd"))]
 mod integration_tests {
     use super::*;
+    use crate::intake::{
+        AdaptiveDurableSegmentController, DurableSegmentObservation, DEFAULT_DURABLE_SEGMENT_BLOCKS,
+    };
+
+    #[derive(Clone, Copy)]
+    enum SegmentBenchmarkStrategy {
+        Fixed,
+        Adaptive,
+    }
+
+    impl SegmentBenchmarkStrategy {
+        fn name(self) -> &'static str {
+            match self {
+                Self::Fixed => "fixed 1024",
+                Self::Adaptive => "adaptive",
+            }
+        }
+    }
+
+    async fn drain_segment_benchmark(
+        client: &LightClient,
+        start: u32,
+        end: u32,
+        strategy: SegmentBenchmarkStrategy,
+    ) -> Result<(u64, u64)> {
+        const MAX_SEGMENT_BYTES: u64 = 64 * 1024 * 1024;
+        let target = Arc::new(AtomicU64::new(DEFAULT_DURABLE_SEGMENT_BLOCKS));
+        let mut controller = AdaptiveDurableSegmentController::new(MAX_SEGMENT_BYTES);
+        let mut receiver = match strategy {
+            SegmentBenchmarkStrategy::Fixed => client.compact_block_segment_stream(
+                start..end,
+                MAX_SEGMENT_BYTES,
+                DEFAULT_DURABLE_SEGMENT_BLOCKS,
+                1,
+                None,
+            ),
+            SegmentBenchmarkStrategy::Adaptive => client.compact_block_adaptive_segment_stream(
+                start..end,
+                MAX_SEGMENT_BYTES,
+                Arc::clone(&target),
+                1,
+                None,
+            ),
+        };
+        let mut expected = u64::from(start);
+        let mut chunks = 0u64;
+        while let Some(chunk) = {
+            let wait_started = Instant::now();
+            let chunk = receiver.recv().await.transpose()?;
+            let network_wait = wait_started.elapsed();
+            if let (SegmentBenchmarkStrategy::Adaptive, Some(chunk)) = (strategy, chunk.as_ref()) {
+                let chunk_end = chunk.end_height().unwrap_or(expected);
+                let next = controller.observe(DurableSegmentObservation {
+                    blocks: chunk.blocks.len() as u64,
+                    encoded_bytes: chunk.encoded_bytes,
+                    network_wait,
+                    cache_write: Duration::from_millis(20),
+                    queued_bytes: 0,
+                    high_water_bytes: MAX_SEGMENT_BYTES,
+                    stream_tail: chunk_end.saturating_add(1) == u64::from(end),
+                });
+                target.store(next, Ordering::Release);
+            }
+            chunk
+        } {
+            for block in &chunk.blocks {
+                if block.height != expected {
+                    return Err(Error::Sync(format!(
+                        "segment stream expected {}, received {}",
+                        expected, block.height
+                    )));
+                }
+                expected = expected.saturating_add(1);
+            }
+            chunks = chunks.saturating_add(1);
+        }
+        if expected != u64::from(end) {
+            return Err(Error::Sync(format!(
+                "segment stream ended at {}, expected {}",
+                expected, end
+            )));
+        }
+        Ok((chunks, controller.target_blocks()))
+    }
+
+    #[tokio::test]
+    #[ignore = "manual live durable-segment benchmark"]
+    async fn benchmark_live_adaptive_durable_segments() {
+        let endpoint = std::env::var("PIRATE_SEGMENT_BENCH_ENDPOINT")
+            .unwrap_or_else(|_| DEFAULT_LIGHTD_URL.to_string());
+        let start = std::env::var("PIRATE_SEGMENT_BENCH_START")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(4_000_000);
+        let blocks = std::env::var("PIRATE_SEGMENT_BENCH_BLOCKS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(4_000);
+        let runs = std::env::var("PIRATE_SEGMENT_BENCH_RUNS")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or(4)
+            .max(1);
+        let end = start.checked_add(blocks).expect("benchmark range");
+        let client = LightClient::with_config(LightClientConfig::direct(&endpoint));
+        client.connect().await.expect("benchmark connection");
+
+        let strategies = [
+            SegmentBenchmarkStrategy::Fixed,
+            SegmentBenchmarkStrategy::Adaptive,
+        ];
+        let mut totals = [Duration::ZERO; 2];
+        for run in 0..runs as usize {
+            for offset in 0..strategies.len() {
+                let index = (run + offset) % strategies.len();
+                let strategy = strategies[index];
+                let started = Instant::now();
+                let (chunks, final_target) = drain_segment_benchmark(&client, start, end, strategy)
+                    .await
+                    .expect("durable segment benchmark");
+                let elapsed = started.elapsed();
+                totals[index] += elapsed;
+                println!(
+                    "durable segment run {}/{}: {:<10} {:.3}s, {:.1} blocks/s, chunks={}, final_target={}",
+                    run + 1,
+                    runs,
+                    strategy.name(),
+                    elapsed.as_secs_f64(),
+                    f64::from(blocks) / elapsed.as_secs_f64(),
+                    chunks,
+                    final_target
+                );
+            }
+        }
+        for (index, strategy) in strategies.into_iter().enumerate() {
+            let average = totals[index] / runs;
+            println!(
+                "durable segment average: {:<10} {:.3}s, {:.1} blocks/s",
+                strategy.name(),
+                average.as_secs_f64(),
+                f64::from(blocks) / average.as_secs_f64()
+            );
+        }
+    }
 
     /// Test against live lightwalletd endpoint
     /// Run with: cargo test --features live_lightd -- --ignored
