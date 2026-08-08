@@ -938,7 +938,8 @@ pub(super) fn apply_shardtree_batches_to_trees<SS, OS>(
     orchard_tree: &mut ShardTree<OS, { NOTE_COMMITMENT_TREE_DEPTH }, ORCHARD_SHARD_HEIGHT>,
     batches: &[ShardtreeBatch],
     batch_end_height: Option<u64>,
-    max_committed_height: Option<u32>,
+    max_committed_heights: CommittedCheckpointHeights,
+    verified_roots: &VerifiedSubtreeRoots,
 ) -> Result<ShardtreePersistResult>
 where
     SS: shardtree::store::ShardStore<H = SaplingNode, CheckpointId = BlockHeight>,
@@ -955,71 +956,67 @@ where
             ))
         })?;
 
-        if let Some(max_h) = max_committed_height {
-            if checkpoint_height <= max_h {
-                tracing::debug!(
-                    "Skipping already-committed block {} (max checkpoint={})",
-                    batch.height,
-                    max_h
-                );
-                continue;
-            }
+        let sapling_committed = max_committed_heights
+            .sapling
+            .is_some_and(|height| checkpoint_height <= height);
+        let ironwood_committed = max_committed_heights
+            .ironwood
+            .is_some_and(|height| checkpoint_height <= height);
+        if sapling_committed && ironwood_committed {
+            tracing::debug!(
+                "Skipping block {} already committed by both shielded pools",
+                batch.height
+            );
+            continue;
         }
-
-        let checkpoint_id = BlockHeight::from(checkpoint_height);
-        if !batch.sapling.is_empty() {
-            let start_position = batch.sapling_start_position.ok_or_else(|| {
-                Error::Sync(format!(
-                    "Missing Sapling start position for shardtree batch at height {}",
-                    batch.height
-                ))
-            })?;
-            sapling_tree
-                .batch_insert(start_position, batch.sapling.iter().cloned())
-                .map_err(|e| {
-                    Error::Sync(format!(
-                        "Failed to batch insert Sapling commitments into shardtree: {}",
-                        e
-                    ))
-                })?;
-        }
-        if batch.sapling_empty_checkpoint {
-            sapling_tree.checkpoint(checkpoint_id).map_err(|e| {
-                Error::Sync(format!("Failed to checkpoint Sapling shardtree: {}", e))
-            })?;
-        }
-        if !batch.orchard.is_empty() {
-            let start_position = batch.orchard_start_position.ok_or_else(|| {
-                Error::Sync(format!(
-                    "Missing Orchard start position for shardtree batch at height {}",
-                    batch.height
-                ))
-            })?;
-            orchard_tree
-                .batch_insert(start_position, batch.orchard.iter().cloned())
-                .map_err(|e| {
-                    Error::Sync(format!(
-                        "Failed to batch insert Orchard commitments into shardtree: {}",
-                        e
-                    ))
-                })?;
-        }
-        if batch.orchard_empty_checkpoint {
-            orchard_tree.checkpoint(checkpoint_id).map_err(|e| {
-                Error::Sync(format!("Failed to checkpoint Orchard shardtree: {}", e))
-            })?;
-        }
-        if batch.checkpoint_id.is_some() {
+        if let Some(checkpoint_id) = batch.checkpoint_id {
             result.max_checkpointed_height = Some(
                 result
                     .max_checkpointed_height
                     .map_or(batch.height, |current| current.max(batch.height)),
             );
             if batch_end_height == Some(batch.height) {
-                result.batch_end_checkpointed = true;
+                result.batch_end_checkpointed = pool_batch_has_checkpoint(
+                    &batch.sapling,
+                    batch.sapling_empty_checkpoint,
+                    checkpoint_id,
+                ) && pool_batch_has_checkpoint(
+                    &batch.orchard,
+                    batch.orchard_empty_checkpoint,
+                    checkpoint_id,
+                );
             }
         }
     }
+
+    result.sapling_work = apply_pool_batches(
+        sapling_tree,
+        batches,
+        max_committed_heights.sapling,
+        &verified_roots.sapling,
+        |batch| {
+            (
+                batch.sapling_start_position,
+                batch.sapling.as_slice(),
+                batch.sapling_empty_checkpoint,
+            )
+        },
+        "Sapling",
+    )?;
+    result.ironwood_work = apply_pool_batches(
+        orchard_tree,
+        batches,
+        max_committed_heights.ironwood,
+        &verified_roots.ironwood,
+        |batch| {
+            (
+                batch.orchard_start_position,
+                batch.orchard.as_slice(),
+                batch.orchard_empty_checkpoint,
+            )
+        },
+        "Orchard",
+    )?;
 
     Ok(result)
 }
